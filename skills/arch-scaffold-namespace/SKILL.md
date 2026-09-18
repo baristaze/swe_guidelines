@@ -32,7 +32,7 @@ Under `om/src/<root>/om/<ns>/`:
 | `manager.py`               | `<Ns>ManagerInterface`, a docstring naming the swimlane, no methods yet |
 | `types/__init__.py`        | empty; the entity skill adds one module per entity                      |
 | `impl/__init__.py`         | empty                                                                   |
-| `impl/manager.py`          | `<Ns>ManagerImpl(<Ns>ManagerInterface)` taking `<Ns>StorageInterface` and `TopicsInterface`, publishing `ENTITY_CHANGED` after every write so the realtime channel has a producer |
+| `impl/manager.py`          | `<Ns>ManagerImpl(<Ns>ManagerInterface)` taking `<Ns>StorageInterface`, writing the core row and its outbox row in one storage call on every write; the outbox relay records the event and publishes `ENTITY_CHANGED`, so the realtime channel has a producer |
 | `storage/__init__.py`      | `<Ns>StorageInterface`, a docstring, no methods yet                     |
 | `storage/impl/__init__.py` | empty                                                                   |
 | `storage/impl/postgres.py` | `<Ns>StoragePostgresImpl(PgStorageBase, <Ns>StorageInterface)`          |

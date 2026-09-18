@@ -39,7 +39,7 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `om/tests/contracts/<entity>_storage.py`                      | the storage contract cases, with a cross-tenant negative, parameterised by a storage fixture |
 | `om/tests/unit/test_<entity>_storage.py`                      | the contract cases over the memory impl                                |
 | `om/tests/integration/test_<entity>_storage_postgres.py`      | the same cases over Postgres, marked `integration`                    |
-| `om/tests/unit/test_<entity>_manager.py`                      | the five operations over the memory storage                            |
+| `om/tests/unit/test_<entity>_manager.py`                      | every operation the manager has, over the memory storage               |
 | `<api>/tests/test_<ns>_<entity>_api.py` (unless `--no-api`)   | the routes over the in-process app and memory container                |
 
 `<api>` is the service whose `--namespaces` includes `<ns>`, else
@@ -49,17 +49,17 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 
 | File                                                   | Change                                                                         |
 |--------------------------------------------------------|--------------------------------------------------------------------------------|
-| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, `write_<entity>(org_id, <entity>)` on the interface |
-| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the three methods over `_upsert` and `select`, ordered by `id`                |
+| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, `write_<entity>(org_id, <entity>, outbox_row)` on the interface, the write landing the core row and its outbox row in one named atomic method |
+| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the three methods over `_upsert` (plus the outbox insert in the same statement) and `select`, ordered by `id` |
 | `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same three methods over the in-memory table                                |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
-| `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, `update_<entity>`, `delete_<entity>` |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the five operations: authorize, verify, copy, write, record the event, publish, return the copy |
+| `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize, verify, copy (`updated_at` and `updated_by`), write the core row and its outbox row through the storage method, return the copy; the outbox relay records the event and publishes |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
-| `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, `Update<Entity>Request`                  |
-| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, put, delete routes that translate and call the manager |
+| `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
+| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes that translate and call the manager |
 | `<api>/.../routers/__init__.py` (when `<ns>` is new to it) | the router added to `all_routers()`                                       |
-| `packages/api-client/src/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
+| `apps/<portal>/src/api/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
 
 ## Procedure
 
@@ -73,9 +73,11 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
    `update_<entity>` it reads the current entity through
    `get_<entity>` and copies the request's fields onto it (the request
    carries no `created_at` or `created_by`), and the manager copies
-   `updated_at`; `delete_<entity>` copies `deleted_at` and
-   `deleted_by` when the entity is `SoftDeletable` and otherwise
-   deletes the row through storage.
+   `updated_at` and `updated_by`; `delete_<entity>` exists only for a
+   `SoftDeletable` entity and copies `deleted_at` and `deleted_by`;
+   the hard delete is the sweep's purge, never a route's. An
+   append-only entity has no update, no delete, and no
+   `Update<Entity>Request`.
 4. Run the migration check for `<role>` after the fast gate; it needs
    Postgres, so it is the integration check against the compose stack
    (`make test-integration`, or the migration CLI's `check`).

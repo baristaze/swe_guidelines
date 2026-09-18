@@ -1239,12 +1239,14 @@ class Topics(str, Enum):
     SHIPMENT_UPDATED = "shipment_updated"
     CATALOG_IMPORTED = "catalog_imported"
     WORK_AVAILABLE = "work_available"
+    ENTITY_CHANGED = "entity_changed"  # kind, target_id, seq: the realtime producer
 
 TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {
     Topics.ORDER_PLACED: OrderPlacedPayload,
     Topics.SHIPMENT_UPDATED: ShipmentUpdatedPayload,
     Topics.CATALOG_IMPORTED: CatalogImportedPayload,
     Topics.WORK_AVAILABLE: WorkAvailablePayload,
+    Topics.ENTITY_CHANGED: EntityChangedPayload,
 }
 
 class TopicsInterface:

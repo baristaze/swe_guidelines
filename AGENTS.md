@@ -67,6 +67,9 @@ claude plugin validate . --strict   # manifests, skills, agents (when claude is 
   getters and a `# ...` line, so the pattern reads at a glance.
 - When a fix is applied to one instance, search the repository for
   its siblings and fix them in the same change.
+- When the guideline renames an identifier or changes a shape, grep
+  every scaffold skill and `agents/` for the old spelling and fix them
+  in the same change; no checker does this yet.
 - Commit messages: a specific subject line, a short body naming the
   rule that changed and why.
 - A change that removes or reverses a rule is a major release; one

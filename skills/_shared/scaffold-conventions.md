@@ -40,11 +40,14 @@ the order the guideline presents them, never by number.
   `get_inventory_storage()`. A namespace with several aggregates may
   add one storage interface per aggregate, named after the aggregate.
 - Manager operations read `get_<entities>`, `get_<entity>`,
-  `create_<entity>`, `update_<entity>`, `delete_<entity>`.
+  `create_<entity>`, `update_<entity>` (only when the entity is
+  `Trackable`), `delete_<entity>` (only when it is `SoftDeletable`); an
+  append-only entity has neither.
 - Storage operations read `read_<entities>`, `read_<entity>`,
   `write_<entity>`.
-- Wire types read `<Entity>View`, `Add<Entity>Request`,
-  `Update<Entity>Request`, on the `View` and `RequestBody` bases.
+- Wire types read `<Entity>View`, `Add<Entity>Request`, and, only when
+  the manager has `update_<entity>`, `Update<Entity>Request`, on the
+  `View` and `RequestBody` bases.
 - The one handler interface for background work is
   `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`.
 
@@ -53,23 +56,29 @@ the order the guideline presents them, never by number.
 - Every entity is frozen and composes the mixins it needs in
   house-style order (`Identifiable`, `Named`, `Trackable`,
   `SoftDeletable`), each an independent opt-in that a manager operation
-  exercises; an append-only record is `Identifiable` alone. Ids come from `new_id()`, timestamps from
-  `utcnow()`.
+  exercises; an append-only record is `Identifiable` alone. Ids come
+  from `new_id()`, timestamps from `utcnow()`. Fields are tuples,
+  frozen models, and `Mapping`, never `list` or `dict`; a copy that
+  carries caller input goes through `model_validate` before it is
+  written, because `model_copy` does not validate.
 - Every manager and service operation takes `ctx: OpContext` first;
   every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (principal-less
   operations that produce a
   context, global tables, cross-tenant sweeps), each documented in its
   docstring and listed in the repository's exceptions test.
-- Every interface is a plain class with `...` method bodies; every impl
-  subclasses it; every dependency is a constructor parameter typed by
-  interface.
+- Every interface is an `ABC` whose methods are `@abstractmethod` with
+  `...` bodies; every impl subclasses it; every dependency is a
+  constructor parameter typed by interface.
 - Two storage impls always: relational and memory. One contract test
   module under `tests/unit/` runs the memory impl; `tests/integration/`
   reuses the same cases against Postgres under the `integration`
   marker. Both impls sort by the `UUID` value, never by its string.
-- Every write follows authorize, verify, copy, write, and returns the
-  copy it wrote. The caller constructs the entity whole and hands it to
+- Every write follows authorize, verify, copy (`updated_at` and
+  `updated_by` set in the copy), write, and returns the copy it wrote.
+  A write that has a handoff (an event, a work item) lands the core
+  row and its outbox row in one named storage method; the relay does
+  the rest. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once.
