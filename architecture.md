@@ -1029,6 +1029,12 @@ Analytics across tenants never runs in the request path of any role.
 When reporting is needed it reads a mirror fed by change data capture
 or a periodic copy, never a role the application writes to.
 
+Every role is backed up on its own schedule, and a restore is
+rehearsed, not assumed. A soft-deleted row is purged by the
+maintenance sweep after its entity's retention period; purge is the
+one hard delete. Personal data lives in named fields, so erasing a
+person is a sweep over a list, not a hunt.
+
 > **Principle:** Every table has one role; the role is its schema, its
 > pool, and its migration chain. Nothing crosses a role.
 
@@ -1051,7 +1057,10 @@ a counter; two migrations that name the same parent are a real
 conflict, and the tool reporting it is the point. A migration file is
 never edited once it has been applied anywhere. The runner refuses a
 file that names a table of another role, and refuses to migrate one
-role when the caller meant all of them.
+role when the caller meant all of them. A migration is compatible with
+the release before it, because a rollout runs both at once: add and
+backfill in one release, switch the code, drop in a later one (expand
+and contract).
 
 A check that the ORM metadata and the migrated schema agree, for every
 role, is part of the fast test gate. A downgrade-then-upgrade of the
@@ -1549,7 +1558,16 @@ All services run in the same local or virtual network.
 Service-to-service calls never cross the public internet, and TLS is
 not required for intra-service traffic. Managed backends that accept
 only TLS are configured with it; that is a connection string, not an
-architectural concern.
+architectural concern. That rests on the network being private:
+services and workers sit in private subnets, security groups admit
+only the platform's own processes, and only the gateway has a public
+address, all declared in Terraform; a runtime that offers mutual TLS
+between tasks at no cost turns it on. The rule is where the trust
+boundary is, not that traffic inside it is plain. A service-to-service
+call carries a short-lived internal credential minted by the calling
+process that names the principal, the tenant, and the request id; the
+callee's gateway rebuilds `OpContext` from it like any other credential
+kind, and no service trusts a bare header.
 
 Outbound TLS verification uses the operating system's trust store, in
 every process, so a corporate proxy or a private certificate authority
@@ -1594,7 +1612,11 @@ Naming is fixed: `...View` for anything returned, `...Request` for
 anything accepted, `Issued...View` for the one response that carries a
 freshly minted secret in the clear. Lists return a bare list with a
 server-clamped `limit`; an append-only stream pages by a monotonic
-sequence number (`after_seq`) instead of an offset.
+sequence number (`after_seq`) instead of an offset. Inside `/v1` a view
+only gains fields and a request only gains optional ones; a removal or
+a rename is a new prefix. Topic payloads and realtime envelopes follow
+the same rule and are read tolerantly: a consumer ignores a field it
+does not know, so producers and consumers roll out in either order.
 
 > **Python tip:** `from_attributes=True` makes
 > `WarehouseView.model_validate(warehouse)` the whole translation when
@@ -1762,11 +1784,11 @@ from 40, never a skip. Replay from storage is the durability mechanism;
 the socket is a hint that something changed. The record is an `Event`
 in the `activity` role: `Identifiable` plus `org_id`, `seq`, `kind`,
 `target_id`, and a typed payload, appended by one named atomic storage
-method that assigns `seq`, a per-tenant, gapless sequence. `seq` is the
-one number storage assigns, because only the database can order
-commits; ids are still minted above. A manager records one event per
-write through the outbox of [Database Roles](#database-roles). An
-audit entry is the same shape plus the principal and the app.
+method that assigns `seq`, a per-tenant, gapless sequence and the one
+number storage assigns, because only the database can order commits.
+A manager records one event per write through the outbox of [Database
+Roles](#database-roles); an audit entry is the same shape plus the
+principal and the app.
 
 ``` mermaid
 flowchart LR
@@ -2730,16 +2752,31 @@ exceptions, that no manager imports a service, that the migration chain
 has one head per role. A rule that is only written down drifts. A rule
 that fails the build holds.
 
+### Tests
+
+Unit tests run over the memory roots and the pure rules with no
+infrastructure. The storage contract cases are plain modules
+parameterized by a storage fixture: the fast gate runs them over
+memory, the integration job runs the same cases over Postgres on the
+compose stack. End-to-end tests build the container over the memory
+storage root and the local infra root, every backend a twin, and drive
+the app in-process. Markers `integration`, `e2e`, and `slow` decide
+which gate runs what; the checks of [Records of
+Decisions](#records-of-decisions) live in the unit suite.
+
 ## Technology Choices and How to Override Them
 
 This document names technologies, not only shapes. The object model is
-Python on Pydantic; storage is SQLAlchemy and Alembic over Postgres;
-infrastructure impls target Valkey as the cache, an S3-like object
-store, and a hosted queue; browser apps are React and TypeScript on
-Vite with TanStack Query and Zustand; workspaces are uv and pnpm; the
-local stack is Docker Compose; the cloud is AWS, declared in Terraform,
-with browser apps on S3 and CloudFront; traces are OpenTelemetry,
-metrics are Prometheus, and errors go through the Sentry SDK.
+Python on Pydantic; web services are FastAPI on uvicorn, httpx is the
+HTTP client, and the CLI app is Typer; storage is SQLAlchemy and
+Alembic over Postgres; infrastructure impls target Valkey as the cache,
+an S3-like object store, and SQS as the hosted queue; browser apps are
+React and TypeScript on Vite with TanStack Query and Zustand;
+workspaces are uv and pnpm; the local stack is Docker Compose; the
+cloud is AWS, declared in Terraform, with services and workers on ECS
+Fargate and browser apps on S3 and CloudFront; traces are
+OpenTelemetry, metrics are Prometheus, and errors go through the
+Sentry SDK.
 
 The names are a choice, and a practical one. Python carries most
 backend work and TypeScript most front-end work, so both stacks have
@@ -2772,7 +2809,9 @@ Where a technology publishes a long-term support line, the version is
 the current active LTS release, not a newer line that has not entered
 it. Where a technology publishes no such line, the version is the
 newest stable release its maintainers recommend. Pre-releases, release
-candidates, and lines past their end of life are not used.
+candidates, and lines past their end of life are not used. A release
+is adopted at the next scheduled bump, once a patch release sits
+behind it, never the day it ships.
 
 The version is stated where the tool reads it: `.python-version` and
 `requires-python` for Python, `.nvmrc` for Node, the `packageManager`
