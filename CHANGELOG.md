@@ -6,6 +6,8 @@ which number.
 
 ## Unreleased
 
+## 0.4.0 (2026-09-18)
+
 ### Added
 
 - `architecture.md`: "Database Roles" lands a core row and its handoff
