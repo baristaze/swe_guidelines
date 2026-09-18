@@ -96,7 +96,7 @@ written to memory that is not also written to a durable source.
 operation, or a session only in RAM; a process whose restart loses
 information; a warm cache that is the only copy of a computed result.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-05 A stateful edge holds only the socket and its subscriptions
 
@@ -115,7 +115,7 @@ the socket.
 partial results; state recovered from the socket handler instead of
 from storage after a reconnect.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-06 The gateway is the only public surface
 
@@ -167,7 +167,7 @@ status; error bodies with different shapes on different routes; an
 error response that lacks the request id; more than one mapping from
 domain exceptions to statuses.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-08 Rate limits are a per-route dependency on the shared counter
 
@@ -396,7 +396,7 @@ accepts; whether any mutation is performed from a socket frame.
 message type that bypasses authorization or rate limiting a REST route
 would apply.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-19 Waiting is the client's choice; the server answers the same way
 
@@ -437,7 +437,7 @@ component that opens its own socket; a polling endpoint or a poll on a
 timer used while the channel is up; envelopes without a type field or
 routed by ad hoc inspection.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-21 The channel degrades and its timeouts are pinned
 

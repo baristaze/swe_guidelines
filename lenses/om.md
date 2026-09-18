@@ -26,7 +26,7 @@ living in a service, a worker, or a script; a domain noun defined only
 in a wire type or a table class; the OM importable only by installing a
 service.
 
-**Severity.** high
+**Severity.** medium
 
 ## OM-02 Wire and table shapes are projections
 
@@ -209,7 +209,7 @@ the chain that unfreezes itself; an update that reaches into a nested
 value object to change it in place; a `list` field appended to through
 the snapshot; caller input copied into an entity with no validation.
 
-**Severity.** high
+**Severity.** medium
 
 ## OM-11 Everything on the base chain is frozen, rows excepted
 
@@ -231,7 +231,7 @@ setting.
 mutable; a `View` base without the frozen configuration; an entity
 constructed by wrapping a live row.
 
-**Severity.** high
+**Severity.** medium
 
 ## OM-12 Every id is uuid v7, minted above storage
 
@@ -249,7 +249,7 @@ any `uuid4()` or other generator imported by OM or service code.
 without an id on the assumption that storage will assign one; an id
 minted inside a storage impl.
 
-**Severity.** high
+**Severity.** medium
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 

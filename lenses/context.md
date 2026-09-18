@@ -34,7 +34,7 @@ context in any position other than first; a handler that fetches
 identity from a request object; a context-less method that is not one
 of the documented principal-less operations.
 
-**Severity.** high
+**Severity.** medium
 
 ## CTX-02 The context carries identity, tenant, role, permissions, app, and request
 
@@ -135,7 +135,7 @@ service; a permission set widened or narrowed on the context; a "with
 override" helper that replaces the context instead of adding a
 parameter.
 
-**Severity.** high
+**Severity.** medium
 
 ## CTX-07 No ambient state outside the context
 
@@ -155,7 +155,7 @@ read from a context variable where the context is in hand. The one
 allowed context variable carries the request id for log enrichment
 only, and the authoritative value stays on the context.
 
-**Severity.** high
+**Severity.** medium
 
 ## CTX-08 Authorization lives in managers
 

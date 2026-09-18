@@ -32,7 +32,7 @@ children go with it. A referenced-entity existence check is implemented
 as "the insert will fail if it does not exist". A manager receives a
 related entity it never asked for by id, loaded for it by the schema.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-02 No transactions; one operation commits itself
 
@@ -56,7 +56,7 @@ opened session per call. A session is created in the constructor and
 shared by every method, or otherwise outlives the storage method that
 opened it.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-03 Atomicity is a single named interface method
 
@@ -79,7 +79,7 @@ atomic operation implemented in a manager by orchestrating several
 storage calls. An interface signature that exposes a lock, a session,
 or a transaction handle.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-04 Joins stay inside the impl
 
@@ -117,7 +117,7 @@ column defaults that encode business logic.
 an audit row. `updated_at` is set by the database rather than by the
 manager's copy. A query calls a user-defined function.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-06 IDs are passed top-down, never read back
 
@@ -138,7 +138,7 @@ autoincrement. A `write_*` method returns a `UUID` that the caller did
 not already hold. An `INSERT ... RETURNING id` whose result the
 business layer waits for.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-07 Defaults live in the object model
 
@@ -178,7 +178,7 @@ a statement, or a driver result. A manager catches a driver exception
 by its technology-specific class. Swapping the impl would require
 editing the interface or a type in `types/`.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-09 Storage namespace shape
 
@@ -275,7 +275,7 @@ them. A row instance is held on a manager or stored in a cache. A table
 class is frozen, so updates rebuild rows instead of applying changes in
 place.
 
-**Severity.** high
+**Severity.** medium
 
 ## STO-13 Column order is part of the model
 

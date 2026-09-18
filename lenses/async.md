@@ -30,7 +30,7 @@ any impl constructed inside a manager or handler body.
 builds it itself; a global `topics` object is reached from inside a
 handler; an infra handle is read off `ctx`.
 
-**Severity.** high
+**Severity.** medium
 
 ## ASY-02 One infra root with a lifecycle
 
@@ -269,7 +269,7 @@ secret name or the store; a subprocess inheriting the parent's full
 environment; a production deployment on the file backend that starts
 anyway.
 
-**Severity.** high
+**Severity.** medium
 
 ## ASY-14 Every handler is idempotent on a producer-generated key
 
@@ -345,7 +345,7 @@ last attempt with no audit entry and no metric; a hand-back that
 spends an attempt; a second table or topic invented for routing when
 the `lane` string would do.
 
-**Severity.** high
+**Severity.** medium
 
 ## ASY-17 A worker claims within capacity, renews, and fences itself
 
@@ -395,7 +395,7 @@ the queue; a cancelled task that leaves its record claimed until the
 lease expires; a rollout configured to run extra workers during a
 deploy.
 
-**Severity.** high
+**Severity.** medium
 
 ## ASY-19 Maintenance is an idempotent sweep every worker runs
 

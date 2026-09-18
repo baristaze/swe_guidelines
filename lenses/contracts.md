@@ -33,7 +33,7 @@ class with no `*Interface` declared; a caller imports a concrete class
 where an interface should stand; an operation is declared as a
 synchronous method on an interface that describes I/O.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-02 Interfaces are abstract classes with empty bodies, impls subclass them
 
@@ -133,7 +133,7 @@ manager; a dependency is fetched from a module-level global, a
 registry, or a service locator at call time; an interface method takes
 a peer manager or storage as an argument.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-07 Tunables arrive as a frozen options object
 
@@ -215,7 +215,7 @@ reads a session or connection object from a storage impl; an infra
 module imports from the OM package, so the two distributions depend on
 each other.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-11 Infrastructure never leaks a technology across a boundary
 
@@ -233,7 +233,7 @@ that escape an impl.
 object; a manager catches a driver-specific exception; a caller
 branches on which backend is configured.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-12 Calls flow downward, never up
 
@@ -251,7 +251,7 @@ layer invoke an upper one.
 `*ServiceInterface`; a storage impl calls a manager; a lower layer is
 handed a callback that invokes an upper layer.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-13 App-specific services stay bounded to one app
 
@@ -320,7 +320,7 @@ branches on entity state; a router composes several managers to enforce
 a rule the OM owns; a router calls storage directly; a router raises a
 domain exception on its own.
 
-**Severity.** medium
+**Severity.** high
 
 ## CON-16 Every process boots through the same container in the same order
 

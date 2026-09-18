@@ -52,8 +52,9 @@ seven reports cover the same ground. An empty scope is reported as
      one line; the fix text comes from the higher-severity one.
    - Count applied, passed, findings, and not-applicable lenses across
      groups.
-6. Write the merged report below. Then, if the report has any `high`
-   finding, say so in one sentence after the report. Nothing else.
+6. Write the merged report below. Then, if the report has three or
+   more `high` findings, say so in one sentence after the report,
+   with the count. Nothing else.
 
 Never edit, stage, or commit. This skill reads and reports.
 

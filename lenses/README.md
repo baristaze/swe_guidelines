@@ -42,8 +42,9 @@ way:
 
 Ids are the group prefix plus a two-digit number: `OM`, `CON`, `CTX`,
 `STO`, `ASY`, `NET`, `DEL`. Severity is the default weight of a breach:
-`high` breaks a boundary or a guarantee, `medium` bends a shape the
-guideline relies on, `low` is a convention.
+`high` is reserved for tenancy, authorization, lost or duplicated
+work, and a cross-role breach, about a quarter of the catalog;
+`medium` bends a shape the guideline relies on; `low` is a convention.
 
 `Look for` and `Violation` are prose, one to three sentences each, wrapped
 at about 72 columns like the rest of the file.

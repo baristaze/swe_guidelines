@@ -37,7 +37,7 @@ conclusion; domain constants duplicated into the app; the portal and
 the CLI each implementing the same aggregation; an app-specific
 service holding a rule a second app later copies.
 
-**Severity.** high
+**Severity.** medium
 
 ## DEL-02 One cloud, environments that differ by variables, promotion without a rebuild
 
@@ -99,7 +99,7 @@ Terraform file declares; a runbook step that says "create in the
 console"; a CI pipeline that validates one environment and not the
 others.
 
-**Severity.** high
+**Severity.** medium
 
 ## DEL-04 Dependencies in local containers, the application on the host
 
@@ -431,7 +431,7 @@ manager raising a framework HTTP exception; a router mapping exception
 types to status codes; a raised leaf exception that inherits no shape
 and so surfaces as 500.
 
-**Severity.** high
+**Severity.** medium
 
 ## DEL-19 Standard logging, configured once, correlated by filter
 
@@ -504,7 +504,7 @@ router; a build-time variable in a browser app carrying a value that
 differs between environments; a knob missing from `.env.example`; a second prefix; backend
 selection performed outside the settings and boot path.
 
-**Severity.** high
+**Severity.** medium
 
 ## DEL-22 Product variation is a modelled entity, not a flag
 
