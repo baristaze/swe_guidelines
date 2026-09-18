@@ -29,13 +29,13 @@ why they are named and how a project substitutes its own.
   - [Identifiers](#identifiers)
 - [Namespaces as Swimlanes](#namespaces-as-swimlanes)
   - [Pure Rules](#pure-rules)
+- [Separation of Layers](#separation-of-layers)
 - [Interfaces](#interfaces)
   - [Multiple impls per interface](#multiple-impls-per-interface)
   - [Composition by decoration](#composition-by-decoration)
   - [Injectability](#injectability)
 - [OpContext](#opcontext)
   - [The Operator Context](#the-operator-context)
-- [Separation of Layers](#separation-of-layers)
 - [The Business Layer](#the-business-layer)
   - [Shape of an Operation](#shape-of-an-operation)
   - [Parameters](#parameters)
@@ -89,14 +89,6 @@ why they are named and how a project substitutes its own.
   - [Apps as Products](#apps-as-products)
   - [Apps Are Dumb](#apps-are-dumb)
   - [Push-First Apps](#push-first-apps)
-- [Deployment](#deployment)
-  - [Cloud: AWS](#cloud-aws)
-  - [Infrastructure as Code](#infrastructure-as-code)
-  - [Local: Docker Compose](#local-docker-compose)
-  - [Twins for External Services](#twins-for-external-services)
-  - [What a Process Refuses](#what-a-process-refuses)
-- [Monorepo Folder Structure](#monorepo-folder-structure)
-  - [Layout Conventions](#layout-conventions)
 - [Client App Architecture](#client-app-architecture)
   - [Stack](#stack)
   - [Client Rendering](#client-rendering)
@@ -106,6 +98,14 @@ why they are named and how a project substitutes its own.
   - [Realtime: One Channel per App](#realtime-one-channel-per-app)
   - [The Operator Console](#the-operator-console)
   - [The CLI Is Different](#the-cli-is-different)
+- [Deployment](#deployment)
+  - [Cloud: AWS](#cloud-aws)
+  - [Infrastructure as Code](#infrastructure-as-code)
+  - [Local: Docker Compose](#local-docker-compose)
+  - [Twins for External Services](#twins-for-external-services)
+  - [What a Process Refuses](#what-a-process-refuses)
+- [Monorepo Folder Structure](#monorepo-folder-structure)
+  - [Layout Conventions](#layout-conventions)
 - [Cross-Cutting Conventions](#cross-cutting-conventions)
   - [Exceptions](#exceptions)
   - [Logs](#logs)
@@ -114,6 +114,7 @@ why they are named and how a project substitutes its own.
   - [Configuration](#configuration)
   - [The App Container](#the-app-container)
   - [Records of Decisions](#records-of-decisions)
+  - [Tests](#tests)
 - [Technology Choices and How to Override Them](#technology-choices-and-how-to-override-them)
   - [Versions](#versions)
   - [Overriding a Choice](#overriding-a-choice)
@@ -356,6 +357,33 @@ both call the same function and cannot drift apart.
 > **Principle:** A namespace's rules are pure functions in one module.
 > Storage impls and manager impls call them; nothing re-implements them.
 
+## Separation of Layers
+
+The system has three layers:
+
+-   **Network**: receives requests, shapes responses, enforces
+    protocols.
+-   **Business**: the Object Model. Entities, managers, and operations.
+-   **Storage**: persistence. Lives under the Object Model but is
+    clearly separated from it.
+
+Each layer has its own language and its own responsibilities. Upper layers depend on interfaces exposed by lower
+layers, never on their internals. Infrastructure capabilities (see
+[Infrastructure](#infrastructure)) are injected into any of these layers
+and never leak a technology choice across a boundary.
+
+Authorization and tenancy are split across two layers on purpose.
+Permissions and visibility are business decisions and live in
+managers, where the rule can be read next to the operation it guards.
+Tenancy is a data boundary and lives in storage, where every query
+carries the tenant and every write checks it. A request that reaches
+storage has already been authorized; a query that reaches the database
+cannot cross a tenant.
+
+> **Principle:** Three layers: Network, Business, Storage. Upper depends
+> on lower through interfaces only. Infrastructure cross-cuts without
+> leaking technology. Managers authorize; storage enforces tenancy.
+
 ## Interfaces
 
 Every layer of this system is defined by its interfaces. A manager, a
@@ -556,33 +584,6 @@ Gateway](#the-gateway) and [The Operator Console](#the-operator-console).
 
 > **Principle:** Tenant operations take `OpContext`; operator operations
 > take `AdminContext`. The two never mix in one signature.
-
-## Separation of Layers
-
-The system has three layers:
-
--   **Network**: receives requests, shapes responses, enforces
-    protocols.
--   **Business**: the Object Model. Entities, managers, and operations.
--   **Storage**: persistence. Lives under the Object Model but is
-    clearly separated from it.
-
-Each layer has its own language and its own responsibilities. Upper layers depend on interfaces exposed by lower
-layers, never on their internals. Infrastructure capabilities (see
-[Infrastructure](#infrastructure)) are injected into any of these layers
-and never leak a technology choice across a boundary.
-
-Authorization and tenancy are split across two layers on purpose.
-Permissions and visibility are business decisions and live in
-managers, where the rule can be read next to the operation it guards.
-Tenancy is a data boundary and lives in storage, where every query
-carries the tenant and every write checks it. A request that reaches
-storage has already been authorized; a query that reaches the database
-cannot cross a tenant.
-
-> **Principle:** Three layers: Network, Business, Storage. Upper depends
-> on lower through interfaces only. Infrastructure cross-cuts without
-> leaking technology. Managers authorize; storage enforces tenancy.
 
 ## The Business Layer
 
@@ -2162,6 +2163,111 @@ flowchart LR
     style AppSvc fill:#eef
 ```
 
+## Client App Architecture
+
+### Stack
+
+The client stack is React + TypeScript on Vite. The portal builds to a
+static SPA whose files are served through CloudFront (see [Cloud:
+AWS](#cloud-aws)) and whose calls to the platform are served behind [the
+gateway](#the-gateway); the operator console is a second application on
+the same stack; the CLI is Python and lives outside this stack. Vite
+builds a static bundle and nothing else, which keeps the [Apps Are
+Dumb](#apps-are-dumb) rule enforced by construction: there is no place
+in the app to put backend logic. Vite is chosen over a server-rendering
+framework because [Client Rendering](#client-rendering) rules
+server-side rendering out, so the simpler tool wins.
+
+> **Principle:** One React + TypeScript stack for every browser app.
+> The CLI stays Python.
+
+### Client Rendering
+
+Rendering happens in the client only. The deployed artifact is a
+static bundle that hydrates against backing services and the realtime
+channel, and those are the only network surfaces it talks to.
+
+> **Principle:** The app is a static bundle that talks to backing
+> services and the realtime channel.
+
+### State and Data
+
+State splits along server-state vs client-state. Server state, the
+things the backing services own, lives in TanStack Query: queries,
+mutations, caching, invalidation, optimistic updates, retries. Query
+keys come from one key factory per domain so invalidation is spelled
+the same way everywhere. Client state, the things only the UI knows
+about, lives in Zustand: selection, modal flags, transient view
+configuration, anything that does not need to be persisted by a
+service. The two together are the entire state stack.
+
+Realtime envelopes push into the query cache: a status update becomes
+an invalidation or a direct cache write in TanStack Query, so the UI
+reacts as it would to a fresh fetch. A purely UI-side push (a transient
+banner, a connection state) becomes a store entry. The envelope router
+dispatches into these handlers, never directly into components.
+
+> **Principle:** Zustand for client state, TanStack Query for server
+> state. Realtime writes into the query cache.
+
+### Views, View-Models, Models
+
+Component code follows a hook-based MVVM split with a third, pure
+layer. The **Model** is a plain TypeScript module per screen: row
+builders, URL codecs, formatting, gating predicates. Pure functions,
+unit-tested, no React. The **View-Model** is a custom hook per screen
+that combines queries, mutations, store reads, and the model into one
+ergonomic surface. The **View** is a functional React component that
+consumes the hook and renders JSX, with no fetches, mutations, or
+business decisions inside a component file.
+
+> **Principle:** Components render. View-model hooks decide. Model
+> modules compute. Stores and queries hold.
+
+### API Access
+
+Types are generated from the committed OpenAPI document into one file.
+A curated facade module re-exports the names feature code uses, so no
+feature imports a generated path. One small hand-written client owns
+transport: it attaches the bearer and the app header, parses the error
+envelope into a typed error that carries the request id, and clears
+authentication on a 401. Feature code never calls `fetch`.
+
+### Realtime: One Channel per App
+
+The push-first rule from [Push-First Apps](#push-first-apps) holds for
+the portal. One provider
+component owns the socket for the whole app; envelopes are parsed by a
+discriminated union on their `type` and routed into the query cache,
+never into components.
+
+> **Principle:** One realtime channel per app. A new kind of push is an
+> envelope type, not a separate channel.
+
+### The Operator Console
+
+The operator console is a separate application that shares the portal's
+stack, design tokens, component kit, sign-in flow, and API client, and
+never its security context. It has its own origin (`admin.` under the
+environment's base domain, see [Cloud: AWS](#cloud-aws)), its own
+bundle, and its own routes under `/v1/admin/*`. It holds no realtime
+socket. Its authority comes from the operator allowlist and the
+credential-provenance check of [The Gateway](#the-gateway), not from a
+tenant role and not from a flag in the portal.
+
+> **Principle:** The operator console shares the portal's stack and
+> design, never its security context.
+
+### The CLI Is Different
+
+The CLI is a Python app. Its UI is the terminal and its state lives in
+the process. It talks REST to its backing service with an API key,
+attaches an idempotency key to every creating call, turns the outcome
+of a followed operation into an exit code, and trusts the operating
+system's certificate store. What applies from this section: dumb
+client, business logic on the backend, short commands wait,
+long-running operations submit and follow.
+
 ## Deployment
 
 ### Cloud: AWS
@@ -2476,111 +2582,6 @@ infrastructure jobs.
 > **Python tip:** a top-level package named `platform` shadows the
 > standard-library module of the same name. Pick a product-specific
 > root package name; the layout is what matters, not the word.
-
-## Client App Architecture
-
-### Stack
-
-The client stack is React + TypeScript on Vite. The portal builds to a
-static SPA whose files are served through CloudFront (see [Cloud:
-AWS](#cloud-aws)) and whose calls to the platform are served behind [the
-gateway](#the-gateway); the operator console is a second application on
-the same stack; the CLI is Python and lives outside this stack. Vite
-builds a static bundle and nothing else, which keeps the [Apps Are
-Dumb](#apps-are-dumb) rule enforced by construction: there is no place
-in the app to put backend logic. Vite is chosen over a server-rendering
-framework because [Client Rendering](#client-rendering) rules
-server-side rendering out, so the simpler tool wins.
-
-> **Principle:** One React + TypeScript stack for every browser app.
-> The CLI stays Python.
-
-### Client Rendering
-
-Rendering happens in the client only. The deployed artifact is a
-static bundle that hydrates against backing services and the realtime
-channel, and those are the only network surfaces it talks to.
-
-> **Principle:** The app is a static bundle that talks to backing
-> services and the realtime channel.
-
-### State and Data
-
-State splits along server-state vs client-state. Server state, the
-things the backing services own, lives in TanStack Query: queries,
-mutations, caching, invalidation, optimistic updates, retries. Query
-keys come from one key factory per domain so invalidation is spelled
-the same way everywhere. Client state, the things only the UI knows
-about, lives in Zustand: selection, modal flags, transient view
-configuration, anything that does not need to be persisted by a
-service. The two together are the entire state stack.
-
-Realtime envelopes push into the query cache: a status update becomes
-an invalidation or a direct cache write in TanStack Query, so the UI
-reacts as it would to a fresh fetch. A purely UI-side push (a transient
-banner, a connection state) becomes a store entry. The envelope router
-dispatches into these handlers, never directly into components.
-
-> **Principle:** Zustand for client state, TanStack Query for server
-> state. Realtime writes into the query cache.
-
-### Views, View-Models, Models
-
-Component code follows a hook-based MVVM split with a third, pure
-layer. The **Model** is a plain TypeScript module per screen: row
-builders, URL codecs, formatting, gating predicates. Pure functions,
-unit-tested, no React. The **View-Model** is a custom hook per screen
-that combines queries, mutations, store reads, and the model into one
-ergonomic surface. The **View** is a functional React component that
-consumes the hook and renders JSX, with no fetches, mutations, or
-business decisions inside a component file.
-
-> **Principle:** Components render. View-model hooks decide. Model
-> modules compute. Stores and queries hold.
-
-### API Access
-
-Types are generated from the committed OpenAPI document into one file.
-A curated facade module re-exports the names feature code uses, so no
-feature imports a generated path. One small hand-written client owns
-transport: it attaches the bearer and the app header, parses the error
-envelope into a typed error that carries the request id, and clears
-authentication on a 401. Feature code never calls `fetch`.
-
-### Realtime: One Channel per App
-
-The push-first rule from [Push-First Apps](#push-first-apps) holds for
-the portal. One provider
-component owns the socket for the whole app; envelopes are parsed by a
-discriminated union on their `type` and routed into the query cache,
-never into components.
-
-> **Principle:** One realtime channel per app. A new kind of push is an
-> envelope type, not a separate channel.
-
-### The Operator Console
-
-The operator console is a separate application that shares the portal's
-stack, design tokens, component kit, sign-in flow, and API client, and
-never its security context. It has its own origin (`admin.` under the
-environment's base domain, see [Cloud: AWS](#cloud-aws)), its own
-bundle, and its own routes under `/v1/admin/*`. It holds no realtime
-socket. Its authority comes from the operator allowlist and the
-credential-provenance check of [The Gateway](#the-gateway), not from a
-tenant role and not from a flag in the portal.
-
-> **Principle:** The operator console shares the portal's stack and
-> design, never its security context.
-
-### The CLI Is Different
-
-The CLI is a Python app. Its UI is the terminal and its state lives in
-the process. It talks REST to its backing service with an API key,
-attaches an idempotency key to every creating call, turns the outcome
-of a followed operation into an exit code, and trusts the operating
-system's certificate store. What applies from this section: dumb
-client, business logic on the backend, short commands wait,
-long-running operations submit and follow.
 
 ## Cross-Cutting Conventions
 
