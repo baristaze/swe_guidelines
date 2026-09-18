@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-entity
 description: "Add one entity to an existing object-model namespace the way the Software Design and Architecture Guidelines prescribe: the frozen Pydantic type, the table class and migration, storage interface methods with Postgres and memory impls, manager operations, wire types and router, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make test-unit), Bash(make openapi), Bash(uv run:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make test-unit), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*), Bash(git diff:*)
 ---
 
 # arch-scaffold-entity
@@ -9,8 +9,10 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make test-u
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
 Entities (Identifiers), The Business Layer (Shape of an Operation), The
-Storage Layer (Namespace Shape, Defining ORM Classes, A Storage Impl,
-Database Roles, Migrations), The Network Layer (Public Types).
+Storage Layer (Namespace Shape, Defining ORM Classes, Translation, A
+Storage Impl, Database Roles, Migrations), The Network Layer (Public
+Types, Realtime at the Edge), Cross-Cutting Conventions (Exceptions).
+A section is read with its own introduction.
 
 ## Input
 
@@ -19,9 +21,18 @@ Database Roles, Migrations), The Network Layer (Public Types).
 Example: `inventory Warehouse address:str timezone:str`. The role
 defaults to `core`. Ask in one message for the fields not given and
 for the mixins: `Named`? `Trackable`? `SoftDeletable`? The answer
-"append-only" means `Identifiable` alone. A mixin is composed only
-when a manager operation exercises it: `Trackable` needs an update,
+"append-only" means `Identifiable` alone and, unless `--role` says
+otherwise, the `activity` role. A mixin is composed only when a
+manager operation exercises it: `Trackable` needs an update,
 `SoftDeletable` a delete.
+
+A `core`-role entity has a handoff: every write lands the core row
+and an `OutboxRow` (from `om/outbox/`, as `arch-scaffold-new` defines
+it) in one commit, and the manager relays the row at once through
+`OutboxRelayInterface.relay(org_id, row)`, which appends the `Event`
+and publishes `ENTITY_CHANGED`. An `activity`-role entity is itself a
+record: it is appended by a named `append_<entity>` method, never
+upserted, and carries no outbox row, because nothing crosses a role.
 
 `<entity>` is the snake-case name, `<entities>` its plural, `<ns>` the
 namespace, `<role>` the role, `<stamp>` the minute stamp
@@ -32,7 +43,7 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | File                                                         | Holds                                                                  |
 |--------------------------------------------------------------|------------------------------------------------------------------------|
 | `om/src/<root>/om/<ns>/types/<entity>.py`                     | the frozen entity, mixins in house-style order                          |
-| `om/src/<root>/om/<ns>/storage/tables/<entities>.py`          | the table class composing the matching mixins; a feed composes the feed variant of the identifiable mixin (no single-column `org_id` index) and declares the `(org_id, id)` index; no concrete table redeclares a mixin column |
+| `om/src/<root>/om/<ns>/storage/tables/<entities>.py`          | the table class composing the matching mixins; an `activity`-role entity is a feed and composes `FeedIdentifiableMixin` (no single-column `org_id` index) and declares the `(org_id, id)` index; no concrete table redeclares a mixin column |
 | `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`          | `CREATE TABLE <role>.<entities>` with the mixin header block first    |
 | `om/migrations/sql/<role>/<stamp>_<entities>.down.sql`        | the matching `DROP TABLE`                                              |
 | `om/migrations/versions/<role>/<stamp>_<entities>.py`         | the wrapper: `revision = "<stamp>"`, `down_revision` = the role's current head, `run_sql(<role>, ...)` |
@@ -49,12 +60,12 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 
 | File                                                   | Change                                                                         |
 |--------------------------------------------------------|--------------------------------------------------------------------------------|
-| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, `write_<entity>(org_id, <entity>, outbox_row)` on the interface, the write landing the core row and its outbox row in one named atomic method |
-| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the three methods over `_upsert` (plus the outbox insert in the same statement) and `select`, ordered by `id` |
-| `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same three methods over the in-memory table                                |
+| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and `write_<entity>(org_id, <entity>, outbox_row: OutboxRow)` for a `core`-role entity or `append_<entity>(org_id, <entity>)` for an `activity`-role one |
+| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_row)`, which inserts the outbox row in the same commit; the append over the base's `_insert`, which raises `Conflict` on an existing id |
+| `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same three methods over the in-memory table; the memory base lands the outbox row in the outbox memory storage the root wired |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize, verify, copy (`updated_at` and `updated_by`), write the core row and its outbox row through the storage method, return the copy; the outbox relay records the event and publishes |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; a read by id on create, raising `Conflict`), copy (`updated_at` and `updated_by` on update, `deleted_at` and `deleted_by` on delete, nothing on create), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
 | `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes that translate and call the manager |
@@ -69,7 +80,8 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 2. Lists filter `deleted_at IS NULL` only when the entity is
    `SoftDeletable`, in both impls.
 3. The router builds the entity for `create_<entity>` from the request
-   with `new_id()`, `utcnow()`, and `ctx.user_id`; for
+   with `new_id()` and, when the entity is `Trackable`, `utcnow()` and
+   `ctx.user_id` for both timestamps and both principals; for
    `update_<entity>` it reads the current entity through
    `get_<entity>` and copies the request's fields onto it (the request
    carries no `created_at` or `created_by`), and the manager copies
@@ -78,9 +90,8 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
    the hard delete is the sweep's purge, never a route's. An
    append-only entity has no update, no delete, and no
    `Update<Entity>Request`.
-4. Run the migration check for `<role>` after the fast gate; it needs
-   Postgres, so it is the integration check against the compose stack
-   (`make test-integration`, or the migration CLI's `check`).
+4. Run `make migrate-check` after the fast gate; it needs Postgres, so
+   it runs against the compose stack.
 
 ## Output
 

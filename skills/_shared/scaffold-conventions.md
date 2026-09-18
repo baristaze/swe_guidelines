@@ -57,8 +57,8 @@ the order the guideline presents them, never by number.
   house-style order (`Identifiable`, `Named`, `Trackable`,
   `SoftDeletable`), each an independent opt-in that a manager operation
   exercises; an append-only record is `Identifiable` alone. Ids come
-  from `new_id()`, timestamps from `utcnow()`. Fields are tuples,
-  frozen models, and `Mapping`, never `list` or `dict`; a copy that
+  from `new_id()`, timestamps from `utcnow()`. Entity fields are
+  tuples, frozen models, and `Mapping`, never `list` or `dict`; a copy that
   carries caller input goes through `model_validate` before it is
   written, because `model_copy` does not validate.
 - Every manager and service operation takes `ctx: OpContext` first;
@@ -74,11 +74,11 @@ the order the guideline presents them, never by number.
   module under `tests/unit/` runs the memory impl; `tests/integration/`
   reuses the same cases against Postgres under the `integration`
   marker. Both impls sort by the `UUID` value, never by its string.
-- Every write follows authorize, verify, copy (`updated_at` and
-  `updated_by` set in the copy), write, and returns the copy it wrote.
-  A write that has a handoff (an event, a work item) lands the core
-  row and its outbox row in one named storage method; the relay does
-  the rest. The caller constructs the entity whole and hands it to
+- Every write follows authorize, verify, copy (an update sets
+  `updated_at` and `updated_by` in the copy; a create copies nothing),
+  write, and returns the copy it wrote. A `core`-role write lands the
+  core row and its `OutboxRow` in one storage method and the manager
+  relays the row at once. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once.
