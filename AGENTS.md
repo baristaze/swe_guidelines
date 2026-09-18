@@ -26,7 +26,14 @@ lenses (`skills/`), and the checkers that keep the three consistent
   edit, stage, or commit" is repeated in every review skill on
   purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
-  repository root is the plugin.
+  repository root is the plugin. `plugin.json` carries the one release
+  version; `scripts/check_version.py` holds the marketplace manifest,
+  the changelog, and `docs/adopting.md` to it.
+- `scripts/_common.py` holds what the scripts share, the heading
+  anchor rule above all: the generator that writes anchors and the
+  checker that resolves them use the same function. `tests/` holds one
+  pytest module per script, each on a small fixture tree, with a pass
+  and a fail path per rule; `make test` runs them.
 
 ## Invariants
 
@@ -43,9 +50,12 @@ lenses (`skills/`), and the checkers that keep the three consistent
   checked (`make toc`).
 - Every lens cites a section and subsection that exist.
 - Every skill's `name` equals its folder name and starts with `arch-`;
-  every `${CLAUDE_SKILL_DIR}/...` reference resolves; descriptions are
-  double-quoted; `allowed-tools` is comma-separated in the
-  `Bash(cmd:*)` form and names only what the skill runs.
+  every `${CLAUDE_SKILL_DIR}/...` reference resolves; frontmatter is
+  flat `key: value` lines; descriptions are one complete double-quoted
+  string; `allowed-tools` is comma-separated in the `Bash(cmd:*)` form
+  and names only what the skill runs.
+- The release version is written once, in `.claude-plugin/plugin.json`;
+  every other copy is checked against it.
 - Scaffold skills share `skills/_shared/scaffold-conventions.md` and
   have the same sections: Input, Created, Changed, Procedure, Output.
 - Exactly one review skill per lens group; `arch-review-full` names all

@@ -3,6 +3,7 @@ node_modules/
 .markdownlint-cli2-cache/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # editors and OS
 .DS_Store

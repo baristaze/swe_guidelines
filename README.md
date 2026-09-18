@@ -18,7 +18,8 @@ the prescribed shape.
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Seven group reviews, one
   full review that runs them in parallel, six scaffolds, an explainer,
-  a deviation recorder, and one skill that grows the guideline itself.
+  a deviation recorder, a dependency upgrader, and one skill that grows
+  the guideline itself.
 
 ## Install the skills
 

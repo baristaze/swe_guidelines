@@ -4,8 +4,11 @@
 External links (http, https, mailto) are not fetched; CI has no reason to
 depend on the network. A link whose text wraps across lines is checked
 like any other: the file is scanned with newlines read as spaces, so an
-anchor cannot hide behind a line break. Exit status is non-zero on any
-broken link. Standard library only.
+anchor cannot hide behind a line break. Anchors come from
+`scripts/_common.py`, the same rule `gen_toc.py` writes them with, so a
+repeated heading resolves as `#title-1`, `#title-2`, and headings inside
+fenced code do not count. Exit status is non-zero on any broken link.
+Standard library only.
 """
 
 from __future__ import annotations
@@ -14,25 +17,16 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from _common import ROOT, anchors
+
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
 SKIP_DIRS = {".git", "node_modules", ".venv"}
 
 
-def slug(heading: str) -> str:
-    text = re.sub(r"[`*_]", "", heading).strip().lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    return re.sub(r"\s+", "-", text)
-
-
 def headings(path: Path) -> set[str]:
-    out: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^#{1,6}\s+(.+)$", line)
-        if m:
-            out.add(slug(m.group(1)))
-    return out
+    """Every anchor the file defines, duplicates numbered as the generator numbers them."""
+    return {anchor for _, _, anchor in anchors(path.read_text(encoding="utf-8"))}
 
 
 def main() -> int:

@@ -4,9 +4,9 @@
 The table sits between `<!-- toc -->` and `<!-- /toc -->` under the
 `## Contents` heading: one entry per section (`##`) with its subsections
 (`###`) nested under it, each a link to the heading's anchor. Headings
-inside fenced code are ignored. Anchors follow the slug rule
-scripts/check_links.py uses, so every link the table emits is one that
-checker accepts.
+inside fenced code are ignored. Anchors come from `scripts/_common.py`,
+the same rule `check_links.py` resolves them with, so every link the
+table emits is one that checker accepts, a repeated heading included.
 
 `--check` exits non-zero when the table on disk differs from what the
 headings produce. Standard library only.
@@ -14,48 +14,20 @@ headings produce. Standard library only.
 
 from __future__ import annotations
 
-import re
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from _common import ROOT, anchors
+
 GUIDELINE = ROOT / "architecture.md"
 START, END = "<!-- toc -->", "<!-- /toc -->"
 SKIP = {"Contents"}
 
 
-def slug(heading: str) -> str:
-    text = re.sub(r"[`*_]", "", heading).strip().lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    return re.sub(r"\s+", "-", text)
-
-
-def headings(text: str) -> list[tuple[int, str]]:
-    out: list[tuple[int, str]] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^(##|###) (.+)$", line)
-        if m:
-            out.append((len(m.group(1)), m.group(2).strip()))
-    return out
-
-
 def render(text: str) -> str:
     lines: list[str] = []
-    seen: dict[str, int] = {}
-    for level, title in headings(text):
-        if level == 2 and title in SKIP:
+    for level, title, anchor in anchors(text):
+        if level not in (2, 3) or (level == 2 and title in SKIP):
             continue
-        anchor = slug(title)
-        n = seen.get(anchor, 0)
-        seen[anchor] = n + 1
-        if n:
-            anchor = f"{anchor}-{n}"
         indent = "" if level == 2 else "  "
         lines.append(f"{indent}- [{title}](#{anchor})")
     return "\n".join(lines)

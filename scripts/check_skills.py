@@ -12,7 +12,12 @@ Rules:
 - arch-review-full names every group's review skill;
 - allowed-tools is comma-separated, each entry `Name` or `Name(rule)`, Bash rules
   in the `Bash(cmd:*)` prefix form;
-- frontmatter values containing ": " are double-quoted so strict YAML loaders accept them;
+- frontmatter is flat `key: value` lines, one per key, no key repeated;
+- a double-quoted value is one complete YAML double-quoted scalar: it
+  closes, its inner quotes are escaped, its escapes are ones YAML defines,
+  and nothing but a comment follows the closing quote;
+- an unquoted value contains no ": " or " #", and does not start with a
+  YAML indicator character, so strict YAML loaders accept it;
 - no em-dashes.
 
 Exit status is non-zero on any failure. Standard library only.
@@ -32,31 +37,72 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
 TOOL = re.compile(r"^[A-Za-z]+(\([^()]*\))?$")
+KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+ESCAPES = "0abtnvfre \"/\\N_LP\t"  # single-character escapes YAML defines after a backslash
+HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
+INDICATORS = ("'", "[", "{", "&", "*", "!", "|", ">", "%", "@", "`", "#", "-", "?", ",", "]", "}")
+
+
+def double_quoted(value: str) -> tuple[str, str | None]:
+    """Parse one YAML double-quoted scalar; return (content, error).
+
+    `value` starts with the opening quote. The content is returned raw,
+    escapes kept, because the checks only need its length and text.
+    """
+    i = 1
+    while i < len(value):
+        ch = value[i]
+        if ch == '"':
+            rest = value[i + 1 :].strip()
+            if rest and not rest.startswith("#"):
+                return value[1:i], f"text after the closing quote: {rest!r}"
+            return value[1:i], None
+        if ch == "\\":
+            esc = value[i + 1 : i + 2]
+            if esc in HEX_ESCAPES:
+                digits = value[i + 2 : i + 2 + HEX_ESCAPES[esc]]
+                if len(digits) != HEX_ESCAPES[esc] or not all(c in "0123456789abcdefABCDEF" for c in digits):
+                    return value[1:], f"bad escape \\{esc}{digits}"
+                i += 2 + HEX_ESCAPES[esc]
+                continue
+            if not esc or esc not in ESCAPES:
+                return value[1:], f"bad escape \\{esc}"
+            i += 2
+            continue
+        i += 1
+    return value[1:], "unterminated quoted value"
 
 
 def frontmatter(text: str, errors: list[str], rel: str) -> dict[str, str]:
     """Parse the flat `key: value` frontmatter strictly enough for any YAML loader.
 
-    A value that contains ": " must be a complete double-quoted string;
-    otherwise a strict YAML parser refuses the file.
+    A value is either one complete double-quoted scalar on the key's line
+    or a plain scalar that no YAML rule would read differently: no ": ",
+    no " #", no leading indicator. Anything else is refused here so a
+    strict loader elsewhere never sees it first.
     """
     m = FRONTMATTER.match(text)
     if not m:
         return {}
     out: dict[str, str] = {}
     for line in m.group(1).splitlines():
-        if not line.strip() or line.startswith(" "):
+        if not line.strip():
+            continue
+        if line[0] in " \t":
+            errors.append(f"{rel}: frontmatter line is indented; values are one line each: {line!r}")
             continue
         key, sep, value = line.partition(":")
-        if not sep:
-            errors.append(f"{rel}: frontmatter line without a colon: {line!r}")
+        if not sep or not key.strip() or not KEY.match(key.strip()):
+            errors.append(f"{rel}: frontmatter line is not `key: value`: {line!r}")
             continue
         key, value = key.strip(), value.strip()
+        if key in out:
+            errors.append(f"{rel}: frontmatter key {key!r} repeated")
         if value.startswith('"'):
-            if not (value.endswith('"') and len(value) >= 2):
-                errors.append(f"{rel}: unterminated quoted value for {key}")
-            value = value[1:-1]
-        elif ": " in value or value[:1] in ("'", "[", "{", "&", "*", "!", "|", ">", "%", "@", "`"):
+            value, problem = double_quoted(value)
+            if problem:
+                errors.append(f"{rel}: value of {key} is not one double-quoted string: {problem}")
+        elif ": " in value or " #" in value or value.endswith(":") or value[:1] in INDICATORS:
             errors.append(f"{rel}: value of {key} must be double-quoted for strict YAML")
         out[key] = value
     return out
