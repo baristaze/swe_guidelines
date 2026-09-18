@@ -26,8 +26,9 @@ its own voice.
 1. Open an issue first for anything beyond a typo, so the change can be
    discussed as a rule before it is discussed as a diff.
 2. Fork, branch from `main`, make the change.
-3. Run `make check`. It needs Python 3.14 and Node 24 (the current LTS);
-   markdownlint is fetched by `npx` on first run.
+3. Run `make check`. It needs Python 3.14 with `pytest`, and Node 24
+   (the current LTS); markdownlint is fetched by `npx` on first run,
+   and the plugin validation runs when `claude` is installed.
 4. Open a pull request. Describe the rule that changes and why, in the
    same voice as the guideline. Link the issue.
 

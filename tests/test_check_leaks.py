@@ -1,0 +1,56 @@
+"""scripts/check_leaks.py: refused vocabulary per file scope, em-dashes everywhere."""
+
+import pytest
+
+
+@pytest.fixture
+def leaks(repo):
+    return repo.script("check_leaks")
+
+
+def test_valid_tree_passes(repo, leaks, capsys):
+    assert leaks.main() == 0
+    assert "leaks ok" in capsys.readouterr().out
+
+
+def test_product_term_in_guideline_fails(repo, leaks, capsys):
+    repo.edit("architecture.md", "One table per entity.", "One table per robot.")
+    assert leaks.main() == 1
+    assert "architecture.md:32: product term 'robot'" in capsys.readouterr().out
+
+
+def test_assistant_term_in_lens_fails_but_is_allowed_in_a_skill(repo, leaks, capsys):
+    repo.edit("skills/arch-review-om/SKILL.md", "Never edit", "The agent never edits")
+    assert leaks.main() == 0
+    repo.edit("lenses/om.md", "Tables holding two entities.", "Tables an agent holds.")
+    assert leaks.main() == 1
+    assert "lenses/om.md:24: assistant-tooling term 'agent'" in capsys.readouterr().out
+
+
+def test_history_phrasing_fails_in_the_guideline_only(repo, leaks, capsys):
+    repo.edit("lenses/om.md", "One table per entity.", "One table per entity, as previously.")
+    assert leaks.main() == 0
+    repo.edit("architecture.md", "One table per entity.", "One table per entity, as previously.")
+    assert leaks.main() == 1
+    assert "history term 'previously'" in capsys.readouterr().out
+
+
+def test_em_dash_fails_anywhere(repo, leaks, capsys):
+    repo.write(".github/PULL_REQUEST_TEMPLATE.md", "## What changes \u2014 and why\n")
+    assert leaks.main() == 1
+    assert ".github/PULL_REQUEST_TEMPLATE.md:1: em-dash" in capsys.readouterr().out
+
+
+def test_a_skill_is_scanned_once(repo, leaks, capsys):
+    repo.edit("skills/arch-review-om/SKILL.md", "Never edit", "Never edit the firmware;")
+    assert leaks.main() == 1
+    out = capsys.readouterr().out
+    assert out.count("product term 'firmware'") == 1
+    assert "1 leak(s)" in out
+
+
+def test_terms_are_matched_case_insensitively_on_word_boundaries(repo, leaks):
+    repo.edit("architecture.md", "One table per entity.", "One table per Labs entry; syllabus is fine.")
+    assert leaks.main() == 1
+    repo.edit("architecture.md", "One table per Labs entry; syllabus is fine.", "The syllabus is fine.")
+    assert leaks.main() == 0

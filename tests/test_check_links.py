@@ -1,0 +1,54 @@
+"""scripts/check_links.py: relative links and anchors resolve."""
+
+import pytest
+
+
+@pytest.fixture
+def links(repo):
+    return repo.script("check_links")
+
+
+def test_valid_tree_passes(repo, links, capsys):
+    assert links.main() == 0
+    assert "links ok" in capsys.readouterr().out
+
+
+def test_missing_file_fails(repo, links, capsys):
+    repo.write("docs/extra.md", "# Extra\n\nSee [the guide](../missing.md).\n")
+    assert links.main() == 1
+    assert "docs/extra.md:3: missing file ../missing.md" in capsys.readouterr().out
+
+
+def test_missing_anchor_in_own_file_fails(repo, links, capsys):
+    repo.edit("architecture.md", "(#the-storage-layer)", "(#the-storage-layers)")
+    assert links.main() == 1
+    assert "missing anchor #the-storage-layers" in capsys.readouterr().out
+
+
+def test_missing_anchor_in_other_file_fails(repo, links, capsys):
+    repo.edit("README.md", "lenses/README.md#groups", "lenses/README.md#group")
+    assert links.main() == 1
+    assert "README.md:3: missing anchor #group in lenses/README.md" in capsys.readouterr().out
+
+
+def test_repeated_heading_resolves_with_the_generator_numbering(repo, links):
+    # #principles-1 is in the fixture already; a third copy would be -2
+    repo.edit("architecture.md", "[its principles](#principles-1)", "[its principles](#principles-2)")
+    assert links.main() == 1
+
+
+def test_heading_inside_fenced_code_is_not_an_anchor(repo, links, capsys):
+    repo.edit("architecture.md", "One table per entity.", "One table per entity. See [code](#not-a-heading-fenced-code).")
+    assert links.main() == 1
+    assert "missing anchor #not-a-heading-fenced-code" in capsys.readouterr().out
+
+
+def test_link_text_wrapped_across_lines_is_still_checked(repo, links, capsys):
+    repo.write("docs/extra.md", "# Extra\n\nSee [a link whose text\nwraps](../nowhere.md).\n")
+    assert links.main() == 1
+    assert "missing file ../nowhere.md" in capsys.readouterr().out
+
+
+def test_external_links_are_not_fetched(repo, links):
+    repo.write("docs/extra.md", "# Extra\n\n[x](https://example.invalid/none) [m](mailto:a@b.c)\n")
+    assert links.main() == 0
