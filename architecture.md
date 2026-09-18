@@ -154,7 +154,9 @@ through multiple inheritance, in a fixed declaration order so a class
 signature reads as a description of the entity.
 
 The base module holds the root class, the mixins, and the two helpers
-every entity constructor needs: an id factory and a clock.
+every entity constructor needs: an id factory and a clock. `platform`
+in every path below stands for the product's root package (see [Layout
+Conventions](#layout-conventions)).
 
 ``` python
 # platform/om/base.py
@@ -181,6 +183,7 @@ class Trackable(Platform):
     created_at: datetime
     updated_at: datetime
     created_by: UUID  # id of the user who created it
+    updated_by: UUID  # id of the user who last changed it
 
 class SoftDeletable(Platform):
     deleted_at: datetime | None = None
@@ -259,8 +262,12 @@ rewrite an entity after it was constructed.
 
 > **Python tip:** `entity.model_copy(update={...})` is the whole
 > update vocabulary. A manager that updates an entity sets
-> `updated_at` in the same copy, so the caller gets back the copy that
-> was written and nothing else has to remember the timestamp.
+> `updated_at` and `updated_by` in the same copy, so the caller gets
+> back the copy that was written and nothing else has to remember the
+> timestamp. Fields are tuples, frozen models, and `Mapping`, never
+> `list` or `dict`, so the freeze is deep. `model_copy` does not
+> validate; a copy that carries caller input goes through
+> `model_validate` before it is written.
 
 The same rule applies to every object built on the OM base chain,
 including the sub-objects of `OpContext` (see [OpContext](#opcontext)),
@@ -288,9 +295,12 @@ nothing reads one back after a write.
 (platform-owned catalogs, schema metadata, global configuration) uses it
 as the `org_id` on cache and bucket calls (see
 [Infrastructure](#infrastructure)), so system keys and tenant keys live
-in disjoint namespaces. The same constant serves as a sentinel
-where a required, indexed foreign reference means "none", which keeps
-the column `NOT NULL` and the index simple.
+in disjoint namespaces. The same constant is the value of a required
+reference that no tenant and no person owns (`created_by` on a row the
+platform itself wrote), which keeps the column `NOT NULL` and the index
+simple. Both readings say the same thing: the platform, not a tenant
+or a person. A reference that is genuinely optional is `None`, never
+`EMPTY_UUID`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
 > `new_id()`. Time-ordered inserts, time-ordered scans, and
@@ -363,10 +373,11 @@ The interface describes a capability; the impl decides how it is
 delivered. That separation makes impls mockable and injectable, and
 lets one `*Interface` back several impls at once.
 
-> **Python tip:** an interface is a plain class whose methods have
-> `...` bodies, and an impl subclasses it. That is enough for the type
-> checker to hold every impl to the signature, and it keeps the
-> interface readable as documentation.
+> **Python tip:** an interface is an `ABC` whose methods are
+> `@abstractmethod` with `...` bodies, and an impl subclasses it. The
+> interpreter refuses an impl that forgot a method, the type checker
+> holds every impl to the signature, and the interface still reads as
+> documentation.
 
 ### Multiple impls per interface
 
@@ -449,10 +460,10 @@ construction is not wiring; it is a cycle that has not been resolved.
 
 ## OpContext
 
-Every operation takes an `OpContext` as its first argument. The context
-carries the ambient information every operation needs: who is acting, on
-behalf of which tenant, with what role and permissions, from which
-application, and under which request.
+Every operation takes an `OpContext` (operation context) as its first
+argument. The context carries the ambient information every operation
+needs: who is acting, on behalf of which tenant, with what role and
+permissions, from which application, and under which request.
 
 ``` python
 class SecurityContext(Platform):
@@ -525,7 +536,8 @@ mutating `ctx`.
 A tenant context always names one organization. The people who operate
 the platform itself have questions no tenant context can answer: usage
 across every organization, service health, global configuration. That is
-a different plane with a different context type:
+a different plane with a different context type, `AdminContext`, the
+operator's context:
 
 ``` python
 class AdminContext(Platform):
@@ -555,8 +567,7 @@ The system has three layers:
 -   **Storage**: persistence. Lives under the Object Model but is
     clearly separated from it.
 
-Each layer is a swimlane with its own language and its own
-responsibilities. Upper layers depend on interfaces exposed by lower
+Each layer has its own language and its own responsibilities. Upper layers depend on interfaces exposed by lower
 layers, never on their internals. Infrastructure capabilities (see
 [Infrastructure](#infrastructure)) are injected into any of these layers
 and never leak a technology choice across a boundary.
@@ -601,15 +612,16 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
         await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
-        updated = warehouse.model_copy(update={"updated_at": utcnow()})
+        updated = warehouse.model_copy(update={"updated_at": utcnow(), "updated_by": ctx.user_id})
         await self._storage.write_warehouse(ctx.org_id, updated)
         return updated
 ```
 
 The caller that originates an entity constructs it whole, with
-`id=new_id()`, `created_at`, `updated_at`, and `created_by=ctx.user_id`
-set, and hands it to `create_*`. The manager sets `updated_at` on every
-update and `deleted_at` / `deleted_by` on a soft delete, always by copy.
+`id=new_id()`, `created_at`, `updated_at`, `created_by`, and
+`updated_by` set, and hands it to `create_*`. The manager sets
+`updated_at` and `updated_by` on every update and `deleted_at` /
+`deleted_by` on a soft delete, always by copy.
 Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does. Last writer wins by default;
 an entity whose concurrent edits matter carries a `version`, the copy
@@ -731,19 +743,19 @@ class WarehouseStorageInterface:
     async def write_warehouse(self, org_id: UUID, warehouse: Warehouse) -> None: ...
 ```
 
-Some scopes are strictly user-bound. An order board view, where the
+Some scopes are strictly user-bound. An order board, where the
 column layout and pinned filters are personal to each user, is not just
 tenant-scoped; it is user-scoped within a tenant. In those cases the
 interface adds `user_id` on top of `org_id` explicitly:
 
 ``` python
-class OrderBoardViewStorageInterface:
-    async def read_board_view(
+class OrderBoardStorageInterface:
+    async def read_board(
         self,
         org_id: UUID,
         user_id: UUID,
         board_id: UUID,
-    ) -> OrderBoardView | None: ...
+    ) -> OrderBoard | None: ...
 ```
 
 Both keys are passed, and both appear in the `WHERE` clause of every
@@ -817,6 +829,7 @@ class TrackableMixin:
     created_at: Mapped[datetime] = mapped_column(sort_order=-800)
     updated_at: Mapped[datetime] = mapped_column(sort_order=-799)
     created_by: Mapped[UUID] = mapped_column(sort_order=-798)
+    updated_by: Mapped[UUID] = mapped_column(sort_order=-797)
 
 class SoftDeletableMixin:
     deleted_at: Mapped[datetime | None] = mapped_column(sort_order=-700)
@@ -975,8 +988,9 @@ append-only and read by one parent id; a work queue is hot and tiny.
 One undifferentiated schema gives them one pool, one backup, and one
 place where an analytical scan competes with a queue claim.
 
-Every table belongs to exactly one **database role**, and lives in the
-schema named after it:
+Every table belongs to exactly one **database role** (our word for a
+schema with its own pool and migration chain, not a Postgres login
+role), and lives in the schema named after it:
 
 | Role       | Holds                                                   |
 |------------|---------------------------------------------------------|
@@ -1346,7 +1360,7 @@ that target.
 Web services are the network layer's scalability units. Each major OM
 namespace gets its own service: `catalog` has `catalog-api`, `orders`
 has `orders-api`, and so on. Splitting along namespace lines lets each
-service be scaled, versioned, and deployed independently, and lets
+service be scaled, rolled out, and deployed independently, and lets
 products mix which services they expose.
 
 A service runs in its own container with the whole OM library
@@ -1895,7 +1909,7 @@ class WorkItem(Identifiable, Trackable):
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique
     payload: Mapping[str, Any] = MappingProxyType({})
-    queue: str = "default"     # routing: "default", "region:<id>", ...
+    lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
     available_at: datetime     # not before
     claimed_by: str | None = None
@@ -1916,14 +1930,16 @@ out; a failed item is a dead letter, named by an audit entry and
 counted by a metric. A worker that finds an item is not its to run
 hands it back without spending an attempt. The lane on the row is the
 routing: one table serves a shared pool and any number of dedicated
-lanes.
+lanes. Payload shapes are fixed per `WorkKind` by a payload map,
+`WORK_PAYLOADS`, as `TOPIC_PAYLOADS` fixes them per topic; the row
+stores the dump.
 
 Because the row carries `created_by`, the worker rebuilds the
-enqueuer's principal under a service role when it claims the item. The
-context the work runs under names the person who asked for it, so
-attribution and audit survive the asynchronous hop. Sweeps that act on
-every tenant ask the tenancy manager for one service context per live
-tenant.
+enqueuer's principal under the `Role` reserved for services when it
+claims the item. The context the work runs under names the person who
+asked for it, so attribution and audit survive the asynchronous hop.
+Sweeps that act on every tenant ask the tenancy manager for one service
+context per live tenant.
 
 ### Shape of a Worker
 
@@ -2058,10 +2074,8 @@ replace.
 > moment any single corner of an app wants a push, the app earns a
 > realtime channel.
 
-Polling is a workaround for the absence of push. The rule: the moment
-any single corner of an app wants a push, the app earns a realtime
-channel. A realtime channel is one persistent, bidirectional connection
-(a WebSocket, or a gRPC stream) that the client opens at startup, holds
+A realtime channel is one persistent, bidirectional connection (a
+WebSocket, or a gRPC stream) that the client opens at startup, holds
 for the session, and reads continuously. Every piece of client-bound
 data flows over it.
 
