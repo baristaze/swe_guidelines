@@ -6,6 +6,137 @@ which number.
 
 ## Unreleased
 
+### Added
+
+- `architecture.md`: "Database Roles" lands a core row and its handoff
+  (an event row, a work item) in one named atomic method with an outbox
+  row that is relayed at once and, after a crash, by the maintenance
+  sweep (the transactional outbox); "Storage Principles" derives the
+  no-transactions rule and names the invariant test for a named atomic
+  method, the outbox row among its cases; "Realtime at the Edge"
+  states the `Event` row (`activity` role, `Identifiable` plus
+  `org_id`, `seq`, `kind`, `target_id`, a typed payload, `seq`
+  assigned per tenant and gapless by the atomic append) and has the
+  client keep the last contiguous sequence so a gap is a replay, never
+  a skip; the tree gains `events/`; lenses `STO-17`, `ASY-19`, and
+  `NET-17` sharpened; lens `NET-22`; `arch-scaffold-new` scaffolds
+  `events/` and `outbox/`, and `arch-scaffold-entity` and
+  `arch-scaffold-namespace` write through them. Minor.
+- `architecture.md`: "Shape of a Worker" makes the lease the first
+  fence and completion and every record write conditional on the claim
+  (a fencing token), refused with `Conflict` and handed back without
+  spending an attempt, and states the liveness beat as a keyed TTL
+  written and read back; "Idempotency on the Consumer Side" keeps the
+  dedupe marker with its effect (the idempotent consumer); "The Work
+  Queue" makes a failed item a dead letter with an audit entry and a
+  metric, names competing consumers, and fixes payload shapes per kind
+  with `WORK_PAYLOADS`; lenses `ASY-14`, `ASY-16`, and `ASY-17`
+  sharpened; `arch-scaffold-worker` fences completion and record
+  writes and dead-letters a failed item. Minor.
+- `architecture.md`: "Direction of Calls" gives a reservation an expiry
+  and a chain that must survive a crash a compensating step per
+  reversible step with the irreversible one last (a saga); "Shape of an
+  Operation" names last-writer-wins as the default and a `version`
+  compare-and-set raising `Conflict` as the opt-in (optimistic
+  concurrency); lenses `ASY-20` and `STO-16` sharpened. Minor.
+- `architecture.md`: "Migrations" makes every migration compatible
+  with the release before it (expand and contract); "Public Types"
+  makes a change inside a version additive, with topic payloads and
+  realtime envelopes read tolerantly so producers and consumers roll
+  out in either order; lenses `STO-18` and `NET-13` sharpened; lens
+  `NET-23`. Minor.
+- `architecture.md`: "Intra-Service Communication" names the trust
+  boundary plain traffic rests on (private subnets, security groups,
+  only the gateway public, in Terraform; mutual TLS when the runtime
+  gives it away) and has a service-to-service call carry a short-lived
+  internal credential the callee's gateway rebuilds `OpContext` from;
+  "The Gateway" stores an idempotent response per tenant and principal;
+  "Exceptions" adds `NotAuthenticated` (401); lenses `NET-06` and
+  `NET-12` sharpened; `arch-scaffold-service` accepts the internal
+  credential and raises `NotAuthenticated`. Minor.
+- `architecture.md`: "Database Roles" backs up every role on its own
+  schedule with a rehearsed restore, purges a soft-deleted row after
+  its retention period as the one hard delete, and keeps personal data
+  in named fields; lens `STO-17` sharpened; `arch-scaffold-worker`
+  purges in the sweep. Minor.
+- `architecture.md`: "Tests", a subsection of "Cross-Cutting
+  Conventions": unit tests over the memory roots and the pure rules,
+  the storage contract cases parameterized by a fixture and run over
+  memory in the fast gate and over Postgres in the integration job,
+  end-to-end tests over the in-process container with every backend a
+  twin, and the `integration`, `e2e`, and `slow` markers; lens
+  `DEL-28`. Minor.
+- `architecture.md`: "Technology Choices and How to Override Them"
+  names FastAPI on uvicorn, httpx, Typer, SQS, and ECS Fargate;
+  "Versions" adopts a release at the next scheduled bump, once a patch
+  sits behind it; lens `DEL-26` sharpened. Minor.
+- `architecture.md`: pattern names where a guarantee rides on one, so
+  a reader can look it up: transactional outbox, idempotent consumer,
+  fencing token, saga, expand and contract, claim check, competing
+  consumers. Patch.
+
+### Changed
+
+- `architecture.md`: "OpContext" carries `user_id` and `org_id`, never
+  `User` and `Org` entities, and gains `credential_id`; a manager that
+  needs the user loads it, and `opcontext.py` declares `Role`,
+  `Permission`, `CredentialKind`, and `AppType` and imports nothing
+  above `base.py`, which removes the import cycle the entity fields
+  hid. Adopters change the two fields and drop the `TYPE_CHECKING`
+  import. Lenses `CTX-02` and `CON-08` sharpened; `arch-scaffold-new`
+  follows. Minor.
+- `architecture.md`: "Infrastructure Principles" states that the OM
+  imports infra interfaces and infra imports nothing from the OM;
+  "Topics" makes `TopicPayload` a frozen base infra declares with
+  `extra="ignore"`, and names `ENTITY_CHANGED`, the realtime producer;
+  the system scope is the zero UUID by value. Adopters drop the
+  infra-to-OM dependency. Lenses `ASY-09` and `CON-10` sharpened;
+  `arch-scaffold-new` follows. Minor.
+- `architecture.md`: "Topics" is best effort (at most once to the
+  processes subscribed at the time); queues stay at-least-once;
+  "Overriding a Choice" follows; lenses `ASY-10`, `ASY-14`, and
+  `DEL-25` sharpened. Minor.
+- `architecture.md`: "Direction of Calls" has cross-service
+  orchestration compose and never decide, reserving stock an operation
+  of the inventory namespace, and gives every service interface an
+  in-process impl and a remote impl swapped at wiring time; lenses
+  `CON-14` and `CON-15` sharpened; `arch-scaffold-service` names both
+  impls. Minor.
+- `architecture.md`: "The Work Queue" renames the row's `queue` field
+  to `lane` (the inbound `QueueInterface`, the work table, and the
+  `queue` role keep their names); adopters rename the column and the
+  claim argument; lens `ASY-16` sharpened; `arch-scaffold-worker`
+  takes `--lane`. Minor.
+- `architecture.md`: "Naming Entities" adds `updated_by` to `Trackable`
+  and its mixin, set by every update; "Immutability" states the deep
+  freeze (tuples, frozen models, `Mapping`) and re-validation of a copy
+  that carries caller input; "Interfaces" makes an interface an `ABC`
+  with abstract methods; "Identifiers" gives `EMPTY_UUID` one reading
+  (the platform owns the reference) and makes an optional reference
+  `None`; "Entities, Value Objects, and Read Models" makes a persisted
+  projection derived and rebuildable; lenses `OM-08`, `OM-10`, `OM-13`,
+  and `CON-02` sharpened; the scaffold conventions follow. Minor.
+- `architecture.md`: "Realtime at the Edge" and "Push-First Apps" call
+  the socket buffer a send buffer, so outbox names one thing;
+  `OrderBoardView` is `OrderBoard`; a layer is not a swimlane; a
+  database role is not a Postgres role; `OpContext` is the operation
+  context and `AdminContext` the operator's; `platform` is named as a
+  placeholder before its first use; the Push-First principle is stated
+  once; "Separation of Layers" precedes "Interfaces" and "Client App
+  Architecture" follows "Apps". Patch.
+- `lenses/`: severity recalibrated. `high` is reserved for tenancy,
+  authorization, lost or duplicated work, and a cross-role breach (30
+  of 143); a business decision in a router rises to `high`; the id
+  factory, the shape rules, and the boundaries that bend without
+  losing work drop to `medium`; `arch-review-full` closes on three or
+  more `high` findings, with the count. Patch.
+- Scaffolds: an append-only entity gets no update, delete, or
+  `Update...Request`; the browser client lives at `apps/<app>/src/api/`
+  and the Python client at `clients/python/`, which the CLI and a
+  remote service impl import; `AGENTS.md` adds the scaffold audit step.
+  Patch.
+- `README.md` lens count.
+
 ## 0.3.0 (2026-09-17)
 
 ### Added

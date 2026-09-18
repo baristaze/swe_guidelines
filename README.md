@@ -13,7 +13,7 @@ the prescribed shape.
   technologies on purpose, says how a project substitutes its own, and
   ends with a pointer to a reference implementation that applies the
   whole document to one small project.
-- **[`lenses/`](lenses/README.md)**: 140 lenses in seven groups. Each
+- **[`lenses/`](lenses/README.md)**: 143 lenses in seven groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Seven group reviews, one
