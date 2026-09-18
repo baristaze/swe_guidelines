@@ -120,24 +120,32 @@ from storage after a reconnect.
 ## NET-06 The gateway is the only public surface
 
 **Principle.** The gateway authenticates requests, builds the context,
-and routes; services never parse raw headers or tokens. It accepts
+and routes; services never parse raw headers or tokens. A
+service-to-service call carries a short-lived internal credential
+minted by the caller that names the principal, the tenant, and the
+request id, and the callee's gateway rebuilds the context from it like
+any other credential kind; no service trusts a bare header. It accepts
 cross-origin requests only from the browser apps' origins, read from
 settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
 it in the response header, and attaches it to the log context and the
-trace span.
+trace span. Edge idempotency stores the first response per tenant and
+principal under the key.
 
 **Source.** The Network Layer, The Gateway.
 
 **Look for.** Where bearer tokens and headers are parsed; whether any
 router, service impl, or manager reads `Authorization` or an app
 header itself; whether a second path to the internet bypasses the
-gateway; the allowed-origins setting; the request-id middleware and what it writes to the response
-and the span.
+gateway; the `internal` credential kind, who mints it, and how the
+callee rebuilds a context from it; the allowed-origins setting; the request-id middleware and what it writes to the response
+and the span; the key the idempotency store uses.
 
 **Violation.** A router that inspects headers to decide who is calling;
-a wildcard or hard-coded allowed origin; an endpoint reachable without passing the gateway's dependencies; a
+a callee that trusts a tenant or user id in a header from a peer
+service; a wildcard or hard-coded allowed origin; an endpoint reachable without passing the gateway's dependencies; a
 response without the `x-request-id` header; a span without the request
-id.
+id; an idempotent response stored per tenant alone, so one principal
+replays another's.
 
 **Severity.** high
 
@@ -247,19 +255,26 @@ manager that cannot be tested without the HTTP layer.
 ## NET-12 Plain intra-service traffic, operating-system trust for outbound
 
 **Principle.** Service-to-service calls stay on the private network
-without TLS; managed backends that require TLS get it as a connection
+without TLS, and that rests on the network being private: services and
+workers in private subnets, security groups that admit only the
+platform's own processes, only the gateway with a public address, all
+declared in Terraform; a runtime that offers mutual TLS at no cost
+turns it on. Managed backends that require TLS get it as a connection
 string; outbound TLS verification uses the operating system's trust
 store in every process.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
-**Look for.** Certificate handling in service impls; how HTTP clients
+**Look for.** The subnet and security-group declarations for services
+and workers; certificate handling in service impls; how HTTP clients
 are constructed; whether a bundled certificate store is used instead
 of the system's.
 
-**Violation.** Certificate rotation logic inside a service; an HTTP
-client pinned to a bundled CA set so a corporate proxy or private CA
-fails; TLS configured per component instead of once at boot.
+**Violation.** A service or worker with a public address, or a
+security group open past the platform's own processes; certificate
+rotation logic inside a service; an HTTP client pinned to a bundled CA
+set so a corporate proxy or private CA fails; TLS configured per
+component instead of once at boot.
 
 **Severity.** low
 
@@ -269,7 +284,8 @@ fails; TLS configured per component instead of once at boot.
 `View` built from attributes and a `RequestBody` that forbids unknown
 fields; names end in `View`, `Request`, or `Issued...View`; lists
 return a bare list with a clamped limit and streams page by
-`after_seq`; the OM never changes to match the wire.
+`after_seq`; the OM never changes to match the wire. Within a version
+a change is additive (NET-23).
 
 **Source.** The Network Layer, Public Types.
 
@@ -345,20 +361,23 @@ client's subscriptions.
 
 ## NET-17 The socket is a hint; storage is the truth
 
-**Principle.** Each socket has one bounded in-memory outbox drained by
-a task; when it is full the oldest frame is dropped and logged; every
-push is also a record, and a reconnecting client asks for everything
-after the last sequence it saw.
+**Principle.** Each socket has one bounded in-memory send buffer
+drained by a task; when it is full the oldest frame is dropped and
+logged; every push is also a record, and a reconnecting client asks
+for everything after the last contiguous sequence it saw, so a gap is
+a replay, never a skip.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The outbox capacity and overflow behavior; whether every
-pushed event has a durable record; the reconnect path and its
-`after_seq` parameter.
+**Look for.** The send buffer capacity and overflow behavior; whether
+every pushed event has a durable record; the reconnect path and its
+`after_seq` parameter; which sequence the client keeps as its cursor.
 
-**Violation.** A push that exists only as a frame; an outbox that grows
-without bound or blocks the producer; a client that cannot recover
-missed events after a reconnect.
+**Violation.** A push that exists only as a frame; a send buffer that
+grows without bound or blocks the producer; a client that cannot
+recover missed events after a reconnect; a client that tracks the last
+frame seen instead of the last contiguous one, so a dropped frame is
+skipped for good.
 
 **Severity.** high
 
@@ -437,5 +456,51 @@ values are defined and which tests read them.
 **Violation.** Immediate tight reconnect loops; a client that shows
 stale data silently when the socket is gone; a ping interval and an
 idle timeout defined in two places that can drift in separate changes.
+
+**Severity.** medium
+
+## NET-22 The event row and its per-tenant seq
+
+**Principle.** The record behind every push is an `Event` in the
+`activity` role: `Identifiable` plus `org_id`, `seq`, `kind`,
+`target_id`, and a typed payload, appended by one named atomic storage
+method that assigns `seq`, a per-tenant, gapless sequence and the one
+number storage assigns. A manager records one event per write through
+the outbox; an audit entry is the same shape plus the principal and
+the app.
+
+**Source.** The Network Layer, Realtime at the Edge.
+
+**Look for.** The `Event` type and its table's role; the append method
+and where `seq` comes from; whether the event row is written by the
+outbox relay or by a second statement; the `after_seq` read; the audit
+entry's shape.
+
+**Violation.** `seq` minted in Python, global across tenants, or with
+gaps; an event table in the `core` role; an event row written in a
+second statement after the core write; an audit entry with a shape of
+its own.
+
+**Severity.** high
+
+## NET-23 Wire and payload changes are additive within a version
+
+**Principle.** Inside `/v1` a view only gains fields and a request only
+gains optional ones; a removal or a rename is a new prefix. Topic
+payloads and realtime envelopes follow the same rule and are read
+tolerantly: a consumer ignores a field it does not know, so producers
+and consumers roll out in either order.
+
+**Source.** The Network Layer, Public Types.
+
+**Look for.** The diff of every `types/` module, payload class, and
+envelope against the committed OpenAPI document; the model config of
+payload and envelope bases; whether a consumer fails on an unknown
+field.
+
+**Violation.** A field removed or renamed on a view, or a required
+field added to a request, under the same prefix; a payload or envelope
+consumer that rejects an unknown field, so producer and consumer must
+deploy together.
 
 **Severity.** medium

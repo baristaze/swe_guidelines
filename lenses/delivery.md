@@ -581,7 +581,8 @@ stack (`pyproject.toml`, `package.json`, compose images, Terraform
 providers, the ORM and migration tool); whether `docs/adr/` holds a
 record naming each substitution; whether the project's pointer to the
 guideline links it; whether the substitute still satisfies the rules
-the record lists (queue claim, atomic increment, at-least-once bus).
+the record lists (queue claim, atomic increment, a bus that reaches
+every subscribed process).
 
 **Violation.** A substitute technology in the tree with no ADR naming
 it; an ADR that swaps a technology and silently drops a rule it cannot
@@ -595,7 +596,9 @@ as a substitution.
 **Principle.** Every dependency runs on its latest stable release: the
 current active LTS line where the technology publishes one, the newest
 stable release its maintainers recommend otherwise. Pre-releases,
-release candidates, and lines past their end of life are not used.
+release candidates, and lines past their end of life are not used. A
+release is adopted at the next scheduled bump, once a patch release
+sits behind it, never the day it ships.
 
 **Source.** Technology Choices and How to Override Them, Versions.
 
@@ -607,7 +610,8 @@ engine versions in Terraform, and the lock files.
 **Violation.** A runtime, tool, or service on an older release line
 than the current stable or LTS one; a Node line outside active LTS; an
 image tag or engine version past its end of life; a pre-release or
-release candidate.
+release candidate; a `.0` release adopted before a patch sits behind
+it.
 
 **Severity.** low
 
@@ -635,5 +639,30 @@ that fails when the DSN is unset or the tracker is unreachable; events
 without the release or the request id; a browser app that reports only
 from one top-level boundary; a local tracker whose project key must be
 created by hand.
+
+**Severity.** medium
+
+## DEL-28 Tests run over memory, the contract cases over both, end to end in-process
+
+**Principle.** Unit tests run over the memory roots and the pure rules
+with no infrastructure. The storage contract cases are plain modules
+parameterized by a storage fixture: the fast gate runs them over
+memory, the integration job runs the same cases over Postgres on the
+compose stack. End-to-end tests build the container over the memory
+storage root and the local infra root, every backend a twin, and drive
+the app in-process. Markers `integration`, `e2e`, and `slow` decide
+which gate runs what.
+
+**Source.** Cross-Cutting Conventions, Tests.
+
+**Look for.** The storage fixture and the modules parameterized by it;
+which suites the fast gate and the integration job run; how end-to-end
+tests build the container; the markers on each test module.
+
+**Violation.** A storage case written twice, once per impl; a unit
+test that needs a running database; the memory impl tested and the
+Postgres impl assumed; an end-to-end test against a deployed
+environment instead of the in-process container; a slow or
+integration test with no marker, so the fast gate runs it.
 
 **Severity.** medium

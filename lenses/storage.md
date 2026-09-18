@@ -352,15 +352,22 @@ applying the entity onto the existing row.
 
 **Principle.** A shared base provides the one write primitive every
 namespace uses: an upsert that reads the existing row by id, applies
-the entity onto it or inserts a new one, and commits.
+the entity onto it or inserts a new one, and commits. Last writer wins
+by default; an entity whose concurrent edits matter carries a
+`version`, and its write is a compare-and-set that raises `Conflict`
+when the row moved (optimistic concurrency).
 
-**Source.** The Storage Layer, A Storage Impl.
+**Source.** The Storage Layer, A Storage Impl; The Business Layer,
+Shape of an Operation.
 
 **Look for.** Write methods that are one call to the shared upsert.
-Hand-rolled insert-or-update logic repeated across impls.
+Hand-rolled insert-or-update logic repeated across impls. Entities
+that carry `version`, and whether their write compares it.
 
 **Violation.** A namespace impl performs its own select-then-insert-
-or-update sequence instead of calling the base primitive.
+or-update sequence instead of calling the base primitive. An entity
+with a `version` whose write overwrites without comparing it, or a
+`version` added to every table by default.
 
 **Severity.** medium
 
@@ -371,10 +378,14 @@ lives in the schema named after it. A map from table name to role is
 the single source of truth: the ORM base derives the schema from it,
 each role has its own connection URL defaulting to the shared one, and
 the root opens one engine and pool per distinct URL. No cross-role
-foreign keys and no cross-role statements; consistency between roles
-is the manager's concern. A database-backed topic bus connects to the
-queue role. Analytics never runs in the request path of any role; it
-reads a mirror.
+foreign keys and no cross-role statements. A handoff that follows a
+core write (an event row, a work item) is a core row plus an outbox
+row in one named atomic method, relayed at once and, after a crash, by
+the sweep (the transactional outbox). A database-backed topic bus
+connects to the queue role. Analytics never runs in the request path
+of any role; it reads a mirror. Every role is backed up on its own
+schedule with a rehearsed restore; a soft-deleted row is purged by the
+sweep after its retention period; personal data lives in named fields.
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -383,17 +394,22 @@ derived from it rather than declared on the class. Statements that name
 tables from two roles, and the base class refusing them. Foreign keys
 whose target is in another role. Settings exposing one URL per role,
 each defaulting to the shared URL, with one engine per distinct URL,
-and the database-backed topics impl reading the queue role's URL. A
-manager writing the core row first, then the stream row, with an
-idempotency key on the retry path. Reporting queries that scan across
-tenants inside a request. Unit tests asserting the map is complete and
-that no key or statement crosses a role.
+and the database-backed topics impl reading the queue role's URL. The
+named atomic method that writes the core row and its outbox row, the
+relay after it, and the sweep step that relays what a crash left and
+marks the row done. Reporting queries that scan across tenants inside
+a request. The backup schedule per role and the restore rehearsal; the
+purge step of the sweep and the retention period per entity. Unit
+tests asserting the map is complete and that no key or statement
+crosses a role.
 
 **Violation.** A table declares its own `schema` or is missing from the
-map. A join, foreign key, or transaction spans two roles. The
-database-backed topic bus connects to a role other than `queue`. A
-cross-tenant analytical query runs against the `core` role in a request
-handler. The role tests are absent.
+map. A join, foreign key, or transaction spans two roles. A manager
+writes the core row and then, in a second statement, the event row or
+the work item. The database-backed topic bus connects to a role other
+than `queue`. A cross-tenant analytical query runs against the `core`
+role in a request handler. A soft-deleted row that is never purged, or
+a hard delete outside the purge. The role tests are absent.
 
 **Severity.** high
 
@@ -405,8 +421,10 @@ revision chain and one version table per role, the minute stamp as
 sort key and revision id. A migration file is never edited once it has
 been applied anywhere. The runner refuses a file that names another
 role's table, and refuses to migrate one role when the caller meant
-all of them. A metadata-vs-schema check for every role is in the fast
-test gate; a downgrade-then-upgrade is in CI.
+all of them. A migration is compatible with the release before it:
+add and backfill in one release, switch the code, drop in a later one
+(expand and contract). A metadata-vs-schema check for every role is in
+the fast test gate; a downgrade-then-upgrade is in CI.
 
 **Source.** The Storage Layer, Migrations.
 
@@ -415,14 +433,16 @@ and `.down.sql` pairs, with a wrapper under `versions/<role>/` that
 only calls the SQL runner. Wrappers containing hand-written schema
 operations instead of `run_sql`. A diff touching a migration file that
 has already been applied in any environment. SQL in one role's chain
-naming a table of another role. The fast gate running the
+naming a table of another role. A migration that drops or renames a
+column the release before it still reads. The fast gate running the
 metadata-vs-schema check per role, and CI running downgrade then
 upgrade of the head.
 
 **Violation.** Two migrations share a revision id, or a chain has two
 heads that were merged by editing history. An applied `.up.sql` is
-modified rather than followed by a new migration. A migration lives in
-a service instead of with the OM. The check step is missing from the
-fast gate.
+modified rather than followed by a new migration. A column dropped or
+renamed in the same release that stops reading it, so a rollout that
+runs both versions breaks. A migration lives in a service instead of
+with the OM. The check step is missing from the fast gate.
 
 **Severity.** medium

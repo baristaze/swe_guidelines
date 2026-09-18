@@ -35,22 +35,24 @@ synchronous method on an interface that describes I/O.
 
 **Severity.** high
 
-## CON-02 Interfaces are plain classes with empty bodies, impls subclass them
+## CON-02 Interfaces are abstract classes with empty bodies, impls subclass them
 
-**Principle.** An interface is a plain class whose methods have `...`
-bodies, and an impl subclasses it. That is enough for the type checker
-to hold every impl to the signature, and it keeps the interface readable
-as documentation.
+**Principle.** An interface is an `ABC` whose methods are
+`@abstractmethod` with `...` bodies, and an impl subclasses it. The
+interpreter refuses an impl that forgot a method, the type checker
+holds every impl to the signature, and the interface still reads as
+documentation.
 
 **Source.** Interfaces.
 
 **Look for.** Interface declarations; the base list of every impl
 class; method bodies inside interface classes.
 
-**Violation.** An interface method carries logic, defaults, or side
-effects; an impl does not subclass the interface it claims to
-implement; an impl adds public methods the interface does not declare
-and callers use them.
+**Violation.** An interface that is a plain class, so an incomplete
+impl instantiates and returns `None`; an interface method carries
+logic, defaults, or side effects; an impl does not subclass the
+interface it claims to implement; an impl adds public methods the
+interface does not declare and callers use them.
 
 **Severity.** medium
 
@@ -157,9 +159,10 @@ options object; an options object is mutable or is rebuilt per call.
 broken above them: extract the shared operation into the lower
 namespace, or pass a narrow callable for the one operation the upper
 manager needs. Reaching into another impl's private attributes after
-construction is not wiring.
+construction is not wiring. The context module carries ids and facts,
+never entities, and imports nothing above the base module.
 
-**Source.** Interfaces, Injectability.
+**Source.** Interfaces, Injectability; OpContext.
 
 **Look for.** The business root's wiring code; assignments to another
 object's underscore-prefixed attributes; constructor parameters with a
@@ -167,7 +170,9 @@ object's underscore-prefixed attributes; constructor parameters with a
 
 **Violation.** The root sets `manager._peer = other` after construction;
 a dependency is typed optional only to dodge an import cycle; two
-namespaces import each other's impls.
+namespaces import each other's impls; the context module imports an
+entity type, under `TYPE_CHECKING` or otherwise, to embed a user or an
+organization.
 
 **Severity.** medium
 
@@ -194,16 +199,21 @@ mutable container or a dict; wiring is spread across request handlers.
 
 **Principle.** Three layers: Network, Business, Storage. Upper layers
 depend on interfaces exposed by lower layers, never on their internals.
+The OM imports infra interfaces; infra imports nothing from the OM.
 
-**Source.** Separation of Layers.
+**Source.** Separation of Layers; Infrastructure, Infrastructure
+Principles.
 
 **Look for.** Import graph across the network, business, and storage
 packages; what a router imports from a storage package; what a manager
-imports from a storage impl.
+imports from a storage impl; what the infra distribution imports from
+the OM.
 
 **Violation.** A router imports a table class or a storage impl; a
 manager imports from `storage/impl/` or `storage/tables/`; a service
-reads a session or connection object from a storage impl.
+reads a session or connection object from a storage impl; an infra
+module imports from the OM package, so the two distributions depend on
+each other.
 
 **Severity.** high
 
@@ -264,22 +274,30 @@ service depends on an app-specific interface.
 ## CON-14 Cross-service orchestration lives in the service impl
 
 **Principle.** Cross-service orchestration lives in the service impl,
-not in the OM. The service impl holds both a service-level dependency
-and a manager-level dependency, and the manager receives the result of
-the other service as a plain argument.
+not in the OM, and it composes; it never decides. The service impl
+holds both a service-level dependency and a manager-level dependency,
+and the manager receives the result of the other service as a plain
+argument. A service interface has two impls like every interface: the
+in-process one calls the manager the container wired, the remote one
+is the typed client, and the swap at wiring time is what a namespace
+split changes.
 
 **Source.** The Network Layer, Direction of Calls.
 
 **Look for.** Service impl methods that call more than one namespace;
 the parameter list of the manager method such a service impl calls;
 manager methods that sequence calls to another namespace's
-service-level operation.
+service-level operation; what implements each `*ServiceInterface`
+and which impl the container wires.
 
 **Violation.** A manager method's signature accepts a `*ServiceInterface`
 or a service impl's dependency handle; a service impl passes its own
 dependency into a manager instead of the result it produced; a sequence
 that needs a service-level operation of another namespace is written
-inside a manager.
+inside a manager; a service impl that holds a rule (availability,
+concurrency) a manager owns; a service interface with only a remote
+impl, so the single-process start goes over the wire, or only an
+in-process one, so a split rewrites its callers.
 
 **Severity.** medium
 
@@ -289,7 +307,7 @@ inside a manager.
 request, calls one manager, and projects the result onto a view. When a
 router starts deciding something, the decision moves into a manager. A
 service impl may sequence calls across services and managers; it does
-not hold business rules either.
+not hold business rules either (CON-14).
 
 **Source.** The Network Layer, Service Interfaces and Impls.
 

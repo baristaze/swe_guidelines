@@ -163,9 +163,10 @@ cloud object store to run tests.
 ## ASY-09 Topics are a fixed enum with a typed payload map
 
 **Principle.** Topic names are fixed by enum, payload types are fixed
-by a payload map, and every payload extends `TopicPayload` with a
-producer-set `idempotency_key` and `produced_at`. `publish` returns
-`None`; `subscribe` returns an unsubscribe callable.
+by a payload map, and every payload extends `TopicPayload`, a frozen
+base infra declares that ignores unknown fields, with a producer-set
+`idempotency_key` and `produced_at`. `publish` returns `None`;
+`subscribe` returns an unsubscribe callable.
 
 **Source.** Infrastructure, Topics.
 
@@ -173,7 +174,9 @@ producer-set `idempotency_key` and `produced_at`. `publish` returns
 class, the signatures of `publish` and `subscribe`.
 
 **Violation.** A topic published by string name; a payload class that
-does not extend the base or lacks the key; a `publish` that returns a
+does not extend the base or lacks the key; a payload base that extends
+the OM root or forbids unknown fields, so an old consumer rejects a new
+producer's payload mid-rollout; a `publish` that returns a
 broker-assigned id; a subscription with no way to unsubscribe; a
 consumer name missing from `subscribe`.
 
@@ -181,10 +184,11 @@ consumer name missing from `subscribe`.
 
 ## ASY-10 Durable work never rides a topic
 
-**Principle.** A topic delivers at least once to the processes
-subscribed at the time and nothing to anyone else. It carries wake-ups
-and live updates; durable work is a row in the work queue, and a
-missed notification degrades to polling latency, never to lost work.
+**Principle.** A topic is best effort: a published event reaches the
+processes subscribed at the time, at most once, and a bus hiccup may
+lose it. It carries wake-ups and live updates; durable work is a row
+in the work queue, and a missed notification degrades to polling
+latency, never to lost work.
 When the bus is backed by the database, it connects to the queue role,
 because the processes that enqueue work and the workers they wake must
 share it.
@@ -269,22 +273,25 @@ anyway.
 
 ## ASY-14 Every handler is idempotent on a producer-generated key
 
-**Principle.** Delivery is at-least-once everywhere. Every message
+**Principle.** Delivery is at-least-once on every queue. Every message
 carries a producer-generated idempotency key (or the outside system's
 delivery id), the handler dedupes before doing work through a unique
 index or an upsert keyed on it, and every pipeline stage forwards the
-key.
+key. The key lives on the row the effect produces, or marker and
+effect are one named atomic write (the idempotent consumer).
 
 **Source.** The Network Layer, Idempotency on the Consumer Side.
 
 **Look for.** The dedupe step at the top of each handler; the unique
-index or upsert on the key; the key on every message the handler
-forwards.
+index or upsert on the key; whether the marker and the effect commit
+together; the key on every message the handler forwards.
 
 **Violation.** A handler that inserts without a unique key and creates
-a duplicate on redelivery; a key minted by the consumer instead of the
-producer; a downstream message that drops the incoming key and mints a
-new one; a webhook handler that ignores the provider's delivery id.
+a duplicate on redelivery; a dedupe marker committed separately from
+the effect it guards, so a crash between them suppresses the work for
+good; a key minted by the consumer instead of the producer; a
+downstream message that drops the incoming key and mints a new one; a
+webhook handler that ignores the provider's delivery id.
 
 **Severity.** high
 
@@ -317,12 +324,14 @@ container.
 ## ASY-16 Durable work is a row with the queue's shape
 
 **Principle.** A work item names its kind and target, carries a unique
-idempotency key, a queue routing string, a status, an `available_at`,
-its claim (`claimed_by`, `lease_expires_at`), and its attempts. Enqueue
-writes the row and then publishes the wake-up. Claim takes the oldest
-available row in the named queue and stamps claim and lease together.
-Completion marks done, requeues with a growing delay, or fails when
-attempts run out; handing an item back costs no attempt.
+idempotency key, a `lane` routing string, a status, an `available_at`,
+its claim (`claimed_by`, `lease_expires_at`), and its attempts; payload
+shapes are fixed per kind by `WORK_PAYLOADS`. Enqueue writes the row
+and then publishes the wake-up. Claim takes the oldest available row
+in the named lane and stamps claim and lease together. Completion
+marks done, requeues with a growing delay, or fails when attempts run
+out, and a failed item is a dead letter named by an audit entry and
+counted by a metric; handing an item back costs no attempt.
 
 **Source.** Worker Roles, The Work Queue.
 
@@ -330,9 +339,11 @@ attempts run out; handing an item back costs no attempt.
 and requeue methods; the order of write and publish in enqueue.
 
 **Violation.** A publish before the row exists; a row with no lease or
-no attempt count; a failed attempt requeued immediately with no delay;
-a hand-back that spends an attempt; a second table or topic invented
-for routing when the `queue` string would do.
+no attempt count; a payload with no shape fixed for its kind; a failed
+attempt requeued immediately with no delay; an item that fails its
+last attempt with no audit entry and no metric; a hand-back that
+spends an attempt; a second table or topic invented for routing when
+the `lane` string would do.
 
 **Severity.** high
 
@@ -341,19 +352,29 @@ for routing when the `queue` string would do.
 **Principle.** A worker runs several items at once up to a capacity it
 advertises, each as its own task. Each running item renews its lease on
 a timer, and a lease that could not be renewed for half its length
-cancels its own task before the lease expires. Repeated heartbeat
-failures stop claiming but let held work finish.
+cancels its own task before the lease expires: the first fence. The
+second is that completion and every write to the record the item
+advances are conditional on the claim (`claimed_by` and
+`lease_expires_at` on the queue row, a compare-and-set on `version` on
+the record), so a stale worker's write is refused with `Conflict` and
+the item is handed back without spending an attempt (a fencing token).
+Liveness is a key with a TTL under the system scope, written and read
+back on every beat; repeated failures stop claiming but let held work
+finish.
 
 **Source.** Worker Roles, Shape of a Worker.
 
 **Look for.** The claim loop and its capacity check; the per-item lease
-renewal task; what happens when renewal fails; the heartbeat failure
-path.
+renewal task; what happens when renewal fails; what the completion
+statement and the record writes compare against; the heartbeat key
+and the failure path.
 
 **Violation.** A worker that claims without bound; an item with no
-renewal so long work loses its lease; a task that keeps running after
-its lease is gone so two workers advance one record; a heartbeat
-failure that either crashes the worker or lets it keep claiming.
+renewal so long work loses its lease; a completion or record write
+that is not conditional on the claim, so a worker whose lease passed
+lands a write; a stale write that spends an attempt; a heartbeat that
+is only written and never read back; a heartbeat failure that either
+crashes the worker or lets it keep claiming.
 
 **Severity.** high
 
@@ -380,18 +401,23 @@ deploy.
 
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
-leader, no lock, and no scheduler component. Resumes are staggered so a
-recovered dependency is not met by every parked record at once.
+leader, no lock, and no scheduler component: requeue expired leases,
+resume parked records, relay the outbox rows a crash left behind,
+purge soft-deleted rows past their retention period. Resumes are
+staggered so a recovered dependency is not met by every parked record
+at once.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler.
 
 **Look for.** Where housekeeping runs; any leader election, cron
-component, or scheduled task; how parked records are resumed.
+component, or scheduled task; how parked records are resumed; whether
+the sweep relays the outbox and purges.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
-sweep only one elected instance runs; every parked record resumed in
-the same instant.
+sweep only one elected instance runs; a sweep with no outbox relay,
+so a crash between the core write and its handoff is never repaired;
+every parked record resumed in the same instant.
 
 **Severity.** medium
 
@@ -400,16 +426,24 @@ the same instant.
 **Principle.** Work that takes minutes or hours is a durable record with
 a status and a cursor, claimed and advanced by stateless workers, so
 another worker picks up at the persisted position when one dies. The
-claim is a separate row from the record it advances.
+claim is a separate row from the record it advances. A synchronous
+chain across services gives its first step an expiry and carries its
+id forward; a chain that must survive a crash between steps is such a
+record, the irreversible step last and a compensating step for each
+one before it (a saga).
 
-**Source.** The Network Layer, Long-Running Orchestrations.
+**Source.** The Network Layer, Long-Running Orchestrations; Direction
+of Calls.
 
 **Look for.** How long operations are modelled; what is persisted
-between steps; whether the claim lives on the record or on a work item.
+between steps; whether the claim lives on the record or on a work item;
+the expiry and the compensation of each step in a cross-service chain.
 
 **Violation.** Progress held only in a process's memory; a record with
 no cursor so a restart begins from the start; a claim stamped onto the
-record itself so it can carry only one kind of work.
+record itself so it can carry only one kind of work; a synchronous
+chain across services whose first step has no expiry or compensation;
+an irreversible step followed by one that can fail.
 
 **Severity.** high
 

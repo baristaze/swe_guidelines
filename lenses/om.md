@@ -152,7 +152,9 @@ or context type that relaxes the setting so a caller's typo passes.
 **Principle.** An entity has an identity and is stored. A value object
 is a typed piece of an entity with no identity, stored inline with its
 owner. A read model is a shape a manager returns that is never written
-back. The mixins tell them apart.
+back as truth: a persisted copy of one (a cache entry, a reporting
+mirror, a projection table) is derived and rebuildable. The mixins
+tell them apart.
 
 **Source.** Naming Entities, Entities, Value Objects, and Read Models.
 
@@ -161,8 +163,9 @@ classes returned by managers that are not entities; whether read models
 compose mixins or get persisted.
 
 **Violation.** A value object with an `id` and its own table; a read
-model composed with `Identifiable` or written by a storage method; an
-aggregate answered by inventing a table for it instead of a read model.
+model composed with `Identifiable`, persisted as truth, or read as
+one; an aggregate answered by inventing a table for it instead of a
+read model.
 
 **Severity.** medium
 
@@ -190,16 +193,21 @@ manager and the storage.
 
 **Principle.** OM entities are frozen snapshots. An update takes the
 entity, produces a modified copy, and passes the copy to a write
-method. No layer mutates an entity after construction.
+method. No layer mutates an entity after construction. Fields are
+tuples, frozen models, and `Mapping`, never `list` or `dict`, so the
+freeze is deep; a copy that carries caller input is re-validated
+before it is written, because `model_copy` does not validate.
 
 **Source.** Naming Entities, Immutability.
 
 **Look for.** The root's frozen configuration; assignment to entity
-attributes anywhere; the update path in managers.
+attributes anywhere; the update path in managers; `list` or `dict`
+fields on the chain; a `model_copy(update=...)` fed from a request.
 
 **Violation.** `order.status = ...` in a manager or service; a class on
 the chain that unfreezes itself; an update that reaches into a nested
-value object to change it in place.
+value object to change it in place; a `list` field appended to through
+the snapshot; caller input copied into an entity with no validation.
 
 **Severity.** high
 
@@ -243,21 +251,26 @@ minted inside a storage impl.
 
 **Severity.** high
 
-## OM-13 EMPTY_UUID is the sentinel for a required reference
+## OM-13 EMPTY_UUID means the platform, and optional means None
 
-**Principle.** `EMPTY_UUID` is the one sentinel: where a required,
-indexed reference means "none", the column stays `NOT NULL` and the
-index simple by holding it. Its use as the system scope on infra calls
+**Principle.** `EMPTY_UUID` is the platform's own reference: the
+system scope on infra calls and the value of a required reference no
+tenant and no person owns (`created_by` on a row the platform itself
+wrote), which keeps the column `NOT NULL` and the index simple. Both
+readings say the same thing. A reference that is genuinely optional is
+`None`, never `EMPTY_UUID`. Its use as the system scope on infra calls
 is judged by `context`.
 
 **Source.** Naming Entities, Identifiers.
 
-**Look for.** The constant defined once in the base module; reference
-fields on entities that mean "none" for some rows and how they express
-it; ad-hoc sentinel constants elsewhere in the OM.
+**Look for.** The constant defined once in the base module; required
+reference fields on rows the platform writes; optional references and
+how they express absence; ad-hoc sentinel constants elsewhere in the
+OM.
 
 **Violation.** A second sentinel constant invented for "no warehouse";
-a required, indexed reference column made nullable to express "none".
+a required reference column made nullable for platform-written rows;
+an optional reference filled with `EMPTY_UUID` instead of `None`.
 
 **Severity.** medium
 

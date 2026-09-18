@@ -38,22 +38,28 @@ of the documented principal-less operations.
 
 ## CTX-02 The context carries identity, tenant, role, permissions, app, and request
 
-**Principle.** The security context holds the user, the organization,
-the role, the permissions, the teams, and the credential kind; the app
-context holds the app type and version; the context holds the request
-id and an optional trace id. The request id reaches every log line,
-every audit row, and the error envelope from the context, never by
-hand.
+**Principle.** The security context holds `user_id`, `org_id`, the
+role, the permissions, the teams, the credential kind, and
+`credential_id`: ids and facts, never entities, so a manager that
+needs the user loads it and a role change is seen on the next request.
+The app context holds the app type and version; the context holds the
+request id and an optional trace id. The request id reaches every log
+line, every audit row, and the error envelope from the context, never
+by hand.
 
 **Source.** OpContext.
 
 **Look for.** The context type definitions, every place that reads
 identity, tenant, or app information, and the audit record type.
 
-**Violation.** Identity or tenant data passed beside the context as
-extra parameters; a second ad-hoc "current user" object; app type
-derived from headers below the gateway; a request id threaded by hand;
-an audit row written without the context's request id.
+**Violation.** A `User` or `Org` entity embedded in the context, so a
+role change waits for a new session and the context module imports
+the tenancy types; a context with no credential id, so rate limits
+and socket tickets key on something else; identity or tenant data
+passed beside the context as extra parameters; a second ad-hoc
+"current user" object; app type derived from headers below the
+gateway; a request id threaded by hand; an audit row written without
+the context's request id.
 
 **Severity.** medium
 
