@@ -236,7 +236,9 @@ stored inline with its owner.
 A **read model** is a shape a manager returns that is not an entity:
 an `OrderTotals`, a `StockLevel` aggregated across warehouses, a
 `ShipmentSummary`. It subclasses `Platform`, carries no mixins, and is
-never written back.
+never written back as truth. A persisted copy of one (a cache entry, a
+reporting mirror, a projection table) is derived and rebuildable, and
+nothing reads it as the source of truth.
 
 Typed filter and grouping objects (`OrderFilter`, `StockGroupBy`) are
 value objects too. They travel through manager and storage interfaces
@@ -454,12 +456,13 @@ application, and under which request.
 
 ``` python
 class SecurityContext(Platform):
-    user: User
-    org: Org
+    user_id: UUID
+    org_id: UUID
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
     credential_kind: CredentialKind  # api_key, session_token, internal, ...
+    credential_id: UUID
 
 class AppContext(Platform):
     type: AppType   # portal, cli, api, worker, ...
@@ -486,7 +489,11 @@ Permissions are a pure function of role, declared in one table in the
 tenancy namespace. A credential never carries a role above its
 issuer's. Teams are a second authorization axis inside a tenant: an
 entity may be owned by a team, and visibility rules consult
-`ctx.in_team`.
+`ctx.in_team`. The context carries ids and facts, never entities: a
+manager that needs the user loads it, so a role change is seen on the
+next request, and `opcontext.py`, which also declares `Role`,
+`Permission`, `CredentialKind`, and `AppType`, imports nothing above
+`base.py`.
 
 `request_id` is ambient state exactly like identity: minted or accepted
 at the edge, stamped onto the context once, and from there it reaches
@@ -604,7 +611,10 @@ The caller that originates an entity constructs it whole, with
 set, and hands it to `create_*`. The manager sets `updated_at` on every
 update and `deleted_at` / `deleted_by` on a soft delete, always by copy.
 Mutating methods return the entity that was written, so the caller
-holds the same snapshot the storage does.
+holds the same snapshot the storage does. Last writer wins by default;
+an entity whose concurrent edits matter carries a `version`, the copy
+increments it, and the write is a compare-and-set that raises
+`Conflict` when the row moved (optimistic concurrency).
 
 ### Parameters
 
@@ -665,14 +675,18 @@ surprises.
     manager assumes a cascade, a rejected orphan, or a join the schema
     happens to permit. Relationships the business layer needs are plain
     id columns it reads and writes itself.
--   No transactions. We are not a bank app, and transactions do not
-    scale in the shapes we care about. A storage operation is one
-    statement or one short, self-contained unit that the impl commits
-    itself; nothing spans two storage calls. Where atomicity is
-    genuinely unavoidable (a work-queue claim as in [The Work
-    Queue](#the-work-queue), a ledger in a system that moves money), it
-    is a single named interface method, so the interface stays
-    technology-free and the exception is visible by name.
+-   No transactions. A transaction holds locks and a connection across
+    a round trip and pins every table it touches to one database, which
+    is exactly what stops a role from moving (see [Database
+    Roles](#database-roles)). A storage operation is one statement or
+    one short, self-contained unit that the impl commits itself;
+    nothing spans two storage calls. The one justification for a named
+    atomic method is an invariant two rows must hold together: a
+    work-queue claim (see [The Work Queue](#the-work-queue)), a
+    reservation and its stock level, a unique membership, a core row
+    and its outbox row, a ledger that moves money. It is a single named
+    interface method, so the interface stays technology-free and the
+    exception is visible by name.
 -   Joins are avoided but allowed as an implementation detail. They
     never leak into the interface.
 -   No trigger functions and no hidden magic. If something happens, it
@@ -984,8 +998,15 @@ Rules that make the move safe, each checked by a unit test:
 -   No cross-role foreign keys and no cross-role statements. A
     statement touches one role; the base class routes it by the table
     it names and refuses one that spans roles.
--   Consistency between roles is the manager's concern: write the core
-    row first, then the stream row; idempotency keys make retries safe.
+-   A handoff that follows a core write (an event row, a work item) is
+    never a second statement the manager remembers to make. The manager
+    writes the core row and an outbox row in one named atomic method in
+    the `core` role, then relays the outbox row to its destination at
+    once; the sweep of [Maintenance Without a
+    Scheduler](#maintenance-without-a-scheduler) relays whatever a crash
+    left behind and marks the row done. The relay is idempotent on the
+    row's key, so relaying twice is harmless (the transactional outbox
+    pattern).
 -   The topic bus (see [Topics](#topics)), when it is backed by the database,
     connects to the queue role, because the processes that enqueue work
     and the workers they wake must share it.
@@ -1038,14 +1059,17 @@ the constructor.
     impls. For example, a cache has a local impl, a cloud impl, and a
     mixed impl; the caller holds a `CacheInterface` and does not know
     which.
+-   The OM imports infra interfaces; infra imports nothing from the OM.
 -   Tenancy is explicit where it matters as a keying concern. Cache and
     buckets take `org_id` as a first-class parameter so a mistake cannot
     cross tenants at the key level. Topic payloads carry `org_id` so a
     consumer can filter before it acts.
 -   Cross-tenant reference data uses `EMPTY_UUID` as the `org_id` on
-    cache and bucket calls. Impls treat it as a reserved system scope,
-    so system keys and tenant keys live in disjoint namespaces and a
-    tenant caller cannot read or write system data by mistake.
+    cache and bucket calls. The system scope is the zero UUID by value,
+    so infra checks against it without importing the OM. Impls treat it
+    as a reserved system scope, so system keys and tenant keys live in
+    disjoint namespaces and a tenant caller cannot read or write system
+    data by mistake.
 -   Wire-up happens in the app container at boot (see [The App
     Container](#the-app-container)). Managers and service impls receive
     infra handles through their constructors, never through globals,
@@ -1176,10 +1200,12 @@ serves development and tests.
 Topics are for wake-ups and live updates: a producer publishes an
 event; every interested process reacts to it. Topic names are fixed by
 enum; payload types are fixed by a payload map; every payload extends
-one base:
+one frozen base that infra declares:
 
 ``` python
-class TopicPayload(Platform):
+class TopicPayload(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="ignore")  # a tolerant reader
+
     idempotency_key: UUID  # uuid_v7, set by the producer
     produced_at: datetime
     org_id: UUID
@@ -1207,14 +1233,14 @@ class TopicsInterface:
     ) -> Callable[[], None]: ...  # returns an unsubscribe
 ```
 
-Delivery is at-least-once to every subscribed process, and nothing is
-delivered to a process that was not subscribed at the time. That
-contract is what makes the bus cheap: a database's `LISTEN/NOTIFY`, a
-pub/sub channel on the cache, or an in-process dispatcher for tests all
-satisfy it. Durable work never rides a topic. It is a row in the work
-queue (see [The Work Queue](#the-work-queue)); the topic only says
-"there is work", and a missed
-notification degrades to polling latency, never to lost work.
+A topic is best effort: a published event reaches every process that
+was subscribed at the time, at most once, and a bus hiccup may lose it.
+That contract is what makes the bus cheap: a database's `LISTEN/NOTIFY`,
+a pub/sub channel on the cache, or an in-process dispatcher for tests
+all satisfy it. Durable work never rides a topic. It is a row in the
+work queue (see [The Work Queue](#the-work-queue)); the topic is a
+wake-up that only says "there is work", and a missed notification
+degrades to polling latency, never to lost work.
 
 `consumer` names the subscriber for logs and metrics. `subscribe`
 returns an unsubscribe callable, because the most common subscriber is
@@ -1229,8 +1255,8 @@ surfacing it would leak technology through the interface.
 > **Python tip:** a database-backed bus caps the payload size (about
 > 8 KB on Postgres). The impl trims a payload that would not fit,
 > marks it `truncated`, and the consumer re-reads the record from
-> storage. Consumers written that way work unchanged on a bus with no
-> cap.
+> storage (a claim check). Consumers written that way work unchanged on
+> a bus with no cap.
 
 ### Queues
 
@@ -1473,8 +1499,8 @@ The gateway owns a short list of edge concerns, each done once:
     clients and are not a security boundary.
 -   **Edge idempotency.** A creating `POST` accepts an
     `Idempotency-Key` header. The first response is stored per tenant
-    under the key and replayed on a retry, using the same storage
-    primitive the queue handlers use.
+    and principal under the key and replayed on a retry, using the same
+    storage primitive the queue handlers use.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
     counters and histograms. All three sit outside the versioned API.
@@ -1630,11 +1656,15 @@ Calls flow downward through the layers, never upward:
     Dependencies](#cross-storage-dependencies)) but cannot reach up to
     managers or services.
 
-Cross-service orchestration therefore lives in the service impl, not in
-the OM. Placing an order needs reserved stock, and reserving stock is a
-service-level operation (availability across warehouses, concurrency,
-notifications) that lives in `inventory-api` and not only behind
-`InventoryManagerInterface`. The orders service impl orchestrates:
+Cross-service orchestration therefore lives in the service impl, not
+in the OM, and it composes; it never decides. Placing an order needs
+reserved stock, and reserving stock is an operation of the inventory
+namespace (`InventoryManagerInterface.reserve`) that `inventory-api`
+exposes. `InventoryServiceInterface` has two impls like every
+interface: the in-process one calls the manager the container wired,
+the remote one is the typed client of [Clients Live in One
+Place](#clients-live-in-one-place), and the swap at wiring time is what
+a namespace split changes. The orders service impl orchestrates:
 
 ``` python
 # platform.services.orders.impl (network layer)
@@ -1658,7 +1688,13 @@ The service impl holds both a service-level dependency
 (`InventoryServiceInterface`) and a manager-level dependency
 (`OrderManagerInterface`), both injected through the constructor. The
 OM order manager receives `reservation` as a plain argument; it has no
-knowledge that a service was called to produce it.
+knowledge that a service was called to produce it. A reservation is a
+record with an expiry, so a failed second step leaks nothing past it,
+and the order carries the reservation id so a retry finds it instead
+of reserving twice. A chain that must survive a crash between steps is
+a durable record advanced by a worker (see [Long-Running
+Orchestrations](#long-running-orchestrations)), the irreversible step
+last and a compensating step for each one before it (a saga).
 
 > **Principle:** Calls flow downward: services to services and managers;
 > managers to managers and storage; storage to storage. Nothing reaches
@@ -1685,7 +1721,10 @@ a storage-level upsert keyed on it. Each pipeline stage forwards the key
 and applies the same check. [Topics](#topics) shows this on
 `TopicPayload`; the
 same pattern fits a work item, a queued webhook delivery, and the
-`Idempotency-Key` header at the HTTP edge.
+`Idempotency-Key` header at the HTTP edge. The key lives on the row the
+effect produces, or marker and effect are one named atomic write; a
+marker written before its effect turns a crash into work that never
+happens (the idempotent consumer pattern).
 
 ### Realtime at the Edge
 
@@ -1699,13 +1738,21 @@ is the right price for a handful of replicas; past that, a routing
 store mapping user to instance replaces the broadcast without any
 producer changing.
 
-Per socket, the process keeps one bounded outbox in memory and a
-drainer task that writes it to the wire. When the outbox is full, the
+Per socket, the process keeps one bounded send buffer in memory and
+a drainer task that writes it to the wire. When the buffer is full, the
 oldest frame is dropped and the drop is logged. That is safe because
 every push is also a record, and a client that reconnects asks for
-everything after the last sequence number it saw. Replay from storage
-is the durability mechanism; the socket is a hint that something
-changed.
+everything after the last sequence number it saw. The client keeps the
+last contiguous sequence, so a gap (42 arriving without 41) is a replay
+from 40, never a skip. Replay from storage is the durability mechanism;
+the socket is a hint that something changed. The record is an `Event`
+in the `activity` role: `Identifiable` plus `org_id`, `seq`, `kind`,
+`target_id`, and a typed payload, appended by one named atomic storage
+method that assigns `seq`, a per-tenant, gapless sequence. `seq` is the
+one number storage assigns, because only the database can order
+commits; ids are still minted above. A manager records one event per
+write through the outbox of [Database Roles](#database-roles). An
+audit entry is the same shape plus the principal and the app.
 
 ``` mermaid
 flowchart LR
@@ -1714,8 +1761,8 @@ flowchart LR
 
     subgraph Replicas [Service replicas holding sockets]
         direction TB
-        I1[Replica 1<br/>filter: tenant, subscriptions<br/>bounded outbox per socket]
-        I2[Replica 2<br/>filter: tenant, subscriptions<br/>bounded outbox per socket]
+        I1[Replica 1<br/>filter: tenant, subscriptions<br/>bounded send buffer per socket]
+        I2[Replica 2<br/>filter: tenant, subscriptions<br/>bounded send buffer per socket]
     end
 
     Sto[(Storage<br/>every push is a record)]
@@ -1862,12 +1909,14 @@ The queue lives in the `queue` database role (see [Database
 Roles](#database-roles)). Enqueue
 writes the row and then publishes `WORK_AVAILABLE` on the topic bus;
 claim is one storage method that selects the oldest available row in
-the named queue, skipping locked ones, and stamps the claim and the
-lease in the same statement. Completion marks the row done, requeues
-it with a growing delay, or fails it when attempts run out; a worker
-that finds an item is not its to run hands it back without spending an
-attempt. The queue name on the row is the routing: one table serves a
-shared pool and any number of dedicated lanes.
+the named lane, skipping locked ones (competing consumers), and stamps
+the claim and the lease in the same statement. Completion marks the row
+done, requeues it with a growing delay, or fails it when attempts run
+out; a failed item is a dead letter, named by an audit entry and
+counted by a metric. A worker that finds an item is not its to run
+hands it back without spending an attempt. The lane on the row is the
+routing: one table serves a shared pool and any number of dedicated
+lanes.
 
 Because the row carries `created_by`, the worker rebuilds the
 enqueuer's principal under a service role when it claims the item. The
@@ -1939,8 +1988,14 @@ flowchart LR
 A worker runs several items at once, each as its own task, up to a
 capacity it advertises. Each running item renews its lease on a timer.
 A lease that could not be renewed for half its length cancels its own
-task before the lease expires, so two workers never advance the same
-record. The worker heartbeats its own liveness; when heartbeats fail
+task before the lease expires. That is the first fence. The second is
+that completion and every write to the record the item advances are
+conditional on the claim (`claimed_by` and `lease_expires_at` on the
+queue row, a compare-and-set on `version` on the record), so a write
+from a worker whose lease has passed is refused with `Conflict` and the
+item is handed back without spending an attempt (a fencing token). The
+worker heartbeats its own liveness (a key with a TTL under the system
+scope, written and read back on every beat); when heartbeats fail
 repeatedly it stops claiming new work but finishes what it holds.
 
 ### Shutdown
@@ -2056,14 +2111,14 @@ flowchart LR
 
     subgraph AppSvc [Backing service]
         direction TB
-        Outbox[(bounded outbox<br/>per socket)]
+        SendBuf[(bounded send buffer<br/>per socket)]
     end
 
     Domain[Domain services]
 
     ClientApp -->|outbound:<br/>subscribes, pings| Channel
     Channel -->|inbound:<br/>typed envelopes| ClientApp
-    Outbox --> Channel
+    SendBuf --> Channel
     AppSvc -->|composes| Domain
 
     style Channel fill:#fff8e6
@@ -2252,6 +2307,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │           ├── orders/
 │   │           ├── inventory/
 │   │           ├── tenancy/
+│   │           ├── events/
 │   │           ├── audit/
 │   │           └── storage/            # storage root, roles, shared base classes
 │   ├── tests/
@@ -2522,6 +2578,10 @@ class ValidationFailed(PlatformException):
     http_status = 422
     code = "validation_failed"
 
+class NotAuthenticated(PlatformException):
+    http_status = 401
+    code = "not_authenticated"
+
 class NotAuthorized(PlatformException):
     http_status = 403
     code = "not_authorized"
@@ -2724,10 +2784,10 @@ this document. The record lists, per substitution, the choice as named
 here, the substitute, the reason, and the rules of this document the
 substitute must still satisfy: a queue claim still needs a select that
 skips locked rows or a compare-and-set, a cache still needs an atomic
-increment, a topic bus still needs at-least-once delivery to every
-subscribed process. The project's pointer to this document, the file
-in its own specification folder, links the record, so a reader finds
-the substitutions next to the deviations.
+increment, a topic bus still reaches every subscribed process. The
+project's pointer to this document, the file in its own specification
+folder, links the record, so a reader finds the substitutions next to
+the deviations.
 
 A substitution keeps a shape; a deviation changes one. Replacing the
 relational store with one that cannot express the queue claim is a
