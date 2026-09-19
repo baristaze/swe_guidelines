@@ -6,6 +6,27 @@ which number.
 
 ## Unreleased
 
+### Added
+
+- `architecture.md`: "Multiple impls per interface" says why the
+  technology impl and the memory impl pair is a lever rather than a
+  cost: a program writes and keeps the memory impl cheaply, the shape
+  generalizes (a dict keyed by tenant and id plus the relational
+  filters), and the pair is what lets an application run in-process in
+  a test, a backend swap at the root, and impls compose; linked to
+  "The App Container", "Storage Root", "Composition by decoration",
+  and the reference implementation. No lens: a rationale. Patch.
+- `architecture.md`: "Scalability by Design", a closing rationale that
+  says horizontal scalability is what most of the rules add up to and
+  names them by anchor (stateless services, services per namespace,
+  `org_id`-first storage, database roles, the work queue and workers
+  per lane, the outbox and the idempotent consumer, cache scopes,
+  topics and one realtime channel per app, immutability and pure
+  rules, the app container): scale out by adding processes, never by
+  changing code; linked from the introduction and from "Web Services
+  as Scalability Units"; `README.md` summary. No lens: a rationale.
+  Patch.
+
 ## 0.4.0 (2026-09-18)
 
 ### Added

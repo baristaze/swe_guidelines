@@ -19,6 +19,10 @@ are defaults, chosen for speed and clarity; [Technology Choices and How
 to Override Them](#technology-choices-and-how-to-override-them) says
 why they are named and how a project substitutes its own.
 
+Most of the rules add up to one property: the system scales out by
+adding processes, never by changing code. [Scalability by
+Design](#scalability-by-design) names the rules that make it so.
+
 ## Contents
 
 <!-- toc -->
@@ -118,6 +122,7 @@ why they are named and how a project substitutes its own.
 - [Technology Choices and How to Override Them](#technology-choices-and-how-to-override-them)
   - [Versions](#versions)
   - [Overriding a Choice](#overriding-a-choice)
+- [Scalability by Design](#scalability-by-design)
 - [Next: An End-to-End Reference Implementation](#next-an-end-to-end-reference-implementation)
 <!-- /toc -->
 
@@ -427,6 +432,23 @@ Technology-specific impls for storage follow the same interface:
 
 Swapping the impl at the storage root moves the system onto a different
 engine without any caller changing.
+
+Two impls per interface read as overhead only when a person keeps them
+in step. For a program the pair is cheap: an automated author writes
+the memory impl alongside the technology impl, and the shape
+generalizes. A memory storage impl is a dict keyed by tenant and id
+plus the same filters the relational impl applies; the storage layer
+of the [reference
+implementation](#next-an-end-to-end-reference-implementation) has one
+per namespace.
+
+A program also mixes and composes impls far more readily than a person
+does, so the duality is a lever rather than a cost. The pair is what
+lets a whole application run in-process in a test over the memory
+roots ([The App Container](#the-app-container)), lets a backend be
+swapped at the [storage root](#storage-root) with no caller changing,
+and lets impls wrap one another ([Composition by
+decoration](#composition-by-decoration)).
 
 ### Composition by decoration
 
@@ -1373,7 +1395,9 @@ Web services are the network layer's scalability units. Each major OM
 namespace gets its own service: `catalog` has `catalog-api`, `orders`
 has `orders-api`, and so on. Splitting along namespace lines lets each
 service be scaled, rolled out, and deployed independently, and lets
-products mix which services they expose.
+products mix which services they expose. The other rules that make
+scaling out a matter of adding processes are collected in [Scalability
+by Design](#scalability-by-design).
 
 A service runs in its own container with the whole OM library
 available to it and calls managers and storages in-process. A
@@ -2859,6 +2883,47 @@ a name.
 > **Principle:** A substitution is recorded once, in the project's own
 > ADR, with the rules the substitute must still satisfy. A change of
 > shape is a deviation, not a substitution.
+
+## Scalability by Design
+
+Horizontal scalability is not one section's concern. It is what most
+of the rules in this document add up to, each stated where the work
+happens, so that scaling out is a deployment decision and never a code
+change. The rules that make it so:
+
+-   [Domain services are stateless](#stateless-vs-stateful-services)
+    and an app-specific service holds only its open sockets, so any
+    replica serves any request and any replica can be killed.
+-   [Web services are the scalability
+    units](#web-services-as-scalability-units), one per namespace, so
+    each scales, rolls out, and deploys on its own.
+-   Every storage method takes `org_id` first ([Storage
+    Principles](#storage-principles)), so data partitions by tenant.
+-   [Database roles](#database-roles) give each load profile its own
+    pool, and its own engine when metrics demand it, by changing one
+    URL.
+-   [Workers](#workers-not-web-service-side-jobs) run outside the web
+    services and claim from [the work queue](#the-work-queue), a table
+    with competing consumers, leases, and fencing, so a lane scales by
+    adding processes to it.
+-   The transactional outbox of [Database Roles](#database-roles) and
+    the [idempotent consumer](#idempotency-on-the-consumer-side) make a
+    repeated delivery harmless, so scaling out never duplicates or
+    loses work.
+-   [Cache](#cache) keys carry a scope and a tenant, so caches grow
+    with the tenants that fill them and never collide.
+-   [Topics](#topics) fan out to every replica and [one realtime
+    channel per app](#realtime-one-channel-per-app) terminates at the
+    edge ([Realtime at the Edge](#realtime-at-the-edge)), so
+    connections scale independently of the domain.
+-   [Immutable entities](#immutability) and [pure rules](#pure-rules)
+    depend on no process's memory, so a computation runs anywhere.
+-   [The app container](#the-app-container) boots every process the
+    same way, so any number of identical processes start alike.
+
+Scaling out is adding processes: another replica of a service, another
+worker on a lane, another engine under a role. Nothing in the code
+changes when it happens.
 
 ## Next: An End-to-End Reference Implementation
 
