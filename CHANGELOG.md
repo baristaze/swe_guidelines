@@ -6,6 +6,58 @@ which number.
 
 ## Unreleased
 
+## 0.4.2 (2026-09-19)
+
+### Changed
+
+- `skills/arch-scaffold-service/SKILL.md`: the `gateway/auth.py`,
+  `realtime/`, and `gateway/observability.py` rows say the websocket
+  route resolves its context through a `socket_context` gateway
+  dependency (redeem the ticket, build `OpContext` by the same rules
+  as `current_context`, carry the request id and the span) and never
+  parses the query itself, and the request-id middleware covers
+  websocket scopes. From The Network Layer (The Gateway). Patch.
+- `skills/arch-scaffold-service/SKILL.md`,
+  `skills/_shared/scaffold-conventions.md`,
+  `skills/arch-scaffold-entity/SKILL.md`: every creating route (every
+  `POST` that answers 201), in every namespace, declares the
+  `Idempotency-Key` dependency, so a retried create returns the stored
+  response. From The Network Layer (The Gateway, Edge idempotency).
+  Patch.
+- `skills/arch-scaffold-new/SKILL.md`: the tenancy row says an API key
+  is issued with a required `expires_in`, capped by a settings option
+  and never `None`, and the wire request defaults inside the cap. From
+  The Network Layer (The Gateway, Credentials). Patch.
+- `skills/arch-scaffold-app/SKILL.md`: the CLI reads its settings (API
+  URL, token, home) into one settings object at the start of `main`
+  under the product prefix and the client takes them through its
+  constructor, nothing below `main` reading `os.environ`; a `listen`
+  command keeps the last contiguous `seq` from the hello frame and
+  each push and replays from the events route on a gap or a
+  reconnect. From Cross-Cutting Conventions (Configuration) and The
+  Network Layer (Realtime at the Edge). Patch.
+- `skills/arch-scaffold-app/SKILL.md`: a view never re-implements a
+  domain rule to enable or disable an action; the service exposes the
+  decision as a flag on the view or the client acts on the error
+  envelope. From Apps (Apps Are Dumb). Patch.
+- `skills/_shared/scaffold-conventions.md`: `ctx.require(<permission>)`
+  is the first line of every mutating manager operation, before any
+  read, the ones a worker calls included (complete, fail, defer,
+  release, extend the lease). From The Business Layer (Shape of an
+  Operation). Patch.
+- `skills/arch-scaffold-worker/SKILL.md`: the "half the lease" cutoff
+  is wall-clock time since the last successful renewal, never a count
+  of failed attempts times the interval. From Worker Roles (Shape of a
+  Worker). Patch.
+- `skills/_template/review.SKILL.md`, `agents/arch-reviewer.md`, and
+  the seven generated review skills: a pass on a `high` lens is
+  verified like a finding, by opening the file that would breach it
+  and naming it when deciding, because the same tree reviewed twice
+  moves high lenses between finding and pass. Patch.
+- `docs/adopting.md`: the first review of a fresh scaffold lands about
+  two thirds of the lenses and a dozen high findings; the
+  review-and-fix pass is part of scaffolding. Patch.
+
 ## 0.4.1 (2026-09-18)
 
 ### Changed
