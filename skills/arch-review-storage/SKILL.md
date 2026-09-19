@@ -44,7 +44,10 @@ of a changed signature.
    the lens in front of you while deciding.
 4. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
-   Drop a finding you cannot point at.
+   Drop a finding you cannot point at. Verify a **pass** on a `high`
+   lens the same way: open the file that would breach it and name that
+   file when deciding; a high lens passes on evidence, never on the
+   absence of a finding.
 5. Assign severity from the lens, adjusted only downward when the
    breach is contained (a test double, a documented exception the
    guideline names, an ADR cited next to the code).
