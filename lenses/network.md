@@ -523,21 +523,28 @@ its own.
 ## NET-23 Wire and payload changes are additive within a version
 
 **Principle.** Inside `/v1` a view only gains fields and a request only
-gains optional ones; a removal or a rename is a new prefix. Topic
-payloads and realtime envelopes follow the same rule and are read
-tolerantly: a consumer ignores a field it does not know, so producers
-and consumers roll out in either order.
+gains optional ones; a removal or a rename is a new prefix. Tolerance
+runs one way: a reader ignores a field it does not know, and a new
+reader in front of an old writer holds only when the new field is
+optional with a default. So a topic payload, a work item payload, and
+a realtime envelope only gain optional, defaulted fields, and the two
+sides roll out in either order; a request forbids what it does not
+know, so a service rolls out before its apps.
 
 **Source.** The Network Layer, Public Types.
 
 **Look for.** The diff of every `types/` module, payload class, and
 envelope against the committed OpenAPI document; the model config of
 payload and envelope bases; whether a consumer fails on an unknown
-field.
+field; whether a field added to a payload has a default; the order in
+which a service and its apps are deployed.
 
 **Violation.** A field removed or renamed on a view, or a required
 field added to a request, under the same prefix; a payload or envelope
 consumer that rejects an unknown field, so producer and consumer must
-deploy together.
+deploy together; a required field added to a payload or an envelope,
+so a row written before the deploy or an old producer's message fails
+to parse; an app that sends a new request field before the service
+that accepts it is deployed.
 
 **Severity.** medium

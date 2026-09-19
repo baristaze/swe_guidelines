@@ -2025,11 +2025,21 @@ page envelope (`items` and `next_cursor`) and pages by an opaque
 cursor over the list's own order, which is the id when that order is
 the creation order, since a v7 id sorts by time; an append-only
 stream pages by a monotonic sequence number (`after_seq`); nothing
-pages by an offset. Inside `/v1` a view
-only gains fields and a request only gains optional ones; a removal or
-a rename is a new prefix. Topic payloads and realtime envelopes follow
-the same rule and are read tolerantly: a consumer ignores a field it
-does not know, so producers and consumers roll out in either order.
+pages by an offset. Inside `/v1` a view only gains fields and a
+request only gains optional ones; a removal or a rename is a new
+prefix. Tolerance runs one way, and the deployment order covers the
+other. A reader ignores a field it does not know, which lets an old
+reader take a new writer's output; the reverse, a new reader in front
+of an old writer, holds only when the new field is optional with a
+default the reader applies when it is absent. So a topic payload, a
+work item payload, and a realtime envelope only gain optional,
+defaulted fields: a row written before the deploy has no such field,
+a producer still on the old build sends none, and the two roll out in
+either order because the consumer tolerates both. A request forbids
+what it does not know, so the service that accepts a new optional
+field rolls out before the app that sends it, and an app that reads a
+new field of a view tolerates its absence until every replica serves
+it: a service rolls out before its apps.
 
 > **Python tip:** `from_attributes=True` makes
 > `WarehouseView.model_validate(warehouse)` the whole translation when
