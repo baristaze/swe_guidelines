@@ -435,11 +435,11 @@ engine without any caller changing.
 
 Two impls per interface read as overhead only when a person keeps them
 in step. For an agent the pair is cheap: the agent writes the memory
-impl alongside the technology impl, and the shape generalizes. A memory storage impl is a dict keyed by tenant and id
-plus the same filters the relational impl applies; the storage layer
-of the [reference
-implementation](#next-an-end-to-end-reference-implementation) has one
-per namespace.
+impl alongside the technology impl, and the shape generalizes. A
+memory storage impl is a dict keyed by tenant and id plus the same
+filters the relational impl applies; the storage layer of the
+[reference implementation](#next-an-end-to-end-reference-implementation)
+has one per namespace.
 
 An agent also mixes and composes impls far more readily than a person
 does, so the duality is a lever rather than a cost. The pair is what
