@@ -620,10 +620,12 @@ A request establishes who is behind it in steps, and each step is a
 type:
 
 ``` text
-RequestContext        a request exists; nobody is known yet
-  ├─ IdentityContext  a person is verified by their own sign-in; no tenant is chosen
+RequestContext          a request exists; nobody is known yet
+  ├─ IdentityContext    a person is verified by their own sign-in; no tenant is chosen
   │    └─ AdminContext  the person is on the operator allowlist
-  └─ OpContext        a membership is established: one tenant, one user, one role
+  └─ OpContext          a membership is established: one tenant, one user, one role
+       └─ ...           what the domain earns next, say a TenantAdminContext, when
+                        operations rely on the role instead of checking it each time
 ```
 
 ``` python
@@ -642,7 +644,10 @@ subclass relation is the refinement: a function that asks for the
 weaker stage accepts the stronger one, and a function that asks for the
 stronger one cannot be handed the weaker. `AdminContext` adds no field
 to `IdentityContext`; what it adds is the evidence that the operator
-allowlist was consulted. `OpContext` does not refine `IdentityContext`:
+allowlist was consulted. The chain continues below `OpContext` only
+when the domain earns it: a stage for a role exists when operations
+rely on that role instead of requiring a permission at their first
+line, and not before. `OpContext` does not refine `IdentityContext`:
 what a tenant operation knows about the person is the user inside the
 tenant, not the identity across tenants, and an API key or a worker's
 service context has no sign-in behind it at all.
