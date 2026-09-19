@@ -6,7 +6,7 @@ which number.
 
 ## Unreleased
 
-## 0.4.2 (2026-09-19)
+## 0.4.3 (2026-09-19)
 
 ### Changed
 
@@ -18,6 +18,11 @@ which number.
   author", and "The Gateway" and lens `CTX-18` say an agent presents
   an API key; `arch-new-aspect`, `AGENTS.md`, and the Makefile no
   longer ask for the rephrasing. Patch.
+
+## 0.4.2 (2026-09-19)
+
+### Changed
+
 - `skills/arch-scaffold-service/SKILL.md`: the `gateway/auth.py`,
   `realtime/`, and `gateway/observability.py` rows say the websocket
   route resolves its context through a `socket_context` gateway
