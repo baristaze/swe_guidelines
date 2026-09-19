@@ -1966,7 +1966,17 @@ and an expiry a few minutes out, signed with a key every process reads
 from the secret store (see [Secrets](#secrets)) and verified by the
 callee against the same key; the callee's gateway rebuilds `OpContext`
 from it like any other credential kind, and no service trusts a bare
-header.
+header. One key is one trust domain: every process that reads it can
+mint a credential naming any principal in any tenant, so the fence
+around that key is the private network and the secret store's access
+list, and a compromised process is a compromised platform, not a
+compromised service. That is a decision, made for a platform whose
+processes are all its own and deployed together. A system that runs a
+process it trusts less, a plugin, a partner's code, a component with a
+wider surface, gives each issuing process a key of its own and
+verifies by name, so the callee knows not only that a trusted process
+signed but which one; turning on TLS answers a different question and
+does not narrow who may sign.
 
 Outbound TLS verification uses the operating system's trust store, in
 every process, so a corporate proxy or a private certificate authority
