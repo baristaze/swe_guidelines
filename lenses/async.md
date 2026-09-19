@@ -299,25 +299,20 @@ webhook handler that ignores the provider's delivery id.
 
 **Principle.** Web services do not spawn background jobs or schedule
 recurring tasks. Every such need is an explicit worker role with its
-own container and deployment: an always-on container with the same
-shape as a web service minus a public network surface, placed on
-bigger compute when it needs more without changing shape. The one
-thing that is not a job is a topic subscriber that only forwards
-events to sockets its own process holds; anything that writes,
-retries, or outlives a connection is a worker.
+own container, its own deployment, and its own place in the service
+catalog. The one thing that is not a job is a topic subscriber that
+only forwards events to sockets its own process holds; anything that
+writes, retries, or outlives a connection is a worker.
 
-**Source.** Worker Roles, Workers, Not Web-Service Side Jobs;
-Implementation Options.
+**Source.** Worker Roles, Workers, Not Web-Service Side Jobs.
 
 **Look for.** Background tasks created inside a service process;
 timers and schedulers in service code; in-process subscribers and what
-they do; how each worker role is deployed.
+they do.
 
 **Violation.** A request handler that starts a task which outlives the
 request; a service that runs a periodic sweep; an in-process subscriber
-that writes to storage or retries deliveries; a worker deployed as a
-scheduled one-shot or a serverless function rather than an always-on
-container.
+that writes to storage or retries deliveries.
 
 **Severity.** high
 
@@ -473,3 +468,24 @@ parked record with no reason or no way to be woken; a safety check that
 marks failure rather than parking.
 
 **Severity.** high
+
+## ASY-22 A worker role runs as an always-on container
+
+**Principle.** Worker roles run as always-on containers: the same
+shape as a web service minus a public network surface, so deployment,
+observability, pooling, and local development are the same for both.
+A worker that needs more compute is placed on a bigger box; its shape
+does not change.
+
+**Source.** Worker Roles, Implementation Options.
+
+**Look for.** How each worker role is deployed and the compute it is
+placed on; the deployment folder and the service catalog entry of
+each worker.
+
+**Violation.** A worker deployed as a scheduled one-shot or a
+serverless function rather than an always-on container; a worker
+whose shape differs from a web service's for reasons of compute
+alone.
+
+**Severity.** low
