@@ -15,8 +15,9 @@ which number.
   and the lenses. "Multiple impls per interface", "Technology Choices
   and How to Override Them", and "Next: An End-to-End Reference
   Implementation" say "agent" where they said "program" or "automated
-  author"; `arch-new-aspect`, `AGENTS.md`, and the Makefile no longer
-  ask for the rephrasing. Patch.
+  author", and "The Gateway" and lens `CTX-18` say an agent presents
+  an API key; `arch-new-aspect`, `AGENTS.md`, and the Makefile no
+  longer ask for the rephrasing. Patch.
 - `skills/arch-scaffold-service/SKILL.md`: the `gateway/auth.py`,
   `realtime/`, and `gateway/observability.py` rows say the websocket
   route resolves its context through a `socket_context` gateway

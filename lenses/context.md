@@ -348,7 +348,7 @@ or with no tenant at all.
 ## CTX-18 The credential prefix decides who accepts it
 
 **Principle.** Each credential kind has a distinct prefix, and the
-prefix decides which gateway dependency accepts it. A machine caller's
+prefix decides which gateway dependency accepts it. An agent's
 key is membership-scoped, expiring, and role-capped; a person's login
 credential carries no tenant and is exchanged for a tenant-scoped
 session token.
