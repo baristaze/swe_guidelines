@@ -119,8 +119,9 @@ from storage after a reconnect.
 
 ## NET-06 The gateway is the only public surface
 
-**Principle.** The gateway authenticates requests, builds the context,
-and routes; services never parse raw headers or tokens. A
+**Principle.** The gateway mints the request stage, runs the tenancy
+manager's transitions into `OpContext`, and routes; services never
+parse raw headers or tokens. A
 service-to-service call carries a short-lived internal credential
 minted by the caller: a token naming the principal, the tenant, the
 request id, and an expiry minutes out, signed with a key from the

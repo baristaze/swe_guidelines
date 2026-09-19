@@ -647,16 +647,16 @@ what a tenant operation knows about the person is the user inside the
 tenant, not the identity across tenants, and an API key or a worker's
 service context has no sign-in behind it at all.
 
-Each stage is produced by exactly one transition: an operation on the
-tenancy manager that takes the stage below, consults the evidence, and
-returns the stage above or refuses.
+A stage above the request stage is produced only by a transition: an
+operation that takes the stage below, consults the evidence, and
+returns the stage above or refuses. The evidence is the tenancy
+manager's, so a transition is an operation of the tenancy manager, or
+one that asks it, as the claim of a worker does.
 
 ``` python
 class TenancyManagerInterface(ABC):
     @abstractmethod
     async def authenticate_login(self, rctx: RequestContext, credential: str) -> IdentityContext: ...
-    @abstractmethod
-    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession: ...
     @abstractmethod
     async def authenticate(self, rctx: RequestContext, credential: str) -> OpContext: ...
     @abstractmethod
@@ -667,10 +667,14 @@ class TenancyManagerInterface(ABC):
 Not every path passes through every stage: a session token or an API
 key resolves the membership in one transition, and the claim a worker
 calls returns an `OpContext` from the request stage the loop minted.
-The stages name what is established, not the road taken. A transition
-builds a new object from the stage below and the evidence it consulted;
-it never copies the stage below with changed fields, and nothing but a
-transition constructs a stage above the request stage.
+The stages name what is established, not the road taken. The exchange
+of a sign-in for a tenant session is not a transition: it takes the
+identity stage and issues a session, and that session comes back
+through `authenticate` as an `OpContext` on the next request, which is
+how a sign-in reaches a tenant without one stage refining the other. A
+transition builds a new object from the stage below and the evidence
+it consulted; it never copies the stage below with changed fields, and
+nothing but a transition constructs a stage above the request stage.
 
 The request stage is minted at the edge, once: by the gateway (see [The
 Gateway](#the-gateway)) for every request and every socket, by the
@@ -690,24 +694,26 @@ produced in one place, and its exact type says who produced it.
 The stages fence capabilities without a second registry. An operation
 declares the weakest stage that proves what it needs, and a caller that
 holds a weaker one cannot call it; the type checker refuses the call. A
-login route holds a `RequestContext` and cannot reach a task manager. An
+sign-in route holds a `RequestContext` and cannot reach a warehouse
+manager. An
 operator route holds an `AdminContext` and cannot reach a tenant
 manager. There is no bundle of managers per stage: the managers are the
 structural graph, built once per process (see [The App
 Container](#the-app-container)), and the stage in an operation's
 signature decides which operations a holder can call.
 
-> **Principle:** A context stage is evidence. One transition produces
-> it, its type is the proof, and an operation takes the weakest stage
-> that proves what it needs.
+> **Principle:** A context stage is evidence. Only a transition
+> produces it, its type is the proof, and an operation takes the
+> weakest stage that proves what it needs.
 
 ### Scopes
 
 Some consumers need less than a stage carries. The helper that stamps
 provenance onto an outbox row needs the actor, the request id, and the
-app. The rate limiter needs the credential id for its subject and the
-tenant for its budget. A realtime subscription needs the tenant and the
-user. None of them authorizes, and none of them should see the
+app. The rate limiter's subject needs the credential id and nothing
+about the tenant, because it also runs on routes where no tenant is
+known yet; its budget needs the tenant and nothing about the
+credential. A realtime subscription needs the tenant and the user. None of them authorizes, and none of them should see the
 permissions, the role, or the whole `OpContext`. Each declares a scope:
 a small `Protocol` naming the capability it needs, and nothing else.
 
@@ -739,7 +745,7 @@ class ProvenanceScope(ActorScope, RequestScope, Protocol): ...
 
 ``` python
 def outbox_row(ctx: ProvenanceScope, kind: str, target_id: UUID, payload: FrozenMapping) -> OutboxRow: ...
-async def subscribe(self, ctx: ActorScope, ...) -> ...: ...
+async def subscribe(self, ctx: ActorScope, ...) -> ...: ...  # on the socket handler, not a manager
 ```
 
 A scope is a `Protocol` and not an `ABC`, on purpose. A stage satisfies
@@ -756,8 +762,9 @@ satisfies `RequestScope`; `OpContext` satisfies all of them.
 The scope set is derived from consumers, not from a taxonomy. A scope
 exists when a consumer declares it. There is no `AuthorizationScope`,
 because no consumer needs the permissions without the tenant and the
-actor: a manager operation takes `OpContext`, which is its scope, and
-says nothing narrower.
+actor. A manager operation takes `OpContext`, which is its scope, and
+says nothing narrower, because it authorizes, and authorization rests
+on the live membership that only the stage proves and no scope can.
 
 Scopes compose. `ProvenanceScope` is `ActorScope` and `RequestScope`
 together, and it has a name because provenance is a concept of the
@@ -766,6 +773,12 @@ a write produces. That is the only reason a combination gets a name. A
 consumer that needs two scopes with no concept between them takes the
 stage that carries both; no name is minted for the intersection of two
 others, and the vocabulary stays small enough to read in one screen.
+
+Provenance is a tenant concept: `ActorScope` names a user inside a
+tenant, and `AdminContext` cannot satisfy it. An operator write is
+stamped by the operator managers from the identity id and the request
+id their stage carries, through a helper of the operator plane, never
+through `outbox_row`.
 
 Stages and scopes are kept apart. A stage is a chain of evidence, and
 subclassing is its refinement. A scope is a view, and composition is
@@ -793,10 +806,10 @@ A tenant context always names one organization. The people who operate
 the platform itself have questions no tenant context can answer: usage
 across every organization, service health, global configuration. That is
 a different plane with a different context type, `AdminContext`, the
-operator's context, the identity stage refined by one more transition:
-`admit_operator` takes an `IdentityContext` and returns an
+operator's context. It is the identity stage refined by one more
+transition: `admit_operator` takes an `IdentityContext` and returns an
 `AdminContext` when the identity is on the operator allowlist, and
-refuses otherwise.
+refuses otherwise (see [Stages](#stages)).
 
 `AdminContext` has no `org_id`, on purpose. Operator managers take it
 and nothing else; tenant managers take `OpContext` and nothing else. The
@@ -1393,7 +1406,7 @@ the constructor.
 -   Wire-up happens in the app container at boot (see [The App
     Container](#the-app-container)). Managers and service impls receive
     infra handles through their constructors, never through globals,
-    thread locals, or `OpContext`.
+    thread locals, or a context, whichever stage or scope it is.
 -   Observability is the one capability used through its vendor API
     directly (see [Traces and Metrics](#traces-and-metrics) and [Error
     Tracking](#error-tracking)).
@@ -1827,9 +1840,9 @@ A gateway sits in front of the services and is the only layer that
 talks to the public internet. It mints the request stage, runs the
 transitions that authenticate it into `OpContext` (see
 [Stages](#stages)), and routes to the right service; services never
-construct a context from raw headers or tokens. In the single-process start the
-gateway is a package of middleware and request dependencies inside the
-API process, with the same responsibilities.
+construct a context from raw headers or tokens. In the single-process
+start the gateway is a package of middleware and request dependencies
+inside the API process, with the same responsibilities.
 
 The gateway owns a short list of edge concerns, each done once:
 
@@ -3049,8 +3062,9 @@ integrates with it. We do not bring in a competing library.
 
 > **Python tip:** a `contextvars.ContextVar` set by the gateway
 > middleware and read by a `logging.Filter` is the whole mechanism.
-> The authoritative request id is still the field on `OpContext`; the
-> context variable exists only so log lines get it for free.
+> The authoritative request id is still `request_id` on the request
+> stage, which every stage inherits; the context variable exists only
+> so log lines get it for free.
 
 Every module gets its logger with `logging.getLogger(__name__)`, so
 the logger hierarchy mirrors the OM namespace tree. Formatting, level,

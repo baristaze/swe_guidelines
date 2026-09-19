@@ -18,7 +18,7 @@ patterns to `network`.
 **Principle.** Every infra capability is fronted by an interface with
 swappable impls, and a handle to one arrives only through a
 constructor at boot, never through a global, a thread local, a
-module-level client, or `OpContext`.
+module-level client, or a context, whichever stage or scope it is.
 
 **Source.** Infrastructure, Infrastructure Principles.
 

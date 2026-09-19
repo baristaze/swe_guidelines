@@ -1,8 +1,8 @@
 # Context
 
 Group id: `context`. Covers OpContext (with Stages, Scopes, and The
-Operator Context),
-the authorization and tenancy split of Separation of Layers, the
+Operator Context), the authorization and tenancy split of Separation
+of Layers, the
 authorization step and parameter order of The Business Layer and its
 "Operations Without a Principal", the tenancy rules of The Storage
 Layer, the tenant keying of Infrastructure, the credential and
@@ -51,7 +51,7 @@ id, the email, and the credential. The request id reaches every log
 line, every audit row, and the error envelope from the context, never
 by hand.
 
-**Source.** OpContext.
+**Source.** OpContext; OpContext, Stages.
 
 **Look for.** The context type definitions, every place that reads
 identity, tenant, or app information, and the audit record type.
@@ -102,16 +102,17 @@ impl.
 
 **Severity.** high
 
-## CTX-05 The request stage is minted at the edge; every stage above it has one transition
+## CTX-05 The request stage is minted at the edge; every stage above it comes only from a transition
 
 **Principle.** The request stage is minted once, at the edge: by the
 gateway for every request and every socket, by the worker loop per
 claim and per sweep pass, and by the bootstrap command per command.
-Every stage above it is produced by exactly one transition on the
-tenancy manager (a sign-in into the identity stage, a credential or a
-claim into `OpContext`, the operator admission into `AdminContext`),
-which takes the stage below and the evidence and returns the stage
-above or refuses. Nothing else constructs a stage.
+Every stage above it is produced only by a transition, an operation
+of the tenancy manager or one that asks it (a sign-in into the
+identity stage, a credential or a claim into `OpContext`, the operator
+admission into `AdminContext`), which takes the stage below and the
+evidence and returns the stage above or refuses. Nothing else
+constructs a stage.
 
 **Source.** OpContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
@@ -136,7 +137,7 @@ is passed as an explicit argument, never by mutating or copying the
 context mid-request. A transition builds the stage above as a new
 object from the stage below; it is not a copy with changed fields.
 
-**Source.** OpContext; OpContext, Stages.
+**Source.** OpContext, Stages.
 
 **Look for.** Copies or mutations of the context after the gateway;
 methods that accept a context and hand a different one downstream;
