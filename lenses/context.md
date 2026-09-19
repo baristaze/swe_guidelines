@@ -310,7 +310,10 @@ without comparing the payload's tenant to the connection's tenant.
 **Principle.** The few operations that exist before a principal does
 (claiming work, sweeping every tenant, resolving an inbound webhook
 token) are declared without a context, documented as platform-internal,
-and produce the context under which the work then runs.
+and produce the context under which the work then runs. The outbox
+relay and the event append it performs take `(org_id, row)` instead:
+the row carries its tenant, actor, and request id from the write that
+made it, and the relay runs again from the sweep.
 
 **Source.** The Business Layer, Operations Without a Principal; Worker
 Roles, The Work Queue.

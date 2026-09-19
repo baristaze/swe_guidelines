@@ -59,7 +59,7 @@ operations read; an entity read across every tenant without it.
 **Principle.** Orthogonal traits are captured by small mixins on a
 fieldless root, each declaring exactly the fields the guideline lists:
 `Identifiable` (`id`), `Named` (`name`), `Trackable` (`created_at`,
-`updated_at`, `created_by`), and `SoftDeletable` (`deleted_at`,
+`updated_at`, `created_by`, `updated_by`), and `SoftDeletable` (`deleted_at`,
 `deleted_by`). A new trait is a new mixin, not a field on an existing
 one. The `new_id()` and `utcnow()` helpers live in the same base
 module.

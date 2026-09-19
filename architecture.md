@@ -696,6 +696,15 @@ than consume one: a claim returns the context under which the work
 runs, and a sweep asks for one service context per live tenant. There
 are very few of them.
 
+One more kind takes a tenant id in place of a context: the handoff of
+a row the tenant's own write already produced. The outbox relay of
+[Database Roles](#database-roles) takes `(org_id, row)`, and the
+event append it performs takes the same, because the row carries its
+tenant, its actor, and its request id from the write that made it,
+and the relay runs again from the sweep, where no principal exists.
+Both are declared on their interfaces as such and are the only
+operations of their kind.
+
 ## The Storage Layer
 
 The storage layer persists what the business layer gives it and returns

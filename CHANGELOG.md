@@ -18,6 +18,13 @@ which number.
   author", and "The Gateway" and lens `CTX-18` say an agent presents
   an API key; `arch-new-aspect`, `AGENTS.md`, and the Makefile no
   longer ask for the rephrasing. Patch.
+- `architecture.md`: "Operations Without a Principal" names the one
+  kind that takes a tenant id in place of a context, the outbox relay
+  and the event append it performs (`(org_id, row)`), which "Database
+  Roles" and the scaffold already prescribe; lens `CTX-16` says the
+  same. Lens `OM-03` lists `updated_by` among the `Trackable` fields,
+  as "Naming Entities" does. Both from the second review of the
+  reference implementation's sibling. Patch.
 
 ## 0.4.2 (2026-09-19)
 
