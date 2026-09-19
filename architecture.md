@@ -696,6 +696,19 @@ keeps authentication from being reconstructed at every layer, and it is
 why the stages are concrete types and not views: a stage is evidence,
 produced in one place, and its exact type says who produced it.
 
+A stage lives as long as the request that minted it and no longer: a
+request, a claim, a sweep pass, a socket. A socket is a request that
+stays open, so it holds the `OpContext` its ticket produced for the
+life of the connection; a membership revoked meanwhile stops the next
+request at `authenticate` and reaches the socket at its next
+reconnect. That is a decision, and what bounds it is what a socket
+carries: hints, never a field of an entity (see [Realtime at the
+Edge](#realtime-at-the-edge)), so the window is one of metadata. A
+product where that window is too long closes the tenant's sockets
+from the operation that revokes. Work that runs later than the
+request that asked for it runs on an authority of its own, which [The
+Work Queue](#the-work-queue) names.
+
 The stages fence capabilities without a second registry. An operation
 declares the weakest stage that proves what it needs, and a caller that
 holds a weaker one cannot call it; the type checker refuses the call. A
@@ -2392,6 +2405,17 @@ claim returns the `OpContext` the work runs under (see
 asked for it, so attribution and audit survive the asynchronous hop.
 Sweeps that act on every tenant ask the tenancy manager for one service
 context per live tenant.
+
+Authority and attribution are two fields of that context, and they
+answer two questions. The person authorized the work once, at
+enqueue, under their own stage, and that is the last time the system
+asks whether they may: the work runs on the service role's authority,
+`user_id` is the attribution, and a person whose membership ends
+while their work waits does not stop it. A kind of work that must stop
+when the person's permission does says so in its handler, which reads
+the live membership by name before its sensitive step; that is the one
+place an operation holding an `OpContext` asks again, and it is a
+decision of that kind of work, recorded.
 
 ### Shape of a Worker
 

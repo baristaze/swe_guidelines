@@ -450,7 +450,9 @@ operations that already take a stage.
 
 **Violation.** An operation that takes `IdentityContext` and verifies
 the credential again, or takes `OpContext` and re-reads the membership
-to decide whether it is live; a sign-in or exchange route handed an
+to decide whether it is live, the one exception being a work handler
+that reads it by name before a sensitive step as a recorded decision
+of that kind of work; a sign-in or exchange route handed an
 `OpContext`; a stage declared as a `Protocol` or satisfied by anything
 other than its transition; `OpContext` subclassing `IdentityContext`;
 a bundle of managers per stage, or a manager reachable from a context.
