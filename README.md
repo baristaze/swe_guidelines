@@ -15,7 +15,7 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 143 lenses in seven groups. Each
+- **[`lenses/`](lenses/README.md)**: 147 lenses in seven groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Seven group reviews, one
@@ -58,7 +58,7 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 | `arch-review-full`        | Reviews a change through every lens group, seven reviewers in parallel, one merged report |
 | `arch-review-om`          | Object model: source of truth, mixins, immutability, identifiers, namespaces |
 | `arch-review-contracts`   | Interfaces, injection, roots, call direction, app container                  |
-| `arch-review-context`     | OpContext, AdminContext, authorization, tenancy, provenance                  |
+| `arch-review-context`     | context stages and scopes, AdminContext, authorization, tenancy, provenance  |
 | `arch-review-storage`     | Storage principles, tables, translation, database roles, migrations          |
 | `arch-review-async`       | Infra capabilities, queues, workers, idempotency, park versus fail           |
 | `arch-review-network`     | Topology, gateway, public types, clients, realtime, push-first               |

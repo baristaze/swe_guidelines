@@ -6,6 +6,53 @@ which number.
 
 ## Unreleased
 
+## 1.0.0 (2026-09-19)
+
+The context is no longer one type. This release names what a request
+has established as a chain of typed stages, and what a consumer sees
+as a set of composable scopes, and it reverses two rules of 0.6.0:
+the principal-less operations now take the request stage instead of
+no context, and a consumer that needs less than `OpContext` declares
+less. A major release, because a rule is reversed.
+
+### Changed
+
+- `architecture.md`, "OpContext": the section is rewritten around two
+  ideas kept apart. "Stages": `RequestContext`, `IdentityContext`,
+  `OpContext`, and `AdminContext` are concrete frozen types, each a
+  subclass of the stage it refines, each produced by exactly one
+  transition on the tenancy manager (`authenticate_login`,
+  `exchange_login`, `authenticate`, `admit_operator`, the claim, the
+  service contexts of a sweep); a function that takes a stage relies
+  on its invariant instead of checking it again, and the stage in a
+  signature is what fences which operations a holder can call, with
+  no bundle of managers per stage. "Scopes": `RequestScope`,
+  `TenantScope`, `ActorScope`, `CredentialScope`, and
+  `ProvenanceScope` are `Protocol`s of read-only properties that a
+  stage satisfies structurally; the scope set is derived from
+  consumers, a combination is named only when it is a concept of the
+  domain, and there is no authorization scope because a manager
+  operation takes `OpContext`, which is its scope. Structural
+  injection and the context never cross: a manager does not arrive on
+  a context, and a request id does not arrive in a constructor.
+  Lenses `CTX-01`, `CTX-02`, `CTX-05`, `CTX-06`, `CTX-16`, and
+  `CTX-20` are rewritten; `CTX-21` (the weakest stage, relied on),
+  `CTX-22` (the narrowest scope, a `Protocol`), `CTX-23` (no name for
+  a combination without a concept), and `CON-18` (constructor and
+  context never cross) are added; `arch-scaffold-new`,
+  `arch-scaffold-service`, `arch-scaffold-worker`, and the shared
+  scaffold conventions follow. Major.
+- `architecture.md`, "Operations Without a Principal": the operations
+  that exist before a principal does take `RequestContext` first and
+  produce a stronger stage; a test names each of them. The outbox
+  handoff keeps `(org_id, row)`. Major.
+- `architecture.md`, "The Operator Context": `AdminContext` refines
+  `IdentityContext` through `admit_operator`; "The Gateway" mints the
+  request stage and runs the transitions; "The Work Queue": the loop
+  mints a `RequestContext` per claim and per sweep pass;
+  "Injectability" points at the boundary between what a constructor
+  takes and what a context carries.
+
 ## 0.6.0 (2026-09-19)
 
 Two outside reviews of 0.5.1. The cheap drift is running out; this

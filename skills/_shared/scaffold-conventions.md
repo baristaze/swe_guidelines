@@ -72,12 +72,18 @@ the order the guideline presents them, never by number.
   is rebuilt from a dict, `model_validate({**current.model_dump(),
   **changes})`, because `model_copy` does not validate and
   `model_validate` hands an instance back untouched.
-- Every manager and service operation takes `ctx: OpContext` first;
-  every storage call takes `org_id: UUID` first. The exceptions are the
-  ones The Business Layer and The Storage Layer name (principal-less
-  operations that produce a
-  context, global tables, cross-tenant sweeps), each documented in its
-  docstring and listed in the repository's exceptions test.
+- Every manager and service operation takes a context first: `ctx:
+  OpContext` for a tenant operation, `rctx: RequestContext` for the
+  transitions that produce a stronger stage (sign-in, claim, sweep),
+  `ictx: IdentityContext` for the exchange and the operator admission,
+  a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
+  `CredentialScope`) for a helper or an edge concern that needs less.
+  Every storage call takes `org_id: UUID` first. The exceptions are the
+  ones The Business Layer and The Storage Layer name (the outbox
+  handoff that takes `(org_id, row)`, global tables, cross-tenant
+  sweeps), each documented in its docstring and listed in the
+  repository's exceptions test, which also names every method that
+  takes the request stage.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
