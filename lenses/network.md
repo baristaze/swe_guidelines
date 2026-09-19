@@ -129,7 +129,8 @@ callee's gateway rebuilds the context from it like any other
 credential kind, and no service trusts a bare header. The edge
 idempotency marker carries the request digest and the id the create
 will use, minted before `begin`; a stale pending marker is taken over
-and the request rerun with that id. It accepts
+and the request rerun with that id; a failure releases the marker
+rather than being stored. It accepts
 cross-origin requests only from the browser apps' origins, read from
 settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
 it in the response header, and attaches it to the log context and the
@@ -198,8 +199,10 @@ cache is down; a rate limit relied on as a security boundary.
 ## NET-09 Creating requests accept an idempotency key
 
 **Principle.** A creating `POST` accepts an `Idempotency-Key` header;
-the first response is stored per tenant under the key and replayed on
-a retry, using the same storage primitive the queue handlers use.
+the first response is stored per tenant and principal under the key
+and replayed on a retry, using the same storage primitive the queue
+handlers use. Only an outcome a retry cannot change is stored: a
+refusal is replayed, a failure releases the marker.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
@@ -209,6 +212,8 @@ tenant.
 
 **Violation.** A creating endpoint that produces a second record on a
 retried request; a key stored without the tenant in its scope; a
+`5xx` stored and replayed, so a transient failure is the answer for
+good and the client's only exit is a new key and a second row; a
 bespoke replay mechanism for one route that differs from the shared
 primitive.
 
@@ -296,9 +301,9 @@ component instead of once at boot.
 `View` built from attributes and a `RequestBody` that forbids unknown
 fields; names end in `View`, `Request`, or `Issued...View`; lists
 return a bare list with a clamped limit, a list that can outgrow the
-clamp pages by `after_id` over the id order, streams page by
-`after_seq`, and nothing pages by an offset; the OM never changes to
-match the wire. Within a version
+clamp returns a page envelope and pages by an opaque cursor over its
+own order, streams page by `after_seq`, and nothing pages by an
+offset; the OM never changes to match the wire. Within a version
 a change is additive (NET-23).
 
 **Source.** The Network Layer, Public Types.
@@ -310,8 +315,8 @@ response classes; list endpoints and their paging parameters.
 **Violation.** An OM entity serialized straight onto the wire; a
 mutable view; a request body that silently ignores unknown keys; an OM
 field added or renamed to suit a client; a list endpoint without a
-clamped limit; a list that can outgrow its clamp with no `after_id`;
-offset paging anywhere.
+clamped limit; a list that can outgrow its clamp with no cursor; a
+cursor that is not opaque to the client; offset paging anywhere.
 
 **Severity.** medium
 
@@ -385,7 +390,9 @@ travels whole and a client filters by kind after ordering, never
 before; that is safe because a frame and a replayed record carry the
 identity of the change (`seq`, `kind`, `target_id`, the actor) and no
 field of the entity, and the client reads the entity through the
-authorized read. The first frame and every pong carry the tenant's
+authorized read; the hint is metadata every member of the tenant may
+see, and a product where existence itself is restricted keeps one
+stream per visibility scope. The first frame and every pong carry the tenant's
 head `seq`, so a quiet socket cannot hide a dropped last frame. `seq`
 orders events, not core writes.
 

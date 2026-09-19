@@ -67,7 +67,8 @@ the order the guideline presents them, never by number.
   exercises; an append-only record is `Identifiable` alone. Ids come
   from `new_id()`, timestamps from `utcnow()`. Entity fields are
   tuples and frozen models, never `list` or `dict`; a mapping field is
-  the base module's `FrozenMapping`. A copy that carries caller input
+  the base module's `FrozenMapping`, its empty default
+  `Field(default_factory=dict, validate_default=True)`. A copy that carries caller input
   is rebuilt from a dict, `model_validate({**current.model_dump(),
   **changes})`, because `model_copy` does not validate and
   `model_validate` hands an instance back untouched.
@@ -91,7 +92,9 @@ the order the guideline presents them, never by number.
   capability of the infra root over its local impl. A test file with
   one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update sets
-  `updated_at` and `updated_by` in the copy; a create copies nothing),
+  `updated_at` and `updated_by` in the copy; a create sets what the
+  manager decides, the actor from the context and the initial state,
+  and leaves the id and the timestamps as constructed),
   write, and returns the copy it wrote. Authorize is
   `ctx.require(<permission>)` as the first line of every mutating
   manager operation, before any read, the ones a worker calls

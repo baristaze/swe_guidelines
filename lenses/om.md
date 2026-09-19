@@ -197,7 +197,9 @@ method. No layer mutates an entity after construction. Fields are
 tuples and frozen models, never `list` or `dict`; a mapping field is
 `FrozenMapping`, a `Mapping` whose validator wraps the dict in a
 `MappingProxyType`, because a frozen model with a bare `Mapping` still
-holds a mutable dict. A copy that carries caller input is rebuilt from
+holds a mutable dict; its empty default is validated too, because
+pydantic does not validate a default. A copy that carries caller
+input is rebuilt from
 a dict (`model_validate({**current.model_dump(), **changes})`), because
 `model_copy` does not validate and `model_validate` hands an instance
 back untouched.
@@ -213,6 +215,8 @@ from a request; a `model_validate` called on an instance.
 the chain that unfreezes itself; an update that reaches into a nested
 value object to change it in place; a `list` field appended to through
 the snapshot; a bare `Mapping` field holding the dict pydantic built;
+a `FrozenMapping` whose default is a plain dict for want of
+`validate_default`;
 caller input copied into an entity with no validation, or passed to
 `model_validate` as the instance it already is.
 

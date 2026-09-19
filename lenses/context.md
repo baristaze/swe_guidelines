@@ -182,7 +182,10 @@ permissions.
 
 **Principle.** Tenancy is a data boundary. Every storage query filters
 by the tenant, and every write refuses to overwrite a row that belongs
-to another tenant.
+to another tenant. That statement-level fence, with the test that
+enumerates every exception to it, is the fence; row-level security is
+not a second one here, and a project that wants it records the
+decision.
 
 **Source.** Separation of Layers; The Storage Layer, Storage Principles;
 A Storage Impl.

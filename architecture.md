@@ -278,9 +278,11 @@ rewrite an entity after it was constructed.
 > with a validator that wraps the dict pydantic builds in a
 > `MappingProxyType` and a serializer that dumps a plain dict, because
 > a frozen model with a bare `Mapping` field still holds a mutable
-> dict. `model_copy` does not validate, and `model_validate` hands an
-> instance back untouched, so a copy that carries caller input is
-> rebuilt from a dict instead:
+> dict. Pydantic does not validate a default, so the empty case is
+> `Field(default_factory=dict, validate_default=True)`, or the default
+> is the one dict that escapes the freeze. `model_copy` does not
+> validate, and `model_validate` hands an instance back untouched, so
+> a copy that carries caller input is rebuilt from a dict instead:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
 
 The same rule applies to every object built on the OM base chain,
@@ -405,8 +407,12 @@ operations its scope supports. An operation is an async method whose
 signature is a contract.
 
 ``` python
-class WarehouseManagerInterface:
+from abc import ABC, abstractmethod
+
+class WarehouseManagerInterface(ABC):
+    @abstractmethod
     async def get_warehouses(self, ctx: OpContext) -> list[Warehouse]: ...
+    @abstractmethod
     async def get_warehouse(self, ctx: OpContext, warehouse_id: UUID) -> Warehouse: ...
 ```
 
@@ -463,8 +469,10 @@ Because an impl depends on an interface, impls compose. Caching is a
 common case:
 
 ``` python
-class KeyValueInterface:
+class KeyValueInterface(ABC):
+    @abstractmethod
     async def get(self, key: str) -> bytes | None: ...
+    @abstractmethod
     async def set(self, key: str, value: bytes) -> None: ...
 
 class LocalCacheImpl(KeyValueInterface): ...  # in-process
@@ -658,10 +666,15 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
 
 The caller that originates an entity constructs it whole, with
 `id=new_id()`, `created_at`, `updated_at`, `created_by`, and
-`updated_by` set, and hands it to `create_*`. A create that finds its
-own id already written returns the row as stored: ids are minted above
-storage, so the only way to present one twice is a retry, and a retry
-must not create twice. The manager sets
+`updated_by` set, and hands it to `create_*`. The manager's copy on
+create sets what is the manager's to decide, the actor from the
+context, the initial status, a position, and leaves the id and the
+timestamps as constructed. A create whose id is already written
+returns the row as stored: ids are minted above storage, so the only
+way to present one twice is a retry, and a retry must not create
+twice. The insert reports the existing id and the manager reads the
+row back; there is no check before the write and no window between
+the two (see [A Storage Impl](#a-storage-impl)). The manager sets
 `updated_at` and `updated_by` on every update and `deleted_at` /
 `deleted_by` on a soft delete, always by copy.
 Mutating methods return the entity that was written, so the caller
@@ -775,7 +788,13 @@ surprises.
     explicitly in its storage class.
 -   Tenancy is enforced on every read and checked on every write. A
     query filters by `org_id`; an upsert refuses to overwrite a row that
-    belongs to another tenant.
+    belongs to another tenant. Row-level security is not a second
+    fence here: on a pooled connection it needs the tenant set per
+    statement, which is the same discipline in a second place, and a
+    policy that misfires returns nothing instead of failing loudly.
+    The fence is `org_id` in every statement and the test that
+    enumerates every exception to it; a project that wants the
+    database to hold a second fence records the decision.
 
 ### Namespace Shape
 
@@ -794,9 +813,17 @@ Every operation takes `org_id` as a parameter, so tenancy is enforced at
 every query:
 
 ``` python
-class WarehouseStorageInterface:
+class WarehouseStorageInterface(ABC):
+    @abstractmethod
     async def read_warehouses(self, org_id: UUID) -> list[Warehouse]: ...
+    @abstractmethod
     async def read_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...
+    @abstractmethod
+    @abstractmethod
+    async def create_warehouse(
+        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+    ) -> bool: ...  # False when the id is already written; nothing changes then
+    @abstractmethod
     async def write_warehouse(
         self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
     ) -> None: ...
@@ -804,7 +831,9 @@ class WarehouseStorageInterface:
 
 A write on a `core`-role entity takes the outbox row that announces
 it, so the two land in one statement and no manager remembers a second
-one (see [Database Roles](#database-roles)).
+one (see [Database Roles](#database-roles)). A create and an update
+are two methods, because they are two primitives: an insert that
+reports an existing id without touching it, and an upsert.
 
 Some scopes are strictly user-bound. An order board, where the
 column layout and pinned filters are personal to each user, is not just
@@ -812,7 +841,8 @@ tenant-scoped; it is user-scoped within a tenant. In those cases the
 interface adds `user_id` on top of `org_id` explicitly:
 
 ``` python
-class OrderBoardStorageInterface:
+class OrderBoardStorageInterface(ABC):
+    @abstractmethod
     async def read_board(
         self,
         org_id: UUID,
@@ -845,12 +875,16 @@ Storage implementations are assembled behind a single root, `Storage`,
 which implements `StorageInterface` and lives at `platform.om.storage`:
 
 ``` python
-class StorageInterface:
+class StorageInterface(ABC):
+    @abstractmethod
     def get_warehouse_storage(self) -> WarehouseStorageInterface: ...
+    @abstractmethod
     def get_order_storage(self) -> OrderStorageInterface: ...
     # ... one getter per entity storage
 
+    @abstractmethod
     async def healthcheck(self) -> bool: ...
+    @abstractmethod
     async def close(self) -> None: ...
 ```
 
@@ -1016,7 +1050,12 @@ class WarehouseStoragePostgresImpl(PgStorageBase, WarehouseStorageInterface):
 
 `_upsert` reads the existing row by id, raises if the row belongs to
 another tenant, applies the entity onto the row or inserts a new one,
-inserts the outbox row beside it, and commits the two together. Every
+inserts the outbox row beside it, and commits the two together. Its
+sibling `_insert` is the create primitive: an insert that does nothing
+on an existing id and says so, with the outbox row landing only when
+the insert won, so a retried create neither overwrites the row nor
+announces it twice, and a key collision surfaces as a report and never
+as a driver error. Every
 query filters by `org_id` and every write checks it, so a bug in a
 caller cannot move a row across tenants. Each operation opens its own
 short session and commits it; no session outlives the call.
@@ -1180,15 +1219,22 @@ Infrastructure lives under `platform.infra` and is fronted by a single
 root so consumers can ask for what they need:
 
 ``` python
-class InfraInterface:
+class InfraInterface(ABC):
+    @abstractmethod
     def get_cache(self, scope: CacheScope) -> CacheInterface: ...
+    @abstractmethod
     def get_buckets(self) -> BucketsInterface: ...
+    @abstractmethod
     def get_topics(self) -> TopicsInterface: ...
+    @abstractmethod
     def get_queues(self) -> QueueInterface: ...
+    @abstractmethod
     def get_secrets(self) -> SecretsInterface: ...
     # ... one getter per capability
 
+    @abstractmethod
     async def start(self) -> None: ...
+    @abstractmethod
     async def close(self) -> None: ...
 ```
 
@@ -1210,10 +1256,14 @@ class CacheScope(str, Enum):
     CATALOG_INDEX = "catalog_index"
     RATE_LIMIT = "rate_limit"
 
-class CacheInterface:
+class CacheInterface(ABC):
+    @abstractmethod
     async def get(self, org_id: UUID, key: str) -> bytes | None: ...
+    @abstractmethod
     async def put(self, org_id: UUID, key: str, value: bytes, ttl: timedelta) -> None: ...
+    @abstractmethod
     async def invalidate(self, org_id: UUID, key: str) -> None: ...
+    @abstractmethod
     async def increment(self, org_id: UUID, key: str, ttl: timedelta) -> tuple[int, timedelta]: ...
 ```
 
@@ -1241,7 +1291,11 @@ backend cannot enumerate a tenant's keys cheaply, so a read cache is a
 **projection** with a generation: every entry's key carries the tenant's
 generation number, a write bumps the number with one `increment`, and
 every older entry is orphaned at once and expires by TTL. The TTL is a
-backstop, never the primary invalidation.
+backstop, never the primary invalidation, and it is the bound on
+staleness: a bump that fails after the write, or a generation key
+evicted before the entries that carry it, leaves the old entries
+readable until they expire, and that bound is what a manager accepts
+when it caches a read.
 
 A cache fails open. A miss is always an acceptable answer, and a
 backend that cannot be reached is a miss, not an error. Nothing that
@@ -1262,13 +1316,20 @@ class Buckets(str, Enum):
     USER_FILE_UPLOADS = "user-file-uploads"
     PRODUCT_IMAGES = "product-images"
 
-class BucketsInterface:
+class BucketsInterface(ABC):
+    @abstractmethod
     async def put(self, org_id: UUID, bucket: Buckets, key: str, data: bytes, content_type: str) -> None: ...
+    @abstractmethod
     async def get(self, org_id: UUID, bucket: Buckets, key: str) -> bytes: ...
+    @abstractmethod
     async def exists(self, org_id: UUID, bucket: Buckets, key: str) -> bool: ...
+    @abstractmethod
     async def list(self, org_id: UUID, bucket: Buckets, prefix: str) -> list[str]: ...
+    @abstractmethod
     async def delete(self, org_id: UUID, bucket: Buckets, key: str) -> None: ...
+    @abstractmethod
     async def presign_get(self, org_id: UUID, bucket: Buckets, key: str, ttl: timedelta) -> str | None: ...
+    @abstractmethod
     async def presign_put(self, org_id: UUID, bucket: Buckets, key: str, content_type: str, ttl: timedelta) -> str | None: ...
 ```
 
@@ -1318,8 +1379,10 @@ TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {
     Topics.ENTITY_CHANGED: EntityChangedPayload,
 }
 
-class TopicsInterface:
+class TopicsInterface(ABC):
+    @abstractmethod
     async def publish(self, topic: Topics, payload: TopicPayload) -> None: ...
+    @abstractmethod
     def subscribe(
         self,
         topic: Topics,
@@ -1369,11 +1432,16 @@ class Queues(str, Enum):
     BULK_UPLOADS = "bulk_uploads"
     # ...
 
-class QueueInterface:
+class QueueInterface(ABC):
+    @abstractmethod
     async def send(self, queue: Queues, body: bytes, *, dedup_id: str | None = None) -> str: ...
+    @abstractmethod
     async def receive(self, queue: Queues, max_messages: int, wait: timedelta, visibility: timedelta) -> list[QueueMessage]: ...
+    @abstractmethod
     async def delete(self, queue: Queues, receipt: str) -> None: ...
+    @abstractmethod
     async def change_visibility(self, queue: Queues, receipt: str, visibility: timedelta) -> None: ...
+    @abstractmethod
     async def depth(self, queue: Queues) -> QueueDepth: ...  # visible, in flight, dead-lettered
 ```
 
@@ -1390,10 +1458,14 @@ Secrets are a capability, not a domain. A secret store holds values;
 the object model holds only **references** to them:
 
 ``` python
-class SecretsInterface:
+class SecretsInterface(ABC):
+    @abstractmethod
     async def get(self, name: str) -> str: ...  # raises SecretNotFound
+    @abstractmethod
     async def has(self, name: str) -> bool: ...
+    @abstractmethod
     async def put(self, name: str, value: str) -> None: ...
+    @abstractmethod
     async def delete(self, name: str) -> None: ...
 ```
 
@@ -1541,12 +1613,16 @@ and storages. Each service declares its network operations through a
 plays the role of the network-layer root:
 
 ``` python
-class WarehouseServiceInterface:
+class WarehouseServiceInterface(ABC):
+    @abstractmethod
     async def get_warehouses(self, ctx: OpContext) -> list[WarehouseView]: ...
+    @abstractmethod
     async def get_warehouse(self, ctx: OpContext, warehouse_id: UUID) -> WarehouseView: ...
 
-class ServicesInterface:
+class ServicesInterface(ABC):
+    @abstractmethod
     def get_warehouse_service(self) -> WarehouseServiceInterface: ...
+    @abstractmethod
     def get_order_service(self) -> OrderServiceInterface: ...
     # ... one getter per service
 ```
@@ -1604,13 +1680,16 @@ The gateway owns a short list of edge concerns, each done once:
     request and the id the create will use, minted before the marker;
     `finish` stores the outcome on it, and a retry replays the outcome,
     using the same storage primitive the queue handlers use. A key
-    presented with another digest is refused. A pending marker older
-    than the request deadline was abandoned by a crash between the
+    presented with another digest is refused. Only an outcome the
+    client cannot change by retrying is stored: a refusal (a `4xx`) is
+    replayed, and a failure (a `5xx`) releases the marker, so the
+    retry runs again on the same id instead of replaying the failure
+    for good. A pending marker older than the pending lease, an option
+    of the idempotency manager, was abandoned by a crash between the
     marker and its outcome; the next retry takes it over in one
     conditional write and runs the request again with the marker's id,
-    and because a create that finds its own id already written returns
-    the row as stored, the rerun cannot duplicate what the crash left
-    behind.
+    and because a create whose id is already written returns the row
+    as stored, the rerun cannot duplicate what the crash left behind.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
     counters and histograms. All three sit outside the versioned API.
@@ -1708,10 +1787,12 @@ client that sends a misspelled key learns about it at once.
 Naming is fixed: `...View` for anything returned, `...Request` for
 anything accepted, `Issued...View` for the one response that carries a
 freshly minted secret in the clear. Lists return a bare list with a
-server-clamped `limit`; a list that can outgrow the clamp pages by
-`after_id` over the id order, which a v7 id makes the creation order;
-an append-only stream pages by a monotonic sequence number
-(`after_seq`); nothing pages by an offset. Inside `/v1` a view
+server-clamped `limit`; a list that can outgrow the clamp returns a
+page envelope (`items` and `next_cursor`) and pages by an opaque
+cursor over the list's own order, which is the id when that order is
+the creation order, since a v7 id sorts by time; an append-only
+stream pages by a monotonic sequence number (`after_seq`); nothing
+pages by an offset. Inside `/v1` a view
 only gains fields and a request only gains optional ones; a removal or
 a rename is a new prefix. Topic payloads and realtime envelopes follow
 the same rule and are read tolerantly: a consumer ignores a field it
@@ -1887,8 +1968,12 @@ stream of hints: a frame and a replayed record carry the identity of
 the change (`seq`, `kind`, `target_id`, the actor) and no field of the
 entity; a client reads the entity through the authorized read, which
 applies the visibility rules of [OpContext](#opcontext), so a user
-learns that some id changed and nothing else. An entity's snapshot
-lives in the record for audit and never on the wire. Replay from
+learns that some id changed and nothing else. That is a decision, and
+it is named: the hint is metadata every member of the tenant may see,
+that a record exists, who touched it, and when. A product where the
+existence of a record is itself restricted keeps one stream per
+visibility scope, with a cursor per stream. An entity's snapshot lives
+in the record for audit and never on the wire. Replay from
 storage is the durability mechanism; the socket is a hint that
 something changed. The record is an `Event` in the `activity` role:
 `Identifiable` plus `org_id`, `seq`, `kind`, `target_id`, and a typed
@@ -2047,7 +2132,7 @@ class WorkItem(Identifiable, Trackable):
     kind: WorkKind             # what to do
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique
-    payload: FrozenMapping = Field(default_factory=dict)
+    payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
     available_at: datetime     # not before
@@ -2090,7 +2175,8 @@ notification onto a topic. Handlers are idempotent by the rule from
 so replays and at-least-once delivery stay safe.
 
 ``` python
-class WorkHandlerInterface:
+class WorkHandlerInterface(ABC):
+    @abstractmethod
     async def handle(self, ctx: OpContext, item: WorkItem) -> None: ...
 
 class ShipmentNotifierImpl(WorkHandlerInterface):

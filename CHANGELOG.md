@@ -6,6 +6,71 @@ which number.
 
 ## Unreleased
 
+## 0.6.0 (2026-09-19)
+
+Two outside reviews of 0.5.1. The cheap drift is running out; this
+release takes the one design flaw both repositories shared, the
+contracts the reviews showed to be looser than the prose, and the
+decisions the prose had made without naming them.
+
+### Added
+
+- `architecture.md`, "The Gateway": only an outcome a retry cannot
+  change is stored on the idempotency marker; a refusal is replayed
+  and a failure releases the marker, so the retry runs again on the
+  same id instead of replaying the failure for good, which would have
+  sent the client to a new key and a second row. Lenses `NET-06` and
+  `NET-09` and `arch-scaffold-service` say the same. Minor.
+- `architecture.md`, "Namespace Shape" and "A Storage Impl": a create
+  and an update are two primitives. The insert does nothing on an
+  existing id and reports it, the outbox row landing only when the
+  insert won, so a retried create neither overwrites the row nor
+  announces it twice and no check precedes the write. Lens `STO-16`
+  is "Two write primitives"; `CON-17`, `arch-scaffold-entity`, and
+  `arch-scaffold-new` follow. Minor.
+- `architecture.md`, "Storage Principles": row-level security is not
+  a second fence here, and the sentence says why; a project that
+  wants one records the decision. Lens `CTX-09` says the same.
+- `architecture.md`, "Realtime at the Edge": the hint is metadata
+  every member of the tenant may see, named as a decision; a product
+  where existence itself is restricted keeps one stream per
+  visibility scope. Lens `NET-17` says the same.
+- `architecture.md`, "Cache": the TTL is the bound on staleness, and
+  the two ways an invalidation misses are named.
+
+### Changed
+
+- `architecture.md`, "Public Types": a list that can outgrow its clamp
+  returns a page envelope and pages by an opaque cursor over its own
+  order, of which `after_id` is the case where that order is the id
+  order. The reference implementation had the better shape. Lens
+  `NET-13` follows. Minor.
+- `architecture.md`, "Shape of an Operation": the manager's copy on
+  create sets what is the manager's to decide (the actor from the
+  context, the initial status, a position), which is what the
+  reference implementation does; lens `CON-17` and the scaffold
+  conventions no longer say "a create copies nothing".
+- `architecture.md`, "Immutability" and "The Work Queue": pydantic
+  does not validate a default, so a `FrozenMapping` field's empty
+  default is `Field(default_factory=dict, validate_default=True)`;
+  the `WorkItem` snippet had shipped a plain dict on the default
+  path. Lens `OM-10` and the scaffold conventions say the same.
+- `architecture.md`: every interface snippet subclasses `ABC` and
+  marks its methods `@abstractmethod`, as `CON-02` requires; the
+  snippets had shown plain classes.
+- `architecture.md`, "The Gateway": the take-over keys on the pending
+  lease, an option of the idempotency manager, where it said "the
+  request deadline", which the document does not define.
+- Lens `ASY-17`: the violation text no longer demands the record
+  fence the 0.5.0 principle gave up; it names a completion, release,
+  or renewal that does not check the claim in its own statement, and
+  a record write that treats the lease alone as exclusive. Lens
+  `NET-09`: the response is stored per tenant and principal, as
+  `NET-06` and the text say.
+- `arch-scaffold-entity`: the router builds a created entity on the
+  id the gateway minted before the idempotency marker, not on a fresh
+  `new_id()`, or a retry defeats the crash recovery of 0.5.1.
+
 ## 0.5.1 (2026-09-19)
 
 Two outside reviews of 0.5.0. This release takes the findings that

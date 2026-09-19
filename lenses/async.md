@@ -373,9 +373,11 @@ statement and the record writes compare against; the heartbeat key
 and the failure path.
 
 **Violation.** A worker that claims without bound; an item with no
-renewal so long work loses its lease; a completion or record write
-that is not conditional on the claim, so a worker whose lease passed
-lands a write; a stale write that spends an attempt; a heartbeat that
+renewal so long work loses its lease; a completion, release, or
+renewal that does not check the claim in its own statement, so a
+worker whose lease passed completes; a record write that treats the
+lease alone as exclusive, with no `version` and no idempotent handler
+behind it; a stale write that spends an attempt; a heartbeat that
 is only written and never read back; a heartbeat failure that either
 crashes the worker or lets it keep claiming.
 

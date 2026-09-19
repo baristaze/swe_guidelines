@@ -349,11 +349,13 @@ applying the entity onto the existing row.
 
 **Severity.** low
 
-## STO-16 One upsert primitive
+## STO-16 Two write primitives: an insert that reports, an upsert
 
-**Principle.** A shared base provides the one write primitive every
-namespace uses: an upsert that reads the existing row by id, applies
-the entity onto it or inserts a new one, inserts the outbox row it was
+**Principle.** A shared base provides the two write primitives every
+namespace uses: an insert for creates, which does nothing on an
+existing id and reports it, the outbox row landing only when the
+insert won; and an upsert for updates, which reads the existing row
+by id, applies the entity onto it, inserts the outbox row it was
 handed beside it, and commits the two together. Last writer wins
 by default; an entity whose concurrent edits matter carries a
 `version`, and its write is a compare-and-set that raises `Conflict`
@@ -362,13 +364,17 @@ when the row moved (optimistic concurrency).
 **Source.** The Storage Layer, A Storage Impl; The Business Layer,
 Shape of an Operation.
 
-**Look for.** Write methods that are one call to the shared upsert,
-and whether a `core`-role write takes the outbox row as a parameter.
+**Look for.** Create methods that are one call to the shared insert
+and update methods that are one call to the shared upsert, and
+whether a `core`-role write takes the outbox row as a parameter.
 Hand-rolled insert-or-update logic repeated across impls. Entities
 that carry `version`, and whether their write compares it.
 
 **Violation.** A namespace impl performs its own select-then-insert-
-or-update sequence instead of calling the base primitive. An entity
+or-update sequence instead of calling the base primitive; a create
+that goes through the upsert, so a retry overwrites the row and
+announces it twice, or a check-then-insert with a window between the
+two; a key collision that escapes as a driver error. An entity
 with a `version` whose write overwrites without comparing it, or a
 `version` added to every table by default.
 

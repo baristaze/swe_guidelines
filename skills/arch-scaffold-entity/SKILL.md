@@ -61,11 +61,11 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | File                                                   | Change                                                                         |
 |--------------------------------------------------------|--------------------------------------------------------------------------------|
 | `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and `write_<entity>(org_id, <entity>, outbox_row: OutboxRow)` for a `core`-role entity or `append_<entity>(org_id, <entity>)` for an `activity`-role one |
-| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_row)`, which inserts the outbox row in the same commit; the append over the base's `_insert`, which raises `Conflict` on an existing id |
+| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_row)`, which inserts the outbox row in the same commit; the create over the base's `_insert`, which does nothing on an existing id and reports it, the outbox row landing only when the insert won; the append over the same `_insert` |
 | `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same three methods over the in-memory table; the memory base lands the outbox row in the outbox memory storage the root wired |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; a read by id on create, returning the row as stored when it exists), copy (`updated_at` and `updated_by` on update, `deleted_at` and `deleted_by` on delete, nothing on create), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (`updated_at` and `updated_by` on update, `deleted_at` and `deleted_by` on delete, nothing on create), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
 | `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post (declaring the gateway's `Idempotency-Key` dependency, like every creating route), and, only when the manager has them, put and delete routes that translate and call the manager |
@@ -80,7 +80,9 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 2. Lists filter `deleted_at IS NULL` only when the entity is
    `SoftDeletable`, in both impls.
 3. The router builds the entity for `create_<entity>` from the request
-   with `new_id()` and, when the entity is `Trackable`, `utcnow()` and
+   with the id the gateway minted before the idempotency marker
+   (`new_id()` only where no gateway is involved) and, when the entity
+   is `Trackable`, `utcnow()` and
    `ctx.user_id` for both timestamps and both principals; for
    `update_<entity>` it reads the current entity through
    `get_<entity>` and copies the request's fields onto it (the request
