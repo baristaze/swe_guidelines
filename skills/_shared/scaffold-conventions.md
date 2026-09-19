@@ -104,6 +104,10 @@ the order the guideline presents them, never by number.
   status and code come from the shape.
 - Wire types are hand-written; routers translate and never decide;
   list routes take a server-clamped `limit`.
+- Every creating route (every `POST` that answers 201) declares the
+  gateway's `Idempotency-Key` dependency, in every namespace, so a
+  retried create returns the stored response, as The Network Layer
+  (The Gateway) states for a creating `POST`.
 - A workspace member that depends on another declares it under
   `[tool.uv.sources] <root>-om = { workspace = true }` and is listed in
   the root's `[tool.uv.workspace] members`.
