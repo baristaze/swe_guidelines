@@ -2763,6 +2763,26 @@ request from one container object; a worker loop holds them directly. The contai
 container over the in-memory storage root and the local infra root and
 runs the whole application in-process, with every backend a twin.
 
+The roots are built whole, once per process. The [storage
+root](#storage-root) constructs every namespace impl, the [infra
+root](#infrainterface-root) every capability impl, and `build_managers`
+every manager, in dependency order, whether or not the process ever
+calls them. This costs nothing worth saving: a constructor holds
+references and opens nothing (a connection opens at `start()`, or from
+a pool on first use, never in a constructor), so building every root
+takes microseconds, and the one real cost of a root, its imports, is
+paid once per process at module load before any constructor runs.
+Nothing is built per request: a router resolves the one object the
+container already holds.
+
+A root that builds a member on first use is refused. It saves nothing
+measurable and moves a wiring error from boot, where the process exits
+and readiness never reports ready, to the first request that needs the
+missing piece, where readiness already reports ready. The [reference
+implementation](#next-an-end-to-end-reference-implementation) measures
+this: a boot benchmark, and a test that the managers build once for
+any number of requests.
+
 ### Records of Decisions
 
 A decision that constrains future work is recorded as an architecture

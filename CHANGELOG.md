@@ -26,6 +26,15 @@ which number.
   changing code; linked from the introduction and from "Web Services
   as Scalability Units"; `README.md` summary. No lens: a rationale.
   Patch.
+- `architecture.md`: "The App Container" says why the roots are built
+  whole, once per process, and never per request or on first use: a
+  constructor holds references and opens nothing, so every root builds
+  in microseconds, the imports are paid once at module load, and a
+  wiring error surfaces at boot, where the process exits and readiness
+  never reports ready, rather than at the first request that needs the
+  missing piece; linked to "Storage Root", "InfraInterface Root", and
+  the reference implementation. No lens: a rationale that `CON-09` and
+  `CON-16` already check. Patch.
 
 ## 0.4.0 (2026-09-18)
 
