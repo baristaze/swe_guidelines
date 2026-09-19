@@ -1364,10 +1364,17 @@ When reporting is needed it reads a mirror fed by change data capture
 or a periodic copy, never a role the application writes to.
 
 Every role is backed up on its own schedule, and a restore is
-rehearsed, not assumed. A soft-deleted row is purged by the
-maintenance sweep after its entity's retention period; purge is the
-one hard delete. Personal data lives in named fields, so erasing a
-person is a sweep over a list, not a hunt.
+rehearsed, not assumed. A role restored to an earlier point than its
+siblings is reconciled from the outbox, not by hand: the rows relayed
+since that point are relayed again, harmless because the relay is
+idempotent on the row's key, and for an event whose destination role
+was restored past it the outbox row is the one trace it existed. That
+is why a done outbox row is kept for a retention period and purged by
+the sweep, never deleted on done, and why that period outlives the
+backup schedule of the roles the outbox feeds. A soft-deleted row is
+purged by the maintenance sweep after its entity's retention period;
+purge is the one hard delete. Personal data lives in named fields, so
+erasing a person is a sweep over a list, not a hunt.
 
 > **Principle:** Every table has one role; the role is its schema, its
 > pool, and its migration chain. Nothing crosses a role.
@@ -3438,13 +3445,16 @@ team makes per system, once the shape holds and the numbers are known,
 and a rule that fit every system would say nothing: a threat model and
 the rotation of secrets and keys; service objectives, alerting, and
 the on-call posture behind them; request deadlines, retry budgets, and
-admission under overload; disaster recovery, multi-region, and the
-reconciliation of database roles restored to different points; tenant
+admission under overload; disaster recovery and multi-region; tenant
 export and offboarding; load testing; the deprecation of an API
 version; and supply-chain rules such as dependency scanning. The shape
 is what makes each of them tractable when its time comes: one settings
 object to carry a deadline, one gateway to admit or refuse, one role to
-restore, one `org_id` to export by. When one of them earns a rule that
+restore, one `org_id` to export by. Where the shape already holds a
+piece of one, the text says so where the mechanism lives: the marker
+at the edge owns the retry of a create, the lease bounds a claim, and
+the outbox replays a role restored behind its siblings; the numbers a
+team puts on each are the team's. When one of them earns a rule that
 holds across systems, it lands beside the rules it touches.
 
 ## Next: An End-to-End Reference Implementation
