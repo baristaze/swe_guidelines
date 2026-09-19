@@ -2104,9 +2104,11 @@ class OrderServiceImpl(OrderServiceInterface):
         self._inventory_service = inventory_service
         self._order_manager = order_manager
 
-    async def place_order(self, ctx: OpContext, req: PlaceOrderRequest) -> OrderView:
-        reservation = await self._inventory_service.reserve(ctx, req.lines)
-        order = await self._order_manager.place_order(ctx, req.customer_id, reservation)
+    async def place_order(
+        self, ctx: OpContext, order_id: UUID, req: PlaceOrderRequest
+    ) -> OrderView:
+        reservation = await self._inventory_service.reserve(ctx, order_id, req.lines)
+        order = await self._order_manager.place_order(ctx, order_id, req.customer_id, reservation)
         return OrderView.model_validate(order)
 ```
 
@@ -2114,13 +2116,27 @@ The service impl holds both a service-level dependency
 (`InventoryServiceInterface`) and a manager-level dependency
 (`OrderManagerInterface`), both injected through the constructor. The
 OM order manager receives `reservation` as a plain argument; it has no
-knowledge that a service was called to produce it. A reservation is a
-record with an expiry, so a failed second step leaks nothing past it,
-and the order carries the reservation id so a retry finds it instead
-of reserving twice. A chain that must survive a crash between steps is
-a durable record advanced by a worker (see [Long-Running
-Orchestrations](#long-running-orchestrations)), the irreversible step
-last and a compensating step for each one before it (a saga).
+knowledge that a service was called to produce it. `order_id` is the
+id the gateway minted before the idempotency marker (see [The
+Gateway](#the-gateway)), and it travels into the reservation as its
+idempotency key: inventory dedupes on it, so the retry that follows a
+lost response, or a crash before the order row exists, finds the
+reservation it already made instead of making a second one, with no
+order row to find it by. A reservation is a record with an expiry, so
+a failed second step leaks nothing past it, and the order carries the
+reservation id. The retry is owned at the edge: the client retries
+under the same `Idempotency-Key`, the marker reruns the request with
+the same `order_id`, and a retry wrapper on the remote client (see
+[Composition by decoration](#composition-by-decoration)) repeats one
+call under the same key. That is what makes the two impls of
+`InventoryServiceInterface` interchangeable in behavior and not only
+in signature: the remote one adds an unknown outcome to every call,
+and the key is what makes a rerun safe, so the signature carries it
+before the split, not after. A chain that must survive a crash
+between steps is a durable record advanced by a worker (see
+[Long-Running Orchestrations](#long-running-orchestrations)), the
+irreversible step last and a compensating step for each one before it
+(a saga).
 
 > **Principle:** Calls flow downward: services to services and managers;
 > managers to managers and storage; storage to storage. Nothing reaches
