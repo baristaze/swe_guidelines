@@ -34,7 +34,7 @@ related entity it never asked for by id, loaded for it by the schema.
 
 **Severity.** medium
 
-## STO-02 No transactions; one operation commits itself
+## STO-02 No transaction outlives a storage call; one operation commits itself
 
 **Principle.** A storage operation is one statement or one short,
 self-contained unit that the impl commits itself; nothing spans two
@@ -352,7 +352,8 @@ applying the entity onto the existing row.
 
 **Principle.** A shared base provides the one write primitive every
 namespace uses: an upsert that reads the existing row by id, applies
-the entity onto it or inserts a new one, and commits. Last writer wins
+the entity onto it or inserts a new one, inserts the outbox row it was
+handed beside it, and commits the two together. Last writer wins
 by default; an entity whose concurrent edits matter carries a
 `version`, and its write is a compare-and-set that raises `Conflict`
 when the row moved (optimistic concurrency).
@@ -360,7 +361,8 @@ when the row moved (optimistic concurrency).
 **Source.** The Storage Layer, A Storage Impl; The Business Layer,
 Shape of an Operation.
 
-**Look for.** Write methods that are one call to the shared upsert.
+**Look for.** Write methods that are one call to the shared upsert,
+and whether a `core`-role write takes the outbox row as a parameter.
 Hand-rolled insert-or-update logic repeated across impls. Entities
 that carry `version`, and whether their write compares it.
 

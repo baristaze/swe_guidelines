@@ -11,7 +11,7 @@ permissions:
 jobs:
   check:
     name: markdown, lenses, leaks, links, toc, version, skills, tests, plugin
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

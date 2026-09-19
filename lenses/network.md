@@ -122,9 +122,11 @@ from storage after a reconnect.
 **Principle.** The gateway authenticates requests, builds the context,
 and routes; services never parse raw headers or tokens. A
 service-to-service call carries a short-lived internal credential
-minted by the caller that names the principal, the tenant, and the
-request id, and the callee's gateway rebuilds the context from it like
-any other credential kind; no service trusts a bare header. It accepts
+minted by the caller: a token naming the principal, the tenant, the
+request id, and an expiry minutes out, signed with a key from the
+secret store and verified by the callee against the same key; the
+callee's gateway rebuilds the context from it like any other
+credential kind, and no service trusts a bare header. It accepts
 cross-origin requests only from the browser apps' origins, read from
 settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
 it in the response header, and attaches it to the log context and the
@@ -237,18 +239,25 @@ own paths.
 **Principle.** The gateway verifies credentials and asks the tenancy
 manager for the principal behind them; organizations, identities,
 users, memberships, teams, credentials, sessions, and invitations are
-a regular namespace with types, a manager, and storage.
+a regular namespace with types, a manager, and storage. Nothing it
+stores can be presented as a credential: a password is a memory-hard
+hash under its own salt; an API key, a session token, and a socket
+ticket are stored as their SHA-256 digest, shown once in the
+`Issued...View` that minted them, and compared in constant time.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
 **Look for.** Where signup, invitation, role management, key rotation,
 and session refresh are implemented; whether the gateway holds its own
-user or token tables.
+user or token tables; the hashing in the tenancy rules and what the
+credential tables hold.
 
 **Violation.** Identity logic inside gateway middleware; credential
 tables owned by the gateway rather than the tenancy namespace; a
-manager that cannot be tested without the HTTP layer.
+manager that cannot be tested without the HTTP layer; a password
+hashed with a fast digest or no salt; a key, token, or ticket stored
+in the clear or compared with `==`.
 
 **Severity.** medium
 
@@ -283,8 +292,10 @@ component instead of once at boot.
 **Principle.** Wire types are hand-written on two bases, a frozen
 `View` built from attributes and a `RequestBody` that forbids unknown
 fields; names end in `View`, `Request`, or `Issued...View`; lists
-return a bare list with a clamped limit and streams page by
-`after_seq`; the OM never changes to match the wire. Within a version
+return a bare list with a clamped limit, a list that can outgrow the
+clamp pages by `after_id` over the id order, streams page by
+`after_seq`, and nothing pages by an offset; the OM never changes to
+match the wire. Within a version
 a change is additive (NET-23).
 
 **Source.** The Network Layer, Public Types.
@@ -296,7 +307,8 @@ response classes; list endpoints and their paging parameters.
 **Violation.** An OM entity serialized straight onto the wire; a
 mutable view; a request body that silently ignores unknown keys; an OM
 field added or renamed to suit a client; a list endpoint without a
-clamped limit; offset paging on an append-only stream.
+clamped limit; a list that can outgrow its clamp with no `after_id`;
+offset paging anywhere.
 
 **Severity.** medium
 
@@ -365,19 +377,26 @@ client's subscriptions.
 drained by a task; when it is full the oldest frame is dropped and
 logged; every push is also a record, and a reconnecting client asks
 for everything after the last contiguous sequence it saw, so a gap is
-a replay, never a skip.
+a replay, never a skip. Contiguity is per tenant, so the stream
+travels whole and a client filters by kind after ordering, never
+before; the first frame and every pong carry the tenant's head `seq`,
+so a quiet socket cannot hide a dropped last frame.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
 **Look for.** The send buffer capacity and overflow behavior; whether
 every pushed event has a durable record; the reconnect path and its
-`after_seq` parameter; which sequence the client keeps as its cursor.
+`after_seq` parameter; which sequence the client keeps as its cursor;
+whether the stream topic filters by kind before the client; what the
+hello and the pong carry.
 
 **Violation.** A push that exists only as a frame; a send buffer that
 grows without bound or blocks the producer; a client that cannot
 recover missed events after a reconnect; a client that tracks the last
 frame seen instead of the last contiguous one, so a dropped frame is
-skipped for good.
+skipped for good; a server-side filter by kind on the sequenced
+stream, so a legitimate gap reads as a loss; a pong with no head
+`seq`, so a dropped last frame waits for the next event.
 
 **Severity.** high
 

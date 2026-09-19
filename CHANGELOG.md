@@ -6,6 +6,71 @@ which number.
 
 ## Unreleased
 
+## 0.5.0 (2026-09-19)
+
+Two outside reviews of 0.4.4 read the guideline end to end and ran its
+gates. This release takes the findings that sharpen a rule or repair a
+claim the mechanism did not earn, each verified against the reference
+implementation.
+
+### Added
+
+- `architecture.md`, "Public Types": a list that can outgrow its clamp
+  pages by `after_id` over the id order, and nothing pages by an
+  offset. Lens `NET-13` says the same. Minor.
+- `architecture.md`, "Realtime at the Edge": the sequenced stream
+  travels whole and a client filters by kind after ordering, so
+  contiguity means what it says; the first frame and every pong carry
+  the tenant's head `seq`, so a dropped last frame is found on the
+  next keepalive and not on the next event. Lens `NET-17` looks for
+  both. Minor.
+- `architecture.md`, "Auth: the Gateway Verifies, the Tenancy Domain
+  Owns": a password is a memory-hard hash under its own salt; an API
+  key, a session token, and a socket ticket are stored as a SHA-256
+  digest, shown once, and compared in constant time. Lens `NET-11`
+  says the same. Minor.
+- `architecture.md`, "Intra-Service Communication": the internal
+  credential is a signed token with an expiry, its key read from the
+  secret store and verified by the callee. Lens `NET-06` says the
+  same. Minor.
+- `architecture.md`, "Scalability by Design": the assumptions the
+  rules rest on and the three triggers that end one (a hot tenant, a
+  starved lane, an exhausted pool), each with the change it asks for.
+  The `org_id`-first rule makes every query tenant-scoped; it does not
+  partition data. Minor.
+
+### Changed
+
+- `architecture.md`, "Shape of an Operation", "Namespace Shape", and
+  "A Storage Impl": the canonical write takes the outbox row and lands
+  the two in one statement, then relays, as "Database Roles", lens
+  `STO-17`, and the scaffold already prescribed; the snippets had
+  drifted behind the rule. Lens `STO-16` names the outbox row in the
+  upsert.
+- `architecture.md`, "Immutability": a bare `Mapping` field on a
+  frozen model still holds a mutable dict, so a mapping field is
+  `FrozenMapping`; `model_validate` hands an instance back untouched,
+  so a copy that carries caller input is rebuilt from a dict. Lens
+  `OM-10`, the scaffold conventions, and `arch-scaffold-new` say the
+  same.
+- `architecture.md`, "Shape of a Worker": the two fences guarantee one
+  completion per item and nothing about the record, which lives in
+  another role; the handler's idempotency, the record's `version`, and
+  reconciliation of external effects carry the rest. The
+  compare-and-set is named for what it refuses and when. Lens `ASY-17`
+  says the same.
+- `architecture.md`, "Storage Principles": the rule reads "no
+  transaction outlives a storage call", which is what it always meant;
+  lens `STO-02` carries the new title. A storage swap is complete when
+  the shared suite passes over the new impl, not when the interface
+  compiles.
+- `architecture.md`, "Web Services as Scalability Units": the
+  independence of a split-out service is of the process, not of the
+  data; the data tier splits by role, never by service.
+- `README.md`: the Python pin follows the latest-stable rule on
+  purpose. `.github/workflows/ci.yml`: the runner is pinned by release
+  like the actions are.
+
 ## 0.4.4 (2026-09-19)
 
 ### Changed

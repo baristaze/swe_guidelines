@@ -66,9 +66,11 @@ the order the guideline presents them, never by number.
   `SoftDeletable`), each an independent opt-in that a manager operation
   exercises; an append-only record is `Identifiable` alone. Ids come
   from `new_id()`, timestamps from `utcnow()`. Entity fields are
-  tuples, frozen models, and `Mapping`, never `list` or `dict`; a copy that
-  carries caller input goes through `model_validate` before it is
-  written, because `model_copy` does not validate.
+  tuples and frozen models, never `list` or `dict`; a mapping field is
+  the base module's `FrozenMapping`. A copy that carries caller input
+  is rebuilt from a dict, `model_validate({**current.model_dump(),
+  **changes})`, because `model_copy` does not validate and
+  `model_validate` hands an instance back untouched.
 - Every manager and service operation takes `ctx: OpContext` first;
   every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (principal-less

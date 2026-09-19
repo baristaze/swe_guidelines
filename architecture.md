@@ -270,10 +270,15 @@ rewrite an entity after it was constructed.
 > update vocabulary. A manager that updates an entity sets
 > `updated_at` and `updated_by` in the same copy, so the caller gets
 > back the copy that was written and nothing else has to remember the
-> timestamp. Fields are tuples, frozen models, and `Mapping`, never
-> `list` or `dict`, so the freeze is deep. `model_copy` does not
-> validate; a copy that carries caller input goes through
-> `model_validate` before it is written.
+> timestamp. Fields are tuples and frozen models, never `list` or
+> `dict`. A mapping field is `FrozenMapping`, a `Mapping` annotated
+> with a validator that wraps the dict pydantic builds in a
+> `MappingProxyType` and a serializer that dumps a plain dict, because
+> a frozen model with a bare `Mapping` field still holds a mutable
+> dict. `model_copy` does not validate, and `model_validate` hands an
+> instance back untouched, so a copy that carries caller input is
+> rebuilt from a dict instead:
+> `Warehouse.model_validate({**current.model_dump(), **changes})`.
 
 The same rule applies to every object built on the OM base chain,
 including the sub-objects of `OpContext` (see [OpContext](#opcontext)),
@@ -625,17 +630,25 @@ manager.
 
 Every write follows the same four steps: authorize, verify, copy,
 write. Reading it once is enough to read every manager in the system.
+The write lands the row and its outbox row in one storage call and
+relays the row at once (see [Database Roles](#database-roles)).
 
 ``` python
 class WarehouseManagerImpl(WarehouseManagerInterface):
-    def __init__(self, storage: WarehouseStorageInterface):
+    def __init__(self, storage: WarehouseStorageInterface, relay: OutboxRelayInterface):
         self._storage = storage
+        self._relay = relay
 
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
         await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
         updated = warehouse.model_copy(update={"updated_at": utcnow(), "updated_by": ctx.user_id})
-        await self._storage.write_warehouse(ctx.org_id, updated)
+        row = OutboxRow(
+            id=new_id(), org_id=ctx.org_id, kind="inventory.warehouse.updated",
+            target_id=updated.id, payload=updated.model_dump(mode="json"),
+        )
+        await self._storage.write_warehouse(ctx.org_id, updated, row)  # one atomic method
+        await self._relay.relay(ctx.org_id, row)
         return updated
 ```
 
@@ -718,10 +731,11 @@ surprises.
     manager assumes a cascade, a rejected orphan, or a join the schema
     happens to permit. Relationships the business layer needs are plain
     id columns it reads and writes itself.
--   No transactions. A transaction holds locks and a connection across
-    a round trip and pins every table it touches to one database, which
-    is exactly what stops a role from moving (see [Database
-    Roles](#database-roles)). A storage operation is one statement or
+-   No transaction outlives a storage call. A transaction that spans
+    calls holds locks and a connection across a round trip and pins
+    every table it touches to one database, which is exactly what
+    stops a role from moving (see [Database Roles](#database-roles)).
+    A storage operation is one statement or
     one short, self-contained unit that the impl commits itself;
     nothing spans two storage calls. The one justification for a named
     atomic method is an invariant two rows must hold together: a
@@ -744,7 +758,12 @@ surprises.
     new column is removed once the backfill is done.
 -   The storage layer must be swappable. Moving from a relational DB to
     a columnar DB on a different technology changes only `impl/`,
-    never the interfaces or the entities.
+    never the interfaces or the entities. The interface keeps the
+    signatures; the shared suite that runs every impl (see [Multiple
+    impls per interface](#multiple-impls-per-interface)) is what says
+    the new engine honors the same filters, orderings, and named
+    atomic methods, so a swap is complete when that suite passes, not
+    when it compiles.
 -   No user-defined functions in the DB. Every query is written
     explicitly in its storage class.
 -   Tenancy is enforced on every read and checked on every write. A
@@ -771,8 +790,14 @@ every query:
 class WarehouseStorageInterface:
     async def read_warehouses(self, org_id: UUID) -> list[Warehouse]: ...
     async def read_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...
-    async def write_warehouse(self, org_id: UUID, warehouse: Warehouse) -> None: ...
+    async def write_warehouse(
+        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+    ) -> None: ...
 ```
+
+A write on a `core`-role entity takes the outbox row that announces
+it, so the two land in one statement and no manager remembers a second
+one (see [Database Roles](#database-roles)).
 
 Some scopes are strictly user-bound. An order board, where the
 column layout and pinned filters are personal to each user, is not just
@@ -971,16 +996,18 @@ class WarehouseStoragePostgresImpl(PgStorageBase, WarehouseStorageInterface):
             result = await session.execute(stmt)
             return [to_model(row, Warehouse) for row in result.scalars()]
 
-    async def write_warehouse(self, org_id: UUID, warehouse: Warehouse) -> None:
-        await self._upsert(Warehouses, org_id, warehouse)
+    async def write_warehouse(
+        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+    ) -> None:
+        await self._upsert(Warehouses, org_id, warehouse, outbox_row)
 ```
 
 `_upsert` reads the existing row by id, raises if the row belongs to
 another tenant, applies the entity onto the row or inserts a new one,
-and commits. Every query filters by `org_id` and every write checks it,
-so a bug in a caller cannot move a row across tenants. Each operation
-opens its own short session and commits it; no session outlives the
-call.
+inserts the outbox row beside it, and commits the two together. Every
+query filters by `org_id` and every write checks it, so a bug in a
+caller cannot move a row across tenants. Each operation opens its own
+short session and commits it; no session outlives the call.
 
 > **Python tip:** when a row must be read and updated atomically by
 > exactly one worker (a queue claim), `SELECT ... FOR UPDATE SKIP
@@ -1403,7 +1430,11 @@ Web services are the network layer's scalability units. Each major OM
 namespace gets its own service: `catalog` has `catalog-api`, `orders`
 has `orders-api`, and so on. Splitting along namespace lines lets each
 service be scaled, rolled out, and deployed independently, and lets
-products mix which services they expose. The other rules that make
+products mix which services they expose. The independence is of the
+process, not of the data: every service runs the same OM against the
+same database roles, and the schema timeline stays with the OM (see
+[Layout Conventions](#layout-conventions)), so the data tier splits by
+role, never by service. The other rules that make
 scaling out a matter of adding processes are collected in [Scalability
 by Design](#scalability-by-design).
 
@@ -1587,6 +1618,13 @@ invite, role management, key rotation, session refresh) that belongs in
 the OM like any other domain; the gateway asks the tenancy manager for
 the principal behind a credential and owns nothing else.
 
+Nothing the tenancy namespace stores can be presented as a credential.
+A password is stored as a memory-hard hash (scrypt or argon2) under a
+salt of its own. An API key, a session token, and a socket ticket are
+stored as their SHA-256 digest and shown once, in the `Issued...View`
+that minted them (see [Public Types](#public-types)); a lookup hashes
+the presented value and compares digests in constant time.
+
 ### Intra-Service Communication
 
 All services run in the same local or virtual network.
@@ -1600,9 +1638,12 @@ address, all declared in Terraform; a runtime that offers mutual TLS
 between tasks at no cost turns it on. The rule is where the trust
 boundary is, not that traffic inside it is plain. A service-to-service
 call carries a short-lived internal credential minted by the calling
-process that names the principal, the tenant, and the request id; the
-callee's gateway rebuilds `OpContext` from it like any other credential
-kind, and no service trusts a bare header.
+process: a token that names the principal, the tenant, the request id,
+and an expiry a few minutes out, signed with a key every process reads
+from the secret store (see [Secrets](#secrets)) and verified by the
+callee against the same key; the callee's gateway rebuilds `OpContext`
+from it like any other credential kind, and no service trusts a bare
+header.
 
 Outbound TLS verification uses the operating system's trust store, in
 every process, so a corporate proxy or a private certificate authority
@@ -1646,8 +1687,10 @@ client that sends a misspelled key learns about it at once.
 Naming is fixed: `...View` for anything returned, `...Request` for
 anything accepted, `Issued...View` for the one response that carries a
 freshly minted secret in the clear. Lists return a bare list with a
-server-clamped `limit`; an append-only stream pages by a monotonic
-sequence number (`after_seq`) instead of an offset. Inside `/v1` a view
+server-clamped `limit`; a list that can outgrow the clamp pages by
+`after_id` over the id order, which a v7 id makes the creation order;
+an append-only stream pages by a monotonic sequence number
+(`after_seq`); nothing pages by an offset. Inside `/v1` a view
 only gains fields and a request only gains optional ones; a removal or
 a rename is a new prefix. Topic payloads and realtime envelopes follow
 the same rule and are read tolerantly: a consumer ignores a field it
@@ -1815,9 +1858,13 @@ oldest frame is dropped and the drop is logged. That is safe because
 every push is also a record, and a client that reconnects asks for
 everything after the last sequence number it saw. The client keeps the
 last contiguous sequence, so a gap (42 arriving without 41) is a replay
-from 40, never a skip. Replay from storage is the durability mechanism;
-the socket is a hint that something changed. The record is an `Event`
-in the `activity` role: `Identifiable` plus `org_id`, `seq`, `kind`,
+from 40, never a skip. Contiguity is per tenant, so the stream travels
+whole: the topic that carries it delivers every event of the tenant to
+a subscriber, and a client that cares about some kinds filters after
+it has ordered, never before. Replay from storage is the durability
+mechanism; the socket is a hint that something changed. The record is
+an `Event` in the `activity` role: `Identifiable` plus `org_id`,
+`seq`, `kind`,
 `target_id`, and a typed payload, appended by one named atomic storage
 method that assigns `seq`, a per-tenant, gapless sequence and the one
 number storage assigns, because only the database can order commits.
@@ -1852,8 +1899,12 @@ flowchart LR
 ```
 
 Inbound traffic on the socket is small by design: subscribe,
-unsubscribe, ping. Commands travel over plain REST, where they get the
-error envelope, the rate limit, and the idempotency key for free.
+unsubscribe, ping. The first frame and every pong carry the tenant's
+head `seq`, so a client whose last push was the one dropped learns of
+the gap on the next keepalive rather than on the next event, and a
+socket that stays quiet cannot hide a loss. Commands travel over plain
+REST, where they get the error envelope, the rate limit, and the
+idempotency key for free.
 
 ### Wait-for-Response vs Fire-and-Forget
 
@@ -2062,11 +2113,21 @@ A worker runs several items at once, each as its own task, up to a
 capacity it advertises. Each running item renews its lease on a timer.
 A lease that could not be renewed for half its length cancels its own
 task before the lease expires. That is the first fence. The second is
-that completion and every write to the record the item advances are
-conditional on the claim (`claimed_by` and `lease_expires_at` on the
-queue row, a compare-and-set on `version` on the record), so a write
-from a worker whose lease has passed is refused with `Conflict` and the
-item is handed back without spending an attempt (a fencing token). The
+that completion, release, and renewal check the claim in the statement
+itself (`claimed_by` and `lease_expires_at` on the queue row), so a
+worker whose lease has passed is refused with `Conflict` and hands the
+item back without spending an attempt. Together they guarantee one
+completion per item. They do not guarantee that a stale worker's write
+to the record never lands: the queue row and the record live in
+different roles, so no statement can check both, and a worker that
+stalls after reading the record can still write it before the new
+holder does. So a handler is idempotent on the item's key ([Idempotency
+on the Consumer Side](#idempotency-on-the-consumer-side)); a record
+whose concurrent edits matter carries a `version` and is written by
+compare-and-set ([Shape of an Operation](#shape-of-an-operation)),
+which refuses the stale write once the new holder has written and not
+before; and an external side effect is keyed by the item or reconciled
+afterwards, never assumed exclusive. The
 worker heartbeats its own liveness (a key with a TTL under the system
 scope, written and read back on every beat); when heartbeats fail
 repeatedly it stops claiming new work but finishes what it holds.
@@ -2926,7 +2987,9 @@ change. The rules that make it so:
     units](#web-services-as-scalability-units), one per namespace, so
     each scales, rolls out, and deploys on its own.
 -   Every storage method takes `org_id` first ([Storage
-    Principles](#storage-principles)), so data partitions by tenant.
+    Principles](#storage-principles)), so every query is tenant-scoped,
+    which is what a later partition by tenant needs and nothing else
+    supplies.
 -   [Database roles](#database-roles) give each load profile its own
     pool, and its own engine when metrics demand it, by changing one
     URL.
@@ -2951,7 +3014,20 @@ change. The rules that make it so:
 
 Scaling out is adding processes: another replica of a service, another
 worker on a lane, another engine under a role. Nothing in the code
-changes when it happens.
+changes when it happens, inside the assumptions the rules rest on: one
+engine per role, tenants of comparable size, and a pool per process
+that the engine can multiply by the replica count. What ends an
+assumption is named here, so it is met as a trigger and not as an
+outage:
+
+-   A tenant hot enough to serialize on its gapless event `seq`, or to
+    invalidate a whole cache scope with every write, is the first
+    change that is not a deployment change: a routing key under the
+    role that sends that tenant to an engine of its own.
+-   A tenant whose bulk work starves its neighbours gets a lane of its
+    own; the lane is a column on the row, so that is a settings change.
+-   A replica count that exhausts the pool of a role puts a pooler in
+    front of that role; that is a URL.
 
 ## Next: An End-to-End Reference Implementation
 

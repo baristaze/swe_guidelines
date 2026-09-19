@@ -90,7 +90,8 @@ make gen-toc      # regenerate the table of contents of architecture.md
 ```
 
 Requirements: Python 3.14 and Node 24, the latest stable and LTS
-releases. `make lint`
+releases. The scripts need nothing past the standard library; the pin
+follows the guideline's own latest-stable rule on purpose. `make lint`
 fetches `markdownlint-cli2` through `npx` at a pinned version. CI runs
 `make check` on every pull request.
 

@@ -194,20 +194,27 @@ manager and the storage.
 **Principle.** OM entities are frozen snapshots. An update takes the
 entity, produces a modified copy, and passes the copy to a write
 method. No layer mutates an entity after construction. Fields are
-tuples, frozen models, and `Mapping`, never `list` or `dict`, so the
-freeze is deep; a copy that carries caller input is re-validated
-before it is written, because `model_copy` does not validate.
+tuples and frozen models, never `list` or `dict`; a mapping field is
+`FrozenMapping`, a `Mapping` whose validator wraps the dict in a
+`MappingProxyType`, because a frozen model with a bare `Mapping` still
+holds a mutable dict. A copy that carries caller input is rebuilt from
+a dict (`model_validate({**current.model_dump(), **changes})`), because
+`model_copy` does not validate and `model_validate` hands an instance
+back untouched.
 
 **Source.** Naming Entities, Immutability.
 
 **Look for.** The root's frozen configuration; assignment to entity
-attributes anywhere; the update path in managers; `list` or `dict`
-fields on the chain; a `model_copy(update=...)` fed from a request.
+attributes anywhere; the update path in managers; `list`, `dict`, or
+bare `Mapping` fields on the chain; a `model_copy(update=...)` fed
+from a request; a `model_validate` called on an instance.
 
 **Violation.** `order.status = ...` in a manager or service; a class on
 the chain that unfreezes itself; an update that reaches into a nested
 value object to change it in place; a `list` field appended to through
-the snapshot; caller input copied into an entity with no validation.
+the snapshot; a bare `Mapping` field holding the dict pydantic built;
+caller input copied into an entity with no validation, or passed to
+`model_validate` as the instance it already is.
 
 **Severity.** medium
 

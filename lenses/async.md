@@ -353,14 +353,17 @@ the `lane` string would do.
 advertises, each as its own task. Each running item renews its lease on
 a timer, and a lease that could not be renewed for half its length
 cancels its own task before the lease expires: the first fence. The
-second is that completion and every write to the record the item
-advances are conditional on the claim (`claimed_by` and
-`lease_expires_at` on the queue row, a compare-and-set on `version` on
-the record), so a stale worker's write is refused with `Conflict` and
-the item is handed back without spending an attempt (a fencing token).
-Liveness is a key with a TTL under the system scope, written and read
-back on every beat; repeated failures stop claiming but let held work
-finish.
+second is that completion, release, and renewal check the claim in the
+statement itself (`claimed_by` and `lease_expires_at` on the queue
+row), so a stale worker is refused with `Conflict` and hands the item
+back without spending an attempt. Together they guarantee one
+completion per item and nothing about the record, which lives in
+another role: a handler is idempotent on the item's key, a contended
+record carries a `version` written by compare-and-set, and an external
+side effect is keyed by the item or reconciled, never assumed
+exclusive. Liveness is a key with a TTL under the system scope,
+written and read back on every beat; repeated failures stop claiming
+but let held work finish.
 
 **Source.** Worker Roles, Shape of a Worker.
 
