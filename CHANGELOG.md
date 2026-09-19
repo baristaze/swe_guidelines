@@ -18,8 +18,9 @@ which number.
   agree on, adds the settings check to the infra tests (every
   `InfraSettings` field in `.env.example`), passes every prefix the
   settings read and the database URL as its own secret through
-  Terraform, and ends with `arch-review-full` over the tree with every
-  high finding closed; `arch-scaffold-service` adds
+  Terraform, adds the interface check to the OM unit tests (every
+  `*Interface` an `ABC` with abstract methods), and ends with
+  `arch-review-full` over the tree with every high finding closed; `arch-scaffold-service` adds
   `tests/test_settings.py` (every settings field in `.env.example`,
   every field without a local default set or wired in each Terraform
   environment); `docs/adopting.md` says to update the plugin before a
