@@ -439,7 +439,11 @@ The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
 without infrastructure. It is a full second implementation: every read,
 write, filter, and tenancy rule the relational impl has, the memory
-impl has too, and the test suite runs both.
+impl has too, and the test suite runs both. The suite proves what it
+exercises: the named atomic methods, uniqueness, the compare-and-set,
+and visibility after a write each have a contract case, or a memory
+impl passes by being lenient where the engine is strict, and the pair
+is then two impls of two contracts.
 
 Technology-specific impls for storage follow the same interface:
 
