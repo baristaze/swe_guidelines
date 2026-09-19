@@ -67,6 +67,11 @@ implementation.
 - `architecture.md`, "Web Services as Scalability Units": the
   independence of a split-out service is of the process, not of the
   data; the data tier splits by role, never by service.
+- `architecture.md`, the opening: the document says who it is for, a
+  small team that starts with one process and one database, and that
+  the next step is a deployment change up to the limits "Scalability
+  by Design" names, where it said the system scales out never by
+  changing code. `README.md` says the same in its first bullet.
 - `README.md`: the Python pin follows the latest-stable rule on
   purpose. `.github/workflows/ci.yml`: the runner is pinned by release
   like the actions are.

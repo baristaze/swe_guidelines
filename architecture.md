@@ -19,9 +19,11 @@ are defaults, chosen for speed and clarity; [Technology Choices and How
 to Override Them](#technology-choices-and-how-to-override-them) says
 why they are named and how a project substitutes its own.
 
-Most of the rules add up to one property: the system scales out by
-adding processes, never by changing code. [Scalability by
-Design](#scalability-by-design) names the rules that make it so.
+It is written for a small team that starts with one process and one
+database and does not want a rewrite when it grows. Most of the rules
+exist so that the next step, when load asks for it, is a deployment
+change and not a code change, up to the limits [Scalability by
+Design](#scalability-by-design) names.
 
 ## Contents
 
