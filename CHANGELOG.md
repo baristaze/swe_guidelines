@@ -6,6 +6,68 @@ which number.
 
 ## Unreleased
 
+## 0.7.1 (2026-09-19)
+
+An outside review of 0.7.0. This release takes the findings where the
+text claimed more than its mechanisms held (a retry, a rollout order,
+a restore), where a rule was stated for a request and left open for a
+socket and a worker, and where a scaffold or a lens had drifted from
+the guideline.
+
+### Changed
+
+- `architecture.md`, "Direction of Calls": the order example carries
+  the id the gateway minted into the reservation as its idempotency
+  key, so the retry after a lost response or a crash before the order
+  row exists finds the reservation instead of making a second one;
+  the retry is owned at the edge by the marker, and the key in the
+  signature is what makes the two impls of a service interface
+  interchangeable in behavior and not only in signature.
+- `architecture.md`, "Stages": a stage lives as long as the request
+  that minted it; a socket holds its `OpContext` for the life of the
+  connection and a revocation reaches it at the next reconnect, a
+  decision bounded by the stream carrying hints only. "The Work
+  Queue": authority and attribution are two fields; the person
+  authorizes the work once at enqueue, the work runs on the service
+  role's authority, and a kind of work that must stop with the
+  person's permission re-reads the membership in its handler as a
+  recorded decision. Lens `CTX-21` names that one exception.
+- `architecture.md`, "Intra-Service Communication": one signing key
+  is one trust domain, every holder can name any principal in any
+  tenant, and that is a decision made for a platform whose processes
+  are all its own; a system with a process it trusts less gives each
+  issuer a key of its own, and TLS does not narrow who may sign.
+- `architecture.md`, "Public Types": tolerance runs one way. A
+  payload, a work item, and an envelope only gain optional, defaulted
+  fields, so a row written before the deploy and an old producer's
+  message still parse; a request forbids unknown fields, so a service
+  rolls out before its apps. Lens `NET-23` says the same.
+- `architecture.md`, "Multiple impls per interface": the shared suite
+  proves what it exercises; the named atomic methods, uniqueness, the
+  compare-and-set, and visibility after a write each have a case.
+- `architecture.md`, "Database Roles": a role restored to an earlier
+  point than its siblings is reconciled from the outbox, by relaying
+  the rows since that point again; a done outbox row is kept for a
+  retention period that outlives the backup schedule, never deleted
+  on done. "What This Document Does Not Cover" no longer lists that
+  reconciliation and names the pieces the shape already holds.
+- `architecture.md`, "Tests": a run against a deployed environment is
+  a smoke test of the deployment, in addition to the in-process suite
+  and never in its place. Lens `DEL-28` flags a suite that runs only
+  against a deployed environment, not one that also does.
+- `lenses/async.md`: `ASY-15` judges side jobs alone, at high;
+  `ASY-22` judges the always-on container, at low, since an execution
+  model is a shape and not lost work. 148 lenses.
+- `skills/arch-scaffold-entity`: the storage interface row names
+  `create_<entity>`, and the manager's copy on create sets the actor,
+  the initial status, and a position, as the guideline says.
+- `skills/_template/review.SKILL.md`, `agents/arch-reviewer.md`,
+  `skills/arch-review-full`: a fourth outcome, **unverified**, for a
+  lens whose evidence lies outside the scope, and a `high` pass names
+  the file that proved it, so a report carries its evidence.
+- `architecture.md`, "Namespace Shape": a doubled decorator removed
+  from the storage interface snippet.
+
 ## 0.7.0 (2026-09-19)
 
 The context is no longer one type. This release names what a request
