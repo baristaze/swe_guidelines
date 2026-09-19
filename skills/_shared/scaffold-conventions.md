@@ -17,6 +17,14 @@ the order the guideline presents them, never by number.
 
 ## Before writing anything
 
+0. Find the guideline version. Read `version` in
+   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and the first
+   release heading of `${CLAUDE_SKILL_DIR}/../../CHANGELOG.md`. They
+   agree on a release, or the changelog lists changes under
+   `Unreleased` and the copy is a snapshot between releases. Name what
+   was found in the output, and pin only a release the two agree on;
+   a snapshot is pinned by hand by the person, after
+   `/plugin marketplace update` and `/plugin update`.
 1. Find the root package. Read `om/pyproject.toml`; the import root is
    the folder under `om/src/`. Call it `<root>` below. When
    bootstrapping a system, `<root>` is the argument the user gave.
@@ -74,6 +82,12 @@ the order the guideline presents them, never by number.
   module under `tests/unit/` runs the memory impl; `tests/integration/`
   reuses the same cases against Postgres under the `integration`
   marker. Both impls sort by the `UUID` value, never by its string.
+- Tests are counted in cases, not files: one contract case per storage
+  method (the read after the write, the filter, the tenant that sees
+  nothing), one refusal per authorization rule a manager states, one
+  test per rate-limited route, one per exit code of a command, one per
+  capability of the infra root over its local impl. A test file with
+  one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update sets
   `updated_at` and `updated_by` in the copy; a create copies nothing),
   write, and returns the copy it wrote. A `core`-role write lands the
@@ -117,8 +131,10 @@ container.
    the migration check when a table was added. Fix failures the
    scaffold introduced. Report pre-existing failures and stop; do not
    edit unrelated files.
-2. Print the list of files created and changed, one per line, followed
-   by the commands that were run and their outcome. Nothing else.
+2. Print the guideline version the skill ran from (release, or
+   snapshot), then the list of files created and changed, one per
+   line, followed by the commands that were run and their outcome.
+   Nothing else.
 
 Never commit. Scaffolding produces a working tree for a person to
 review.

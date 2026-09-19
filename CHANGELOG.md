@@ -6,6 +6,26 @@ which number.
 
 ## Unreleased
 
+### Changed
+
+- Scaffold skills: `scaffold-conventions.md` finds the guideline
+  version before writing (`plugin.json` against the changelog's first
+  release heading; a snapshot between releases is named, not pinned)
+  and prints it in the output; tests are counted in cases, not files
+  (one contract case per storage method, one refusal per authorization
+  rule, one test per rate-limited route, one per exit code, one per
+  infra capability); `arch-scaffold-new` pins only a release the two
+  agree on, adds the settings check to the infra tests (every
+  `InfraSettings` field in `.env.example`), passes every prefix the
+  settings read and the database URL as its own secret through
+  Terraform, and ends with `arch-review-full` over the tree with every
+  high finding closed; `arch-scaffold-service` adds
+  `tests/test_settings.py` (every settings field in `.env.example`,
+  every field without a local default set or wired in each Terraform
+  environment); `docs/adopting.md` says to update the plugin before a
+  scaffold or a review. From the second one-shot run of
+  `arch-scaffold-new`. Patch.
+
 ### Added
 
 - `architecture.md`: "Multiple impls per interface" says why the

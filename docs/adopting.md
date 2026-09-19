@@ -20,7 +20,10 @@ Skills are namespaced: `/swe-guidelines:arch-review-full`,
 `/swe-guidelines:arch-scaffold-entity`, and so on. The guideline and
 the lens catalog travel inside the plugin, so a skill always reads the
 version it shipped with. Update with `/plugin marketplace update` and
-`/plugin update swe-guidelines`.
+`/plugin update swe-guidelines` before a scaffold or a review, and read
+the version the skill names in its output: a copy whose changelog lists
+changes under `Unreleased` is a snapshot between releases, not a
+release.
 
 For a team that pins versions, add the marketplace from a tag:
 

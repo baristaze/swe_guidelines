@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Bootstrap a whole new system in the shape the Software Design and Architecture Guidelines prescribe, into an empty target directory, by building the monorepo skeleton (uv workspace, om, infra, the first API process, a worker, a portal, deployment folders, Makefile, CI) and then following the other scaffold skills for the first namespace and entity. Stack: TypeScript (React, Vite) or Python."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make setup), Bash(make check), Bash(make test-unit), Bash(make infra-up), Bash(make migrate), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(uv init:*), Bash(uv sync:*), Bash(uv add:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git init:*), Bash(git status:*), Bash(git diff:*), Bash(git rev-parse:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make test-unit), Bash(make infra-up), Bash(make migrate), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(uv init:*), Bash(uv sync:*), Bash(uv add:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git init:*), Bash(git status:*), Bash(git diff:*), Bash(git rev-parse:*)
 ---
 
 # arch-scaffold-new
@@ -48,7 +48,7 @@ Skeleton:
 | `Makefile`                                        | `setup`, `infra-up`, `infra-down`, `migrate` (every role, `--all`), `migrate-check` (ORM metadata against the migrated schema, per role), `migrate-roundtrip` (downgrade the latest revision of every role, then upgrade it), `lint` (`ruff check`), `format-check` (`ruff format --check`), `typecheck` (`pyright`), `check` (`lint`, `format-check`, `typecheck`, `test-unit`), `test-unit`, `test-integration`, `openapi`, `devx-up` (the stack plus the `devx` profile; `infra-down` stops both), `seed` (the API process's `bootstrap --seed`), `up` (both compose files and the `devx` profile, then `migrate`, `seed`, `urls`), `down` (stops every container, keeps the volumes), `reset` (`down` with the volumes removed, then `up`), `urls` (prints every local URL from `.env`), self-documented |
 | `README.md`                                       | how to set up, run, and check, a quick start (`make up`, with `make down`, `make reset`, and `make urls` beside it; for editing code on the host, `make setup`, `make infra-up`, `make migrate`, `make seed`, `scripts/dev.sh`) followed by the seeded sign-in (org, owner email, password, all development-only), and a `Local URLs` table (`http://localhost:<port>`, the port from `.env.example`) listing every `devx` dashboard; the service and app scaffolds of steps 2 and 4 add their rows |
 | `docs/architecture.md`                            | a one-page "as built" stub linking to the guideline                                       |
-| `specs/architecture.md`                           | the pointer to the guideline pinned at a tag or commit, with empty `Substitutions` and `Deviations` tables, as the guideline's adopting guide (`docs/adopting.md` next to it) shows |
+| `specs/architecture.md`                           | the pointer to the guideline pinned at the release found before writing (`plugin.json` and the changelog agreeing; a snapshot is left for the person to pin), with empty `Substitutions` and `Deviations` tables, as the guideline's adopting guide (`docs/adopting.md` next to it) shows |
 | `docs/adr/0001-root-package.md`                   | the root package decision                                                                 |
 | `docs/adr/0002-technology-choices.md`             | the stack as adopted: every technology the guideline names, and per substitution the substitute, the reason, and the rules it must still satisfy |
 | `docs/runbooks/README.md`                         | where runbooks go                                                                         |
@@ -56,7 +56,7 @@ Skeleton:
 | `deployment/local/docker-compose.yml`             | Postgres, Valkey as the cache, a queue, an object store, each image tagged at its latest stable release; host ports read from `.env` with non-default values, so a second project on the same machine does not collide; a `devx` profile with pgweb, Valkey Admin, the object store's and the queue's consoles where their local images ship one, Jaeger for traces, GlitchTip for errors (seeded with a fixed project key so the local DSN in `.env.example` works without its UI), and the metrics view, on ports from `.env` too |
 | `deployment/local/docker-compose.full.yml`        | the same plus the application containers                                                  |
 | `deployment/docker/entrypoint.sh`                 | the shared image entrypoint                                                               |
-| `deployment/terraform/modules/`, `deployment/terraform/environments/{dev,production}/` | one module per resource the settings name (database, cache, queue, buckets, secrets, service with rollout limits so a worker never exceeds its desired count, a log group with retention, and a non-essential OpenTelemetry collector beside each task that adds only service and environment as dimensions; the load balancer answers `/metrics` with a 404, served at `api.<base_domain>` with its certificate and DNS record), wired in both environments, each passing its `base_domain` (production the product's domain, `dev` a `dev.` subdomain of it) and the API's allowed origins as variables; environment names match the settings' cloud-environment set |
+| `deployment/terraform/modules/`, `deployment/terraform/environments/{dev,production}/` | one module per resource the settings name (database, cache, queue, buckets, secrets, service with rollout limits so a worker never exceeds its desired count, a log group with retention, and a non-essential OpenTelemetry collector beside each task that adds only service and environment as dimensions; the load balancer answers `/metrics` with a 404, served at `api.<base_domain>` with its certificate and DNS record), wired in both environments, each passing its `base_domain` (production the product's domain, `dev` a `dev.` subdomain of it), the API's allowed origins, and every prefix the settings read (buckets, queues, secrets) as variables, the process environment naming each of them, and the database URL wired as its own secret (never the password alone); environment names match the settings' cloud-environment set |
 | `scripts/dev.sh`                                  | starts every application process on the host                                              |
 
 OM distribution, under `om/`:
@@ -92,7 +92,7 @@ Infra distribution, under `infra/`:
 | `src/<root>/infra/{cache,buckets,topics,queues,secrets}/` | each: the interface (with `start()` and `close()`, returning `None` where an impl holds nothing), a memory or local impl that behaves like the hosted one (a queue twin does not deduplicate), the cloud impl translating driver errors into a platform exception and counting outcomes; `topics/` defines `Topics.WORK_AVAILABLE` and `Topics.ENTITY_CHANGED` (kind, target id, seq) with their payloads, as the guideline's Topics names them, the two every later step produces or routes |
 | `src/<root>/infra/observability.py`, `trust.py` | logging with the request-id filter, error reporting (on only when the DSN is set and not `off`; events tagged with service, release, request id), tracing, the OS trust store                    |
 | `src/<root>/infra/impl/settings.py`, `impl/configured.py`, `impl/local.py` | settings, the configured root that picks impls and refuses unsafe combinations, the all-local root |
-| `tests/`                                    | every capability over the local impls                                                    |
+| `tests/`                                    | every capability over the local impls, one test per operation of its interface; and the settings check: every field of `InfraSettings` appears in `.env.example` under its prefix (the test reads the file, so a knob added to settings and not documented fails the fast gate) |
 
 ## Changed
 
@@ -125,6 +125,13 @@ Nothing; the tree is new. Every later step appends to the files above.
    address.
 7. `git init` in `<target-dir>`, nothing staged (skipped when the
    target was a fresh repository).
+8. Read `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md` and run it
+   over the whole tree. Close every high finding and rerun `make
+   check`; list the rest in the output for the person. A fresh
+   scaffold passes the gates and still carries findings the gates
+   cannot see: a setting Terraform does not pass, a write without its
+   authorization line, a socket route outside the gateway, a creating
+   route without its idempotency key.
 
 Stop at the first step whose gate fails and report where it stopped.
 
