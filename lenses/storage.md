@@ -302,9 +302,10 @@ the domain columns in the initial schema.
 **Principle.** A feed wants a compound index on `(org_id, id)`, which
 sorts by creation time because ids are v7, so a descending index is
 never needed. A column that already leads a compound index gets no
-single-column index of its own. Index what the SQL filters on, not what
-Python filters afterwards; reach for a compound index when a real query
-asks for one.
+single-column index of its own, so a feed table composes
+`FeedIdentifiableMixin`, whose `org_id` carries none. Index what the
+SQL filters on, not what Python filters afterwards; reach for a
+compound index when a real query asks for one.
 
 **Source.** The Storage Layer, Defining ORM Classes; Naming Entities,
 Identifiers.

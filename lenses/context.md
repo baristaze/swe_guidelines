@@ -98,12 +98,13 @@ impl.
 
 **Severity.** high
 
-## CTX-05 The context is built only at the three entry points
+## CTX-05 The context is built only at the four entry points
 
 **Principle.** A context is constructed by the gateway on request
 arrival, by the claim operation a worker calls to take a unit of work,
-and by the bootstrap that seeds an environment. Nothing else constructs
-one.
+by the tenancy manager's service context per live tenant that a sweep
+asks for, and by the bootstrap that seeds an environment. Nothing else
+constructs one.
 
 **Source.** OpContext; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.

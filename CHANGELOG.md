@@ -6,6 +6,50 @@ which number.
 
 ## Unreleased
 
+## 0.5.1 (2026-09-19)
+
+Two outside reviews of 0.5.0. This release takes the findings that
+name a real conflict between two rules, a crash window a scaffold left
+open, or a drift between the guideline and its scaffolds.
+
+### Changed
+
+- `architecture.md`, "Realtime at the Edge": the sequenced stream is
+  a stream of hints. A frame and a replayed record carry the identity
+  of the change (`seq`, `kind`, `target_id`, the actor) and no field
+  of the entity; the client reads the entity through the authorized
+  read, which applies team visibility, so the whole stream and CTX-04
+  hold together. `seq` orders events, not core writes. Lens `NET-17`
+  says the same. Patch: the reference implementation already sends
+  the hint alone.
+- `architecture.md`, "The Gateway" and "Shape of an Operation": the
+  edge idempotency marker carries the request digest and the id the
+  create will use, minted before `begin`; a pending marker past the
+  request deadline is taken over and the request rerun with that id,
+  and a create that finds its own id already written returns the row
+  as stored, so the rerun cannot duplicate what a crash between commit
+  and `finish` left behind. `arch-scaffold-service`,
+  `arch-scaffold-entity`, and lenses `NET-06` and `CON-17` follow.
+- `architecture.md`, "Scalability by Design": a dedicated engine
+  isolates a hot tenant's neighbours and does not lift the tenant's
+  own ceiling, the one sequence.
+- `architecture.md`, "Defining ORM Classes": `FeedIdentifiableMixin`
+  is in the guideline, where index rule 2 requires it; the scaffolds
+  had it alone. Lens `STO-14` names it.
+- `architecture.md`, "OpContext" and lens `CTX-05`: the tenancy
+  manager's service context per live tenant, which "Operations
+  Without a Principal" already named, is the fourth entry point.
+- `architecture.md`, "The Work Queue": the `WorkItem` payload is
+  `FrozenMapping`, as "Immutability" requires. "Monorepo Folder
+  Structure" shows `specs/`; `arch-scaffold-new` writes
+  `environments/prod/` like the tree.
+
+### Added
+
+- `architecture.md`, "What This Document Does Not Cover": the
+  concerns a team commits to per system once the shape holds, named
+  so their absence is a boundary and not an omission.
+
 ## 0.5.0 (2026-09-19)
 
 Two outside reviews of 0.4.4 read the guideline end to end and ran its

@@ -348,7 +348,9 @@ boots a different assembly than production.
 **Principle.** Every write follows the same four steps: authorize,
 verify, copy, write. The caller that originates an entity constructs it
 whole, with `id=new_id()`, `created_at`, `updated_at`, and
-`created_by=ctx.user_id` set, and hands it to `create_*`. The manager
+`created_by=ctx.user_id` set, and hands it to `create_*`. A create that
+finds its own id already written returns the row as stored, because
+the only way to present a minted id twice is a retry. The manager
 sets `updated_at` on every update and `deleted_at` / `deleted_by` on a
 soft delete, always by copy. Mutating methods return the entity that
 was written.
@@ -361,7 +363,9 @@ read that confirms existence and tenancy before an update, the
 site that constructs the entity handed to `create_*`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; a manager fills in `id`,
+through the manager's own `get_*`; a create that raises `Conflict` on
+its own id, so a retried request creates twice or fails; a manager
+fills in `id`,
 `created_at`, or `created_by` that the originating caller left unset;
 `updated_at` or `deleted_at` is set by the caller or by storage instead
 of by the manager; a mutating method returns `None` or a different

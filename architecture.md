@@ -125,6 +125,7 @@ Design](#scalability-by-design) names.
   - [Versions](#versions)
   - [Overriding a Choice](#overriding-a-choice)
 - [Scalability by Design](#scalability-by-design)
+- [What This Document Does Not Cover](#what-this-document-does-not-cover)
 - [Next: An End-to-End Reference Implementation](#next-an-end-to-end-reference-implementation)
 <!-- /toc -->
 
@@ -571,7 +572,8 @@ the business layer.
 
 `OpContext` is populated by the gateway (see [The Gateway](#the-gateway))
 when a request arrives, by the claim operation a worker calls to take a
-unit of work (see [Operations Without a
+unit of work, by the tenancy manager when a sweep asks for one service
+context per live tenant (both in [Operations Without a
 Principal](#operations-without-a-principal)), and by the bootstrap that
 seeds a fresh environment. Nothing else constructs one. Operations
 never reach for ambient state through globals or thread locals; all of
@@ -656,7 +658,10 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
 
 The caller that originates an entity constructs it whole, with
 `id=new_id()`, `created_at`, `updated_at`, `created_by`, and
-`updated_by` set, and hands it to `create_*`. The manager sets
+`updated_by` set, and hands it to `create_*`. A create that finds its
+own id already written returns the row as stored: ids are minted above
+storage, so the only way to present one twice is a retry, and a retry
+must not create twice. The manager sets
 `updated_at` and `updated_by` on every update and `deleted_at` /
 `deleted_by` on a soft delete, always by copy.
 Mutating methods return the entity that was written, so the caller
@@ -877,6 +882,10 @@ class IdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
     org_id: Mapped[UUID] = mapped_column(index=True, sort_order=-999)  # storage-only
 
+class FeedIdentifiableMixin:  # a feed table: (org_id, id) is declared compound, so no single index
+    id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
+    org_id: Mapped[UUID] = mapped_column(sort_order=-999)
+
 class GlobalIdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
 
@@ -936,7 +945,8 @@ Three index rules cover almost every table:
     v7, that index sorts by creation time, and a B-tree scans backwards
     for free, so a descending index is never needed.
 2.  A column that already leads a compound index gets no single-column
-    index of its own.
+    index of its own, so a feed table composes `FeedIdentifiableMixin`,
+    whose `org_id` carries none, and declares the compound one.
 3.  Index what the SQL filters on, not what Python filters afterwards.
     Reach for a compound index when a real query asks for one.
 
@@ -1589,9 +1599,18 @@ The gateway owns a short list of edge concerns, each done once:
     error envelope. The limits fail open: they guard against runaway
     clients and are not a security boundary.
 -   **Edge idempotency.** A creating `POST` accepts an
-    `Idempotency-Key` header. The first response is stored per tenant
-    and principal under the key and replayed on a retry, using the same
-    storage primitive the queue handlers use.
+    `Idempotency-Key` header. `begin` writes a pending marker per
+    tenant and principal under the key, carrying a digest of the
+    request and the id the create will use, minted before the marker;
+    `finish` stores the outcome on it, and a retry replays the outcome,
+    using the same storage primitive the queue handlers use. A key
+    presented with another digest is refused. A pending marker older
+    than the request deadline was abandoned by a crash between the
+    marker and its outcome; the next retry takes it over in one
+    conditional write and runs the request again with the marker's id,
+    and because a create that finds its own id already written returns
+    the row as stored, the rerun cannot duplicate what the crash left
+    behind.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
     counters and histograms. All three sit outside the versioned API.
@@ -1863,13 +1882,23 @@ last contiguous sequence, so a gap (42 arriving without 41) is a replay
 from 40, never a skip. Contiguity is per tenant, so the stream travels
 whole: the topic that carries it delivers every event of the tenant to
 a subscriber, and a client that cares about some kinds filters after
-it has ordered, never before. Replay from storage is the durability
-mechanism; the socket is a hint that something changed. The record is
-an `Event` in the `activity` role: `Identifiable` plus `org_id`,
-`seq`, `kind`,
-`target_id`, and a typed payload, appended by one named atomic storage
-method that assigns `seq`, a per-tenant, gapless sequence and the one
-number storage assigns, because only the database can order commits.
+it has ordered, never before. That is safe because the stream is a
+stream of hints: a frame and a replayed record carry the identity of
+the change (`seq`, `kind`, `target_id`, the actor) and no field of the
+entity; a client reads the entity through the authorized read, which
+applies the visibility rules of [OpContext](#opcontext), so a user
+learns that some id changed and nothing else. An entity's snapshot
+lives in the record for audit and never on the wire. Replay from
+storage is the durability mechanism; the socket is a hint that
+something changed. The record is an `Event` in the `activity` role:
+`Identifiable` plus `org_id`, `seq`, `kind`, `target_id`, and a typed
+payload, appended by one named atomic storage method that assigns
+`seq`, a per-tenant, gapless sequence and the one number storage
+assigns, because only the database can order commits. `seq` orders the
+events, not the core writes: it is assigned when the relay appends the
+event, after the core row committed, so two concurrent writes to one
+target can carry seqs in the other order. A consumer that needs the
+record's state reads it and never rebuilds it from events.
 A manager records one event per write through the outbox of [Database
 Roles](#database-roles); an audit entry is the same shape plus the
 principal and the app.
@@ -2018,7 +2047,7 @@ class WorkItem(Identifiable, Trackable):
     kind: WorkKind             # what to do
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique
-    payload: Mapping[str, Any] = MappingProxyType({})
+    payload: FrozenMapping = Field(default_factory=dict)
     lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
     available_at: datetime     # not before
@@ -2521,6 +2550,8 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 ├── Makefile                            # setup, infra-up, migrate, check, test-*, openapi
 ├── README.md
 │
+├── specs/
+│   └── architecture.md                 # the guideline pin, substitutions, deviations
 ├── docs/
 │   ├── architecture.md                 # what is implemented, as built
 │   ├── adr/                            # architecture decision records
@@ -3025,11 +3056,33 @@ outage:
 -   A tenant hot enough to serialize on its gapless event `seq`, or to
     invalidate a whole cache scope with every write, is the first
     change that is not a deployment change: a routing key under the
-    role that sends that tenant to an engine of its own.
+    role that sends that tenant to an engine of its own. That isolates
+    the neighbours and hands the tenant a whole engine; it does not
+    lift the tenant's own ceiling, which is the one sequence. Lifting
+    it means more than one stream per tenant, and that changes the
+    cursor every client keeps.
 -   A tenant whose bulk work starves its neighbours gets a lane of its
     own; the lane is a column on the row, so that is a settings change.
 -   A replica count that exhausts the pool of a role puts a pooler in
     front of that role; that is a URL.
+
+## What This Document Does Not Cover
+
+This is a document about the shape of a system: which layer owns what,
+where a rule lives, and how the system grows by adding processes. Some
+concerns are real and are not here on purpose. They are commitments a
+team makes per system, once the shape holds and the numbers are known,
+and a rule that fit every system would say nothing: a threat model and
+the rotation of secrets and keys; service objectives, alerting, and
+the on-call posture behind them; request deadlines, retry budgets, and
+admission under overload; disaster recovery, multi-region, and the
+reconciliation of database roles restored to different points; tenant
+export and offboarding; load testing; the deprecation of an API
+version; and supply-chain rules such as dependency scanning. The shape
+is what makes each of them tractable when its time comes: one settings
+object to carry a deadline, one gateway to admit or refuse, one role to
+restore, one `org_id` to export by. When one of them earns a rule that
+holds across systems, it lands beside the rules it touches.
 
 ## Next: An End-to-End Reference Implementation
 

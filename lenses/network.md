@@ -126,7 +126,10 @@ minted by the caller: a token naming the principal, the tenant, the
 request id, and an expiry minutes out, signed with a key from the
 secret store and verified by the callee against the same key; the
 callee's gateway rebuilds the context from it like any other
-credential kind, and no service trusts a bare header. It accepts
+credential kind, and no service trusts a bare header. The edge
+idempotency marker carries the request digest and the id the create
+will use, minted before `begin`; a stale pending marker is taken over
+and the request rerun with that id. It accepts
 cross-origin requests only from the browser apps' origins, read from
 settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
 it in the response header, and attaches it to the log context and the
@@ -379,8 +382,12 @@ logged; every push is also a record, and a reconnecting client asks
 for everything after the last contiguous sequence it saw, so a gap is
 a replay, never a skip. Contiguity is per tenant, so the stream
 travels whole and a client filters by kind after ordering, never
-before; the first frame and every pong carry the tenant's head `seq`,
-so a quiet socket cannot hide a dropped last frame.
+before; that is safe because a frame and a replayed record carry the
+identity of the change (`seq`, `kind`, `target_id`, the actor) and no
+field of the entity, and the client reads the entity through the
+authorized read. The first frame and every pong carry the tenant's
+head `seq`, so a quiet socket cannot hide a dropped last frame. `seq`
+orders events, not core writes.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
@@ -388,7 +395,7 @@ so a quiet socket cannot hide a dropped last frame.
 every pushed event has a durable record; the reconnect path and its
 `after_seq` parameter; which sequence the client keeps as its cursor;
 whether the stream topic filters by kind before the client; what the
-hello and the pong carry.
+hello, the pong, a frame, and a replayed record carry.
 
 **Violation.** A push that exists only as a frame; a send buffer that
 grows without bound or blocks the producer; a client that cannot
@@ -396,7 +403,10 @@ recover missed events after a reconnect; a client that tracks the last
 frame seen instead of the last contiguous one, so a dropped frame is
 skipped for good; a server-side filter by kind on the sequenced
 stream, so a legitimate gap reads as a loss; a pong with no head
-`seq`, so a dropped last frame waits for the next event.
+`seq`, so a dropped last frame waits for the next event; an entity
+field on a frame or in the replay, so the stream leaks what the read
+would have refused; a consumer that rebuilds a record's state from
+events.
 
 **Severity.** high
 
