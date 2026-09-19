@@ -377,3 +377,27 @@ of by the manager; a mutating method returns `None` or a different
 snapshot than the one written.
 
 **Severity.** medium
+
+## CON-18 Structural dependencies arrive by constructor, operation state by context, and neither crosses
+
+**Principle.** A constructor takes what an impl needs for its lifetime:
+storage, peer managers, infrastructure capabilities, options. A
+context carries what one operation needs: state, authority, evidence.
+A manager does not arrive on a context, and a request id, an actor, or
+a tenant does not arrive in a constructor. When an operation's
+availability depends on what a request has established, the stage is
+in its signature; the manager does not move onto the context.
+
+**Source.** Interfaces, Injectability; OpContext, Scopes.
+
+**Look for.** Constructor parameters that name a request, a user, or a
+tenant; context or scope members that name a manager, a storage, or
+the container; any registry or bundle handed out per request or per
+stage.
+
+**Violation.** An impl constructed per request to receive the actor or
+the tenant; a context, a stage, or a scope with a manager, a storage,
+or the container as a member; a per-stage bundle of managers; a
+service locator reached from an operation.
+
+**Severity.** medium

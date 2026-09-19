@@ -11,7 +11,7 @@ keeps each review narrow enough to be thorough.
 |-------------|-----------------|-------------------------------------------------------------------------------------------------|
 | `om`        | `om.md`         | The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules |
 | `contracts` | `contracts.md`  | Interfaces, Separation of Layers, The Business Layer, The Network Layer (Service Interfaces, Direction of Calls), Cross-Cutting Conventions (App Container): interfaces, injection, wiring |
-| `context`   | `context.md`    | OpContext, Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles: OpContext, AdminContext, authorization, tenancy, provenance |
+| `context`   | `context.md`    | OpContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles: stages, scopes, AdminContext, authorization, tenancy, provenance |
 | `storage`   | `storage.md`    | The Storage Layer and Identifiers: storage principles, tables, translation, roles, migrations |
 | `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (idempotency, orchestration): infra, queues, workers, park vs fail |
 | `network`   | `network.md`    | The Network Layer and Apps (Push-First Apps): topology, gateway, public types, clients, realtime, push-first |

@@ -1,6 +1,7 @@
 # Context
 
-Group id: `context`. Covers OpContext (with The Operator Context),
+Group id: `context`. Covers OpContext (with Stages, Scopes, and The
+Operator Context),
 the authorization and tenancy split of Separation of Layers, the
 authorization step and parameter order of The Business Layer and its
 "Operations Without a Principal", the tenancy rules of The Storage
@@ -18,9 +19,10 @@ rate limits, and public types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context as its first argument, except the enumerated
-principal-less operations (CTX-16). By the time a manager runs, the
-context is fully built.
+takes a context as its first argument: `OpContext` for a tenant
+operation, the request stage for the enumerated transitions (CTX-16),
+a scope where the consumer needs less (CTX-22). By the time a manager
+runs, the stage it takes is fully built.
 
 **Source.** OpContext; The Business Layer.
 
@@ -31,8 +33,8 @@ method that has none.
 **Violation.** A manager or service method that takes a user id, an
 org id, or a token instead of a context; a method that takes the
 context in any position other than first; a handler that fetches
-identity from a request object; a context-less method that is not one
-of the documented principal-less operations.
+identity from a request object; a context-less method other than the
+outbox handoff CTX-16 names.
 
 **Severity.** medium
 
@@ -42,8 +44,10 @@ of the documented principal-less operations.
 role, the permissions, the teams, the credential kind, and
 `credential_id`: ids and facts, never entities, so a manager that
 needs the user loads it and a role change is seen on the next request.
-The app context holds the app type and version; the context holds the
-request id and an optional trace id. The request id reaches every log
+The app context holds the app type and version; the request stage
+holds the request id, the app, and an optional trace id, and every
+stage above it inherits them; the identity stage holds the identity
+id, the email, and the credential. The request id reaches every log
 line, every audit row, and the error envelope from the context, never
 by hand.
 
@@ -98,43 +102,51 @@ impl.
 
 **Severity.** high
 
-## CTX-05 The context is built only at the four entry points
+## CTX-05 The request stage is minted at the edge; every stage above it has one transition
 
-**Principle.** A context is constructed by the gateway on request
-arrival, by the claim operation a worker calls to take a unit of work,
-by the tenancy manager's service context per live tenant that a sweep
-asks for, and by the bootstrap that seeds an environment. Nothing else
-constructs one.
+**Principle.** The request stage is minted once, at the edge: by the
+gateway for every request and every socket, by the worker loop per
+claim and per sweep pass, and by the bootstrap command per command.
+Every stage above it is produced by exactly one transition on the
+tenancy manager (a sign-in into the identity stage, a credential or a
+claim into `OpContext`, the operator admission into `AdminContext`),
+which takes the stage below and the evidence and returns the stage
+above or refuses. Nothing else constructs a stage.
 
-**Source.** OpContext; The Business Layer, Operations Without a
+**Source.** OpContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
 
-**Look for.** Every construction site of the context type and its
-sub-objects.
+**Look for.** Every construction site of every stage type and its
+sub-objects; the transitions on the tenancy manager and what they take.
 
 **Violation.** A manager, storage impl, or test helper used in
-production code that builds a context; a router that assembles a
-context from headers or tokens; a service that constructs one for an
-internal call.
+production code that builds a stage; a router that assembles a context
+from headers or tokens; a service that constructs one for an internal
+call; a second construction site for a stage the tenancy manager
+already produces; a transition that takes raw parameters where the
+stage below exists.
 
 **Severity.** high
 
 ## CTX-06 The context is immutable and narrowing is an explicit argument
 
-**Principle.** Once built, the context flows through every downstream
+**Principle.** Once built, a context flows through every downstream
 call unchanged. A narrower view (an override, a reduced permission set)
 is passed as an explicit argument, never by mutating or copying the
-context mid-request.
+context mid-request. A transition builds the stage above as a new
+object from the stage below; it is not a copy with changed fields.
 
-**Source.** OpContext.
+**Source.** OpContext; OpContext, Stages.
 
 **Look for.** Copies or mutations of the context after the gateway;
-methods that accept a context and hand a different one downstream.
+methods that accept a context and hand a different one downstream;
+how each transition constructs its result.
 
 **Violation.** A context copied with altered fields inside a manager or
 service; a permission set widened or narrowed on the context; a "with
 override" helper that replaces the context instead of adding a
-parameter.
+parameter; a stage produced by copying the stage below with fields
+changed.
 
 **Severity.** medium
 
@@ -309,26 +321,30 @@ without comparing the payload's tenant to the connection's tenant.
 
 **Severity.** high
 
-## CTX-16 Principal-less operations produce a context
+## CTX-16 Principal-less operations take the request stage and produce a stronger one
 
 **Principle.** The few operations that exist before a principal does
-(claiming work, sweeping every tenant, resolving an inbound webhook
-token) are declared without a context, documented as platform-internal,
-and produce the context under which the work then runs. The outbox
-relay and the event append it performs take `(org_id, row)` instead:
-the row carries its tenant, actor, and request id from the write that
-made it, and the relay runs again from the sweep.
+(signing in, claiming work, sweeping every tenant, resolving an inbound
+webhook token) take the request stage first, are documented as
+transitions, and produce the stage under which the work then runs: the
+identity stage, an `OpContext`, or one service context per live
+tenant. A test names each of them. The outbox relay and the event
+append it performs take `(org_id, row)` instead: the row carries its
+tenant, actor, and request id from the write that made it, and the
+relay runs again from the sweep.
 
-**Source.** The Business Layer, Operations Without a Principal; Worker
-Roles, The Work Queue.
+**Source.** The Business Layer, Operations Without a Principal; OpContext,
+Stages; Worker Roles, The Work Queue.
 
-**Look for.** Manager methods without a context parameter; what they
-return; their docstrings.
+**Look for.** Manager methods whose first parameter is the request
+stage; what they return; their docstrings; the test that enumerates
+them; any method with no context at all.
 
-**Violation.** A context-less method that performs tenant work
-directly instead of returning a context; a context-less manager method
-whose docstring does not say platform-internal, or whose return type is
-neither a context nor a list of `tuple[UUID, Entity]`.
+**Violation.** A request-stage method that performs tenant work
+directly instead of returning a stage; a request-stage method the
+enumerating test does not name; a method with no context at all other
+than the outbox handoff; a transition whose return type is neither a
+stage nor a list of stages.
 
 **Severity.** high
 
@@ -391,17 +407,20 @@ does not re-validate the underlying credential.
 
 ## CTX-20 The operator plane has its own gate and its own context
 
-**Principle.** Operator routes resolve the bearer to an identity, admit
-it only when the identity is on the operator allowlist and the
-credential is the person's own sign-in, and produce an `AdminContext`
-that has no tenant. Operator managers take `AdminContext` and nothing
-else; tenant managers take `OpContext` and nothing else.
+**Principle.** Operator routes authenticate the bearer into the
+identity stage, which admits only the person's own sign-in, and the
+operator admission on the tenancy manager refines it into an
+`AdminContext` when the identity is on the operator allowlist.
+`AdminContext` refines `IdentityContext` and has no tenant. Operator
+managers take `AdminContext` and nothing else; tenant managers take
+`OpContext` and nothing else.
 
-**Source.** OpContext, The Operator Context; The Network Layer, The
-Gateway.
+**Source.** OpContext, The Operator Context; OpContext, Stages; The
+Network Layer, The Gateway.
 
-**Look for.** The operator gate, the `AdminContext` type, every manager
-signature on the operator plane and the tenant plane.
+**Look for.** The operator gate, the `AdminContext` type and what it
+subclasses, the operator admission, every manager signature on the
+operator plane and the tenant plane.
 
 **Violation.** An operator route gated by a tenant role or a feature
 flag; an `AdminContext` with a tenant field; a manager method that
@@ -410,3 +429,74 @@ manager; an API key or an invitation-minted session admitted to the
 operator plane.
 
 **Severity.** high
+
+## CTX-21 An operation takes the weakest stage that proves what it needs, and relies on it
+
+**Principle.** Stages are concrete frozen types, each a subclass of
+the stage it refines, so a function that asks for the weaker stage
+accepts the stronger one and never the reverse. An operation declares
+the weakest stage that proves what it needs and relies on that
+invariant instead of checking it again; the stage in the signature is
+what fences which operations a holder can call. `OpContext` does not
+refine `IdentityContext`.
+
+**Source.** OpContext, Stages.
+
+**Look for.** The stage type definitions and their bases; the first
+parameter of every transition and every operation on the sign-in,
+operator, and tenant paths; credential and membership checks inside
+operations that already take a stage.
+
+**Violation.** An operation that takes `IdentityContext` and verifies
+the credential again, or takes `OpContext` and re-reads the membership
+to decide whether it is live; a sign-in or exchange route handed an
+`OpContext`; a stage declared as a `Protocol` or satisfied by anything
+other than its transition; `OpContext` subclassing `IdentityContext`;
+a bundle of managers per stage, or a manager reachable from a context.
+
+**Severity.** high
+
+## CTX-22 A consumer declares the narrowest scope, and a scope is a Protocol
+
+**Principle.** A consumer that needs less than a stage carries declares
+a scope: a small `Protocol` of read-only properties naming the
+capability it needs. A stage satisfies a scope structurally, with no
+projection object built per call and no subclass per combination. The
+scope set is derived from consumers; a scope exists because a consumer
+declares it. A manager operation takes `OpContext`, which is its scope.
+
+**Source.** OpContext, Scopes.
+
+**Look for.** The scope definitions; helpers and edge concerns that
+read a subset of the context (provenance stamping, rate limiting,
+realtime subscription); what they declare.
+
+**Violation.** A helper that reads only the request id and the actor
+and takes `OpContext`; a scope declared as an `ABC` the contexts
+subclass; a view object copied out of the context to satisfy a scope;
+a scope no consumer declares; an authorization scope, since no
+consumer needs the permissions without the tenant and the actor.
+
+**Severity.** medium
+
+## CTX-23 A combination of scopes is named only when it is a concept of the domain
+
+**Principle.** Scopes compose by Protocol inheritance. A combination
+gets a name only when it is a concept of the domain, as provenance is;
+a consumer that needs two scopes with no concept between them takes the
+stage that carries both. Stages and scopes stay apart: subclassing is
+the refinement of a stage, composition is the only combinator of a
+scope, and a scope never stands in for a stage.
+
+**Source.** OpContext, Scopes.
+
+**Look for.** The list of scope names; any name that concatenates two
+others; any operation that takes a scope where it relies on an
+invariant only a stage proves.
+
+**Violation.** A scope named for the intersection of two others with
+no domain meaning; a growing list of composed names; an operation that
+authorizes, or relies on a live membership, and takes a scope instead
+of `OpContext`.
+
+**Severity.** low
