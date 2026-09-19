@@ -651,7 +651,9 @@ memory, the integration job runs the same cases over Postgres on the
 compose stack. End-to-end tests build the container over the memory
 storage root and the local infra root, every backend a twin, and drive
 the app in-process. Markers `integration`, `e2e`, and `slow` decide
-which gate runs what.
+which gate runs what. A run against a deployed environment is a smoke
+test of the deployment, in addition to the in-process suite and never
+in its place.
 
 **Source.** Cross-Cutting Conventions, Tests.
 
@@ -661,8 +663,8 @@ tests build the container; the markers on each test module.
 
 **Violation.** A storage case written twice, once per impl; a unit
 test that needs a running database; the memory impl tested and the
-Postgres impl assumed; an end-to-end test against a deployed
-environment instead of the in-process container; a slow or
+Postgres impl assumed; an end-to-end suite that runs only against a
+deployed environment, so nothing drives the app in-process; a slow or
 integration test with no marker, so the fast gate runs it.
 
 **Severity.** medium

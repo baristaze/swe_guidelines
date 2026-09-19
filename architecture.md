@@ -3281,7 +3281,12 @@ compose stack. End-to-end tests build the container over the memory
 storage root and the local infra root, every backend a twin, and drive
 the app in-process. Markers `integration`, `e2e`, and `slow` decide
 which gate runs what; the checks of [Records of
-Decisions](#records-of-decisions) live in the unit suite.
+Decisions](#records-of-decisions) live in the unit suite. A run
+against a deployed environment checks what no in-process test can:
+the gateway in front, the credentials, the network, the worker
+processes beside the app. It is a smoke test of the deployment, in
+addition to the in-process suite and never in its place, and it is
+small: a sign-in, a write, a push.
 
 ## Technology Choices and How to Override Them
 
