@@ -93,7 +93,12 @@ CLI, under `apps/<app-name>/`:
 ## Procedure
 
 1. Browser app: feature code never calls `fetch` and never imports
-   `schema.d.ts`; everything goes through `src/api/`.
+   `schema.d.ts`; everything goes through `src/api/`. A view never
+   re-implements a domain rule to enable or disable an action (the
+   last owner cannot be removed, the password rule): the service
+   exposes the decision as a flag on the view, or the client acts on
+   the error envelope the server returns, as Apps (Apps Are Dumb)
+   states.
 2. Portal: every realtime envelope routes into the query cache, never
    into components; the provider owns reconnection with backoff and the
    degraded polling mode with its banner.
