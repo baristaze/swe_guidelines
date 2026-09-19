@@ -37,8 +37,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
 
 ## Invariants
 
-- No product, hardware, or assistant-tooling vocabulary in the
-  guideline or the lenses (`scripts/check_leaks.py` lists the terms).
+- No product or hardware vocabulary in the guideline or the lenses
+  (`scripts/check_leaks.py` lists the terms). Agents are named as
+  agents.
 - No history in the guideline: it states what we do, in the present
   tense, with no rejected alternatives and no changelog phrasing.
 - No em-dashes anywhere.

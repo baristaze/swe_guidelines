@@ -17,7 +17,7 @@ lint:              ## markdownlint over every Markdown file
 lenses:            ## every lens follows the format and cites a real section
 	$(PYTHON) scripts/check_lenses.py
 
-leaks:             ## no product, hardware, or assistant-tooling vocabulary in the published files
+leaks:             ## no product or hardware vocabulary in the published files
 	$(PYTHON) scripts/check_leaks.py
 
 links:             ## every relative link and anchor resolves

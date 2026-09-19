@@ -71,13 +71,11 @@ for the aspect in one message and stop.
      map to (`lenses/README.md` says what each group covers)? New lens
      or sharpened lens? A new lens takes the next id in its group and
      cites the new section by title.
-   - Which vocabulary does it introduce? `make leaks` refuses product,
-     hardware, assistant-tooling, and history terms in the guideline
-     and the lenses; `agents`, `AI`, `LLM`, `prompt`, and `claude` are
-     among them, so an automated actor is "a program" or "an automated
-     caller" in the guideline's own terms. When the aspect needs a
-     refused term, rephrase and say so in the report rather than
-     widening the list.
+   - Which vocabulary does it introduce? `make leaks` refuses product
+     and hardware terms in the guideline and the lenses, and history
+     terms in the guideline. An agent is an agent; say so. When the
+     aspect needs a refused term, rephrase and say so in the report
+     rather than widening the list.
    - What cascades? The Contents (`make gen-toc`); the review skills
      (`make gen-skills`, driven by `lenses/README.md`); the scaffold
      skills whose `Created` or `Changed` tables gain a file, or whose

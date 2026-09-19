@@ -434,15 +434,14 @@ Swapping the impl at the storage root moves the system onto a different
 engine without any caller changing.
 
 Two impls per interface read as overhead only when a person keeps them
-in step. For a program the pair is cheap: an automated author writes
-the memory impl alongside the technology impl, and the shape
-generalizes. A memory storage impl is a dict keyed by tenant and id
+in step. For an agent the pair is cheap: the agent writes the memory
+impl alongside the technology impl, and the shape generalizes. A memory storage impl is a dict keyed by tenant and id
 plus the same filters the relational impl applies; the storage layer
 of the [reference
 implementation](#next-an-end-to-end-reference-implementation) has one
 per namespace.
 
-A program also mixes and composes impls far more readily than a person
+An agent also mixes and composes impls far more readily than a person
 does, so the duality is a lever rather than a cost. The pair is what
 lets a whole application run in-process in a test over the memory
 roots ([The App Container](#the-app-container)), lets a backend be
@@ -2830,7 +2829,7 @@ backend work and TypeScript most front-end work, so both stacks have
 the libraries, the people, and the tooling a small team needs. A
 guideline that says "a relational database" leaves a decision open at
 every step; one that says "Postgres" closes it, and closes it the same
-way for every reader, person or program. Naming is what makes the
+way for every reader, person or agent. Naming is what makes the
 shapes concrete enough to check and the scaffolds concrete enough to
 run.
 
@@ -2954,6 +2953,6 @@ end to end, from the object model at the center to the apps at the
 edge, in the shapes and the technologies named here.
 
 That project is Tadas, a to-do app for teams, used by people and by
-programs alike. Its repository is <https://github.com/baristaze/tadas>.
+agents alike. Its repository is <https://github.com/baristaze/tadas>.
 A reader who wants to see a shape in running code rather than in a
 snippet starts there.

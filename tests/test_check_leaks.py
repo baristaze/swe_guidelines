@@ -19,12 +19,11 @@ def test_product_term_in_guideline_fails(repo, leaks, capsys):
     assert "architecture.md:32: product term 'robot'" in capsys.readouterr().out
 
 
-def test_assistant_term_in_lens_fails_but_is_allowed_in_a_skill(repo, leaks, capsys):
+def test_agent_vocabulary_is_allowed_everywhere(repo, leaks):
     repo.edit("skills/arch-review-om/SKILL.md", "Never edit", "The agent never edits")
-    assert leaks.main() == 0
     repo.edit("lenses/om.md", "Tables holding two entities.", "Tables an agent holds.")
-    assert leaks.main() == 1
-    assert "lenses/om.md:24: assistant-tooling term 'agent'" in capsys.readouterr().out
+    repo.edit("architecture.md", "One table per entity.", "One table per entity, for people and agents.")
+    assert leaks.main() == 0
 
 
 def test_history_phrasing_fails_in_the_guideline_only(repo, leaks, capsys):

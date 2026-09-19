@@ -10,6 +10,13 @@ which number.
 
 ### Changed
 
+- `scripts/check_leaks.py`: the assistant-tooling term group is gone;
+  "agent", "AI", "LLM", "prompt" are ordinary words in the guideline
+  and the lenses. "Multiple impls per interface", "Technology Choices
+  and How to Override Them", and "Next: An End-to-End Reference
+  Implementation" say "agent" where they said "program" or "automated
+  author"; `arch-new-aspect`, `AGENTS.md`, and the Makefile no longer
+  ask for the rephrasing. Patch.
 - `skills/arch-scaffold-service/SKILL.md`: the `gateway/auth.py`,
   `realtime/`, and `gateway/observability.py` rows say the websocket
   route resolves its context through a `socket_context` gateway
@@ -85,7 +92,7 @@ which number.
 
 - `architecture.md`: "Multiple impls per interface" says why the
   technology impl and the memory impl pair is a lever rather than a
-  cost: a program writes and keeps the memory impl cheaply, the shape
+  cost: an agent writes and keeps the memory impl cheaply, the shape
   generalizes (a dict keyed by tenant and id plus the relational
   filters), and the pair is what lets an application run in-process in
   a test, a backend swap at the root, and impls compose; linked to

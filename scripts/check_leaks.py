@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Check the published Markdown for vocabulary that must not appear.
 
-The guideline is generic on purpose. Product names, hardware nouns, and
-assistant-tooling concepts belong to the projects that use it, never to
-the guideline or the lenses. Skills may name the tooling they run on
-(the review skills run inside an assistant), so they get a shorter list.
-`REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says which group
-applies to which files.
+The guideline is generic on purpose. Product names and hardware nouns
+belong to the projects it was extracted from, never to the guideline or
+the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
+which group applies to which files.
 
 Also refuses em-dashes everywhere and changelog phrasing in the guideline.
 Exit status is non-zero on any hit. Standard library only.
@@ -22,9 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The refused vocabulary, one regular expression per term, matched case-insensitively.
 # "product" is the vocabulary of the projects the guideline was extracted from and
-# must not flow back into it; a fork replaces that list with its own. "assistant-tooling"
-# is the vocabulary of the assistants the skills run inside, allowed in the skills only.
-# "history" is changelog phrasing, refused in the guideline only.
+# must not flow back into it; a fork replaces that list with its own. "history" is
+# changelog phrasing, refused in the guideline only.
 REFUSED_TERMS: dict[str, list[str]] = {
     "product": [
         r"\brodeo\b",
@@ -35,19 +32,6 @@ REFUSED_TERMS: dict[str, list[str]] = {
         r"\bfirmware\b",
         r"\bsimulat(or|ors|ion|ions|ed)\b",
         r"\bteleoperat\w*\b",
-    ],
-    "assistant-tooling": [
-        r"\bagents?\b",
-        r"\bagentic\b",
-        r"\bsub-?agents?\b",
-        r"\bLLMs?\b",
-        r"\bAI\b",
-        r"\bprompts?\b",
-        r"\bmodel provider(s)?\b",
-        r"\btoken budget(s)?\b",
-        r"\bcoding assistant(s)?\b",
-        r"\bmachine learning\b",
-        r"\bclaude\b",
     ],
     "history": [
         r"\bused to\b",
@@ -68,8 +52,8 @@ EM_DASH = "\u2014"
 # file glob -> the term groups refused there; a file matched by several globs is
 # scanned once per group, whichever globs name it
 SCOPES: list[tuple[str, list[str]]] = [
-    ("architecture.md", ["product", "assistant-tooling", "history"]),
-    ("lenses/*.md", ["product", "assistant-tooling"]),
+    ("architecture.md", ["product", "history"]),
+    ("lenses/*.md", ["product"]),
     ("skills/*/*.md", ["product"]),
     ("README.md", ["product"]),
     ("CONTRIBUTING.md", ["product"]),
