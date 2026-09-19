@@ -45,8 +45,10 @@ its own voice.
 
 Releases are tagged `vMAJOR.MINOR.PATCH`. A change that removes or
 reverses a rule is a major release. A change that adds or sharpens a
-rule is a minor release. Everything else is a patch. `CHANGELOG.md`
-lists every release.
+rule is a minor release. Everything else is a patch. Before 1.0.0 a
+removed or reversed rule bumps the minor number, as semver reads
+0.x, and the changelog entry names the reversal; 1.0.0 is for the
+text that has stopped moving. `CHANGELOG.md` lists every release.
 
 ## License
 

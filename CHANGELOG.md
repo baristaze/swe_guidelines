@@ -6,14 +6,15 @@ which number.
 
 ## Unreleased
 
-## 1.0.0 (2026-09-19)
+## 0.7.0 (2026-09-19)
 
 The context is no longer one type. This release names what a request
 has established as a chain of typed stages, and what a consumer sees
 as a set of composable scopes, and it reverses two rules of 0.6.0:
 the principal-less operations now take the request stage instead of
 no context, and a consumer that needs less than `OpContext` declares
-less. A major release, because a rule is reversed.
+less. One rule is reversed; before 1.0.0 that bumps the minor number,
+as `CONTRIBUTING.md` now says.
 
 ### Changed
 
@@ -41,17 +42,20 @@ less. A major release, because a rule is reversed.
   a combination without a concept), and `CON-18` (constructor and
   context never cross) are added; `arch-scaffold-new`,
   `arch-scaffold-service`, `arch-scaffold-worker`, and the shared
-  scaffold conventions follow. Major.
+  scaffold conventions follow. Minor.
 - `architecture.md`, "Operations Without a Principal": the operations
   that exist before a principal does take `RequestContext` first and
   produce a stronger stage; a test names each of them. The outbox
-  handoff keeps `(org_id, row)`. Major.
+  handoff keeps `(org_id, row)`. Minor, a reversal before 1.0.0.
 - `architecture.md`, "The Operator Context": `AdminContext` refines
   `IdentityContext` through `admit_operator`; "The Gateway" mints the
   request stage and runs the transitions; "The Work Queue": the loop
   mints a `RequestContext` per claim and per sweep pass;
   "Injectability" points at the boundary between what a constructor
   takes and what a context carries.
+- `CONTRIBUTING.md`, "Versioning": before 1.0.0 a removed or reversed
+  rule bumps the minor number, as semver reads 0.x; 1.0.0 is for the
+  text that has stopped moving. Patch.
 
 ## 0.6.0 (2026-09-19)
 
