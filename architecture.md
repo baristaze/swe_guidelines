@@ -1519,7 +1519,7 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Credentials.** Every credential kind has a distinct prefix (an
     API key, a session token, a login credential, a single-use socket
     ticket, an invitation link), and the prefix decides which
-    dependency will accept it. A machine caller presents an API key
+    dependency will accept it. An agent presents an API key
     that is membership-scoped, expiring, and role-capped at its
     issuer's role. A person signs in with a credential that carries no
     tenant and exchanges it for a tenant-scoped session token, so the
