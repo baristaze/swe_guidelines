@@ -6,6 +6,15 @@ which number.
 
 ## Unreleased
 
+## 0.4.4 (2026-09-19)
+
+### Changed
+
+- `README.md` and `docs/adopting.md`: the three lines that update the
+  installed plugin (`/plugin marketplace update`, `/plugin update`,
+  `/reload-plugins`) as a copy-paste block under the install block,
+  with the reason: a skill reads the version it shipped with. Patch.
+
 ## 0.4.3 (2026-09-19)
 
 ### Changed

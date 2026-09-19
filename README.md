@@ -31,6 +31,15 @@ The repository is a Claude Code plugin marketplace. Inside Claude Code:
 /plugin install swe-guidelines@swe-guidelines
 ```
 
+Before a scaffold or a review, update; a skill reads the version it
+shipped with and names it in its output:
+
+```text
+/plugin marketplace update swe-guidelines
+/plugin update swe-guidelines
+/reload-plugins
+```
+
 Skills then appear as `/swe-guidelines:arch-review-full` and so on. To
 try a checkout without installing:
 

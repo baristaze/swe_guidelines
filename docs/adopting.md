@@ -19,10 +19,16 @@ Inside Claude Code, once per machine:
 Skills are namespaced: `/swe-guidelines:arch-review-full`,
 `/swe-guidelines:arch-scaffold-entity`, and so on. The guideline and
 the lens catalog travel inside the plugin, so a skill always reads the
-version it shipped with. Update with `/plugin marketplace update` and
-`/plugin update swe-guidelines` before a scaffold or a review, and read
-the version the skill names in its output: a copy whose changelog lists
-changes under `Unreleased` is a snapshot between releases, not a
+version it shipped with. Before a scaffold or a review:
+
+```text
+/plugin marketplace update swe-guidelines
+/plugin update swe-guidelines
+/reload-plugins
+```
+
+Read the version the skill names in its output: a copy whose changelog
+lists changes under `Unreleased` is a snapshot between releases, not a
 release.
 
 The first review of a fresh scaffold lands about two thirds of the
@@ -32,7 +38,7 @@ scaffolding, not an afterthought.
 For a team that pins versions, add the marketplace from a tag:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.4.3
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.4.4
 ```
 
 ## 2. Point at the guideline from `specs/`
@@ -44,8 +50,8 @@ nothing else that belongs to the guideline:
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.4.3/architecture.md>
-(pinned at `v0.4.3`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.4.4/architecture.md>
+(pinned at `v0.4.4`).
 
 The guideline is the source of truth for how this system is shaped.
 `docs/architecture.md` describes what is implemented; `docs/adr/`
@@ -103,7 +109,7 @@ A project that wants the guideline text in its tree without the plugin
 pinned tag into a folder it does not edit:
 
 ```makefile
-GUIDELINE_TAG ?= v0.4.3
+GUIDELINE_TAG ?= v0.4.4
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
