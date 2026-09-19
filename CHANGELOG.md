@@ -6,6 +6,8 @@ which number.
 
 ## Unreleased
 
+## 0.4.1 (2026-09-18)
+
 ### Changed
 
 - Scaffold skills: `scaffold-conventions.md` finds the guideline

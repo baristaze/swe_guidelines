@@ -28,7 +28,7 @@ release.
 For a team that pins versions, add the marketplace from a tag:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.4.0
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.4.1
 ```
 
 ## 2. Point at the guideline from `specs/`
@@ -40,8 +40,8 @@ nothing else that belongs to the guideline:
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.4.0/architecture.md>
-(pinned at `v0.4.0`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.4.1/architecture.md>
+(pinned at `v0.4.1`).
 
 The guideline is the source of truth for how this system is shaped.
 `docs/architecture.md` describes what is implemented; `docs/adr/`
@@ -99,7 +99,7 @@ A project that wants the guideline text in its tree without the plugin
 pinned tag into a folder it does not edit:
 
 ```makefile
-GUIDELINE_TAG ?= v0.4.0
+GUIDELINE_TAG ?= v0.4.1
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
