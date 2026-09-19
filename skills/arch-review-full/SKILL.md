@@ -50,8 +50,8 @@ seven reports cover the same ground. An empty scope is reported as
      then by file and line.
    - When two groups flag the same `path:line`, keep both lens ids on
      one line; the fix text comes from the higher-severity one.
-   - Count applied, passed, findings, and not-applicable lenses across
-     groups.
+   - Count applied, passed, findings, unverified, and not-applicable
+     lenses across groups.
 6. Write the merged report below. Then, if the report has three or
    more `high` findings, say so in one sentence after the report,
    with the count. Nothing else.
@@ -67,7 +67,7 @@ The group report shape, plus a `Groups` line and a per-group table:
 
 **Scope.** <the scope line>
 **Groups.** om, contracts, context, storage, async, network, delivery
-**Lenses.** <n> applied, <p> passed, <f> findings, <x> not applicable
+**Lenses.** <n> applied, <p> passed, <f> findings, <u> unverified, <x> not applicable
 
 ## Findings
 
@@ -75,19 +75,23 @@ The group report shape, plus a `Groups` line and a per-group table:
 
 ## By group
 
-| Group     | Applied | Passed | Findings | Not applicable |
-|-----------|---------|--------|----------|----------------|
-| om        |         |        |          |                |
-| contracts |         |        |          |                |
-| context   |         |        |          |                |
-| storage   |         |        |          |                |
-| async     |         |        |          |                |
-| network   |         |        |          |                |
-| delivery  |         |        |          |                |
+| Group     | Applied | Passed | Findings | Unverified | Not applicable |
+|-----------|---------|--------|----------|------------|----------------|
+| om        |         |        |          |            |                |
+| contracts |         |        |          |            |                |
+| context   |         |        |          |            |                |
+| storage   |         |        |          |            |                |
+| async     |         |        |          |            |                |
+| network   |         |        |          |            |                |
+| delivery  |         |        |          |            |                |
 
 ## Passed
 
-<LENS-ID>, ... (all groups, in id order)
+<LENS-ID>, <LENS-ID> (`<path>`), ... (all groups, in id order; a `high` lens names the file that proved it)
+
+## Unverified
+
+<LENS-ID> (<what would decide it>), ...
 
 ## Not applicable
 

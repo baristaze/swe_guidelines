@@ -22,15 +22,18 @@ Procedure (the same as the `arch-review-<group>` skills):
    full, plus the interface a class implements, the root that wires it,
    and the callers of a changed signature. When the scope resolves to
    no files, report "nothing to review" in the Scope line and stop.
-3. For every lens, in id order, decide **finding**, **pass**, or **not
-   applicable**, keeping the lens's "Look for" and "Violation" text in
-   front of you.
+3. For every lens, in id order, decide **finding**, **pass**, **not
+   applicable**, or **unverified** (the lens applies, and what would
+   decide it lies outside the scope and the files step 2 pulled in;
+   name what would decide it), keeping the lens's "Look for" and
+   "Violation" text in front of you.
 4. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
    Drop a finding you cannot point at. Verify a **pass** on a `high`
    lens the same way: open the file that would breach it and name that
-   file when deciding; a high lens passes on evidence, never on the
-   absence of a finding.
+   file in the report; a high lens passes on evidence, never on the
+   absence of a finding, and a high lens whose evidence is out of
+   reach is unverified, never passed.
 5. Assign severity from the lens, adjusted only downward when the breach
    is contained (a test double, a documented exception the guideline
    names, an ADR cited next to the code).
@@ -42,7 +45,7 @@ shape:
 # Architecture review: <group title>
 
 **Scope.** <what was reviewed, in one line>
-**Lenses.** <n> applied, <p> passed, <f> findings, <x> not applicable
+**Lenses.** <n> applied, <p> passed, <f> findings, <u> unverified, <x> not applicable
 
 ## Findings
 
@@ -50,7 +53,11 @@ shape:
 
 ## Passed
 
-<LENS-ID>, <LENS-ID>, ...
+<LENS-ID>, <LENS-ID> (`<path>`), ...
+
+## Unverified
+
+<LENS-ID> (<what would decide it, a few words>), ...
 
 ## Not applicable
 
@@ -58,5 +65,7 @@ shape:
 ```
 
 Findings are ordered most severe first, then by file. When there are no
-findings, the section reads `No findings.` Every lens id in the lens
-file appears in exactly one of the three sections.
+findings, the section reads `No findings.`; an empty Unverified
+section reads `None.` A `high` lens in Passed names the file that
+proved it. Every lens id in the lens file appears in exactly one of
+the four sections.
