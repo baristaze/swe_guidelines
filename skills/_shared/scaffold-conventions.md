@@ -90,7 +90,11 @@ the order the guideline presents them, never by number.
   one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update sets
   `updated_at` and `updated_by` in the copy; a create copies nothing),
-  write, and returns the copy it wrote. A `core`-role write lands the
+  write, and returns the copy it wrote. Authorize is
+  `ctx.require(<permission>)` as the first line of every mutating
+  manager operation, before any read, the ones a worker calls
+  included (complete, fail, defer, release, extend the lease), as The
+  Business Layer (Shape of an Operation) states. A `core`-role write lands the
   core row and its `OutboxRow` in one storage method and the manager
   relays the row at once. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
