@@ -622,9 +622,9 @@ type:
 ``` text
 RequestContext          a request exists; nobody is known yet
   ├─ IdentityContext    a person is verified by their own sign-in; no tenant is chosen
-  │    └─ AdminContext  the person is on the operator allowlist
+  │    └─ OperatorContext  the person is on the operator allowlist
   └─ OpContext          a membership is established: one tenant, one user, one role
-       └─ ...           what the domain earns next, say a TenantAdminContext, when
+       └─ ...           what the domain earns next, say a TenantOperatorContext, when
                         operations rely on the role instead of checking it each time
 ```
 
@@ -635,14 +635,14 @@ class IdentityContext(RequestContext):
     credential_kind: CredentialKind
     credential_id: UUID
 
-class AdminContext(IdentityContext):
+class OperatorContext(IdentityContext):
     """The operator plane. No org_id, on purpose."""
 ```
 
 Each stage is a frozen type that subclasses the stage it refines. The
 subclass relation is the refinement: a function that asks for the
 weaker stage accepts the stronger one, and a function that asks for the
-stronger one cannot be handed the weaker. `AdminContext` adds no field
+stronger one cannot be handed the weaker. `OperatorContext` adds no field
 to `IdentityContext`; what it adds is the evidence that the operator
 allowlist was consulted. The chain continues below `OpContext` only
 when the domain earns it: a stage for a role exists when operations
@@ -665,7 +665,7 @@ class TenancyManagerInterface(ABC):
     @abstractmethod
     async def authenticate(self, rctx: RequestContext, credential: str) -> OpContext: ...
     @abstractmethod
-    async def admit_operator(self, ictx: IdentityContext) -> AdminContext: ...
+    async def admit_operator(self, ictx: IdentityContext) -> OperatorContext: ...
     # ...
 ```
 
@@ -701,7 +701,7 @@ declares the weakest stage that proves what it needs, and a caller that
 holds a weaker one cannot call it; the type checker refuses the call. A
 sign-in route holds a `RequestContext` and cannot reach a warehouse
 manager. An
-operator route holds an `AdminContext` and cannot reach a tenant
+operator route holds an `OperatorContext` and cannot reach a tenant
 manager. There is no bundle of managers per stage: the managers are the
 structural graph, built once per process (see [The App
 Container](#the-app-container)), and the stage in an operation's
@@ -782,7 +782,7 @@ stage that carries both; no name is minted for the intersection of two
 others, and the vocabulary stays small enough to read in one screen.
 
 Provenance is a tenant concept: `ActorScope` names a user inside a
-tenant, and `AdminContext` cannot satisfy it. An operator write is
+tenant, and `OperatorContext` cannot satisfy it. An operator write is
 stamped by the operator managers from the identity id and the request
 id their stage carries, through a helper of the operator plane, never
 through `outbox_row`.
@@ -812,13 +812,13 @@ does not move onto the context.
 A tenant context always names one organization. The people who operate
 the platform itself have questions no tenant context can answer: usage
 across every organization, service health, global configuration. That is
-a different plane with a different context type, `AdminContext`, the
+a different plane with a different context type, `OperatorContext`, the
 operator's context. It is the identity stage refined by one more
 transition: `admit_operator` takes an `IdentityContext` and returns an
-`AdminContext` when the identity is on the operator allowlist, and
+`OperatorContext` when the identity is on the operator allowlist, and
 refuses otherwise (see [Stages](#stages)).
 
-`AdminContext` has no `org_id`, on purpose. Operator managers take it
+`OperatorContext` has no `org_id`, on purpose. Operator managers take it
 and nothing else; tenant managers take `OpContext` and nothing else. The
 type system, not convention, keeps the two planes apart: an operator
 route cannot act inside a tenant, and a tenant route cannot reach the
@@ -826,7 +826,7 @@ operator plane. The operator plane is described further in [The
 Gateway](#the-gateway) and [The Operator Console](#the-operator-console).
 
 > **Principle:** Tenant operations take `OpContext`; operator operations
-> take `AdminContext`. The two never mix in one signature.
+> take `OperatorContext`. The two never mix in one signature.
 
 ## The Business Layer
 
@@ -1911,7 +1911,7 @@ The operator plane has its own gate. It authenticates the bearer into
 the identity stage, which admits only the person's own sign-in (never
 an API key, never a session minted from an invitation someone else
 issued), and asks the tenancy manager to admit that identity as an
-operator, which produces an `AdminContext` when the identity is on the
+operator, which produces an `OperatorContext` when the identity is on the
 operator allowlist (see [The Operator
 Context](#the-operator-context)). Operator routes
 live under `/v1/admin/*`, are served by the same process, and cannot

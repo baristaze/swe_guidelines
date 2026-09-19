@@ -20,7 +20,7 @@ less than `OpContext` declares less.
 
 - `architecture.md`, "OpContext": the section is rewritten around two
   ideas kept apart. "Stages": `RequestContext`, `IdentityContext`,
-  `OpContext`, and `AdminContext` are concrete frozen types, each a
+  `OpContext`, and `OperatorContext` are concrete frozen types, each a
   subclass of the stage it refines, each produced by exactly one
   transition on the tenancy manager (`authenticate_login`,
   `exchange_login`, `authenticate`, `admit_operator`, the claim, the
@@ -47,7 +47,9 @@ less than `OpContext` declares less.
   that exist before a principal does take `RequestContext` first and
   produce a stronger stage; a test names each of them. The outbox
   handoff keeps `(org_id, row)`. Minor, a reversal before 1.0.0.
-- `architecture.md`, "The Operator Context": `AdminContext` refines
+- `architecture.md`, "The Operator Context": the operator's context is
+  `OperatorContext`, named for the plane it serves, since "admin" is a
+  tenant role in the reference implementation; `OperatorContext` refines
   `IdentityContext` through `admit_operator`; "The Gateway" mints the
   request stage and runs the transitions; "The Work Queue": the loop
   mints a `RequestContext` per claim and per sweep pass;

@@ -58,7 +58,7 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 | `arch-review-full`        | Reviews a change through every lens group, seven reviewers in parallel, one merged report |
 | `arch-review-om`          | Object model: source of truth, mixins, immutability, identifiers, namespaces |
 | `arch-review-contracts`   | Interfaces, injection, roots, call direction, app container                  |
-| `arch-review-context`     | context stages and scopes, AdminContext, authorization, tenancy, provenance  |
+| `arch-review-context`     | context stages and scopes, OperatorContext, authorization, tenancy, provenance  |
 | `arch-review-storage`     | Storage principles, tables, translation, database roles, migrations          |
 | `arch-review-async`       | Infra capabilities, queues, workers, idempotency, park versus fail           |
 | `arch-review-network`     | Topology, gateway, public types, clients, realtime, push-first               |

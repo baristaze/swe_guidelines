@@ -110,7 +110,7 @@ claim and per sweep pass, and by the bootstrap command per command.
 Every stage above it is produced only by a transition, an operation
 of the tenancy manager or one that asks it (a sign-in into the
 identity stage, a credential or a claim into `OpContext`, the operator
-admission into `AdminContext`), which takes the stage below and the
+admission into `OperatorContext`), which takes the stage below and the
 evidence and returns the stage above or refuses. Nothing else
 constructs a stage.
 
@@ -411,20 +411,20 @@ does not re-validate the underlying credential.
 **Principle.** Operator routes authenticate the bearer into the
 identity stage, which admits only the person's own sign-in, and the
 operator admission on the tenancy manager refines it into an
-`AdminContext` when the identity is on the operator allowlist.
-`AdminContext` refines `IdentityContext` and has no tenant. Operator
-managers take `AdminContext` and nothing else; tenant managers take
+`OperatorContext` when the identity is on the operator allowlist.
+`OperatorContext` refines `IdentityContext` and has no tenant. Operator
+managers take `OperatorContext` and nothing else; tenant managers take
 `OpContext` and nothing else.
 
 **Source.** OpContext, The Operator Context; OpContext, Stages; The
 Network Layer, The Gateway.
 
-**Look for.** The operator gate, the `AdminContext` type and what it
+**Look for.** The operator gate, the `OperatorContext` type and what it
 subclasses, the operator admission, every manager signature on the
 operator plane and the tenant plane.
 
 **Violation.** An operator route gated by a tenant role or a feature
-flag; an `AdminContext` with a tenant field; a manager method that
+flag; an `OperatorContext` with a tenant field; a manager method that
 accepts either context type; an operator route that reaches a tenant
 manager; an API key or an invitation-minted session admitted to the
 operator plane.
