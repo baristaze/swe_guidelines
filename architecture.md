@@ -41,6 +41,8 @@ Design](#scalability-by-design) names.
   - [Composition by decoration](#composition-by-decoration)
   - [Injectability](#injectability)
 - [OpContext](#opcontext)
+  - [Stages](#stages)
+  - [Scopes](#scopes)
   - [The Operator Context](#the-operator-context)
 - [The Business Layer](#the-business-layer)
   - [Shape of an Operation](#shape-of-an-operation)
@@ -512,6 +514,11 @@ a root class constructs the concrete impls in the right order and wires
 them together, which is what makes the swaps and compositions above
 cheap.
 
+What a constructor takes is structural and lives as long as the
+process. What one operation needs, the actor, the tenant, the request,
+the evidence of what has been established, arrives in the context, per
+call, and never through a constructor (see [Scopes](#scopes)).
+
 Configuration is injected the same way. A manager that has tunables (a
 default page size, a lease length, a threshold) takes a small frozen
 options object in its constructor, built once at boot from settings.
@@ -525,10 +532,14 @@ construction is not wiring; it is a cycle that has not been resolved.
 
 ## OpContext
 
-Every operation takes an `OpContext` (operation context) as its first
-argument. The context carries the ambient information every operation
-needs: who is acting, on behalf of which tenant, with what role and
-permissions, from which application, and under which request.
+Every operation takes a context as its first argument. The context
+carries the ambient information the operation needs: who is acting, on
+behalf of which tenant, with what role and permissions, from which
+application, and under which request. `OpContext` (operation context)
+is the context of a tenant operation, and it is the one most operations
+take: a tenant operation authorizes, scopes to the tenant, attributes
+to the actor, and stamps provenance, and that is all of what
+`OpContext` carries.
 
 ``` python
 class SecurityContext(Platform):
@@ -544,17 +555,25 @@ class AppContext(Platform):
     type: AppType   # portal, cli, api, worker, ...
     version: str    # e.g. "portal@2.14.0", useful for compatibility checks and telemetry
 
-class OpContext(Platform):
-    security: SecurityContext
-    app: AppContext
+class RequestContext(Platform):
     request_id: UUID
+    app: AppContext
     trace_id: str | None = None
+
+class OpContext(RequestContext):
+    security: SecurityContext
 
     @property
     def org_id(self) -> UUID: ...
 
     @property
     def user_id(self) -> UUID: ...
+
+    @property
+    def credential_kind(self) -> CredentialKind: ...
+
+    @property
+    def credential_id(self) -> UUID: ...
 
     def has(self, permission: Permission) -> bool: ...
     def require(self, permission: Permission) -> None: ...  # raises NotAuthorized (see Exceptions)
@@ -578,24 +597,195 @@ layer passing it by hand. `ctx.require(Permission.WRITE)` is one line
 at the top of a manager method, which is what keeps authorization in
 the business layer.
 
-`OpContext` is populated by the gateway (see [The Gateway](#the-gateway))
-when a request arrives, by the claim operation a worker calls to take a
-unit of work, by the tenancy manager when a sweep asks for one service
-context per live tenant (both in [Operations Without a
-Principal](#operations-without-a-principal)), and by the bootstrap that
-seeds a fresh environment. Nothing else constructs one. Operations
-never reach for ambient state through globals or thread locals; all of
-it flows through the context, which keeps operations easy to test with
-a fake context and easy to reason about across layers.
-
-`OpContext` is immutable. Once built, it flows through every downstream
+A context is immutable. Once built, it flows through every downstream
 call unchanged. No layer adds, replaces, or mutates its fields
 mid-request. If an operation needs a narrower view (an override, a
 narrowed permission set), it is passed as an explicit argument, not by
-mutating `ctx`.
+mutating `ctx`. Operations never reach for ambient state through
+globals or thread locals; all of it flows through the context, which
+keeps operations easy to test with a fake context and easy to reason
+about across layers.
 
-> **Principle:** All ambient state flows through `OpContext`. No
+The context is not one type. It is one type per stage of what a request
+has established, and one view per capability a consumer needs. The two
+answer different questions and are kept apart: a stage says what is
+proven, a scope says what a consumer sees.
+
+> **Principle:** All ambient state flows through the context. No
 > globals, no thread locals, no hidden lookups.
+
+### Stages
+
+A request establishes who is behind it in steps, and each step is a
+type:
+
+``` text
+RequestContext        a request exists; nobody is known yet
+  ├─ IdentityContext  a person is verified by their own sign-in; no tenant is chosen
+  │    └─ AdminContext  the person is on the operator allowlist
+  └─ OpContext        a membership is established: one tenant, one user, one role
+```
+
+``` python
+class IdentityContext(RequestContext):
+    identity_id: UUID
+    email: str
+    credential_kind: CredentialKind
+    credential_id: UUID
+
+class AdminContext(IdentityContext):
+    """The operator plane. No org_id, on purpose."""
+```
+
+Each stage is a frozen type that subclasses the stage it refines. The
+subclass relation is the refinement: a function that asks for the
+weaker stage accepts the stronger one, and a function that asks for the
+stronger one cannot be handed the weaker. `AdminContext` adds no field
+to `IdentityContext`; what it adds is the evidence that the operator
+allowlist was consulted. `OpContext` does not refine `IdentityContext`:
+what a tenant operation knows about the person is the user inside the
+tenant, not the identity across tenants, and an API key or a worker's
+service context has no sign-in behind it at all.
+
+Each stage is produced by exactly one transition: an operation on the
+tenancy manager that takes the stage below, consults the evidence, and
+returns the stage above or refuses.
+
+``` python
+class TenancyManagerInterface(ABC):
+    @abstractmethod
+    async def authenticate_login(self, rctx: RequestContext, credential: str) -> IdentityContext: ...
+    @abstractmethod
+    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession: ...
+    @abstractmethod
+    async def authenticate(self, rctx: RequestContext, credential: str) -> OpContext: ...
+    @abstractmethod
+    async def admit_operator(self, ictx: IdentityContext) -> AdminContext: ...
+    # ...
+```
+
+Not every path passes through every stage: a session token or an API
+key resolves the membership in one transition, and the claim a worker
+calls returns an `OpContext` from the request stage the loop minted.
+The stages name what is established, not the road taken. A transition
+builds a new object from the stage below and the evidence it consulted;
+it never copies the stage below with changed fields, and nothing but a
+transition constructs a stage above the request stage.
+
+The request stage is minted at the edge, once: by the gateway (see [The
+Gateway](#the-gateway)) for every request and every socket, by the
+worker loop per claim and per sweep pass (see [The Work
+Queue](#the-work-queue)), and by the bootstrap command that seeds an
+environment, per command. It carries the request id, the app, and the
+trace, and nothing that names a person.
+
+A function that takes a stage relies on its invariant and does not
+check it again: an operation that takes `IdentityContext` does not
+verify the credential, and one that takes `OpContext` does not ask
+whether the membership is live. The stage is the proof. That is what
+keeps authentication from being reconstructed at every layer, and it is
+why the stages are concrete types and not views: a stage is evidence,
+produced in one place, and its exact type says who produced it.
+
+The stages fence capabilities without a second registry. An operation
+declares the weakest stage that proves what it needs, and a caller that
+holds a weaker one cannot call it; the type checker refuses the call. A
+login route holds a `RequestContext` and cannot reach a task manager. An
+operator route holds an `AdminContext` and cannot reach a tenant
+manager. There is no bundle of managers per stage: the managers are the
+structural graph, built once per process (see [The App
+Container](#the-app-container)), and the stage in an operation's
+signature decides which operations a holder can call.
+
+> **Principle:** A context stage is evidence. One transition produces
+> it, its type is the proof, and an operation takes the weakest stage
+> that proves what it needs.
+
+### Scopes
+
+Some consumers need less than a stage carries. The helper that stamps
+provenance onto an outbox row needs the actor, the request id, and the
+app. The rate limiter needs the credential id for its subject and the
+tenant for its budget. A realtime subscription needs the tenant and the
+user. None of them authorizes, and none of them should see the
+permissions, the role, or the whole `OpContext`. Each declares a scope:
+a small `Protocol` naming the capability it needs, and nothing else.
+
+``` python
+from typing import Protocol
+
+class RequestScope(Protocol):
+    @property
+    def request_id(self) -> UUID: ...
+    @property
+    def app(self) -> AppContext: ...
+
+class TenantScope(Protocol):
+    @property
+    def org_id(self) -> UUID: ...
+
+class ActorScope(TenantScope, Protocol):  # there is no actor without a tenant
+    @property
+    def user_id(self) -> UUID: ...
+
+class CredentialScope(Protocol):
+    @property
+    def credential_kind(self) -> CredentialKind: ...
+    @property
+    def credential_id(self) -> UUID: ...
+
+class ProvenanceScope(ActorScope, RequestScope, Protocol): ...
+```
+
+``` python
+def outbox_row(ctx: ProvenanceScope, kind: str, target_id: UUID, payload: FrozenMapping) -> OutboxRow: ...
+async def subscribe(self, ctx: ActorScope, ...) -> ...: ...
+```
+
+A scope is a `Protocol` and not an `ABC`, on purpose. A stage satisfies
+a scope structurally, by carrying the members, so one context object
+satisfies every scope it can, with no subclass per combination and no
+projection object built per call. An interface is an `ABC` because an
+impl is written to implement it (see [Interfaces](#interfaces)); a
+scope is a view that a context already satisfies. The members are
+read-only properties, so a frozen field and a property both satisfy
+them. The consumer declares the scope; the caller passes the stage it
+holds; the type checker proves the fit at the call. Every stage
+satisfies `RequestScope`; `OpContext` satisfies all of them.
+
+The scope set is derived from consumers, not from a taxonomy. A scope
+exists when a consumer declares it. There is no `AuthorizationScope`,
+because no consumer needs the permissions without the tenant and the
+actor: a manager operation takes `OpContext`, which is its scope, and
+says nothing narrower.
+
+Scopes compose. `ProvenanceScope` is `ActorScope` and `RequestScope`
+together, and it has a name because provenance is a concept of the
+domain: who, under which request, from which app, stamped on every row
+a write produces. That is the only reason a combination gets a name. A
+consumer that needs two scopes with no concept between them takes the
+stage that carries both; no name is minted for the intersection of two
+others, and the vocabulary stays small enough to read in one screen.
+
+Stages and scopes are kept apart. A stage is a chain of evidence, and
+subclassing is its refinement. A scope is a view, and composition is
+its only combinator. A stage may satisfy a scope; a scope never proves
+a stage, because anything with the right fields satisfies it, a test
+fake included.
+
+Scopes are separate from structural injection, too. A constructor takes
+what an impl needs for its lifetime: its storage, its peer managers,
+its infrastructure capabilities, its options (see
+[Injectability](#injectability)). A context carries what one operation
+needs: state, authority, evidence. Nothing crosses. A manager does not
+arrive on a context, and a request id does not arrive in a
+constructor. When an operation's availability depends on what a request
+has established, the stage is in the operation's signature; the manager
+does not move onto the context.
+
+> **Principle:** Scopes are typed capability boundaries. A consumer
+> declares the narrowest scope it needs, a context satisfies it
+> structurally, and no scope carries the object graph.
 
 ### The Operator Context
 
@@ -603,15 +793,10 @@ A tenant context always names one organization. The people who operate
 the platform itself have questions no tenant context can answer: usage
 across every organization, service health, global configuration. That is
 a different plane with a different context type, `AdminContext`, the
-operator's context:
-
-``` python
-class AdminContext(Platform):
-    identity_id: UUID
-    email: str
-    credential_kind: CredentialKind
-    request_id: UUID
-```
+operator's context, the identity stage refined by one more transition:
+`admit_operator` takes an `IdentityContext` and returns an
+`AdminContext` when the identity is on the operator allowlist, and
+refuses otherwise.
 
 `AdminContext` has no `org_id`, on purpose. Operator managers take it
 and nothing else; tenant managers take `OpContext` and nothing else. The
@@ -627,8 +812,9 @@ Gateway](#the-gateway) and [The Operator Console](#the-operator-console).
 
 The business layer is where the object model comes alive. Managers
 expose operations through `*ManagerInterface` (see
-[Interfaces](#interfaces)). Each operation takes `OpContext` as its
-first argument (see [OpContext](#opcontext)) and returns OM entities or
+[Interfaces](#interfaces)). Each operation takes a context as its
+first argument, `OpContext` for a tenant operation (see
+[OpContext](#opcontext)), and returns OM entities or
 read models (see [Entities, Value Objects, and Read
 Models](#entities-value-objects-and-read-models)). A manager impl holds
 whatever it needs to do its work: the storage under its namespace, any
@@ -721,13 +907,15 @@ see only the interfaces.
 ### Operations Without a Principal
 
 A few operations exist before any principal does, or act across every
-tenant: claiming the next unit of background work, sweeping expired
-leases, finding the integration that owns an inbound webhook token.
-These are declared explicitly on the manager interface without `ctx`,
-documented as platform-internal, and they *produce* a context rather
-than consume one: a claim returns the context under which the work
-runs, and a sweep asks for one service context per live tenant. There
-are very few of them.
+tenant: signing in, claiming the next unit of background work, sweeping
+expired leases, finding the integration that owns an inbound webhook
+token. These take the request stage, `RequestContext`, as their first
+argument (see [Stages](#stages)), are documented as transitions, and
+*produce* a stronger stage rather than consume one: a sign-in returns
+the identity stage, a claim returns the `OpContext` under which the
+work runs, and a sweep asks for one service context per live tenant.
+There are very few of them, and a test names each one, so a new
+operation that takes the request stage is a decision and not a slip.
 
 One more kind takes a tenant id in place of a context: the handoff of
 a row the tenant's own write already produced. The outbox relay of
@@ -1636,9 +1824,10 @@ starts deciding something, the decision moves into a manager.
 ### The Gateway
 
 A gateway sits in front of the services and is the only layer that
-talks to the public internet. It authenticates requests, builds
-`OpContext`, and routes to the right service; services never construct
-`OpContext` from raw headers or tokens. In the single-process start the
+talks to the public internet. It mints the request stage, runs the
+transitions that authenticate it into `OpContext` (see
+[Stages](#stages)), and routes to the right service; services never
+construct a context from raw headers or tokens. In the single-process start the
 gateway is a package of middleware and request dependencies inside the
 API process, with the same responsibilities.
 
@@ -1698,11 +1887,12 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Versioning.** The API prefix (`/v1`) is applied once, where
     routers are mounted. Routers declare only their own sub-paths.
 
-The operator plane has its own gate. It resolves the bearer to an
-identity, admits it only when the identity is on the operator
-allowlist **and** the credential is the person's own sign-in (never an
-API key, never a session minted from an invitation someone else
-issued), and produces an `AdminContext` (see [The Operator
+The operator plane has its own gate. It authenticates the bearer into
+the identity stage, which admits only the person's own sign-in (never
+an API key, never a session minted from an invitation someone else
+issued), and asks the tenancy manager to admit that identity as an
+operator, which produces an `AdminContext` when the identity is on the
+operator allowlist (see [The Operator
 Context](#the-operator-context)). Operator routes
 live under `/v1/admin/*`, are served by the same process, and cannot
 reach a tenant manager because no `OpContext` exists on that path.
@@ -2160,7 +2350,9 @@ stores the dump.
 
 Because the row carries `created_by`, the worker rebuilds the
 enqueuer's principal under the `Role` reserved for services when it
-claims the item. The context the work runs under names the person who
+claims the item: the loop mints a `RequestContext` per claim, and the
+claim returns the `OpContext` the work runs under (see
+[Stages](#stages)). The context the work runs under names the person who
 asked for it, so attribution and audit survive the asynchronous hop.
 Sweeps that act on every tenant ask the tenancy manager for one service
 context per live tenant.
@@ -2649,7 +2841,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │   └── platform/
 │   │       └── om/
 │   │           ├── base.py             # Platform + mixins, new_id, utcnow
-│   │           ├── opcontext.py        # OpContext, AdminContext
+│   │           ├── opcontext.py        # the context stages and the scopes
 │   │           ├── exceptions.py       # PlatformException root
 │   │           ├── root.py             # build_managers
 │   │           ├── catalog/
