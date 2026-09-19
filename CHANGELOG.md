@@ -10,11 +10,11 @@ which number.
 
 The context is no longer one type. This release names what a request
 has established as a chain of typed stages, and what a consumer sees
-as a set of composable scopes, and it reverses two rules of 0.6.0:
-the principal-less operations now take the request stage instead of
-no context, and a consumer that needs less than `OpContext` declares
-less. One rule is reversed; before 1.0.0 that bumps the minor number,
-as `CONTRIBUTING.md` now says.
+as a set of composable scopes. It reverses one rule of 0.6.0: the
+principal-less operations now take the request stage instead of no
+context. Before 1.0.0 a reversal bumps the minor number, as
+`CONTRIBUTING.md` now says. The rest sharpens: a consumer that needs
+less than `OpContext` declares less.
 
 ### Changed
 
