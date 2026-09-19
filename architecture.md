@@ -712,10 +712,10 @@ Some consumers need less than a stage carries. The helper that stamps
 provenance onto an outbox row needs the actor, the request id, and the
 app. The rate limiter's subject needs the credential id and nothing
 about the tenant, because it also runs on routes where no tenant is
-known yet; its budget needs the tenant and nothing about the
-credential. A realtime subscription needs the tenant and the user. None of them authorizes, and none of them should see the
-permissions, the role, or the whole `OpContext`. Each declares a scope:
-a small `Protocol` naming the capability it needs, and nothing else.
+known yet. A realtime subscription needs the tenant and the user. None
+of them authorizes, and none of them should see the permissions, the
+role, or the whole `OpContext`. Each declares a scope: a small
+`Protocol` naming the capability it needs, and nothing else.
 
 ``` python
 from typing import Protocol
@@ -760,11 +760,13 @@ holds; the type checker proves the fit at the call. Every stage
 satisfies `RequestScope`; `OpContext` satisfies all of them.
 
 The scope set is derived from consumers, not from a taxonomy. A scope
-exists when a consumer declares it. There is no `AuthorizationScope`,
-because no consumer needs the permissions without the tenant and the
-actor. A manager operation takes `OpContext`, which is its scope, and
-says nothing narrower, because it authorizes, and authorization rests
-on the live membership that only the stage proves and no scope can.
+exists when a consumer declares it, or when another scope is built on
+it, as `ActorScope` is built on `TenantScope`. There is no
+`AuthorizationScope`, because no consumer needs the permissions without
+the tenant and the actor. A manager operation takes `OpContext`, which
+is its scope, and says nothing narrower, because it authorizes, and
+authorization rests on the live membership that only the stage proves
+and no scope can.
 
 Scopes compose. `ProvenanceScope` is `ActorScope` and `RequestScope`
 together, and it has a name because provenance is a concept of the
