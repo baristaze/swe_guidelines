@@ -1044,7 +1044,6 @@ class WarehouseStorageInterface(ABC):
     @abstractmethod
     async def read_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...
     @abstractmethod
-    @abstractmethod
     async def create_warehouse(
         self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
     ) -> bool: ...  # False when the id is already written; nothing changes then
