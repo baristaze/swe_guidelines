@@ -1923,7 +1923,7 @@ the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
 `FORCE ROW LEVEL SECURITY`, so the owner is held by the policy too:
 
 ``` sql
-CREATE POLICY warehouses_tenancy ON core.warehouses
+CREATE POLICY tenant_fence ON core.warehouses
     FOR ALL USING (<expression>) WITH CHECK (<expression>);
 ALTER TABLE core.warehouses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE core.warehouses FORCE ROW LEVEL SECURITY;

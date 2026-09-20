@@ -166,7 +166,7 @@ GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GU
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
 	mkdir -p vendor/swe_guidelines/lenses
 	curl -fsSL $(GUIDELINE_URL)/architecture.md -o vendor/swe_guidelines/architecture.md
-	for g in README om contracts context storage async network delivery; do \
+	for g in README om contracts context storage async network delivery ops; do \
 	  curl -fsSL $(GUIDELINE_URL)/lenses/$$g.md -o vendor/swe_guidelines/lenses/$$g.md; done
 	@echo "synced $(GUIDELINE_TAG)"
 ```
