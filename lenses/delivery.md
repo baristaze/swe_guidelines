@@ -270,18 +270,17 @@ the fast gate and never the integration or migration jobs.
 
 **Principle.** Every browser app is React + TypeScript built with
 Vite into a static bundle that renders in the client only and talks
-to the gateway, the realtime channel, and the object store through a
-presigned URL it was handed, and nothing else. The
-operator console is a second application on the same stack. The CLI is
-Python.
+to the gateway, the realtime channel, the object store through a
+presigned URL it was handed, and the error tracker when one is
+configured, and nothing else. The CLI is Python.
 
 **Source.** Client App Architecture, Stack; Client Rendering.
 
 **Look for.** `apps/*/package.json` and build config; a browser app
 introduced on a different framework or toolchain; the build output and
 how it is served; any server runtime deployed alongside the bundle;
-network calls to hosts other than the gateway, the channel, and a
-presigned object-store URL; the CLI's language.
+network calls to hosts other than the gateway, the channel, the error
+tracker, and a presigned object-store URL; the CLI's language.
 
 **Violation.** A second frontend framework or bundler in the
 workspace; a rendering server or API routes in the app's toolchain or

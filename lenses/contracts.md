@@ -61,7 +61,8 @@ interface does not declare and callers use them.
 **Principle.** An interface has at least two impls, a technology impl
 and an in-memory impl, and they are interchangeable at wiring time.
 Names put the technology last: `InventoryStoragePostgresImpl`,
-`InventoryStorageMemoryImpl`.
+`InventoryStorageMemoryImpl`. A manager interface is the exception:
+one impl, since the pair it runs over is the storage under it.
 
 **Source.** Interfaces, Multiple impls per interface.
 
@@ -69,9 +70,9 @@ Names put the technology last: `InventoryStoragePostgresImpl`,
 behind each storage and infra interface; the names that appear in
 interface signatures and in callers.
 
-**Violation.** An interface has a single impl; an impl name leads with
-the technology or omits `Impl`; a technology-specific name leaks into an
-interface or a caller.
+**Violation.** A storage, infra, service, or integration interface has
+a single impl; an impl name leads with the technology or omits `Impl`;
+a technology-specific name leaks into an interface or a caller.
 
 **Severity.** medium
 

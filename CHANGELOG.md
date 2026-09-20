@@ -6,6 +6,51 @@ which number.
 
 ## Unreleased
 
+## 0.12.0 (2026-09-19)
+
+A second reading of 0.11.0 against itself, looking for the places
+where one file names a shape another file cannot hold. Minor: two
+rules are narrowed where they never applied and the changelog names
+both; the rest is one interface name and four derived files brought
+back to the text.
+
+### Changed
+
+- `architecture.md`, "Multiple impls per interface": a manager
+  interface has one impl, named as the exception to the two-impl
+  rule, because a manager carries no technology of its own and the
+  pair it runs over is the storage and the infrastructure under it.
+  This narrows "an interface has at least two impls", which every
+  manager in the document already stood outside. Lens `CON-03`.
+- `architecture.md`, "Client Rendering": the bundle also talks to the
+  error tracker when one is configured, so the list that section
+  closes holds the origins "API Access" and "Error Tracking" already
+  require of it; a browser app reports errors like every other
+  process. This widens "and nothing else". Lens `DEL-12`.
+- `architecture.md`, "Queues": the capability interface is
+  `QueuesInterface`, like the `TopicsInterface` and `BucketsInterface`
+  beside it and the `get_queues()` getter that returns it.
+- `architecture.md`, "Monorepo Folder Structure": the OM's `tests/`
+  tree shows `contracts/`, the storage cases the unit and the
+  integration suites both run, which "Tests" describes and every
+  scaffold writes.
+- `lenses/README.md`: the group table names subsections by their
+  titles, "Service Interfaces and Impls", "The App Container",
+  "Idempotency on the Consumer Side", and "Long-Running
+  Orchestrations", so the two review skills generated from those rows
+  carry the titles too. `DEL-12` drops the operator-console sentence
+  `DEL-16` owns.
+- Skills: `arch-scaffold-new` gives the infra distribution its own
+  `InfraException` root and has its cloud impls raise it, since infra
+  imports nothing from the OM; its `opcontext.py` row no longer names
+  a `build_context` helper, because nothing but a transition builds a
+  stage above the request stage. `arch-scaffold-entity` fills the
+  outbox payload with the entity's own dump, as "Shape of an
+  Operation" writes it.
+- `docs/adopting.md`: the scaffold's review pass is described by what
+  it does, closing every high finding before it hands the tree over,
+  not by a count of findings.
+
 ## 0.11.0 (2026-09-19)
 
 An outside review of 0.10.0 read the guideline, the lenses, the skills,

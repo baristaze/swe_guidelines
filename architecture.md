@@ -507,6 +507,11 @@ impl, and they are interchangeable at wiring time. Callers never know
 which one they are holding. Names put the technology last:
 `InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`.
 
+A manager interface is the exception: it has one impl, because a
+manager names no technology of its own, and the pair it runs over is
+the storage and the infrastructure under it. That is what lets the
+whole business layer run in a test over the memory roots.
+
 The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
 without infrastructure. It is a full second implementation: every read,
@@ -1621,7 +1626,7 @@ class InfraInterface(ABC):
     @abstractmethod
     def get_topics(self) -> TopicsInterface: ...
     @abstractmethod
-    def get_queues(self) -> QueueInterface: ...
+    def get_queues(self) -> QueuesInterface: ...
     @abstractmethod
     def get_secrets(self) -> SecretsInterface: ...
     # ... one getter per capability
@@ -1827,7 +1832,7 @@ class Queues(str, Enum):
     BULK_UPLOADS = "bulk_uploads"
     # ...
 
-class QueueInterface(ABC):
+class QueuesInterface(ABC):
     @abstractmethod
     async def send(self, queue: Queues, body: bytes, *, dedup_id: str | None = None) -> str: ...
     @abstractmethod
@@ -2962,11 +2967,13 @@ server-side rendering out, so the simpler tool wins.
 
 Rendering happens in the client only. The deployed artifact is a
 static bundle that talks to backing services, the realtime channel,
-and the object store through a presigned URL it was handed (see
-[Buckets](#buckets)), and nothing else.
+the object store through a presigned URL it was handed (see
+[Buckets](#buckets)), and the error tracker when one is configured
+(see [Error Tracking](#error-tracking)), and nothing else.
 
 > **Principle:** The app is a static bundle that talks to backing
-> services, the realtime channel, and a presigned URL it was handed.
+> services, the realtime channel, a presigned URL it was handed, and
+> the error tracker when one is configured.
 
 ### State and Data
 
@@ -3259,6 +3266,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │           ├── work/               # WorkItem, the work queue
 │   │           └── storage/            # storage root, roles, shared base classes
 │   ├── tests/
+│   │   ├── contracts/                  # storage cases both suites run
 │   │   ├── unit/
 │   │   ├── integration/
 │   │   └── conftest.py

@@ -1,6 +1,6 @@
 ---
 name: arch-review-async
-description: "Review code or a change through the Async lenses of the Software Design and Architecture Guidelines. Covers Infrastructure, Worker Roles, The Network Layer (idempotency, orchestration): infra, queues, workers, park vs fail. Use for a change that touches this area, or as one leg of arch-review-full."
+description: "Review code or a change through the Async lenses of the Software Design and Architecture Guidelines. Covers Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations): infra, queues, workers, park vs fail. Use for a change that touches this area, or as one leg of arch-review-full."
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
