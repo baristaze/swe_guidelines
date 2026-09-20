@@ -903,3 +903,24 @@ the gateway's lines and absent from the worker's. (The filter that
 attaches them is DEL-19.)
 
 **Severity.** medium
+
+## DEL-40 The isolation suite is verified against a deliberate breach
+
+**Principle.** An isolation suite is worth what it catches, so a tenant
+predicate is taken out of one query, the suite is run and fails, and
+the predicate is put back. What the run showed, the query and what the
+suite reported, is recorded. Which mechanism takes the predicate out
+is the project's choice; that the control is run is not.
+
+**Source.** Cross-Cutting Conventions, Tests.
+
+**Look for.** The record of the last such run against the tenant
+isolation cases (CTX-30): which query lost its predicate, what the
+suite reported, and when.
+
+**Violation.** An isolation suite whose worth rests on its existence,
+with no run that removed a predicate; a run made and not recorded, so
+the next reader takes it on trust; a record showing the suite still
+passed with the predicate gone and nothing done about it.
+
+**Severity.** high

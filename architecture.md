@@ -3976,6 +3976,14 @@ over memory and over the engine, because the fence lives in the query
 and the signature says only that the tenant was offered (see
 [Namespace Shape](#namespace-shape)).
 
+The isolation suite is verified against a deliberate breach. What such
+a suite is worth is what it catches, so a tenant predicate is taken
+out of one query, the suite is run and fails, and the predicate is put
+back. What that run showed is recorded, the query it was run against
+and what the suite reported, because a negative control nobody ran is
+a claim and not evidence. Which mechanism takes the predicate out is
+the project's choice; that the control is run and recorded is not.
+
 ## Technology Choices and How to Override Them
 
 This document names technologies, not only shapes. The object model is

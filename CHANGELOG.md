@@ -24,6 +24,13 @@ which number.
   `arch-scaffold-worker` the one its tenant-carrying method owes,
   `arch-scaffold-new` names the enumerating test as a signature check,
   and the shared scaffold conventions carry the rule.
+- `architecture.md`, "Tests": the isolation suite is verified against a
+  deliberate breach. A tenant predicate is taken out of one query, the
+  suite is run and fails, the predicate is put back, and what that run
+  showed is recorded, the query it was run against and what the suite
+  reported, because a negative control nobody ran is a claim and not
+  evidence. Which mechanism takes the predicate out is the project's
+  choice; that the control is run and recorded is not. Lens `DEL-40`.
 - `architecture.md`, "Correlation Across a Handoff": a handoff carries
   the request that caused it, so one id joins the request, the row it
   wrote, the item it queued, and the run that followed. The stage a
