@@ -18,11 +18,13 @@ HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 def slug(heading: str) -> str:
     """The anchor a Markdown renderer derives from a heading.
 
-    Inline code, emphasis, and underscores are stripped, the rest is
+    Inline code and emphasis markers are stripped, the rest is
     lowercased, punctuation is dropped, and runs of whitespace become
-    one hyphen. `anchors` numbers repeats; this function does not.
+    one hyphen. Underscores stay, as GitHub keeps them (`EMPTY_UUID`
+    anchors as `empty_uuid`). `anchors` numbers repeats; this function
+    does not.
     """
-    text = re.sub(r"[`*_]", "", heading).strip().lower()
+    text = re.sub(r"[`*]", "", heading).strip().lower()
     text = re.sub(r"[^\w\s-]", "", text)
     return re.sub(r"\s+", "-", text)
 
