@@ -4,12 +4,12 @@ PYTHON := python3
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
 
-.PHONY: help check lint lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc clean
+.PHONY: help check lint lenses leaks links prose toc version skills agents test plugin gen-skills gen-skills-check gen-toc clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: lint lenses leaks links toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
+check: lint lenses leaks links prose toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
@@ -22,6 +22,9 @@ leaks:             ## no product or hardware vocabulary in the published files
 
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
+
+prose:             ## no paragraph of architecture.md is longer than a person reads in one breath
+	$(PYTHON) scripts/check_prose.py
 
 toc:               ## the table of contents of architecture.md matches its headings
 	$(PYTHON) scripts/gen_toc.py --check

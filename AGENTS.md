@@ -47,6 +47,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - No history in the guideline: it states what we do, in the present
   tense, with no rejected alternatives and no changelog phrasing.
 - No em-dashes anywhere.
+- No paragraph of the guideline over 200 words, a list item counted on
+  its own (`scripts/check_prose.py`): a protocol that long is a table
+  or two paragraphs.
 - No section numbers anywhere: headings are unnumbered, and every
   cross-reference (in the guideline, the lenses, the skills, the docs)
   names the section by title; inside the guideline it is a named
