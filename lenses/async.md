@@ -629,3 +629,23 @@ a run whose span starts an unlinked trace, or one that runs as a child
 of the causing span, stretching one trace across the queue.
 
 **Severity.** medium
+
+## ASY-30 A degraded answer is declared at the read, never silent
+
+**Principle.** Where a read may answer from a degraded source, the
+degradation is chosen at that read and visible to its caller: a cache
+that fails open, a limit that fails open, a channel that degrades to
+polling. Nothing silently substitutes a stale answer for a fresh one.
+
+**Source.** Infrastructure, Cache.
+
+**Look for.** Every read that can answer without its source: what a
+manager does when the cache backend is unreachable and what its caller
+learns; any fallback path inside a storage impl or a service impl.
+
+**Violation.** A read that falls back to a stale or partial source and
+returns it as if it were fresh; a fallback buried in an impl, where
+the manager that owns the cost of a stale read cannot see it; a caller
+with no way to tell a degraded answer from a fresh one.
+
+**Severity.** medium

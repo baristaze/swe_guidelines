@@ -1813,6 +1813,15 @@ Caching is a business-layer concern: a storage impl talks to its
 database and nothing else, and caching decisions live in managers,
 where the cost of a stale read is understood.
 
+A degraded answer is declared where it is chosen. Where a read may
+answer from a degraded source, the manager chooses that at the read
+and the answer says so to its caller, so nothing silently substitutes
+a stale answer for a fresh one. The three this document has are each
+named where they live: the cache that fails open here, the limit that
+fails open at [The Gateway](#the-gateway), and the channel that
+degrades to polling in [Push-First Apps](#push-first-apps). A fourth
+is named the same way or it does not exist.
+
 ### Buckets
 
 Buckets are for large blobs: generated documents, user uploads,
