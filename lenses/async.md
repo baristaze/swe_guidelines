@@ -251,23 +251,20 @@ handler that does the whole job inline.
 references. A value is resolved for exactly one operation and
 discarded. It never enters an entity, a log line, an audit payload, an
 error message, or a subprocess environment. An error names the secret
-and the store it was looked up in, never a value. A process that names
-itself staging or production and finds the file backend configured
-refuses to start.
+and the store it was looked up in, never a value.
 
 **Source.** Infrastructure, Secrets.
 
 **Look for.** Entity fields that hold credentials; where `get(name)` is
 called and how long the value lives; log and audit calls near secret
 resolution; the text of the not-found error; subprocess environment
-construction; the boot-time backend check.
+construction.
 
 **Violation.** An entity with a token or password field; a secret
 resolved at boot and kept on an object; a value in a log line, an
 error string, or an audit payload; a not-found error that omits the
 secret name or the store; a subprocess inheriting the parent's full
-environment; a production deployment on the file backend that starts
-anyway.
+environment.
 
 **Severity.** medium
 

@@ -320,7 +320,7 @@ branches on entity state; a router composes several managers to enforce
 a rule the OM owns; a router calls storage directly; a router raises a
 domain exception on its own.
 
-**Severity.** high
+**Severity.** medium
 
 ## CON-16 Every process boots through the same container in the same order
 
