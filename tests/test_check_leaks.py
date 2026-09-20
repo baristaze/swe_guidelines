@@ -56,12 +56,24 @@ def test_terms_are_matched_case_insensitively_on_word_boundaries(repo, leaks):
 
 
 def test_em_dash_and_product_term_fail_under_agents(repo, leaks, capsys):
-    repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the code — one lens group.\n")
+    repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the code \u2014 one lens group.\n")
     assert leaks.main() == 1
     assert "agents/arch-reviewer.md:5: em-dash" in capsys.readouterr().out
     repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the firmware.\n")
     assert leaks.main() == 1
     assert "agents/arch-reviewer.md:5: product term 'firmware'" in capsys.readouterr().out
+
+
+def test_em_dash_fails_in_the_scripts_and_their_tests(repo, leaks, capsys):
+    repo.write("scripts/check_thing.py", 'MARK = "\u2014"  # a literal em-dash\n')
+    repo.write("tests/test_check_thing.py", 'assert "\u2014" not in "x"\n')
+    assert leaks.main() == 1
+    out = capsys.readouterr().out
+    assert "scripts/check_thing.py:1: em-dash" in out
+    assert "tests/test_check_thing.py:1: em-dash" in out
+    repo.write("scripts/check_thing.py", "from _common import EM_DASH\n")
+    repo.write("tests/test_check_thing.py", "from _common import EM_DASH\n")
+    assert leaks.main() == 0
 
 
 def test_product_term_fails_in_agents_md(repo, leaks, capsys):

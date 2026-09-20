@@ -15,8 +15,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
   `Section title, Subsection`, by title and never by number.
 - `skills/arch-review-<group>/SKILL.md` is generated from
   `skills/_template/review.SKILL.md`; edit the template and run
-  `make gen-skills`. The other skills are hand-written and share
-  `skills/_shared/scaffold-conventions.md`. `skills/arch-new-aspect`
+  `make gen-skills`. The other skills are hand-written. The six
+  scaffold skills share `skills/_shared/scaffold-conventions.md`; the
+  other hand-written skills do not. `skills/arch-new-aspect`
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,
   skills, docs, and changelog.
@@ -60,9 +61,17 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - Every skill's `name` equals its folder name and starts with `arch-`;
   every `${CLAUDE_SKILL_DIR}/...` reference resolves; frontmatter is
   flat `key: value` lines; descriptions are one complete double-quoted
-  string; `allowed-tools` is comma-separated, the `Bash(cmd:*)` prefix
-  form is house style (an exact `Bash(make check)` is accepted too),
-  and it names only what the skill runs. `Bash(uv run:*)` and
+  string; `allowed-tools` is comma-separated. `scripts/check_skills.py`
+  refuses a bare `Bash`, a trailing space inside the parentheses, and
+  the `Bash(cmd *)` spelling; it accepts both the prefix form and an
+  exact `Bash(make <target>)`: the exact form for a Makefile target,
+  the prefix form `Bash(cmd:*)` for a tool that takes arguments.
+  `allowed-tools` names only what the body runs, and
+  `scripts/check_skills.py` holds the make targets to that: every
+  `Bash(make <target>)` has `make <target>` in a backticked span of the
+  body, or of `skills/_shared/scaffold-conventions.md` when the body
+  references it. A description in prose is not a run. The git, uv, and
+  pnpm entries are held to it by hand. `Bash(uv run:*)` and
   `Bash(pnpm run:*)` are a shell in practice: either runs whatever the
   workspace holds. They stay listed because a scaffold has to run the
   project's own tools through the workspace, and naming them says so

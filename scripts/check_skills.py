@@ -10,8 +10,15 @@ Rules:
 - there is exactly one arch-review-<group> skill per lens group and none for
   a group that does not exist;
 - arch-review-full names every group's review skill;
-- allowed-tools is comma-separated, each entry `Name` or `Name(rule)`, Bash rules
-  in the `Bash(cmd:*)` prefix form;
+- allowed-tools is comma-separated, each entry `Name` or `Name(rule)`; a bare
+  `Bash` is refused, as is a rule with a trailing space inside the
+  parentheses or the `Bash(cmd *)` spelling; a Bash rule is the
+  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`;
+- allowed-tools names only what the body runs; the checker holds the make
+  targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
+  `make <target>` appears inside a backticked span of the skill body, or of
+  `skills/_shared/scaffold-conventions.md` when the body references that
+  file. Git, uv, and pnpm entries are checked by hand;
 - frontmatter is flat `key: value` lines, one per key, no key repeated;
 - a double-quoted value is one complete YAML double-quoted scalar: it
   closes, its inner quotes are escaped, its escapes are ones YAML defines,
@@ -31,6 +38,8 @@ import re
 import sys
 from pathlib import Path
 
+from _common import EM_DASH
+
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
 LENSES = ROOT / "lenses"
@@ -39,6 +48,9 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
 TOOL = re.compile(r"^[A-Za-z]+(\([^()]*\))?$")
+BASH_RULE = re.compile(r"^Bash\((.*)\)$")
+CODE_SPAN = re.compile(r"`([^`\n]+)`")
+CONVENTIONS = "_shared/scaffold-conventions.md"
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = "0abtnvfre \"/\\N_LP\t"  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
@@ -112,6 +124,42 @@ def frontmatter(text: str, errors: list[str], rel: str) -> dict[str, str]:
     return out
 
 
+def body_of(text: str) -> str:
+    """The skill text after the frontmatter."""
+    m = FRONTMATTER.match(text)
+    return text[m.end() :] if m else text
+
+
+def code_spans(text: str) -> list[str]:
+    """Every inline backticked span of a Markdown text, fences left out.
+
+    A fenced block in a skill is a report template, never a command, so
+    only inline spans count as the body running something.
+    """
+    out: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            out.extend(CODE_SPAN.findall(line))
+    return out
+
+
+def bash_command(tool: str) -> str | None:
+    """The command a `Bash(cmd)` or `Bash(cmd:*)` entry names, or None.
+
+    Only a make target is held to the body; the review skills read a
+    diff without spelling the git command, and `uv run` and `pnpm run`
+    are a shell in practice, so those entries are left to the reader.
+    """
+    m = BASH_RULE.match(tool)
+    if not m:
+        return None
+    return m.group(1).removesuffix(":*").strip()
+
+
 def lens_groups() -> set[str]:
     groups = set()
     for line in (LENSES / "README.md").read_text(encoding="utf-8").splitlines():
@@ -147,17 +195,35 @@ def main() -> int:
             errors.append(f"{rel}: empty description")
         elif len(desc) > 1024:
             errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
-        if "—" in text:
+        if EM_DASH in text:
             errors.append(f"{rel}: em-dash")
         tools = fm.get("allowed-tools", "")
         if tools:
             if " " in tools and "," not in tools:
                 errors.append(f"{rel}: allowed-tools must be comma-separated")
+            body = body_of(text)
+            runs = code_spans(body)
+            if CONVENTIONS in body and (SKILLS / CONVENTIONS).exists():
+                runs.extend(code_spans((SKILLS / CONVENTIONS).read_text(encoding="utf-8")))
             for tool in (t.strip() for t in tools.split(",")):
                 if not TOOL.match(tool):
                     errors.append(f"{rel}: allowed-tools entry {tool!r} is not Name or Name(rule)")
-                if tool.startswith("Bash(") and " *" in tool:
+                    continue
+                if tool == "Bash":
+                    errors.append(f"{rel}: a bare Bash is refused; name the command, Bash(cmd:*)")
+                    continue
+                cmd = bash_command(tool)
+                if cmd is None:
+                    continue
+                rule = tool[len("Bash(") : -1]
+                if rule != rule.strip():
+                    errors.append(f"{rel}: trailing space inside the parentheses of {tool!r}")
+                if " *" in rule:
                     errors.append(f"{rel}: use the Bash(cmd:*) prefix form, not {tool!r}")
+                if not cmd:
+                    errors.append(f"{rel}: allowed-tools entry {tool!r} names no command")
+                elif cmd.startswith("make ") and not any(cmd in span for span in runs):
+                    errors.append(f"{rel}: allowed-tools names Bash({cmd}) but the body never runs {cmd}")
         for ref in REF.findall(text):
             if "<" in ref:
                 continue  # a placeholder such as arch-review-<group>

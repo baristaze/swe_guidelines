@@ -86,8 +86,9 @@ Claude Code 2.1 and later.
 
 ```bash
 make check        # what CI runs: markdownlint, lens format and citations, vocabulary leaks, links,
-                  # table of contents, version copies, generated skills up to date, skill shape,
-                  # the reviewer agent against the review template, the checkers' tests, plugin validation
+                  # paragraph length, table of contents, version copies, generated skills up to date,
+                  # skill shape, the reviewer agent against the review template, the checkers' tests,
+                  # plugin validation
 make gen-skills   # regenerate the seven group review skills from the template
 make gen-toc      # regenerate the table of contents of architecture.md
 ```

@@ -6,9 +6,10 @@ belong to the projects it was extracted from, never to the guideline or
 the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
 which group applies to which files.
 
-Also refuses em-dashes everywhere, changelog phrasing in the guideline, and
-the one spelling of an update copy the guideline forbids, wherever a snippet
-could teach it.
+Also refuses em-dashes everywhere, the Python under scripts/ and tests/
+included, changelog phrasing in the guideline, and the one spelling of an
+update copy the guideline forbids, wherever a snippet could teach it. The
+product-term list applies to Markdown only.
 Exit status is non-zero on any hit. Standard library only.
 """
 
@@ -17,6 +18,8 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+
+from _common import EM_DASH
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,8 +57,6 @@ REFUSED_TERMS: dict[str, list[str]] = {
     ],
 }
 
-EM_DASH = "\u2014"
-
 # file glob -> the term groups refused there; a file matched by several globs is
 # scanned once per group, whichever globs name it
 SCOPES: list[tuple[str, list[str]]] = [
@@ -70,8 +71,19 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("AGENTS.md", ["product"]),
 ]
 
-# file glob -> em-dashes are refused in every one of these
-EVERYWHERE = ["*.md", "lenses/*.md", "skills/*/*.md", "skills/*/*/*.md", "docs/*.md", "agents/*.md", ".github/**/*.md"]
+# file glob -> em-dashes are refused in every one of these; the scripts and
+# their tests name the character through `_common.EM_DASH`, never literally
+EVERYWHERE = [
+    "*.md",
+    "lenses/*.md",
+    "skills/*/*.md",
+    "skills/*/*/*.md",
+    "docs/*.md",
+    "agents/*.md",
+    ".github/**/*.md",
+    "scripts/*.py",
+    "tests/*.py",
+]
 
 
 def files(root: Path, globs: list[str]) -> list[Path]:

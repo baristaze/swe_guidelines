@@ -95,6 +95,47 @@ def test_allowed_tools_form(repo, skills, capsys):
     repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read Agent", "allowed-tools: Read, Bash(git diff *)")
     assert skills.main() == 1
     assert "Bash(cmd:*) prefix form" in capsys.readouterr().out
+    repo.edit("skills/arch-review-full/SKILL.md", "Bash(git diff *)", "Bash")
+    assert skills.main() == 1
+    assert "a bare Bash is refused" in capsys.readouterr().out
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Bash", "allowed-tools: Read, Bash(make check )")
+    assert skills.main() == 1
+    assert "trailing space inside the parentheses of 'Bash(make check )'" in capsys.readouterr().out
+
+
+def test_make_target_the_body_runs_passes(repo, skills, capsys):
+    # the exact form, the prefix form, a target the scaffold conventions file runs
+    # on the skill's behalf, and git, uv, and pnpm entries the checker leaves alone
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRun `make migrate` after every table.\n")
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "Bash(make check)",
+        "Bash(make check), Bash(make migrate-check:*), Bash(make migrate), Bash(git status:*), Bash(uv run:*), Bash(pnpm run:*)",
+    )
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "2. Run `make check`.",
+        "2. Run `make check`, then `make migrate-check --dry-run`.\n3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+    )
+    assert skills.main() == 0
+    assert "skills ok" in capsys.readouterr().out
+
+
+def test_make_target_the_body_never_runs_fails(repo, skills, capsys):
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", "Bash(make check), Bash(make test-unit), Bash(make openapi:*)")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert "skills/arch-scaffold-thing/SKILL.md: allowed-tools names Bash(make test-unit) but the body never runs make test-unit" in out
+    assert "allowed-tools names Bash(make openapi) but the body never runs make openapi" in out
+    assert "never runs make check" not in out
+    # a target named only in the conventions file counts only when the body references that file
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRun `make test-unit`.\n")
+    assert skills.main() == 1
+    assert "never runs make test-unit" in capsys.readouterr().out
+    # a mention inside a fenced block is a report template, not a run
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "## Output\n", "## Output\n\n```text\nmake test-unit\nmake openapi\n```\n")
+    assert skills.main() == 1
+    assert "never runs make openapi" in capsys.readouterr().out
 
 
 def test_skill_dir_reference_must_exist(repo, skills, capsys):
@@ -123,6 +164,6 @@ def test_scaffold_sections_must_appear_in_order(repo, skills, capsys):
     repo.write("skills/arch-scaffold-thing/SKILL.md", swapped)
     assert skills.main() == 1
     assert "scaffold sections are ['Input', 'Changed', 'Created', 'Procedure', 'Output']" in capsys.readouterr().out
-    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Procedure\n\n1. Write the thing.\n\n", ""))
+    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Procedure\n\n1. Write the thing.\n2. Run `make check`.\n\n", ""))
     assert skills.main() == 1
     assert "expected ['Input', 'Created', 'Changed', 'Procedure', 'Output']" in capsys.readouterr().out
