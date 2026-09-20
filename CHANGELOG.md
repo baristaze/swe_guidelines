@@ -6,6 +6,33 @@ which number.
 
 ## Unreleased
 
+## 0.18.0 (2026-09-20)
+
+The document is rewritten to be read. Not restructured: every section,
+every heading, every rule and every code block is where it was, and
+says what it said. What changed is the prose.
+
+Two outside readings said the same thing. The style was aphoristic and
+comma-spliced, sentences chained clause onto clause, and a senior
+reader had to parse a paragraph twice. A document meant to be read once
+end to end, at thirty thousand words in that idiom, does not get read
+end to end.
+
+So the sentences are short now, one idea each, and a paragraph breaks
+where the thought does. The two paragraphs the readings named by name,
+the API-key re-mint under "Shape of an Operation" and the lease under
+"The Gateway", are the clearest cases: both were one block carrying a
+whole protocol, and both are now a sequence, one step per sentence.
+
+The document grew 1.7 percent. That is the point. The readability came
+from breaking chains apart, not from adding words, and the Python tips
+paid for most of it: several spelled out every mechanic of a trick, and
+they now seed the idea and stop.
+
+Minor, because two rules are removed: the paragraph cap and the
+em-dash ban. No rule of the architecture itself changed. 202 lenses,
+unchanged, and every `Source` citation still resolves.
+
 ### Removed
 
 - `scripts/check_prose.py`, `make prose`, and the invariant behind
