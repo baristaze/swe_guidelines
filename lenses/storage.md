@@ -78,9 +78,10 @@ exception is visible by name.
 **Look for.** Storage interface methods that claim, settle, or mutate
 under a lock: each is one method whose name says what it does
 atomically, and the row lock or compare-and-set lives inside that one
-method. Locking primitives (`FOR UPDATE`, `SKIP LOCKED`, a `WHERE`
-that compares a stored version) anywhere other than inside one such
-method. The `version` field itself belongs on the entity (STO-22).
+method. Locking primitives (`FOR UPDATE`, `SKIP LOCKED`) anywhere
+other than inside one such method. A compare-and-set on one row's
+`version` is an ordinary write and needs no named method; the
+`version` field itself belongs on the entity (STO-22).
 
 **Violation.** Locking spread across two interface methods (one to
 lock, one to write) so the caller holds the lock between calls. An
@@ -245,14 +246,16 @@ technology is not last.
 only what is specific to its entity. The common mixins live in the
 shared `tables/` package, with one storage-only addition: `org_id`
 rides on `IdentifiableMixin`. A global table composes
-`GlobalIdentifiableMixin`, which carries `id` alone. A concrete table
-composes the mixins its entity has, in the OM's house-style order.
+`GlobalIdentifiableMixin`, a feed table `FeedIdentifiableMixin`
+(STO-14). A concrete table composes the mixins its entity has, in the
+OM's house-style order.
 
 **Source.** The Storage Layer, Defining ORM Classes.
 
 **Look for.** Table classes composing `IdentifiableMixin` (or
-`GlobalIdentifiableMixin` for a global table), `NamedMixin`,
-`TrackableMixin`, `SoftDeletableMixin` in the OM order, with the
+`GlobalIdentifiableMixin` for a global table, `FeedIdentifiableMixin`
+for a feed), `NamedMixin`, `TrackableMixin`, `SoftDeletableMixin` in
+the OM order, with the
 declarative base last. A table's mixin set matching its entity's mixin
 set, so an append-only entity's table has no tracking or soft-delete
 columns. `id`, `org_id`, `name`, `created_at`, `updated_at`,

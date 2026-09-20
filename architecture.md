@@ -255,7 +255,10 @@ and when. `SoftDeletable` means it can be hidden without being purged.
 trait by adding the mixin; it opts out by leaving it off. An append-only
 record such as an audit entry or a ledger line is `Identifiable` and
 nothing else: it is never updated, so it carries no `updated_at`, and it
-is never hidden, so it carries no `deleted_at`.
+is never hidden, so it carries no `deleted_at`. Its birth time is the
+one in its id, since every id is a `uuid_v7` with the millisecond in
+front (see [Identifiers](#identifiers)), so the "when" of an audit
+entry costs no column.
 
 > **Principle:** Inheritance expresses abstraction, not code reuse. Each
 > mixin is a promise about what the entity is.
@@ -1265,8 +1268,11 @@ tenant users, platform-owned reference data, a health row per external
 provider. Their storage methods take no `org_id`, and the interface
 docstring says why. Cross-tenant sweeps (expire every lease that is
 past due, in every tenant) return `tuple[UUID, Entity]` so the tenant
-travels back with each row. These are the documented exceptions to the
-`org_id`-first rule, and a test enumerates them.
+travels back with each row, unless the entity carries `org_id` itself,
+as the outbox row below and the `Event` of [Realtime at the
+Edge](#realtime-at-the-edge) do, in which case the row already names
+its tenant and is returned alone. These are the documented exceptions
+to the `org_id`-first rule, and a test enumerates them.
 
 ### Storage Root
 
@@ -1891,7 +1897,7 @@ class Queues(str, Enum):
 
 class QueuesInterface(ABC):
     @abstractmethod
-    async def send(self, queue: Queues, body: bytes) -> str: ...
+    async def send(self, queue: Queues, body: bytes) -> None: ...
     @abstractmethod
     async def receive(self, queue: Queues, max_messages: int, wait: timedelta, visibility: timedelta) -> list[QueueMessage]: ...
     @abstractmethod
@@ -1901,6 +1907,13 @@ class QueuesInterface(ABC):
     @abstractmethod
     async def depth(self, queue: Queues) -> QueueDepth: ...  # visible, in flight, dead-lettered
 ```
+
+`send()` returns `None` for the reason `publish()` does: the
+observable id is the producer-set `idempotency_key` the body carries
+(see [Idempotency](#idempotency)), and a broker-assigned id carries no
+durable meaning across retries and replays. The `receipt` on a
+`QueueMessage` is not that id; it is the handle of one delivery, which
+`delete` and `change_visibility` take.
 
 A queue delivers at least once and does not deduplicate, and the
 interface offers no deduplication knob even where a hosted queue has
@@ -2788,8 +2801,11 @@ class WorkItem(Identifiable, Trackable):
 The queue lives in the `queue` database role (see [Database
 Roles](#database-roles)). Enqueue is a create, the insert that reports
 an existing id without touching it, so a retried enqueue never resets
-a claim, and a duplicate idempotency key is a conflict; the manager's
-copy stamps the actor, the status, and the attempts, clears every
+a claim; a duplicate `idempotency_key` is reported the same way and
+never raised as a driver error (see [A Storage
+Impl](#a-storage-impl)), so the manager reads the enqueued row back
+and returns it, as every create does. The manager's copy stamps the
+actor, the status, and the attempts, clears every
 claim field, and leaves the id and the timestamps as constructed,
 whatever the caller sent. Enqueue then publishes `WORK_AVAILABLE` on
 the topic bus. Payload shapes are fixed per `WorkKind` by a payload
@@ -2807,9 +2823,11 @@ stamps the actor from the row (see [Operations Without a
 Principal](#operations-without-a-principal)). A work item that
 follows no core write, one a CLI, a sweep, or an app enqueues on its
 own, is a direct manager create under a context, which stamps the
-actor from it. The two are one insert in storage under one
-idempotency key, so a relay that runs twice and a caller that retries
-meet the same create.
+actor from it. The relayed enqueue presents the outbox row's id as the
+item's `idempotency_key`, which is the same on every run of the relay,
+and the direct create presents its caller's. Either way the two are
+one insert in storage under one key, so a relay that runs twice and a
+caller that retries meet the row already there.
 
 Claim is one storage method that selects the oldest available row in
 the named lane, skipping locked ones (competing consumers), and stamps
@@ -2950,8 +2968,8 @@ finishes what it holds.
 ### Shutdown
 
 On a stop signal the worker drains first and goes offline last: every
-in-flight task is cancelled, each returns its record to the queue with
-a note, then the heartbeat stops, then the worker marks itself
+in-flight task is cancelled, each returns its work item to the queue
+with a note, then the heartbeat stops, then the worker marks itself
 offline. Read from the outside, the worker is alive until its work is
 safely back in the queue. A rollout never runs more workers than
 desired at once, because a worker holds leases.
@@ -3312,6 +3330,16 @@ local URLs; `make down` stops the containers and the host processes
 and keeps the data for the next `make up`; `make reset` wipes every
 local container and volume and runs `make up` again; `make urls`
 prints the local URLs, read from the same `.env` as the ports.
+
+Each shortcut wraps steps that also run one at a time, which is what
+CI, a scaffold, and a developer debugging one of them use: `make
+setup` installs the workspaces, `make infra-up` starts the
+dependencies alone and `make infra-down` stops them, `make
+infra-reset` recreates them with their volumes removed and nothing
+else, `make migrate` and `make seed` prepare the database, and the
+start script runs the application on the host. The shortcuts are the
+developer's path; the steps are what a gate takes, because a gate
+wants the dependencies and not a running application.
 
 > **Principle:** Every dependency runs in a local container. The
 > application runs on the host.

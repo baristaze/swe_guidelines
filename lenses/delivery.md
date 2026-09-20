@@ -135,7 +135,8 @@ development tenant instead.
 pass; a twin that can be selected in a production-named environment;
 records from a twin indistinguishable from real ones; a gating CI job
 that calls a sandbox; a shared development tenant where a faithful
-twin is possible.
+twin is possible. (The boot check that makes the selection impossible
+is DEL-06.)
 
 **Severity.** medium
 
@@ -224,8 +225,8 @@ operations CLI (`serve`, `migrate`, `bootstrap`, `openapi`).
 
 **Violation.** A worker with a routers module; a service whose
 migration or bootstrap logic lives in a separate script rather than a
-subcommand of its own binary; a distribution with no console entry
-point.
+subcommand of its own binary; a service or worker distribution with no
+console entry point.
 
 **Severity.** low
 
@@ -469,13 +470,14 @@ and service impls receive handles and options through constructors.
 
 **Look for.** The settings class and its prefix; `.env.example`
 coverage; `os.environ` or `getenv` reads outside the settings and boot
-modules.
+modules, excepting the local secrets impl, whose backend is the
+environment.
 
 **Violation.** An environment read inside a manager, storage, or
 router; a build-time variable in a browser app carrying a value that
-differs between environments; a knob missing from `.env.example`; a
-second prefix; backend selection performed outside the settings and
-boot path.
+differs between environments (the bundle that carries it is DEL-31); a
+knob missing from `.env.example`; a second prefix; backend selection
+performed outside the settings and boot path.
 
 **Severity.** medium
 
@@ -506,10 +508,12 @@ numbered. Code and comments cite the ADR by number.
 
 **Source.** Cross-Cutting Conventions, Records of Decisions.
 
-**Look for.** A diff that adds to an enumerated-exceptions list,
-removes or skips a conformance test, or adds a lint or type suppression
-on one, and whether an ADR number appears in the same diff; whether
-the code that embodies a decision cites it.
+**Look for.** A diff that removes or skips a conformance test, adds a
+lint or type suppression on one, or takes an exception to a rule the
+guideline states, and whether an ADR number appears in the same diff;
+whether the code that embodies a decision cites it. An addition to an
+enumerated-exceptions list is documented by a docstring and the
+enumerating test instead (CTX-12).
 
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
@@ -668,9 +672,9 @@ status and code.
 **Principle.** The bearer lives in memory and in the tab's session
 storage, so a reload survives and a closed tab forgets, never in local
 storage. The distribution sends a `Content-Security-Policy` naming the
-app's origin, the API, the error tracker's origin when one is
-configured, and the object store's origin when uploads are presigned,
-and nothing else, set beside it in Terraform.
+app's origin, the API, the error tracker's origin when configured, and
+the object store's when the app moves bytes through presigned URLs,
+and nothing else, set in Terraform.
 
 **Source.** Client App Architecture, API Access.
 

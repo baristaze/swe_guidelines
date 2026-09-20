@@ -23,9 +23,10 @@ touch the same section, the paragraph at the top of each file says what
 it leaves to its neighbours, and that paragraph is the line. A lens may
 cite a section outside its group's home sections when its rule rests
 there, so `Source` is where the rule is written down and the group is
-who judges it. Where two lenses sit next to one breach, the narrower
-one names the other in parentheses (`(Ids read back out of the database
-are STO-06.)`) rather than flagging it twice.
+who judges it. Where two lenses sit next to one breach, the one a
+reviewer reaches first names the other in parentheses (`(Ids read back
+out of the database are STO-06.)`) rather than both flagging it, and
+the lens that is named carries the severity.
 
 ## Lens format
 
@@ -48,20 +49,23 @@ way:
 
 Ids are the group prefix plus a two-digit number: `OM`, `CON`, `CTX`,
 `STO`, `ASY`, `NET`, `DEL`. Severity is the default weight of a breach:
-`high` is reserved for tenancy, authorization, lost or duplicated
-work, and a cross-role breach, about a quarter of the catalog;
-`medium` bends a shape the guideline relies on; `low` is a convention.
+`high` is reserved for tenancy, authorization, a credential or a
+secret reaching somewhere it is not held, lost or duplicated work, and
+a cross-role breach, about a quarter of the catalog; `medium` bends a
+shape the guideline relies on; `low` is a convention.
 
 `Principle` is at most 60 words: a rule that needs more is two lenses.
 `Look for` and `Violation` are prose, one to three sentences each, wrapped
 at about 72 columns like the rest of the file, and no line is wider than
-80 columns. `make lenses` holds every lens to these limits.
+80 columns. `make lenses` holds every lens to the word count and the
+column limit; the wrap and the sentence counts are read by a person.
 
-`Source` names the section and, after a comma, the subsection, both by
-title exactly as `architecture.md` spells them, never by number:
-sections are inserted and removed, and a number would move under a
-lens. Several citations are separated by `;`; a bare subsection after
-a `;` belongs to the section cited before it.
+`Source` names the section and, after a comma, the subsection when the
+rule rests in one, both by title exactly as `architecture.md` spells
+them, never by number: sections are inserted and removed, and a number
+would move under a lens. A rule stated in a section's own introduction
+cites the section alone. Several citations are separated by `;`; a
+bare subsection after a `;` belongs to the section cited before it.
 
 A lens restates the guideline; it never adds a rule the guideline does
 not state. When the guideline changes, the lens changes with it, and

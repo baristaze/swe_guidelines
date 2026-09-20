@@ -50,13 +50,14 @@ class; method bodies inside interface classes.
 
 **Violation.** An interface that is a plain class, so an incomplete
 impl instantiates and returns `None`; an interface method carries
-logic, defaults, or side effects; an impl does not subclass the
-interface it claims to implement; an impl adds public methods the
-interface does not declare and callers use them.
+logic, a fallback body, or side effects (a keyword parameter's default
+value is what CTX-10 requires, not a breach); an impl does not
+subclass the interface it claims to implement; an impl adds public
+methods the interface does not declare and callers use them.
 
 **Severity.** medium
 
-## CON-03 At least two impls, technology named last
+## CON-03 Satisfiable without its technology, which is named last
 
 **Principle.** Every interface can be satisfied without the
 technology behind it, usually as two impls interchangeable at wiring
@@ -384,7 +385,9 @@ caller constructed, or writes the actor the caller sent instead of the
 context's; on an update or a delete, `updated_at`, `updated_by`, or
 `deleted_at` is set by the caller or by storage instead of by the
 manager; a mutating method returns `None` or a different snapshot than
-the one written.
+the one written. The work item is the one row the guideline exempts:
+every write after its enqueue signs `updated_by` with `EMPTY_UUID`,
+and the relayed enqueue takes the actor off the outbox row (OM-13).
 
 **Severity.** medium
 

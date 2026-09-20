@@ -38,7 +38,8 @@ method that has none.
 org id, or a token instead of a context; a method that takes the
 context in any position other than first; a handler that fetches
 identity from a request object; a manager operation that takes a
-scope. A method carrying no context at all is CTX-16's to judge.
+scope. A method carrying no context at all, the relay's three
+handoffs included, is CTX-16's to judge.
 
 **Severity.** medium
 
@@ -122,12 +123,12 @@ Principal; The Network Layer, The Gateway.
 
 **Look for.** Where the request stage is built (the gateway
 dependency, the worker loop, the bootstrap command); the transitions on
-the tenancy manager (a sign-in into the identity stage, a credential or
-a claim into `OpContext`, the operator admission into
-`OperatorContext`), what each takes (the stage below and the
-evidence) and returns (the stage above, or a refusal); the operations
-that ask a transition, the worker's claim among them; every other
-place a stage object is constructed.
+the tenancy manager (a sign-in into the identity stage, a credential
+into `OpContext`, the operator admission into `OperatorContext`, and
+one service context per live tenant for a sweep), what each takes (the
+stage below and the evidence) and returns (the stage above, or a
+refusal); the operations that ask a transition, the worker's claim
+among them; every other place a stage object is constructed.
 
 **Violation.** A manager, storage impl, or test helper used in
 production code that builds a stage; a router that assembles a context
@@ -268,17 +269,17 @@ the same tenant.
 
 **Principle.** Global tables and cross-tenant sweeps are the exceptions
 to the tenant-first rule: a global method takes no tenant and says why
-in its docstring, a bookkeeping sweep with no principal (relaying the
-outbox, expiring a lease) reads across tenants in one statement and
-gets the tenant back with each row as `tuple[UUID, Entity]`, and a
-test enumerates the exceptions.
+in its docstring; a bookkeeping sweep with no principal gets the
+tenant back with each row, as `tuple[UUID, Entity]` or on an entity
+carrying `org_id` itself; a test enumerates them.
 
 **Source.** The Storage Layer, Namespace Shape; The Business Layer,
 Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the test that
 lists them; each step of the sweep and whether it is bookkeeping with
-no principal or a tenant operation (CTX-17).
+no principal (relaying the outbox, expiring a lease) or a tenant
+operation (CTX-17); what each cross-tenant read returns.
 
 **Violation.** A tenant-less storage method with no docstring
 justifying it; a sweep that returns entities without their tenant; a
@@ -343,11 +344,11 @@ without comparing the payload's tenant to the connection's tenant.
 
 ## CTX-16 Principal-less operations take the request stage and return a stage
 
-**Principle.** The few operations that exist before a principal does (a
-sign-in, a claim, a sweep, a webhook token) take the request stage
-first and produce the stage the work then runs under; a test names
-each of them. The outbox relay and the event append it performs take
-`(org_id, row)` instead: the row carries its tenant, actor, and
+**Principle.** The operations that exist before a principal does (a
+sign-in, a claim, a sweep, a webhook token) take the request stage and
+produce the stage the work runs under; a test names each. The outbox
+relay and its two handoffs, the event append and the work enqueue,
+take `(org_id, row)` instead: the row carries tenant, actor, and
 request id.
 
 **Source.** The Business Layer, Operations Without a Principal; OpContext,
@@ -362,8 +363,8 @@ context at all, and whether the relay runs again from the sweep.
 **Violation.** A request-stage method that performs tenant work
 directly instead of returning a stage; a request-stage method the
 enumerating test does not name; a method with no context at all other
-than the outbox handoff; a transition whose return type is neither a
-stage nor a list of stages.
+than the relay and its two handoffs; a transition whose return type is
+neither a stage nor a list of stages.
 
 **Severity.** high
 

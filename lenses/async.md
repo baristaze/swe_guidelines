@@ -358,10 +358,10 @@ bound but the process's life.
 
 ## ASY-18 Shutdown drains first and goes offline last
 
-**Principle.** On a stop signal the worker cancels in-flight tasks, each
-returns its record to the queue with a note, then the heartbeat stops,
-then the worker marks itself offline. A rollout never runs more workers
-than desired at once, because a worker holds leases.
+**Principle.** On a stop signal the worker cancels in-flight tasks,
+each returns its work item to the queue with a note, then the
+heartbeat stops, then the worker marks itself offline. A rollout never
+runs more workers than desired at once, because a worker holds leases.
 
 **Source.** Worker Roles, Shutdown.
 
@@ -369,7 +369,7 @@ than desired at once, because a worker holds leases.
 deployment's rollout limits for worker roles.
 
 **Violation.** A worker that goes offline before its work is back in
-the queue; a cancelled task that leaves its record claimed until the
+the queue; a cancelled task that leaves its item claimed until the
 lease expires; a rollout configured to run extra workers during a
 deploy.
 
@@ -510,18 +510,19 @@ claiming.
 ## ASY-25 Enqueue is a create; completion spends or keeps an attempt
 
 **Principle.** Enqueue is a create: the insert that reports an existing
-id, so a retried enqueue never resets a claim, and a duplicate key is
-a conflict; the manager's copy stamps actor, status, and attempts,
-clears every claim field, and leaves the timestamps as constructed,
-whatever the caller sent. Enqueue then publishes the wake-up; claim
-stamps claim and lease together.
+id, so a retried enqueue never resets a claim, and a duplicate
+`idempotency_key` is reported, never a driver error; the manager's
+copy stamps actor, status, and attempts, clears every claim field, and
+leaves the timestamps as constructed. Enqueue then publishes the
+wake-up; claim stamps claim and lease together.
 
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The enqueue path: the insert primitive it uses, what the
 manager's copy overwrites, and the order of write and publish; its two
-callers, the outbox relay for a work item that follows a core write
-and a holder of a context for one that follows none; the claim,
+callers, the outbox relay for a work item that follows a core write,
+which presents the row's id as the item's `idempotency_key`, and a
+holder of a context for one that follows none; the claim,
 complete, defer, requeue, and fail methods and what each does to
 `attempts`.
 
@@ -530,9 +531,10 @@ announces twice; a caller-supplied status, attempt count, or claim
 field written as sent, or a timestamp the copy resets; a publish
 before the row exists; a manager that enqueues in a second statement
 after its own core write instead of riding the second outbox row of
-that write (STO-20); a failed attempt requeued with no delay; an
-item that fails its last attempt with no audit entry and no metric
-(the hand-back that spends no attempt is ASY-26).
+that write (STO-20); a relayed enqueue whose key changes between runs,
+so a second relay lands a second item; a failed attempt requeued with
+no delay; an item that fails its last attempt with no audit entry and
+no metric (the hand-back that spends no attempt is ASY-26).
 
 **Severity.** high
 
@@ -556,7 +558,8 @@ the loop does with a `Conflict` from any of them.
 **Violation.** A completion, release, deferral, or renewal that matches
 on `claimed_by` alone or on the key alone, so a stale holder writes; a
 claim that returns no token, so the fence has nothing to compare; a
-refused write that spends an attempt.
+refused write that spends an attempt, or an item a worker finds is not
+its to run failed or handed back with an attempt spent.
 
 **Severity.** high
 

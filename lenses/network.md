@@ -39,10 +39,9 @@ than by namespace or by app-specific service.
 
 **Principle.** A web service is the scalability unit, one per major OM
 namespace; the first form of a split is the API image with a
-`namespaces` setting. Every service runs the whole OM in-process, so a
-call into another namespace stays in-process across a split, and a
-wire hop between processes sharing the OM and the database is a
-recorded decision.
+`namespaces` setting. A call into another namespace stays in-process
+wherever the process holds the callee's code and roles, which a split
+leaves true; the remote impl is for the process that does not.
 
 **Source.** The Network Layer, Web Services as Scalability Units.
 
@@ -99,7 +98,8 @@ written to memory that is not also written to a durable source.
 **Violation.** A service that remembers a user's progress, a pending
 operation, or a session only in RAM; a process whose restart loses
 information; a warm cache or rollup that is the only copy of a
-computed result and is not rebuilt at boot.
+computed result and is not rebuilt at boot. (The progress of a
+long-running record is ASY-20, and a chain across services ASY-27.)
 
 **Severity.** medium
 
@@ -153,7 +153,7 @@ passing the gateway's dependencies.
 `InfraException` into `{"error": {"code", "message", "request_id"}}`
 with the status the exception carries, one catch-all turns anything
 else into a 500 in the same shape, and routers never set error status
-codes. An infra root of its own is DEL-29.
+codes. Infra's own exception root is DEL-29.
 
 **Source.** The Network Layer, The Gateway (Error envelope).
 
@@ -185,7 +185,8 @@ shape on rejection.
 **Violation.** Per-process counters in a multi-replica deployment; a
 limit keyed on a raw secret; a rejection without `Retry-After` or
 outside the envelope; a limit that rejects every request when the
-cache is down; a rate limit relied on as a security boundary.
+cache is down; a rate limit relied on as a security boundary. (A cache
+that fails closed anywhere else is ASY-06.)
 
 **Severity.** medium
 
@@ -203,16 +204,16 @@ failure releases the marker.
 **Look for.** Every `POST` that leaves a row behind, the `202`
 submissions of a long-running operation included, and whether it
 reads the header; where the stored response is keyed; whether the key
-is scoped to the tenant.
+is scoped to the tenant and the principal.
 
 **Violation.** A creating endpoint that produces a second record on a
 retried request; a `202` submission that starts the work twice
 because the header was read only on the routes answering `201`; a key
-stored without the tenant in its scope; a
+stored without the tenant and the principal in its scope; a
 `5xx` stored and replayed, so a transient failure is the answer for
 good and the client's only exit is a new key and a second row; a
 bespoke replay mechanism for one route that differs from the shared
-primitive.
+primitive. (What a create that issued a secret stores is NET-31.)
 
 **Severity.** high
 

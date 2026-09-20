@@ -257,8 +257,10 @@ any `uuid4()` or other generator imported by OM or service code.
 
 **Violation.** `uuid4()` used for an entity id; an entity constructed
 without an id on the assumption that storage will assign one; an id
-minted anywhere but at the construction site. (Ids read back out of
-the database are STO-06.)
+minted inside a storage impl or assigned by the database. The id a
+creating `POST` mints before its idempotency marker, ahead of the
+entity, is that protocol and not a breach (NET-09). (Ids read back out
+of the database are STO-06.)
 
 **Severity.** medium
 

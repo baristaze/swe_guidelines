@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-deps
 description: "Upgrade every dependency of the current repository to its latest stable release, the current active LTS line where one exists, as the Software Design and Architecture Guidelines prescribe: runtimes, workspace tools, container images, CI steps, Terraform engine versions, and locked libraries; then run the repository's gates and hold back any upgrade that breaks them. Use periodically, or when a review raises DEL-26."
-allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*)
 ---
 
 # arch-upgrade-deps
@@ -57,7 +57,7 @@ the plan table and edits nothing. Nothing else is asked for.
 5. Print the plan table (see Output). A backing service in the local
    compose stack that moves a major (Postgres 17 to 18, say) keeps its
    data files in a volume the new engine cannot open, so its row says
-   `make reset` in the Line column, and the plan prints, under the
+   `make infra-reset` in the Line column, and the plan prints, under the
    table, that the validation recreates the local volumes. With
    `--plan`, stop here.
 6. Edit every declaration of each row to its target, keeping the
@@ -81,8 +81,11 @@ the plan table and edits nothing. Nothing else is asked for.
    and the report names it under Held back with "no patch behind it"
    in place of a failing check.
 8. Validate: `make check`; then, when Docker is available,
-   `make infra-up` (`make reset` in its place when the plan says a
-   database moved a major), `make migrate`, `make migrate-check`, and
+   `make infra-up` (`make infra-reset` in its place when the plan says
+   a database moved a major, which recreates the dependency volumes and
+   starts nothing else; `make reset` runs `make up`, which also seeds
+   and starts the application on the host), `make migrate`,
+   `make migrate-check`, and
    `make test-integration`, only against the local compose stack:
    refuse when the effective database URL (the environment, `.env`, or
    the settings default) is not a local address.
@@ -108,7 +111,7 @@ A short report, and nothing else:
 | Dependency | Declared in | From | To | Line | Source |
 |------------|-------------|------|----|------|--------|
 | Node | `.nvmrc`, `.github/workflows/ci.yml` | 22.11.0 | 24.21.0 | active LTS | nodejs.org release index |
-| Postgres | `deployment/local/docker-compose.yml` | 16 | 18 | stable, `make reset` | endoflife.date |
+| Postgres | `deployment/local/docker-compose.yml` | 16 | 18 | stable, `make infra-reset` | endoflife.date |
 
 **Libraries.** <count of Python and npm packages moved, and every major-version move by name, in the order the caps were raised>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none

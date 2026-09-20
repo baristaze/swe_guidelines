@@ -6,6 +6,126 @@ which number.
 
 ## Unreleased
 
+## 0.16.0 (2026-09-20)
+
+A second reading of 0.14.0, triaged against 0.15.0, for the places
+where the guideline states a rule in one section and states it
+differently in another, and for the lenses and scaffolds that carried
+the older spelling forward. Minor: two absolutes are softened to what
+the guideline already does elsewhere, one interface loses a return
+value, and the derivations are brought back onto the sentences they
+restate.
+
+### Changed
+
+- `architecture.md`, "Queues": `send()` returns `None`. It returned a
+  broker id two hundred lines under the paragraph that refuses one
+  from `publish()`, for a reason that holds for both: the observable
+  id is the producer-set `idempotency_key` the body carries, and a
+  broker id carries no durable meaning across retries and replays. The
+  `receipt` on a `QueueMessage` is named as what it is, the handle of
+  one delivery that `delete` and `change_visibility` take.
+- `architecture.md`, "The Work Queue": a duplicate `idempotency_key`
+  on an enqueue is reported the way an existing id is, never raised,
+  and the relayed enqueue presents the outbox row's id as the item's
+  key. "Database Roles" has said since 0.1.0 that relaying twice is
+  harmless and "A Storage Impl" that a key collision surfaces as a
+  report, while this section called the same collision a conflict; and
+  with a fresh item id per relay run, nothing said what the second run
+  met. Lenses `ASY-25`, `CON-17`; `arch-scaffold-worker` carries it.
+- `architecture.md`, "Namespace Shape": a cross-tenant read returns
+  `tuple[UUID, Entity]` unless the entity carries `org_id` itself, as
+  the outbox row and the `Event` do for exactly this reader. The
+  tuple was stated flatly two hundred lines before the two rows that
+  do not use it. Lens `CTX-12`.
+- `architecture.md`, "Naming Entities": an append-only record's birth
+  time is the one in its id. The audit swimlane is defined as who did
+  what, when, from which app, while the rule beside it gives an audit
+  entry no `created_at`; every id is a `uuid_v7` with the millisecond
+  in front, so the "when" costs no column and the two read together.
+- `architecture.md`, "Shutdown": a draining worker returns its work
+  item to the queue. "Long-Running Orchestrations" uses "record" for
+  the row a work item advances, and the queue holds the item.
+- `architecture.md`, "Local: Docker Compose": the steps the four
+  shortcuts wrap are named, `make infra-up`, `make infra-down`, `make
+  infra-reset`, `make migrate`, `make seed`, and the start script,
+  because a gate wants the dependencies and not a running
+  application. The scaffolds have run `make infra-up` since 0.1.0
+  against a section that defined only `up`, `down`, `reset`, and
+  `urls`. `arch-scaffold-new` and `arch-upgrade-deps` carry it, the
+  latter reaching for `make reset`, which also seeds and starts the
+  application, where it wants the volumes recreated and nothing else.
+- `lenses/context.md`: `CTX-16` names the relay's two handoffs, the
+  event append and the work enqueue, which "Operations Without a
+  Principal" has called three operations of that kind since 0.14.0,
+  and `CTX-01` defers the whole set to it; `CTX-12` allows the row
+  that carries its own tenant; `CTX-05` lists the worker's claim once,
+  as an operation that asks a transition, and names the service
+  context a sweep asks for.
+- `lenses/contracts.md`: `CON-03`'s title stops stating the absolute
+  its body dropped in 0.14.0; `CON-17` names the work item, the one
+  row "Shape of an Operation" exempts, so the lens no longer flags the
+  signing `OM-13` requires; `CON-02` flags a fallback body, not the
+  keyword-parameter default "Parameters" requires.
+- `lenses/om.md`: `OM-12` judges the layer the rule names, an id
+  minted inside a storage impl or assigned by the database, and says
+  that the id a creating `POST` mints before its marker is the
+  gateway's protocol.
+- `lenses/storage.md`: `STO-11` names `FeedIdentifiableMixin` beside
+  the other two identity mixins, which `STO-14` and "Defining ORM
+  Classes" both require of a feed table; `STO-03` stops listing a
+  single-row compare-and-set among the primitives that need a named
+  atomic method, which "Storage Principles" reserves for an invariant
+  two rows hold together.
+- `lenses/network.md`: `NET-02`'s Principle carries the qualifier its
+  own Violation carries, that a call stays in-process wherever the
+  process holds the callee's code and roles; `NET-09` scopes the key
+  to the tenant and the principal, as "The Gateway" does, and points
+  at `NET-31` for what a create that issued a secret stores; `NET-07`
+  points at infra's exception root by that name; `NET-04` and `NET-08`
+  name the lens that rates the same breach `high`.
+- `lenses/async.md`: `ASY-25` carries the reported duplicate key and
+  the key a relayed enqueue presents; `ASY-26` covers the hand-back of
+  an item a worker finds is not its to run, which `ASY-25` deferred to
+  it and it did not name; `ASY-18` says the draining worker returns its
+  work item, the word "Shutdown" now uses.
+- `lenses/delivery.md`: `DEL-23` asks for an ADR where the guideline
+  does, and names the docstring and the enumerating test as the
+  mechanism for an enumerated exception; `DEL-21` excepts the local
+  secrets impl, whose backend is the environment, and points at
+  `DEL-31`; `DEL-09` flags a service or worker distribution with no
+  console entry point, not every distribution in the tree; `DEL-30`
+  puts the object store in the policy when the app moves bytes
+  through presigned URLs, in either direction, as "API Access" says.
+- `lenses/README.md`: the reserved `high` set names a credential or a
+  secret reaching somewhere it is not held, which is what `DEL-06`,
+  `DEL-30`, `CTX-18`, `CTX-19`, `NET-25`, and `NET-31` rate; `Source`
+  allows the section alone, which `AGENTS.md` and the checker have
+  allowed since 0.14.0; the deferral rule reads the way its own
+  example is written; and `make lenses` is credited with the limits it
+  checks.
+- `skills/arch-scaffold-worker`: the outbox relay gains its
+  `work.<kind>` branch here, with the test that a row relayed twice
+  leaves one item, so `enqueue_relayed` has the caller
+  `arch-scaffold-new` says arrives with this skill; the claim asks the
+  tenancy manager for the `OpContext` it returns, since "Stages" says
+  only a transition produces a stage.
+- `skills/arch-scaffold-service`: `settings.py` carries the
+  `namespaces` setting the first form of a split rests on, and
+  `all_routers()` reads it; the second service moves the first's
+  gateway package into a root `gateway/` distribution with its own
+  `pyproject.toml` and workspace membership, and writes no gateway
+  package of its own.
+- `skills/arch-scaffold-new`: the initial migrations cover the
+  `activity` role as well as `core`, since the skill declares the
+  events and audit tables and its own step 6 runs `make migrate` and
+  `make migrate-check` over every role; the Makefile gains
+  `infra-reset`.
+- `skills/_shared/scaffold-conventions.md`: a scaffold pins the
+  release a patch release already sits behind, as "Versions" states,
+  so a scaffold run on a `.0` day pins what `arch-upgrade-deps` would
+  keep.
+
 ## 0.15.0 (2026-09-20)
 
 A reading of 0.14.0 by a second reviewer, for the places where a rule
