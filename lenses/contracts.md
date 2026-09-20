@@ -408,16 +408,18 @@ service locator reached from an operation.
 the caller's entity supplies the fields a caller may change, and
 `PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
 `deleted_by`) stay as stored, so no caller rewrites who made a row or
-brings a deleted one back by sending an entity.
+brings a deleted one back by sending an entity. The copy is
+`model_validate` over the two dumps, because it carries one.
 
 **Source.** The Business Layer, Shape of an Operation.
 
-**Look for.** The copy in every `update_*`: what it starts from and
-what it excludes.
+**Look for.** The copy in every `update_*`: what it starts from, what
+it excludes, and which call builds it.
 
 **Violation.** An update copied from the caller's entity, so a sent
 `created_by` or a cleared `deleted_at` is written; an update that
-excludes fewer fields than `PROVENANCE_FIELDS`.
+excludes fewer fields than `PROVENANCE_FIELDS`; a `model_copy` fed the
+caller's dump.
 
 **Severity.** medium
 

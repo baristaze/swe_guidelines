@@ -6,7 +6,9 @@ belong to the projects it was extracted from, never to the guideline or
 the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
 which group applies to which files.
 
-Also refuses em-dashes everywhere and changelog phrasing in the guideline.
+Also refuses em-dashes everywhere, changelog phrasing in the guideline, and
+the one spelling of an update copy the guideline forbids, wherever a snippet
+could teach it.
 Exit status is non-zero on any hit. Standard library only.
 """
 
@@ -21,7 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # The refused vocabulary, one regular expression per term, matched case-insensitively.
 # "product" is the vocabulary of the projects the guideline was extracted from and
 # must not flow back into it; a fork replaces that list with its own. "history" is
-# changelog phrasing, refused in the guideline only.
+# changelog phrasing, refused in the guideline only. "shape" is a spelling the
+# guideline forbids in code: a copy built from a dump must go through
+# model_validate, so `model_copy(update={**...` cannot appear in any snippet.
 REFUSED_TERMS: dict[str, list[str]] = {
     "product": [
         r"\brodeo\b",
@@ -45,6 +49,9 @@ REFUSED_TERMS: dict[str, list[str]] = {
         r"\bwe changed\b",
         r"\bhas changed\b",
     ],
+    "shape": [
+        r"model_copy\(update=\{\*\*",
+    ],
 }
 
 EM_DASH = "\u2014"
@@ -52,13 +59,14 @@ EM_DASH = "\u2014"
 # file glob -> the term groups refused there; a file matched by several globs is
 # scanned once per group, whichever globs name it
 SCOPES: list[tuple[str, list[str]]] = [
-    ("architecture.md", ["product", "history"]),
-    ("lenses/*.md", ["product"]),
-    ("skills/*/*.md", ["product"]),
+    ("architecture.md", ["product", "history", "shape"]),
+    ("lenses/*.md", ["product", "shape"]),
+    ("skills/*/*.md", ["product", "shape"]),
+    ("skills/*/*/*.md", ["product", "shape"]),
     ("README.md", ["product"]),
     ("CONTRIBUTING.md", ["product"]),
-    ("docs/*.md", ["product"]),
-    ("agents/*.md", ["product"]),
+    ("docs/*.md", ["product", "shape"]),
+    ("agents/*.md", ["product", "shape"]),
     ("AGENTS.md", ["product"]),
 ]
 

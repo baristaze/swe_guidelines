@@ -64,16 +64,20 @@ the order the guideline presents them, never by number.
 ## While writing
 
 - Every entity is frozen and composes the mixins it needs in
-  house-style order (`Identifiable`, `Named`, `Trackable`,
-  `SoftDeletable`), each an independent opt-in that a manager operation
-  exercises; an append-only record is `Identifiable` alone. Ids come
-  from `new_id()`, timestamps from `utcnow()`. Entity fields are
-  tuples and frozen models, never `list` or `dict`; a mapping field is
-  the base module's `FrozenMapping`, its empty default
-  `Field(default_factory=dict, validate_default=True)`. A copy that carries caller input
-  is rebuilt from a dict, `model_validate({**current.model_dump(),
-  **changes})`, because `model_copy` does not validate and
-  `model_validate` hands an instance back untouched.
+  house-style order (`Identifiable`, `Named`, `Created` or
+  `Trackable`, `SoftDeletable`), each an independent opt-in that a
+  manager operation exercises; an append-only record is `Identifiable`
+  alone; a row the platform writes for itself (the outbox row, the
+  marker, the socket ticket) is `Created`, its later stamp a field
+  named for what happened. Ids come from `new_id()`, timestamps from
+  `utcnow()`. Entity fields are tuples and frozen models, never `list`
+  or `dict`; a mapping field is the base module's `FrozenMapping`, its
+  empty default `Field(default_factory=dict, validate_default=True)`.
+  A copy that carries a dump, the caller's fields above all, is
+  rebuilt from a dict, `model_validate({**current.model_dump(),
+  **changes})`; `model_copy(update=...)` is only for values
+  constructed of the field's own type, because it does not validate
+  and leaves a dumped value object a dict.
 - Every manager and service operation takes a context first: `ctx:
   OpContext` for a tenant operation, `rctx: RequestContext` for the
   transitions that produce a stronger stage (sign-in, claim, sweep),
@@ -105,7 +109,8 @@ the order the guideline presents them, never by number.
   file with one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update starts from
   the stored row: the caller's entity supplies the fields a caller may
-  change, `model_dump(exclude=PROVENANCE_FIELDS)`, and the copy sets
+  change, `model_dump(exclude=PROVENANCE_FIELDS)`, the copy is
+  `model_validate` over the two dumps and sets
   `updated_at` and `updated_by`, so no caller rewrites who made a row
   or brings a deleted one back; a create sets what the manager
   decides, the actor from the context and the initial state, and

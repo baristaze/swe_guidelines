@@ -195,8 +195,10 @@ class Identifiable(Platform):
 class Named(Platform):
     name: str
 
-class Trackable(Platform):
+class Created(Platform):
     created_at: datetime
+
+class Trackable(Created):
     updated_at: datetime
     created_by: UUID  # id of the user who created it
     updated_by: UUID  # id of the user who last changed it
@@ -220,14 +222,45 @@ class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
     timezone: str
 ```
 
+A row the platform writes for its own bookkeeping composes `Created`:
+the outbox row, the idempotency marker, the socket ticket. No person
+stands behind it, so it carries no `created_by`, and what the platform
+stamps on it later is a field named for what happened, `done_at`,
+`redeemed_at`, the outcome, never an `updated_at` that says only that
+something did. A work item is `Trackable`, because the person who
+enqueued it is its attribution (see [The Work
+Queue](#the-work-queue)), and the platform is the actor of its
+claims and completions, `EMPTY_UUID`. The two system rows every
+namespace touches are declared once, each in the namespace that owns
+it (`outbox`, `idempotency`), and every manager takes them from there:
+
+``` python
+class OutboxRow(Identifiable, Created):  # written with the core row, in the same statement
+    org_id: UUID              # carried on the entity: the relay runs with no context
+    kind: str                 # "<namespace>.<entity>.<created|updated|deleted>"
+    target_id: UUID
+    payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
+    done_at: datetime | None = None
+
+class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, and key
+    user_id: UUID
+    key: str
+    request_digest: str        # another digest under the same key is refused
+    target_id: UUID            # the id the create uses, minted before the marker
+    attempt_id: UUID | None    # the attempt that holds it; cleared by a release
+    status: int | None = None  # the outcome, None while the request runs
+    body: str | None = None
+```
+
 Pydantic merges the fields from every base into a single model along the
 MRO. The declaration order is house style: identity first, human-facing
 label next, lifecycle, then cross-cutting traits. Reading the bases left
 to right tells you what the entity promises to be.
 
 Inheritance is used here for abstraction, not code reuse. `Identifiable`
-means the entity has an identity. `Trackable` means its lifecycle is
-recorded. `SoftDeletable` means it can be hidden without being purged.
+means the entity has an identity. `Created` means it has a birth time
+and nothing more. `Trackable` means its lifecycle is recorded, by whom
+and when. `SoftDeletable` means it can be hidden without being purged.
 `Named` means it carries a human-facing label. An entity opts into a
 trait by adding the mixin; it opts out by leaving it off. An append-only
 record such as an audit entry or a ledger line is `Identifiable` and
@@ -280,21 +313,24 @@ modified copy, and pass the copy to a write method. This keeps shared
 references safe across async tasks and means no layer can quietly
 rewrite an entity after it was constructed.
 
-> **Python tip:** `entity.model_copy(update={...})` is the whole
-> update vocabulary. A manager that updates an entity sets
-> `updated_at` and `updated_by` in the same copy, so the caller gets
-> back the copy that was written and nothing else has to remember the
-> timestamp. Fields are tuples and frozen models, never `list` or
-> `dict`. A mapping field is `FrozenMapping`, a `Mapping` annotated
+> **Python tip:** the copy is one of two calls, and which one is
+> decided by what the update carries. A copy whose every value is
+> constructed of the field's own type, a timestamp, an id, a status,
+> is `entity.model_copy(update={...})`. A copy that carries a dump,
+> the caller's fields above all, is rebuilt from a dict,
+> `Warehouse.model_validate({**current.model_dump(), **changes})`,
+> because `model_copy` does not validate, leaves a dumped value
+> object as a plain dict, and `model_validate` hands an instance back
+> untouched. A manager that updates an entity sets `updated_at` and
+> `updated_by` in the same copy, so the caller gets back the copy that
+> was written and nothing else has to remember the timestamp. Fields
+> are tuples and frozen models, never `list` or `dict`. A mapping field is `FrozenMapping`, a `Mapping` annotated
 > with a validator that wraps the dict pydantic builds in a
 > `MappingProxyType` and a serializer that dumps a plain dict, because
 > a frozen model with a bare `Mapping` field still holds a mutable
 > dict. Pydantic does not validate a default, so the empty case is
 > `Field(default_factory=dict, validate_default=True)`, or the default
-> is the one dict that escapes the freeze. `model_copy` does not
-> validate, and `model_validate` hands an instance back untouched, so
-> a copy that carries caller input is rebuilt from a dict instead:
-> `Warehouse.model_validate({**current.model_dump(), **changes})`.
+> is the one dict that escapes the freeze.
 
 The same rule applies to every object built on the OM base chain,
 including the sub-objects of `OpContext` (see [OpContext](#opcontext)),
@@ -314,9 +350,9 @@ from the ids alone. IDs are minted by whoever constructs the entity, always abov
 the storage layer, with `new_id()`; the database never assigns one and
 nothing reads one back after a write.
 
-> **Python tip:** `new_id()` wraps `uuid_utils.uuid7()` and returns a
-> standard-library `UUID`, so nothing else in the codebase depends on
-> the package.
+> **Python tip:** `new_id()` returns `uuid.uuid7()` from the standard
+> library, which ships it since Python 3.14; nothing installs a
+> package for an id.
 
 `EMPTY_UUID` is the reserved system scope. Cross-tenant reference data
 (platform-owned catalogs, schema metadata, global configuration) uses it
@@ -908,7 +944,8 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
         current = await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
-        updated = current.model_copy(update={
+        updated = Warehouse.model_validate({  # a copy that carries a dump is validated, never model_copy
+            **current.model_dump(),
             **warehouse.model_dump(exclude=PROVENANCE_FIELDS),  # the caller's fields, never who made or deleted it
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
@@ -1216,8 +1253,10 @@ class GlobalIdentifiableMixin:
 class NamedMixin:
     name: Mapped[str] = mapped_column(sort_order=-900)
 
-class TrackableMixin:
+class CreatedMixin:
     created_at: Mapped[datetime] = mapped_column(sort_order=-800)
+
+class TrackableMixin(CreatedMixin):
     updated_at: Mapped[datetime] = mapped_column(sort_order=-799)
     created_by: Mapped[UUID] = mapped_column(sort_order=-798)
     updated_by: Mapped[UUID] = mapped_column(sort_order=-797)

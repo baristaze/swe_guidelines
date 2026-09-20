@@ -55,13 +55,13 @@ operations read; an entity read across every tenant without it.
 
 ## OM-03 The mixins declare exactly their fields
 
-**Principle.** Orthogonal traits are captured by small mixins on a
-fieldless root, each declaring exactly the fields the guideline lists:
-`Identifiable` (`id`), `Named` (`name`), `Trackable` (`created_at`,
-`updated_at`, `created_by`, `updated_by`), and `SoftDeletable`
-(`deleted_at`, `deleted_by`). A new trait is a new mixin, not a field
-on an existing one. The `new_id()` and `utcnow()` helpers and
-`PROVENANCE_FIELDS` live in the same base module.
+**Principle.** Small mixins on a fieldless root declare exactly the
+fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
+`Created` (`created_at`), `Trackable` (`Created` plus `updated_at`,
+`created_by`, `updated_by`), `SoftDeletable` (`deleted_at`,
+`deleted_by`). A new trait is a new mixin. `new_id()`, `utcnow()`, and
+`PROVENANCE_FIELDS` live in the base module; `OutboxRow` and
+`IdempotencyMarker` are declared once, each in its namespace.
 
 **Source.** Naming Entities.
 
@@ -98,11 +98,12 @@ ordering that departs from identity, label, lifecycle, cross-cutting.
 
 ## OM-05 A mixin is a promise, composed only where an operation exercises it
 
-**Principle.** Each mixin is a promise about what the entity is, and an
-entity composes only the mixins a manager operation exercises:
-`Trackable` where an update exists, `SoftDeletable` where a delete
-does. An entity opts into a trait by adding the mixin and opts out by
-leaving it off. Inheritance in the OM is never a way to share code.
+**Principle.** Each mixin is a promise, composed only where a manager
+operation exercises it: `Trackable` where an update exists,
+`SoftDeletable` where a delete does, `Created` alone on a row the
+platform writes for itself (the outbox row, the marker, the socket
+ticket), whose later stamp is a field named for what happened.
+Inheritance in the OM never shares code.
 
 **Source.** Naming Entities.
 
@@ -196,20 +197,19 @@ manager and the storage.
 
 ## OM-10 Entities are immutable; updates copy and write
 
-**Principle.** OM entities are frozen snapshots. An update takes the
-entity, produces a modified copy, and passes the copy to a write
-method; nothing mutates an entity once constructed. A copy that
-carries caller input is rebuilt from a dict
-(`model_validate({**current.model_dump(), **changes})`): `model_copy`
-does not validate, and `model_validate` hands an instance back
-untouched.
+**Principle.** OM entities are frozen snapshots: an update produces a
+modified copy and passes it to a write method; nothing mutates an
+entity once constructed. A copy that carries a dump is rebuilt from a
+dict (`model_validate({**current.model_dump(), **changes})`);
+`model_copy` is for values constructed of the field's own type, since
+it does not validate and leaves a dumped value object a dict.
 
 **Source.** Naming Entities, Immutability.
 
 **Look for.** The root's frozen configuration; assignment to entity
 attributes anywhere; the update path in managers; a
-`model_copy(update=...)` fed from a request; a `model_validate` called
-on an instance.
+`model_copy(update=...)` fed a `model_dump()` or a request; a
+`model_validate` called on an instance.
 
 **Violation.** `order.status = ...` in a manager or service; a class on
 the chain that unfreezes itself; an update that reaches into a nested
