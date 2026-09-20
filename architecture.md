@@ -2635,6 +2635,14 @@ The gateway owns a short list of edge concerns, each done once:
     [Exceptions](#exceptions), so a saturated process fails fast and
     says why, instead of dying slowly with every caller still waiting
     on an answer that is no longer coming.
+
+    The bound is two bounds: a read budget for `GET` and `HEAD`, and a
+    write budget for everything else, each named in settings. A read
+    and a write cost the process different things, and a storm of
+    reads after an outage would otherwise take every slot from the
+    commands. Health, readiness, and metrics stay outside both budgets,
+    because a probe that is refused reports the process dead when it is
+    only busy.
 -   **Edge idempotency.** A creating `POST` accepts an
     `Idempotency-Key` header, and an `IdempotencyMarker`, declared
     after this list, owns the retry. Creating is what the request
@@ -3100,10 +3108,26 @@ store mapping user to instance replaces the broadcast, and no producer
 changes.
 
 Per socket, the process keeps one bounded send buffer in memory and a
-drainer task that writes it to the wire. When the buffer is full, the
-oldest frame is dropped and the drop is logged.
+drainer task that writes it to the wire. The buffer has two lanes. A
+frame that reports the state of the socket itself is a control frame:
+the first frame, a pong with the head `seq`, a subscription confirmed
+or ended, an error. An event hint is a stream frame.
 
-That is safe because every push is also a record. A client that
+The drainer sends control frames first. When the buffer is full, the
+oldest stream frame is dropped and the drop is logged. A control frame
+is never evicted by a burst, because a client that loses one is told
+nothing about the loss.
+
+The control lane is bounded on its own, small, and named in settings. A
+control lane that overflows is logged as an overflow of the control
+lane, since it says the socket is producing state faster than it can
+be written, which it should not.
+
+The revocation close and the transport keepalive stay out of the
+buffer. A close is not a frame to be queued behind a backlog, and the
+keepalive belongs to the transport.
+
+Dropping a stream frame is safe because every push is also a record. A client that
 reconnects asks for everything after the last sequence number it saw.
 The client keeps the last contiguous sequence, so a gap (42 arriving
 without 41) is a replay from 40, never a skip.
@@ -3192,9 +3216,10 @@ Inbound traffic on the socket is small by design: subscribe,
 unsubscribe, ping. The first frame and every pong carry the tenant's
 head `seq`. So a client whose last push was the one dropped learns of
 the gap on the next keepalive rather than on the next event, and a
-socket that stays quiet cannot hide a loss. Commands travel over plain
-REST, where they get the error envelope, the rate limit, and the
-idempotency key for free.
+socket that stays quiet cannot hide a loss. That is why the pong is a
+control frame: a burst of hints must not evict the frame that reports
+the burst. Commands travel over plain REST, where they get the error
+envelope, the rate limit, and the idempotency key for free.
 
 ### Wait-for-Response vs Fire-and-Forget
 
@@ -5221,9 +5246,9 @@ The bounds that make it so:
 -   [Each database role's pool](#database-roles) declares its size and
     the bound on waiting for a connection, so a saturated role fails a
     checkout instead of queueing without end.
--   [A process bounds what it has in flight](#the-gateway) and refuses
-    past the bound at once. That is the process defending itself, not
-    the rate limit beside it.
+-   [A process bounds what it has in flight](#the-gateway), in a read
+    budget and a write budget, and refuses past either at once. That is
+    the process defending itself, not the rate limit beside it.
 -   [A breaker](#composition-by-decoration) cuts off a dependency that
     is failing, so the timeouts of a dependency that is down do not
     exhaust the pool they are made from.
@@ -5238,9 +5263,10 @@ The bounds that make it so:
     bulk work starves its neighbours, and each [database
     role](#database-roles) has its own pool, so one load profile
     cannot take the rest down with it.
--   [The send buffer per socket](#realtime-at-the-edge) is bounded and
-    drops the oldest frame, and [the channel degrades to
-    polling](#push-first-apps) rather than disappearing.
+-   [The send buffer per socket](#realtime-at-the-edge) is bounded in
+    two lanes and drops the oldest stream frame, never a control frame,
+    and [the channel degrades to polling](#push-first-apps) rather than
+    disappearing.
 -   [A readiness probe](#the-gateway) answers under a deadline of its
     own: a timeout is a negative answer, never a missing one.
 -   [A guard parks, a bound fails](#long-running-orchestrations), so a

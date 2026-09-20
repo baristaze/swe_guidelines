@@ -383,26 +383,26 @@ streams its client subscribed, or filters by kind within one.
 
 ## NET-17 The socket is a hint; storage is the truth
 
-**Principle.** Each socket has one bounded send buffer; when it is
-full the oldest frame is dropped and logged. Every push is also a
-record, and a reconnecting client asks for everything after the last
-contiguous sequence it saw, so a gap is a replay, never a skip. The
-first frame and every pong carry the tenant's head `seq`.
+**Principle.** Each socket has one bounded send buffer with two lanes.
+Control frames are sent first, and a burst drops the oldest stream
+frame, never a control frame. Every push is also a record, and a
+reconnecting client asks for everything after the last contiguous
+sequence it saw. The first frame and every pong carry the head `seq`.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The send buffer capacity, its drainer task, and its
-overflow behavior; whether every pushed event has a durable record;
-the reconnect path and its `after_seq` parameter; which sequence the
-client keeps as its cursor; what the hello and the pong carry, so a
-quiet socket cannot hide a dropped last frame.
+**Look for.** The two lanes of the send buffer, its drainer task, and
+which lane a burst evicts from; the control lane's own bound in
+settings, and whether the revocation close and the transport keepalive
+stay outside the buffer; the reconnect path, its `after_seq`, and the
+sequence the client keeps as its cursor.
 
-**Violation.** A push that exists only as a frame; a send buffer that
-grows without bound or blocks the producer; a client that cannot
-recover missed events after a reconnect; a client that tracks the last
-frame seen instead of the last contiguous one, so a dropped frame is
-skipped for good; a pong with no head `seq`, so a dropped last frame
-waits for the next event.
+**Violation.** A control frame evicted by a burst of hints, so the
+pong that reports the gap is the frame that was dropped; one lane for
+everything, or a control lane with no bound of its own; a push that
+exists only as a frame; a client that tracks the last frame seen
+instead of the last contiguous one, so a dropped frame is skipped for
+good.
 
 **Severity.** high
 
@@ -737,24 +737,25 @@ replay with no header saying the secret is absent.
 
 ## NET-32 A process bounds what it has in flight and refuses past it
 
-**Principle.** A process bounds the requests it has in flight and
-refuses at once past the bound, in the unavailable shape, rather than
-queueing without end. It is not the rate limit beside it: a rate limit
-is per-subject fairness and fails open, admission is the process
-defending itself and fails closed.
+**Principle.** A process bounds what it has in flight in two budgets,
+one for reads and one for writes, each named in settings, and refuses
+past either at once, in the unavailable shape. Health, readiness, and
+metrics stay outside both. It is not the rate limit beside it: that is
+per-subject fairness and fails open.
 
 **Source.** The Network Layer, The Gateway (Rate limits, Admission).
 
 **Look for.** The middleware or dependency that counts what is in
-flight and the settings field carrying the bound; what a refusal
-answers with; the rate-limit dependency beside it and how the two are
-told apart.
+flight, which methods it counts against which budget, and the two
+settings fields behind them; what a refusal answers with, and which
+routes are exempt; the rate-limit dependency beside it and how the two
+are told apart.
 
-**Violation.** A process that accepts whatever arrives, so load turns
-into a queue of requests whose callers have gone; an admission bound
-that fails open like a rate limit, or a rate limit pressed into
-service as one; a bound hard-coded instead of read from settings; a
-refusal presented as a 500.
+**Violation.** One budget for reads and writes together, so a storm of
+replayed reads takes every slot from the commands; a process that
+accepts whatever arrives, so load turns into a queue of requests whose
+callers have gone; a probe refused by admission; a bound hard-coded
+instead of read from settings, or a refusal presented as a 500.
 
 **Severity.** medium
 
