@@ -29,6 +29,16 @@ which number.
 - `benchmark/scenarios/`: three scenarios, an explanation of the tenant
   fence, an object model review, and an on-call question answered with
   no skill at all.
+- `benchmark/browser/` and `skills/arch-benchmark-browser/SKILL.md`: the
+  same question asked through the products a reader would use,
+  chatgpt.com, claude.ai, and gemini.google.com, in a browser the
+  person has signed in to. Two t-shirt sizes (`xs` to `xl`) pick the
+  model and the effort per site from `sizes.yaml`; the skill checks the
+  picker before it sends; the prompt goes with a contract so the
+  answers line up; each answer is saved with its conversation URL, the
+  labels the page showed, and the times, in
+  `schema/browser-session.schema.json`. `check_skills.py` accepts an
+  MCP tool name (`mcp__<server>__<tool>`) in `allowed-tools`.
 - `skills/arch-benchmark/SKILL.md`: the skill that runs a scenario from
   a checkout and reports the scores, the findings, and the run folder.
 - `tests/test_benchmark_*.py`: the harness logic under the repository's

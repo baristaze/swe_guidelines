@@ -103,6 +103,19 @@ def test_allowed_tools_form(repo, skills, capsys):
     assert "trailing space inside the parentheses of 'Bash(make check )'" in capsys.readouterr().out
 
 
+def test_an_mcp_tool_name_is_a_name(repo, skills, capsys):
+    # a browser or other MCP tool is named `mcp__<server>__<tool>`; that is a Name
+    repo.edit(
+        "skills/arch-review-full/SKILL.md",
+        "allowed-tools: Read, Agent",
+        "allowed-tools: Read, Agent, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__browser_batch",
+    )
+    assert skills.main() == 0
+    repo.edit("skills/arch-review-full/SKILL.md", "mcp__claude-in-chrome__navigate", "mcp__Claude Chrome__navigate")
+    assert skills.main() == 1
+    assert "is not Name or Name(rule)" in capsys.readouterr().out
+
+
 def test_make_target_the_body_runs_passes(repo, skills, capsys):
     # the exact form, the prefix form, a target the scaffold conventions file runs
     # on the skill's behalf, and git, uv, and pnpm entries the checker leaves alone

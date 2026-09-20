@@ -1,0 +1,43 @@
+# The t-shirt sizes, and what each site shows for them. Two sizes per run:
+# the model and the effort. Sizes are xs, s, m, l, xl, so a new tier slots
+# in without renaming the others. The labels are what the picker shows on
+# 2026-09-20; when a site renames a model, this file changes and the skill
+# does not.
+model:
+  chatgpt.com:
+    xs: GPT-6 Astra          # one model behind the slider; the size goes to effort
+    s: GPT-6 Astra
+    m: GPT-6 Astra
+    l: GPT-6 Astra
+    xl: GPT-6 Astra
+  claude.ai:
+    xs: Haiku 4.5
+    s: Sonnet 5
+    m: Opus 5
+    l: Opus 5
+    xl: Fable 5.1
+  gemini.google.com:
+    xs: 3.5 Flash-Lite
+    s: 3.8 Flash
+    m: 3.1 Pro
+    l: 3.1 Pro
+    xl: Extended thinking     # the picker's top entry; it is the Pro model at its deepest
+effort:
+  chatgpt.com:                # the "Thinking effort" slider has five stops, left to right
+    xs: 1
+    s: 2
+    m: 3
+    l: 4
+    xl: 5
+  claude.ai:                  # the Effort submenu of the model picker
+    xs: Low
+    s: Low
+    m: Medium
+    l: High
+    xl: Max
+  gemini.google.com:          # no effort control of its own; the model size carries it
+    xs: none
+    s: none
+    m: none
+    l: none
+    xl: none
