@@ -56,8 +56,8 @@ Facts that decide how the steps below go. Read them before the browser.
   current model and not a model of its own; the chip then reads
   "Flash Extended". The size map never asks for it. The chip shortens
   "3.1 Pro" to "Pro".
-- A finished answer is announced in text: chatgpt.com writes "Worked for" and a duration above it; claude.ai's page text contains "Claude
-
+- A finished answer is announced in text: chatgpt.com writes "Worked
+  for" and a duration above it; claude.ai's page text contains "Claude
   finished the response"; gemini.google.com shows the answer with the
   composer empty and no stop control. Read that rather than the send
   button's shape.
