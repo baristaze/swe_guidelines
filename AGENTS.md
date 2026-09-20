@@ -51,9 +51,6 @@ lenses (`skills/`), and the checkers that keep the three consistent
   weighed. Naming the near miss a rule rules out ("X, never Y") is
   part of the rule and stays.
 - No em-dashes anywhere.
-- No paragraph of the guideline over 200 words, a list item counted on
-  its own (`scripts/check_prose.py`): a protocol that long is a table
-  or two paragraphs.
 - No section numbers anywhere: headings are unnumbered, and every
   cross-reference (in the guideline, the lenses, the skills, the docs)
   names the section by title; inside the guideline it is a named
@@ -97,6 +94,13 @@ claude plugin validate . --strict   # manifests, skills, agents (when claude is 
 
 ## Conventions
 
+- Readability outranks density. A sentence a senior reader has to
+  parse twice has failed, however well it is built.
+- Short sentences, one idea each. A chain of clauses joined by commas
+  is the thing to break up.
+- A paragraph has no cap. Paragraph length is not the problem;
+  sentence length is.
+- A longer document is the right trade for a document that gets read.
 - Wrap prose at about 72 columns in the guideline and the lenses.
 - A concept the guideline uses before the section that defines it
   carries a named anchor link to that section at its first mention.

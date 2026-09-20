@@ -22,6 +22,12 @@ its own voice.
   files. Edit the template or the lenses, run `make gen-skills`, and
   commit the result. `make gen-skills-check` fails when a generated
   skill is stale.
+- Readability outranks density. A sentence a senior reader has to
+  parse twice has failed, however well it is built. Short sentences,
+  one idea each; a chain of clauses joined by commas is the thing to
+  break up. A paragraph has no cap, because paragraph length is not
+  the problem and sentence length is. A longer document is the right
+  trade for a document that gets read.
 - No em-dashes anywhere. Wrap prose at about 72 columns in the
   guideline; the lens files and skills follow the same habit.
 

@@ -6,6 +6,17 @@ which number.
 
 ## Unreleased
 
+### Removed
+
+- `scripts/check_prose.py`, `make prose`, and the invariant behind
+  them: no paragraph of the guideline is capped at 200 words any more.
+  Two outside readings said the prose is dense past the point of
+  diminishing returns and that the reader pays for it. What the cap
+  reached for is stated directly in `AGENTS.md` and `CONTRIBUTING.md`:
+  readability outranks density, sentences are short and carry one idea
+  each, and a longer document is the right trade for a document that
+  gets read.
+
 ## 0.17.0 (2026-09-20)
 
 Three outside readings of the operational half of the guideline: that

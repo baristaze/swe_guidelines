@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    name: lint, lenses, leaks, links, prose, toc, version, gen-skills-check, skills, agents, test, plugin
+    name: lint, lenses, leaks, links, toc, version, gen-skills-check, skills, agents, test, plugin
     runs-on: ubuntu-26.04
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
