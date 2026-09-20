@@ -6,6 +6,58 @@ which number.
 
 ## Unreleased
 
+## 0.19.0 (2026-09-20)
+
+A deployed system is an operated system, and the guideline said
+nothing about who operates it, with what, or inside which boundary.
+Minor: rules are added, and one exclusion narrows. Two sections land.
+"Operations" states the posture in one sentence, people steer and
+agents maintain, and then makes it concrete: four operator roles, the
+credential a skill verifies before it reads, nine built-in operational
+skills, the dashboard and the alarms declared as code in both twins,
+autoscaling as one root flip that is off by default, a budget from the
+first apply, create and nuke as the administrator's two scripted runs,
+one traffic generator behind the stress test, and one test that reads
+every signal back by request id. "Documentation as Code" puts a
+README at every abstraction level, writes `om/README.md` for a reader
+with no code, and names what each audience is served in one map at
+the root. A new lens group, `ops`, judges both. Load testing leaves
+"What This Document Does Not Cover" as a shape; its numbers stay
+there.
+
+### Added
+
+LENS_BULLETS
+
+- `skills/_shared/ops-skills/`: nine project-local skill templates,
+  `ops-investigate`, `ops-watch`, `ops-root-cause`,
+  `ops-infra-as-code`, `ops-cloud-deployment-create`,
+  `ops-cloud-deployment-nuke`, `ops-simulate-traffic`,
+  `stress-test-create-or-update`, and `stress-test-run`, each stating
+  its role, its credential check, what it reads, what it never does,
+  and its report, every one runnable against `local`.
+  `arch-scaffold-new` copies them into a new tree under
+  `.claude/skills/` with the product's name in, and its skeleton gains
+  the `ops` distribution, `om/README.md`, `deployment/README.md`,
+  `llms.txt`, the create and nuke scripts, the investigate roles, the
+  operators' user, the budget, the alarms, the dashboard, and the
+  autoscaling and destroyable switches; a new step runs the telemetry
+  round trip and thirty seconds of light traffic as a wiring check.
+  `docs/adopting.md` gains "Operate with the built-in skills".
+- `lenses/ops.md`, the eighth group, and `arch-review-ops`, generated
+  from the template; `arch-review-full` fans out to eight.
+
+### Changed
+
+- `architecture.md`, "What This Document Does Not Cover": "Load
+  testing" becomes "The numbers a stress test holds a system to", and
+  alerting narrows to the thresholds of the alarms, because the shape
+  of both now lives in "Operations".
+- `architecture.md`, "Infrastructure as Code", "Tests", "Scalability
+  by Design", and the monorepo tree: each names the piece of
+  "Operations" it touches, and the tree gains `ops/`, `llms.txt`,
+  `om/README.md`, `deployment/README.md`, and `.claude/skills/`.
+
 ## 0.18.0 (2026-09-20)
 
 The document is rewritten to be read. Not restructured: every section,
