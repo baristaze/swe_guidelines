@@ -9,7 +9,12 @@ entities translate, how tables are grouped into database roles, and how
 the schema moves over time. It leaves entity shapes and identifier
 minting to `om`, the `org_id`-first rule, user scoping, and
 tenancy-on-write to `context`, interface imports and the in-memory
-impl to `contracts`, and caches, topics, and queues to `async`.
+impl to `contracts`, and caches, topics, and queues to `async`. On the
+outbox and retention the line is this: storage judges the outbox row's
+life (written with the core row, relayed at once, marked done, kept for
+a retention period, purged after it) and the retention period of every
+entity; `async` judges the sweep that relays, purges, requeues, and
+resumes (ASY-19).
 
 ## STO-01 Code never relies on a database relationship
 
@@ -134,9 +139,9 @@ that return the written entity's id, or that flush and read the row
 back to learn it. (How ids are minted at construction is `OM-12`.)
 
 **Violation.** A table's `id` column has `server_default` or
-autoincrement. A `write_*` method returns a `UUID` that the caller did
-not already hold. An `INSERT ... RETURNING id` whose result the
-business layer waits for.
+autoincrement; a `write_*` method returns a `UUID` the caller did not
+already hold; an insert returns the id and the business layer waits
+for it.
 
 **Severity.** medium
 
@@ -202,15 +207,12 @@ table class lives outside `storage/tables/`.
 
 ## STO-10 One storage root, two impls, every dependency wired there
 
-**Principle.** Storage implementations are assembled behind a single
-root that implements `StorageInterface`, with one getter per entity
-storage plus `healthcheck` and `close`. Two roots exist from day one,
-`StoragePostgresImpl` over the relational engine and
-`StorageMemoryImpl` in memory, named like every other impl, and each
-constructs every namespace impl and wires cross-storage dependencies
-between them.
-Cross-storage dependencies are injected through the constructor; the
-interface is untouched.
+**Principle.** Storage impls are assembled behind one root that
+implements `StorageInterface`: one getter per entity storage plus
+`healthcheck` and `close`. Two roots exist from day one,
+`StoragePostgresImpl` and `StorageMemoryImpl`, named like every other
+impl; each constructs every namespace impl and injects cross-storage
+dependencies through constructors, the interface untouched.
 
 **Source.** The Storage Layer, Storage Root; Cross-Storage Dependencies.
 
@@ -223,23 +225,22 @@ memory root that constructs the same set of impls as the relational
 root.
 
 **Violation.** A manager or container constructs a namespace storage
-impl directly. A storage impl reaches a sibling storage through a
-global, the root, or an attribute set after construction. The memory
-root lacks a getter the relational root has. A root named for what it
-is rather than as an impl (`Storage`, `PostgresStorage`), so the
+impl directly, or a storage impl reaches a sibling through a global,
+the root, or an attribute set after construction. The memory root
+lacks a getter the relational root has. A root named for what it is
+rather than as an impl (`Storage`, `PostgresStorage`), so the
 technology is not last.
 
 **Severity.** medium
 
 ## STO-11 Table mixins mirror the OM mixins
 
-**Principle.** Table classes mirror the OM mixins so their definitions
-stay focused on what is specific to the entity. The common mixins live
-in the shared `tables/` package, with one storage-only addition:
-`org_id` rides on `IdentifiableMixin`. A global table composes
-`GlobalIdentifiableMixin`, which carries `id` alone. Concrete table
-classes compose the mixins their entity has, in the same house-style
-order as the OM.
+**Principle.** Table classes mirror the OM mixins, so a table declares
+only what is specific to its entity. The common mixins live in the
+shared `tables/` package, with one storage-only addition: `org_id`
+rides on `IdentifiableMixin`. A global table composes
+`GlobalIdentifiableMixin`, which carries `id` alone. A concrete table
+composes the mixins its entity has, in the OM's house-style order.
 
 **Source.** The Storage Layer, Defining ORM Classes.
 
@@ -303,23 +304,22 @@ the domain columns in the initial schema.
 
 ## STO-14 The three index rules
 
-**Principle.** A feed wants a compound index on `(org_id, id)`, which
-sorts by creation time because ids are v7, so a descending index is
-never needed. A column that already leads a compound index gets no
-single-column index of its own, so a feed table composes
-`FeedIdentifiableMixin`, whose `org_id` carries none. Index what the
-SQL filters on, not what Python filters afterwards; reach for a
-compound index when a real query asks for one.
+**Principle.** A feed gets a compound index on `(org_id, id)`, which
+sorts by creation time because ids are v7; a descending index is never
+needed. A column that leads a compound index gets no single-column
+index of its own, so a feed table composes `FeedIdentifiableMixin`,
+whose `org_id` carries none. Index what the SQL filters on, never what
+Python filters afterwards.
 
 **Source.** The Storage Layer, Defining ORM Classes; Naming Entities,
 Identifiers.
 
 **Look for.** Feed tables (events, audit, streams, lists ordered by
 creation) carrying `Index(org_id, id)` and queries ordering by `id`.
-Any `DESC` index on an id column. A single-column index on `org_id`
+Any `DESC` index on an id column, or a single-column index on `org_id`
 next to a compound index that starts with `org_id`. Indexes on columns
 no query filters on, or missing on columns every list query filters
-on.
+on, and a compound index no real query asks for.
 
 **Violation.** A feed orders by `created_at` with its own index instead
 of by `id`. Both `ix_<table>_org_id` and `ix_<table>_org_id_id` exist
@@ -341,9 +341,9 @@ base.
 
 **Look for.** Storage impls calling the shared helpers for reads,
 inserts, and in-place updates. Hand-written field-by-field mapping in
-an impl whose row and entity have matching field names. A translation
-base class that impls inherit from. `apply_row` never touching
-`org_id`.
+an impl whose row and entity have matching field names, or a
+translation base class that impls inherit from. `apply_row` never
+touching `org_id`.
 
 **Violation.** A storage impl reimplements `to_row` or `to_model`
 locally for a one-to-one shape. A `TranslatorBase` or mixin carries
@@ -356,14 +356,10 @@ applying the entity onto the existing row.
 ## STO-16 Two write primitives: an insert that reports, an upsert
 
 **Principle.** A shared base provides the two write primitives every
-namespace uses: an insert for creates, which does nothing on an
-existing id and reports it, the outbox row landing only when the
-insert won; and an upsert for updates, which reads the existing row
-by id, applies the entity onto it, inserts the outbox row it was
-handed beside it, and commits the two together. Last writer wins
-by default; an entity whose concurrent edits matter carries a
-`version`, and its write is a compare-and-set that raises `Conflict`
-when the row moved (optimistic concurrency).
+namespace uses. The insert, for creates, does nothing on an existing
+id and reports it, the outbox row landing only when the insert won.
+The upsert, for updates, reads the row by id, applies the entity onto
+it, and commits it with the outbox row it was handed.
 
 **Source.** The Storage Layer, A Storage Impl; The Business Layer,
 Shape of an Operation.
@@ -371,35 +367,31 @@ Shape of an Operation.
 **Look for.** Create methods that are one call to the shared insert
 and update methods that are one call to the shared upsert, and
 whether a `core`-role write takes the outbox row as a parameter.
-Hand-rolled insert-or-update logic repeated across impls. Entities
-that carry `version`, and whether their write compares it.
+Hand-rolled insert-or-update logic repeated across impls.
 
 **Violation.** A namespace impl performs its own select-then-insert-
 or-update sequence instead of calling the base primitive; a create
 that goes through the upsert, so a retry overwrites the row and
 announces it twice, or a check-then-insert with a window between the
-two; a key collision that escapes as a driver error. An entity
-with a `version` whose write overwrites without comparing it, or a
-`version` added to every table by default.
+two; a key collision that escapes as a driver error.
 
 **Severity.** medium
 
 ## STO-17 Every table has one database role
 
-**Principle.** Every table belongs to exactly one database role and
-lives in the schema named after it; a map from table name to role is
-the single source of truth, and the ORM base derives the schema from
-it. No cross-role foreign keys and no cross-role statements: a
-statement touches one role, and the base class routes it by the table
-it names and refuses one that spans roles.
+**Principle.** Every table belongs to one database role, the schema
+named after it; a map from table name to role is the single source of
+truth, and the ORM base derives the schema from it. No cross-role
+foreign keys and no cross-role statements: the base class routes a
+statement by the table it names and refuses one that spans roles.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The table-to-role map: every table present, `schema`
 derived from it rather than declared on the class. Statements that
-name tables from two roles, and the base class refusing them. Foreign
-keys whose target is in another role. Unit tests asserting the map is
-complete and that no key or statement crosses a role.
+name tables from two roles and the base class refusing them, and
+foreign keys whose target is in another role. Unit tests asserting the
+map is complete and that no key or statement crosses a role.
 
 **Violation.** A table declares its own `schema` or is missing from the
 map. A join, foreign key, or transaction spans two roles. The role
@@ -412,43 +404,33 @@ tests are absent.
 **Principle.** Migrations live with the OM. A migration is a pair of
 hand-written, schema-qualified SQL files with a thin wrapper, one
 revision chain and one version table per role, the minute stamp as
-sort key and revision id. A migration file is never edited once it has
-been applied anywhere. The runner refuses a file that names another
+sort key and revision id. The runner refuses a file that names another
 role's table, and refuses to migrate one role when the caller meant
-all of them. A migration is compatible with the release before it:
-add and backfill in one release, switch the code, drop in a later one
-(expand and contract). A metadata-vs-schema check for every role is in
-the fast test gate; a downgrade-then-upgrade is in CI.
+all.
 
 **Source.** The Storage Layer, Migrations.
 
 **Look for.** `om/migrations/sql/<role>/YYYYMMDDHHMM_<slug>.up.sql`
 and `.down.sql` pairs, with a wrapper under `versions/<role>/` that
 only calls the SQL runner. Wrappers containing hand-written schema
-operations instead of `run_sql`. A diff touching a migration file that
-has already been applied in any environment. SQL in one role's chain
-naming a table of another role. A migration that drops or renames a
-column the release before it still reads. The fast gate running the
-metadata-vs-schema check per role, and CI running downgrade then
-upgrade of the head.
+operations instead of `run_sql`, and SQL in one role's chain naming a
+table of another role. The runner's refusal of a single-role run where
+every role was meant.
 
-**Violation.** Two migrations share a revision id, or a chain has two
-heads that were merged by editing history. An applied `.up.sql` is
-modified rather than followed by a new migration. A column dropped or
-renamed in the same release that stops reading it, so a rollout that
-runs both versions breaks. A migration lives in a service instead of
-with the OM. The check step is missing from the fast gate.
+**Violation.** A migration lives in a service instead of with the OM,
+or a wrapper carries schema operations of its own. A migration names a
+table of another role and the runner accepts it. A runner that
+migrates one role and stays silent when the caller meant all.
 
 **Severity.** medium
 
 ## STO-19 One URL per role, one engine per URL, and a move that changes no code
 
-**Principle.** Each role has its own connection URL that defaults to
-the shared one, and the storage root opens one engine and pool per
+**Principle.** Each role has its own connection URL, defaulting to the
+shared one, and the storage root opens one engine and pool per
 distinct URL. When metrics demand it, a role moves to its own
 database: the schema is copied under replication or a dual write until
-the copy is current, the cut-over is one URL, and the code does not
-change.
+current, the cut-over is one URL, and the code does not change.
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -466,50 +448,116 @@ before the copy is current, or with no rehearsal.
 
 ## STO-20 A handoff after a core write is a core row plus an outbox row
 
-**Principle.** A handoff that follows a core write (an event row, a
-work item) is never a second statement the manager remembers to make:
-the manager writes the core row and an outbox row in one named atomic
-method in the `core` role, relays the outbox row at once, and the
-sweep relays whatever a crash left behind and marks the row done. The
-relay is idempotent on the row's key, so relaying twice is harmless
-(the transactional outbox).
+**Principle.** A handoff after a core write is never a second
+statement the manager remembers to make: the manager writes the core
+row and an outbox row in one named atomic method in the `core` role
+and relays the row at once. The relay is idempotent on the row's key,
+so relaying twice is harmless (the transactional outbox).
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The named atomic method that writes the core row and its
-outbox row, the relay after it, and the sweep step that relays what a
-crash left and marks the row done; whether the relay dedupes on the
-row's key.
+outbox row (the event row or the work item that follows), the relay
+after it, and whether the relay dedupes on the row's key. The row left
+pending, with `done_at` unset, for the sweep that `async` judges.
 
 **Violation.** A manager writes the core row and then, in a second
 statement, the event row or the work item. A relay that is not
-idempotent, so the sweep duplicates an event. A sweep with no relay
-step.
+idempotent, so relaying a row twice duplicates an event.
 
 **Severity.** high
 
-## STO-21 Analytics reads a mirror; every role is backed up, purged, and erasable
+## STO-21 Analytics reads a mirror; roles are backed up and retained
 
-**Principle.** Analytics across tenants never runs in the request path
-of any role; it reads a mirror. Every role is backed up on its own
-schedule with a rehearsed restore, a role restored earlier than its
-siblings is reconciled from the outbox, a soft-deleted row is purged
-by the sweep after its entity's retention period, and personal data
-lives in named fields.
+**Principle.** Cross-tenant analytics never runs in a request path; it
+reads a mirror. Every role is backed up and its restore rehearsed, and
+a role restored earlier than its siblings is reconciled from the
+outbox. A done outbox row outlives the backup schedule, a soft-deleted
+row its entity's retention period, and personal data lives in named
+fields.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** Reporting queries that scan across tenants inside a
-request. The backup schedule per role and the restore rehearsal; the
-retention period of a done outbox row against the backup schedule of
-the roles it feeds; the purge step of the sweep and the retention
-period per entity; the fields that hold personal data.
+request. The backup schedule per role and the runbook that records the
+restore rehearsal and the outbox reconciliation, read as documentation;
+the retention period of a done outbox row against the backup schedule
+of the roles it feeds. The retention period per entity that the purge
+reads, and the fields that hold personal data.
 
 **Violation.** A cross-tenant analytical query runs against the `core`
-role in a request handler. A role with no backup schedule or a restore
-never rehearsed; a done outbox row deleted on done, or kept shorter
-than the backup schedule; a soft-deleted row that is never purged, or
-a hard delete outside the purge; personal data spread over unnamed
-fields, so erasing a person is a hunt.
+role in a request handler. A role with no backup schedule, or no
+runbook recording a restore rehearsal; a done outbox row deleted on
+done, or kept shorter than the backup schedule. An entity with no
+retention period, a hard delete outside the purge, or personal data
+spread over unnamed fields, so erasing a person is a hunt.
+
+**Severity.** medium
+
+## STO-22 Concurrent edits that matter carry a version
+
+**Principle.** Last writer wins by default. An entity whose concurrent
+edits matter carries a `version`, the copy increments it, and the
+write is a compare-and-set that raises `Conflict` when the row moved
+(optimistic concurrency).
+
+**Source.** The Business Layer, Shape of an Operation; The Storage
+Layer, A Storage Impl.
+
+**Look for.** Entities that carry `version`, the copy that increments
+it, the write behind each, and the `WHERE` that compares the stored
+value; entities that carry none and whether a concurrent edit on them
+matters.
+
+**Violation.** An entity with a `version` whose write overwrites
+without comparing it, or whose copy never increments it; a
+compare-and-set that returns quietly instead of raising `Conflict`; a
+`version` added to every table by default.
+
+**Severity.** medium
+
+## STO-23 The minute stamp is the revision id, and a collision waits
+
+**Principle.** The minute stamp is the file's sort key and the revision
+id, so two authors never negotiate a counter. Two migrations of one
+role in the same minute collide on the stamp, and the later one waits
+a minute or takes a suffix; two migrations naming the same parent are
+a real conflict the tool reports on purpose.
+
+**Source.** The Storage Layer, Migrations.
+
+**Look for.** The stamps in each role's folder and the `revision` and
+`down_revision` of each wrapper; two files of one role sharing a
+stamp, and how the later one was renamed; a merge that resolved two
+heads.
+
+**Violation.** Two migrations of one role share a revision id; a chain
+with two heads merged by editing an existing wrapper's
+`down_revision`; a counter or a hand-picked id in place of the stamp.
+
+**Severity.** medium
+
+## STO-24 An applied migration is never edited; expand, then contract
+
+**Principle.** A migration file is never edited once it has been
+applied anywhere. A migration is compatible with the release before
+it, since a rollout runs both: add and backfill in one release, switch
+the code, drop in a later one (expand and contract). A
+metadata-vs-schema check per role is in the fast gate; a
+downgrade-then-upgrade is in CI.
+
+**Source.** The Storage Layer, Migrations.
+
+**Look for.** A migration file that changed after the commit that
+added it, per `git log --follow`. A migration that drops or renames a
+column the release before it still reads. The fast gate running the
+metadata-vs-schema check per role, and CI running downgrade then
+upgrade of the head.
+
+**Violation.** An applied `.up.sql` is modified rather than followed
+by a new migration. A column dropped or renamed in the same release
+that stops reading it, so a rollout that runs both versions breaks.
+The check step is missing from the fast gate, or the roundtrip from
+CI.
 
 **Severity.** medium
