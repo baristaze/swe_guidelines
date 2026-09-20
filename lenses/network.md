@@ -521,26 +521,28 @@ that accepts it is deployed.
 ## NET-24 The pending marker's attempt token fences finish and release
 
 **Principle.** The pending marker carries the request digest, the id
-the create will use, and an attempt token, minted before `begin`. A
-marker older than the pending lease is taken over in one conditional
-write that stamps a new attempt token and reruns with the marker's
-id. `finish` and the release are conditional on the attempt token, in
-the statement itself.
+the create uses, and an attempt token. A marker past the pending lease
+is taken over in one conditional write stamping a new token, and rerun
+with the marker's id. `finish` and the release are conditional on the
+token in the statement; a release clears the attempt and nothing else.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
 **Look for.** The marker row and what `begin` writes on it; the
 take-over statement, what it compares, and which markers it takes
 (abandoned by a crash, or held by an attempt still running past its
-lease); the `WHERE` of `finish` and of the release; what the losing
-attempt's `finish` returns, since it can neither finish the marker
-with its own outcome nor release the one the retry holds.
+lease); the `WHERE` of `finish` and of the release, and what the
+release clears (the attempt) and keeps (the digest and the id); what
+the losing attempt's `finish` returns, since it can neither finish the
+marker with its own outcome nor release the one the retry holds.
 
 **Violation.** A marker with no attempt token, so two attempts can
 finish it; a take-over that overwrites the marker without a condition;
-a `finish` or a release that matches on the key alone; a rerun that
-mints a new id instead of using the marker's; a losing attempt that
-is not refused like a worker whose lease has passed.
+a `finish` or a release that matches on the key alone; a release that
+deletes the marker or clears its digest or id, so the retry after a
+failure creates a second row; a rerun that mints a new id instead of
+using the marker's; a losing attempt that is not refused like a worker
+whose lease has passed.
 
 **Severity.** high
 

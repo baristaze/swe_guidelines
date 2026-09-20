@@ -679,24 +679,26 @@ Terraform beside the distribution.
 
 ## DEL-31 Production promotes, it never rebuilds
 
-**Principle.** Production does not rebuild: it promotes images by
-digest and browser bundles by build id, behind an approval gate, so
-production receives what the smaller environment already ran. A bundle
-is built once and reads what differs between environments (the API
-origin, the DSN, the environment name) from a `config.json` deployed
-next to it.
+**Principle.** Production does not rebuild: it promotes what staging
+already ran, images by the digest staging built for that commit,
+browser bundles by build id, and a release commit staging never built
+is refused. A bundle is built once and reads what differs between
+environments (the API origin, the DSN, the environment name) from a
+`config.json` deployed next to it.
 
 **Source.** Deployment, Cloud: AWS.
 
-**Look for.** The deploy workflow's production job, how it obtains its
-images and bundles, and whether an approval step guards it; the
-`config.json` each environment's deploy writes next to the bundle, and
-what the bundle reads at start.
+**Look for.** The production workflow: how it obtains its images and
+bundles (a lookup by the release commit, never a build), the plan it
+writes as an artifact, and the approval step between the plan and the
+apply; the `config.json` each environment's deploy writes next to the
+bundle, and what the bundle reads at start.
 
 **Violation.** A production job that builds an image or a bundle; a
-production task definition pinned to a tag rather than a digest; an
-API origin or DSN compiled into a bundle; a promotion path with no
-approval gate.
+task definition pinned to a tag rather than a digest; a release commit
+with no digest from staging that is deployed instead of refused; an
+API origin or DSN compiled into a bundle; an apply with no approval on
+its plan.
 
 **Severity.** medium
 
@@ -830,5 +832,33 @@ is parameterized by.
 **Violation.** A named atomic method proven by a sequence of calls and
 never by a race; a race run over memory only, so the engine's locking
 is assumed; a race that asserts both callers succeed.
+
+**Severity.** medium
+
+## DEL-38 Staging is main, production is release, moved by a fast-forward
+
+**Principle.** The smaller environment, staging, is `main`: every merge
+deploys it with no approval. Production is the `release` branch, moved
+only by a fast-forward from `main`, never by a commit of its own; a
+push to `release` plans production, waits for a person's approval on
+that plan, and applies it, after checking that `release` is an
+ancestor of `main`.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The staging workflow's trigger (a push to `main`) and the
+absence of an approval on it; the production workflow's trigger (a
+push to `release`), its ancestor check before the plan, and the
+environment protection that holds the apply until a person approves;
+the `release` workflow that fast-forwards `release` to `main` on
+dispatch, and the branch protection that lets nothing else push to
+`release`.
+
+**Violation.** A staging deploy behind an approval, or one triggered by
+anything but `main`; a commit made on `release` or a merge into it; a
+production apply with no plan approved first; a deploy of production
+that plans without checking that `release` is an ancestor of `main`;
+a person or a job that can push to `release` other than the
+fast-forward.
 
 **Severity.** medium

@@ -589,3 +589,29 @@ no such test at all; a test that lists the transitions by name but
 never scans the code for a new site.
 
 **Severity.** high
+
+## CTX-27 A socket closes at its session's expiry and on the revocation frame
+
+**Principle.** A stage lives no longer than its request. A socket holds
+the `OpContext` its ticket produced, so the session's expiry bounds
+the socket and the process closes it at that instant; a revocation or
+a membership's end travels on the topic bus, and every process holding
+a socket for that session or user closes it on the frame.
+
+**Source.** OpContext, Stages; The Network Layer, Realtime at the Edge.
+
+**Look for.** The socket handler and what bounds its life: the deadline
+it sets from the session's expiry when the ticket is redeemed, and the
+subscription on the topic bus that every process with sockets holds
+for the revocation and membership-end frames; what a process does with
+a frame naming a session or a user it holds a socket for; what the
+socket carries meanwhile, hints only.
+
+**Violation.** A socket that outlives its session's expiry because the
+client keeps pinging; a revocation that reaches a socket only at its
+next reconnect; a process that closes the sockets it revoked itself
+and ignores the frame from another; a socket whose context is
+refreshed in place instead of closed; a frame missed with no expiry to
+cover it.
+
+**Severity.** high
