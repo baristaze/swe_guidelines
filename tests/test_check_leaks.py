@@ -62,3 +62,11 @@ def test_em_dash_and_product_term_fail_under_agents(repo, leaks, capsys):
     repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the firmware.\n")
     assert leaks.main() == 1
     assert "agents/arch-reviewer.md:5: product term 'firmware'" in capsys.readouterr().out
+
+
+def test_product_term_fails_in_agents_md(repo, leaks, capsys):
+    repo.write("AGENTS.md", "# Working here\n\nNo firmware talk.\n")
+    assert leaks.main() == 1
+    assert "AGENTS.md:3: product term 'firmware'" in capsys.readouterr().out
+    repo.write("AGENTS.md", "# Working here\n\nAgents are agents.\n")
+    assert leaks.main() == 0

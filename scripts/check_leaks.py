@@ -59,6 +59,7 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("CONTRIBUTING.md", ["product"]),
     ("docs/*.md", ["product"]),
     ("agents/*.md", ["product"]),
+    ("AGENTS.md", ["product"]),
 ]
 
 # file glob -> em-dashes are refused in every one of these
