@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-deps
 description: "Upgrade every dependency of the current repository to its latest stable release, the current active LTS line where one exists, as the Software Design and Architecture Guidelines prescribe: runtimes, workspace tools, container images, CI steps, Terraform engine versions, and locked libraries; then run the repository's gates and hold back any upgrade that breaks them. Use periodically, or when a review raises DEL-26."
-allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*), Bash(git diff:*)
 ---
 
 # arch-upgrade-deps
@@ -54,7 +54,12 @@ the plan table and edits nothing. Nothing else is asked for.
    published today), the target is the release before it, and the
    plan table says so in its Line column. A target that cannot be
    confirmed from a source is marked unconfirmed and left unchanged.
-5. Print the plan table (see Output). With `--plan`, stop here.
+5. Print the plan table (see Output). A backing service in the local
+   compose stack that moves a major (Postgres 17 to 18, say) keeps its
+   data files in a volume the new engine cannot open, so its row says
+   `make reset` in the Line column, and the plan prints, under the
+   table, that the validation recreates the local volumes. With
+   `--plan`, stop here.
 6. Edit every declaration of each row to its target, keeping the
    declaration's precision: a file that names a minor line
    (`3.14`) gets the new minor line, one that names an exact release
@@ -62,18 +67,22 @@ the plan table and edits nothing. Nothing else is asked for.
    suffix (`-alpine`, `-slim`). A managed-service engine in Terraform
    moves only to a version the provider offers; when that is not
    confirmable, the row is unconfirmed.
-7. Upgrade the libraries. Raise any constraint in a `pyproject.toml` or
-   `package.json` that caps a library below its latest stable release,
-   then run `uv lock --upgrade` and `uv sync`, and
+7. Upgrade the libraries. Run `uv lock --upgrade` and `uv sync`, and
    `pnpm update --recursive --latest` and `pnpm install`, when the
-   repository has those workspaces. Then hold each library to the same
+   repository has those workspaces; that moves every library within
+   its cap. A cap in a `pyproject.toml` or `package.json` that holds a
+   library below a major release is raised one library at a time, each
+   raise followed by step 8 before the next, never every cap at once,
+   so a failing gate names the major that broke it. Then hold each
+   library to the same
    rule as a runtime: a resolved release with no patch release behind
    it is pinned back to the release before it in the lock (`uv lock
    --upgrade-package <name>==<release>`, `pnpm update <name>@<release>`),
    and the report names it under Held back with "no patch behind it"
    in place of a failing check.
 8. Validate: `make check`; then, when Docker is available,
-   `make infra-up`, `make migrate`, `make migrate-check`, and
+   `make infra-up` (`make reset` in its place when the plan says a
+   database moved a major), `make migrate`, `make migrate-check`, and
    `make test-integration`, only against the local compose stack:
    refuse when the effective database URL (the environment, `.env`, or
    the settings default) is not a local address.
@@ -99,9 +108,9 @@ A short report, and nothing else:
 | Dependency | Declared in | From | To | Line | Source |
 |------------|-------------|------|----|------|--------|
 | Node | `.nvmrc`, `.github/workflows/ci.yml` | 22.11.0 | 24.21.0 | active LTS | nodejs.org release index |
-| Postgres | `deployment/local/docker-compose.yml` | 16 | 18 | stable | endoflife.date |
+| Postgres | `deployment/local/docker-compose.yml` | 16 | 18 | stable, `make reset` | endoflife.date |
 
-**Libraries.** <count of Python and npm packages moved, and every major-version move by name>
+**Libraries.** <count of Python and npm packages moved, and every major-version move by name, in the order the caps were raised>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none
 **Held back.** <dependency, target, and the failing check, or "no patch behind it">, or none
 **Unconfirmed.** <dependency and why no source confirmed a target>, or none
