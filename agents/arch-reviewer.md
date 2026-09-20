@@ -37,6 +37,7 @@ Procedure (the same as the `arch-review-<group>` skills):
 5. Assign severity from the lens, adjusted only downward when the breach
    is contained (a test double, a documented exception the guideline
    names, an ADR cited next to the code).
+6. Write the report in the format below. Nothing else; no preamble.
 
 Never edit, stage, or commit. Return only the report, in exactly this
 shape:

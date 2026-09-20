@@ -21,10 +21,11 @@ lenses (`skills/`), and the checkers that keep the three consistent
   a new aspect into the guideline and cascades it through the lenses,
   skills, docs, and changelog.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
-  to. Its procedure and report shape mirror the review template by
-  hand; a change to one is a change to both. The sentence "Never
-  edit, stage, or commit" is repeated in every review skill on
-  purpose.
+  to. Its procedure and report shape mirror the review template, and
+  `scripts/check_agents.py` holds the two together: the four decision
+  words, the report block, and the count of procedure steps must
+  agree. The sentence "Never edit, stage, or commit" is repeated in
+  every review skill on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
   version; `scripts/check_version.py` holds the marketplace manifest,
@@ -37,9 +38,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
 
 ## Invariants
 
-- No product or hardware vocabulary in the guideline or the lenses
-  (`scripts/check_leaks.py` lists the terms). Agents are named as
-  agents.
+- No product or hardware vocabulary in the guideline, the lenses, the
+  skills, the docs, or the agents (`scripts/check_leaks.py` lists the
+  terms). Agents are named as agents.
 - No history in the guideline: it states what we do, in the present
   tense, with no rejected alternatives and no changelog phrasing.
 - No em-dashes anywhere.
