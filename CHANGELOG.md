@@ -4,7 +4,13 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
-## Unreleased
+## 0.21.0 (2026-09-20)
+
+The benchmark comes with the spec. A harness at the root runs a
+subject, keeps what happened, and has frontier models judge it against
+a rubric, through their APIs and through the products a reader would
+use. Minor: nothing in the guideline changes; the repository gains the
+tool that measures it.
 
 ### Added
 
