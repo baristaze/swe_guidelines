@@ -2895,7 +2895,7 @@ already served.
 
 Every environment has one base domain, a variable like any other.
 Production's base domain is the product's own domain, `<domain>`; a
-smaller environment's is a subdomain of it, such as `dev.<domain>`.
+smaller environment's is a subdomain of it, such as `staging.<domain>`.
 Under the base domain, `api.` is the gateway, sockets included, `app.`
 is the portal, and `admin.` is the operator console, so each browser
 app is its own origin and the API is another. In production the bare
