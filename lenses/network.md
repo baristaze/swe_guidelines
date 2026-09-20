@@ -781,3 +781,25 @@ another retry, or a caller that retries what its transport already
 retried; a count or a delay hard-coded instead of read from settings.
 
 **Severity.** medium
+
+## NET-34 An issuer key attributes; a declaration of assertions contains
+
+**Principle.** A key per issuer answers who signed, and that is
+attribution. Containment is a declaration per issuer of what it may
+assert: the tenants it may name, the roles it may carry, the
+principals it may speak for. The callee verifies the signature, then
+refuses a credential that reaches past the issuer's declaration.
+
+**Source.** The Network Layer, Intra-Service Communication.
+
+**Look for.** Where a callee verifies an internal credential (NET-27):
+whether it reads a declaration for the issuer that signed before the
+gateway rebuilds the context, and where that declaration is
+configured.
+
+**Violation.** A callee that accepts any tenant, role, or principal
+from any issuer whose signature checks out; a key per issuer presented
+as containment with no declaration behind it; a declaration the issuer
+supplies in its own token, so it widens its own reach.
+
+**Severity.** high

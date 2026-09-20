@@ -31,6 +31,17 @@ which number.
   reported, because a negative control nobody ran is a claim and not
   evidence. Which mechanism takes the predicate out is the project's
   choice; that the control is run and recorded is not. Lens `DEL-40`.
+- `architecture.md`, "Intra-Service Communication": a key per issuer is
+  attribution, never containment. One signing key stays one trust
+  domain, and the system that gives each issuing process a key of its
+  own learns which process signed; what bounds an issuer is a
+  declaration of what it may assert, the tenants it may name, the
+  roles it may carry, and the principals it may speak for, which the
+  callee reads before the gateway rebuilds `OpContext` and against
+  which it refuses a credential that reaches past. The declaration is
+  configuration of the callee, so an issuer cannot widen its own reach
+  by minting a wider token. Lens `NET-34`; `NET-27` keeps the token's
+  shape.
 - `architecture.md`, "Correlation Across a Handoff": a handoff carries
   the request that caused it, so one id joins the request, the row it
   wrote, the item it queued, and the run that followed. The stage a

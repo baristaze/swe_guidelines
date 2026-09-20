@@ -2416,6 +2416,17 @@ verifies by name, so the callee knows not only that a trusted process
 signed but which one; turning on TLS answers a different question and
 does not narrow who may sign.
 
+A key per issuer is attribution, never containment. It answers which
+process signed; it does not narrow what that process may assert.
+Containment is a second thing, and it is a declaration per issuer of
+what that issuer may assert: the tenants it may name, the roles it may
+carry, and the principals it may speak for. The callee verifies the
+signature, reads the declaration for the issuer that signed, and
+refuses a credential that reaches past it, before the gateway rebuilds
+`OpContext` from it. The declaration is configuration of the callee,
+alongside the keys it verifies against, so an issuer cannot widen its
+own reach by minting a wider token.
+
 Outbound TLS verification uses the operating system's trust store, in
 every process, so a corporate proxy or a private certificate authority
 works without per-component configuration.
