@@ -2214,6 +2214,15 @@ The gateway owns a short list of edge concerns, each done once:
     its path token. A rejection is `429` with `Retry-After` and the
     error envelope. The limits fail open: they guard against runaway
     clients and are not a security boundary.
+-   **Admission.** A process bounds the requests it has in flight and
+    refuses at once past the bound, rather than queueing work it
+    cannot start. That is not the rate limit above, and the two fail
+    in opposite directions: a rate limit is fairness between subjects
+    and fails open, admission is the process defending itself and
+    fails closed. The refusal is the unavailable shape of
+    [Exceptions](#exceptions), so a saturated process fails fast and
+    says why, instead of dying slowly with every caller still waiting
+    on an answer that is no longer coming.
 -   **Edge idempotency.** A creating `POST` accepts an
     `Idempotency-Key` header, and an `IdempotencyMarker`, declared
     after this list, owns the retry. Creating is what the request

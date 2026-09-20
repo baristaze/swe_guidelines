@@ -734,3 +734,26 @@ a retry of a delivered response mints a credential nobody asked for; a
 replay with no header saying the secret is absent.
 
 **Severity.** high
+
+## NET-32 A process bounds what it has in flight and refuses past it
+
+**Principle.** A process bounds the requests it has in flight and
+refuses at once past the bound, in the unavailable shape, rather than
+queueing without end. It is not the rate limit beside it: a rate limit
+is per-subject fairness and fails open, admission is the process
+defending itself and fails closed.
+
+**Source.** The Network Layer, The Gateway (Rate limits, Admission).
+
+**Look for.** The middleware or dependency that counts what is in
+flight and the settings field carrying the bound; what a refusal
+answers with; the rate-limit dependency beside it and how the two are
+told apart.
+
+**Violation.** A process that accepts whatever arrives, so load turns
+into a queue of requests whose callers have gone; an admission bound
+that fails open like a rate limit, or a rate limit pressed into
+service as one; a bound hard-coded instead of read from settings; a
+refusal presented as a 500.
+
+**Severity.** medium
