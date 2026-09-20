@@ -757,3 +757,27 @@ service as one; a bound hard-coded instead of read from settings; a
 refusal presented as a 500.
 
 **Severity.** medium
+
+## NET-33 A retry is classified, bounded, and never stacked
+
+**Principle.** Only a failure that can differ on a second attempt is
+retried, bounded in count and spaced by a delay that grows and carries
+jitter, from settings. Retries do not stack: one layer of the chain
+owns them, because a retry under a retry multiplies the load on a
+dependency already failing.
+
+**Source.** The Network Layer, Direction of Calls; Clients Live in One
+Place.
+
+**Look for.** The retry wrapper on each remote client and infra impl:
+which failures it retries, its count, its backoff, and where all three
+come from; every other layer of the same call chain, the client app's
+transport and a worker's handler included.
+
+**Violation.** A retry on a failure that cannot differ, so a
+validation failure or a refusal is sent again; a fixed delay with no
+jitter, so every caller returns together; a retry wrapper under
+another retry, or a caller that retries what its transport already
+retried; a count or a delay hard-coded instead of read from settings.
+
+**Severity.** medium

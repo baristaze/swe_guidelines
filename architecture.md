@@ -2592,7 +2592,20 @@ call under the same key. That is what makes the two impls of
 `InventoryServiceInterface` interchangeable in behavior and not only
 in signature: the remote one adds an unknown outcome to every call,
 and the key is what makes a rerun safe, so the signature carries it
-before the split, not after. A chain that must survive a crash
+before the split, not after.
+
+That is the retry that arrives at us. The one we send is classified:
+only a failure that can differ on a second attempt is retried, so a
+timeout, a connection refused, and an unavailable answer are retried
+and a refusal or a validation failure is not. A retry is bounded in
+count and spaced by a delay that grows and carries jitter, both from
+settings. Retries do not stack: one layer of a call chain owns them,
+because a retry under a retry multiplies the load on a dependency that
+is already failing, and what stops the calls that cannot succeed at
+all is a breaker (see [Composition by
+decoration](#composition-by-decoration)) and never another attempt.
+
+A chain that must survive a crash
 between steps is a durable record advanced by a worker (see
 [Long-Running Orchestrations](#long-running-orchestrations)), the
 irreversible step last and a compensating step for each one before it
