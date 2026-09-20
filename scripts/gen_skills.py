@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the seven arch-review-<group> skills from one template and the lens catalog.
+"""Generate the eight arch-review-<group> skills from one template and the lens catalog.
 
 Source of truth:
 - skills/_template/review.SKILL.md   the procedure and report format

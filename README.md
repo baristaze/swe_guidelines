@@ -15,10 +15,10 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 202 lenses in seven groups. Each
+- **[`lenses/`](lenses/README.md)**: 229 lenses in eight groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
-- **[`skills/`](skills/)**: Claude Code skills. Seven group reviews, one
+- **[`skills/`](skills/)**: Claude Code skills. Eight group reviews, one
   full review that runs them in parallel, six scaffolds, an explainer,
   a deviation recorder, a dependency upgrader, and one skill that grows
   the guideline itself.
@@ -55,7 +55,7 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 
 | Skill                     | What it does                                                                 |
 |---------------------------|------------------------------------------------------------------------------|
-| `arch-review-full`        | Reviews a change through every lens group, seven reviewers in parallel, one merged report |
+| `arch-review-full`        | Reviews a change through every lens group, eight reviewers in parallel, one merged report |
 | `arch-review-om`          | Object model: source of truth, mixins, immutability, identifiers, namespaces, pure rules |
 | `arch-review-contracts`   | Interfaces, injection, roots, call direction, app container                  |
 | `arch-review-context`     | context stages and scopes, OperatorContext, authorization, tenancy, provenance  |
@@ -63,6 +63,7 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 | `arch-review-async`       | Infra capabilities, queues, workers, idempotency, park versus fail           |
 | `arch-review-network`     | Topology, gateway, public types, clients, realtime, push-first               |
 | `arch-review-delivery`    | Apps, deployment, repo layout, client architecture, cross-cutting conventions, substitutions |
+| `arch-review-ops`         | Operator roles and credentials, operational skills, dashboards and alarms, scale-out, cost, traffic, READMEs, the knowledge map |
 | `arch-scaffold-new`       | Bootstraps a whole system by sequencing the scaffolds below                  |
 | `arch-scaffold-namespace` | A new object-model swimlane, wired into the roots                            |
 | `arch-scaffold-entity`    | One entity end to end: type, table, storage, manager, migration, API, tests  |
@@ -75,7 +76,7 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 | `arch-new-aspect`         | Incorporates a new aspect into the guideline and cascades it through lenses, skills, and docs (runs in a checkout of this repository) |
 
 Every review skill takes the same argument (empty for the current
-branch, a path, a git range, or `all`). The seven group skills produce
+branch, a path, a git range, or `all`). The eight group skills produce
 the same report shape, so their reports merge cleanly; the full review
 adds a per-group table. The review skills read and report; they never
 edit. The scaffold skills write into the working tree and never commit.
@@ -89,7 +90,7 @@ make check        # what CI runs: markdownlint, lens format and citations, vocab
                   # table of contents, version copies, generated skills up to date,
                   # skill shape, the reviewer agent against the review template, the checkers' tests,
                   # plugin validation
-make gen-skills   # regenerate the seven group review skills from the template
+make gen-skills   # regenerate the eight group review skills from the template
 make gen-toc      # regenerate the table of contents of architecture.md
 ```
 

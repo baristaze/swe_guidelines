@@ -97,7 +97,7 @@ for the aspect in one message and stop.
 5. Then the lenses, in the format `lenses/README.md` defines. Then
    `make gen-toc` and `make gen-skills`; record under Cascade whether
    any review skill was rewritten (a pointer or a rationale leaves all
-   seven unchanged). Then the hand-written skills the aspect affects,
+   eight unchanged). Then the hand-written skills the aspect affects,
    the docs, the README, and the changelog.
 6. Search the repository for siblings of every change made
    (`git diff --stat` lists the files touched so far): a second
