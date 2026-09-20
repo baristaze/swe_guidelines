@@ -125,8 +125,21 @@ it in the middle.
   - [Local: Docker Compose](#local-docker-compose)
   - [Twins for External Services](#twins-for-external-services)
   - [What a Process Refuses](#what-a-process-refuses)
+- [Operations](#operations)
+  - [Operator Roles](#operator-roles)
+  - [Operator Credentials](#operator-credentials)
+  - [Operational Skills](#operational-skills)
+  - [Dashboards and Alarms as Code](#dashboards-and-alarms-as-code)
+  - [Scale-Out as a Lever](#scale-out-as-a-lever)
+  - [Cost Boundaries](#cost-boundaries)
+  - [Creating and Destroying an Environment](#creating-and-destroying-an-environment)
+  - [Traffic and Stress](#traffic-and-stress)
+  - [The Telemetry Round Trip](#the-telemetry-round-trip)
 - [Monorepo Folder Structure](#monorepo-folder-structure)
   - [Layout Conventions](#layout-conventions)
+- [Documentation as Code](#documentation-as-code)
+  - [A README at Every Level](#a-readme-at-every-level)
+  - [The Knowledge Map](#the-knowledge-map)
 - [Telemetry](#telemetry)
   - [Logs](#logs)
   - [Traces and Metrics](#traces-and-metrics)
@@ -3798,7 +3811,10 @@ the tracker (see [Error Tracking](#error-tracking)).
 ### Infrastructure as Code
 
 Every cloud resource is defined in Terraform: networks, services,
-databases, topics, buckets, IAM.
+databases, topics, buckets, IAM. The roles a person or an agent
+operates under, the budget, the dashboard, the alarms, and the
+autoscaling of every process are resources too, declared beside the
+services (see [Operations](#operations)).
 
 That Terraform lives in the same monorepo as the application code. An
 environment change is therefore a pull request, and a new environment
@@ -3915,6 +3931,321 @@ Each refusal is a one-line check at boot that exits naming the
 setting. A boot that succeeds logs one line naming every backend it
 chose.
 
+## Operations
+
+A system that is deployed is a system that is operated. This section
+says by whom, with what, and inside which boundary.
+
+People steer, agents maintain. Every operational task is a skill that
+a person runs with an agent: investigating an alarm, tracing a
+tenant's complaint, planning an infrastructure change, driving traffic
+at an environment. The person chooses what to do. The agent does it.
+
+The safety boundary is the credential the skill holds, never the
+prompt. A credential that can only read cannot break anything, so an
+agent holding one may look at everything it reaches. A credential that
+writes is held by a pipeline, or by a person for one named step, and
+by nothing else.
+
+That is the whole posture. Today the loop has a person in it at every
+write. The shapes below are built so the person can step back one step
+at a time, without a redesign, when an agent has earned it.
+
+> **Principle:** Every operational task is a skill a person runs with
+> an agent. The boundary is the credential, and a credential a person
+> or an agent holds reads and never writes.
+
+### Operator Roles
+
+Four roles operate a platform. Each is a cloud role with a permission
+set, and each is held under a named profile.
+
+The **administrator** is a person. It creates an environment and it
+destroys one (see [Creating and Destroying an
+Environment](#creating-and-destroying-an-environment)). It does
+nothing else, and no skill but those two runs under it.
+
+The **deployer** is the pipeline. There is one per environment, and it
+is assumed by the workflow through the identity federation of the
+repository host, never by a person. Production has two: one that plans
+and one that applies, so the approval gates the credential that writes
+(see [Cloud: AWS](#cloud-aws)).
+
+The **investigator** reads everything and writes nothing. There is one
+per environment. It reads every log group, every metric, every trace,
+every error, every alarm, and the description of every resource. It
+reads the state of the infrastructure, so it can plan a change. It
+cannot read a secret's value, a data bucket's objects, or a database
+row. It cannot assume any other role.
+
+The **supporter** is the investigator plus one thing: a read of a
+named tenant's rows through the platform's own operator plane (see
+[The Operator Context](#the-operator-context)). The tenant is a
+parameter of every read. The credential that reads it is an identity
+on the operator allowlist whose entry says read, and nothing in the
+cloud role changes.
+
+No role a person or an agent holds writes to the cloud. An
+infrastructure change is a pull request, and the deployer applies it.
+A data change is an operation of the platform, under a tenant context
+or an operator context, and the manager decides it.
+
+Roles are named `<product>-<role>-<environment>`, so the name says
+what it is and where it reaches. A role's permissions stop at its
+environment, and its fences deny the other one by tag.
+
+The principal an agent holds is one user whose only permission is to
+assume the read-only roles. Its profiles chain from that user, one per
+role per environment. Moving to the cloud's identity center when the
+team grows changes the roles' trust policy and nothing below it.
+
+> **Principle:** Administrator, deployer, investigator, supporter.
+> A person or an agent holds a read-only role; the pipeline holds the
+> writing one; the administrator creates and destroys, and nothing
+> else.
+
+### Operator Credentials
+
+A skill names the profile it needs, and it runs under that profile and
+no other.
+
+Before it reads anything, a skill verifies what it holds: it asks the
+cloud who it is and compares the answer with the role it expects. A
+skill that finds itself under a wider credential than it needs stops
+and says so. It never proceeds on the reasoning that more is enough.
+The two administrator skills do the same in reverse: they refuse to run
+under anything but the administrator profile.
+
+The credentials an operator holds are of two kinds, and both are
+first-class. The cloud profiles live in the cloud tool's own
+configuration, one per role per environment. Everything else an
+operator reaches, the error tracker's token, the operator plane's
+identity, the base URL of each environment, lives in one owner-only
+file per environment outside the repository. A skill reads the file
+for the environment it was given.
+
+The platform's own secrets are the ones [Secrets](#secrets) describes,
+held in the secret store and resolved at the point of use. An
+operator's credentials are the ones above. Neither kind enters the
+repository, a skill's text, a log line, or a report.
+
+The local stack is an environment too. Its file names the compose
+stack and the developer dashboards of the `devx` profile, so every
+skill runs against the developer's machine with no cloud at all.
+
+> **Principle:** A skill names its profile, verifies it holds that one
+> and no wider, and reads the rest from one owner-only file per
+> environment. No credential enters the repository or a report.
+
+### Operational Skills
+
+Every system ships with a built-in set of operational skills, one per
+task that repeats. They are project-local: the scaffold writes them
+into the tree from a shared template with the product's name in, and
+they read the product's own documents for what is specific to it.
+
+| Skill                            | Role          | Answers                                                     |
+|----------------------------------|---------------|-------------------------------------------------------------|
+| `ops-investigate`                | investigator  | what is happening in an environment right now, and why      |
+| `ops-watch`                      | investigator  | a live tail of logs and alarms, run by a spawned agent      |
+| `ops-root-cause`                 | supporter     | why one tenant saw what it saw, by request id               |
+| `ops-infra-as-code`              | investigator  | a Terraform change in the guideline's shape, planned        |
+| `ops-cloud-deployment-create`    | administrator | an environment, from nothing to its first deploy            |
+| `ops-cloud-deployment-nuke`      | administrator | an environment gone, with what remains named                |
+| `ops-simulate-traffic`           | none          | realistic traffic at the edge, at a chosen profile          |
+| `stress-test-create-or-update`   | none          | a stress scenario, with its target stated before the run    |
+| `stress-test-run`                | none          | a run against the scenario, pass or fail against the target |
+
+Every skill takes the environment it acts on, and `local` is one of
+them. Every skill states its role, the credential check, what it
+reads, what it never does, and the shape of its report.
+
+A watch is a loop that outlives the conversation that started it. The
+skill says so, and the agent that invokes it spawns another to run it.
+A watch is written for a burst: it batches what arrives per interval,
+caps what it reports, and never reads the same window twice.
+
+The first responder to an alarm is an agent. Before it escalates, it
+reads the platform's size: how many tenants, how many users, how much
+traffic in the last day. An alarm on a platform of one tenant and one
+user is the developer at work, and the agent suppresses it with that
+reason. What it cannot explain, it escalates with everything it read.
+
+The operator plane is read by the supporter's skill through the
+platform's routes, never through a database login. A read of a
+tenant's rows by an operator is logged with the tenant and the
+operator, so support access has a trail.
+
+> **Principle:** The operational skills are built in, one per task
+> that repeats, and every one runs against the local stack. The first
+> responder is an agent that reads the platform's size before it
+> escalates.
+
+### Dashboards and Alarms as Code
+
+Every environment has one operator dashboard, and it is declared with
+the environment. The cloud one is Terraform. The local one is
+provisioned into the metrics view of the `devx` profile. Both carry
+the same panels, and a test holds the panel titles equal, so what an
+operator learns on the local stack is what they see in production.
+
+The panels are what an operator asks first: whether every process is
+up, requests per second by route, responses per second by status, the
+p95 latency by route, and the outcomes of every counted subsystem (the
+cache, the queue, the rate limit, the idempotency marker, the worker).
+Beside them, one row for the backing services: the database, the
+cache, the queue.
+
+A small default set of alarms goes to one topic per environment, and
+a person's address subscribes to it. The set covers the edge (the
+error ratio and the latency at the load balancer), the processes (a
+service running below its desired count), and the database (its
+processor and its free storage). The thresholds are numbers, and the
+numbers are the system's. The set and the topic are the shape.
+
+A tenant admin's view of their own organization is a product screen:
+a feature served by the app-specific service from the activity role.
+It is never a telemetry query. Telemetry carries no tenant id, by the
+rule of [Traces and Metrics](#traces-and-metrics), so nothing there
+could answer a tenant's question.
+
+> **Principle:** One operator dashboard per environment, declared as
+> code in both twins with the same panels. A default alarm set to one
+> topic. A tenant's view is a product feature, never a telemetry
+> query.
+
+### Scale-Out as a Lever
+
+[Scalability by Design](#scalability-by-design) says scaling out is a
+deployment decision. This is where the decision is wired.
+
+Every service and every worker declares its autoscaling with its
+deployment: a minimum, a maximum, and a target the runtime tracks. The
+minimum is the desired count, so turning autoscaling on changes
+nothing until load does.
+
+One variable per environment turns it on, and it is off by default.
+Every lever below it is declared on, so a single flip scales the whole
+environment, and the flip is a pull request that a person reads. The
+default is off because an unattended scale-out is a bill nobody
+approved.
+
+The database's storage grows on its own from the start. That is a
+ceiling on how full a disk gets, not a bill that scales with traffic,
+and a full disk is an outage.
+
+> **Principle:** Every process declares its autoscaling. One root
+> variable per environment turns it on, off by default, with every
+> lever below it on.
+
+### Cost Boundaries
+
+An account has a budget from its first apply. The budget names a
+monthly amount and alerts the owner at half of it, at most of it, at
+all of it, and when the forecast crosses it. Beside the budget, an
+anomaly monitor watches each service's spend and reports a jump.
+
+The amount is the team's. A reference for a team of two with a
+staging and a production environment is a few hundred dollars a
+month, and the budget is the catch-all under which every other bound
+sits.
+
+Two more bounds cost nothing and are set from the start. Every log
+group has a retention. Every resource carries the environment tag from
+the provider's default tags, so a cost report reads by environment.
+
+> **Principle:** A budget and an anomaly monitor from the first apply.
+> Retention on every log group and the environment tag on every
+> resource.
+
+### Creating and Destroying an Environment
+
+Creating an environment is the administrator's one run, and it is a
+script the repository holds, run by the skill that narrates it.
+
+The run creates the state backend, applies the shared root (the
+identity federation, the deploy roles, the investigator roles, the
+operators' user, the budget, the zone), mints the operators' key and
+writes the profiles, sets the repository's variables and environments
+from the shared root's outputs, and starts the first deploy. From
+there the environment is deployed the way every other commit is: by
+the pipeline, under the deployer. The run ends with the smoke test.
+
+Everything the run does is declared or scripted. It prints every
+command before it runs it, and a dry run prints them without running
+anything.
+
+Destroying an environment is the administrator's other run. It is
+environment-aware: a smaller environment goes on a word, and
+production refuses unless two things hold. Its name is typed as a
+confirmation, and a merged change has already turned its deletion
+protection off, so the destruction of production is itself a pull
+request a person read. The run empties what must be empty, destroys
+the environment root, and reports what remains: the zone, the state
+prefix, the images, the shared roles.
+
+> **Principle:** Create and destroy are the administrator's two runs,
+> scripted, narrated by a skill, and dry-runnable. Production is
+> destroyed only behind a typed name and a merged change.
+
+### Traffic and Stress
+
+The repository holds one traffic generator, and everything that
+drives the system at load rides it.
+
+It drives the edge: the app-specific services, never a domain service
+and never a manager, so a run exercises what a user exercises and the
+whole depth below it. A session is realistic: a sign-in, a list, a
+handful of writes, an edit, a completion, a reopen, a read of the
+stream, one socket that sees its own change, a sign-out. A profile
+sets how many tenants, how many people, how many at once, and how long
+they think between steps. Four profiles ship: light, regular, heavy,
+and stress.
+
+It runs against any environment, the local stack included, through
+the operator plane for the tenants it needs and through the public
+routes for everything else. It reports what an operator reads:
+requests by route and status, the p50, p95, and p99, and the error
+ratio.
+
+The stress test is the same generator with a scenario: a profile, a
+duration, a ramp, a soak, and a target stated before the run. The
+target is a p95 and an error ratio. A run reads the signals back
+afterwards and passes or fails against the target. The numbers a
+system is held to are the system's (see [What This Document Does Not
+Cover](#what-this-document-does-not-cover)).
+
+A real stress run is a decision. The gate runs the generator for
+thirty seconds at the light profile against the local stack, which
+proves the wiring and nothing about capacity.
+
+> **Principle:** One traffic generator drives the edge with realistic
+> sessions. The stress test is the same generator with a scenario and
+> a target. The gate proves the wiring in thirty seconds and never the
+> capacity.
+
+### The Telemetry Round Trip
+
+An endpoint nothing reads is not observability, and a signal no test
+reads is a claim.
+
+One integration test closes the loop. It starts the process for real,
+with the trace exporter and the error tracker configured, drives one
+session through the edge, and then reads every signal back through
+its own API by the request id the response carried: the log line that
+names it, the counter that moved, the trace that exists, the error
+event that carries it.
+
+The readers are one interface with two impls. The local impl reads the
+`devx` profile's stores. The cloud impl reads the cloud's. The test is
+the same, and run against a deployed environment it is the smoke test
+of [Tests](#tests), which is how the two twins are held to the same
+shape: not by a checklist, but by one test that reads both.
+
+> **Principle:** One test drives real traffic and reads every signal
+> back by request id, through one reader interface with a local and a
+> cloud impl.
+
 ## Monorepo Folder Structure
 
 The monorepo root groups code by role: libraries, services, workers,
@@ -3933,8 +4264,9 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 ├── pyrightconfig.json
 ├── .python-version
 ├── .nvmrc
-├── Makefile                            # setup, infra-up, migrate, migrate-check, check, test-*, openapi, up, down, reset, urls, seed
+├── Makefile                            # setup, infra-up, migrate, migrate-check, check, test-*, openapi, up, down, reset, urls, seed, traffic
 ├── README.md
+├── llms.txt                            # the knowledge map: what each audience is served
 │
 ├── specs/
 │   └── architecture.md                 # the guideline pin, substitutions, deviations
@@ -3945,6 +4277,7 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 │
 ├── om/                                 # acme-om distribution
 │   ├── pyproject.toml
+│   ├── README.md                       # the nouns and how they relate, for a reader with no code
 │   ├── src/
 │   │   └── acme/
 │   │       └── om/
@@ -4046,7 +4379,18 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 ├── clients/
 │   └── python/                         # one typed client package per service
 │
+├── ops/                                # acme-ops distribution: the operator's own tool
+│   ├── pyproject.toml
+│   ├── README.md                       # roles, credentials, signals, the skills
+│   ├── src/acme/ops/
+│   │   ├── traffic/                    # the traffic generator and its profiles
+│   │   ├── stress/                     # the scenario runner
+│   │   └── signals/                    # the signal readers: local and cloud impls
+│   ├── stress/                         # scenario files
+│   └── tests/                          # the telemetry round trip
+│
 ├── deployment/
+│   ├── README.md                       # what runs where, in both twins
 │   ├── terraform/
 │   │   ├── modules/
 │   │   └── environments/
@@ -4057,7 +4401,10 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 │   │   └── docker-compose.full.yml     # plus the application containers
 │   └── docker/                         # one Dockerfile per image, shared entrypoint
 │
-├── scripts/                            # runnable entry points: dev.sh, connect_*.py
+├── scripts/                            # runnable entry points: dev.sh, cloud_create.sh, cloud_nuke.sh
+│
+├── .claude/
+│   └── skills/                         # the operational skills, one folder each
 │
 └── .github/
     └── workflows/
@@ -4111,6 +4458,66 @@ jobs.
 > **Python tip:** a top-level package named `platform` shadows the
 > standard-library module of the same name. Pick a product-specific
 > root package name; the layout is what matters, not the word.
+
+## Documentation as Code
+
+The documents in the tree are code. They are reviewed in the same pull
+request as the change they describe, versioned with it, and read by
+people and by agents alike. An agent that operates the system on its
+first day reads them first, so they are written for that reader too.
+
+### A README at Every Level
+
+Every folder that is an abstraction level carries a `README.md`, and
+the README speaks that level's language. The one at `om/` is written
+in the product's nouns. The one at `deployment/` is written in
+processes and environments. The one at `ops/` is written in roles,
+signals, and skills. A reader who opens a folder learns what the
+folder is about at the altitude of the folder, and nothing from
+another altitude.
+
+`om/README.md` is the one every reader gets. It names the nouns of the
+system and how they relate to each other, and it is written for a
+reader with no code: a person who has never opened the repository, or
+an agent that has not yet. It carries no developer instruction and no
+operator instruction. `om/` is where everything is pure, and its
+README is pure with it. For brevity it points one level down, to a
+README per namespace that says what its nouns are, what can happen to
+them, and which rules hold.
+
+Developer concerns live in the developer's folders, and operator
+concerns in the operator's. A tip about the local stack belongs under
+`deployment/local/`. A runbook belongs under `docs/runbooks/`. Neither
+belongs in a README about nouns.
+
+> **Principle:** Every abstraction level carries a README in its own
+> language. `om/README.md` names the nouns and their relations for a
+> reader with no code, and carries no developer or operator concern.
+
+### The Knowledge Map
+
+Documents are granular, one subject each, so a reader is served a
+subject and not a folder. What each reader is served is written down
+in one map at the root of the repository, `llms.txt`, in the
+published shape of that convention: a title, a summary, and one
+section per audience, each a list of links with one line apiece.
+
+Three audiences are named: the platform developers, the platform
+operators, and the tenant's own users and admins. A document is
+served to an audience by being listed under it. A document that is
+not listed under an audience is not served to it, whatever folder it
+is in. Exposure is by intent, never by location.
+
+The language of every document is the language of the product, the
+technology, or the service. No deployment trick, no team-internal
+note, no credential, and no hostname of a real environment. What a
+document explains is what the product explains to its own customers,
+so a document that leaks costs nothing. The line is drawn there on
+purpose, and a team that needs a narrower one draws it in the map.
+
+> **Principle:** One map at the root names what each audience is
+> served. Exposure is by listing. Every document speaks product,
+> technology, or service, and nothing that would matter if it leaked.
 
 ## Telemetry
 
@@ -4455,7 +4862,8 @@ A run against a deployed environment checks what no in-process test
 can: the gateway in front, the credentials, the network, the worker
 processes beside the app. It is a smoke test of the deployment, in
 addition to the in-process suite and never in its place, and it is
-small: a sign-in, a write, a push.
+small: a sign-in, a write, a push, and the signals they left read
+back (see [The Telemetry Round Trip](#the-telemetry-round-trip)).
 
 The named atomic methods are raced, not only called. A contract case
 runs two callers at once against a claim, a take-over, and a ticket
@@ -4647,7 +5055,8 @@ The rules that make it so:
 
 Scaling out is adding processes: another replica of a service, another
 worker on a lane, another engine under a role. Nothing in the code
-changes when it happens.
+changes when it happens, and [Scale-Out as a Lever](#scale-out-as-a-lever)
+says where the decision is wired.
 
 That holds inside the assumptions the rules rest on: one engine per
 role, tenants of comparable size, and a pool per process that the
@@ -4733,19 +5142,21 @@ numbers are known, and a rule that fit every system would say nothing.
 They are:
 
 -   A threat model, and the rotation of secrets and keys.
--   Service objectives, alerting, and the on-call posture behind them.
+-   Service objectives, the thresholds of the alarms, and the on-call
+    posture behind them.
 -   The tuning of deadlines and retry budgets, and the numbers an
     admission bound is set to.
 -   Disaster recovery beyond the backup and rehearsed restore of each
     role, and multi-region.
 -   Tenant export and offboarding.
--   Load testing.
+-   The numbers a stress test holds a system to.
 -   The deprecation of an API version.
 -   Supply-chain rules such as dependency scanning.
 
 The shape is what makes each of them tractable when its time comes:
 one settings object to carry a deadline, one gateway to admit or
-refuse, one role to restore, one `org_id` to export by.
+refuse, one role to restore, one `org_id` to export by, one traffic
+generator to hold a number against.
 
 Where the shape already holds a piece of one, the text says so where
 the mechanism lives. The marker at the edge owns the retry of a
