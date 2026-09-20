@@ -15,7 +15,7 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 148 lenses in seven groups. Each
+- **[`lenses/`](lenses/README.md)**: 162 lenses in seven groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Seven group reviews, one
@@ -85,7 +85,9 @@ Claude Code 2.1 and later.
 ## Develop
 
 ```bash
-make check        # markdownlint, lens format and citations, vocabulary leaks, links, table of contents, skill shape
+make check        # what CI runs: markdownlint, lens format and citations, vocabulary leaks, links,
+                  # table of contents, version copies, generated skills up to date, skill shape,
+                  # the reviewer agent against the review template, the checkers' tests, plugin validation
 make gen-skills   # regenerate the seven group review skills from the template
 make gen-toc      # regenerate the table of contents of architecture.md
 ```
