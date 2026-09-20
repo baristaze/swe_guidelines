@@ -600,25 +600,29 @@ run and the rerun.
 
 ## NET-26 Every outbound call carries a timeout from settings
 
-**Principle.** Every outbound call carries a timeout: the transport
-client reads one from settings, one per client, and no call goes out
-without one, so a downstream that hangs cannot hold a replica's whole
-pool. The gateway bounds a request the same way, with a deadline from
-settings; the lease that bounds a work handler is ASY-17.
+**Principle.** Every outbound call carries a timeout from settings,
+one per client, and no call goes out without one. The gateway bounds a
+request with a deadline, a statement carries one too, and the lease
+that bounds a work handler is ASY-17, so nothing a process waits on is
+unbounded.
 
-**Source.** The Network Layer, Clients Live in One Place.
+**Source.** The Network Layer, Clients Live in One Place; The Storage
+Layer, A Storage Impl.
 
 **Look for.** The construction of every transport client, in Python
 and in TypeScript; the settings field it reads; any call site that
 builds a request outside the client; the request deadline setting and
-the middleware or dependency that applies it to every route.
+the middleware or dependency that applies it to every route; the
+statement deadline the storage impls set and the settings field behind
+it.
 
 **Violation.** A client constructed with no timeout, or with a library
 default nothing in settings names; a timeout hard-coded in the client
 instead of read from settings; a per-call override that disables it; a
 `fetch` or an `httpx` call outside the client with no deadline; a
 request path with no deadline, so a slow handler holds a server slot
-for good.
+for good; a statement issued with no deadline, so a query that hangs
+holds its connection until the engine gives up.
 
 **Severity.** medium
 

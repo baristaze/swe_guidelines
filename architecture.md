@@ -1505,6 +1505,14 @@ query filters by `org_id` and every write checks it, so a bug in a
 caller cannot move a row across tenants. Each operation opens its own
 short session and commits it; no session outlives the call.
 
+Every statement carries a deadline from settings, because the database
+is a call out of the process like any other and the rule that no call
+goes out without a bound covers it too (see [Clients Live in One
+Place](#clients-live-in-one-place)). When the deadline passes the
+statement is cancelled and surfaces as a failure, so a query that
+hangs costs one call and not a connection held for as long as the
+engine is willing to hold it.
+
 > **Python tip:** when a row must be read and updated atomically by
 > exactly one worker (a queue claim), `SELECT ... FOR UPDATE SKIP
 > LOCKED` inside that one storage method is the whole solution. A
