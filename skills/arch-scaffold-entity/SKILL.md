@@ -47,10 +47,10 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`          | `CREATE TABLE <role>.<entities>` with the mixin header block first    |
 | `om/migrations/sql/<role>/<stamp>_<entities>.down.sql`        | the matching `DROP TABLE`                                              |
 | `om/migrations/versions/<role>/<stamp>_<entities>.py`         | the wrapper: `revision = "<stamp>"`, `down_revision` = the role's current head, `run_sql(<role>, ...)` |
-| `om/tests/contracts/<entity>_storage.py`                      | the storage contract cases, with a cross-tenant negative, parameterised by a storage fixture |
+| `om/tests/contracts/<entity>_storage.py`                      | the storage contract cases, with a cross-tenant negative, parameterised by a storage fixture; a named atomic method the entity adds is raced as well as called: two callers at once, exactly one wins, over memory and over Postgres |
 | `om/tests/unit/test_<entity>_storage.py`                      | the contract cases over the memory impl                                |
 | `om/tests/integration/test_<entity>_storage_postgres.py`      | the same cases over Postgres, marked `integration`                    |
-| `om/tests/unit/test_<entity>_manager.py`                      | every operation the manager has, over the memory storage               |
+| `om/tests/unit/test_<entity>_manager.py`                      | every operation the manager has, over the memory storage, including an update sent with another `created_by` or a cleared `deleted_at` that sees both stay as stored |
 | `<api>/tests/test_<ns>_<entity>_api.py` (unless `--no-api`)   | the routes over the in-process app and memory container                |
 
 `<api>` is the service whose `--namespaces` includes `<ns>`, else
@@ -65,7 +65,7 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox row in the outbox memory storage the root wired |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, `created_by` and `updated_by` from `ctx.user_id`, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; `updated_at` and `updated_by` on update; `deleted_at` and `deleted_by` on delete), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `current.model_copy(update={**<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back; on delete, `deleted_at` and `deleted_by`), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
 | `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post (declaring the gateway's `Idempotency-Key` dependency, like every creating route), and, only when the manager has them, put and delete routes that translate and call the manager |
@@ -85,9 +85,12 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
    is `Trackable`, `utcnow()` and
    `ctx.user_id` for both timestamps and both principals; for
    `update_<entity>` it reads the current entity through
-   `get_<entity>` and copies the request's fields onto it (the request
-   carries no `created_at` or `created_by`), and the manager copies
-   `updated_at` and `updated_by`; `delete_<entity>` exists only for a
+   `get_<entity>` and copies the request's set fields onto it, an
+   absent field meaning unchanged and an explicit null meaning cleared
+   where the field is optional (the request carries no `created_at`
+   or `created_by`, and that policy is the request type's contract),
+   then hands the whole entity to the manager, whose copy starts from
+   the stored row and sets `updated_at` and `updated_by`; `delete_<entity>` exists only for a
    `SoftDeletable` entity and copies `deleted_at` and `deleted_by`;
    the hard delete is the sweep's purge, never a route's. An
    append-only entity has no update, no delete, and no
