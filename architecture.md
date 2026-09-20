@@ -1933,24 +1933,27 @@ The expression is the scope, and there is one shape per scope:
 
 ``` sql
 -- org
-org_id = current_setting('app.org_id', true)::uuid
+org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
   OR current_setting('app.org_id', true) = '<EMPTY_UUID>'
 
 -- both: the org expression above, AND
 (current_setting('app.user_id', true) IS NULL
   OR current_setting('app.user_id', true) = ''
-  OR <person_col> = current_setting('app.user_id', true)::uuid)
+  OR <person_col> = NULLIF(current_setting('app.user_id', true), '')::uuid)
 
 -- identity
-<identity_col> = current_setting('app.identity_id', true)::uuid
+<identity_col> = NULLIF(current_setting('app.identity_id', true), '')::uuid
 
 -- system: no policy, and row-level security is not enabled
 ```
 
-A setting that was never set reads as NULL, and `org_id = NULL::uuid`
-is false. So a transaction that named no tenant fails closed: a read
-returns nothing and a write is refused. The `both` narrowing applies
-when the transaction names a person and is absent when it does not. The
+A setting that was never set reads as NULL. A setting that an earlier
+transaction set on the same pooled connection reads as the empty
+string once that transaction ends, and `''::uuid` is an error, not a
+miss. `NULLIF` folds both to NULL, and `org_id = NULL::uuid` is false.
+So a transaction that named no tenant fails closed: a read returns
+nothing and a write is refused. The `both` narrowing applies when the
+transaction names a person and is absent when it does not. The
 system-scope clause is the one deliberate bypass, and it is spelled out
 in every policy so that it can be grepped.
 
