@@ -6,6 +6,37 @@ which number.
 
 ## Unreleased
 
+### Added
+
+- `architecture.md`, "Correlation Across a Handoff": a handoff carries
+  the request that caused it, so one id joins the request, the row it
+  wrote, the item it queued, and the run that followed. The stage a
+  worker mints for a claim is a new request that names the causing one
+  in a field of its own, both are logged, and a span raised on the far
+  side links to the causing trace rather than starting an unrelated
+  one. `WorkItem` gains `request_id`, which the relay takes off the
+  outbox row and a direct create off its caller's context, and
+  `RequestContext` gains `caused_by_request_id`, which the claim's
+  transition fills from the item. "Logs" says what every line carries:
+  the service and the environment, which is what lets one query read
+  across processes, the request id, and the causing request where a
+  handoff supplied one. Lenses `CTX-29`, `ASY-29`, `DEL-39`; `CTX-02`
+  names the field the request stage gained; `arch-scaffold-new` and
+  `arch-scaffold-worker` carry the shape.
+
+### Changed
+
+- `architecture.md`, "Telemetry": "Logs", "Traces and Metrics", and
+  "Error Tracking" leave "Cross-Cutting Conventions" for a top-level
+  section of their own, placed in front of it, so that what every
+  process emits reads as structure and not as a convention added at
+  the edge. The three subsections keep their text, and
+  "Cross-Cutting Conventions" keeps "Exceptions", "Configuration",
+  "The App Container", "Records of Decisions", and "Tests". Lenses
+  `CTX-07`, `DEL-19`, `DEL-20`, `DEL-27`, and `DEL-35` cite the new
+  section, the `delivery` group's home sections name it, and
+  `arch-review-delivery` is regenerated.
+
 ## 0.16.0 (2026-09-20)
 
 A second reading of 0.14.0, triaged against 0.15.0, for the places
