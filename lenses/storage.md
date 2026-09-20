@@ -67,18 +67,19 @@ opened it.
 
 **Principle.** The one justification for a named atomic method is an
 invariant two rows must hold together: a work-queue claim, a
-reservation and its stock level, a core row and its outbox row, a
-ledger that moves money. It is a single named interface method, so
-the interface stays technology-free and the exception is visible by
-name.
+reservation and its stock level, a unique membership, a core row and
+its outbox row, a ledger that moves money. It is a single named
+interface method, so the interface stays technology-free and the
+exception is visible by name.
 
 **Source.** The Storage Layer, Storage Principles; A Storage Impl.
 
 **Look for.** Storage interface methods that claim, settle, or mutate
 under a lock: each is one method whose name says what it does
 atomically, and the row lock or compare-and-set lives inside that one
-method. Locking primitives (`FOR UPDATE`, `SKIP LOCKED`, version
-columns) anywhere other than inside one such method.
+method. Locking primitives (`FOR UPDATE`, `SKIP LOCKED`, a `WHERE`
+that compares a stored version) anywhere other than inside one such
+method. The `version` field itself belongs on the entity (STO-22).
 
 **Violation.** Locking spread across two interface methods (one to
 lock, one to write) so the caller holds the lock between calls. An
@@ -253,8 +254,8 @@ composes the mixins its entity has, in the OM's house-style order.
 declarative base last. A table's mixin set matching its entity's mixin
 set, so an append-only entity's table has no tracking or soft-delete
 columns. `id`, `org_id`, `name`, `created_at`, `updated_at`,
-`created_by`, `deleted_at`, `deleted_by` redeclared on a concrete
-table.
+`created_by`, `updated_by`, `deleted_at`, `deleted_by` redeclared on a
+concrete table.
 
 **Violation.** A table redeclares a mixin column by hand or declares
 lifecycle columns its entity does not have. Mixins are listed in a

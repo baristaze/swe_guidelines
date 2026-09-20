@@ -17,9 +17,15 @@ keeps each review narrow enough to be thorough.
 | `network`   | `network.md`    | The Network Layer and Apps (Push-First Apps): topology, gateway, public types, clients, realtime, push-first |
 | `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, conventions, substitutions |
 
-A rule belongs to exactly one group. Where two groups touch the same
-section, the table in each file's header says which side of the line it
-takes.
+A rule belongs to exactly one group, and to exactly one lens inside it.
+The `Covers` column names each group's home sections; where two groups
+touch the same section, the paragraph at the top of each file says what
+it leaves to its neighbours, and that paragraph is the line. A lens may
+cite a section outside its group's home sections when its rule rests
+there, so `Source` is where the rule is written down and the group is
+who judges it. Where two lenses sit next to one breach, the narrower
+one names the other in parentheses (`(Ids read back out of the database
+are STO-06.)`) rather than flagging it twice.
 
 ## Lens format
 

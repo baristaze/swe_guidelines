@@ -9,8 +9,12 @@ its own voice.
 ## Ground rules
 
 - The guideline (`architecture.md`) states what we do. It carries no
-  history, no rejected alternatives, and no product-specific
-  vocabulary. `make leaks` enforces the vocabulary part.
+  history and no survey of the alternatives it weighed; naming the
+  near miss a rule rules out ("X, never Y") is part of the rule and
+  stays. It names its technologies on purpose, and what it carries no
+  trace of is the vocabulary of any one product: `make leaks` is a
+  regression guard for the vocabulary of the origin this guideline was
+  extracted from, and a fork replaces that list with its own.
 - Every rule lives in exactly one lens under `lenses/`, and every lens
   cites the section it restates. `make lenses` enforces the format and
   the citations.

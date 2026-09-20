@@ -39,23 +39,23 @@ than by namespace or by app-specific service.
 
 **Principle.** A web service is the scalability unit, one per major OM
 namespace; the first form of a split is the API image with a
-`namespaces` setting. Every service runs the whole OM in-process, a
-call across namespaces stays a manager call across a split, and a
+`namespaces` setting. Every service runs the whole OM in-process, so a
+call into another namespace stays in-process across a split, and a
 wire hop between processes sharing the OM and the database is a
 recorded decision.
 
 **Source.** The Network Layer, Web Services as Scalability Units.
 
-**Look for.** Which `acme.om.<ns>` packages each domain service's
-routers import; whether a service composes managers locally; the
-number and purpose of over-the-wire calls between services.
+**Look for.** Which `acme.om.<ns>` packages each domain service's impls
+import; whether a service composes namespaces locally through their
+service interfaces; the number and purpose of over-the-wire calls
+between services.
 
-**Violation.** A domain service whose routers import managers from more
-than one namespace package, or two domain services that both wrap the
-same namespace; a service that calls a sibling over the wire for what
-its own process holds the code and the roles to do, with no decision
-recorded; a domain service cut along team or client lines instead of
-namespace lines.
+**Violation.** Two domain services that both wrap the same namespace;
+a service that calls a sibling over the wire for what its own process
+holds the code and the roles to do, with no decision recorded; a
+domain service cut along team or client lines instead of namespace
+lines.
 
 **Severity.** medium
 
@@ -487,16 +487,16 @@ retry. A manager records one event per write through the outbox.
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, `actor_id`, a typed payload) and its table's
 role; the audit entry, the same shape plus the request id and the app;
-the append method, the cursor row it locks, and where the head `seq` the
-pong carries is read from; whether the event row is written by the
-outbox relay or by a second statement; the `after_seq` read.
+the append method, the cursor row it locks, and where the head `seq`
+the pong carries is read from; the `after_seq` read. (Whether the
+event row rides the core write's outbox row is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; `MAX(seq) + 1` computed in the append and retried on the
-collision; an event table in the `core` role; an event row written in
-a second statement after the core write; an event with no `actor_id`,
-or an audit entry that is not the event's shape plus the request id
-and the app; code that reads `seq` as the order of core writes.
+collision; an event table in the `core` role; an event with no
+`actor_id`, or an audit entry that is not the event's shape plus the
+request id and the app; code that reads `seq` as the order of core
+writes.
 
 **Severity.** high
 
@@ -519,12 +519,12 @@ order in which a service and its apps are deployed, since a request
 forbids what it does not know.
 
 **Violation.** A field removed or renamed on a view, or a required
-field added to a request, under the same prefix; a payload or envelope
-consumer that rejects an unknown field, so producer and consumer must
-deploy together; a required field added to a payload or an envelope,
-so a row written before the deploy or an old producer's message fails
-to parse; an app that sends a new request field before the service
-that accepts it is deployed.
+field added to a request, under the same prefix; an envelope consumer
+that rejects an unknown field, so producer and consumer must deploy
+together (the topic payload base's own config is ASY-09); a required
+field added to a payload or an envelope, so a row written before the
+deploy or an old producer's message fails to parse; an app that sends
+a new request field before the service that accepts it is deployed.
 
 **Severity.** medium
 
@@ -656,12 +656,13 @@ splits by role, never by service.
 Storage Layer, Database Roles.
 
 **Look for.** Which database URLs and schemas each service's settings
-name; where migration chains live; whether a table's role comes from
-the OM's role map or is implied by the service that writes it.
+name; whether a table's role comes from the OM's role map or is
+implied by the service that writes it. (Where migrations live is
+STO-18.)
 
 **Violation.** A database or a schema per service; a table owned by a
-service rather than a role; a migration chain under a service; two
-services that read one role from two databases.
+service rather than a role; two services that read one role from two
+databases.
 
 **Severity.** medium
 

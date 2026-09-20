@@ -36,8 +36,8 @@ service that another app would need.
 totals, state transitions, or permissions; an app that calls two
 backend operations and combines their results to reach a business
 conclusion; domain constants duplicated into the app; the portal and
-the CLI each implementing the same aggregation; an app-specific
-service holding a rule a second app later copies.
+the CLI each implementing the same aggregation. (Where a rule two apps
+share belongs is CON-13.)
 
 **Severity.** medium
 
@@ -115,8 +115,9 @@ the seed; a `reset` that keeps a volume.
 
 ## DEL-05 External services have a twin behind the same interface
 
-**Principle.** An external service has one interface and two impls:
-the real client and a deterministic twin with the same wire shapes.
+**Principle.** An external service has one interface and at least two
+impls: the real client and a deterministic twin with the same wire
+shapes.
 Tests, the local stack, and CI run against the twin; the real client
 is proven against fixtures and a non-gating sandbox workflow. A twin
 refuses to run off loopback and names its provenance on every record.
@@ -164,24 +165,24 @@ a check the process could make itself.
 ## DEL-07 The monorepo is grouped by role, with one OM distribution
 
 **Principle.** The repository root groups code by role: `om/`,
-`infra/`, `integrations/`, `services/`, `workers/`, `apps/`,
-`clients/`, `deployment/`, `scripts/`, `docs/`. A system that starts
-as one API process has one entry under `services/` and grows the rest.
-The OM is a single distribution covering every namespace; namespaces
-are folders inside it, and migrations live with the OM, which owns the
-schema timeline.
+`infra/`, `integrations/`, `gateway/`, `services/`, `workers/`,
+`apps/`, `clients/`, `deployment/`, `scripts/`, `docs/`. A system that
+starts as one API process has one entry under `services/` and grows
+the rest.
+The OM is a single distribution covering every namespace, and
+namespaces are folders inside it.
 
 **Source.** Monorepo Folder Structure; Layout Conventions.
 
 **Look for.** The top-level tree and where a new package was placed; a
 service or worker outside its role folder; domain code outside `om/`;
-the number of distributions under `om/`; where `migrations/` sits.
+the number of distributions under `om/`. (Where migrations live is
+STO-18.)
 
 **Violation.** A worker under `services/`; a second object model
 package next to `om/`; a `utils/` or `common/` package at the root
 that holds domain types; application code under `deployment/` or
-`scripts/`; a per-namespace OM package; a migration folder under a
-service or worker.
+`scripts/`; a per-namespace OM package.
 
 **Severity.** medium
 
@@ -343,8 +344,10 @@ envelope parsed into a typed error with the request id, sign-out on
 imports of the generated path from feature code; direct `fetch` calls.
 
 **Violation.** A feature module importing from the generated schema
-file; a second HTTP client; hand-maintained request or response types
-that duplicate generated ones; `fetch` outside the client.
+file; a second transport client inside the app (a second client for a
+service across the repository is NET-15); hand-maintained request or
+response types that duplicate generated ones; `fetch` outside the
+client.
 
 **Severity.** medium
 

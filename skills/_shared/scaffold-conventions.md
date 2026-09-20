@@ -100,10 +100,18 @@ the order the guideline presents them, never by number.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
-- Two storage impls always: relational and memory. One contract test
-  module under `tests/unit/` runs the memory impl; `tests/integration/`
-  reuses the same cases against Postgres under the `integration`
-  marker. Both impls sort by the `UUID` value, never by its string.
+- Two storage impls always: relational and memory. The contract cases
+  live in one module under `tests/contracts/`; a module under
+  `tests/unit/` runs them against the memory impl and one under
+  `tests/integration/` runs the same cases against Postgres under the
+  `integration` marker. Both impls sort by the `UUID` value, never by
+  its string.
+- One manager impl, unless the namespace fronts something a caller
+  cannot conjure (a payment processor, a carrier, a model provider).
+  Then it gets a memory impl of its own, `<Ns>ManagerMemoryImpl`,
+  answering the same interface from an in-process dict, so every
+  caller above the namespace runs with no account and no network.
+  Otherwise the memory storage root under the one impl is its twin.
 - Tests are counted in cases, not files: one contract case per storage
   method (the read after the write, the filter, the tenant that sees
   nothing), one race per named atomic method (two callers at once,
@@ -178,11 +186,16 @@ container.
 
 ## After writing
 
-1. Run the repository's fast gate (`make check` or its equivalent), and
-   the migration check when a table was added. A single tool runs
-   through the workspace (`uv run`, `pnpm run`), never through a
-   global install. Fix failures the scaffold introduced. Report
-   pre-existing failures and stop; do not edit unrelated files.
+1. Run the repository's fast gate (`make check` or its equivalent).
+   When a table was added, bring the stack up and migrate first
+   (`make infra-up`, then `make migrate`), then run
+   `make migrate-check`, which compares the ORM metadata with the
+   migrated schema per role and needs Postgres. When a route was added, run
+   `make openapi`, so the committed contract and the consuming apps'
+   generated types carry it. A single tool runs through the workspace
+   (`uv run`, `pnpm run`), never through a global install. Fix
+   failures the scaffold introduced. Report pre-existing failures and
+   stop; do not edit unrelated files.
 2. Print the guideline version the skill ran from (release, or
    snapshot), then the list of files created and changed, one per
    line (`git status` names them in a repository), followed by the

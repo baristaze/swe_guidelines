@@ -56,13 +56,13 @@ in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
 | Skill                     | What it does                                                                 |
 |---------------------------|------------------------------------------------------------------------------|
 | `arch-review-full`        | Reviews a change through every lens group, seven reviewers in parallel, one merged report |
-| `arch-review-om`          | Object model: source of truth, mixins, immutability, identifiers, namespaces |
+| `arch-review-om`          | Object model: source of truth, mixins, immutability, identifiers, namespaces, pure rules |
 | `arch-review-contracts`   | Interfaces, injection, roots, call direction, app container                  |
 | `arch-review-context`     | context stages and scopes, OperatorContext, authorization, tenancy, provenance  |
 | `arch-review-storage`     | Storage principles, tables, translation, database roles, migrations          |
 | `arch-review-async`       | Infra capabilities, queues, workers, idempotency, park versus fail           |
 | `arch-review-network`     | Topology, gateway, public types, clients, realtime, push-first               |
-| `arch-review-delivery`    | Apps, deployment, repo layout, client architecture, cross-cutting conventions |
+| `arch-review-delivery`    | Apps, deployment, repo layout, client architecture, cross-cutting conventions, substitutions |
 | `arch-scaffold-new`       | Bootstraps a whole system by sequencing the scaffolds below                  |
 | `arch-scaffold-namespace` | A new object-model swimlane, wired into the roots                            |
 | `arch-scaffold-entity`    | One entity end to end: type, table, storage, manager, migration, API, tests  |

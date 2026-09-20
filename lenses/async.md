@@ -339,9 +339,9 @@ the `lane` string would do.
 
 **Principle.** A worker runs several items at once up to a capacity it
 advertises, each as its own task, and each running item renews its
-lease on a timer; a lease not renewed for half its length cancels its
-own task before the lease expires, the first fence. A work handler is
-bounded by its lease; nothing runs unbounded.
+lease on a timer, so no task outlives the lease behind it, the first
+fence. A work handler is bounded by its lease; nothing runs unbounded.
+(When a failed renewal cancels is ASY-23.)
 
 **Source.** Worker Roles, Shape of a Worker; The Network Layer, Clients
 Live in One Place.
@@ -351,9 +351,8 @@ renewal task; what happens when renewal fails; whether a handler can
 outlive its lease.
 
 **Violation.** A worker that claims without bound; an item with no
-renewal so long work loses its lease; a task that keeps running after
-half a lease without a successful renewal; a handler with no bound
-but the process's life.
+renewal task at all, so long work loses its lease; a handler with no
+bound but the process's life.
 
 **Severity.** high
 
@@ -380,10 +379,10 @@ deploy.
 
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
-leader, no lock, and no scheduler: requeue expired leases, resume
-parked records, relay what a crash left in the outbox, purge done
-outbox and soft-deleted rows past retention. Resumes are staggered so
-every parked record does not wake at once.
+leader, no lock, and no scheduler: requeue items whose lease expired,
+expire leases, resume parked records, roll periods, relay what a crash
+left in the outbox, purge done outbox and soft-deleted rows past
+retention. Resumes are staggered.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
@@ -558,23 +557,25 @@ refused write that spends an attempt.
 
 ## ASY-27 A cross-service chain expires its first step or is a saga
 
-**Principle.** A synchronous chain across services gives its first step
-an expiry and carries its id forward; a chain that must survive a
-crash between steps is a durable record advanced by workers, the
-irreversible step last and a compensating step for each one before it
-(a saga).
+**Principle.** A synchronous chain across services carries its
+idempotency key forward, so a retry reruns a step instead of repeating
+it, and a step that reserves something bounds it with an expiry. A
+chain that must survive a crash between steps is a durable record
+advanced by workers: the irreversible step last, a compensating step
+for each one before it.
 
 **Source.** The Network Layer, Long-Running Orchestrations; Direction
 of Calls.
 
 **Look for.** Every service impl that sequences calls across services;
-the expiry of the first step and the id it passes on; the compensation
-of each step before the irreversible one.
+the key each step is called under and whether a retry reruns it; the
+expiry on anything a step reserves; the compensation of each step
+before the irreversible one.
 
-**Violation.** A synchronous chain across services whose first step has
-no expiry or compensation; an irreversible step followed by one that
-can fail; a chain that must outlive a crash held only in the service's
-memory.
+**Violation.** A step that reserves something with no expiry, so a
+failed later step leaks it; a step called under no key, so a retry
+repeats it; an irreversible step followed by one that can fail; a
+chain that must outlive a crash held only in the service's memory.
 
 **Severity.** high
 

@@ -38,8 +38,7 @@ method that has none.
 org id, or a token instead of a context; a method that takes the
 context in any position other than first; a handler that fetches
 identity from a request object; a manager operation that takes a
-scope; a context-less method other than the outbox handoff CTX-16
-names.
+scope. A method carrying no context at all is CTX-16's to judge.
 
 **Severity.** medium
 
@@ -241,11 +240,11 @@ interfaces; user-scoped storages; the position and the default of
 every filter parameter on a list or an aggregate method.
 
 **Violation.** A storage method taking the entity id before the tenant
-id; a user-scoped read that takes only the tenant and filters by user
-inside the impl, or takes no user at all; a manager or service method
-that takes an org id or user id the context already carries; a filter
-passed positionally before a scoping id, or a filter with no default
-that every caller must spell.
+id; a user-scoped read whose signature takes only the tenant, so the
+personal scope is left to the impl (what the impl's `WHERE` then does
+is CTX-11); a manager or service method that takes an org id or user
+id the context already carries; a filter passed positionally before a
+scoping id, or a filter with no default that every caller must spell.
 
 **Severity.** medium
 
@@ -283,9 +282,8 @@ no principal or a tenant operation (CTX-17).
 
 **Violation.** A tenant-less storage method with no docstring
 justifying it; a sweep that returns entities without their tenant; a
-new tenant-less method that the enumerating test does not know about;
-no such test at all; a purge or a requeue that audits done in a
-cross-tenant statement with no principal.
+new tenant-less method that the enumerating test does not know about,
+or no such test at all.
 
 **Severity.** medium
 

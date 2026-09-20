@@ -223,41 +223,24 @@ class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
     timezone: str
 ```
 
-A row the platform writes for its own bookkeeping composes `Created`:
-the outbox row, the idempotency marker, the socket ticket. No person
-stands behind it, so it carries no `created_by`; the outbox row names
-instead the actor, the request, and the app of the write it announces,
-the provenance of the [OpContext](#opcontext) that made it, which is
-why the relay takes `(org_id, row)` and no context. What the platform
-stamps on it later is a field named for what happened, `done_at`,
-`redeemed_at`, the outcome, never an `updated_at` that says only that
-something did. A work item is `Trackable`, because the person who
-enqueued it is its attribution (see [The Work
-Queue](#the-work-queue)), and the platform is the actor of its
-claims and completions, `EMPTY_UUID`. The two system rows every
-namespace touches are declared once, each in the namespace that owns
-it (`outbox`, `idempotency`), and every manager takes them from there:
+Not every row has a person behind it. A row the platform writes for
+its own bookkeeping, an outbox row, an idempotency marker, a socket
+ticket, composes `Created` and stops there: no author, so no
+`created_by`. What the platform stamps on such a row later is named
+for what happened, `done_at`, `redeemed_at`, the outcome, never an
+`updated_at` that says only that something did.
 
-``` python
-class OutboxRow(Identifiable, Created):  # written with the core row, in the same statement
-    org_id: UUID              # carried on the entity: the relay runs with no context
-    kind: str                 # "<namespace>.<entity>.<created|updated|deleted>"
-    target_id: UUID
-    payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
-    actor_id: UUID            # the principal of the write it announces; EMPTY_UUID for the platform
-    request_id: UUID          # the request that made the write
-    app: AppContext           # the app that made it
-    done_at: datetime | None = None
+A work item is the row that looks like bookkeeping and is not. It is
+`Trackable`, because the person who enqueued it is its attribution
+(see [The Work Queue](#the-work-queue)); the platform is the actor of
+its claims and completions and signs them `EMPTY_UUID`.
 
-class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, and key
-    user_id: UUID
-    key: str
-    request_digest: str        # another digest under the same key is refused
-    target_id: UUID            # the id the create uses, minted before the marker
-    attempt_id: UUID | None    # the attempt that holds it; cleared by a release
-    status: int | None = None  # the outcome, None while the request runs
-    body: str | None = None
-```
+Two system rows are touched by every namespace: the outbox row, which
+announces a write, and the idempotency marker, which owns a retry.
+Each is declared once, in the namespace that owns it, and every
+manager takes it from there. Each is shown where it does its work,
+`OutboxRow` under [Namespace Shape](#namespace-shape) and
+`IdempotencyMarker` under [The Gateway](#the-gateway).
 
 Pydantic merges the fields from every base into a single model along the
 MRO. The declaration order is house style: identity first, human-facing
@@ -502,15 +485,30 @@ lets one `*Interface` back several impls at once.
 
 ### Multiple impls per interface
 
-An interface has at least two impls, a technology impl and an in-memory
-impl, and they are interchangeable at wiring time. Callers never know
-which one they are holding. Names put the technology last:
-`InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`.
+An interface has at least two impls and they are interchangeable at
+wiring time. Callers never know which one they are holding. Names put
+the technology last: `InventoryStoragePostgresImpl`,
+`InventoryStorageMemoryImpl`.
 
-A manager interface is the exception: it has one impl, because a
-manager names no technology of its own, and the pair it runs over is
-the storage and the infrastructure under it. That is what lets the
-whole business layer run in a test over the memory roots.
+The rule behind the pair is that every interface can be satisfied
+without the technology behind it. A storage, an infrastructure
+capability, and an external service each get an in-memory impl. So
+does a manager, which is not the exception it looks like. A manager
+over nothing but its own storage is satisfied without technology
+already, by wiring it over the memory roots, which is what lets the
+whole business layer run in a test. A manager that fronts something a
+caller cannot conjure, a payment processor, a carrier, a model
+provider, gets a memory impl of its own, `PaymentsManagerMemoryImpl`,
+answering the same interface from an in-process dict, so every caller
+above that namespace runs with no account, no network, and no sandbox.
+
+A service interface pairs differently, because both of its impls are
+real: the in-process one calls the manager the container wired and
+exists from the first day, since every router calls through it, and
+the remote one is the typed client, written when a process stops
+holding what the callee needs (see [Direction of
+Calls](#direction-of-calls)). It gets no in-memory impl of its own;
+the twin under it is the manager's.
 
 The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
@@ -553,34 +551,31 @@ Because an impl depends on an interface, impls compose. Caching is a
 common case:
 
 ``` python
-class KeyValueInterface(ABC):
-    @abstractmethod
-    async def get(self, key: str) -> bytes | None: ...
-    @abstractmethod
-    async def set(self, key: str, value: bytes) -> None: ...
+# CacheInterface is declared under [Cache](#cache): every call takes org_id.
 
-class LocalCacheImpl(KeyValueInterface): ...  # in-process
+class LocalCacheImpl(CacheInterface): ...  # in-process
 
-class CloudCacheImpl(KeyValueInterface): ...  # hosted key-value store
+class CloudCacheImpl(CacheInterface): ...  # hosted key-value store
 
-class MixedCacheImpl(KeyValueInterface):
-    def __init__(self, local: KeyValueInterface, cloud: KeyValueInterface):
+class MixedCacheImpl(CacheInterface):
+    def __init__(self, local: CacheInterface, cloud: CacheInterface, local_ttl: timedelta):
         self._local = local
         self._cloud = cloud
+        self._local_ttl = local_ttl
 
-    async def get(self, key: str) -> bytes | None:
-        value = await self._local.get(key)
+    async def get(self, org_id: UUID, key: str) -> bytes | None:
+        value = await self._local.get(org_id, key)
         if value is not None:
             return value
-        value = await self._cloud.get(key)
+        value = await self._cloud.get(org_id, key)
         if value is not None:
-            await self._local.set(key, value)
+            await self._local.put(org_id, key, value, self._local_ttl)
         return value
 ```
 
-`MixedCacheImpl` takes two `KeyValueInterface` values and returns one.
-The caller holds a `KeyValueInterface` and cannot tell whether the hit
-came from local memory, the cloud, or a two-level composite. The same
+`MixedCacheImpl` takes two `CacheInterface` values and returns one. The
+caller holds a `CacheInterface` and cannot tell whether the hit came
+from local memory, the cloud, or a two-level composite. The same
 pattern fits retry, metrics, and tracing wrappers: each is an impl that
 holds an inner impl and forwards selectively. Decoration is an
 infrastructure pattern; a manager that needs a cache takes one through
@@ -1192,6 +1187,27 @@ one (see [Database Roles](#database-roles)). A create and an update
 are two methods, because they are two primitives: an insert that
 reports an existing id without touching it, and an upsert.
 
+The outbox row is a system row (see [Naming
+Entities](#naming-entities)), declared once in the `outbox` namespace:
+
+``` python
+class OutboxRow(Identifiable, Created):  # written with the core row, in the same statement
+    org_id: UUID              # carried on the entity: the relay runs with no context
+    kind: str                 # "<namespace>.<entity>.<created|updated|deleted>"
+    target_id: UUID
+    payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
+    actor_id: UUID            # the principal of the write it announces; EMPTY_UUID for the platform
+    request_id: UUID          # the request that made the write
+    app: AppContext           # the app that made it
+    done_at: datetime | None = None
+```
+
+It carries its own `org_id` because the relay runs with no context
+(see [Operations Without a
+Principal](#operations-without-a-principal)), and it names the actor,
+the request, and the app of the write it announces, the provenance of
+the [OpContext](#opcontext) that made it.
+
 Some scopes are strictly user-bound. An order board, where the
 column layout and pinned filters are personal to each user, is not just
 tenant-scoped; it is user-scoped within a tenant. In those cases the
@@ -1570,8 +1586,11 @@ backfill in one release, switch the code, drop in a later one (expand
 and contract).
 
 A check that the ORM metadata and the migrated schema agree, for every
-role, needs a migrated database, so it runs in CI's integration job,
-beside a downgrade-then-upgrade of the latest revision.
+role, needs a migrated database, so it is a target of its own,
+`make migrate-check`: an author runs it against the local stack after
+migrating, and CI runs it in the integration job, beside a
+downgrade-then-upgrade of the latest revision. It is not part of the
+fast gate, which has no database.
 
 ## Infrastructure
 
@@ -1834,7 +1853,7 @@ class Queues(str, Enum):
 
 class QueuesInterface(ABC):
     @abstractmethod
-    async def send(self, queue: Queues, body: bytes, *, dedup_id: str | None = None) -> str: ...
+    async def send(self, queue: Queues, body: bytes) -> str: ...
     @abstractmethod
     async def receive(self, queue: Queues, max_messages: int, wait: timedelta, visibility: timedelta) -> list[QueueMessage]: ...
     @abstractmethod
@@ -1845,9 +1864,12 @@ class QueuesInterface(ABC):
     async def depth(self, queue: Queues) -> QueueDepth: ...  # visible, in flight, dead-lettered
 ```
 
-A queue delivers at least once and does not deduplicate; the durable
-"processed exactly once" guarantee belongs to the consumer (see
-[Idempotency on the Consumer Side](#idempotency-on-the-consumer-side)).
+A queue delivers at least once and does not deduplicate, and the
+interface offers no deduplication knob even where a hosted queue has
+one: a best-effort window is not a guarantee, and a second knob would
+invite a caller to lean on it. The durable "processed exactly once"
+guarantee belongs to the consumer (see [Idempotency on the Consumer
+Side](#idempotency-on-the-consumer-side)).
 Dead letters are visible, not silent: a message that fails its last
 attempt lands in a dead-letter queue, an audit entry names it, and a
 metric counts it.
@@ -1930,10 +1952,13 @@ by Design](#scalability-by-design).
 
 A service runs in its own container with the whole OM library
 available to it and calls managers and storages in-process, and that
-holds across a split: a call from the orders routers into the
-inventory namespace is a manager call inside the orders process,
-before the split and after it, because the process holds the code and
-the roles the callee needs. The remote impl of a service interface is
+holds across a split. When the orders service impl reaches into the
+inventory namespace it calls `InventoryServiceInterface`, and the
+in-process impl behind it calls the inventory manager inside the
+orders process, before the split and after it, because the process
+holds the code and the roles the callee needs. Routers themselves
+import no managers at all (see [Service Interfaces and
+Impls](#service-interfaces-and-impls)). The remote impl of a service interface is
 for the process that does not: an image that drops a namespace's
 code, a database role a service is not granted, a system outside the
 platform. A wire hop between two processes that share the OM and the
@@ -2059,7 +2084,13 @@ transitions that authenticate it into `OpContext` (see
 [Stages](#stages)), and routes to the right service; services never
 construct a context from raw headers or tokens. In the single-process
 start the gateway is a package of middleware and request dependencies
-inside the API process, with the same responsibilities.
+inside the API process, with the same responsibilities. Every service
+has one, because a callee rebuilds `OpContext` from the internal
+credential its caller minted (see [Intra-Service
+Communication](#intra-service-communication)), so at the second
+service the package moves out of the API process into a distribution
+of its own, `gateway/`, that every service imports. It is moved, not
+copied: an edge concern is done once.
 
 The gateway owns a short list of edge concerns, each done once:
 
@@ -2095,8 +2126,8 @@ The gateway owns a short list of edge concerns, each done once:
     error envelope. The limits fail open: they guard against runaway
     clients and are not a security boundary.
 -   **Edge idempotency.** A creating `POST` accepts an
-    `Idempotency-Key` header, and the `IdempotencyMarker` of [Naming
-    Entities](#naming-entities) owns the retry. `begin` writes it
+    `Idempotency-Key` header, and an `IdempotencyMarker`, declared
+    after this list, owns the retry. `begin` writes it
     pending per tenant and principal under the key, carrying a digest
     of the request, the id the create will use, minted before the
     marker, and an attempt token; `finish` stores the outcome on it,
@@ -2115,6 +2146,21 @@ The gateway owns a short list of edge concerns, each done once:
     beside the process reads it.
 -   **Versioning.** The API prefix (`/v1`) is applied once, where
     routers are mounted. Routers declare only their own sub-paths.
+
+The marker is a system row (see [Naming
+Entities](#naming-entities)), declared once in the `idempotency`
+namespace:
+
+``` python
+class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, and key
+    user_id: UUID
+    key: str
+    request_digest: str        # another digest under the same key is refused
+    target_id: UUID            # the id the create uses, minted before the marker
+    attempt_id: UUID | None    # the attempt that holds it; cleared by a release
+    status: int | None = None  # the outcome, None while the request runs
+    body: str | None = None
+```
 
 The marker moves through four states, and every move is one
 conditional write whose guard is in the statement itself:
@@ -3230,7 +3276,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 ├── pyrightconfig.json
 ├── .python-version
 ├── .nvmrc
-├── Makefile                            # setup, infra-up, migrate, check, test-*, openapi, up, down, reset, urls, seed
+├── Makefile                            # setup, infra-up, migrate, migrate-check, check, test-*, openapi, up, down, reset, urls, seed
 ├── README.md
 │
 ├── specs/
@@ -3287,6 +3333,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │           ├── topics/
 │   │           ├── queues/
 │   │           ├── secrets/
+│   │           ├── exceptions.py       # InfraException root
 │   │           ├── observability.py    # logging, tracing setup
 │   │           └── impl/               # settings and the configured root
 │   └── tests/
@@ -3294,6 +3341,11 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 ├── integrations/                       # third-party providers: interface, real client, twin
 │   ├── pyproject.toml
 │   ├── src/acme/integrations/
+│   └── tests/
+│
+├── gateway/                            # the edge package, from the second service on
+│   ├── pyproject.toml
+│   ├── src/acme/gateway/               # auth, errors, ratelimit, observability
 │   └── tests/
 │
 ├── services/
@@ -3605,9 +3657,11 @@ holds.
 
 A decision this document makes for every system is named as one where
 it is made, with the reason it rests on and what would end it, so a
-reader who disagrees knows what to argue with; the alternatives it
-turned down are not listed, because a list of what we do not do is
-never complete and never current.
+reader who disagrees knows what to argue with. Where naming the near
+miss is part of the rule, the rule names it: a shape is easier to hold
+when the thing it is not is said out loud. What the document does not
+carry is a survey of the alternatives it weighed, because a list of
+what we do not do is never complete and never current.
 
 ### Tests
 

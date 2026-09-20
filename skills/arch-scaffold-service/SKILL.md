@@ -89,7 +89,7 @@ hold no logic of their own at any stage.
 | `deployment/local/docker-compose.full.yml` (with `--container`) | the service as a container                                 |
 | `deployment/realtime-timeouts.json` (with `--realtime`, when absent) | the ping interval and the load balancer idle timeout, the one shared file a service test and a client test both assert against; the portal asserts its half from the client side |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` | the service's image: built and pushed under the commit by the staging workflow, which records its digest by commit; promoted by that digest for the release commit in the production workflow's plan, never rebuilt |
-| `services/<existing>/gateway/` (when a service already exists) | moved into a workspace distribution `gateway/` that every service imports; nothing is copied |
+| `services/<existing>/gateway/` (when a service already exists) | moved into the root distribution `gateway/` that every service imports, as The Gateway states; it is moved, never copied |
 
 ## Procedure
 

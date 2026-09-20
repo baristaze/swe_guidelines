@@ -6,6 +6,104 @@ which number.
 
 ## Unreleased
 
+## 0.13.0 (2026-09-19)
+
+A reading of 0.12.0 by a second reviewer, plus two changes asked for
+on top of it. Minor: the manager exception 0.12.0 added is reversed,
+and the changelog names the reversal; a queue parameter is removed;
+the rest is where a rule was stated twice, in two places that had
+drifted, or read as a forward reference a first reader cannot follow.
+
+### Changed
+
+- `architecture.md`, "Multiple impls per interface": the manager
+  exception 0.12.0 introduced is reversed. Every interface can be
+  satisfied without the technology behind it. A manager over nothing
+  but its own storage is satisfied already, by wiring it over the
+  memory roots; a manager that fronts something a caller cannot
+  conjure, a payment processor, a carrier, a model provider, gets a
+  memory impl of its own, so every caller above that namespace runs
+  with no account, no network, and no sandbox. The same paragraph now
+  says how a service interface pairs, since both of its impls are
+  real and its twin is the manager's, which is what "Direction of
+  Calls" has said all along. Lenses `CON-03`, `CON-14`.
+- `architecture.md`, "Naming Entities": the system-row passage is
+  three short paragraphs instead of one dense one, and the two class
+  declarations move to where they do their work, `OutboxRow` to "The
+  Storage Layer" ("Namespace Shape") and `IdempotencyMarker` to "The
+  Network Layer" ("The Gateway"). Both used `AppContext` and
+  `FrozenMapping` hundreds of lines before either was defined. The
+  rule stays where it belongs, on the mixins: a platform row composes
+  `Created` and carries no `created_by`. Lens `OM-03`.
+- `architecture.md`, "Queues": `send` loses its `dedup_id` parameter.
+  The section said in the same breath that a queue does not
+  deduplicate and that the interface takes a deduplication id; a
+  best-effort window is not a guarantee, and the durable answer is
+  the consumer's.
+- `architecture.md`, "The Gateway": every service has a gateway,
+  because a callee rebuilds `OpContext` from the internal credential
+  its caller minted, so at the second service the package moves out
+  of the API process into a `gateway/` distribution every service
+  imports. `arch-scaffold-service` already moved it there; now the
+  guideline says so, and the folder tree and `DEL-07` carry it.
+- `architecture.md`, "Records of Decisions": naming the near miss a
+  rule rules out ("X, never Y") is part of the rule and stays; what
+  the document does not carry is a survey of the alternatives it
+  weighed. `AGENTS.md` and `CONTRIBUTING.md` carry the same qualified
+  form, and `CONTRIBUTING.md` no longer says the guideline carries no
+  product vocabulary flatly: it names its technologies on purpose,
+  and `make leaks` is a regression guard for one origin's words.
+- `architecture.md`, "Web Services as Scalability Units": a call into
+  another namespace is made by the service impl through the callee's
+  `ServiceInterface`, not by a router, which imports no managers at
+  all. Lens `NET-02`.
+- `architecture.md`, "Composition by decoration": the cache example is
+  the `CacheInterface` of "Cache", `org_id` and TTL included, instead
+  of a second `KeyValueInterface` that broke the infrastructure rule
+  it sat under.
+- `architecture.md`, "Migrations": the per-role metadata-versus-schema
+  check is `make migrate-check`, run against the local stack after
+  migrating and in CI's integration job; the folder tree names the
+  target and gives infra its own `exceptions.py`, which "Exceptions"
+  has required all along.
+- `lenses/README.md`: a rule belongs to one group and one lens; the
+  line between two groups is the paragraph at the top of each file,
+  not a table that was never there; `Source` is where a rule is
+  written down and the group is who judges it; and where two lenses
+  sit next to one breach, the narrower one names the other instead of
+  flagging it twice.
+- Eleven pairs of lenses judged one breach twice, sometimes at two
+  severities, and each pair now has a line between it: `CTX-01` and
+  `CTX-16`, `CTX-10` and `CTX-11`, `CTX-12` and `CTX-17`, `STO-06` and
+  `OM-12`, `STO-20` and `NET-22`, `STO-18` against `NET-29` and
+  `DEL-07`, `CON-12` and `CON-14`, `ASY-17` and `ASY-23`, `ASY-09` and
+  `NET-23`, `NET-15` and `DEL-15`, `CON-13` and `DEL-01`.
+- Lenses held back to what the guideline states: `STO-03` carries "a
+  unique membership" again and stops calling a `version` field a lock
+  primitive, `ASY-19` names the sweep's full duty list, `STO-11`
+  names `updated_by`, `DEL-05` says "at least two", `CON-21` carries
+  the secret-issuing create's exception, `OM-14` grants an
+  aggregate's name to a storage interface only, and `ASY-27` no
+  longer asks every synchronous chain for an expiry on its first
+  step.
+- `skills/_shared/scaffold-conventions.md`: the contract cases live
+  under `tests/contracts/`, as the folder tree, "Tests", and three
+  scaffolds already said; the shared "After writing" step names
+  `make infra-up`, `make migrate`, `make migrate-check`, and
+  `make openapi`, and the manager's memory twin is named where a
+  namespace fronts an external dependency.
+- `allowed-tools` names what a body runs, through the procedures a
+  skill delegates to: `arch-scaffold-namespace` gains the four make
+  targets `arch-scaffold-entity` runs, `arch-scaffold-worker` gains
+  the three its migration needs, and `arch-scaffold-new` gains
+  `pnpm --filter`.
+- `skills/arch-scaffold-new`: `## Changed` is a table like every
+  other scaffold's, and the append operations are named after their
+  entities, `append_event` and `append_audit_entry`.
+- `README.md`: the skill table carries "pure rules" and
+  "substitutions", which the two generated skills' own descriptions
+  already named. `CHANGELOG.md`: 0.9.0 is dated the day it shipped.
+
 ## 0.12.0 (2026-09-19)
 
 Two readings of 0.11.0 against itself, one in this repository and one
@@ -284,7 +382,7 @@ shape of a split is reversed, and the changelog names it.
 - `docs/adopting.md`: how the checkable rules travel, as tests a
   scaffold writes and an existing tree copies.
 
-## 0.9.0 (2026-09-20)
+## 0.9.0 (2026-09-19)
 
 The branches carry the environments. This release names the smaller
 environment staging and makes it the default branch, makes production

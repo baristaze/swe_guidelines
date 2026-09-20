@@ -58,21 +58,25 @@ interface does not declare and callers use them.
 
 ## CON-03 At least two impls, technology named last
 
-**Principle.** An interface has at least two impls, a technology impl
-and an in-memory impl, and they are interchangeable at wiring time.
-Names put the technology last: `InventoryStoragePostgresImpl`,
-`InventoryStorageMemoryImpl`. A manager interface is the exception:
-one impl, since the pair it runs over is the storage under it.
+**Principle.** An interface has at least two impls, interchangeable at
+wiring time, and every one can be satisfied without the technology
+behind it. Names put the technology last:
+`InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`. A
+manager that fronts an external dependency carries a memory impl of
+its own.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** Impl class names under `impl/` folders; the set of impls
-behind each storage and infra interface; the names that appear in
-interface signatures and in callers.
+behind each storage, infra, and integration interface; whether a
+manager over an external dependency has a memory twin; the names that
+appear in interface signatures and in callers.
 
-**Violation.** A storage, infra, service, or integration interface has
-a single impl; an impl name leads with the technology or omits `Impl`;
-a technology-specific name leaks into an interface or a caller.
+**Violation.** A storage, infra, or integration interface has a single
+impl; a manager over an external provider with no memory impl, so
+nothing above that namespace runs without an account; an impl name
+leads with the technology or omits `Impl`; a technology-specific name
+leaks into an interface or a caller.
 
 **Severity.** medium
 
@@ -295,14 +299,14 @@ operation; what implements each `*ServiceInterface` and which impl the
 container wires, since the swap at wiring time is the whole of that
 change.
 
-**Violation.** A manager method's signature accepts a `*ServiceInterface`
-or a service impl's dependency handle; a service impl passes its own
-dependency into a manager instead of the result it produced; a sequence
-that needs a service-level operation of another namespace is written
-inside a manager; a service impl that holds a rule (availability,
-concurrency) a manager owns; a service interface with only a remote
-impl, so the single-process start goes over the wire, or with no
-in-process impl from the start, so a split rewrites its callers.
+**Violation.** A service impl passes its own dependency into a manager
+instead of the result it produced (a manager signature that accepts a
+`*ServiceInterface` at all is CON-12); a sequence that needs a
+service-level operation of another namespace is written inside a
+manager; a service impl that holds a rule (availability, concurrency)
+a manager owns; a service interface with only a remote impl, so the
+single-process start goes over the wire, or with no in-process impl
+from the start, so a split rewrites its callers.
 
 **Severity.** medium
 
@@ -451,20 +455,25 @@ across requests, or a root member it does not cover.
 
 ## CON-21 A create whose id is already written returns the row as stored
 
-**Principle.** The only way to present a minted id twice is a retry, so
-a create whose id is already written returns the row as stored: the
-insert reports the existing id, and no check precedes the write.
+**Principle.** A create whose id is already written returns the row as
+stored: the insert reports the existing id, and no check precedes the
+write. A create that issues a secret is the one exception: its rerun
+re-mints the secret on the found row in one atomic write and returns a
+fresh `Issued...View`.
 
 **Source.** The Business Layer, Shape of an Operation.
 
 **Look for.** Manager `create_*` bodies: what happens when the insert
 reports an existing id; any read that precedes the insert; the return
-value of the storage create.
+value of the storage create; for a secret-issuing create, whether the
+re-mint and the row land in one named atomic method.
 
 **Violation.** A create that raises `Conflict` on its own id, so a
 retried request creates twice or fails; a create that checks for the
 id and then writes, leaving a window; a create that returns the
-caller's entity instead of the row as stored.
+caller's entity instead of the row as stored; a secret-issuing create
+whose rerun returns the stored digest, so a client that lost the first
+response has no secret and no way to get one.
 
 **Severity.** medium
 

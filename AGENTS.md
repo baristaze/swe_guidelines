@@ -46,7 +46,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
   general check: it catches that vocabulary flowing back in, and a
   fork replaces it with its own. Agents are named as agents.
 - No history in the guideline: it states what we do, in the present
-  tense, with no rejected alternatives and no changelog phrasing.
+  tense, with no changelog phrasing and no survey of the alternatives
+  weighed. Naming the near miss a rule rules out ("X, never Y") is
+  part of the rule and stays.
 - No em-dashes anywhere.
 - No paragraph of the guideline over 200 words, a list item counted on
   its own (`scripts/check_prose.py`): a protocol that long is a table

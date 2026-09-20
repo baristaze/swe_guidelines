@@ -62,7 +62,7 @@ fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
 `PROVENANCE_FIELDS` live in the base module; `OutboxRow` and
 `IdempotencyMarker` are declared once, each in its namespace.
 
-**Source.** Naming Entities.
+**Source.** Naming Entities; The Storage Layer, Namespace Shape.
 
 **Look for.** The base module of the OM; the fields each mixin
 declares; whether entities redeclare a mixin's fields locally; whether
@@ -255,7 +255,8 @@ any `uuid4()` or other generator imported by OM or service code.
 
 **Violation.** `uuid4()` used for an entity id; an entity constructed
 without an id on the assumption that storage will assign one; an id
-minted inside a storage impl.
+minted anywhere but at the construction site. (Ids read back out of
+the database are STO-06.)
 
 **Severity.** medium
 
@@ -302,8 +303,9 @@ deep path; entity classes next to the manager impl; an entity in
 `types/` that no manager accepts or returns (a value object or a read
 model is exempt, since it travels inside an entity or is returned by a
 manager); a product swimlane living as a sub-folder of another
-namespace's `types/`; a manager or storage interface named after an
-entity where the namespace has one aggregate.
+namespace's `types/`; a manager interface named after an entity rather
+than the namespace; a storage interface named after an aggregate in a
+namespace that has only one.
 
 **Severity.** medium
 
