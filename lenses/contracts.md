@@ -188,7 +188,8 @@ order and wires them together. The storage, infra, and services roots
 expose one getter per member; the business root returns one frozen
 object with a field per manager.
 
-**Source.** The Business Layer; Interfaces, Injectability.
+**Source.** The Business Layer; Interfaces, Injectability; The Storage
+Layer, Storage Root.
 
 **Look for.** The root modules of storage, infra, business, and
 services; where impls are instantiated; whether the returned object is
@@ -301,8 +302,7 @@ that needs a service-level operation of another namespace is written
 inside a manager; a service impl that holds a rule (availability,
 concurrency) a manager owns; a service interface with only a remote
 impl, so the single-process start goes over the wire, or with no
-in-process impl from the start, so a router calls a manager directly
-and a split rewrites its callers.
+in-process impl from the start, so a split rewrites its callers.
 
 **Severity.** medium
 
@@ -372,11 +372,11 @@ return statement; the call site that constructs the entity handed to
 `create_*`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; a manager fills in `id` or a
-timestamp that the originating caller left unset, or resets a
-timestamp the caller constructed; a create that writes the actor the
-caller sent instead of the context's; `updated_at`, `updated_by`,
-or `deleted_at` is set by the caller or by storage instead of by the
+through the manager's own `get_*`; on a create, a manager fills in
+`id` or a timestamp the originating caller left unset, resets one the
+caller constructed, or writes the actor the caller sent instead of the
+context's; on an update or a delete, `updated_at`, `updated_by`, or
+`deleted_at` is set by the caller or by storage instead of by the
 manager; a mutating method returns `None` or a different snapshot than
 the one written.
 

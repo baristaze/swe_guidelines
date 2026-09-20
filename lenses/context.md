@@ -22,11 +22,11 @@ types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context as its first argument: `OpContext`, or the request
+takes a context as its first argument: `OpContext`, the identity or
+the operator stage on the operator plane (CTX-20), or the request
 stage for the enumerated transitions (CTX-16). A helper below the
 managers that needs less takes a scope (CTX-22); no manager operation
-takes one. By the time a manager runs, the stage it takes is fully
-built.
+takes one.
 
 **Source.** OpContext; The Business Layer.
 
@@ -494,8 +494,8 @@ a bundle of managers per stage, or a manager reachable from a context.
 **Principle.** A consumer that needs less than a stage carries declares
 a scope: a small `Protocol` of read-only properties naming the
 capability it needs. A stage satisfies a scope structurally, with no
-projection object built per call and no subclass per combination. A
-scope exists because a consumer declares it. A manager operation takes
+projection object built per call. A scope exists when a consumer
+declares it or another scope builds on it. A manager operation takes
 `OpContext`, which is its scope.
 
 **Source.** OpContext, Scopes.
@@ -508,8 +508,9 @@ what they declare.
 **Violation.** A helper that reads only the request id and the actor
 and takes `OpContext`; a scope declared as an `ABC` the contexts
 subclass; a view object copied out of the context to satisfy a scope;
-a scope no consumer declares; an authorization scope, since no
-consumer needs the permissions without the tenant and the actor.
+a scope neither a consumer declares nor another scope builds on; an
+authorization scope, since no consumer needs the permissions without
+the tenant and the actor.
 
 **Severity.** medium
 

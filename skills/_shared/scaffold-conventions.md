@@ -58,7 +58,8 @@ the order the guideline presents them, never by number.
   `Trackable`), `delete_<entity>` (only when it is `SoftDeletable`); an
   append-only entity has neither.
 - Storage operations read `read_<entities>`, `read_<entity>`,
-  `write_<entity>`.
+  `create_<entity>`, `write_<entity>`, and, on an append-only entity,
+  `append_<entity>` in place of the last two.
 - Wire types read `<Entity>View`, `Add<Entity>Request`, and, only when
   the manager has `update_<entity>`, `Update<Entity>Request`, on the
   `View` and `RequestBody` bases.

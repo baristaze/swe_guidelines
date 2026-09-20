@@ -120,8 +120,9 @@ correct is kept only in a cache.
 sites; any value that exists only in the cache.
 
 **Violation.** A request fails because the cache backend is down; a
-manager raises on a cache miss; a counter, a lock, or a record whose
-only copy is a cache entry.
+manager raises on a cache miss; a lock or a record whose only copy is
+a cache entry, where the rate-limit counter, the generation, and the
+liveness beat are cache-only by design.
 
 **Severity.** high
 
@@ -525,9 +526,9 @@ claim, complete, defer, requeue, and fail methods and what each does to
 **Violation.** An enqueue that upserts, so a retry resets a claim or
 announces twice; a caller-supplied status, attempt count, or claim
 field written as sent, or a timestamp the copy resets; a publish
-before the row exists; a failed attempt requeued with no delay; an item
-that fails its last attempt with no audit entry and no metric; a
-hand-back that spends an attempt.
+before the row exists; a failed attempt requeued with no delay; an
+item that fails its last attempt with no audit entry and no metric
+(the hand-back that spends no attempt is ASY-26).
 
 **Severity.** high
 

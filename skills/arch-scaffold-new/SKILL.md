@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Bootstrap a whole new system in the shape the Software Design and Architecture Guidelines prescribe, into an empty target directory, by building the monorepo skeleton (uv workspace, om, infra, the first API process, a worker, a portal, deployment folders, Makefile, CI) and then following the other scaffold skills for the first namespace and entity. Stack: TypeScript (React, Vite) or Python."
-allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(uv init:*), Bash(uv sync:*), Bash(uv add:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git init:*), Bash(git status:*), Bash(git diff:*), Bash(git rev-parse:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*)
 ---
 
 # arch-scaffold-new
@@ -29,8 +29,9 @@ repository holding nothing but `.git`, `README.md`, `LICENSE`, and
 `.gitignore` (the shape a hosting service creates); refuse otherwise.
 In the fresh-repository case `README.md` and `.gitignore` are replaced,
 `LICENSE` is kept, and step 7 is skipped. Refuse when a `.git`
-directory exists in a parent of `<target-dir>`, because `git init`
-never runs inside an existing repository.
+directory exists in a parent of `<target-dir>` (`git rev-parse
+--show-toplevel` from it names one), because `git init` never runs
+inside an existing repository.
 `<root-package>` must not shadow a standard-library module. In this
 skill `<root>` is `<root-package>`.
 
@@ -65,11 +66,11 @@ OM distribution, under `om/`:
 | File                                   | Holds                                                                                         |
 |----------------------------------------|-----------------------------------------------------------------------------------------------|
 | `pyproject.toml`                       | `<root>-om`; `pydantic`, `pydantic-settings`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, and `<root>-infra` as a workspace source (`build_managers` takes `InfraInterface`; the OM depends on infra and never the reverse) |
-| `src/<root>/om/base.py`                | `Platform`, the four mixins with `PROVENANCE_FIELDS` beside them (the constant naming `created_at`, `created_by`, `deleted_at`, and `deleted_by`, which every copy on update leaves as stored), `FrozenMapping`, `new_id`, `utcnow`, `EMPTY_UUID` |
+| `src/<root>/om/base.py`                | `Platform`, the five mixins with `PROVENANCE_FIELDS` beside them (the constant naming `created_at`, `created_by`, `deleted_at`, and `deleted_by`, which every copy on update leaves as stored), `FrozenMapping`, `new_id`, `utcnow`, `EMPTY_UUID` |
 | `src/<root>/om/opcontext.py`           | `SecurityContext` with `user_id`, `org_id`, `role`, `permissions`, `teams`, `credential_kind`, and `credential_id` (ids and facts, never a `User` or `Org` entity; a socket ticket re-checks the credential by its id), `AppContext`, the stages `RequestContext` (request id, app, trace), `IdentityContext(RequestContext)` (identity id, email, credential), `OpContext(RequestContext)` (with the `org_id`, `user_id`, `credential_kind`, and `credential_id` properties), and `OperatorContext(IdentityContext)`, each produced by one transition on the tenancy manager; the scopes `RequestScope`, `TenantScope`, `ActorScope(TenantScope)`, `CredentialScope`, and `ProvenanceScope(ActorScope, RequestScope)` as `Protocol`s of read-only properties; `Role`, `Permission`, `CredentialKind`, and `AppType` are declared here, and the role-to-permission table in `tenancy/types/` reads them, so this module imports nothing above `base.py` and no module needs `TYPE_CHECKING` to stay acyclic |
 | `src/<root>/om/exceptions.py`          | `PlatformException` with `http_status` and `code`; `NotFound`, `Conflict`, `ValidationFailed`, `NotAuthorized`, `NotAuthenticated` |
 | `src/<root>/om/root.py`                | `build_managers(storage, infra) -> Managers`                                                   |
-| `src/<root>/om/storage/root.py`        | `StorageInterface` with `healthcheck` and `close`                                             |
+| `src/<root>/om/storage/root.py`        | `StorageInterface` with `healthcheck` and `close`, re-exported from `storage/__init__.py`, since the guideline puts the root at `<root>.om.storage` |
 | `src/<root>/om/storage/roles.py`       | `DatabaseRole`, the table-to-role map                                                          |
 | `src/<root>/om/events/`                | the `events` namespace of the guideline's Realtime at the Edge: `Event(Identifiable)` with `org_id`, `seq`, `kind`, `target_id`, `actor_id` (the principal of the write, `EMPTY_UUID` for the platform), and a typed payload, its `activity`-role table, storage with the named atomic `append` that assigns `seq` (per tenant, gapless, from a `cursors` row per tenant in the same role, `UPDATE ... SET head = head + 1 ... RETURNING head` inside the append's transaction, the row inserted on the tenant's first event; never `MAX(seq) + 1` with a retry), `read_head(org_id)` from the same row, and `read_after(org_id, after_seq, limit)`, and a manager the outbox relay calls to record one event per entity write, because every push is also a record |
 | `src/<root>/om/audit/`                 | the `audit` namespace, the cross-cutting swimlane of Namespaces as Swimlanes: `AuditEntry(Identifiable)` with the same shape as an `Event` plus the request id and the app (`org_id`, `seq`, `kind`, `target_id`, `actor_id`, a typed payload, `request_id`, `app`), as Realtime at the Edge states; its `activity`-role table, storage with the named atomic `append` that assigns `seq` and `read_after(org_id, after_seq, limit)`, and `AuditManagerInterface`, which the dead-letter path of a worker and the operator plane write through |

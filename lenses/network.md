@@ -19,7 +19,8 @@ module and one wire-types module per OM namespace behind one gateway;
 growth into separate services is mechanical because the namespace
 boundary is a module boundary from day one.
 
-**Source.** The Network Layer, How It Starts and Where It Goes.
+**Source.** The Network Layer, How It Starts and Where It Goes; Domain
+Services vs App-Specific Services.
 
 **Look for.** The layout of `routers/` and `types/` in the API process:
 whether each namespace has exactly one router module and one types
@@ -144,10 +145,11 @@ passing the gateway's dependencies.
 
 ## NET-07 One error handler, one envelope
 
-**Principle.** One handler translates `PlatformException` into
-`{"error": {"code", "message", "request_id"}}` with the status the
-exception carries, one catch-all turns anything else into a 500 in the
-same shape, and routers never set error status codes.
+**Principle.** One handler translates `PlatformException` and
+`InfraException` into `{"error": {"code", "message", "request_id"}}`
+with the status the exception carries, one catch-all turns anything
+else into a 500 in the same shape, and routers never set error status
+codes. An infra root of its own is DEL-29.
 
 **Source.** The Network Layer, The Gateway (Error envelope).
 
@@ -256,10 +258,10 @@ in the clear, or looked up by anything but its digest.
 
 **Severity.** medium
 
-## NET-12 Plain intra-service traffic, operating-system trust for outbound
+## NET-12 Intra-service traffic needs no TLS, outbound trusts the OS
 
-**Principle.** Service-to-service calls stay on the private network
-without TLS, and that rests on the network being private: services and
+**Principle.** Service-to-service calls need no TLS on the private
+network, and that rests on the network being private: services and
 workers in private subnets, security groups that admit only the
 platform's own processes, only the gateway with a public address, all
 in Terraform. Managed backends that require TLS get a connection

@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-namespace
 description: "Create a new object-model namespace (swimlane) with the shape the Software Design and Architecture Guidelines prescribe: the manager interface at the root, types, impl, storage with Postgres and memory impls, tables, and wiring into the storage and business roots. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(uv run:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(uv run:*), Bash(git status:*)
 ---
 
 # arch-scaffold-namespace

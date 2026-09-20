@@ -400,10 +400,11 @@ the boundary. Managers never format HTTP.
 `raise` sites in managers; the boundary handler; status codes set in
 routers.
 
-**Violation.** An exception not rooted at `PlatformException`; a
-manager raising a framework HTTP exception; a router mapping exception
-types to status codes; a raised leaf exception that inherits no shape
-and so surfaces as 500.
+**Violation.** An exception raised inside the platform and rooted at
+neither `PlatformException` nor, under infra, `InfraException`
+(DEL-29); a manager raising a framework HTTP exception; a router
+mapping exception types to status codes; a raised leaf exception that
+inherits no shape and so surfaces as 500.
 
 **Severity.** medium
 
@@ -701,8 +702,8 @@ bundle, and what the bundle reads at start.
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
 with no digest from staging that is deployed instead of refused; an
-API origin or DSN compiled into a bundle; an apply with no approval on
-its plan.
+API origin or DSN compiled into a bundle (the approval on the plan is
+DEL-38).
 
 **Severity.** medium
 
@@ -731,8 +732,8 @@ identifier copied into metric dimensions.
 ## DEL-33 Developer dashboards live in the devx profile
 
 **Principle.** Developer dashboards live in an optional compose profile
-named `devx`, started only when a developer asks and never by CI: one
-browser per backing service the stack runs (pgweb for Postgres, Valkey
+named `devx`, started by the developer's own commands and never by CI:
+one browser per backing service the stack runs (pgweb for Postgres, Valkey
 Admin for the cache, the consoles the local images ship, Jaeger for
 traces, GlitchTip for errors) and the metrics view, each on a host
 port read from `.env`.
@@ -745,8 +746,9 @@ runs; the host port of each dashboard and where it is read from; CI
 jobs that reference a dashboard container.
 
 **Violation.** A CI job that depends on a dashboard container; a
-dashboard in the default profile; a backing service with no dashboard
-in `devx`; a dashboard port fixed in the compose file.
+dashboard in the default profile; a backing service whose local image
+ships a console and has no dashboard in `devx`; a dashboard port fixed
+in the compose file.
 
 **Severity.** medium
 

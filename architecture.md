@@ -366,9 +366,9 @@ nothing reads one back after a write.
 as the `org_id` on cache and bucket calls (see
 [Infrastructure](#infrastructure)), so system keys and tenant keys live
 in disjoint namespaces. The same constant is the value of a required
-reference that no tenant and no person owns (`created_by` on a row the
-platform itself wrote), which keeps the column `NOT NULL` and the index
-simple. Both readings say the same thing: the platform, not a tenant
+reference that no tenant and no person owns (`updated_by` on a work
+item the platform claimed), which keeps the column `NOT NULL` and the
+index simple. Both readings say the same thing: the platform, not a tenant
 or a person. A reference that is genuinely optional is `None`, never
 `EMPTY_UUID`.
 
@@ -1570,8 +1570,8 @@ backfill in one release, switch the code, drop in a later one (expand
 and contract).
 
 A check that the ORM metadata and the migrated schema agree, for every
-role, is part of the fast test gate. A downgrade-then-upgrade of the
-latest revision is part of CI.
+role, needs a migrated database, so it runs in CI's integration job,
+beside a downgrade-then-upgrade of the latest revision.
 
 ## Infrastructure
 
@@ -2081,9 +2081,10 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Request id.** The gateway accepts an inbound `x-request-id` or
     mints one, stamps it on the context, echoes it in the response
     header, and attaches it to the log context and the trace span.
--   **Error envelope.** One handler translates `PlatformException`
-    (see [Exceptions](#exceptions)) into `{"error": {"code", "message",
-    "request_id"}}` with the status the exception names; one catch-all
+-   **Error envelope.** One handler translates `PlatformException` and
+    `InfraException` (see [Exceptions](#exceptions)) into `{"error":
+    {"code", "message", "request_id"}}` with the status and the code the
+    exception carries; one catch-all
     turns anything else into a 500 with the same shape. Routers never
     set error status codes.
 -   **Rate limits.** A per-route dependency counts in the shared cache
@@ -3152,7 +3153,7 @@ application in containers too, for the case that asks for it, and is
 never the default.
 
 Developer dashboards live in an optional compose profile named `devx`,
-started only when a developer asks for it and never by CI. The profile
+which the developer commands below start and CI never does. The profile
 holds one browser per backing service the stack runs (pgweb for
 Postgres, Valkey Admin for the cache, the console of the object store
 or the queue where its local image ships one, Jaeger for traces,

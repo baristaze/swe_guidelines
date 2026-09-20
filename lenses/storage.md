@@ -65,10 +65,12 @@ opened it.
 
 ## STO-03 Atomicity is a single named interface method
 
-**Principle.** Where atomicity is genuinely unavoidable (a work-queue
-claim, a ledger in a system that moves money), it is a single named
-interface method, so the interface stays technology-free and the
-exception is visible by name.
+**Principle.** The one justification for a named atomic method is an
+invariant two rows must hold together: a work-queue claim, a
+reservation and its stock level, a core row and its outbox row, a
+ledger that moves money. It is a single named interface method, so
+the interface stays technology-free and the exception is visible by
+name.
 
 **Source.** The Storage Layer, Storage Principles; A Storage Impl.
 
@@ -91,7 +93,7 @@ or a transaction handle.
 **Principle.** Joins are avoided but allowed as an implementation
 detail. They never leak into the interface.
 
-**Source.** The Storage Layer, Storage Principles.
+**Source.** The Storage Layer, Storage Principles; Database Roles.
 
 **Look for.** Storage interface return types: entities, read models,
 and tuples of ids and entities, never row tuples or join projections
@@ -475,8 +477,8 @@ idempotent, so relaying a row twice duplicates an event.
 reads a mirror. Every role is backed up and its restore rehearsed, and
 a role restored earlier than its siblings is reconciled from the
 outbox. A done outbox row outlives the backup schedule, a soft-deleted
-row its entity's retention period, and personal data lives in named
-fields.
+row is purged after its entity's retention period, and personal data
+lives in named fields.
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -545,22 +547,21 @@ with two heads merged by editing an existing wrapper's
 applied anywhere. A migration is compatible with the release before
 it, since a rollout runs both: add and backfill in one release, switch
 the code, drop in a later one (expand and contract). A
-metadata-vs-schema check per role is in the fast gate; a
-downgrade-then-upgrade is in CI.
+metadata-vs-schema check per role and a downgrade-then-upgrade of the
+head run in CI's integration job.
 
 **Source.** The Storage Layer, Migrations.
 
 **Look for.** A migration file that changed after the commit that
 added it, per `git log --follow`. A migration that drops or renames a
-column the release before it still reads. The fast gate running the
-metadata-vs-schema check per role, and CI running downgrade then
-upgrade of the head.
+column the release before it still reads. The integration job running
+the metadata-vs-schema check per role and the downgrade-then-upgrade
+of the head.
 
 **Violation.** An applied `.up.sql` is modified rather than followed
 by a new migration. A column dropped or renamed in the same release
 that stops reading it, so a rollout that runs both versions breaks.
-The check step is missing from the fast gate, or the roundtrip from
-CI.
+The check step or the roundtrip is missing from the integration job.
 
 **Severity.** medium
 

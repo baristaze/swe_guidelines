@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-service
 description: "Create a web service the way the Software Design and Architecture Guidelines prescribe, either the first API process of a system or a domain or app-specific service split out of it: the app factory, container, gateway, per-namespace routers and wire types, service interfaces, health endpoints, the ops CLI entry point, the image, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openapi), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openapi), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 
 # arch-scaffold-service
@@ -31,8 +31,10 @@ for one app; it sets `AppType.<APP>` on every context it builds and the
 gateway rejects a request whose app header names another app.
 `--realtime` adds the realtime channel; without it the service has no
 socket, and the portal cannot connect to it until one is added.
-`--container` adds the service to the local compose file; without it
-`scripts/dev.sh` starts it on the host.
+`--container` adds the service to the second compose file, the one
+that runs the application in containers for the case that asks for it;
+`scripts/dev.sh` starts it on the host either way, as Deployment
+(Local: Docker Compose) states.
 
 `<svc>` is the service name in snake case.
 
@@ -50,7 +52,7 @@ Under `services/<service-name>/`:
 | `src/<root>/services/<svc>/gateway/__init__.py` | empty                                                                                        |
 | `src/<root>/services/<svc>/gateway/auth.py`   | credential parsing by prefix (the `internal` kind included: the short-lived credential a peer service mints per call, naming the principal, the tenant, and the request id, from which this gateway rebuilds `OpContext` like any other kind; no bare header is trusted), the `request_context` dependency minting `RequestContext` from the middleware's request id, the app headers, and the span (`Rctx` alias, for the sign-in route), `current_context` running `tenancy.authenticate(rctx, bearer)` and raising `NotAuthenticated` (401) when no credential or an invalid one is presented (`Ctx` alias), `current_identity` running `tenancy.authenticate_login(rctx, bearer)` into `IdentityContext` (`Identity` alias, for the exchange route and the operator gate), the app-header check; `socket_context` (with `--realtime`), the websocket route's dependency: it mints the request stage from the websocket scope and redeems the ticket through the tenancy manager, which returns `OpContext` by the same rules as `current_context` (the app-header check included, so an unknown app is refused); the socket route never parses the query itself |
 | `src/<root>/services/<svc>/gateway/admin.py`  | the operator gate over `current_identity`, running `tenancy.admit_operator(identity)` into `OperatorContext` for `/v1/admin/*`, `OperatorCtx` alias |
-| `src/<root>/services/<svc>/gateway/errors.py` | the `PlatformException` handler and the catch-all, both writing `{"error": {code, message, request_id}}` |
+| `src/<root>/services/<svc>/gateway/errors.py` | the `PlatformException` and `InfraException` handlers and the catch-all, all writing `{"error": {code, message, request_id}}` with the status and the code the exception carries |
 | `src/<root>/services/<svc>/gateway/ratelimit.py` | `rate_limited(route)` reading the route's limit and window from one frozen options object built from settings at boot and held on the container, over `CacheInterface.increment` under the system scope, keyed on the credential id (an unauthenticated route keys on the client address, an inbound-webhook route on a digest of its path token), failing open |
 | `src/<root>/services/<svc>/gateway/idempotency.py` | the `Idempotency-Key` dependency over the OM's idempotency manager: `begin` before the call (it writes the pending marker with a digest of the request, the id the create will use, and an attempt token minted with it; a replay returns the stored response; a duplicate in flight is a conflict; another request digest under the same key is refused; a `5xx` releases the marker instead of being stored, the release keeping the marker with its digest and its `target_id` and clearing only the attempt, so the retry runs again and finds a row that landed by the same id; a pending marker past the pending lease is taken over in one conditional write that stamps an attempt token of its own, and the call runs again with the marker's `target_id`, the id minted before `begin` that the create uses) and `finish` after it, both `finish` and the release conditional on the attempt token in the statement itself, so the attempt that lost the marker is refused like a worker whose lease has passed; keyed per tenant and user on a durable unique index; the cache is at most a read-through in front of it. The outcome stored for a create that issued a secret (an API key, a session token, a socket ticket) is the view with the secret absent, so a replay answers with the row and no secret and says so in its header; the secret exists in one place, as a digest, and a client that lost the first response revokes and issues another. Every creating route (every `POST` that answers 201) in every hosted namespace declares it, not only the first namespace's, so a retried create returns the stored response |
 | `src/<root>/services/<svc>/gateway/observability.py` | request id middleware (accept or mint, stamp, echo, log context, span) over HTTP and websocket scopes alike, so a socket's context carries a request id too, metrics            |

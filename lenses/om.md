@@ -263,8 +263,8 @@ minted inside a storage impl.
 
 **Principle.** `EMPTY_UUID` is the platform's reference: the
 system scope on infra calls and the value of a required reference no
-tenant and no person owns (`created_by` on a row the platform wrote),
-which keeps the column `NOT NULL` and the index simple. A reference
+tenant and no person owns (`updated_by` on an item the platform
+claimed), which keeps the column `NOT NULL` and the index simple. A reference
 that is optional is `None`, never `EMPTY_UUID`. Its use as the system
 scope is judged by `context`.
 

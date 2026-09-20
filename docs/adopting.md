@@ -27,9 +27,9 @@ version it shipped with. Before a scaffold or a review:
 /reload-plugins
 ```
 
-Read the version the skill names in its output: a copy whose changelog
-lists changes under `Unreleased` is a snapshot between releases, not a
-release.
+Read the version a scaffold names in its output: a copy whose
+changelog lists changes under `Unreleased` is a snapshot between
+releases, not a release.
 
 The review-and-fix pass is part of scaffolding, not an afterthought:
 the scaffold sweeps its four most common misses, runs the full review

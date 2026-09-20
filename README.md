@@ -32,7 +32,7 @@ The repository is a Claude Code plugin marketplace. Inside Claude Code:
 /plugin install swe-guidelines@swe-guidelines
 ```
 
-Before a scaffold or a review, update; a skill reads the version it
+Before a scaffold or a review, update; a scaffold reads the version it
 shipped with and names it in its output:
 
 ```text
