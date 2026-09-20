@@ -126,7 +126,41 @@ PLUGIN = '{"name": "swe-guidelines", "version": "1.2.3"}\n'
 MARKETPLACE = '{"name": "swe-guidelines", "plugins": [{"name": "swe-guidelines", "version": "1.2.3"}]}\n'
 CHANGELOG = "# Changelog\n\n## Unreleased\n\n## 1.2.3 (2026-01-01)\n\n- First.\n\n## 1.2.2 (2025-12-01)\n\n- Older.\n"
 ADOPTING = "# Adopting\n\nAdd the marketplace from a tag: `git#v1.2.3`, pinned at `v1.2.3`.\n"
-README = "# Software Design and Architecture Guidelines\n\nSee [the lenses](lenses/README.md#groups).\n"
+README = "# Software Design and Architecture Guidelines\n\nSee [the lenses](lenses/README.md#groups): 2 lenses in one group.\n"
+
+SCAFFOLD = """\
+---
+name: arch-scaffold-thing
+description: "Create a thing the way the guideline prescribes."
+allowed-tools: Read, Write, Bash(make check)
+---
+
+# arch-scaffold-thing
+
+## Input
+
+`<name>`
+
+## Created
+
+| File | Holds |
+|------|-------|
+| `thing.py` | the thing |
+
+## Changed
+
+| File | Change |
+|------|--------|
+| `root.py` | one getter |
+
+## Procedure
+
+1. Write the thing.
+
+## Output
+
+One line.
+"""
 
 
 def render_template(group: str, title: str, covers: str) -> str:
@@ -179,6 +213,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
         render_template("om", "Object Model", "Interfaces: interfaces, principles"),
     )
     r.write("skills/arch-review-full/SKILL.md", REVIEW_FULL)
+    r.write("skills/arch-scaffold-thing/SKILL.md", SCAFFOLD)
     r.write(".claude-plugin/plugin.json", PLUGIN)
     r.write(".claude-plugin/marketplace.json", MARKETPLACE)
     return r
