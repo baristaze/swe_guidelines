@@ -17,7 +17,7 @@ def set_description(repo, value: str) -> None:
 
 def test_valid_tree_passes(repo, skills, capsys):
     assert skills.main() == 0
-    assert "skills ok: 2 skills, 1 review groups" in capsys.readouterr().out
+    assert "skills ok: 3 skills, 1 review groups" in capsys.readouterr().out
 
 
 def test_name_must_equal_folder_and_start_with_arch(repo, skills, capsys):
@@ -115,3 +115,14 @@ def test_em_dash_fails(repo, skills, capsys):
     repo.edit("skills/arch-review-full/SKILL.md", "merge the reports", "merge \u2014 the reports")
     assert skills.main() == 1
     assert "em-dash" in capsys.readouterr().out
+
+
+def test_scaffold_sections_must_appear_in_order(repo, skills, capsys):
+    text = repo.read("skills/arch-scaffold-thing/SKILL.md")
+    swapped = text.replace("## Created", "## TEMP").replace("## Changed", "## Created").replace("## TEMP", "## Changed")
+    repo.write("skills/arch-scaffold-thing/SKILL.md", swapped)
+    assert skills.main() == 1
+    assert "scaffold sections are ['Input', 'Changed', 'Created', 'Procedure', 'Output']" in capsys.readouterr().out
+    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Procedure\n\n1. Write the thing.\n\n", ""))
+    assert skills.main() == 1
+    assert "expected ['Input', 'Created', 'Changed', 'Procedure', 'Output']" in capsys.readouterr().out
