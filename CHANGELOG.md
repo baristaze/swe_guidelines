@@ -6,6 +6,83 @@ which number.
 
 ## Unreleased
 
+## 0.20.0 (2026-09-20)
+
+Two fences, and two lanes. The guideline declined row-level security
+and named the trigger that would make a project take it; it now takes
+it by default. Minor, and the reversal is the point: the rule that
+said enforcement lives in the application alone is gone. The predicate
+in the query is still the fence the business layer relies on, and
+nothing in a manager or an impl assumes the policy is there. The
+policy is what catches the predicate that went missing, which is the
+bug an early team ships. The two costs the old text named are answered
+with shape: the tenant is set once per transaction at the one funnel
+every statement already passes, and a policy with no tenant set fails
+closed. Reads failing silent is the price, and the negative control,
+now two runs, is what proves the policy is live. The second aspect
+splits two bounds that were one: the per-socket send buffer becomes a
+control lane and a stream lane, and admission becomes a read budget
+and a write budget.
+
+### Added
+
+- `architecture.md`, "The Second Fence": every table declares its
+  tenancy scope (`system`, `org`, `identity`, `both`) in one map
+  beside the role map; the funnel that opens every session takes the
+  scope and sets `app.org_id`, `app.user_id`, and `app.identity_id`
+  with `set_config(..., true)`, so the settings die with the
+  transaction; `EMPTY_UUID` as the `org_id` is the system scope,
+  passed explicitly and never a default, enumerated by the exceptions
+  test; one policy per table, `FOR ALL`, `ENABLE` and `FORCE ROW LEVEL
+  SECURITY`, with the shape each scope implies; the login is never a
+  superuser and never `BYPASSRLS`, and a test on the live connection
+  asserts it; a policy check test reads `pg_class` and `pg_policies`
+  against the scope map, because the schema diff does not see
+  policies. Lenses `CTX-32` and `STO-28`.
+- `architecture.md`, "Records of Decisions": "Every table declares its
+  tenancy scope, and the migrated policies match it" joins the
+  program-checked list, the first of them that reads a migrated
+  database and so runs in the integration job.
+- `architecture.md`, "The Gateway": admission is a read budget and a
+  write budget, each named in settings, so a replay storm after an
+  outage cannot take every slot from the commands; health, readiness,
+  and metrics stay outside both.
+- `architecture.md`, "Realtime at the Edge": the send buffer has two
+  lanes. Control frames go first, a burst evicts the oldest stream
+  frame and never a control frame, and the control lane is bounded on
+  its own and named in settings; the revocation close and the
+  transport keepalive stay out of the buffer.
+
+### Changed
+
+- `architecture.md`, "Storage Principles": the row-level security
+  bullet is reversed. The second fence is taken by default, the
+  application predicate stays the fence the business layer relies on,
+  and the bullet names the shape that holds each of the two costs.
+- `architecture.md`, "Tests": the negative control is two runs, one
+  with the policy live and the suite green, one with the policy off
+  for that table and the suite red, both recorded. A control that only
+  runs with the policy live proves nothing about the suite. Lens
+  `CTX-31`.
+- `architecture.md`, "A Storage Impl": `_session_for` is named as the
+  funnel, and it takes the scope of the call.
+- `architecture.md`, "Resilience by Design": the two bounds that
+  became two pairs are restated, the admission budgets and the send
+  buffer's lanes.
+- Lenses `CTX-09` (the policy is the second fence, taken by default),
+  `CTX-31`, `NET-17` (two lanes), and `NET-32` (one budget for reads
+  and writes is a violation). Catalog: 231 lenses.
+- `skills/_shared/scaffold-conventions.md` and the scaffolds:
+  `arch-scaffold-new` writes the scope map, the funnel, the policies
+  in the initial migrations, and the two integration tests;
+  `arch-scaffold-entity` and `arch-scaffold-worker` declare each new
+  table's scope and create its policy with it;
+  `arch-scaffold-namespace` passes the call's scope to the funnel;
+  `arch-scaffold-service` splits `max_in_flight` into
+  `max_in_flight_reads` and `max_in_flight_writes` and gives the send
+  buffer its two lanes. `docs/adopting.md` names the two integration
+  tests among the rules that travel as tests.
+
 ## 0.19.0 (2026-09-20)
 
 A deployed system is an operated system, and the guideline said
