@@ -17,6 +17,13 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+# The benchmark harness is importable the same way, so `test_benchmark_*.py`
+# reads `harness.*` with nothing installed: every module there imports the
+# standard library only at import time.
+BENCHMARK = Path(__file__).resolve().parent.parent / "benchmark"
+if str(BENCHMARK) not in sys.path:
+    sys.path.insert(0, str(BENCHMARK))
+
 GUIDELINE = """\
 # Software Design and Architecture Guidelines
 
