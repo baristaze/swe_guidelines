@@ -56,9 +56,11 @@ the file holds one. Never print the password or the token.
 ## Procedure
 
 1. Verify the credential as Role and credential states. Read the env
-   file. Sign the operator in through `POST /v1/auth/operator` at
-   `$ACME_API_URL` with `curl`, keep the bearer in a shell variable,
-   and check the answer names `operator_role: READ`; stop on `WRITE`.
+   file. Sign the operator in through `POST /v1/auth/login` at
+   `$ACME_API_URL` with `curl` (the identity stage is what the operator
+   plane admits; no tenant session is exchanged), keep the bearer in a
+   shell variable, read `GET /v1/me/identity`, and check the answer
+   names `operator_role: read`; stop on `write`.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:
 

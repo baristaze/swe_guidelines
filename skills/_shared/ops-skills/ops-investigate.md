@@ -87,16 +87,16 @@ never print the password or the token.
    ```bash
    aws cloudwatch get-metric-data --profile acme-<env>-investigate \
      --start-time <start> --end-time <end> \
-     --metric-data-queries '[{"Id":"req","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"http_requests_total","Dimensions":[{"Name":"service","Value":"api"},{"Name":"environment","Value":"<env>"}]},"Period":60,"Stat":"Sum"}}]'
+     --metric-data-queries '[{"Id":"req","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_http_requests_total","Dimensions":[{"Name":"service","Value":"api"},{"Name":"environment","Value":"<env>"}]},"Period":60,"Stat":"Sum"}}]'
    ```
 
    Local:
 
    ```bash
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
-     --data-urlencode 'query=sum by (route, status) (rate(http_requests_total[5m]))'
+     --data-urlencode 'query=sum by (route, status) (rate(acme_http_requests_total[5m]))'
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
-     --data-urlencode 'query=histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))'
+     --data-urlencode 'query=histogram_quantile(0.95, sum by (le, route) (rate(acme_http_request_seconds_bucket[5m])))'
    ```
 
 5. Workers, queue, pool, cache: the outcome counters per kind, the
