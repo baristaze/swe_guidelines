@@ -387,42 +387,23 @@ with a `version` whose write overwrites without comparing it, or a
 ## STO-17 Every table has one database role
 
 **Principle.** Every table belongs to exactly one database role and
-lives in the schema named after it. A map from table name to role is
-the single source of truth: the ORM base derives the schema from it,
-each role has its own connection URL defaulting to the shared one, and
-the root opens one engine and pool per distinct URL. No cross-role
-foreign keys and no cross-role statements. A handoff that follows a
-core write (an event row, a work item) is a core row plus an outbox
-row in one named atomic method, relayed at once and, after a crash, by
-the sweep (the transactional outbox). A database-backed topic bus
-connects to the queue role. Analytics never runs in the request path
-of any role; it reads a mirror. Every role is backed up on its own
-schedule with a rehearsed restore; a soft-deleted row is purged by the
-sweep after its retention period; personal data lives in named fields.
+lives in the schema named after it; a map from table name to role is
+the single source of truth, and the ORM base derives the schema from
+it. No cross-role foreign keys and no cross-role statements: a
+statement touches one role, and the base class routes it by the table
+it names and refuses one that spans roles.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The table-to-role map: every table present, `schema`
-derived from it rather than declared on the class. Statements that name
-tables from two roles, and the base class refusing them. Foreign keys
-whose target is in another role. Settings exposing one URL per role,
-each defaulting to the shared URL, with one engine per distinct URL,
-and the database-backed topics impl reading the queue role's URL. The
-named atomic method that writes the core row and its outbox row, the
-relay after it, and the sweep step that relays what a crash left and
-marks the row done. Reporting queries that scan across tenants inside
-a request. The backup schedule per role and the restore rehearsal; the
-purge step of the sweep and the retention period per entity. Unit
-tests asserting the map is complete and that no key or statement
-crosses a role.
+derived from it rather than declared on the class. Statements that
+name tables from two roles, and the base class refusing them. Foreign
+keys whose target is in another role. Unit tests asserting the map is
+complete and that no key or statement crosses a role.
 
 **Violation.** A table declares its own `schema` or is missing from the
-map. A join, foreign key, or transaction spans two roles. A manager
-writes the core row and then, in a second statement, the event row or
-the work item. The database-backed topic bus connects to a role other
-than `queue`. A cross-tenant analytical query runs against the `core`
-role in a request handler. A soft-deleted row that is never purged, or
-a hard delete outside the purge. The role tests are absent.
+map. A join, foreign key, or transaction spans two roles. The role
+tests are absent.
 
 **Severity.** high
 
@@ -457,5 +438,78 @@ modified rather than followed by a new migration. A column dropped or
 renamed in the same release that stops reading it, so a rollout that
 runs both versions breaks. A migration lives in a service instead of
 with the OM. The check step is missing from the fast gate.
+
+**Severity.** medium
+
+## STO-19 One URL per role, one engine per URL, and a move that changes no code
+
+**Principle.** Each role has its own connection URL that defaults to
+the shared one, and the storage root opens one engine and pool per
+distinct URL. When metrics demand it, a role moves to its own
+database: the schema is copied under replication or a dual write until
+the copy is current, the cut-over is one URL, and the code does not
+change.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** Settings exposing one URL per role, each defaulting to
+the shared URL, with one engine per distinct URL in the root. The
+runbook of a role move: the copy, its window and its rehearsal, and
+the cut-over.
+
+**Violation.** One URL for every role with no per-role override; a
+root that opens one engine per role even when the URLs agree; a role
+move that edits a table class, a statement, or a query; a cut-over
+before the copy is current, or with no rehearsal.
+
+**Severity.** medium
+
+## STO-20 A handoff after a core write is a core row plus an outbox row
+
+**Principle.** A handoff that follows a core write (an event row, a
+work item) is never a second statement the manager remembers to make:
+the manager writes the core row and an outbox row in one named atomic
+method in the `core` role, relays the outbox row at once, and the
+sweep relays whatever a crash left behind and marks the row done. The
+relay is idempotent on the row's key, so relaying twice is harmless
+(the transactional outbox).
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The named atomic method that writes the core row and its
+outbox row, the relay after it, and the sweep step that relays what a
+crash left and marks the row done; whether the relay dedupes on the
+row's key.
+
+**Violation.** A manager writes the core row and then, in a second
+statement, the event row or the work item. A relay that is not
+idempotent, so the sweep duplicates an event. A sweep with no relay
+step.
+
+**Severity.** high
+
+## STO-21 Analytics reads a mirror; every role is backed up, purged, and erasable
+
+**Principle.** Analytics across tenants never runs in the request path
+of any role; it reads a mirror. Every role is backed up on its own
+schedule with a rehearsed restore, a role restored earlier than its
+siblings is reconciled from the outbox, a soft-deleted row is purged
+by the sweep after its entity's retention period, and personal data
+lives in named fields.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** Reporting queries that scan across tenants inside a
+request. The backup schedule per role and the restore rehearsal; the
+retention period of a done outbox row against the backup schedule of
+the roles it feeds; the purge step of the sweep and the retention
+period per entity; the fields that hold personal data.
+
+**Violation.** A cross-tenant analytical query runs against the `core`
+role in a request handler. A role with no backup schedule or a restore
+never rehearsed; a done outbox row deleted on done, or kept shorter
+than the backup schedule; a soft-deleted row that is never purged, or
+a hard delete outside the purge; personal data spread over unnamed
+fields, so erasing a person is a hunt.
 
 **Severity.** medium

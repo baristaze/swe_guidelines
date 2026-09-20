@@ -121,38 +121,20 @@ from storage after a reconnect.
 
 **Principle.** The gateway mints the request stage, runs the tenancy
 manager's transitions into `OpContext`, and routes; services never
-parse raw headers or tokens. A
-service-to-service call carries a short-lived internal credential
-minted by the caller: a token naming the principal, the tenant, the
-request id, and an expiry minutes out, signed with a key from the
-secret store and verified by the callee against the same key; the
-callee's gateway rebuilds the context from it like any other
-credential kind, and no service trusts a bare header. The edge
-idempotency marker carries the request digest and the id the create
-will use, minted before `begin`; a stale pending marker is taken over
-and the request rerun with that id; a failure releases the marker
-rather than being stored. It accepts
-cross-origin requests only from the browser apps' origins, read from
-settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
-it in the response header, and attaches it to the log context and the
-trace span. Edge idempotency stores the first response per tenant and
-principal under the key.
+parse raw headers or tokens, and no endpoint is reachable without
+passing the gateway's dependencies. It accepts cross-origin requests
+only from the browser apps' origins, read from settings.
 
 **Source.** The Network Layer, The Gateway.
 
 **Look for.** Where bearer tokens and headers are parsed; whether any
 router, service impl, or manager reads `Authorization` or an app
 header itself; whether a second path to the internet bypasses the
-gateway; the `internal` credential kind, who mints it, and how the
-callee rebuilds a context from it; the allowed-origins setting; the request-id middleware and what it writes to the response
-and the span; the key the idempotency store uses.
+gateway; the allowed-origins setting.
 
 **Violation.** A router that inspects headers to decide who is calling;
-a callee that trusts a tenant or user id in a header from a peer
-service; a wildcard or hard-coded allowed origin; an endpoint reachable without passing the gateway's dependencies; a
-response without the `x-request-id` header; a span without the request
-id; an idempotent response stored per tenant alone, so one principal
-replays another's.
+a wildcard or hard-coded allowed origin; an endpoint reachable without
+passing the gateway's dependencies.
 
 **Severity.** high
 
@@ -615,5 +597,45 @@ builds a request outside the client.
 default nothing in settings names; a timeout hard-coded in the client
 instead of read from settings; a per-call override that disables it; a
 `fetch` or an `httpx` call outside the client with no deadline.
+
+**Severity.** medium
+
+## NET-27 A service-to-service call carries a short-lived internal credential
+
+**Principle.** A service-to-service call carries a short-lived internal
+credential minted by the caller: a token naming the principal, the
+tenant, the request id, and an expiry minutes out, signed with a key
+from the secret store and verified by the callee against the same key.
+The callee's gateway rebuilds the context from it like any other
+credential kind, and no service trusts a bare header.
+
+**Source.** The Network Layer, The Gateway.
+
+**Look for.** The `internal` credential kind, who mints it, where the
+signing key comes from, and how the callee rebuilds a context from it;
+the remote impl of every service interface.
+
+**Violation.** A callee that trusts a tenant or user id in a header
+from a peer service; an internal token with no expiry, or one signed
+with a key held in settings instead of the secret store; a peer call
+that reaches a router without the gateway's dependencies.
+
+**Severity.** high
+
+## NET-28 The request id is accepted or minted at the edge and travels with the request
+
+**Principle.** The gateway accepts an inbound `x-request-id` or mints
+one, stamps it on the context, echoes it in the response header, and
+attaches it to the log context and the trace span.
+
+**Source.** The Network Layer, The Gateway.
+
+**Look for.** The request-id middleware and what it writes to the
+context, the response, the log context, and the span; whether the
+socket route gets the same treatment.
+
+**Violation.** A response without the `x-request-id` header; a span
+without the request id; a request id minted below the gateway or read
+from the header by a router; a socket whose context carries none.
 
 **Severity.** medium

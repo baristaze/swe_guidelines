@@ -345,36 +345,25 @@ the `lane` string would do.
 ## ASY-17 A worker claims within capacity, renews, and fences itself
 
 **Principle.** A worker runs several items at once up to a capacity it
-advertises, each as its own task. Each running item renews its lease on
-a timer, and a lease that could not be renewed for half its length
-cancels its own task before the lease expires: the first fence. The
-second is that completion, release, and renewal check the claim in the
-statement itself (`claimed_by` and `lease_expires_at` on the queue
+advertises, each as its own task, and each running item renews its
+lease on a timer; a lease that could not be renewed for half its
+length cancels its own task before the lease expires, the first fence.
+The second is that completion, release, and renewal check the claim in
+the statement itself (`claimed_by` and `lease_expires_at` on the queue
 row), so a stale worker is refused with `Conflict` and hands the item
-back without spending an attempt. Together they guarantee one
-completion per item and nothing about the record, which lives in
-another role: a handler is idempotent on the item's key, a contended
-record carries a `version` written by compare-and-set, and an external
-side effect is keyed by the item or reconciled, never assumed
-exclusive. Liveness is a key with a TTL under the system scope,
-written and read back on every beat; repeated failures stop claiming
-but let held work finish.
+back without spending an attempt.
 
 **Source.** Worker Roles, Shape of a Worker.
 
 **Look for.** The claim loop and its capacity check; the per-item lease
 renewal task; what happens when renewal fails; what the completion
-statement and the record writes compare against; the heartbeat key
-and the failure path.
+statement compares against.
 
 **Violation.** A worker that claims without bound; an item with no
 renewal so long work loses its lease; a completion, release, or
 renewal that does not check the claim in its own statement, so a
-worker whose lease passed completes; a record write that treats the
-lease alone as exclusive, with no `version` and no idempotent handler
-behind it; a stale write that spends an attempt; a heartbeat that
-is only written and never read back; a heartbeat failure that either
-crashes the worker or lets it keep claiming.
+worker whose lease passed completes; a stale write that spends an
+attempt.
 
 **Severity.** high
 
@@ -508,5 +497,29 @@ deadline, so a worker keeps running an item another worker holds; a
 timeout or a connection error treated as definitive, so a blip cancels
 sound work; a renewal failure of any kind that leaves the task running
 past the lease.
+
+**Severity.** high
+
+## ASY-24 The fences guarantee one completion, not the record, and liveness is read back
+
+**Principle.** The two fences guarantee one completion per item and
+nothing about the record, which lives in another role: a handler is
+idempotent on the item's key, a contended record carries a `version`
+written by compare-and-set, and an external side effect is keyed by
+the item or reconciled, never assumed exclusive. Liveness is a key
+with a TTL under the system scope, written and read back on every
+beat; repeated failures stop claiming but let held work finish.
+
+**Source.** Worker Roles, Shape of a Worker.
+
+**Look for.** What the record writes compare against; the handler's
+dedupe on the item's key; how an external call is keyed; the
+heartbeat key and the failure path.
+
+**Violation.** A record write that treats the lease alone as
+exclusive, with no `version` and no idempotent handler behind it; an
+external side effect performed as if the lease made it exclusive; a
+heartbeat that is only written and never read back; a heartbeat
+failure that either crashes the worker or lets it keep claiming.
 
 **Severity.** high
