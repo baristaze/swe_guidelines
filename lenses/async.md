@@ -502,7 +502,8 @@ heartbeat key under the `WORKER_LIVENESS` scope and the failure path.
 exclusive, with no `version` and no idempotent handler behind it; an
 external side effect performed as if the lease made it exclusive; a
 heartbeat that is only written and never read back; a heartbeat
-failure that either crashes the worker or lets it keep claiming.
+failure that crashes the worker, or repeated failures that leave it
+claiming.
 
 **Severity.** high
 
@@ -518,14 +519,18 @@ stamps claim and lease together.
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The enqueue path: the insert primitive it uses, what the
-manager's copy overwrites, and the order of write and publish; the
-claim, complete, defer, requeue, and fail methods and what each does to
+manager's copy overwrites, and the order of write and publish; its two
+callers, the outbox relay for a work item that follows a core write
+and a holder of a context for one that follows none; the claim,
+complete, defer, requeue, and fail methods and what each does to
 `attempts`.
 
 **Violation.** An enqueue that upserts, so a retry resets a claim or
 announces twice; a caller-supplied status, attempt count, or claim
 field written as sent, or a timestamp the copy resets; a publish
-before the row exists; a failed attempt requeued with no delay; an
+before the row exists; a manager that enqueues in a second statement
+after its own core write instead of riding that write's outbox row
+(STO-20); a failed attempt requeued with no delay; an
 item that fails its last attempt with no audit entry and no metric
 (the hand-back that spends no attempt is ASY-26).
 

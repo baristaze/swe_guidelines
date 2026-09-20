@@ -42,13 +42,15 @@ Defining ORM Classes.
 **Look for.** Fields added to an entity that exist only to satisfy a
 response shape or a column (what crosses the wire is NET-13);
 storage-only concerns leaking into entity classes; whether `org_id`
-appears on an entity and, when it does, whether that entity is read by
-an operator across tenants.
+appears on an entity and, when it does, whether a reader with no
+tenant reads it: an operator across tenants, the outbox relay, a
+sweep.
 
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying a column-oriented attribute such as a raw
-foreign key that no manager reads; `org_id` on an entity that only
-tenant operations read; an entity read across every tenant without it.
+foreign key that no manager reads; `org_id` on an entity every reader
+of which holds a context; an entity a reader without one takes, such
+as an `OutboxRow` or an `Event`, declared without it.
 
 **Severity.** medium
 
@@ -269,16 +271,21 @@ claimed), which keeps the column `NOT NULL` and the index simple. A reference
 that is optional is `None`, never `EMPTY_UUID`. Its use as the system
 scope is judged by `context`.
 
-**Source.** Naming Entities, Identifiers.
+**Source.** Naming Entities, Identifiers; Worker Roles, The Work
+Queue.
 
 **Look for.** The constant defined once in the base module; required
-reference fields on rows the platform writes; optional references and
-how they express absence; ad-hoc sentinel constants elsewhere in the
-OM.
+reference fields on rows the platform writes; every write to a work
+item after its enqueue, the claim, the completion, the requeue, the
+failure, the hand-back, and the lease renewal, and what each puts in
+`updated_by`; optional references and how they express absence;
+ad-hoc sentinel constants elsewhere in the OM.
 
 **Violation.** A second sentinel constant invented for "no warehouse";
 a required reference column made nullable for platform-written rows;
-an optional reference filled with `EMPTY_UUID` instead of `None`.
+a write to a work item row after its enqueue signed from the context,
+so the enqueuer appears to have run the work; an optional reference
+filled with `EMPTY_UUID` instead of `None`.
 
 **Severity.** medium
 

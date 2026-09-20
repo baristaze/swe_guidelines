@@ -17,8 +17,10 @@ Storage Root, Cross-Storage Dependencies).
 `<namespace> [FirstEntity] [field:type ...] [--role core|activity|queue|admin]`
 
 Example: `inventory Warehouse address:str timezone:str`. `<namespace>`
-is required; ask for it when missing. `<Ns>` is the namespace in
-CamelCase. When a first entity is named, the entity arguments and the
+is required; ask for it when missing. `<Ns>` is the namespace in the
+singular, in CamelCase (`orders` is `Order`, `inventory` is
+`Inventory`), as Namespaces as Swimlanes names interfaces and
+getters; ask for the singular when it is not a plain one. When a first entity is named, the entity arguments and the
 role are forwarded to the entity skill in step 3; otherwise the
 namespace is created empty and ready.
 
@@ -32,7 +34,7 @@ Under `om/src/<root>/om/<ns>/`:
 | `manager.py`               | `<Ns>ManagerInterface`, a docstring naming the swimlane, no methods yet |
 | `types/__init__.py`        | empty; the entity skill adds one module per entity                      |
 | `impl/__init__.py`         | empty                                                                   |
-| `impl/manager.py`          | `<Ns>ManagerImpl(<Ns>ManagerInterface)` taking `<Ns>StorageInterface` and `OutboxRelayInterface`, writing the core row and its `OutboxRow` in one storage call on every write and relaying the row at once; the relay appends the `Event` and publishes `ENTITY_CHANGED`, so the realtime channel has a producer |
+| `impl/manager.py`          | `<Ns>ManagerImpl(<Ns>ManagerInterface)` taking `<Ns>StorageInterface` and `OutboxRelayInterface`, writing the core row and its `OutboxRow` in one storage call on every write and relaying the row at once; the relay dispatches on the row's `kind`, and an entity change appends the `Event` and publishes `ENTITY_CHANGED`, so the realtime channel has a producer |
 | `storage/__init__.py`      | `<Ns>StorageInterface`, a docstring, no methods yet                     |
 | `storage/impl/__init__.py` | empty                                                                   |
 | `storage/impl/postgres.py` | `<Ns>StoragePostgresImpl(PgStorageBase, <Ns>StorageInterface)`          |

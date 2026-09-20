@@ -30,8 +30,12 @@ manager operation exercises it: `Trackable` needs an update,
 A `core`-role entity has a handoff: every write lands the core row
 and an `OutboxRow` (from `om/outbox/`, as `arch-scaffold-new` defines
 it) in one commit, and the manager relays the row at once through
-`OutboxRelayInterface.relay(org_id, row)`, which appends the `Event`
-and publishes `ENTITY_CHANGED`. An `activity`-role entity is itself a
+`OutboxRelayInterface.relay(org_id, row)`, which dispatches on the
+row's `kind`: an entity change appends the `Event` and publishes
+`ENTITY_CHANGED`. Work that follows the write rides a second outbox
+row of kind `work.<kind>` from the same commit, never an `enqueue`
+the manager makes itself, because the queue is another role. An
+`activity`-role entity is itself a
 record: it is appended by a named `append_<entity>` method, never
 upserted, and carries no outbox row, because nothing crosses a role.
 

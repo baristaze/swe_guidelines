@@ -166,8 +166,9 @@ a check the process could make itself.
 
 **Principle.** The repository root groups code by role: `om/`,
 `infra/`, `integrations/`, `gateway/`, `services/`, `workers/`,
-`apps/`, `clients/`, `deployment/`, `scripts/`, `docs/`. A system that
-starts as one API process has one entry under `services/` and grows
+`apps/`, `clients/`, `deployment/`, `scripts/`, `specs/`, `docs/`. A
+system that starts as one API process has one entry under `services/`
+and grows
 the rest.
 The OM is a single distribution covering every namespace, and
 namespaces are folders inside it.
@@ -399,7 +400,8 @@ the boundary. Managers never format HTTP.
 
 **Source.** Cross-Cutting Conventions, Exceptions.
 
-**Look for.** `om/exceptions.py`; exception classes defined elsewhere;
+**Look for.** `om/src/<root>/om/exceptions.py`; exception classes
+defined elsewhere;
 `raise` sites in managers; the boundary handler; status codes set in
 routers.
 

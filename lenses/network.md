@@ -98,7 +98,8 @@ written to memory that is not also written to a durable source.
 
 **Violation.** A service that remembers a user's progress, a pending
 operation, or a session only in RAM; a process whose restart loses
-information; a warm cache that is the only copy of a computed result.
+information; a warm cache or rollup that is the only copy of a
+computed result and is not rebuilt at boot.
 
 **Severity.** medium
 

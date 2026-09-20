@@ -58,23 +58,25 @@ interface does not declare and callers use them.
 
 ## CON-03 At least two impls, technology named last
 
-**Principle.** An interface has at least two impls, interchangeable at
-wiring time, and every one can be satisfied without the technology
-behind it. Names put the technology last:
-`InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`. A
-manager that fronts an external dependency carries a memory impl of
-its own.
+**Principle.** Every interface can be satisfied without the
+technology behind it, usually as two impls interchangeable at wiring
+time; names put the technology last. A manager over its own storage
+meets it through the memory roots, one fronting an external
+dependency carries a memory impl, a service interface carries the
+in-process impl alone until a split.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** Impl class names under `impl/` folders; the set of impls
 behind each storage, infra, and integration interface; whether a
-manager over an external dependency has a memory twin; the names that
-appear in interface signatures and in callers.
+manager over an external dependency has a memory twin; how a
+single-impl interface is satisfied without its technology; the names
+that appear in interface signatures and in callers.
 
-**Violation.** A storage, infra, or integration interface has a single
-impl; a manager over an external provider with no memory impl, so
-nothing above that namespace runs without an account; an impl name
+**Violation.** An interface with one impl and no way to run it
+without its technology, a storage or infra or integration interface
+above all; a manager over an external provider with no memory impl,
+so nothing above that namespace runs without an account; an impl name
 leads with the technology or omits `Impl`; a technology-specific name
 leaks into an interface or a caller.
 
@@ -472,8 +474,11 @@ re-mint and the row land in one named atomic method.
 retried request creates twice or fails; a create that checks for the
 id and then writes, leaving a window; a create that returns the
 caller's entity instead of the row as stored; a secret-issuing create
-whose rerun returns the stored digest, so a client that lost the first
-response has no secret and no way to get one.
+whose rerun returns the stored digest instead of re-minting in the
+same atomic write, or whose stored outcome carries the secret, so a
+replay hands it out again rather than answering with the row, no
+secret, and a header saying so, and a client that lost the first
+response cannot revoke and reissue it.
 
 **Severity.** medium
 

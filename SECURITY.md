@@ -2,9 +2,12 @@
 
 This repository contains documentation, Markdown lens catalogs, skill
 definitions, and small standard-library Python scripts that run in CI.
-It ships no service, no network listener, and no dependency beyond
-`markdownlint-cli2`, which `make lint` fetches through `npx` at a
-pinned version.
+It ships no service and no network listener, and the scripts import
+nothing past the standard library. Three tools are fetched at pinned
+versions to run the gate, none of them shipped: `pytest`, for the
+scripts' own tests; `markdownlint-cli2`, which `make lint` fetches
+through `npx`; and `@anthropic-ai/claude-code`, which CI installs so
+`make plugin` can validate the manifests.
 
 ## Reporting a vulnerability
 

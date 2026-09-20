@@ -6,6 +6,110 @@ which number.
 
 ## Unreleased
 
+## 0.14.0 (2026-09-19)
+
+A reading of 0.13.0 by a second reviewer, for the places where the
+guideline states one rule and a lens or a scaffold states another.
+Minor: two absolutes lose the exceptions the guideline had already
+granted them, and the work queue's enqueue is settled the way
+"Database Roles" had always described it.
+
+### Changed
+
+- `architecture.md`, "The Work Queue" and "Database Roles": a work
+  item that follows a core write rides that write's outbox row and
+  the relay enqueues it, as "Database Roles" said and nothing else
+  did. The relay dispatches on the row's `kind`: an entity change
+  appends the `Event` and publishes `ENTITY_CHANGED`, a row of kind
+  `work.<kind>` enqueues the item and publishes `WORK_AVAILABLE`.
+  Both take `(org_id, row)` and read the actor off the row, so
+  "Operations Without a Principal" now names three operations of that
+  kind, not two. A work item that follows no core write stays a
+  direct manager create under a context, and the two callers meet one
+  insert under one idempotency key. `arch-scaffold-new`,
+  `arch-scaffold-namespace`, `arch-scaffold-entity`, and
+  `arch-scaffold-worker`, which gains `enqueue_relayed(org_id, row)`,
+  carry it; lenses `STO-20`, `ASY-25`.
+- `architecture.md`, "The Work Queue": every write to a work item
+  after its enqueue signs `updated_by` with `EMPTY_UUID` and never
+  from the context, the one named exception to the copy of "Shape of
+  an Operation". "Naming Entities" and "Identifiers" have said the
+  platform is the actor of a work item's claims and completions since
+  0.1.0, while the path that performs them stamped the enqueuer.
+  `created_by` is who asked for the work, `updated_by` is the
+  machinery that ran it. `arch-scaffold-worker` and lens `OM-13`
+  carry it.
+- `architecture.md`, "Multiple impls per interface": the rule is that
+  every interface can be satisfied without the technology behind it,
+  and two impls are the usual shape of that rule, not the rule
+  itself. Stating "at least two impls" flatly and then granting a
+  manager and a service interface one each left `CON-03` scoping its
+  Violation to storage, infra, and integration interfaces to stay
+  true. `CON-03` now judges the satisfiability.
+- `architecture.md`, "The Operator Context": a manager operation that
+  acts for a principal takes exactly one of `OpContext` and
+  `OperatorContext`. The old absolute, "tenant managers take
+  `OpContext` and nothing else", flagged the guideline's own
+  `TenancyManagerInterface` and every operation of "Operations
+  Without a Principal". A stage below is a parameter only where the
+  stage is what the operation establishes or what it has none of,
+  which is `CTX-21`. Lens `CTX-20`.
+- `architecture.md`, "Composition by decoration": the cache impls are
+  `CacheLocalImpl`, `CacheCloudImpl`, and `CacheMixedImpl`. The
+  snippet led with the technology, which is what `CON-03` flags two
+  hundred lines above it.
+- `architecture.md`, "Realtime at the Edge": the default shape is one
+  stream per tenant and a socket is subscribed to its tenant's stream
+  when it opens, so the `subscribe` frame is what a client sends when
+  the product keeps more than one stream. The section spoke of "the
+  streams its client subscribed" and of one stream per tenant without
+  saying how the two met.
+- `architecture.md`, "Monorepo Folder Structure": the gateway package
+  appears once. The tree showed it both at `gateway/` and inside
+  `services/api/`, two sections after "The Gateway" says it is moved,
+  not copied.
+- `lenses/storage.md`: `STO-04` defers the cross-role join to
+  `STO-17`, which rates the same breach `high`, and drops the
+  "Database Roles" citation it no longer needs; the group intro says
+  the outbox row is relayed at once or by the sweep, the cheaper
+  first step `STO-20` itself allows.
+- `lenses/async.md`: `ASY-24` flags repeated heartbeat failures that
+  leave a worker claiming, which is what "Shape of a Worker" says,
+  not the first failure.
+- `lenses/network.md`: `NET-04` flags a warm cache or rollup that is
+  not rebuilt at boot; "Stateless vs Stateful Services" allows a
+  per-process rollup that is.
+- `lenses/om.md`: `OM-02` grants `org_id` to an entity any reader
+  without a tenant takes, the rule "Defining ORM Classes" states, not
+  only one an operator reads; the guideline's own `OutboxRow` and
+  `Event` carry it for the context-less relay.
+- `lenses/contracts.md`: `CON-21` names the recovery "Shape of an
+  Operation" gives, a replay that answers with the row and no secret
+  and a client that revokes and reissues, in place of a client left
+  with nothing.
+- `lenses/context.md`: `CTX-06` cites the "OpContext" section, where
+  the immutability rule is written, rather than "Stages", where only
+  its last sentence lives.
+- `lenses/delivery.md`: `DEL-07` names `specs/`, which the folder
+  tree and `docs/adopting.md` both require; `DEL-18` looks for
+  `om/src/<root>/om/exceptions.py`, where the tree puts it.
+- `skills/arch-scaffold-namespace`: `<Ns>` is the namespace in the
+  singular, in CamelCase, which is what "Namespaces as Swimlanes" and
+  `skills/_shared/scaffold-conventions.md` require of every interface
+  and getter built from it. No skill said how it was singularized.
+- `docs/adopting.md`: the headings carry no numbers and the one
+  positional cross-reference names its section by title, as
+  `AGENTS.md` requires of the docs; the review-and-fix pass is
+  `arch-scaffold-new`'s, and the scaffolds that add to an existing
+  tree run the repository's gate and leave the review to
+  `arch-review-full`.
+- `AGENTS.md`: a lens cites a section alone or a section and a
+  subsection, which is what `lenses/README.md` and
+  `scripts/check_lenses.py` allow and what 24 lenses do.
+- `SECURITY.md`: the three tools the gate fetches at pinned versions
+  are named, `pytest`, `markdownlint-cli2`, and
+  `@anthropic-ai/claude-code`, in place of a claim of one.
+
 ## 0.13.0 (2026-09-19)
 
 A reading of 0.12.0 by a second reviewer, plus two changes asked for

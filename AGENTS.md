@@ -12,7 +12,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
   does not state.
 - `lenses/<group>.md` holds one group of lenses in the format
   `lenses/README.md` defines. Ids are `<PREFIX>-NN`; every lens cites
-  `Section title, Subsection`, by title and never by number.
+  `Section title` or `Section title, Subsection`, by title and never
+  by number.
 - `skills/arch-review-<group>/SKILL.md` is generated from
   `skills/_template/review.SKILL.md`; edit the template and run
   `make gen-skills`. The other skills are hand-written. The six

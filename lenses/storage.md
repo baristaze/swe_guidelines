@@ -11,10 +11,11 @@ minting to `om`, the `org_id`-first rule, user scoping, and
 tenancy-on-write to `context`, interface imports and the in-memory
 impl to `contracts`, and caches, topics, and the work queue, its table
 and statements included, to `async`. On the outbox and retention the
-line is this: storage judges the outbox row's life (written with the
-core row, relayed at once, marked done, kept for a retention period,
-purged after it) and the retention period of every entity; `async`
-judges the sweep that relays, purges, requeues, and resumes (ASY-19).
+line is this: storage judges the outbox row's life (written with
+the core row, relayed at once or by the sweep, marked done, kept for
+a retention period, purged after it) and the retention period of
+every entity; `async` judges the sweep that relays, purges, requeues,
+and resumes (ASY-19).
 
 ## STO-01 Code never relies on a database relationship
 
@@ -94,7 +95,7 @@ or a transaction handle.
 **Principle.** Joins are avoided but allowed as an implementation
 detail. They never leak into the interface.
 
-**Source.** The Storage Layer, Storage Principles; Database Roles.
+**Source.** The Storage Layer, Storage Principles.
 
 **Look for.** Storage interface return types: entities, read models,
 and tuples of ids and entities, never row tuples or join projections
@@ -103,7 +104,8 @@ than by the business question, and impls that join where a second read
 would do.
 
 **Violation.** An interface method returns a shape whose fields mirror
-a `JOIN` result or a table alias. A join spans two database roles.
+a `JOIN` result or a table alias (a join that spans two database
+roles is STO-17).
 
 **Severity.** medium
 
@@ -461,10 +463,12 @@ relay is idempotent on the row's key (the transactional outbox).
 
 **Source.** The Storage Layer, Database Roles.
 
-**Look for.** The named atomic method that writes the core row and its
-outbox row (the event row or the work item that follows), the relay
-after it, and whether the relay dedupes on the row's key. The row left
-pending, with `done_at` unset, for the sweep that `async` judges.
+**Look for.** The named atomic method that writes the core row and
+its outbox row (the event row or the work item that follows), the
+relay after it, whether it dispatches on the row's `kind` to the
+event append or the enqueue, and whether it dedupes on the row's key.
+The row left pending, with `done_at` unset, for the sweep that
+`async` judges.
 
 **Violation.** A manager writes the core row and then, in a second
 statement, the event row or the work item. A relay that is not

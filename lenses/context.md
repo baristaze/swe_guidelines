@@ -146,7 +146,7 @@ is passed as an explicit argument, never by mutating or copying the
 context mid-request. A transition builds the stage above as a new
 object from the stage below; it is not a copy with changed fields.
 
-**Source.** OpContext, Stages.
+**Source.** OpContext; Stages.
 
 **Look for.** Copies or mutations of the context after the gateway;
 methods that accept a context and hand a different one downstream;
@@ -436,9 +436,8 @@ does not re-validate the underlying credential.
 identity stage, and the operator admission on the tenancy manager
 refines it into an `OperatorContext` when the identity is on the
 operator allowlist, never on a tenant role or a feature flag.
-`OperatorContext` refines `IdentityContext` and has no tenant. Operator
-managers take `OperatorContext` and nothing else; tenant managers take
-`OpContext` and nothing else.
+`OperatorContext` refines `IdentityContext` and has no tenant. An
+operation acting for a principal takes exactly one of the two.
 
 **Source.** OpContext, The Operator Context; OpContext, Stages; The
 Network Layer, The Gateway; Client App Architecture, The Operator
@@ -446,8 +445,10 @@ Console.
 
 **Look for.** The operator gate, the `OperatorContext` type and what it
 subclasses, the operator admission, every manager signature on the
-operator plane and the tenant plane; how the console and its screens
-decide that a person is an operator.
+operator plane and the tenant plane, and for one that takes a stage
+below, whether it is a tenancy transition or an operation with no
+principal (CTX-21); how the console and its screens decide that a
+person is an operator.
 
 **Violation.** An operator route gated by a tenant role or a feature
 flag, or operator pages shown in the portal behind a flag or a role

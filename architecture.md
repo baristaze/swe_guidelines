@@ -485,30 +485,31 @@ lets one `*Interface` back several impls at once.
 
 ### Multiple impls per interface
 
-An interface has at least two impls and they are interchangeable at
-wiring time. Callers never know which one they are holding. Names put
+Every interface can be satisfied without the technology behind it.
+The usual shape of that rule is two impls, interchangeable at wiring
+time, and callers never know which one they are holding. Names put
 the technology last: `InventoryStoragePostgresImpl`,
 `InventoryStorageMemoryImpl`.
 
-The rule behind the pair is that every interface can be satisfied
-without the technology behind it. A storage, an infrastructure
-capability, and an external service each get an in-memory impl. So
-does a manager, which is not the exception it looks like. A manager
-over nothing but its own storage is satisfied without technology
-already, by wiring it over the memory roots, which is what lets the
-whole business layer run in a test. A manager that fronts something a
-caller cannot conjure, a payment processor, a carrier, a model
-provider, gets a memory impl of its own, `PaymentsManagerMemoryImpl`,
-answering the same interface from an in-process dict, so every caller
-above that namespace runs with no account, no network, and no sandbox.
+A storage, an infrastructure capability, and an external service each
+get an in-memory impl. A manager is the case that is already true
+without a second class: a manager over nothing but its own storage
+runs without technology when it is wired over the memory roots, which
+is what lets the whole business layer run in a test. A manager that
+fronts something a caller cannot conjure, a payment processor, a
+carrier, a model provider, gets a memory impl of its own,
+`PaymentsManagerMemoryImpl`, answering the same interface from an
+in-process dict, so every caller above that namespace runs with no
+account, no network, and no sandbox.
 
 A service interface pairs differently, because both of its impls are
 real: the in-process one calls the manager the container wired and
 exists from the first day, since every router calls through it, and
 the remote one is the typed client, written when a process stops
 holding what the callee needs (see [Direction of
-Calls](#direction-of-calls)). It gets no in-memory impl of its own;
-the twin under it is the manager's.
+Calls](#direction-of-calls)). Until that day it carries the one impl,
+and the rule is met already: it gets no in-memory impl of its own,
+because the twin under it is the manager's.
 
 The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
@@ -553,11 +554,11 @@ common case:
 ``` python
 # CacheInterface is declared under [Cache](#cache): every call takes org_id.
 
-class LocalCacheImpl(CacheInterface): ...  # in-process
+class CacheLocalImpl(CacheInterface): ...  # in-process
 
-class CloudCacheImpl(CacheInterface): ...  # hosted key-value store
+class CacheCloudImpl(CacheInterface): ...  # hosted key-value store
 
-class MixedCacheImpl(CacheInterface):
+class CacheMixedImpl(CacheInterface):
     def __init__(self, local: CacheInterface, cloud: CacheInterface, local_ttl: timedelta):
         self._local = local
         self._cloud = cloud
@@ -573,7 +574,7 @@ class MixedCacheImpl(CacheInterface):
         return value
 ```
 
-`MixedCacheImpl` takes two `CacheInterface` values and returns one. The
+`CacheMixedImpl` takes two `CacheInterface` values and returns one. The
 caller holds a `CacheInterface` and cannot tell whether the hit came
 from local memory, the cloud, or a two-level composite. The same
 pattern fits retry, metrics, and tracing wrappers: each is an impl that
@@ -924,8 +925,14 @@ transition: `admit_operator` takes an `IdentityContext` and returns an
 `OperatorContext` when the identity is on the operator allowlist, and
 refuses otherwise (see [Stages](#stages)).
 
-`OperatorContext` has no `org_id`, on purpose. Operator managers take it
-and nothing else; tenant managers take `OpContext` and nothing else. The
+`OperatorContext` has no `org_id`, on purpose. A manager operation
+that acts for a principal takes exactly one of the two and never
+either: an operator operation takes `OperatorContext`, a tenant
+operation takes `OpContext`. A stage below is a parameter only where
+the stage is what the operation establishes or what it has none of:
+the transitions of the tenancy manager, and the operations of
+[Operations Without a Principal](#operations-without-a-principal),
+which take `RequestContext` or a tenant id. The
 type system at every call site, and the construction-site test at the
 few places a stage is built, keep the two planes apart: an operator
 route cannot act inside a tenant, and a tenant route cannot reach the
@@ -1005,7 +1012,9 @@ issues another.
 
 The manager sets `updated_at` and `updated_by` on every
 update and `deleted_at` / `deleted_by` on a soft delete, always by
-copy. The copy on update starts from the stored row: the caller's
+copy. The one row whose `updated_by` is not the context's is the work
+item, whose bookkeeping the platform signs (see [The Work
+Queue](#the-work-queue)). The copy on update starts from the stored row: the caller's
 entity supplies the fields a caller may change, and `PROVENANCE_FIELDS`,
 a constant beside the mixins naming `created_at`, `created_by`,
 `deleted_at`, and `deleted_by`, stay as stored, so no caller rewrites
@@ -1084,12 +1093,12 @@ tenants and a tenant whose members have all left is still swept.
 
 One more kind takes a tenant id in place of a context: the handoff of
 a row the tenant's own write already produced. The outbox relay of
-[Database Roles](#database-roles) takes `(org_id, row)`, and the
-event append it performs takes the same, because the row carries its
-tenant, its actor, and its request id from the write that made it,
-and the relay runs again from the sweep, where no principal exists.
-Both are declared on their interfaces as such and are the only
-operations of their kind.
+[Database Roles](#database-roles) takes `(org_id, row)`, and so does
+each handoff it performs, the event append and the enqueue of a work
+item, because the row carries its tenant, its actor, and its request
+id from the write that made it, and the relay runs again from the
+sweep, where no principal exists. All three are declared on their
+interfaces as such and are the only operations of their kind.
 
 ## The Storage Layer
 
@@ -1193,7 +1202,7 @@ Entities](#naming-entities)), declared once in the `outbox` namespace:
 ``` python
 class OutboxRow(Identifiable, Created):  # written with the core row, in the same statement
     org_id: UUID              # carried on the entity: the relay runs with no context
-    kind: str                 # "<namespace>.<entity>.<created|updated|deleted>"
+    kind: str                 # "<namespace>.<entity>.<created|updated|deleted>", or "work.<kind>"
     target_id: UUID
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     actor_id: UUID            # the principal of the write it announces; EMPTY_UUID for the platform
@@ -1522,8 +1531,12 @@ Rules that make the move safe, each checked by a unit test:
     the `core` role, then relays the outbox row to its destination at
     once; the sweep of [Maintenance Without a
     Scheduler](#maintenance-without-a-scheduler) relays whatever a crash
-    left behind and marks the row done. The relay is idempotent on the
-    row's key, so relaying twice is harmless (the transactional outbox
+    left behind and marks the row done. The destination is the row's
+    `kind`: an entity change becomes an `Event` in `activity` and an
+    `ENTITY_CHANGED` publish, a request for work becomes a row in
+    `queue` and a `WORK_AVAILABLE` publish (see [The Work
+    Queue](#the-work-queue)). The relay is idempotent on the row's
+    key, so relaying twice is harmless (the transactional outbox
     pattern).
 -   The relay has a price, and it is named: after the one commit, the
     event append in `activity`, the publish, and the mark in `core`
@@ -2416,7 +2429,7 @@ Cross-service orchestration therefore lives in the service impl, not
 in the OM, and it composes; it never decides. Placing an order needs
 reserved stock, and reserving stock is an operation of the inventory
 namespace (`InventoryManagerInterface.reserve`) that `inventory-api`
-exposes. `InventoryServiceInterface` has two impls like every
+exposes. `InventoryServiceInterface` has the two impls of a service
 interface: the in-process one calls the manager the container wired
 and exists from the start, since every router calls through it; the
 remote one is the typed client of [Clients Live in One
@@ -2539,8 +2552,13 @@ learns that some id changed and nothing else. That is a decision, and
 it is named: the hint is metadata every member of the tenant may see,
 that a record exists, who touched it, and when. A product where the
 existence of a record is itself restricted keeps one stream per
-visibility scope, with a cursor per stream. An entity's snapshot lives
-in the record for audit and never on the wire.
+visibility scope, with a cursor per stream. The default shape is one
+stream per tenant, and a socket is subscribed to its tenant's stream
+when it opens: there is nothing to choose, and the `subscribe` frame
+is what a client sends when the product keeps more than one, to name
+the visibility scopes it may see. A kind is never a subscription. An
+entity's snapshot lives in the record for audit and never on the
+wire.
 
 Replay from
 storage is the durability mechanism; the socket is a hint that
@@ -2731,12 +2749,26 @@ The queue lives in the `queue` database role (see [Database
 Roles](#database-roles)). Enqueue is a create, the insert that reports
 an existing id without touching it, so a retried enqueue never resets
 a claim, and a duplicate idempotency key is a conflict; the manager's
-copy stamps the actor from the context, the status, and the attempts,
-clears every claim field, and leaves the id and the timestamps as
-constructed, whatever the caller sent. Enqueue then publishes
-`WORK_AVAILABLE` on the topic bus. Payload shapes are fixed per
-`WorkKind` by a payload map, `WORK_PAYLOADS`, as `TOPIC_PAYLOADS`
-fixes them per topic; the row stores the dump.
+copy stamps the actor, the status, and the attempts, clears every
+claim field, and leaves the id and the timestamps as constructed,
+whatever the caller sent. Enqueue then publishes `WORK_AVAILABLE` on
+the topic bus. Payload shapes are fixed per `WorkKind` by a payload
+map, `WORK_PAYLOADS`, as `TOPIC_PAYLOADS` fixes them per topic; the
+row stores the dump.
+
+A work item that follows a core write is not enqueued by the manager
+that made the write. The queue is a database role of its own, so no
+statement reaches both rows: the work item rides the outbox row of
+that write, and the relay enqueues it (see [Database
+Roles](#database-roles)). That enqueue takes `(org_id, row)` and no
+context, beside the event append the relay already performs, and
+stamps the actor from the row (see [Operations Without a
+Principal](#operations-without-a-principal)). A work item that
+follows no core write, one a CLI, a sweep, or an app enqueues on its
+own, is a direct manager create under a context, which stamps the
+actor from it. The two are one insert in storage under one
+idempotency key, so a relay that runs twice and a caller that retries
+meet the same create.
 
 Claim is one storage method that selects the oldest available row in
 the named lane, skipping locked ones (competing consumers), and stamps
@@ -2747,6 +2779,16 @@ counted by a metric. A worker that finds an item is not its to run
 hands it back without spending an attempt. The lane on the row is the
 routing: one table serves a shared pool and any number of dedicated
 lanes.
+
+Every write to the row after the enqueue is the platform's, so it
+signs `updated_by` with `EMPTY_UUID` and never with `ctx.user_id`:
+the claim, the completion, the requeue, the failure, the hand-back,
+and the lease renewal. That is the one named exception to the copy of
+[Shape of an Operation](#shape-of-an-operation), and it is what
+`Trackable` means on this row: `created_by` is the person who asked
+for the work, `updated_by` is the machinery that ran it (see [Naming
+Entities](#naming-entities)). The context the work runs under is the
+attribution of the work, never of the bookkeeping on its row.
 
 Because the row carries `created_by`, the worker rebuilds the
 enqueuer's principal under the `Role` reserved for services when it
@@ -3357,7 +3399,6 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │   │           └── api/
 │   │   │               ├── app.py      # create_app: settings, middleware, routers
 │   │   │               ├── container.py
-│   │   │               ├── gateway/    # auth, errors, ratelimit, observability
 │   │   │               ├── routers/    # one module per namespace
 │   │   │               ├── services/   # service interfaces, one module per namespace
 │   │   │               ├── impl/       # service impls, one module per namespace

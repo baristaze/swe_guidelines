@@ -7,7 +7,7 @@ the ones the guideline names, and a place to record deviations. Nothing in the
 project's `specs/` folder is owned by this repository; the pointer is
 one short file the project writes itself.
 
-## 1. Install the skills
+## Install the skills
 
 Inside Claude Code, once per machine:
 
@@ -31,10 +31,13 @@ Read the version a scaffold names in its output: a copy whose
 changelog lists changes under `Unreleased` is a snapshot between
 releases, not a release.
 
-The review-and-fix pass is part of scaffolding, not an afterthought:
-the scaffold sweeps its four most common misses, runs the full review
-over the tree it wrote, and closes every high finding before it hands
-the tree over.
+The review-and-fix pass is part of bootstrapping a system, not an
+afterthought: `arch-scaffold-new` sweeps the four misses a fresh tree
+makes most, runs the full review over what it wrote, and closes every
+high finding before it hands the tree over. The scaffolds that add to
+a tree that already exists run the repository's own gate instead, so
+the review of a change is `/swe-guidelines:arch-review-full` on the
+change.
 
 The rules a program can check travel as tests, not as a package: a
 fresh scaffold writes them into `om/tests/unit/` (the role map, the
@@ -48,10 +51,10 @@ fails the build holds.
 For a team that pins versions, add the marketplace from a tag:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.13.0
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.14.0
 ```
 
-## 2. Point at the guideline from `specs/`
+## Point at the guideline from `specs/`
 
 Create `specs/architecture.md` in the project with this content and
 nothing else that belongs to the guideline:
@@ -60,8 +63,8 @@ nothing else that belongs to the guideline:
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.13.0/architecture.md>
-(pinned at `v0.13.0`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.14.0/architecture.md>
+(pinned at `v0.14.0`).
 
 The guideline is the source of truth for how this system is shaped.
 `docs/architecture.md` describes what is implemented; `docs/adr/`
@@ -89,7 +92,7 @@ specifications live and names that place in its `README.md`.
 Bump the pinned tag when the project adopts a newer guideline, in a
 commit that also re-runs `arch-review-full` on the main branch.
 
-## 3. Record technology substitutions in one ADR
+## Record technology substitutions in one ADR
 
 The guideline names its technologies on purpose (see its "Technology
 Choices and How to Override Them" section). A project that keeps them
@@ -102,9 +105,9 @@ this record as `docs/adr/0002-technology-choices.md` with the default
 stack filled in; edit it rather than adding a second one. The
 `Substitutions` table in `specs/architecture.md` links it, so a reader
 sees at a glance what differs. A substitution that changes a shape is
-a deviation, and goes in the next step instead.
+a deviation, and goes under "Record deviations as ADRs" instead.
 
-## 4. Record deviations as ADRs
+## Record deviations as ADRs
 
 `/swe-guidelines:arch-deviate STO-02 "the ledger needs one transaction
 per posting"` writes an ADR in `docs/adr/` in the project's own
@@ -112,14 +115,14 @@ numbering, quoting the rule verbatim and naming what the project
 accepts in exchange. Review skills treat a deviation recorded this way
 as a documented exception when its ADR is cited next to the code.
 
-## 5. Optional: vendor the text
+## Optional: vendor the text
 
 A project that wants the guideline text in its tree without the plugin
 (a reader with no Claude Code, an offline build) fetches it at a
 pinned tag into a folder it does not edit:
 
 ```makefile
-GUIDELINE_TAG ?= v0.13.0
+GUIDELINE_TAG ?= v0.14.0
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
@@ -133,7 +136,7 @@ guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guide
 Commit the vendored copy or ignore it; either way, `specs/` stays the
 project's own.
 
-## 6. Optional: project skills without the plugin
+## Optional: project skills without the plugin
 
 Clone this repository next to the project and symlink the skill
 folders into `.claude/skills/`:
