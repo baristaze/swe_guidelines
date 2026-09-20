@@ -206,11 +206,11 @@ permissions.
 ## CTX-09 Tenancy is enforced in storage on read and checked on write
 
 **Principle.** Tenancy is a data boundary. Every storage query filters
-by the tenant, and every write refuses to overwrite a row that belongs
-to another tenant. That statement-level fence, with the test that
-enumerates every exception to it, is the fence; row-level security is
-not a second one here, and a project that wants it records the
-decision.
+by the tenant, and every write refuses to overwrite another tenant's
+row. The predicate in the query is the fence; the cross-tenant cases
+are its evidence (CTX-30). A database policy is the second fence,
+taken and recorded when the role is held by a process the team does
+not write.
 
 **Source.** Separation of Layers; The Storage Layer, Storage Principles;
 A Storage Impl.

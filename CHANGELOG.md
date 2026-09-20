@@ -99,6 +99,22 @@ which number.
 
 ### Changed
 
+- `architecture.md`, "Storage Principles": the row-level security
+  bullet is argued on strength and not on cost alone. The predicate in
+  the query is the fence and the cross-tenant cases are its evidence;
+  a database policy is the second fence, and independence is what a
+  second fence buys, since a policy and a predicate fail in different
+  ways and a policy still constrains a query whose predicate was left
+  out. The decision stays application enforcement, and both costs stay
+  stated: the tenant set per statement on a pooled connection, which
+  is the same discipline in a second place, and a policy that misfires
+  returning nothing instead of failing loudly. The bullet names the
+  trigger at which a system takes the second fence, a role held by a
+  process the team does not write or a commitment requiring
+  enforcement the application cannot vouch for, and a project that
+  wants the database to hold it still records the decision.
+  "Namespace Shape" no longer reads the `org_id` parameter as
+  enforcement in itself. Lens `CTX-09`.
 - `architecture.md`, "Telemetry": "Logs", "Traces and Metrics", and
   "Error Tracking" leave "Cross-Cutting Conventions" for a top-level
   section of their own, placed in front of it, so that what every

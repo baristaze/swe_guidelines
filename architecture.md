@@ -1186,14 +1186,21 @@ surprises.
 -   No user-defined functions in the DB. Every query is written
     explicitly in its storage class.
 -   Tenancy is enforced on every read and checked on every write. A
-    query filters by `org_id`; an upsert refuses to overwrite a row that
-    belongs to another tenant. Row-level security is not a second
-    fence here: on a pooled connection it needs the tenant set per
-    statement, which is the same discipline in a second place, and a
-    policy that misfires returns nothing instead of failing loudly.
-    The fence is `org_id` in every statement and the test that
-    enumerates every exception to it; a project that wants the
-    database to hold a second fence records the decision.
+    query filters by `org_id`; an upsert refuses to overwrite a row
+    that belongs to another tenant. The predicate in the query is the
+    fence, and the cases that present another tenant's identifier
+    (see [Tests](#tests)) are its evidence. Row-level security is a
+    second fence, and independence is what a second fence buys: a
+    database policy and an application predicate fail in different
+    ways, so a policy still constrains a query whose predicate was
+    left out. Enforcement here is in the application, and that choice
+    carries two costs: on a pooled connection the policy needs the
+    tenant set per statement, which is the same discipline in a second
+    place, and a policy that misfires returns nothing instead of
+    failing loudly. A system takes the second fence when the role is
+    held by a process the team does not write, or when a commitment
+    requires enforcement the application cannot vouch for; a project
+    that wants the database to hold it records the decision.
 
 ### Namespace Shape
 
