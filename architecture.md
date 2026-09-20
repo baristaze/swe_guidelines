@@ -134,6 +134,7 @@ said here so nobody discovers it in the middle.
   - [Versions](#versions)
   - [Overriding a Choice](#overriding-a-choice)
 - [Scalability by Design](#scalability-by-design)
+- [Resilience by Design](#resilience-by-design)
 - [What This Document Does Not Cover](#what-this-document-does-not-cover)
 - [Next: An End-to-End Reference Implementation](#next-an-end-to-end-reference-implementation)
 <!-- /toc -->
@@ -4107,6 +4108,57 @@ outage:
 -   A replica count that exhausts the pool of a role puts a pooler in
     front of that role; that is a URL.
 
+## Resilience by Design
+
+Staying up while something downstream is failing is not one section's
+concern. It is what the bounds in this document add up to, each stated
+where the call is made, so that a process under load refuses work
+instead of dying with it. The bounds that make it so:
+
+-   [Every outbound call carries a
+    timeout](#clients-live-in-one-place) from settings, the gateway
+    bounds a request with a deadline, and [every statement carries
+    one](#a-storage-impl), so nothing a process waits on is unbounded.
+-   [Each database role's pool](#database-roles) declares its size and
+    the bound on waiting for a connection, so a saturated role fails a
+    checkout instead of queueing without end.
+-   [A process bounds what it has in flight](#the-gateway) and refuses
+    past the bound at once, which is the process defending itself and
+    not the rate limit beside it.
+-   [A breaker](#composition-by-decoration) cuts off a dependency that
+    is failing, so the timeouts of a dependency that is down do not
+    exhaust the pool they are made from.
+-   [A retry is classified and never stacked](#direction-of-calls):
+    only a failure that can differ is retried, bounded in count and
+    spaced by a delay that grows and carries jitter.
+-   [A worker claims within its capacity](#shape-of-a-worker), stops
+    claiming when its heartbeats fail, and staggers its restart, so a
+    dependency coming back is not met by everything at once.
+-   [A lane on the work queue](#the-work-queue) carries a tenant whose
+    bulk work starves its neighbours, and each [database
+    role](#database-roles) has its own pool, so one load profile
+    cannot take the rest down with it.
+-   [The send buffer per socket](#realtime-at-the-edge) is bounded and
+    drops the oldest frame, and [the channel degrades to
+    polling](#push-first-apps) rather than disappearing.
+-   [A readiness probe](#the-gateway) answers under a deadline of its
+    own: a timeout is a negative answer, never a missing one.
+-   [A guard parks, a bound fails](#long-running-orchestrations), so a
+    dependency that is unavailable right now leaves the work
+    resumable.
+-   [A degraded answer is declared where it is chosen](#cache), so
+    nothing silently substitutes a stale answer for a fresh one.
+-   [One shape exception](#exceptions) presents an open breaker, a
+    refused admission, and a backend that is down alike, so a caller
+    reads one code for "not right now".
+
+Every bound here is a shape: that it exists, that it is named in
+settings, and what happens when it is reached. What each one is set to
+is not, and belongs to the system that runs it, since the numbers
+follow from a service objective and the capacity behind it and a
+number that fit every system would say nothing (see [What This
+Document Does Not Cover](#what-this-document-does-not-cover)).
+
 ## What This Document Does Not Cover
 
 This is a document about the shape of a system: which layer owns what,
@@ -4116,10 +4168,11 @@ team makes per system, once the shape holds and the numbers are known,
 and a rule that fit every system would say nothing: a threat model and
 the rotation of secrets and keys; service objectives, alerting, and
 the on-call posture behind them; the tuning of deadlines and retry
-budgets, and admission under overload; disaster recovery beyond the
-backup and rehearsed restore of each role, and multi-region; tenant
-export and offboarding; load testing; the deprecation of an API
-version; and supply-chain rules such as dependency scanning.
+budgets, and the numbers an admission bound is set to; disaster
+recovery beyond the backup and rehearsed restore of each role, and
+multi-region; tenant export and offboarding; load
+testing; the deprecation of an API version; and supply-chain rules
+such as dependency scanning.
 
 The shape
 is what makes each of them tractable when its time comes: one settings
