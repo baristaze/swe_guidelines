@@ -210,7 +210,9 @@ PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "delete
 EMPTY_UUID = UUID(int=0)
 ```
 
-A concrete entity composes the mixins it needs:
+A concrete entity composes the mixins it needs, and only those a
+manager operation exercises: `Trackable` where an update exists,
+`SoftDeletable` where a delete does:
 
 ``` python
 class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
@@ -306,9 +308,9 @@ past the storage boundary.
 Every id in the system is `uuid_v7`: 128 bits, globally unique, with a
 48-bit millisecond timestamp in front and randomness behind it. Inserts
 into a B-tree index on a v7 id land at the tail of the tree; a list of
-entities by creation time is a range scan on the id column; and anyone
-reading a log line can eyeball when a record was created from the id
-alone. IDs are minted by whoever constructs the entity, always above
+entities by creation time is a range scan on the id column; and the
+ids in a log line sort by creation time, so the order of records reads
+from the ids alone. IDs are minted by whoever constructs the entity, always above
 the storage layer, with `new_id()`; the database never assigns one and
 nothing reads one back after a write.
 
@@ -395,7 +397,8 @@ The system has three layers:
 -   **Storage**: persistence. Lives under the Object Model but is
     clearly separated from it.
 
-Each layer has its own language and its own responsibilities. Upper layers depend on interfaces exposed by lower
+Each layer has its own language and its own responsibilities. Upper
+layers depend on interfaces exposed by lower
 layers, never on their internals. Infrastructure capabilities (see
 [Infrastructure](#infrastructure)) are injected into any of these layers
 and never leak a technology choice across a boundary.
@@ -451,10 +454,11 @@ gate. It keeps state in an in-process dict and exercises real behavior
 without infrastructure. It is a full second implementation: every read,
 write, filter, and tenancy rule the relational impl has, the memory
 impl has too, and the test suite runs both. The suite proves what it
-exercises: the named atomic methods, uniqueness, the compare-and-set,
-and visibility after a write each have a contract case, or a memory
-impl passes by being lenient where the engine is strict, and the pair
-is then two impls of two contracts.
+exercises: the named atomic methods, the compare-and-set, visibility
+after a write, and every unique key the schema declares each have a
+contract case, so the memory impl refuses what the engine refuses, or
+a memory impl passes by being lenient where the engine is strict, and
+the pair is then two impls of two contracts.
 
 Technology-specific impls for storage follow the same interface:
 
@@ -930,7 +934,11 @@ secret is stored as a digest and shown once. Its rerun finds the row,
 re-mints the secret on it in the same named atomic write, and returns
 a fresh `Issued...View` with the same id. The first secret reached no
 one, since the marker never stored an outcome, and the row keeps its
-identity. The manager sets `updated_at` and `updated_by` on every
+identity. The outcome the marker stores for such a create is the view
+with the secret absent, so a replay answers with the row and no
+secret, says so in its header, and the secret exists in one place, as
+a digest; a client that lost the first response revokes the key and
+issues another. The manager sets `updated_at` and `updated_by` on every
 update and `deleted_at` / `deleted_by` on a soft delete, always by
 copy. The copy on update starts from the stored row: the caller's
 entity supplies the fields a caller may change, and `PROVENANCE_FIELDS`,
@@ -1450,7 +1458,9 @@ om/migrations/versions/<role>/YYYYMMDDHHMM_<slug>.py   # run_sql(role, "...up.sq
 
 One revision chain and one version table per role. The minute stamp is
 the file's sort key and the revision id, so two authors never negotiate
-a counter; two migrations that name the same parent are a real
+a counter; two migrations of one role in the same minute collide on the
+stamp, and the later one waits a minute or takes a suffix; two
+migrations that name the same parent are a real
 conflict, and the tool reporting it is the point. A migration file is
 never edited once it has been applied anywhere. The runner refuses a
 file that names a table of another role, and refuses to migrate one
@@ -1918,8 +1928,11 @@ class ServicesInterface(ABC):
 The impl handles routing, request and response serialization, and
 translation between the public types and the OM entities. A router
 translates: it builds the entity or the arguments from the request,
-calls one manager, and projects the result onto a view. When a router
-starts deciding something, the decision moves into a manager.
+calls one operation of its service impl, which calls one manager, and
+projects the result onto a view. The router calls through the service
+interface from the first day, so the split is a wiring change and not
+a rewrite of the routers. When a router starts deciding something, the
+decision moves into a manager.
 
 ### The Gateway
 
@@ -2172,7 +2185,9 @@ picks up the new shapes on the next build; the import path is the
 version. Every outbound call carries a timeout: the transport client
 reads one from settings, one per client, and no call goes out without
 one, so a deadline a team sets later has a place to land and a
-downstream that hangs cannot hold a replica's whole pool.
+downstream that hangs cannot hold a replica's whole pool. The gateway
+bounds a request the same way, with a deadline from settings, and a
+work handler is bounded by its lease; nothing runs unbounded.
 
 ### Direction of Calls
 
@@ -2199,10 +2214,11 @@ in the OM, and it composes; it never decides. Placing an order needs
 reserved stock, and reserving stock is an operation of the inventory
 namespace (`InventoryManagerInterface.reserve`) that `inventory-api`
 exposes. `InventoryServiceInterface` has two impls like every
-interface: the in-process one calls the manager the container wired,
-the remote one is the typed client of [Clients Live in One
-Place](#clients-live-in-one-place), and the swap at wiring time is what
-a namespace split changes. The orders service impl orchestrates:
+interface: the in-process one calls the manager the container wired
+and exists from the start, since every router calls through it; the
+remote one is the typed client of [Clients Live in One
+Place](#clients-live-in-one-place), written at the split; and the swap
+at wiring time is what a namespace split changes. The orders service impl orchestrates:
 
 ``` python
 # platform.services.orders.impl (network layer)
@@ -2482,8 +2498,12 @@ class WorkItem(Identifiable, Trackable):
 ```
 
 The queue lives in the `queue` database role (see [Database
-Roles](#database-roles)). Enqueue
-writes the row and then publishes `WORK_AVAILABLE` on the topic bus;
+Roles](#database-roles)). Enqueue is a
+create, the insert that reports an existing id without touching it, so
+a retried enqueue never resets a claim, and a duplicate idempotency key
+is a conflict; the manager's copy stamps the actor, the timestamps, the
+status, and the attempts, and clears every claim field, whatever the
+caller sent. Enqueue then publishes `WORK_AVAILABLE` on the topic bus;
 claim is one storage method that selects the oldest available row in
 the named lane, skipping locked ones (competing consumers), and stamps
 the claim and the lease in the same statement. Completion marks the row
@@ -2585,8 +2605,10 @@ renewal that fails for any other reason, a timeout, an engine out of
 reach, is retried, and a lease that could not be renewed for half its
 length cancels its own task before the lease expires. That is the
 first fence. The second is
-that completion, release, and renewal check the claim in the statement
-itself (`claimed_by` and `lease_expires_at` on the queue row), so a
+that every claim mints a claim token the claim returns, and completion,
+release, deferral, and renewal carry it and condition on it in the
+statement itself, the token on the queue row and not the worker's
+name, since one worker can hold one item twice across a requeue, so a
 worker whose lease has passed is refused with `Conflict` and hands the
 item back without spending an attempt. Together they guarantee one
 completion per item. They do not guarantee that a stale worker's write
