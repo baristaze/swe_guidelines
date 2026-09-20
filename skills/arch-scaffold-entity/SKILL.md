@@ -28,12 +28,13 @@ manager operation exercises it: `Trackable` needs an update,
 `SoftDeletable` a delete.
 
 A `core`-role entity has a handoff: every write lands the core row
-and an `OutboxRow` (from `om/outbox/`, as `arch-scaffold-new` defines
-it) in one commit, and the manager relays the row at once through
-`OutboxRelayInterface.relay(org_id, row)`, which dispatches on the
-row's `kind`: an entity change appends the `Event` and publishes
-`ENTITY_CHANGED`. Work that follows the write rides a second outbox
-row of kind `work.<kind>` from the same commit, never an `enqueue`
+and its `OutboxRow`s (from `om/outbox/`, as `arch-scaffold-new`
+defines it) in one commit, and the manager relays each at once
+through `OutboxRelayInterface.relay(org_id, row)`, which dispatches
+on the row's `kind`: an entity change appends the `Event` and
+publishes `ENTITY_CHANGED`. Work that follows the write rides a
+second outbox row of kind `work.<kind>` in the same tuple and the
+same commit, never an `enqueue`
 the manager makes itself, because the queue is another role. An
 `activity`-role entity is itself a
 record: it is appended by a named `append_<entity>` method, never
@@ -65,17 +66,17 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 
 | File                                                   | Change                                                                         |
 |--------------------------------------------------------|--------------------------------------------------------------------------------|
-| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and, for a `core`-role entity, `create_<entity>(org_id, <entity>, outbox_row: OutboxRow) -> bool` (False when the id is already written; nothing changes then) and `write_<entity>(org_id, <entity>, outbox_row: OutboxRow)`; for an `activity`-role one, `append_<entity>(org_id, <entity>)` |
-| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_row)`, which inserts the outbox row in the same commit; the create over the base's `_insert`, which does nothing on an existing id and reports it, the outbox row landing only when the insert won; the append over the same `_insert` |
-| `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox row in the outbox memory storage the root wired |
+| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and, for a `core`-role entity, `create_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...]) -> bool` (False when the id is already written; nothing changes then) and `write_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...])`; for an `activity`-role one, `append_<entity>(org_id, <entity>)` |
+| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_rows)`, which inserts the outbox rows in the same commit; the create over the base's `_insert`, which does nothing on an existing id and reports it, the outbox rows landing only when the insert won; the append over the same `_insert` |
+| `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox rows in the outbox memory storage the root wired |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, <entity>.model_dump(mode="json"))` builds, carrying the actor, the request id, and the app from the context, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with the tuple holding the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, <entity>.model_dump(mode="json"))` builds, carrying the actor, the request id, and the app from the context, and a second row of kind `work.<kind>` when work follows the write, then `relay` per row, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
 | `<api>/.../services/<ns>.py` (unless `--no-api`)        | the operations on `<Ns>ServiceInterface`: list, get, create, and, only when the manager has them, update and delete, each taking `ctx` and the request type and returning the view |
 | `<api>/.../impl/<ns>.py` (unless `--no-api`)            | the translation on `<Ns>ServiceImpl`: build the entity from the request, call one manager operation, project the result onto the view; the partial update reads the current entity through the manager's `get_<entity>` and copies the request's set fields onto it before handing the whole entity to `update_<entity>` |
-| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes; each declares the route and its dependencies (the context, and on the post the gateway's `Idempotency-Key`, like every creating route), calls one operation of the service impl, and returns what it returns |
+| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes; each declares the route and its dependencies (the context, and on the post the gateway's `Idempotency-Key`, like every route that writes a durable row), calls one operation of the service impl, and returns what it returns |
 | `<api>/.../routers/__init__.py` (when `<ns>` is new to it) | the router added to `all_routers()`                                       |
 | `apps/<portal>/src/api/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
 

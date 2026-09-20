@@ -361,18 +361,21 @@ namespace.
 
 **Principle.** Fields are tuples and frozen models, never `list` or
 `dict`. A mapping field is `FrozenMapping`, a `Mapping` whose validator
-wraps the dict in a `MappingProxyType`, because a frozen model with a
-bare `Mapping` still holds a mutable dict; its empty default is
+wraps the dict in a `MappingProxyType` and descends, freezing nested
+mappings and turning nested lists into tuples; its empty default is
 validated too, because pydantic does not validate a default.
 
 **Source.** Naming Entities, Immutability.
 
 **Look for.** `list`, `dict`, or bare `Mapping` fields on the chain;
-the validator behind `FrozenMapping`; the default of every mapping
-field and whether `validate_default` is set on it.
+the validator behind `FrozenMapping` and whether it descends into
+nested mappings and lists; the default of every mapping field and
+whether `validate_default` is set on it.
 
 **Violation.** A `list` field appended to through the snapshot; a bare
 `Mapping` field holding the dict pydantic built; a `FrozenMapping`
+that wraps only the outer dict, so a nested dict in a dumped payload
+is still mutated through the snapshot; a `FrozenMapping`
 whose default is a plain dict for want of `validate_default`.
 
 **Severity.** medium

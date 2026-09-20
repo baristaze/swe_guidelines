@@ -6,6 +6,68 @@ which number.
 
 ## Unreleased
 
+## 0.15.0 (2026-09-20)
+
+A reading of 0.14.0 by a second reviewer, for the places where a rule
+holds only until two attempts, two releases, or two rows meet. Minor:
+each rule is sharpened where its own safety argument stopped short.
+
+### Changed
+
+- `architecture.md`, "Shape of an Operation" and "The Gateway": the
+  re-mint of a secret on a rerun is conditional on the attempt the
+  marker holds, like `finish` and the release. It is the one write of
+  a rerun that changes what is stored, so without the guard an
+  attempt whose lease a retry took over could overwrite the digest of
+  the secret that retry had already returned, and refusing its
+  `finish` afterwards restores nothing. Lenses `NET-24`, `NET-25`,
+  `CON-21`; `arch-scaffold-service`, `arch-scaffold-new`, and
+  `skills/_shared/scaffold-conventions.md` carry it.
+- `architecture.md`, "The Gateway": the pending lease runs from the
+  attempt and never from the marker. The attempt token is a
+  `uuid_v7`, so it carries the moment it was minted; measured from
+  the marker's age, a marker handed from one attempt to the next was
+  stale the instant it changed hands, and a third attempt could take
+  it over at once. A released marker holds no attempt and is taken
+  over at once. Lens `NET-24`; `arch-scaffold-service` carries it.
+- `architecture.md`, "Namespace Shape", "A Storage Impl", "Database
+  Roles", and "The Work Queue": a `core`-role write takes
+  `outbox_rows: tuple[OutboxRow, ...]`, not one row. "The Work Queue"
+  has said since 0.14.0 that work following a core write rides a
+  second outbox row of that write, of kind `work.<kind>`, which a
+  one-row signature had nowhere to put. Lenses `STO-16`, `STO-20`,
+  `ASY-25`, `NET-22`; `arch-scaffold-entity`, `arch-scaffold-new`,
+  and `skills/_shared/scaffold-conventions.md` carry it.
+- `architecture.md`, "Translation" and "Migrations": a field added to
+  a stored JSON shape is staged across two releases, read in one and
+  written by the next. `extra="forbid"` makes an unknown key a read
+  error, and a rollout runs two releases at once, so a field written
+  before its readers are out is an unreadable row in the process
+  still serving beside them. Lens `STO-25`.
+- `architecture.md`, "Immutability": the `FrozenMapping` validator
+  descends, wrapping a nested mapping the same way and turning a
+  nested list into a tuple. A `MappingProxyType` freezes only the
+  mapping it wraps, and a payload of dumped JSON, which is what the
+  outbox row and the work item carry, is nested. The field-shape
+  rules move out of the Python tip into the prose beside it, which
+  keeps the tip under the paragraph limit. Lens `OM-17`;
+  `skills/_shared/scaffold-conventions.md` carries it.
+- `architecture.md`, "Stateless vs Stateful Services": a lightly
+  stateful service holds the open socket, the `OpContext` its ticket
+  produced with the expiry that bounds it, the subscriptions, and a
+  bounded buffer; what it never holds is session data or accumulated
+  business state. "Stages" has said since 0.1.0 that a socket holds
+  the context its ticket produced, while the principle here read
+  "never session data or user context". Lens `NET-05`.
+- `architecture.md`, "The Gateway": a creating `POST` is one that
+  writes a durable row, whether it answers `201` with the row or
+  `202` with the id of work now running. Selecting the routes by
+  their status left the `202` submissions of "Push-First Apps" with
+  no idempotency key, though a client that never saw the answer
+  retries them the same way. Lens `NET-09`;
+  `skills/_shared/scaffold-conventions.md`, `arch-scaffold-service`,
+  `arch-scaffold-entity`, and `arch-scaffold-new` carry it.
+
 ## 0.14.0 (2026-09-19)
 
 A reading of 0.13.0 by a second reviewer, for the places where the

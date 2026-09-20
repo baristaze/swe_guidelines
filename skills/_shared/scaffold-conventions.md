@@ -78,7 +78,9 @@ the order the guideline presents them, never by number.
   marker, the socket ticket) is `Created`, its later stamp a field
   named for what happened. Ids come from `new_id()`, timestamps from
   `utcnow()`. Entity fields are tuples and frozen models, never `list`
-  or `dict`; a mapping field is the base module's `FrozenMapping`, its
+  or `dict`; a mapping field is the base module's `FrozenMapping`,
+  whose validator descends, wrapping a nested mapping and turning a
+  nested list into a tuple, its
   empty default `Field(default_factory=dict, validate_default=True)`.
   A copy that carries a dump, the caller's fields above all, is
   rebuilt from a dict, `model_validate({**current.model_dump(),
@@ -134,15 +136,17 @@ the order the guideline presents them, never by number.
   `ctx.require(<permission>)` as the first line of every mutating
   manager operation, before any read, the ones a worker calls
   included (complete, fail, defer, release, extend the lease), as The
-  Business Layer (Shape of an Operation) states. A `core`-role write lands the
-  core row and its `OutboxRow` in one storage method and the manager
-  relays the row at once; the row comes from `outbox_row(ctx, kind,
+  Business Layer (Shape of an Operation) states. A `core`-role write
+  lands the core row and its `OutboxRow`s in one storage method,
+  `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
+  once; a row comes from `outbox_row(ctx, kind,
   target_id, payload)`, so it carries the actor, the request id, and
   the app of the write. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
-  row, re-mints the secret on it in the same named atomic write, and
+  row, re-mints the secret on it in the same named atomic write, its
+  guard the attempt the idempotency marker holds, and
   returns a fresh `Issued...` with the same id.
 - Feeds get a compound index on `(org_id, id)` and no single-column
   index on a column that already leads a compound one.
@@ -159,10 +163,13 @@ the order the guideline presents them, never by number.
   field unchanged and an explicit null cleared where the field is
   optional, and hands the whole entity to the manager; the request
   type states that policy, and no manager sees a partial.
-- Every creating route (every `POST` that answers 201) declares the
-  gateway's `Idempotency-Key` dependency, in every namespace, so a
-  retried create returns the stored response, as The Network Layer
-  (The Gateway) states for a creating `POST`.
+- Every creating route declares the gateway's `Idempotency-Key`
+  dependency, in every namespace, so a retried create returns the
+  stored response, as The Network Layer (The Gateway) states for a
+  creating `POST`. Creating is what the request leaves behind, not
+  what it answers with: a `POST` that writes a durable row declares
+  the dependency whether it answers 201 with the row or 202 with the
+  id of work now running.
 - A workspace member that depends on another declares it under
   `[tool.uv.sources] <root>-om = { workspace = true }` and is listed in
   the root's `[tool.uv.workspace] members`.

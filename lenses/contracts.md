@@ -460,7 +460,8 @@ across requests, or a root member it does not cover.
 **Principle.** A create whose id is already written returns the row as
 stored: the insert reports the existing id, and no check precedes the
 write. A create that issues a secret is the one exception: its rerun
-re-mints the secret on the found row in one atomic write and returns a
+re-mints the secret on the found row in one atomic write, guarded by
+the attempt the idempotency marker holds, and returns a
 fresh `Issued...View`.
 
 **Source.** The Business Layer, Shape of an Operation.
@@ -468,7 +469,8 @@ fresh `Issued...View`.
 **Look for.** Manager `create_*` bodies: what happens when the insert
 reports an existing id; any read that precedes the insert; the return
 value of the storage create; for a secret-issuing create, whether the
-re-mint and the row land in one named atomic method.
+re-mint and the row land in one named atomic method and what its
+statement is conditional on.
 
 **Violation.** A create that raises `Conflict` on its own id, so a
 retried request creates twice or fails; a create that checks for the

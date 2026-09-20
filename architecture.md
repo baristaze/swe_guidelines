@@ -313,14 +313,20 @@ rewrite an entity after it was constructed.
 > object as a plain dict, and `model_validate` hands an instance back
 > untouched. A manager that updates an entity sets `updated_at` and
 > `updated_by` in the same copy, so the caller gets back the copy that
-> was written and nothing else has to remember the timestamp. Fields
-> are tuples and frozen models, never `list` or `dict`. A mapping field is `FrozenMapping`, a `Mapping` annotated
-> with a validator that wraps the dict pydantic builds in a
-> `MappingProxyType` and a serializer that dumps a plain dict, because
-> a frozen model with a bare `Mapping` field still holds a mutable
-> dict. Pydantic does not validate a default, so the empty case is
-> `Field(default_factory=dict, validate_default=True)`, or the default
-> is the one dict that escapes the freeze.
+> was written and nothing else has to remember the timestamp.
+
+Fields are tuples and frozen models, never `list` or `dict`. A mapping
+field is `FrozenMapping`, a `Mapping` annotated with a validator that
+wraps the dict pydantic builds in a `MappingProxyType` and a
+serializer that dumps a plain dict, because a frozen model with a bare
+`Mapping` field still holds a mutable dict. The validator freezes what
+the mapping holds as well, wrapping a nested mapping the same way and
+turning a nested list into a tuple, because a proxy freezes only the
+mapping it wraps and a payload of dumped JSON is nested; the
+serializer rebuilds plain dicts and lists on the way out. Pydantic
+does not validate a default, so the empty case is
+`Field(default_factory=dict, validate_default=True)`, or the default
+is the one dict that escapes the freeze.
 
 The same rule applies to every object built on the OM base chain,
 including the sub-objects of `OpContext` (see [OpContext](#opcontext)),
@@ -962,9 +968,10 @@ manager.
 
 Every write follows the same four steps: authorize, verify, copy,
 write. Reading it once is enough to read every manager in the system.
-The write lands the row and its outbox row in one storage call and
-relays the row at once, or leaves the relay to the sweep, the cheaper
-first step (see [Database Roles](#database-roles)).
+The write lands the row and the outbox rows that announce it in one
+storage call and relays each at once, or leaves the relay to the
+sweep, the cheaper first step (see [Database
+Roles](#database-roles)).
 
 ``` python
 class InventoryManagerImpl(InventoryManagerInterface):
@@ -980,9 +987,10 @@ class InventoryManagerImpl(InventoryManagerInterface):
             **warehouse.model_dump(exclude=PROVENANCE_FIELDS),  # the caller's fields, never who made or deleted it
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
-        row = outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json"))
-        await self._storage.write_warehouse(ctx.org_id, updated, row)  # one atomic method
-        await self._relay.relay(ctx.org_id, row)
+        rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json")),)
+        await self._storage.write_warehouse(ctx.org_id, updated, rows)  # one atomic method
+        for row in rows:  # a write that also starts work carries a second row here
+            await self._relay.relay(ctx.org_id, row)
         return updated
 ```
 
@@ -1004,8 +1012,13 @@ secret is stored as a digest and shown once. Its rerun finds the row,
 re-mints the secret on it in the same named atomic write, and returns
 a fresh `Issued...View` with the same id. The first secret reached no
 one, since the marker never stored an outcome, and the row keeps its
-identity. The outcome the marker stores for such a create is the view
-with the secret absent, so a replay answers with the row and no
+identity. That re-mint is the one write of a rerun that changes what
+is stored, so it carries the guard the marker's own moves carry: the
+statement writes the digest only while the marker still holds the
+attempt making the write, and an attempt whose lease a retry took
+over is refused before it can invalidate the secret that retry
+returned (see [The Gateway](#the-gateway)). The outcome the marker
+stores for such a create is the view with the secret absent, so a replay answers with the row and no
 secret, says so in its header, and the secret exists in one place, as
 a digest; a client that lost the first response revokes the key and
 issues another.
@@ -1123,7 +1136,7 @@ surprises.
     atomic method is an invariant two rows must hold together: a
     work-queue claim (see [The Work Queue](#the-work-queue)), a
     reservation and its stock level, a unique membership, a core row
-    and its outbox row, a ledger that moves money. It is a single named
+    and its outbox rows, a ledger that moves money. It is a single named
     interface method, so the interface stays technology-free and the
     exception is visible by name.
 -   Joins are avoided but allowed as an implementation detail. They
@@ -1182,17 +1195,21 @@ class InventoryStorageInterface(ABC):
     async def read_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...
     @abstractmethod
     async def create_warehouse(
-        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+        self, org_id: UUID, warehouse: Warehouse, outbox_rows: tuple[OutboxRow, ...]
     ) -> bool: ...  # False when the id is already written; nothing changes then
     @abstractmethod
     async def write_warehouse(
-        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+        self, org_id: UUID, warehouse: Warehouse, outbox_rows: tuple[OutboxRow, ...]
     ) -> None: ...
 ```
 
-A write on a `core`-role entity takes the outbox row that announces
-it, so the two land in one statement and no manager remembers a second
-one (see [Database Roles](#database-roles)). A create and an update
+A write on a `core`-role entity takes the outbox rows that announce
+it, so they land in one statement with it and no manager remembers a
+second one (see [Database Roles](#database-roles)). An entity change
+is one row; a write that also starts work passes a second row of kind
+`work.<kind>` in the same tuple, because the queue is a role of its
+own and no statement reaches both (see [The Work
+Queue](#the-work-queue)). A create and an update
 are two methods, because they are two primitives: an insert that
 reports an existing id without touching it, and an upsert.
 
@@ -1408,7 +1425,13 @@ code at all.
 
 A value object stored as JSON is a stored shape, and it evolves under
 the rule that governs every stored shape: it only gains optional,
-defaulted fields. A rename or a removal is a migration that rewrites
+defaulted fields. Because `extra="forbid"` makes an unknown key a read
+error, an addition is staged like every other migration, and for the
+same reason: a rollout runs two releases at once, so the release that
+adds the field reads it and does not write it, and the release after
+it writes it. A field written before its readers are out is an
+unreadable row in the process still serving beside them. A rename or
+a removal is a migration that rewrites
 the column, in the expand-and-contract shape of
 [Migrations](#migrations), before the class changes; `extra="forbid"`
 on the value object then makes a row the migration missed a read
@@ -1445,16 +1468,16 @@ class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
             return [to_model(row, Warehouse) for row in result.scalars()]
 
     async def write_warehouse(
-        self, org_id: UUID, warehouse: Warehouse, outbox_row: OutboxRow
+        self, org_id: UUID, warehouse: Warehouse, outbox_rows: tuple[OutboxRow, ...]
     ) -> None:
-        await self._upsert(Warehouses, org_id, warehouse, outbox_row)
+        await self._upsert(Warehouses, org_id, warehouse, outbox_rows)
 ```
 
 `_upsert` reads the existing row by id, raises if the row belongs to
 another tenant, applies the entity onto the row or inserts a new one,
-inserts the outbox row beside it, and commits the two together. Its
+inserts the outbox rows beside it, and commits them together. Its
 sibling `_insert` is the create primitive: an insert that does nothing
-on an existing id and says so, with the outbox row landing only when
+on an existing id and says so, with the outbox rows landing only when
 the insert won, so a retried create neither overwrites the row nor
 announces it twice, and a key collision surfaces as a report and never
 as a driver error. Every
@@ -1527,8 +1550,8 @@ Rules that make the move safe, each checked by a unit test:
     it names and refuses one that spans roles.
 -   A handoff that follows a core write (an event row, a work item) is
     never a second statement the manager remembers to make. The manager
-    writes the core row and an outbox row in one named atomic method in
-    the `core` role, then relays the outbox row to its destination at
+    writes the core row and its outbox rows in one named atomic method
+    in the `core` role, then relays each to its destination at
     once; the sweep of [Maintenance Without a
     Scheduler](#maintenance-without-a-scheduler) relays whatever a crash
     left behind and marks the row done. The destination is the row's
@@ -1596,7 +1619,9 @@ file that names a table of another role, and refuses to migrate one
 role when the caller meant all of them. A migration is compatible with
 the release before it, because a rollout runs both at once: add and
 backfill in one release, switch the code, drop in a later one (expand
-and contract).
+and contract). A field added to a stored JSON shape is staged the
+same way, one release apart, because the shape forbids what it does
+not know (see [Translation](#translation)).
 
 A check that the ORM metadata and the migrated schema agree, for every
 role, needs a migrated database, so it is a target of its own,
@@ -2047,14 +2072,18 @@ opens a long-lived transport. A WebSocket or a gRPC stream is bound to
 one process by its nature, and that is the one thing a service
 unavoidably holds that the rest of the system does not. The rule is
 narrow: a lightly stateful service keeps the open connection, the
+`OpContext` its ticket produced, with the expiry that bounds it, the
 subscriptions the client asked for on it, and a bounded buffer of
-frames waiting to be written. Session data, preferences, and
+frames waiting to be written. The context is part of the connection,
+minted once and never added to, which is why a socket holds it (see
+[Stages](#stages)). Session data, preferences, and
 accumulated context are recovered on demand from storage or cache
 (see [Realtime at the Edge](#realtime-at-the-edge)).
 
 > **Principle:** Domain services are always stateless. App-specific
-> services hold only the open socket, its subscriptions, and a
-> bounded buffer; never session data or user context.
+> services hold only the open socket, the context that opened it, its
+> subscriptions, and a bounded buffer; never session data or
+> accumulated business state.
 
 ### Service Interfaces and Impls
 
@@ -2140,7 +2169,12 @@ The gateway owns a short list of edge concerns, each done once:
     clients and are not a security boundary.
 -   **Edge idempotency.** A creating `POST` accepts an
     `Idempotency-Key` header, and an `IdempotencyMarker`, declared
-    after this list, owns the retry. `begin` writes it
+    after this list, owns the retry. Creating is what the request
+    leaves behind and not what it answers with: a `POST` that writes a
+    durable row declares the header whether it answers `201` with the
+    row or `202` with the id of work now running (see [Push-First
+    Apps](#push-first-apps)), since both are retried by a client that
+    never saw the answer. `begin` writes it
     pending per tenant and principal under the key, carrying a digest
     of the request, the id the create will use, minted before the
     marker, and an attempt token; `finish` stores the outcome on it,
@@ -2189,15 +2223,21 @@ conditional write whose guard is in the statement itself:
 | finished          | a retry's `begin`                       | the digest matches             | finished; the outcome replayed, the header says so |
 | any               | `begin` under another digest            |                                | unchanged; refused                                |
 
-The pending lease is an option of the idempotency manager: a marker
-older than it was abandoned by a crash between the marker and its
-outcome, or belongs to an attempt still running past its lease, and
-the next retry takes it over. Because a create whose id is already
+The pending lease is an option of the idempotency manager, and it
+runs from the attempt and never from the marker: the attempt token is
+a `uuid_v7`, so an attempt older than the lease was abandoned by a
+crash between the marker and its outcome or is still running past it.
+The next retry takes it over, and the token it stamps starts the
+lease again, so a marker handed on twice is not stale for having been
+minted long ago; a released marker holds no attempt and is taken over
+at once. Because a create whose id is already
 written returns the row as stored, a rerun on the marker's id cannot
-duplicate what an earlier attempt left behind; and because `finish`
-and the release are conditional on the attempt token, the attempt
-that lost the marker can neither finish it with its own outcome nor
-release the marker the retry now holds. It is refused, like a worker
+duplicate what an earlier attempt left behind; and because `finish`,
+the release, and any write of a rerun that changes what is stored
+(the re-mint of a secret, and nothing else) are conditional on the
+attempt token, the attempt that lost the marker can neither finish it
+with its own outcome, nor release the marker the retry now holds, nor
+overwrite the secret the retry issued. It is refused, like a worker
 whose lease has passed, and whatever it wrote is the row the retry
 found.
 
@@ -2758,8 +2798,9 @@ row stores the dump.
 
 A work item that follows a core write is not enqueued by the manager
 that made the write. The queue is a database role of its own, so no
-statement reaches both rows: the work item rides the outbox row of
-that write, and the relay enqueues it (see [Database
+statement reaches both rows: the work item rides a second outbox row
+of that write, of kind `work.<kind>` and landed by the same
+statement, and the relay enqueues it (see [Database
 Roles](#database-roles)). That enqueue takes `(org_id, row)` and no
 context, beside the event append the relay already performs, and
 stamps the actor from the row (see [Operations Without a

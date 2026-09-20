@@ -69,7 +69,7 @@ opened it.
 **Principle.** The one justification for a named atomic method is an
 invariant two rows must hold together: a work-queue claim, a
 reservation and its stock level, a unique membership, a core row and
-its outbox row, a ledger that moves money. It is a single named
+its outbox rows, a ledger that moves money. It is a single named
 interface method, so the interface stays technology-free and the
 exception is visible by name.
 
@@ -364,16 +364,18 @@ applying the entity onto the existing row.
 
 **Principle.** A shared base provides the two write primitives every
 namespace uses. The insert, for creates, does nothing on an existing
-id and reports it, the outbox row landing only when the insert won.
+id and reports it, the outbox rows landing only when the insert won.
 The upsert, for updates, reads the row by id, applies the entity onto
-it, and commits it with the outbox row it was handed.
+it, and commits it with the outbox rows it was handed.
 
 **Source.** The Storage Layer, A Storage Impl; The Business Layer,
 Shape of an Operation.
 
 **Look for.** Create methods that are one call to the shared insert
 and update methods that are one call to the shared upsert, and
-whether a `core`-role write takes the outbox row as a parameter.
+whether a `core`-role write takes the outbox rows as a parameter,
+`outbox_rows: tuple[OutboxRow, ...]`, so a write that also starts
+work can hand over two.
 Hand-rolled insert-or-update logic repeated across impls.
 
 **Violation.** A namespace impl performs its own select-then-insert-
@@ -456,22 +458,24 @@ before the copy is current, or with no rehearsal.
 ## STO-20 A handoff after a core write is a core row plus an outbox row
 
 **Principle.** A handoff after a core write is never a second
-statement the manager remembers to make: the core row and an outbox
-row land in one named atomic method in the `core` role, relayed at
-once or by the sweep on a short interval, the cheaper first step. The
-relay is idempotent on the row's key (the transactional outbox).
+statement: the core row and its outbox rows land in one named atomic
+method in the `core` role, an entity change one row and the work that
+follows a second, relayed at once or by the sweep. The relay is
+idempotent on the row's key (the transactional outbox).
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The named atomic method that writes the core row and
-its outbox row (the event row or the work item that follows), the
-relay after it, whether it dispatches on the row's `kind` to the
+its outbox rows (the event row, and the work item that follows), the
+relay after each, whether it dispatches on the row's `kind` to the
 event append or the enqueue, and whether it dedupes on the row's key.
 The row left pending, with `done_at` unset, for the sweep that
 `async` judges.
 
 **Violation.** A manager writes the core row and then, in a second
-statement, the event row or the work item. A relay that is not
+statement, the event row or the work item; a storage signature that
+takes one outbox row, so a write that also starts work has nowhere to
+put the second. A relay that is not
 idempotent, so relaying a row twice duplicates an event.
 
 **Severity.** high
@@ -573,22 +577,27 @@ The check step or the roundtrip is missing from the integration job.
 ## STO-25 A stored value object only gains optional fields
 
 **Principle.** A value object stored as JSON is a stored shape: it
-only gains optional, defaulted fields. A rename or a removal is a
-migration that rewrites the column, expand and contract, before the
-class changes; `extra="forbid"` then makes a row the migration missed
-a read error, never a silently ignored key.
+only gains optional, defaulted fields, and an addition is staged
+across two releases, read in one and written by the next, because
+`extra="forbid"` makes an unknown key a read error. A rename or a
+removal rewrites the column, expand and contract, before the class
+changes.
 
-**Source.** The Storage Layer, Translation.
+**Source.** The Storage Layer, Translation; The Storage Layer,
+Migrations.
 
 **Look for.** Every value object dumped into a JSON column and the
-history of its fields; for a field renamed or removed, the migration
-that rewrote the stored rows; whether the value object keeps
-`extra="forbid"`.
+history of its fields; for an added field, the release that began
+writing it and whether the release before it could read it; for a
+field renamed or removed, the migration that rewrote the stored rows;
+whether the value object keeps `extra="forbid"`.
 
 **Violation.** A field of a stored value object renamed or removed
 with no migration of the column, so rows written before the change
-fail to read; a value object relaxed to `extra="ignore"` to make old
-rows load; a new field without a default.
+fail to read; a field added and written in one release, so the
+release beside it fails to read the rows it writes; a value object
+relaxed to `extra="ignore"` to make old rows load; a new field
+without a default.
 
 **Severity.** medium
 

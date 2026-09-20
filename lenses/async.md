@@ -529,8 +529,8 @@ complete, defer, requeue, and fail methods and what each does to
 announces twice; a caller-supplied status, attempt count, or claim
 field written as sent, or a timestamp the copy resets; a publish
 before the row exists; a manager that enqueues in a second statement
-after its own core write instead of riding that write's outbox row
-(STO-20); a failed attempt requeued with no delay; an
+after its own core write instead of riding the second outbox row of
+that write (STO-20); a failed attempt requeued with no delay; an
 item that fails its last attempt with no audit entry and no metric
 (the hand-back that spends no attempt is ASY-26).
 

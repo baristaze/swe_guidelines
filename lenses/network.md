@@ -106,19 +106,22 @@ computed result and is not rebuilt at boot.
 ## NET-05 A stateful edge holds only the socket and its subscriptions
 
 **Principle.** A service that holds long-lived connections keeps in
-memory the open socket, the subscriptions the client registered, and a
+memory the open socket, the `OpContext` its ticket produced with the
+expiry that bounds it, the subscriptions the client registered, and a
 bounded buffer of frames waiting to be written, and nothing else.
 
 **Source.** The Network Layer, Stateless vs Stateful Services; Realtime
 at the Edge.
 
 **Look for.** The per-connection state kept by the socket handler;
-whether session data, preferences, or accumulated context live next to
-the socket.
+whether what it holds beside the context is only subscriptions and
+buffered frames; whether session data, preferences, or accumulated
+business state live next to the socket.
 
-**Violation.** Per-socket objects that accumulate user context or
-partial results; state recovered from the socket handler instead of
-from storage after a reconnect.
+**Violation.** Per-socket objects that accumulate business state or
+partial results; a socket that rebuilds its context per frame instead
+of holding the one its ticket produced; state recovered from the
+socket handler instead of from storage after a reconnect.
 
 **Severity.** medium
 
@@ -188,20 +191,24 @@ cache is down; a rate limit relied on as a security boundary.
 
 ## NET-09 Creating requests accept an idempotency key
 
-**Principle.** A creating `POST` accepts an `Idempotency-Key` header;
-the first response is stored per tenant and principal under the key
-and replayed on a retry, using the same storage primitive the queue
-handlers use. Only an outcome a retry cannot change is stored: a
-refusal is replayed, a failure releases the marker.
+**Principle.** A `POST` that writes a durable row, answering `201` or
+`202`, accepts an `Idempotency-Key` header; the first response is
+stored per tenant and principal under the key and replayed on a
+retry, using the same storage primitive the queue handlers use. Only
+an outcome a retry cannot change is stored: a refusal is replayed, a
+failure releases the marker.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
-**Look for.** Creating endpoints and whether they read the header;
-where the stored response is keyed; whether the key is scoped to the
-tenant.
+**Look for.** Every `POST` that leaves a row behind, the `202`
+submissions of a long-running operation included, and whether it
+reads the header; where the stored response is keyed; whether the key
+is scoped to the tenant.
 
 **Violation.** A creating endpoint that produces a second record on a
-retried request; a key stored without the tenant in its scope; a
+retried request; a `202` submission that starts the work twice
+because the header was read only on the routes answering `201`; a key
+stored without the tenant in its scope; a
 `5xx` stored and replayed, so a transient failure is the answer for
 good and the client's only exit is a new key and a second row; a
 bespoke replay mechanism for one route that differs from the shared
@@ -490,7 +497,7 @@ retry. A manager records one event per write through the outbox.
 role; the audit entry, the same shape plus the request id and the app;
 the append method, the cursor row it locks, and where the head `seq`
 the pong carries is read from; the `after_seq` read. (Whether the
-event row rides the core write's outbox row is STO-20.)
+event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; `MAX(seq) + 1` computed in the append and retried on the
@@ -531,24 +538,28 @@ a new request field before the service that accepts it is deployed.
 
 ## NET-24 The pending marker's attempt token fences finish and release
 
-**Principle.** The pending marker carries the request digest, the id
-the create uses, and an attempt token. A marker past the pending lease
-is taken over in one conditional write stamping a new token, and rerun
-with the marker's id. `finish` and the release are conditional on the
-token in the statement; a release clears the attempt and nothing else.
+**Principle.** The pending marker carries the request digest, the
+create's id, and an attempt token. The lease runs from the attempt's
+`uuid_v7` token, never from the marker's age; an attempt past it is
+taken over by a conditional write stamping a new token, and rerun on
+the marker's id. `finish`, the release, and a rerun's re-mint are
+conditional on the token.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
 **Look for.** The marker row and what `begin` writes on it; the
-take-over statement, what it compares, and which markers it takes
+take-over statement, what it compares, which markers it takes
 (abandoned by a crash, or held by an attempt still running past its
-lease); the `WHERE` of `finish` and of the release, and what the
+lease), and what it measures the lease against; the `WHERE` of
+`finish`, of the release, and of a rerun's re-mint, and what the
 release clears (the attempt) and keeps (the digest and the id); what
 the losing attempt's `finish` returns, since it can neither finish the
 marker with its own outcome nor release the one the retry holds.
 
 **Violation.** A marker with no attempt token, so two attempts can
-finish it; a take-over that overwrites the marker without a condition;
+finish it; a lease measured from the marker's age, so a marker handed
+on once is takeable again at once and two attempts run side by side;
+a take-over that overwrites the marker without a condition;
 a `finish` or a release that matches on the key alone; a release that
 deletes the marker or clears its digest or id, so the retry after a
 failure creates a second row; a rerun that mints a new id instead of
@@ -560,24 +571,28 @@ whose lease has passed.
 ## NET-25 A create that issues a secret re-mints it on the rerun
 
 **Principle.** A create that issues a secret stores it as a digest and
-shows it once, so the row as stored is not enough on a rerun: the rerun
-finds the row, re-mints the secret on it in the same named atomic
-write, and returns a fresh `Issued...View` with the same id, since the
-first secret reached no one.
+shows it once, so the row as stored is not enough on a rerun: the
+rerun finds the row, re-mints the secret in the same named atomic
+write, guarded by the attempt the marker holds (NET-24), and returns a
+fresh `Issued...View` with the same id.
 
 **Source.** The Business Layer, Shape of an Operation; The Network
 Layer, The Gateway (Edge idempotency).
 
 **Look for.** The create of every entity that issues a secret (an API
 key, a session token, a socket ticket) and what it does when the
-insert reports an existing id; the atomic method that re-mints. A
+insert reports an existing id; the atomic method that re-mints and
+what its statement is conditional on. A
 rerun is a retry whose marker holds no outcome; a replay, whose
 marker holds one, is NET-31.
 
 **Violation.** A rerun that returns the stored row with no secret, so
 the client holds an id and nothing to present; a rerun that inserts a
 second row under a new id; a re-mint written in a second statement
-after the read; an `Issued...View` whose id differs between the first
+after the read; a re-mint with no guard on the attempt, so an attempt
+whose lease a retry took over overwrites the digest of the secret that
+retry returned and the client holds a credential that no longer
+verifies; an `Issued...View` whose id differs between the first
 run and the rerun.
 
 **Severity.** high
