@@ -16,6 +16,7 @@ keeps each review narrow enough to be thorough.
 | `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations): infra, queues, workers, park vs fail |
 | `network`   | `network.md`    | The Network Layer and Apps (Push-First Apps): topology, gateway, public types, clients, realtime, push-first |
 | `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions |
+| `ops`       | `ops.md`        | Operations, Documentation as Code: operator roles and credentials, the operational skills, dashboards and alarms as code, scale-out, cost, creating and destroying an environment, traffic and stress, the telemetry round trip, READMEs, the knowledge map |
 
 A rule belongs to exactly one group, and to exactly one lens inside it.
 The `Covers` column names each group's home sections; where two groups
@@ -48,11 +49,11 @@ way:
 ```
 
 Ids are the group prefix plus a two-digit number: `OM`, `CON`, `CTX`,
-`STO`, `ASY`, `NET`, `DEL`. Severity is the default weight of a breach:
-`high` is reserved for tenancy, authorization, a credential or a
-secret reaching somewhere it is not held, lost or duplicated work, and
-a cross-role breach, about a quarter of the catalog; `medium` bends a
-shape the guideline relies on; `low` is a convention.
+`STO`, `ASY`, `NET`, `DEL`, `OPS`. Severity is the default weight of a
+breach: `high` is reserved for tenancy, authorization, a credential or
+a secret reaching somewhere it is not held, lost or duplicated work,
+and a cross-role breach, about a quarter of the catalog; `medium`
+bends a shape the guideline relies on; `low` is a convention.
 
 `Principle` is at most 60 words: a rule that needs more is two lenses.
 `Look for` and `Violation` are prose, one to three sentences each, wrapped
