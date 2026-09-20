@@ -6,7 +6,100 @@ which number.
 
 ## Unreleased
 
-## 0.10.0 (2026-09-20)
+## 0.11.0 (2026-09-19)
+
+An outside review of 0.10.0 read the guideline, the lenses, the skills,
+and the repository's own docs against each other and found the places
+where they say different things. Every check passed and the text still
+contradicted itself, so this release is the pass that makes the four
+agree. Minor: rules are sharpened and shapes gain the fields the prose
+already assumed; the sentence that had the router translate is
+reversed, the service impl translates and the router binds, and the
+changelog names it.
+
+### Changed
+
+- `architecture.md`, "Naming Entities" and "Scopes": `OutboxRow`
+  carries the provenance of the write it announces, `actor_id`,
+  `request_id`, and `app`, and still no `created_by`; the provenance
+  helper builds it, the flagship snippet calls the helper, and the
+  relay's `(org_id, row)` signature is explained by fields the row
+  now has. Lens `OM-03`.
+- `architecture.md`, "Shape of a Worker": `WorkItem` declares the
+  `claim_token` the fences condition on; `claimed_by` is the worker's
+  name for an operator and never a fence. On enqueue the manager's
+  copy stamps the actor, the status, and the attempts, clears every
+  claim field, and leaves the id and the timestamps as constructed,
+  as every create does. Lenses `ASY-16`, `ASY-25`, `ASY-26`.
+- `architecture.md`, "Realtime at the Edge": the `Event` carries
+  `actor_id`, as the hint always did; an audit entry is the same
+  shape plus the request id and the app; a socket handler filters by
+  tenant and by the streams its client subscribed, never by kind
+  within a stream, so a subscribed stream arrives whole. Lenses
+  `NET-16`, `NET-22`, `NET-30`.
+- `architecture.md`, "Service Interfaces and Impls": a router declares
+  the route and its dependencies, calls one operation of its service
+  impl, and returns what it returns; the service impl translates, it
+  builds the entity from the request, calls one manager, and projects
+  the result onto a view; a partial update is the impl's translation.
+  This reverses "a router translates". An app-specific service in the
+  single-process start is a router module and its service impl. Lenses
+  `CON-15`, `CON-22`, `CTX-08`, `NET-01`; the entity and service
+  scaffolds wire every route through the service impl.
+- `architecture.md`, "Namespaces as Swimlanes": the naming rule stated
+  once: interfaces and getters after the namespace in the singular,
+  operations after the entity, work handlers `<Kind>HandlerImpl`, the
+  manager impl in `impl/manager.py`; every example follows it. Lenses
+  `OM-14`, `STO-10`, `CON-03`; the scaffold conventions restate it.
+- `architecture.md`, "Local: Docker Compose": `make up` starts every
+  dependency and the `devx` profile in containers and the application
+  on the host through the one start script; the second compose file
+  is never the default. Lens `DEL-04`.
+- `architecture.md`, "Monorepo Folder Structure": the tree shows the
+  `outbox`, `idempotency`, and `work` namespaces and the `services/`
+  and `impl/` folders of the API process; every path in the document
+  is spelled the way the tree spells it; the Makefile comment lists
+  the four shortcuts and `seed`.
+- `architecture.md`, smaller: four index rules, not three (`STO-14`
+  is the first three, `STO-26` the fourth); two write primitives on
+  `PgStorageBase`; observability and a feature flag SDK are the two
+  vendor APIs used directly; the bundle also talks to the object store
+  through a presigned URL and the CSP names that origin and the error
+  tracker's (`DEL-12`, `DEL-30`); the identity provider is an
+  integration with a twin, in the `integrations/` distribution
+  (`CTX-28`); a worker serves `/healthz` beside `/metrics` so every
+  image's healthcheck holds (`DEL-35`); the pure-rules principle names
+  the statement-level spelling it allows (`OM-15`); the sweep's list
+  names the outbox relay and the purge (`ASY-19`); the liveness key
+  lives under `CacheScope.WORKER_LIVENESS`; the closing section no
+  longer disclaims what the text covers.
+- Lenses: `NET-11` drops the constant-time comparison 0.8.0 removed
+  from the text; `CTX-05` admits a transition that asks the tenancy
+  manager, as a claim does; `CON-17` no longer flags the actor the
+  manager sets from the context; `CTX-01` gives a scope to helpers
+  below the managers, never to a manager operation; `NET-27`,
+  `NET-20`, `ASY-19`, `CTX-27` cite the subsections that state their
+  rules. One owner per rule: `CON-08`, `CON-18`, `NET-06`, `ASY-03`,
+  `NET-26`, `NET-03`, `OM-02`, `OM-11`, `NET-13` are narrowed to the
+  side their group's header claims and point at the owner; the async
+  group owns the whole work queue, table and statements included.
+- Skills: the service scaffold writes `deployment/realtime-timeouts.json`
+  when absent, so the test it adds has a file to read before the
+  portal exists; `arch-scaffold-new` writes the one-head-per-role
+  migration test and its marker manager has the release and the
+  take-over; the worker scaffold adds `CacheScope.WORKER_LIVENESS`
+  when absent; every scaffold cites its sections in guideline order;
+  `allowed-tools` names only what a skill runs, and the entity
+  scaffold runs `make infra-up`, `make migrate`, `make migrate-check`,
+  and `make openapi` where the guideline needs them.
+- `scripts/check_skills.py`: every `Bash(make <target>)` in
+  `allowed-tools` is a target the body runs; a bare `Bash` is refused.
+  `scripts/check_leaks.py` refuses an em-dash in `scripts/` and
+  `tests/` too. `README.md` and the CI job name list what `make check`
+  runs; `AGENTS.md` says what the skills checker accepts and refuses;
+  `docs/adopting.md` says the scaffold writes every test it lists.
+
+## 0.10.0 (2026-09-19)
 
 The text closes the gaps an outside review of 0.8.0 found between what
 it promised and what its reference implementation could follow: the
