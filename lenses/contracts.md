@@ -509,3 +509,26 @@ copies onto anything but the entity the manager's `get_*` returned; a
 router that does the translation itself.
 
 **Severity.** medium
+
+## CON-23 A breaker cuts off a failing dependency for a cool-down
+
+**Principle.** A breaker is one more decorating wrapper: it counts
+consecutive failures, refuses at once for a cool-down once they pass a
+bound from settings, and lets one call through to decide whether to
+close. It is infrastructure, like every wrapper here, and a manager
+never holds one.
+
+**Source.** Interfaces, Composition by decoration.
+
+**Look for.** The wrappers around remote clients and infra impls:
+where a breaker is wired into a root, the settings fields behind its
+failure bound and its cool-down, what it raises while open, and
+whether any manager constructs one.
+
+**Violation.** A dependency whose failures are met only by more calls,
+each paying a full timeout, until the pool behind them is gone; a
+breaker built inside a manager rather than wired as an impl; a breaker
+that never lets a call through, so it cannot close; a failure bound or
+a cool-down hard-coded instead of read from settings.
+
+**Severity.** medium

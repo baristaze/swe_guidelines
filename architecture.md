@@ -593,6 +593,17 @@ holds an inner impl and forwards selectively. Decoration is an
 infrastructure pattern; a manager that needs a cache takes one through
 its constructor rather than wrapping its storage.
 
+A breaker is the wrapper that cuts off a dependency that is failing.
+It counts consecutive failures, refuses at once for a cool-down when
+they pass a bound from settings, and then lets one call through to
+decide whether to close again (the circuit breaker pattern). What it
+is for is the cost of the failures themselves: a dependency that is
+down turns every call into a full timeout, and the timeouts alone are
+what exhaust the pool the calls are made from. It is an infrastructure
+wrapper like the others here, holding an inner impl of the same
+interface, and a manager never holds one; the refusal it raises is the
+unavailable shape of [Exceptions](#exceptions).
+
 ### Injectability
 
 > **Principle:** Dependencies are injected through constructors and
