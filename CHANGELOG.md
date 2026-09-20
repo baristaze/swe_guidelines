@@ -85,9 +85,9 @@ less than `OpContext` declares less.
   `OpContext`, and `OperatorContext` are concrete frozen types, each a
   subclass of the stage it refines, each produced by exactly one
   transition on the tenancy manager (`authenticate_login`,
-  `exchange_login`, `authenticate`, `admit_operator`, the claim, the
-  service contexts of a sweep); a function that takes a stage relies
-  on its invariant instead of checking it again, and the stage in a
+  `authenticate`, `admit_operator`, the claim, the service contexts
+  of a sweep); a function that takes a stage relies on its invariant
+  instead of checking it again, and the stage in a
   signature is what fences which operations a holder can call, with
   no bundle of managers per stage. "Scopes": `RequestScope`,
   `TenantScope`, `ActorScope`, `CredentialScope`, and
