@@ -71,6 +71,7 @@ it in the middle.
   - [A Storage Impl](#a-storage-impl)
   - [Cross-Storage Dependencies](#cross-storage-dependencies)
   - [Database Roles](#database-roles)
+  - [The Second Fence](#the-second-fence)
   - [Migrations](#migrations)
 - [Infrastructure](#infrastructure)
   - [Infrastructure Principles](#infrastructure-principles)
@@ -1353,17 +1354,22 @@ surprises.
     that belongs to another tenant. The predicate in the query is the
     fence, and the cases that present another tenant's identifier (see
     [Tests](#tests)) are its evidence.
--   Row-level security is a second fence, and what a second fence buys
-    is independence. A database policy and an application predicate
-    fail in different ways, so a policy still constrains a query whose
-    predicate was left out. Enforcement here is in the application,
-    because that second fence carries two costs of its own. On a pooled
-    connection the policy needs the tenant set per statement, which is
-    the same discipline in a second place. And a policy that misfires returns nothing instead
-    of failing loudly. A system takes the second fence when the role is
-    held by a process the team does not write, or when a commitment
-    requires enforcement the application cannot vouch for. A project
-    that wants the database to hold it records the decision.
+-   Row-level security is the second fence, and it is taken by
+    default. What a second fence buys is independence: a database
+    policy and an application predicate fail in different ways, so a
+    policy still constrains a query whose predicate was left out. The
+    predicate stays the fence the business layer relies on. Nothing in
+    a manager or an impl assumes the policy is there. The policy is
+    what catches the predicate that went missing.
+
+    The second fence carries two costs, and a shape holds each one. The
+    tenant is set once per transaction, at the one funnel every
+    statement already passes, so it is not the same discipline in a
+    second place. And a policy with no tenant set fails closed: a read
+    returns nothing and a write is refused. A read that fails silent is
+    the price we accept, and the negative control is what proves the
+    policy is live. [The Second Fence](#the-second-fence) states the
+    whole shape.
 
 ### Namespace Shape
 
@@ -1692,7 +1698,7 @@ class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
             .where(Warehouses.org_id == org_id, Warehouses.deleted_at.is_(None))
             .order_by(Warehouses.id)
         )
-        async with self._session_for(stmt) as session:
+        async with self._session_for(stmt, org_id) as session:
             result = await session.execute(stmt)
             return [to_model(row, Warehouse) for row in result.scalars()]
 
@@ -1715,6 +1721,11 @@ as a driver error.
 Every query filters by `org_id` and every write checks it, so a bug in
 a caller cannot move a row across tenants. Each operation opens its own
 short session and commits it. No session outlives the call.
+
+`_session_for` is the funnel. It routes the statement to its role, and
+it takes the scope of the call and sets it on the transaction, which is
+what the database policies of [The Second
+Fence](#the-second-fence) read.
 
 Every statement carries a deadline from settings. The database is a
 call out of the process like any other, and the rule that no call goes
@@ -1860,6 +1871,107 @@ a hunt.
 
 > **Principle:** Every table has one role. The role is its schema, its
 > pool, and its migration chain. Nothing crosses a role.
+
+### The Second Fence
+
+> **Principle:** Every table declares its tenancy scope, and the
+> database carries the policy that scope implies. The predicate in the
+> query is still the fence the business layer relies on. The policy is
+> what catches the predicate that went missing.
+
+The **tenancy scope** of a table says whose rows it holds. It is
+declared once per table, in one map beside the [role
+map](#database-roles), and it has four values:
+
+| Scope      | The rows belong to           | The policy                                          |
+|------------|------------------------------|-----------------------------------------------------|
+| `system`   | the platform, not a tenant   | none, and row-level security is not enabled         |
+| `org`      | a tenant                     | on `org_id`                                         |
+| `identity` | an identity, and no tenant   | on the declared identity column                     |
+| `both`     | a tenant, and a person in it | on `org_id`, narrowed by the declared person column |
+
+A `system` table is a global one, composing `GlobalIdentifiableMixin`
+(see [Defining ORM Classes](#defining-orm-classes)). The other three
+carry the column their policy rests on, and the map names it.
+
+A storage impl opens a session in one place, the base class's session
+helper. That funnel is the one place every statement already passes, so
+it is where the tenant is set. It takes the scope of the call, `org_id`
+and an optional `user_id`, and sets three transaction settings before
+the first statement runs:
+
+``` sql
+SELECT set_config('app.org_id', :org_id, true);
+SELECT set_config('app.user_id', :user_id, true);
+SELECT set_config('app.identity_id', :identity_id, true);
+```
+
+The third argument makes each setting local to the transaction, so it
+dies with the transaction and a pooled connection hands nothing to the
+next caller. The funnel calls `set_config` rather than `SET LOCAL`,
+because `SET LOCAL` takes no bind parameters.
+
+`EMPTY_UUID` as the `org_id` is the **system scope**: the transaction
+reads across tenants. The system scope is never a default. It is passed
+explicitly, and the methods that pass it are the ones the exceptions
+test already enumerates (see [Records of
+Decisions](#records-of-decisions)): the cross-tenant sweeps, and the
+lookups by identity that sign a person in.
+
+Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
+the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
+`FORCE ROW LEVEL SECURITY`, so the owner is held by the policy too:
+
+``` sql
+CREATE POLICY warehouses_tenancy ON core.warehouses
+    FOR ALL USING (<expression>) WITH CHECK (<expression>);
+ALTER TABLE core.warehouses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.warehouses FORCE ROW LEVEL SECURITY;
+```
+
+The expression is the scope, and there is one shape per scope:
+
+``` sql
+-- org
+org_id = current_setting('app.org_id', true)::uuid
+  OR current_setting('app.org_id', true) = '<EMPTY_UUID>'
+
+-- both: the org expression above, AND
+(current_setting('app.user_id', true) IS NULL
+  OR current_setting('app.user_id', true) = ''
+  OR <person_col> = current_setting('app.user_id', true)::uuid)
+
+-- identity
+<identity_col> = current_setting('app.identity_id', true)::uuid
+
+-- system: no policy, and row-level security is not enabled
+```
+
+A setting that was never set reads as NULL, and `org_id = NULL::uuid`
+is false. So a transaction that named no tenant fails closed: a read
+returns nothing and a write is refused. The `both` narrowing applies
+when the transaction names a person and is absent when it does not. The
+system-scope clause is the one deliberate bypass, and it is spelled out
+in every policy so that it can be grepped.
+
+The login the application connects with is never a superuser and never
+carries `BYPASSRLS`. A superuser bypasses every policy, so a fence
+behind one is a drawing. The login may own the tables, because `FORCE`
+holds the owner. A test asserts on the live connection that
+`current_user` is neither superuser nor `BYPASSRLS`. That test is what
+makes the fence real instead of a claim.
+
+A policy ships in the [migration](#migrations) that creates its table,
+in the same role. The check that the ORM metadata and the migrated
+schema agree compares tables, columns, and indexes, and it does not see
+policies. So a second integration test reads `pg_class`
+(`relrowsecurity`, `relforcerowsecurity`) and `pg_policies` for every
+table in the scope map, and asserts that the migrated database holds
+what the table declares.
+
+What says the policy is live is the negative control of
+[Tests](#tests), which runs twice: once with the policy in place, and
+once with it off for the table under test.
 
 ### Migrations
 
@@ -4814,9 +4926,12 @@ to the line.
 ADRs. This document describes how we build.
 
 The rules in this document that a program can check are checked. A
-unit test asserts each of these:
+test asserts each of these:
 
 -   Every table has a role, and no key crosses one.
+-   Every table declares its tenancy scope, and the migrated policies
+    match it. This one reads a migrated database, so it runs in the
+    integration job; the rest are unit tests.
 -   Every storage method takes `org_id` first, except the enumerated
     exceptions.
 -   No manager imports a service, and nothing under infra imports the
@@ -4856,7 +4971,10 @@ End-to-end tests build the container over the memory storage root and
 the local infra root, every backend a twin, and drive the app
 in-process. Markers `integration`, `e2e`, and `slow` decide which gate
 runs what. The checks of [Records of
-Decisions](#records-of-decisions) live in the unit suite.
+Decisions](#records-of-decisions) live in the unit suite, except the
+tenancy scope check, which reads a migrated database and runs in the
+integration job beside the schema diff (see [The Second
+Fence](#the-second-fence)).
 
 A run against a deployed environment checks what no in-process test
 can: the gateway in front, the credentials, the network, the worker
@@ -4887,14 +5005,24 @@ tenant was offered (see [Namespace Shape](#namespace-shape)).
 
 The isolation suite is verified against a deliberate breach. What such
 a suite is worth is what it catches. So a tenant predicate is taken
-out of one query, the suite is run and fails, and the predicate is put
-back.
+out of one query, and the suite is run twice before the predicate is
+put back.
 
-That run is recorded: the query it was run against, and what the suite
-reported. A negative control nobody ran is a claim, not evidence.
+Run one keeps the database policy of [The Second
+Fence](#the-second-fence) in place, and the suite stays green. That is
+the second fence holding the query whose predicate went missing.
 
-Which mechanism takes the predicate out is the project's choice. That
-the control is run and recorded is not.
+Run two turns the policy off for that table, and the suite fails. That
+is what proves the suite would see the breach. A control that only
+runs with the policy live proves nothing about the suite.
+
+Both runs are recorded: the query they were run against, and what the
+suite reported each time. A negative control nobody ran is a claim, not
+evidence.
+
+Which mechanism takes the predicate out, and which turns the policy
+off, is the project's choice. That both runs happen and are recorded
+is not.
 
 ## Technology Choices and How to Override Them
 

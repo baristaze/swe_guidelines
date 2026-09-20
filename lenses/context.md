@@ -208,21 +208,23 @@ permissions.
 
 **Principle.** Tenancy is a data boundary. Every storage query filters
 by the tenant, and every write refuses to overwrite another tenant's
-row. The predicate in the query is the fence; the cross-tenant cases
-are its evidence (CTX-30). A database policy is the second fence,
-taken and recorded when the role is held by a process the team does
-not write.
+row. The predicate is the fence the business layer relies on, and the
+cross-tenant cases are its evidence (CTX-30). The database policy is
+the second fence, taken by default, and it catches a predicate that
+went missing (STO-28).
 
 **Source.** Separation of Layers; The Storage Layer, Storage Principles;
-A Storage Impl.
+A Storage Impl; The Second Fence.
 
 **Look for.** Every query in every storage impl, including the
-in-memory one; the shared upsert primitive.
+in-memory one; the shared upsert primitive; whether a manager or an
+impl leans on the policy instead of filtering.
 
 **Violation.** A query without the tenant in its filter; a write that
 updates by id alone; an upsert that silently moves a row from one
 tenant to another; a memory impl that skips the tenant check the
-relational impl performs.
+relational impl performs; a query that drops the predicate because the
+policy is there.
 
 **Severity.** high
 
@@ -700,20 +702,44 @@ write untried; a storage method added with no case of its own.
 ## CTX-31 The isolation suite is verified against a deliberate breach
 
 **Principle.** An isolation suite is worth what it catches, so a tenant
-predicate is taken out of one query, the suite is run and fails, and
-the predicate is put back. What the run showed, the query and what the
-suite reported, is recorded. Which mechanism takes the predicate out
-is the project's choice; that the control is run is not.
+predicate is taken out of one query and the suite is run twice. With
+the policy live it stays green, which is the second fence holding; with
+the policy off for that table it fails, which proves the suite sees the
+breach. Both runs are recorded.
 
-**Source.** Cross-Cutting Conventions, Tests.
+**Source.** Cross-Cutting Conventions, Tests; The Storage Layer, The
+Second Fence.
 
-**Look for.** The record of the last such run against the tenant
+**Look for.** The record of the last pair of runs against the tenant
 isolation cases (CTX-30): which query lost its predicate, what the
-suite reported, and when.
+suite reported with the policy live and with it off, and when.
 
-**Violation.** An isolation suite whose worth rests on its existence,
-with no run that removed a predicate; a run made and not recorded, so
-the next reader takes it on trust; a record showing the suite still
-passed with the predicate gone and nothing done about it.
+**Violation.** A control run only with the policy live, which says
+nothing about the suite; an isolation suite whose worth rests on its
+existence, with no run that removed a predicate; a run made and not
+recorded, so the next reader takes it on trust.
+
+**Severity.** high
+
+## CTX-32 The funnel sets the scope on every transaction
+
+**Principle.** A storage impl opens its session in one funnel, which
+takes `org_id` and an optional `user_id` and sets them as settings that
+die with the transaction. `EMPTY_UUID` as the `org_id` is the system
+scope: never a default, passed explicitly, and enumerated by the
+exceptions test.
+
+**Source.** The Storage Layer, The Second Fence; A Storage Impl.
+
+**Look for.** The session helper every impl opens through: what it
+takes, which settings it sets, and whether each is local to the
+transaction; every call site that passes `EMPTY_UUID`, and the
+exceptions test that lists them.
+
+**Violation.** A session opened without the scope, or a setting that
+outlives its transaction, so a pooled connection hands one caller's
+tenant to the next; a funnel with a default `org_id`, so a forgotten
+argument reads across tenants; a cross-tenant call the exceptions test
+does not know about.
 
 **Severity.** high

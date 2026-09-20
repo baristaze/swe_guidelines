@@ -648,3 +648,28 @@ a size hard-coded in the root; a worker whose capacity is set with no
 regard for the pool behind it.
 
 **Severity.** medium
+
+## STO-28 Every table declares its tenancy scope and the policy matches
+
+**Principle.** Every table declares its tenancy scope (`system`, `org`,
+`identity`, `both`) in one map beside the role map, and the database
+carries the policy that scope implies, with row-level security enabled
+and forced. The login the application connects with is never a
+superuser and never carries `BYPASSRLS`.
+
+**Source.** The Storage Layer, The Second Fence; Database Roles;
+Migrations.
+
+**Look for.** The scope map beside the role map, and a scope for every
+table; the policy in each table's migration, its expression, and the
+`ENABLE` and `FORCE` statements; the test that reads `pg_class` and
+`pg_policies` against the map, and the one that asserts on the live
+connection that `current_user` is neither superuser nor `BYPASSRLS`.
+
+**Violation.** A table missing from the scope map, or a migrated policy
+that does not match the scope declared; a policy without `FORCE ROW
+LEVEL SECURITY`, so the owner the application connects as walks past
+it; a login that is a superuser or carries `BYPASSRLS`, which no test
+on the live connection would catch.
+
+**Severity.** high

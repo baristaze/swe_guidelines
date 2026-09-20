@@ -43,10 +43,13 @@ The rules a program can check travel as tests, not as a package: a
 fresh scaffold writes them into `om/tests/unit/` (the role map, the
 tenant-first storage signatures, the import direction, the interface
 check, the construction-site test for stages, the roots built whole,
-one head per migration chain), and an existing codebase copies them
-from a scaffolded tree, which writes every one of them, or from the
-reference implementation, and adjusts the module names. A rule that
-fails the build holds.
+one head per migration chain) and into `om/tests/integration/` (the
+tenancy scope of every table against the policies the migrations
+carry, and the login that is neither superuser nor `BYPASSRLS`, both
+of which need a migrated database), and an existing codebase copies
+them from a scaffolded tree, which writes every one of them, or from
+the reference implementation, and adjusts the module names. A rule
+that fails the build holds.
 
 For a team that pins versions, add the marketplace from a tag:
 

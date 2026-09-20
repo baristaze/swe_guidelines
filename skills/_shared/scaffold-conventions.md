@@ -100,6 +100,22 @@ the order the guideline presents them, never by number.
   repository's exceptions test, which also names every method that
   takes the request stage. That test reads signatures; what says the
   tenant is used is the cross-tenant case beside each method, below.
+- The predicate in the query is the fence, and the database policy is
+  the second fence, taken by default. Every table declares its tenancy
+  scope (`system`, `org`, `identity`, `both`) in one map beside the
+  role map; the migration that creates the table creates its policy,
+  with `ENABLE` and `FORCE ROW LEVEL SECURITY`; and the Postgres base
+  opens every session through one funnel that takes `org_id` and an
+  optional `user_id` and sets `app.org_id`, `app.user_id`, and
+  `app.identity_id` with `set_config(..., true)`, so the settings die
+  with the transaction. `EMPTY_UUID` as the `org_id` is the system
+  scope, passed explicitly and never a default, by the methods the
+  exceptions test enumerates. Nothing in a manager or an impl assumes
+  the policy is there. The login the application connects with is
+  never a superuser and never carries `BYPASSRLS`, and an integration
+  test asserts that on the live connection, beside the one that reads
+  `pg_class` and `pg_policies` for every table in the scope map, as
+  The Storage Layer (The Second Fence) states.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
