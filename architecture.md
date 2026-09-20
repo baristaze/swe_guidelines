@@ -3676,14 +3676,14 @@ followed, so a reader holding a request id follows the work it set off
 past the boundary it crossed instead of stopping at the edge of the
 queue.
 
-The stage a worker mints for a claim is a new request: the run has its
-own lifetime, its own failures, and its own `request_id`. It names the
-request that caused the work in a second field,
-`caused_by_request_id`, which it reads off the work item (see [The
-Work Queue](#the-work-queue)). The two are different fields and both
-reach every log line. Neither is written over the other, because a
-reader asks two questions of a run: what happened in it, and what
-asked for it.
+The stage a worker runs a claim under is a new request: the run has
+its own lifetime, its own failures, and its own `request_id`, minted
+for the claim. It names the request that caused the work in a second
+field, `caused_by_request_id`, which the claim reads off the work item
+(see [The Work Queue](#the-work-queue)). The two are different fields
+and both reach every log line. Neither is written over the other,
+because a reader asks two questions of a run: what happened in it, and
+what asked for it.
 
 A span raised on the far side of a handoff links to the causing trace
 rather than starting an unrelated one, so the run hangs under the
