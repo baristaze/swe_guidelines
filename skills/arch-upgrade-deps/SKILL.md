@@ -48,8 +48,12 @@ the plan table and edits nothing. Nothing else is asked for.
    The target is the current active LTS release where the technology
    publishes an LTS line, and the newest stable release otherwise;
    never a pre-release, a release candidate, or a line past its end of
-   life. A target that cannot be confirmed from a source is marked
-   unconfirmed and left unchanged.
+   life. A release is adopted once a patch release sits behind it,
+   never the day it ships, as the Versions subsection states: when the
+   newest release has no patch release behind it (a `.0`, or a patch
+   published today), the target is the release before it, and the
+   plan table says so in its Line column. A target that cannot be
+   confirmed from a source is marked unconfirmed and left unchanged.
 5. Print the plan table (see Output). With `--plan`, stop here.
 6. Edit every declaration of each row to its target, keeping the
    declaration's precision: a file that names a minor line
@@ -62,7 +66,12 @@ the plan table and edits nothing. Nothing else is asked for.
    `package.json` that caps a library below its latest stable release,
    then run `uv lock --upgrade` and `uv sync`, and
    `pnpm update --recursive --latest` and `pnpm install`, when the
-   repository has those workspaces.
+   repository has those workspaces. Then hold each library to the same
+   rule as a runtime: a resolved release with no patch release behind
+   it is pinned back to the release before it in the lock (`uv lock
+   --upgrade-package <name>==<release>`, `pnpm update <name>@<release>`),
+   and the report names it under Held back with "no patch behind it"
+   in place of a failing check.
 8. Validate: `make check`; then, when Docker is available,
    `make infra-up`, `make migrate`, `make migrate-check`, and
    `make test-integration`, only against the local compose stack:
@@ -94,7 +103,7 @@ A short report, and nothing else:
 
 **Libraries.** <count of Python and npm packages moved, and every major-version move by name>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none
-**Held back.** <dependency, target, and the failing check>, or none
+**Held back.** <dependency, target, and the failing check, or "no patch behind it">, or none
 **Unconfirmed.** <dependency and why no source confirmed a target>, or none
 **Gates.** `make check` <passed | failed: what>; integration <passed | failed: what | skipped: no Docker>
 ```
