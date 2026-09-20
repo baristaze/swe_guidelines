@@ -92,22 +92,24 @@ others.
 
 **Principle.** Every technology dependency runs as a local container
 through one compose stack, using cloud images or wire-compatible
-stand-ins, each at the version Versions sets. Application processes
-run on the host, started by one script; a second compose file runs
-the application containers too. Four targets cover the stack: `up`,
-`down`, `reset`, and `urls`.
+stand-ins at the version Versions sets. `make up` starts the
+dependencies and the `devx` profile in containers and the application
+on the host through the start script, migrates, seeds, and prints the
+local URLs; `make down` stops both and keeps the data.
 
 **Source.** Deployment, Local: Docker Compose.
 
-**Look for.** `deployment/local/docker-compose.yml` and its full
-variant, and the image tag of each dependency; the start script; the
-`up`, `down`, `reset`, and `urls` targets and what each does; CI jobs
-that reference compose services.
+**Look for.** `deployment/local/docker-compose.yml` and the second
+compose file that runs the application in containers for the case
+that asks for it, and the image tag of each dependency; the start
+script; the `up`, `down`, `reset`, and `urls` targets and what each
+does; CI jobs that reference compose services.
 
 **Violation.** A dependency the application needs that the compose
 stack does not run; application services baked into the default
 compose file so a code change needs an image rebuild; an `up` that
-skips the migration or the seed, or a `reset` that keeps a volume.
+starts the application in containers, or that skips the migration or
+the seed; a `reset` that keeps a volume.
 
 **Severity.** medium
 
@@ -267,8 +269,9 @@ the fast gate and never the integration or migration jobs.
 ## DEL-12 React + TypeScript on Vite, rendered in the client; Python for the CLI
 
 **Principle.** Every browser app is React + TypeScript built with
-Vite into a static bundle that renders in the client only and whose
-only network surfaces are the gateway and the realtime channel. The
+Vite into a static bundle that renders in the client only and talks
+to the gateway, the realtime channel, and the object store through a
+presigned URL it was handed, and nothing else. The
 operator console is a second application on the same stack. The CLI is
 Python.
 
@@ -277,7 +280,8 @@ Python.
 **Look for.** `apps/*/package.json` and build config; a browser app
 introduced on a different framework or toolchain; the build output and
 how it is served; any server runtime deployed alongside the bundle;
-network calls to hosts other than the gateway; the CLI's language.
+network calls to hosts other than the gateway, the channel, and a
+presigned object-store URL; the CLI's language.
 
 **Violation.** A second frontend framework or bundler in the
 workspace; a rendering server or API routes in the app's toolchain or
@@ -429,8 +433,8 @@ absent from them.
 is configured only when an endpoint is set, otherwise the no-op tracer
 runs and the code paths stay identical. Metrics are exposed on
 `/metrics` in Prometheus format through the client library directly.
-Observability is the one capability used through its vendor API
-rather than a platform interface; the backend is a config detail.
+Observability is used through its vendor API, as a feature flag SDK
+is (DEL-22); the backend is a config detail.
 
 **Source.** Cross-Cutting Conventions, Traces and Metrics;
 Infrastructure, Infrastructure Principles.
@@ -658,10 +662,10 @@ status and code.
 
 **Principle.** The bearer lives in memory and in the tab's session
 storage, so a reload survives and a closed tab forgets, never in local
-storage, which every tab and every later visit reads. The distribution
-sends a `Content-Security-Policy` that names the app's own origin and
-the API and nothing else, declared beside the distribution in
-Terraform with the other security headers.
+storage. The distribution sends a `Content-Security-Policy` naming the
+app's origin, the API, the error tracker's origin when one is
+configured, and the object store's origin when uploads are presigned,
+and nothing else, set beside it in Terraform.
 
 **Source.** Client App Architecture, API Access.
 
@@ -669,11 +673,12 @@ Terraform with the other security headers.
 and write the bearer; every `localStorage` reference in the app; the
 response headers policy of the static-site module in Terraform.
 
-**Violation.** A token written to `localStorage`; a bearer kept only
-in memory, so every reload signs out; a distribution with no
-`Content-Security-Policy`; a policy that allows a third-party script
-origin; the header set in `index.html` as a meta tag instead of in
-Terraform beside the distribution.
+**Violation.** A token written to `localStorage`, which every tab and
+every later visit reads; a bearer kept only in memory, so every reload
+signs out; a distribution with no `Content-Security-Policy`; a policy
+that allows a script origin outside that list; the header set in
+`index.html` as a meta tag instead of in Terraform beside the
+distribution.
 
 **Severity.** high
 
@@ -776,19 +781,20 @@ credentials the `README.md` does not show.
 status; every queue, cache, and rate limit has a counter with an
 outcome label. Label values are bounded: a template, a status, an
 outcome, never an id. Every process serves `/metrics`, workers
-included; a worker has no API, so it serves the endpoint alone on a
-small port of its own.
+included; a worker has no API, so it serves `/metrics` and `/healthz`
+alone on its own small port.
 
 **Source.** Cross-Cutting Conventions, Traces and Metrics.
 
 **Look for.** The request counter and its labels; the counters
 declared next to each queue, cache, and rate limit; the labels each
 metric takes and the set of values each can hold; each worker's
-metrics port.
+small port and the `/metrics` and `/healthz` it serves there.
 
 **Violation.** A request counter missing the route template or status
 label; a queue, cache, or rate limit with no outcome counter; an id as
-a label value; a worker that records metrics nothing can read.
+a label value; a worker that records metrics nothing can read, or
+whose image has no `/healthz` to check.
 
 **Severity.** low
 

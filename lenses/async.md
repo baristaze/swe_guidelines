@@ -9,12 +9,12 @@ infrastructure capabilities managers lean on, how work is handed off
 and picked up, how a worker behaves over its life, and what a
 long-running record does when it cannot continue. It owns the sweep's
 duties (requeue expired leases, resume parked records, relay what a
-crash left in the outbox, purge soft-deleted rows past retention). It
-leaves the `org_id` and `EMPTY_UUID` keying rules and the provenance
-of a worker's context to `context`, database roles, the retention
-periods, the life of an outbox row, and the storage side of the work
-queue to `storage`, and the realtime edge with its wait-versus-notify
-patterns to `network`.
+crash left in the outbox, purge done outbox rows and soft-deleted rows
+past retention) and the whole work queue, its table and statements
+included. It leaves the `org_id` and `EMPTY_UUID` keying rules and the
+provenance of a worker's context to `context`, database roles, the
+retention periods, and the life of an outbox row to `storage`, and the
+realtime edge with its wait-versus-notify patterns to `network`.
 
 ## ASY-01 Infrastructure is never reached through ambient state
 
@@ -55,20 +55,20 @@ object.
 
 **Severity.** medium
 
-## ASY-03 Every impl describes itself and boot logs the choice
+## ASY-03 Every impl describes itself
 
-**Principle.** Every infra impl can `describe()` itself in one line, and
-the container logs the chosen backends once at start, so a boot log
-names exactly what the process is talking to.
+**Principle.** Every infra impl can `describe()` itself in one line
+naming the backend it talks to, which is what the boot inventory line
+(DEL-06) is built from.
 
 **Source.** Infrastructure, Infrastructure Principles.
 
-**Look for.** A `describe()` on each impl; the one-line inventory the
-container logs after `start()`.
+**Look for.** A `describe()` on each impl and what it names; whether
+the inventory line the container logs reads it.
 
-**Violation.** An impl with no description; a boot with no one-line
-inventory naming each backend it chose, so the log cannot say whether
-the process is on the local or the cloud impl.
+**Violation.** An impl with no description, or one that names the
+interface instead of the backend behind it, so the inventory line
+cannot say whether the process is on the local or the cloud impl.
 
 **Severity.** low
 
@@ -317,8 +317,9 @@ that writes to storage or retries deliveries.
 
 **Principle.** A work item names its kind and target, carries a unique
 idempotency key, a `lane` routing string, a status, an `available_at`,
-its claim (`claimed_by`, `lease_expires_at`), and its attempts; payload
-shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
+its claim (`claimed_by` for an operator, `claim_token` the fence,
+`lease_expires_at`), and its attempts; payload shapes are fixed per
+kind by `WORK_PAYLOADS`. The lane is the routing:
 one table serves a shared pool and any dedicated lane.
 
 **Source.** Worker Roles, The Work Queue.
@@ -326,10 +327,10 @@ one table serves a shared pool and any dedicated lane.
 **Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
 table and the index on `idempotency_key`; how routing is expressed.
 
-**Violation.** A row with no lease or no attempt count; a payload with
-no shape fixed for its kind; no unique index on the idempotency key; a
-second table or topic invented for routing when the `lane` string
-would do.
+**Violation.** A row with no lease, no claim token, or no attempt
+count; a payload with no shape fixed for its kind; no unique index on
+the idempotency key; a second table or topic invented for routing when
+the `lane` string would do.
 
 **Severity.** medium
 
@@ -379,11 +380,12 @@ deploy.
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
 leader, no lock, and no scheduler: requeue expired leases, resume
-parked records, relay the outbox rows a crash left behind, purge
-soft-deleted rows past retention. Resumes are staggered so every parked
-record does not wake at once.
+parked records, relay what a crash left in the outbox, purge done
+outbox and soft-deleted rows past retention. Resumes are staggered so
+every parked record does not wake at once.
 
-**Source.** Worker Roles, Maintenance Without a Scheduler.
+**Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
+Layer, Database Roles.
 
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
@@ -392,8 +394,9 @@ the sweep relays the outbox and purges.
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
-so a crash between the core write and its handoff is never repaired;
-every parked record resumed in the same instant.
+so a crash between the core write and its handoff is never repaired,
+or with no purge, so done rows outlive their retention; every parked
+record resumed in the same instant.
 
 **Severity.** medium
 
@@ -493,7 +496,7 @@ back on every beat.
 
 **Look for.** What the record writes compare against; the handler's
 dedupe on the item's key; how an external call is keyed; the
-heartbeat key and the failure path.
+heartbeat key under the `WORKER_LIVENESS` scope and the failure path.
 
 **Violation.** A record write that treats the lease alone as
 exclusive, with no `version` and no idempotent handler behind it; an
@@ -506,9 +509,9 @@ failure that either crashes the worker or lets it keep claiming.
 ## ASY-25 Enqueue is a create; completion spends or keeps an attempt
 
 **Principle.** Enqueue is a create: the insert that reports an existing
-id without touching it, so a retried enqueue never resets a claim, and
-a duplicate idempotency key is a conflict; the manager's copy stamps
-actor, timestamps, status, and attempts and clears every claim field,
+id, so a retried enqueue never resets a claim, and a duplicate key is
+a conflict; the manager's copy stamps actor, status, and attempts,
+clears every claim field, and leaves the timestamps as constructed,
 whatever the caller sent. Enqueue then publishes the wake-up; claim
 stamps claim and lease together.
 
@@ -521,9 +524,10 @@ claim, complete, defer, requeue, and fail methods and what each does to
 
 **Violation.** An enqueue that upserts, so a retry resets a claim or
 announces twice; a caller-supplied status, attempt count, or claim
-field written as sent; a publish before the row exists; a failed
-attempt requeued with no delay; an item that fails its last attempt
-with no audit entry and no metric; a hand-back that spends an attempt.
+field written as sent, or a timestamp the copy resets; a publish
+before the row exists; a failed attempt requeued with no delay; an item
+that fails its last attempt with no audit entry and no metric; a
+hand-back that spends an attempt.
 
 **Severity.** high
 
@@ -538,7 +542,9 @@ attempt.
 
 **Source.** Worker Roles, Shape of a Worker.
 
-**Look for.** What the claim returns beside the item; the `WHERE` of
+**Look for.** The `claim_token` the claim returns beside the item and
+stamps on the row, `claimed_by` staying the worker's name for an
+operator; the `WHERE` of
 completion, release, deferral, and renewal in both storage impls; what
 the loop does with a `Conflict` from any of them.
 

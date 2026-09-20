@@ -40,16 +40,15 @@ tenant, which carries `org_id` so the reader knows whose it is.
 Defining ORM Classes.
 
 **Look for.** Fields added to an entity that exist only to satisfy a
-response shape or a column; entity types imported into the network
-layer as the response body itself; storage-only concerns leaking into
-entity classes; whether `org_id` appears on an entity and, when it
-does, whether that entity is read by an operator across tenants.
+response shape or a column (what crosses the wire is NET-13);
+storage-only concerns leaking into entity classes; whether `org_id`
+appears on an entity and, when it does, whether that entity is read by
+an operator across tenants.
 
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying a column-oriented attribute such as a raw
-foreign key that no manager reads; a route returning an OM entity
-directly instead of a view; `org_id` on an entity that only tenant
-operations read; an entity read across every tenant without it.
+foreign key that no manager reads; `org_id` on an entity that only
+tenant operations read; an entity read across every tenant without it.
 
 **Severity.** medium
 
@@ -69,14 +68,18 @@ fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
 declares; whether entities redeclare a mixin's fields locally; whether
 `new_id()` and `utcnow()` are the helpers used to construct entities;
 what `PROVENANCE_FIELDS` names (`created_at`, `created_by`,
-`deleted_at`, `deleted_by`).
+`deleted_at`, `deleted_by`); the fields of `OutboxRow`, which carries
+the provenance of the write it announces (`actor_id`, `request_id`,
+`app`) and no `created_by`, since no person stands behind the row.
 
 **Violation.** A field added to one of the listed mixins instead of a
 new mixin for the new trait; an entity declaring its own `created_at`
 next to `Trackable`; a root class that holds fields; a local
 `datetime.now()` or id factory used in place of the base helpers; a
 `PROVENANCE_FIELDS` declared per namespace or naming other fields than
-the four.
+the four; an `OutboxRow` with no `actor_id`, `request_id`, or `app`,
+so the relay has no provenance to stamp on the event, or with a
+`created_by`.
 
 **Severity.** medium
 
@@ -223,21 +226,18 @@ already is.
 
 **Principle.** Immutability applies to every object built on the OM
 base chain, including value objects, read models, and context
-sub-objects, and to the views the network layer returns. The one
-deliberate exception is the ORM row classes, which never leave the
-storage impl.
+sub-objects. The one deliberate exception is the ORM row classes,
+which never leave the storage impl. The views the network layer
+returns are NET-13.
 
-**Source.** Naming Entities, Immutability; The Network Layer, Public
-Types.
+**Source.** Naming Entities, Immutability.
 
 **Look for.** Value objects, read models, and context types that
-subclass the root; the `View` base in the service's wire types and its
-frozen configuration; any class on the chain that overrides the frozen
+subclass the root; any class on the chain that overrides the frozen
 setting.
 
 **Violation.** A value object, read model, or context type declared
-mutable; a `View` base without the frozen configuration; an entity
-constructed by wrapping a live row.
+mutable; an entity constructed by wrapping a live row.
 
 **Severity.** medium
 
@@ -292,14 +292,18 @@ swimlanes of the product, and each has the same internal shape:
 
 **Look for.** The folder layout of each namespace; where the manager
 interface is defined and whether the package root re-exports it; where
-entity classes and manager impls live.
+entity classes and manager impls live (`impl/manager.py`); the names of
+the manager and storage interfaces (the namespace in the singular,
+`OrderManagerInterface`, `OrderStorageInterface`) and of the operations
+(the entity, `write_warehouse`).
 
 **Violation.** A namespace whose interface can only be imported from a
 deep path; entity classes next to the manager impl; an entity in
 `types/` that no manager accepts or returns (a value object or a read
 model is exempt, since it travels inside an entity or is returned by a
 manager); a product swimlane living as a sub-folder of another
-namespace's `types/`.
+namespace's `types/`; a manager or storage interface named after an
+entity where the namespace has one aggregate.
 
 **Severity.** medium
 
@@ -308,8 +312,8 @@ namespace's `types/`.
 **Principle.** The pure part of a namespace's logic (pricing, window
 arithmetic, eligibility, aggregation rules) lives in a module of plain
 functions that read no storage, consult no clock, and open no
-settings. Manager impls and every storage impl call them; nothing
-re-implements them.
+settings. Storage impls and manager impls call them; a rule the engine
+must evaluate inside a statement is spelled there once more (OM-18).
 
 **Source.** Namespaces as Swimlanes, Pure Rules.
 

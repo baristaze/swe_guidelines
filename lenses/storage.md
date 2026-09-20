@@ -9,12 +9,12 @@ entities translate, how tables are grouped into database roles, and how
 the schema moves over time. It leaves entity shapes and identifier
 minting to `om`, the `org_id`-first rule, user scoping, and
 tenancy-on-write to `context`, interface imports and the in-memory
-impl to `contracts`, and caches, topics, and queues to `async`. On the
-outbox and retention the line is this: storage judges the outbox row's
-life (written with the core row, relayed at once, marked done, kept for
-a retention period, purged after it) and the retention period of every
-entity; `async` judges the sweep that relays, purges, requeues, and
-resumes (ASY-19).
+impl to `contracts`, and caches, topics, and the work queue, its table
+and statements included, to `async`. On the outbox and retention the
+line is this: storage judges the outbox row's life (written with the
+core row, relayed at once, marked done, kept for a retention period,
+purged after it) and the retention period of every entity; `async`
+judges the sweep that relays, purges, requeues, and resumes (ASY-19).
 
 ## STO-01 Code never relies on a database relationship
 
@@ -208,7 +208,7 @@ table class lives outside `storage/tables/`.
 ## STO-10 One storage root, two impls, every dependency wired there
 
 **Principle.** Storage impls are assembled behind one root that
-implements `StorageInterface`: one getter per entity storage plus
+implements `StorageInterface`: one getter per namespace storage plus
 `healthcheck` and `close`. Two roots exist from day one,
 `StoragePostgresImpl` and `StorageMemoryImpl`, named like every other
 impl; each constructs every namespace impl and injects cross-storage
@@ -216,8 +216,9 @@ dependencies through constructors, the interface untouched.
 
 **Source.** The Storage Layer, Storage Root; Cross-Storage Dependencies.
 
-**Look for.** `StorageInterface` with `get_<entity>_storage()` per
-storage, `healthcheck()`, and `close()`. Higher layers receiving a
+**Look for.** `StorageInterface` with `get_<ns>_storage()` per
+namespace storage (one more per aggregate where a namespace has
+several), `healthcheck()`, and `close()`. Higher layers receiving a
 `StorageInterface` rather than constructing namespace impls
 themselves. Storage impl constructors that take sibling storage
 interfaces, with the root passing them in the right order, and a
@@ -302,7 +303,7 @@ the domain columns in the initial schema.
 
 **Severity.** low
 
-## STO-14 The three index rules
+## STO-14 The first three index rules
 
 **Principle.** A feed gets a compound index on `(org_id, id)`, which
 sorts by creation time because ids are v7; a descending index is never
@@ -319,7 +320,8 @@ creation) carrying `Index(org_id, id)` and queries ordering by `id`.
 Any `DESC` index on an id column, or a single-column index on `org_id`
 next to a compound index that starts with `org_id`. Indexes on columns
 no query filters on, or missing on columns every list query filters
-on, and a compound index no real query asks for.
+on, and a compound index no real query asks for; the fourth rule, the
+partial unique index on a soft-deletable table, is STO-26.
 
 **Violation.** A feed orders by `created_at` with its own index instead
 of by `id`. Both `ix_<table>_org_id` and `ix_<table>_org_id_id` exist

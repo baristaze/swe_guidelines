@@ -60,8 +60,8 @@ interface does not declare and callers use them.
 
 **Principle.** An interface has at least two impls, a technology impl
 and an in-memory impl, and they are interchangeable at wiring time.
-Names put the technology last: `WarehouseStoragePostgresImpl`,
-`WarehouseStorageMemoryImpl`.
+Names put the technology last: `InventoryStoragePostgresImpl`,
+`InventoryStorageMemoryImpl`.
 
 **Source.** Interfaces, Multiple impls per interface.
 
@@ -165,10 +165,10 @@ options object; an options object is mutable or is rebuilt per call.
 above them: extract the shared operation into the lower namespace, or
 pass a narrow callable for the one operation the upper manager needs.
 Reaching into another impl's private attributes after construction is
-not wiring. The context module carries ids and facts, never entities,
-and imports nothing above the base module.
+not wiring.
 
-**Source.** Interfaces, Injectability; OpContext.
+**Source.** Interfaces, Injectability; The Business Layer, Cross-Manager
+Dependencies.
 
 **Look for.** The business root's wiring code; assignments to another
 object's underscore-prefixed attributes; constructor parameters with a
@@ -176,9 +176,7 @@ object's underscore-prefixed attributes; constructor parameters with a
 
 **Violation.** The root sets `manager._peer = other` after construction;
 a dependency is typed optional only to dodge an import cycle; two
-namespaces import each other's impls; the context module imports an
-entity type, under `TYPE_CHECKING` or otherwise, to embed a user or an
-organization.
+namespaces import each other's impls.
 
 **Severity.** medium
 
@@ -307,27 +305,29 @@ and a split rewrites its callers.
 
 **Severity.** medium
 
-## CON-15 A router translates through its service impl, it does not decide
+## CON-15 A router binds the route; its service impl translates
 
-**Principle.** A router builds the entity or the arguments from the
-request, calls one operation of its service impl, which calls one
-manager, and projects the result onto a view. The router calls through
-the service interface from the first day, so a split is a wiring
-change. When a router starts deciding something, the decision moves
-into a manager.
+**Principle.** A router declares the route and its dependencies, calls
+one operation of its service impl with the context and the request
+type, and returns what the impl returns; it never translates and never
+calls a manager. The impl builds the entity or the arguments from the
+request, calls one manager, and projects the result onto a view.
 
 **Source.** The Network Layer, Service Interfaces and Impls.
 
-**Look for.** Router function bodies: any `if`, `for`, or arithmetic
-other than building request arguments and the view; the callee of every
-router, which is one operation of the service impl; direct manager or
-storage access from a router; domain exceptions raised inside a router.
+**Look for.** Router function bodies: anything beyond the route
+declaration (path, verb, status, the dependencies that mint the
+context and the idempotency key) and the one call to the service impl;
+the impl behind each route and the one manager it calls; direct
+manager or storage access from a router; domain exceptions raised
+inside a router.
 
-**Violation.** A router validates a business rule, computes a value, or
-branches on entity state; a router calls a manager directly, so a split
-rewrites it; a router composes several service operations to enforce a
-rule the OM owns; a router calls storage directly; a router raises a
-domain exception on its own.
+**Violation.** A router that builds the entity, computes a value, or
+branches on entity state; a router that calls a manager directly, so a
+split rewrites it; an impl that composes several operations to enforce
+a rule the OM owns, since a decision moves into a manager; a router
+that calls storage directly; a router that raises a domain exception
+on its own.
 
 **Severity.** medium
 
@@ -356,9 +356,9 @@ boots a different assembly than production.
 
 **Principle.** Every write follows four steps: authorize, verify,
 copy, write. The caller constructs the entity whole (`id=new_id()`,
-timestamps, principals) and hands it to `create_*`; the manager's copy
-sets only what is its to decide and leaves the id and timestamps as
-constructed. Updates and soft deletes are stamped by the manager's
+timestamps) and hands it to `create_*`; the manager's copy sets the
+actor from the context and its own fields, and leaves the id and
+timestamps as constructed. Updates and deletes are stamped by the
 copy, and a mutating method returns the entity it wrote.
 
 **Source.** The Business Layer, Shape of an Operation.
@@ -371,9 +371,10 @@ return statement; the call site that constructs the entity handed to
 `create_*`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; a manager fills in `id`, a
-timestamp, or a principal that the originating caller left unset, or
-resets a timestamp the caller constructed; `updated_at`, `updated_by`,
+through the manager's own `get_*`; a manager fills in `id` or a
+timestamp that the originating caller left unset, or resets a
+timestamp the caller constructed; a create that writes the actor the
+caller sent instead of the context's; `updated_at`, `updated_by`,
 or `deleted_at` is set by the caller or by storage instead of by the
 manager; a mutating method returns `None` or a different snapshot than
 the one written.
@@ -393,13 +394,13 @@ established, its stage is in the signature.
 
 **Look for.** Constructor parameters that name a request, a user, or a
 tenant; context or scope members that name a manager, a storage, or
-the container; any registry or bundle handed out per request or per
-stage.
+the container; any registry handed out per request (a bundle of
+managers per stage is CTX-21).
 
 **Violation.** An impl constructed per request to receive the actor or
 the tenant; a context, a stage, or a scope with a manager, a storage,
-or the container as a member; a per-stage bundle of managers; a
-service locator reached from an operation.
+or the container as a member; a service locator reached from an
+operation.
 
 **Severity.** medium
 
@@ -466,22 +467,25 @@ caller's entity instead of the row as stored.
 
 **Severity.** medium
 
-## CON-22 A partial update is the router's translation
+## CON-22 A partial update is the service impl's translation
 
-**Principle.** A partial update is the router's translation: it reads
-the current entity, copies the request's set fields onto it, an absent
-field meaning unchanged and an explicit null meaning cleared where the
-field is optional, and hands the whole entity to the manager. That
-policy is the request type's contract, and no impl decides it.
+**Principle.** A partial update is the service impl's translation: it
+reads the current entity through the manager's `get_*`, copies the
+request's set fields onto it, an absent field meaning unchanged and an
+explicit null meaning cleared where the field is optional, and hands
+the whole entity to the manager. That policy is the request type's
+contract, and no manager decides it.
 
 **Source.** The Business Layer, Shape of an Operation.
 
-**Look for.** The router behind every partial update and how it treats
-an absent field and a null; whether the request type states the
-policy.
+**Look for.** The service impl behind every partial update, the read
+it starts from, and how it treats an absent field and a null; whether
+the request type states the policy.
 
 **Violation.** A manager or a storage impl that reads a null as
 unchanged or an absent field as cleared, deciding what the request
-type should state; a router that hands the manager a partial entity.
+type should state; an impl that hands the manager a partial entity, or
+copies onto anything but the entity the manager's `get_*` returned; a
+router that does the translation itself.
 
 **Severity.** medium

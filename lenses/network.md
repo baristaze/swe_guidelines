@@ -24,7 +24,8 @@ boundary is a module boundary from day one.
 **Look for.** The layout of `routers/` and `types/` in the API process:
 whether each namespace has exactly one router module and one types
 module, and whether an app-specific service in the single-process
-start is its own router module composing managers for one app.
+start is its own router module and service impl, the impl composing
+managers for one app.
 
 **Violation.** A namespace's routes spread across several modules, or
 one router module serving several namespaces; wire types for one
@@ -61,8 +62,8 @@ namespace lines.
 
 **Principle.** Domain services expose one namespace to any caller; an
 app-specific service composes domain services for exactly one client
-app, stays thin, and holds only logic meaningful to that app, with the
-app type explicit on the context. External API users call domain
+app and stays thin, with the app type explicit on the context (where
+an app's logic lands is DEL-01). External API users call domain
 services directly; an app talks to its own backing service.
 
 **Source.** The Network Layer, Domain Services vs App-Specific Services.
@@ -74,8 +75,7 @@ service the app's client is pointed at.
 
 **Violation.** An app-specific service method that raises a domain
 exception or writes an entity itself rather than calling a domain
-service or manager; a rule meaningful to more than one app held inside
-an app-specific service; a domain service with branches keyed on which
+service or manager; a domain service with branches keyed on which
 app is calling; an app-specific service used by a second app; an app
 whose client calls a domain service directly; app-specific behavior
 decided from anything other than the context's app type.
@@ -122,11 +122,12 @@ from storage after a reconnect.
 
 ## NET-06 The gateway is the only public surface
 
-**Principle.** The gateway mints the request stage, runs the tenancy
-manager's transitions into `OpContext`, and routes; services never
-parse raw headers or tokens, and no endpoint is reachable without
-passing the gateway's dependencies. It accepts cross-origin requests
-only from the browser apps' origins, read from settings.
+**Principle.** The gateway is the only public surface: every endpoint
+passes its dependencies, which mint the request stage and run the
+tenancy manager's transitions once at the edge (who builds a context
+is CTX-05), and services never parse raw headers or tokens. It accepts
+cross-origin requests only from the browser apps' origins, read from
+settings.
 
 **Source.** The Network Layer, The Gateway.
 
@@ -231,11 +232,11 @@ own paths.
 ## NET-11 The gateway verifies; the tenancy domain owns identity
 
 **Principle.** The gateway verifies credentials and asks the tenancy
-manager for the principal; tenancy is a namespace with types, a
-manager, and storage. Nothing it stores can be presented as a
-credential: a password is a memory-hard hash under its own salt, and a
-key, a token, or a ticket is a SHA-256 digest, shown once and compared
-in constant time.
+manager for the principal; tenancy is an ordinary namespace. Nothing
+it stores can be presented as a credential: a password is a
+memory-hard hash under its own salt; a key, token, or ticket is a
+SHA-256 digest shown once and looked up by digest, its entropy the
+defense.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
@@ -251,7 +252,7 @@ shows a secret once.
 tables owned by the gateway rather than the tenancy namespace; a
 manager that cannot be tested without the HTTP layer; a password
 hashed with a fast digest or no salt; a key, token, or ticket stored
-in the clear or compared with `==`.
+in the clear, or looked up by anything but its digest.
 
 **Severity.** medium
 
@@ -288,8 +289,7 @@ boot.
 `View` and a `RequestBody` that forbids unknown fields; names end in
 `View`, `Request`, or `Issued...View`. Lists return a bare list with a
 clamped limit; a list that outgrows the clamp pages by an opaque
-cursor, a stream by `after_seq`, nothing by an offset. The OM never
-changes to match the wire.
+cursor, a stream by `after_seq`, nothing by an offset.
 
 **Source.** The Network Layer, Public Types.
 
@@ -301,10 +301,10 @@ their paging parameters, and the page envelope (`items`,
 version is NET-23.
 
 **Violation.** An OM entity serialized straight onto the wire; a
-mutable view; a request body that silently ignores unknown keys; an OM
-field added or renamed to suit a client; a list endpoint without a
-clamped limit; a list that can outgrow its clamp with no cursor; a
-cursor that is not opaque to the client; offset paging anywhere.
+mutable view; a request body that silently ignores unknown keys; a
+list endpoint without a clamped limit; a list that can outgrow its
+clamp with no cursor; a cursor that is not opaque to the client; offset
+paging anywhere.
 
 **Severity.** medium
 
@@ -350,7 +350,8 @@ client built from anything other than the committed document.
 
 **Principle.** Every process holding sockets subscribes to the topics
 its clients care about; a producer publishes once; each socket handler
-filters by tenant and by the client's subscriptions. A routing store
+filters by tenant and by the streams its client subscribed, never by
+kind within a stream (NET-30). A routing store
 mapping user to instance replaces the broadcast only when the replica
 count grows past what broadcast affords.
 
@@ -362,8 +363,8 @@ socket handlers.
 
 **Violation.** A producer that must know which replica holds a user; a
 routing store kept in sync by hand with a handful of replicas; a
-socket handler that forwards events from other tenants or ignores the
-client's subscriptions.
+socket handler that forwards events from other tenants, ignores the
+streams its client subscribed, or filters by kind within one.
 
 **Severity.** high
 
@@ -436,7 +437,8 @@ owns it for the whole app; every push rides it as a typed envelope
 parsed by a discriminated union on `type`, and a new kind of push is a
 new envelope type, not a new connection.
 
-**Source.** Apps, Push-First Apps.
+**Source.** Apps, Push-First Apps; Client App Architecture, Realtime:
+One Channel per App.
 
 **Look for.** The number of sockets or streams an app opens and which
 component owns them; how envelopes are discriminated; whether a
@@ -481,16 +483,18 @@ retry. A manager records one event per write through the outbox.
 **Source.** The Network Layer, Realtime at the Edge.
 
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
-`kind`, `target_id`, a typed payload) and its table's role; the
-append method, the cursor row it locks, and where the head `seq` the
+`kind`, `target_id`, `actor_id`, a typed payload) and its table's
+role; the audit entry, the same shape plus the request id and the app;
+the append method, the cursor row it locks, and where the head `seq` the
 pong carries is read from; whether the event row is written by the
 outbox relay or by a second statement; the `after_seq` read.
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; `MAX(seq) + 1` computed in the append and retried on the
 collision; an event table in the `core` role; an event row written in
-a second statement after the core write; an audit entry with a shape
-of its own; code that reads `seq` as the order of core writes.
+a second statement after the core write; an event with no `actor_id`,
+or an audit entry that is not the event's shape plus the request id
+and the app; code that reads `seq` as the order of core writes.
 
 **Severity.** high
 
@@ -581,16 +585,14 @@ run and the rerun.
 client reads one from settings, one per client, and no call goes out
 without one, so a downstream that hangs cannot hold a replica's whole
 pool. The gateway bounds a request the same way, with a deadline from
-settings, and a work handler is bounded by its lease; nothing runs
-unbounded.
+settings; the lease that bounds a work handler is ASY-17.
 
 **Source.** The Network Layer, Clients Live in One Place.
 
 **Look for.** The construction of every transport client, in Python
 and in TypeScript; the settings field it reads; any call site that
 builds a request outside the client; the request deadline setting and
-the middleware or dependency that applies it to every route (the
-lease side is judged by `async`).
+the middleware or dependency that applies it to every route.
 
 **Violation.** A client constructed with no timeout, or with a library
 default nothing in settings names; a timeout hard-coded in the client
@@ -610,7 +612,7 @@ from the secret store and verified by the callee. The callee's gateway
 rebuilds the context from it like any other credential kind, and no
 service trusts a bare header.
 
-**Source.** The Network Layer, The Gateway.
+**Source.** The Network Layer, Intra-Service Communication.
 
 **Look for.** The `internal` credential kind, who mints it, where the
 signing key comes from, and how the callee rebuilds a context from it;
@@ -673,7 +675,7 @@ the hint is metadata every member of the tenant may see.
 
 **Look for.** Whether the stream topic filters by kind before the
 client; what a frame and a replayed record carry (`seq`, `kind`,
-`target_id`, the actor); how a client obtains the entity after a hint;
+`target_id`, `actor_id`); how a client obtains the entity after a hint;
 whether a product where existence itself is restricted keeps one
 stream per visibility scope, with a cursor per stream.
 

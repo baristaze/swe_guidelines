@@ -22,10 +22,11 @@ types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context as its first argument: `OpContext` for a tenant
-operation, the request stage for the enumerated transitions (CTX-16),
-a scope where the consumer needs less (CTX-22). By the time a manager
-runs, the stage it takes is fully built.
+takes a context as its first argument: `OpContext`, or the request
+stage for the enumerated transitions (CTX-16). A helper below the
+managers that needs less takes a scope (CTX-22); no manager operation
+takes one. By the time a manager runs, the stage it takes is fully
+built.
 
 **Source.** OpContext; The Business Layer.
 
@@ -36,8 +37,9 @@ method that has none.
 **Violation.** A manager or service method that takes a user id, an
 org id, or a token instead of a context; a method that takes the
 context in any position other than first; a handler that fetches
-identity from a request object; a context-less method other than the
-outbox handoff CTX-16 names.
+identity from a request object; a manager operation that takes a
+scope; a context-less method other than the outbox handoff CTX-16
+names.
 
 **Severity.** medium
 
@@ -52,9 +54,10 @@ every log line, audit row, and error envelope reads.
 
 **Source.** OpContext; OpContext, Stages.
 
-**Look for.** The context type definitions, the identity stage's
-identity id, email, and credential, every place that reads identity,
-tenant, or app information, and the audit record type.
+**Look for.** The context type definitions and the context module's
+imports, which reach nothing above the base module; the identity
+stage's identity id, email, and credential; every place that reads
+identity, tenant, or app information; the audit record type.
 
 **Violation.** A `User` or `Org` entity embedded in the context, so a
 role change waits for a new session and the context module imports
@@ -112,8 +115,8 @@ impl.
 **Principle.** The request stage is minted once, at the edge: by the
 gateway per request and socket, by the worker loop per claim and sweep
 pass, by the bootstrap command per command. Every stage above it comes
-only from a transition on the tenancy manager, which takes the stage
-below and the evidence and returns the stage above or refuses.
+only from a transition: an operation of the tenancy manager, or one
+that asks it, as the claim of a worker does.
 
 **Source.** OpContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
@@ -122,8 +125,10 @@ Principal; The Network Layer, The Gateway.
 dependency, the worker loop, the bootstrap command); the transitions on
 the tenancy manager (a sign-in into the identity stage, a credential or
 a claim into `OpContext`, the operator admission into
-`OperatorContext`) and what each takes; every other place a stage
-object is constructed.
+`OperatorContext`), what each takes (the stage below and the
+evidence) and returns (the stage above, or a refusal); the operations
+that ask a transition, the worker's claim among them; every other
+place a stage object is constructed.
 
 **Violation.** A manager, storage impl, or test helper used in
 production code that builds a stage; a router that assembles a context
@@ -181,7 +186,8 @@ only, and the authoritative value stays on the context.
 **Principle.** Permissions and visibility are business decisions.
 Every mutating manager operation starts by requiring the permission it
 needs; visibility rules sit next to the operation they guard.
-Routers translate and storage persists; neither decides authorization.
+Routers bind and service impls translate, storage persists; none of
+them decides authorization.
 
 **Source.** Separation of Layers; The Business Layer, Shape of an
 Operation.
@@ -598,7 +604,7 @@ the socket and the process closes it at that instant; a revocation or
 a membership's end travels on the topic bus, and every process holding
 a socket for that session or user closes it on the frame.
 
-**Source.** OpContext, Stages; The Network Layer, Realtime at the Edge.
+**Source.** OpContext, Stages.
 
 **Look for.** The socket handler and what bounds its life: the deadline
 it sets from the session's expiry when the ticket is redeemed, and the
@@ -622,8 +628,8 @@ cover it.
 kind: the gateway verifies it against the provider's published keys
 and hands the tenancy manager the issuer and the subject, whose
 transition finds or creates the identity keyed on that pair and
-produces the `IdentityContext` a sign-in does. The provider is twinned
-locally; nothing below the gateway knows which spoke.
+produces the `IdentityContext` a sign-in does. The provider is an
+integration (DEL-05); nothing below the gateway knows which spoke.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
@@ -631,7 +637,9 @@ Domain Owns.
 **Look for.** Where a provider's token is verified and what it
 produces; the key the identity is stored under; whether the exchange
 into a tenant session, the memberships, and the sessions are the ones
-every person has; the provider's twin in the local infra root.
+every person has; the provider's interface, real client, and twin in
+the `integrations/` distribution, and the container that wires one of
+them at boot.
 
 **Violation.** A provider's token accepted as a session on tenant
 routes; an identity keyed on an email the provider may reassign; a
