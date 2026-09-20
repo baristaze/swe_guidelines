@@ -6,10 +6,9 @@ belong to the projects it was extracted from, never to the guideline or
 the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
 which group applies to which files.
 
-Also refuses em-dashes everywhere, the Python under scripts/ and tests/
-included, changelog phrasing in the guideline, and the one spelling of an
-update copy the guideline forbids, wherever a snippet could teach it. The
-product-term list applies to Markdown only.
+It also refuses changelog phrasing in the guideline, and the one
+spelling of an update copy the guideline forbids, wherever a snippet
+could teach it. Every group applies to Markdown only.
 Exit status is non-zero on any hit. Standard library only.
 """
 
@@ -18,8 +17,6 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-
-from _common import EM_DASH
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -71,20 +68,6 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("AGENTS.md", ["product"]),
 ]
 
-# file glob -> em-dashes are refused in every one of these; the scripts and
-# their tests name the character through `_common.EM_DASH`, never literally
-EVERYWHERE = [
-    "*.md",
-    "lenses/*.md",
-    "skills/*/*.md",
-    "skills/*/*/*.md",
-    "docs/*.md",
-    "agents/*.md",
-    ".github/**/*.md",
-    "scripts/*.py",
-    "tests/*.py",
-]
-
 
 def files(root: Path, globs: list[str]) -> list[Path]:
     """Every file one of the globs names, once, in path order."""
@@ -110,10 +93,6 @@ def main() -> int:
     for path in sorted(labels):
         for label in labels[path]:
             scan(ROOT, path, label, errors)
-    for path in files(ROOT, EVERYWHERE):
-        for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if EM_DASH in line:
-                errors.append(f"{path.relative_to(ROOT)}:{ln}: em-dash")
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} leak(s)")

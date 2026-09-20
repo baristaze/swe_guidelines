@@ -14,11 +14,6 @@ ROOT = Path(__file__).resolve().parent.parent
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
-# The one spelling of the em-dash the checkers refuse. Every script and
-# test names it through this constant, so no Python file under scripts/
-# or tests/ holds the literal character and the leak check can scan them.
-EM_DASH = "\u2014"
-
 
 def slug(heading: str) -> str:
     """The anchor a Markdown renderer derives from a heading.

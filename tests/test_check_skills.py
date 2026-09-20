@@ -152,12 +152,6 @@ def test_every_group_has_one_review_skill_named_by_full(repo, skills, capsys):
     assert "does not name arch-review-ctx" in out
 
 
-def test_em_dash_fails(repo, skills, capsys):
-    repo.edit("skills/arch-review-full/SKILL.md", "merge the reports", "merge \u2014 the reports")
-    assert skills.main() == 1
-    assert "em-dash" in capsys.readouterr().out
-
-
 def test_scaffold_sections_must_appear_in_order(repo, skills, capsys):
     text = repo.read("skills/arch-scaffold-thing/SKILL.md")
     swapped = text.replace("## Created", "## TEMP").replace("## Changed", "## Created").replace("## TEMP", "## Changed")

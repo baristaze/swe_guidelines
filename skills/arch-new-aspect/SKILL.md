@@ -89,7 +89,7 @@ for the aspect in one message and stop.
      rationale, or a wording change that states no new rule is patch); `AGENTS.md` when a new invariant appears.
 4. Write the guideline text first, in its voice: present tense, no
    history and no rejected alternatives, one idea per paragraph,
-   wrapped at about 72 columns, no em-dashes, cross-references as
+   short sentences, wrapped at about 72 columns, cross-references as
    named anchor links, code snippets that show two entries and a
    `# ...` line where a pattern repeats. When a term the aspect uses
    is defined elsewhere in the document, link its first mention to

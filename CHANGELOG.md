@@ -17,6 +17,17 @@ which number.
   each, and a longer document is the right trade for a document that
   gets read.
 
+- The em-dash ban, everywhere it was stated or enforced: the invariant
+  in `AGENTS.md`, the ground rule in `CONTRIBUTING.md`, the scan in
+  `scripts/check_leaks.py`, the second enforcement in
+  `scripts/check_skills.py`, the shared `EM_DASH` constant in
+  `scripts/_common.py`, the cases that pinned both checkers, and the
+  restatements in `skills/_shared/scaffold-conventions.md` and
+  `skills/arch-new-aspect`. `make leaks` keeps its product, history,
+  and shape vocabulary check, which is a regression guard and stays.
+  An em-dash is allowed now; the gain comes from shorter sentences,
+  not from reaching for one.
+
 ## 0.17.0 (2026-09-20)
 
 Three outside readings of the operational half of the guideline: that

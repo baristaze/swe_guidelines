@@ -26,8 +26,7 @@ Rules:
 - an unquoted value contains no ": " or " #", and does not start with a
   YAML indicator character, so strict YAML loaders accept it;
 - every arch-scaffold-* skill has the five scaffold sections, `## Input`,
-  `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
-- no em-dashes.
+  `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -37,8 +36,6 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-
-from _common import EM_DASH
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
@@ -195,8 +192,6 @@ def main() -> int:
             errors.append(f"{rel}: empty description")
         elif len(desc) > 1024:
             errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
-        if EM_DASH in text:
-            errors.append(f"{rel}: em-dash")
         tools = fm.get("allowed-tools", "")
         if tools:
             if " " in tools and "," not in tools:

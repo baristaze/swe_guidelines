@@ -186,8 +186,8 @@ the order the guideline presents them, never by number.
   published today, so a scaffold run on a `.0` day pins what
   `arch-upgrade-deps` would keep and not what it would roll back. A
   version the scaffold cannot confirm is named in its output.
-- No em-dashes, no placeholder files (a module exists when it has
-  content), no `TODO` left behind, no dead imports.
+- No placeholder files (a module exists when it has content), no
+  `TODO` left behind, no dead imports.
 
 ## Changing existing files
 
