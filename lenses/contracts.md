@@ -522,13 +522,15 @@ never holds one.
 
 **Look for.** The wrappers around remote clients and infra impls:
 where a breaker is wired into a root, the settings fields behind its
-failure bound and its cool-down, what it raises while open, and
-whether any manager constructs one.
+failure bound and its cool-down, what it answers while open against
+what its interface says a failure is, and whether any manager
+constructs one.
 
 **Violation.** A dependency whose failures are met only by more calls,
 each paying a full timeout, until the pool behind them is gone; a
 breaker built inside a manager rather than wired as an impl; a breaker
-that never lets a call through, so it cannot close; a failure bound or
-a cool-down hard-coded instead of read from settings.
+that never lets a call through, so it cannot close; one that raises
+where its interface says a failure is an answer; a failure bound or a
+cool-down hard-coded instead of read from settings.
 
 **Severity.** medium

@@ -25,6 +25,15 @@ deliberate breach.
 
 ### Added
 
+- `architecture.md`, "Composition by decoration": an open breaker
+  answers the way the dependency's own failure answers. It decorates
+  an interface, and a caller cannot tell what is behind one, so where
+  the interface says a failure is an answer, as "Cache" says an
+  unreachable backend is a miss, the breaker gives that answer at once
+  instead of raising. It declines to pay the timeout, never to keep
+  the contract. Where the failure is an exception the refusal is still
+  the unavailable shape. Lens `CON-23`.
+
 - `architecture.md`, "Namespace Shape" and "Tests": a signature is not
   a guarantee, and the case that tries the breach is what says the
   tenant is used. The test that enumerates the exceptions to the

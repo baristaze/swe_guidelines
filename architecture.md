@@ -602,8 +602,18 @@ is for is the cost of the failures themselves: a dependency that is
 down turns every call into a full timeout, and the timeouts alone are
 what exhaust the pool the calls are made from. It is an infrastructure
 wrapper like the others here, holding an inner impl of the same
-interface, and a manager never holds one; the refusal it raises is the
-unavailable shape of [Exceptions](#exceptions).
+interface, and a manager never holds one.
+
+An open breaker answers the way the dependency's own failure answers,
+because it decorates an interface and a caller cannot tell what is
+behind one. Where that failure is an exception, the refusal is the
+unavailable shape of [Exceptions](#exceptions). Where the interface
+says a failure is an answer, as [Cache](#cache) says an unreachable
+backend is a miss, the breaker gives that same answer at once. It
+declines to pay the timeout, never to keep the contract: a breaker
+that raised where its interface promises a miss would turn a backend
+that is down into a refusal the caller was written not to get, which
+is the outage the miss exists to prevent.
 
 ### Injectability
 
