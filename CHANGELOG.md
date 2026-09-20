@@ -63,10 +63,16 @@ which number.
   now excludes the numbers an admission bound is set to. Lenses
   `STO-27`, `NET-32`, `NET-33`, `CON-23`, `ASY-30`; `NET-26` carries
   the statement deadline, `NET-10` the bounded readiness probe, and
-  `DEL-18` the new shape. `arch-scaffold-new` writes the shape
-  exception, and `arch-scaffold-service` writes the admission
-  middleware, the bounded readiness probe, and the settings behind
-  them.
+  `DEL-18` the new shape. The scaffolds carry the shape:
+  `arch-scaffold-new` writes the shape exception and a storage root
+  whose pools declare a size and a checkout bound and whose sessions
+  carry a statement deadline; `arch-scaffold-service` writes the
+  admission middleware, the bounded readiness probe, the breaker the
+  container wires in front of a remote service impl, and the settings
+  behind all three; `arch-scaffold-app` puts the one retry in the
+  transport client, in both languages, with nothing retrying above it;
+  and `arch-scaffold-worker` sets a worker's capacity against the pool
+  behind it.
 
 ### Changed
 
