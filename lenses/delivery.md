@@ -397,7 +397,7 @@ ignores the OS's.
 **Principle.** Every platform exception is rooted at
 `PlatformException`, which carries `http_status` and a stable `code`.
 Shape exceptions (`NotFound`, `Conflict`, `ValidationFailed`,
-`NotAuthenticated`, `NotAuthorized`) cover most cases; a namespace
+`NotAuthenticated`, `NotAuthorized`, `Unavailable`) cover most cases; a namespace
 family multiply-inherits a shape. Translation to HTTP happens once, at
 the boundary. Managers never format HTTP.
 
@@ -412,7 +412,9 @@ routers.
 neither `PlatformException` nor, under infra, `InfraException`
 (DEL-29); a manager raising a framework HTTP exception; a router
 mapping exception types to status codes; a raised leaf exception that
-inherits no shape and so surfaces as 500.
+inherits no shape and so surfaces as 500; an open breaker, a refused
+admission, or a backend that is down presented as a 500 instead of the
+unavailable shape.
 
 **Severity.** medium
 

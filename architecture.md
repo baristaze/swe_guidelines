@@ -3781,10 +3781,23 @@ class NotAuthorized(PlatformException):
     http_status = 403
     code = "not_authorized"
 
+class Unavailable(PlatformException):
+    http_status = 503
+    code = "unavailable"
+
 class OrdersException(PlatformException): ...
 
 class OrderAlreadyShipped(OrdersException, Conflict): ...
 ```
+
+`Unavailable` is the shape of a dependency that cannot be reached
+right now: a breaker that is open (see [Composition by
+decoration](#composition-by-decoration)), a request refused past the
+process's admission bound (see [The Gateway](#the-gateway)), a backend
+that is down. Because `InfraException` carries the same two fields,
+the infra side answers with the same status and the same code, and a
+caller that must react reads the code rather than the class it came
+from.
 
 The shape has two uses. A caller at a boundary (gateway handler, worker
 loop, test harness) catches `PlatformException` and knows the failure is
