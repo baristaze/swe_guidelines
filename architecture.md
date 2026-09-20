@@ -2234,10 +2234,14 @@ The gateway owns a short list of edge concerns, each done once:
     row a failed attempt left instead of creating a second one. The
     table after this list is the whole protocol.
 -   **Health.** `/healthz` answers liveness with the version and no
-    I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
-    counters and histograms. All three sit outside the versioned API.
-    The load balancer answers `/metrics` with a 404; only the collector
-    beside the process reads it.
+    I/O; `/readyz` awaits the storage healthcheck under a deadline of
+    its own, shorter than the interval it is polled on, because a
+    probe that waits on the dependency it reports on stops answering
+    exactly when the answer matters: a timeout is a negative answer
+    and never a missing one. `/metrics` exposes counters and
+    histograms. All three sit outside the versioned API. The load
+    balancer answers `/metrics` with a 404; only the collector beside
+    the process reads it.
 -   **Versioning.** The API prefix (`/v1`) is applied once, where
     routers are mounted. Routers declare only their own sub-paths.
 

@@ -220,23 +220,25 @@ primitive. (What a create that issued a secret stores is NET-31.)
 ## NET-10 Health, readiness, and metrics live outside the versioned API
 
 **Principle.** `/healthz` answers liveness with the version and no I/O,
-`/readyz` awaits the storage healthcheck, `/metrics` exposes counters
-and histograms and is answered with a 404 at the load balancer, and
-the API prefix is applied once where routers are
-mounted.
+`/readyz` awaits the storage healthcheck under a deadline shorter than
+its poll interval and counts a timeout as a negative answer,
+`/metrics` exposes counters and histograms and is answered with a 404
+at the load balancer, and the API prefix is applied once where routers
+are mounted.
 
 **Source.** The Network Layer, The Gateway (Health, Versioning).
 
 **Look for.** The three operational endpoints and what each does; the
-load balancer's listener rules;
-whether liveness touches a dependency; where the version prefix is
-declared.
+load balancer's listener rules; whether liveness touches a dependency;
+the deadline readiness applies to its healthcheck and the poll
+interval configured against it; where the version prefix is declared.
 
 **Violation.** A liveness check that queries the database; a load
 balancer rule that forwards `/metrics`; readiness
-that returns ok without checking storage; operational endpoints under
-the versioned prefix; routers that repeat the version prefix in their
-own paths.
+that returns ok without checking storage; a readiness probe that waits
+on storage with no bound, so it stops answering exactly when the
+answer matters; operational endpoints under the versioned prefix;
+routers that repeat the version prefix in their own paths.
 
 **Severity.** medium
 
