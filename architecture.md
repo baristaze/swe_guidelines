@@ -123,6 +123,7 @@ said here so nobody discovers it in the middle.
   - [Logs](#logs)
   - [Traces and Metrics](#traces-and-metrics)
   - [Error Tracking](#error-tracking)
+  - [Correlation Across a Handoff](#correlation-across-a-handoff)
 - [Cross-Cutting Conventions](#cross-cutting-conventions)
   - [Exceptions](#exceptions)
   - [Configuration](#configuration)
@@ -647,6 +648,7 @@ class RequestContext(Platform):
     request_id: UUID
     app: AppContext
     trace_id: str | None = None
+    caused_by_request_id: UUID | None = None  # the request behind this one across a handoff
 
 class OpContext(RequestContext):
     security: SecurityContext
@@ -687,9 +689,13 @@ next request, and `opcontext.py`, which also declares `Role`,
 `request_id` is ambient state exactly like identity: minted or accepted
 at the edge, stamped onto the context once, and from there it reaches
 every log line, every audit row, and the error envelope without any
-layer passing it by hand. `ctx.require(Permission.WRITE)` is one line
-at the top of a manager method, which is what keeps authorization in
-the business layer.
+layer passing it by hand. `caused_by_request_id` is the same kind of
+state one hop back: it is empty on a request that arrived at the edge,
+and on a stage minted for a handoff it names the request that caused
+the work (see [Correlation Across a
+Handoff](#correlation-across-a-handoff)). `ctx.require(Permission.WRITE)`
+is one line at the top of a manager method, which is what keeps
+authorization in the business layer.
 
 A context is immutable. Once built, it flows through every downstream
 call unchanged. No layer adds, replaces, or mutates its fields
@@ -786,8 +792,10 @@ The request stage is minted at the edge, once: by the gateway (see [The
 Gateway](#the-gateway)) for every request and every socket, by the
 worker loop per claim and per sweep pass (see [The Work
 Queue](#the-work-queue)), and by the bootstrap command that seeds an
-environment, per command. It carries the request id, the app, and the
-trace, and nothing that names a person.
+environment, per command. It carries the request id, the app, the
+trace, and the request that caused it where a handoff named one (see
+[Correlation Across a Handoff](#correlation-across-a-handoff)), and
+nothing that names a person.
 
 A function that takes a stage relies on its invariant and does not
 check it again: an operation that takes `IdentityContext` does not
@@ -2787,6 +2795,7 @@ class WorkItem(Identifiable, Trackable):
     kind: WorkKind             # what to do
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique
+    request_id: UUID           # the request that caused the work
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
@@ -2830,6 +2839,14 @@ and the direct create presents its caller's. Either way the two are
 one insert in storage under one key, so a relay that runs twice and a
 caller that retries meet the row already there.
 
+The item's `request_id` is the request that caused the work, and it
+comes from the same two places: the relay takes it off the outbox row,
+which carries the request that made the write, and the direct create
+takes it from its caller's context. It is the item's, not the
+enqueue's, and the manager's copy leaves it as constructed. It is what
+a run names as its cause (see [Correlation Across a
+Handoff](#correlation-across-a-handoff)).
+
 Claim is one storage method that selects the oldest available row in
 the named lane, skipping locked ones (competing consumers), and stamps
 the claim and the lease in the same statement. Completion marks the
@@ -2854,9 +2871,13 @@ Because the row carries `created_by`, the worker rebuilds the
 enqueuer's principal under the `Role` reserved for services when it
 claims the item: the loop mints a `RequestContext` per claim, and the
 claim returns the `OpContext` the work runs under (see
-[Stages](#stages)). The context the work runs under names the person who
-asked for it, so attribution and audit survive the asynchronous hop.
-Sweeps that act on every tenant ask the tenancy manager for one service
+[Stages](#stages)). The run gets a `request_id` of its own from that
+stage, and the `OpContext` the claim returns names the item's
+`request_id` as its `caused_by_request_id`, so the work names both the
+request it is and the request that caused it. The
+context the work runs under names the person who asked for it, so
+attribution, audit, and causality survive the asynchronous hop. Sweeps
+that act on every tenant ask the tenancy manager for one service
 context per live tenant.
 
 Authority and attribution are two fields of that context, and they
@@ -3593,6 +3614,13 @@ attached through a logging filter that reads a context variable set at
 the entry point that builds the context, so operations never need to
 remember to include it.
 
+Every line carries the service and the environment it came from, which
+is what lets one query read across processes, the request id, and the
+request that caused it where a handoff supplied one (see [Correlation
+Across a Handoff](#correlation-across-a-handoff)). The filter that
+attaches them is configured once, with the rest of the logging setup,
+so no call site chooses.
+
 > **Principle:** Python's `logging` is the platform logger. Every module
 > uses it; no module replaces it.
 
@@ -3639,6 +3667,31 @@ nothing.
 > **Principle:** Every process reports errors, the browser app
 > included. Reporting turns on when a DSN is set and never blocks a
 > boot.
+
+### Correlation Across a Handoff
+
+A handoff carries the request that caused it. One id joins the
+request, the row it wrote, the item it queued, and the run that
+followed, so a reader holding a request id follows the work it set off
+past the boundary it crossed instead of stopping at the edge of the
+queue.
+
+The stage a worker mints for a claim is a new request: the run has its
+own lifetime, its own failures, and its own `request_id`. It names the
+request that caused the work in a second field,
+`caused_by_request_id`, which it reads off the work item (see [The
+Work Queue](#the-work-queue)). The two are different fields and both
+reach every log line. Neither is written over the other, because a
+reader asks two questions of a run: what happened in it, and what
+asked for it.
+
+A span raised on the far side of a handoff links to the causing trace
+rather than starting an unrelated one, so the run hangs under the
+request that asked for it and not beside it.
+
+> **Principle:** A handoff carries the request that caused it. The
+> stage on the far side is a new request that names the causing one,
+> in a field of its own, and its spans link to the causing trace.
 
 ## Cross-Cutting Conventions
 

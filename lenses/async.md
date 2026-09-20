@@ -604,3 +604,26 @@ check; a local impl that reaches a network store; the cloud impl
 reading a file.
 
 **Severity.** low
+
+## ASY-29 The work item carries the request that caused it
+
+**Principle.** A work item names the request that caused it: the relay
+takes the item's `request_id` off the outbox row of the write, and a
+direct create takes it from its caller's context. The span the run
+raises links to that causing trace rather than starting an unrelated
+one.
+
+**Source.** Worker Roles, The Work Queue; Telemetry, Correlation
+Across a Handoff.
+
+**Look for.** The work item type and the column behind it; both
+enqueue paths, the relay's build from `(org_id, row)` and the direct
+create, and where each reads the request id; what the span a handler
+raises is linked to.
+
+**Violation.** A work item with no request id, so the trail ends at the
+queue; a relayed enqueue that mints a fresh id instead of taking the
+row's; a manager copy that overwrites the caller's; a run whose span
+starts a trace of its own with no link to the causing one.
+
+**Severity.** medium

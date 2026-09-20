@@ -6,8 +6,9 @@ of Layers, the
 authorization step and parameter order of The Business Layer and its
 "Operations Without a Principal", the tenancy rules of The Storage
 Layer, the tenant keying of Infrastructure, the credential and
-operator concerns of The Gateway in The Network Layer, and the worker
-context provenance of Worker Roles.
+operator concerns of The Gateway in The Network Layer, the worker
+context provenance of Worker Roles, and the causing request a handoff's
+stage names in Telemetry.
 
 This group judges one question: does every operation know who is
 acting, for which tenant, with what authority, and is that knowledge
@@ -45,12 +46,12 @@ handoffs included, is CTX-16's to judge.
 
 ## CTX-02 The context carries ids and facts, never entities
 
-**Principle.** The security context holds `user_id`, `org_id`, the
-role, the permissions, the teams, the credential kind, and
-`credential_id`: ids and facts, never entities. The app context holds
-the app type and version. The request stage holds the request id, the
-app, and an optional trace id, which every stage above inherits and
-every log line, audit row, and error envelope reads.
+**Principle.** The security context holds `user_id`, `org_id`, role,
+permissions, teams, credential kind, and `credential_id`: ids and
+facts, never entities. The app context holds the app type and version.
+The request stage holds the request id, the app, the optional trace,
+and the causing request, which every stage above inherits and every log
+line, audit row, and error envelope reads.
 
 **Source.** OpContext; OpContext, Stages.
 
@@ -649,3 +650,24 @@ manager that branches on the provider; no local twin, so the sign-in
 cannot run without the network.
 
 **Severity.** high
+
+## CTX-29 A handoff's context names the request that caused it
+
+**Principle.** The stage minted on the far side of a handoff is a new
+request with its own `request_id`, and it names the request that caused
+the work in `caused_by_request_id`, read off the work item. The two are
+separate fields, both inherited by every stage above and both logged,
+and neither is written over the other.
+
+**Source.** Telemetry, Correlation Across a Handoff; OpContext, Stages.
+
+**Look for.** The worker loop's mint per claim and per sweep pass and
+what it reads off the item; the request stage's fields; the log records
+a run emits and which of the two ids each carries.
+
+**Violation.** A claim context that carries the item's request id as
+its own `request_id`, so the run and its cause are one id; a mint that
+drops the causing id, so a run names no cause; a run whose lines carry
+one of the two and not both. (The field on the item is ASY-29.)
+
+**Severity.** medium

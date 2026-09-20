@@ -2,9 +2,9 @@
 
 Group id: `delivery`. Covers Apps (Apps as Products, Apps Are Dumb),
 Deployment, Monorepo Folder Structure, Client App Architecture (except
-the realtime channel rule), Telemetry, Cross-Cutting Conventions
-(except The App Container), and Technology Choices and How to Override
-Them of `architecture.md`.
+the realtime channel rule), Telemetry (except Correlation Across a
+Handoff), Cross-Cutting Conventions (except The App Container), and
+Technology Choices and How to Override Them of `architecture.md`.
 
 This group judges how the system reaches people and machines: the
 apps at the edge, the repository they are built from, the environments
@@ -14,7 +14,9 @@ rules (one channel per app, envelopes, degraded mode) to `network`,
 the app container boot order to `contracts`, and the operator
 console's gating (the allowlist, the refusal of a tenant role or a
 portal flag) with the credential rules behind it to `context`
-(CTX-20).
+(CTX-20). What a handoff carries across a process boundary, the
+causing request and the link from a run's span to the causing trace,
+it leaves to `context` (CTX-29) and `async` (ASY-29).
 
 ## DEL-01 Apps are dumb, and logic lands in the layer it belongs to
 
@@ -876,5 +878,26 @@ production apply with no plan approved first; a deploy of production
 that plans without checking that `release` is an ancestor of `main`;
 a person or a job that can push to `release` other than the
 fast-forward.
+
+**Severity.** medium
+
+## DEL-39 Every log line names its service, its environment, and its request
+
+**Principle.** Every log line carries the service and the environment
+it came from, which is what lets one query read across processes, the
+request id, and the request that caused it where a handoff supplied
+one.
+
+**Source.** Telemetry, Logs.
+
+**Look for.** The fields the boot's formatter and filter put on every
+record; a worker's log lines beside the request that enqueued its
+work; any call site that passes one of these fields by hand.
+
+**Violation.** Lines with no service or environment, so a query cannot
+read across processes; a worker's lines that name no causing request,
+so nothing joins them to the request behind the work; a request id on
+the gateway's lines and absent from the worker's. (The filter that
+attaches them is DEL-19.)
 
 **Severity.** medium
