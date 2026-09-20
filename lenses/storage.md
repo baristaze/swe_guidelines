@@ -625,3 +625,26 @@ that refuses a key a deleted row holds while the engine accepts it;
 no contract case for the re-creation.
 
 **Severity.** medium
+
+## STO-27 A role's pool declares its size and its checkout bound
+
+**Principle.** Each database role's pool declares its size and the
+bound on waiting for a connection, both from settings. A checkout that
+waits past the bound fails rather than queueing without end. The size
+is chosen against the process's own concurrency: a worker's capacity
+and its pool are not set independently.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The storage root's engine construction, one per distinct
+URL, and the settings fields behind each role's pool size and checkout
+bound; the capacity a worker advertises beside the pool its process
+opens.
+
+**Violation.** An engine built on the library's default pool, with
+nothing in settings naming its size; a checkout that waits without a
+bound, so a saturated role becomes a request path that never returns;
+a size hard-coded in the root; a worker whose capacity is set with no
+regard for the pool behind it.
+
+**Severity.** medium

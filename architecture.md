@@ -1563,6 +1563,18 @@ copied under replication or a dual write until the copy is current,
 and the cut-over is one URL. The copy has a window and a rehearsal;
 the code does not change.
 
+Each role's pool declares its size and the bound on waiting for a
+connection, both from settings. A checkout that waits past the bound
+fails rather than queueing without end, so a role under load surfaces
+as a failure on the call that could not get a connection and never as
+a request that waits for one for good. The size is chosen against the
+process's own concurrency: a worker's capacity (see [Shape of a
+Worker](#shape-of-a-worker)) and the pool it draws on are set
+together, never independently, because a process that runs more work
+at once than its pool serves spends the difference waiting on a
+checkout. The role is the bulkhead between load profiles, and the
+size is how wide it is.
+
 Rules that make the move safe, each checked by a unit test:
 
 -   No cross-role foreign keys and no cross-role statements. A
