@@ -1,0 +1,87 @@
+name: benchmark
+
+# Manual only: a run calls paid providers and takes minutes per scenario.
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "scenario names separated by spaces, or 'all'"
+        default: "all"
+        type: string
+      providers:
+        description: "judges as a bit flag (1 Anthropic, 2 OpenAI, 4 Gemini, 8 xAI) or names"
+        default: "3"
+        type: string
+      effort:
+        description: "judge effort"
+        default: "medium"
+        type: choice
+        options: [low, medium, high]
+      repeat:
+        description: "how many times each subject runs"
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: every scenario, judged
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+    steps:
+      # Actions are pinned by commit; the comment names the tag the commit carries.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: check out the reference implementation as the target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: baristaze/tadas
+          path: target
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: install uv and Claude Code
+        # The subject of a skill scenario is `claude -p`, which signs in with the API key.
+        run: |
+          python -m pip install uv==0.9.5
+          npm install -g @anthropic-ai/claude-code@2.1.276
+      - name: run every scenario
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.scenarios }}" = "all" ]; then
+            names=$(ls benchmark/scenarios/*.yaml | xargs -n1 basename | sed 's/\.yaml$//')
+          else
+            names="${{ inputs.scenarios }}"
+          fi
+          for name in $names; do
+            echo "::group::$name"
+            uv run benchmark/run.py --scenario "$name" \
+              --providers "${{ inputs.providers }}" --effort "${{ inputs.effort }}" \
+              --repeat "${{ inputs.repeat }}" --target target --out benchmark/runs \
+              --claude "$(command -v claude)"
+            echo "::endgroup::"
+          done
+      - name: write the summary
+        if: always()
+        run: |
+          for report in benchmark/runs/*/report.md; do
+            [ -f "$report" ] || continue
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: keep every run as evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-runs
+          path: benchmark/runs
+          if-no-files-found: warn

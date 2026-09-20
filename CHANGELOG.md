@@ -44,6 +44,11 @@ which number.
 - `tests/test_benchmark_*.py`: the harness logic under the repository's
   own test run, standard library and fake judges, so no key and no
   network is needed.
+- `.github/workflows/benchmark.yml`: a manual workflow that runs every
+  scenario (or the ones named) against the reference implementation as
+  the target, with the judges, the effort, and the repeats as inputs,
+  the reports in the job summary, and every run folder kept as an
+  artifact. Manual only, because a run calls paid providers.
 - `Makefile`: `benchmark` runs the smoke scenario and `benchmark-serve`
   serves the runs folder. Neither is part of `check`: a run calls paid
   APIs and takes minutes.

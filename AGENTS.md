@@ -38,7 +38,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
   version; `scripts/check_version.py` holds the marketplace manifest,
   the changelog, and `docs/adopting.md` to it.
 - `benchmark/` holds the harness that measures a subject against a
-  rubric: `run.py` with its inline dependencies, the `harness/` modules,
+  rubric (`.github/workflows/benchmark.yml` runs every scenario on
+  demand, never on push): `run.py` with its inline dependencies, the `harness/` modules,
   the scenarios, the result schema, and `serve.py`. Every harness module
   imports the standard library only at import time, so the tests at
   `tests/test_benchmark_*.py` run with nothing installed; the provider
