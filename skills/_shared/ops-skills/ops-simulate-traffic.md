@@ -19,8 +19,10 @@ tenants, members, concurrency, and think time.
 
 `--env` and `--profile` are required; ask for them when missing.
 `--duration` is in seconds, sixty by default. `--report` writes the
-table as JSON beside printing it. `local` drives the compose stack and
-needs no cloud. `stress` is the top profile; a run at it with a target
+table as JSON beside printing it. `local` drives the API at
+`http://127.0.0.1:8000`, started by `scripts/dev.sh` or `make up`, and
+needs no cloud; its file is `~/.config/acme/ops/local.env`, and when
+the file is absent the seeded people of `.env` are used. `stress` is the top profile; a run at it with a target
 is `stress-test-run`, not this skill.
 
 ## Role and credential
@@ -65,14 +67,21 @@ token.
    edge, the client, and the signals are wired and is never a stress
    test.
 3. Read the table the run prints: requests by route and status, p50,
-   p95, p99 per route, and the error ratio. A 5xx during the run is a
+   p95, p99 per route, and the error ratio, then its two notes: the
+   profile's concurrency and think time, and one sample request id of
+   the run. A 5xx during the run is a
    finding with its request id; a 4xx from the generator's own
    sessions (a conflict on a retried create, a 404 after the delete)
    is expected where the session shape explains it.
 4. Read one signal back to prove the run was seen: the request
-   counter moved by about the number of requests the table shows,
-   through `uv run acme-ops signals check --env <env> --request-id
-   <one id from the run>`.
+   counter moved by at least the number of requests the table shows
+   over the run's window (`--since-minutes`, the run's duration rounded
+   up; other traffic in the window adds to it), through
+   `uv run acme-ops signals check --env <env> --request-id <the sample
+   id> --since-minutes <n> [--log-file <the process's log>]`. Locally
+   the log leg needs the file the API was started with, and the trace
+   leg needs `ACME_OTEL_ENDPOINT` set on that process; report either as
+   not read otherwise.
 5. Write the report.
 
 ## What it never does

@@ -83,8 +83,10 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
      --since <interval>
    ```
 
-   together with the host processes' log files `scripts/dev.sh`
-   writes, followed with the same cadence.
+   from the repository root (add `-f deployment/local/docker-compose.full.yml`
+   when the application runs in containers), together with the file a
+   host process was started with, followed with the same cadence;
+   `scripts/dev.sh` writes no file, it logs to its terminal.
 4. Each interval, read the alarms. Cloud:
 
    ```bash

@@ -60,8 +60,9 @@ the file holds one. Never print the password or the token.
    file. Sign the operator in through `POST /v1/auth/login` at
    `$ACME_API_URL` with `curl` (the identity stage is what the operator
    plane admits; no tenant session is exchanged), keep the bearer in a
-   shell variable, read `GET /v1/me/identity`, and check the answer
-   names `operator_role: read`; stop on `write`.
+   shell variable (the login body is `{"email": ..., "password": ...}`
+   and the answer's `token` is the bearer), read `GET /v1/admin/me`,
+   and check the answer names `operator_role: read`; stop on `write`.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:
 
@@ -80,15 +81,24 @@ the file holds one. Never print the password or the token.
    curl -s -H "Authorization: Bearer $TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200"
    ```
 
-   Every event carries the request id and the actor of the write, so
-   the feed is the map from what the tenant did to the requests that
-   did it. Without `--request-id`, pick the request ids of the
+   The operator's feed carries `request_id` and `app` beside the
+   actor, which the tenant's own feed leaves out, so it is the map from
+   what the tenant did to the requests that did it. The rows themselves
+   are `/v1/admin/orgs/<org_id>/tasks?status=open|done` and
+   `.../members`. Without `--request-id`, pick the request ids of the
    window's failed or missing writes here and in step 4.
 4. The error tracker, by request id or by tenant window:
 
    ```bash
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" \
      "$ACME_ERROR_TRACKER_URL/api/0/organizations/<org>/issues/?query=request_id%3A<id>"
+   ```
+
+   `<org>` is the organization slug `GET /api/0/organizations/` lists
+   (locally `acme`, the one the seed creates):
+
+   ```bash
+   curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" "$ACME_ERROR_TRACKER_URL/api/0/organizations/"
    ```
 
    Local runs the same call against GlitchTip. An event names the
@@ -103,10 +113,16 @@ the file holds one. Never print the password or the token.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
-   Local: `docker compose -f deployment/local/docker-compose.yml logs
-   --since <since> | grep <id>` and the same `grep` over the host
-   processes' log files. `caused_by_request_id` follows the request
-   across a handoff into a worker.
+   Local: `docker compose -f deployment/local/docker-compose.yml -f
+   deployment/local/docker-compose.full.yml logs --since <since> api
+   maintenance | grep <id>` from the repository root when the processes
+   run in containers. When they run on the host (`scripts/dev.sh`
+   writes no file; it logs to its terminal), `grep` the file the
+   process was started with, and say "not read" when there is none.
+   A local line carries the request id in brackets, `[<id>]`, or as
+   `"request_id"` when `ACME_LOG_JSON` is on.
+   `caused_by_request_id` follows the request across a handoff into a
+   worker.
 6. The trace, by request id. Cloud:
 
    ```bash
@@ -115,14 +131,30 @@ the file holds one. Never print the password or the token.
      --filter-expression 'annotation.request_id = "<id>"'
    ```
 
-   Local: `curl -s "$ACME_JAEGER_URL/api/traces?service=acme-api&tags=%7B%22request_id%22%3A%22<id>%22%7D"`.
+   Local, Jaeger's v3 API (the service is the process name, `api`, and
+   the request id is the span attribute `acme.request_id`):
+
+   ```bash
+   curl -sG "$ACME_JAEGER_URL/api/v3/traces" \
+     --data-urlencode query.service_name=api \
+     --data-urlencode "query.start_time_min=<start, RFC 3339>" \
+     --data-urlencode "query.start_time_max=<end, RFC 3339>"
+   ```
+
+   and filter the spans on the attribute client-side; the query API
+   ignores attribute filters. An empty answer means the process ran
+   with no `ACME_OTEL_ENDPOINT`, which is a finding, not an error.
    The trace says where the time went and which span failed.
 7. Or in one call, the same four reads through the platform's own
    binary, which holds the twins and the cloud behind one interface:
 
    ```bash
-   uv run acme-ops signals check --env <env> --request-id <id>
+   uv run acme-ops signals check --env <env> --request-id <id> \
+     [--log-file <the process's log>] [--since-minutes <n>]
    ```
+
+   The local reader has no log store of its own: without `--log-file`
+   its log leg reports zero lines, which says nothing.
 
 8. Correlate. One request id ties the event row (what the tenant
    asked), the log lines (what the process decided), the trace (where

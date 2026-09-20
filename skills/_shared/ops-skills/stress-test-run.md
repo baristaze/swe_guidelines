@@ -46,15 +46,18 @@ token.
 ## Procedure
 
 1. Read the scenario. Refuse one without a target; that is
-   `stress-test-create-or-update`'s job. Verify the credential as
-   Role and credential states. Read the env file.
+   `stress-test-create-or-update`'s job. `--scenario <name>` and a bare
+   `<name>` mean the same file. Verify the credential as Role and
+   credential states. Check the env file exists, is owner-only, and
+   holds the keys; never print it.
 2. Say what is about to happen and wait for the person: a real run
    is the platform developer's choice, because it costs money in the
    cloud, writes rows, and can trip the alarms it is meant to test.
    The CI sanity run is `acme-ops traffic --profile light` for thirty
    seconds against the local stack, and it is a wiring check, never a
    stress test. Against `production`, refuse unless the person says
-   so in this session.
+   so in this session. Against `local`, the invoking prompt's word is
+   enough, and an unattended run does not wait.
 3. Note the start time and the size of the platform before the run
    (`uv run acme-ops size --env <env>`), so the report can say what
    the run added. Run:
@@ -65,7 +68,12 @@ token.
    ```
 
    The generator ramps, soaks, and prints the table: requests by
-   route and status, p50, p95, p99, and the error ratio.
+   route and status, p50, p95, p99, and the error ratio, then two
+   notes: the profile's concurrency and think time, and one sample
+   request id of the run, which step 4 follows. A 4xx the session
+   shape explains (a rate-limited sign-in, a conflict on a retried
+   create) is counted by status and not as an error; a session that
+   fails is counted under sessions.
 4. Read the signals back for the run's window, through the same
    interface every other skill reads: the request counter's delta,
    the p95 the platform measured (not the generator's), the worker
@@ -73,15 +81,23 @@ token.
    across the log, the trace, and the tracker:
 
    ```bash
-   uv run acme-ops signals check --env <env> --request-id <id>
+   uv run acme-ops signals check --env <env> --request-id <id> \
+     [--log-file <the process's log>] [--since-minutes <n>]
    ```
+
+   The worker outcomes are `sum by (subsystem, outcome)
+   (increase(acme_outcomes_total[<window>]))`; queue age has no metric
+   locally. Locally the log leg needs `--log-file`, and an empty trace
+   store means the process ran with no `ACME_OTEL_ENDPOINT`: report
+   the leg as not read, and do not fail the run on it.
 
    Cloud: the alarms that fired during the window,
    `aws cloudwatch describe-alarms --alarm-name-prefix acme-<env>-
    --profile acme-<env>-investigate`, are part of the result.
 5. Decide. Pass when the platform's p95 is at or under the target and
-   the error ratio is at or under the target, both over the soak, the
-   ramp excluded. Fail otherwise, naming the first route that broke
+   the error ratio is at or under the target, both over the run plus
+   one scrape interval (the ramp cannot be cut out at a fifteen-second
+   scrape). Fail otherwise, naming the first route that broke
    the target and the request id that shows it. An alarm that fired
    is reported either way.
 6. Write the report. A fail names the next skill: `ops-investigate`
