@@ -15,7 +15,7 @@ keeps each review narrow enough to be thorough.
 | `storage`   | `storage.md`    | The Storage Layer and Identifiers: storage principles, tables, translation, roles, migrations |
 | `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations): infra, queues, workers, park vs fail |
 | `network`   | `network.md`    | The Network Layer and Apps (Push-First Apps): topology, gateway, public types, clients, realtime, push-first |
-| `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, conventions, substitutions |
+| `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions |
 
 A rule belongs to exactly one group, and to exactly one lens inside it.
 The `Covers` column names each group's home sections; where two groups

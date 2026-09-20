@@ -119,11 +119,12 @@ said here so nobody discovers it in the middle.
   - [What a Process Refuses](#what-a-process-refuses)
 - [Monorepo Folder Structure](#monorepo-folder-structure)
   - [Layout Conventions](#layout-conventions)
-- [Cross-Cutting Conventions](#cross-cutting-conventions)
-  - [Exceptions](#exceptions)
+- [Telemetry](#telemetry)
   - [Logs](#logs)
   - [Traces and Metrics](#traces-and-metrics)
   - [Error Tracking](#error-tracking)
+- [Cross-Cutting Conventions](#cross-cutting-conventions)
+  - [Exceptions](#exceptions)
   - [Configuration](#configuration)
   - [The App Container](#the-app-container)
   - [Records of Decisions](#records-of-decisions)
@@ -3563,62 +3564,13 @@ infrastructure jobs.
 > standard-library module of the same name. Pick a product-specific
 > root package name; the layout is what matters, not the word.
 
-## Cross-Cutting Conventions
+## Telemetry
 
-A short set of conventions that apply across the whole system.
-
-### Exceptions
-
-Every exception raised inside the platform is rooted at
-`PlatformException`. The root carries the two things a boundary needs
-to present it: a status and a stable machine-readable code. Infra
-imports nothing from the OM, so it has a root of its own,
-`InfraException`, with the same two fields, and the gateway and the
-worker loop present both alike; a boundary that must translate one
-into the other does it by those fields, never by catching a name from
-the other side. A small
-set of shape exceptions covers almost every case, and a namespace that
-needs its own family multiply-inherits a shape so the status comes
-along:
-
-``` python
-class PlatformException(Exception):
-    """Root of every exception raised inside the platform."""
-
-    http_status: int = 500
-    code: str = "platform_error"
-
-class NotFound(PlatformException):
-    http_status = 404
-    code = "not_found"
-
-class Conflict(PlatformException):
-    http_status = 409
-    code = "conflict"
-
-class ValidationFailed(PlatformException):
-    http_status = 422
-    code = "validation_failed"
-
-class NotAuthenticated(PlatformException):
-    http_status = 401
-    code = "not_authenticated"
-
-class NotAuthorized(PlatformException):
-    http_status = 403
-    code = "not_authorized"
-
-class OrdersException(PlatformException): ...
-
-class OrderAlreadyShipped(OrdersException, Conflict): ...
-```
-
-The shape has two uses. A caller at a boundary (gateway handler, worker
-loop, test harness) catches `PlatformException` and knows the failure is
-domain-originated and not a runtime crash. Translation to an HTTP
-response happens at that boundary, in one handler, using the status
-and code the exception carries. Managers raise domain exceptions and
-never format HTTP.
+What a process emits is part of its shape. Every process logs the same
+way, raises its spans through the same tracer, counts through the same
+endpoint, and reports its errors to the same tracker, and one id joins
+what they emit so a reader follows one request across every process it
+touched.
 
 ### Logs
 
@@ -3687,6 +3639,63 @@ nothing.
 > **Principle:** Every process reports errors, the browser app
 > included. Reporting turns on when a DSN is set and never blocks a
 > boot.
+
+## Cross-Cutting Conventions
+
+A short set of conventions that apply across the whole system.
+
+### Exceptions
+
+Every exception raised inside the platform is rooted at
+`PlatformException`. The root carries the two things a boundary needs
+to present it: a status and a stable machine-readable code. Infra
+imports nothing from the OM, so it has a root of its own,
+`InfraException`, with the same two fields, and the gateway and the
+worker loop present both alike; a boundary that must translate one
+into the other does it by those fields, never by catching a name from
+the other side. A small
+set of shape exceptions covers almost every case, and a namespace that
+needs its own family multiply-inherits a shape so the status comes
+along:
+
+``` python
+class PlatformException(Exception):
+    """Root of every exception raised inside the platform."""
+
+    http_status: int = 500
+    code: str = "platform_error"
+
+class NotFound(PlatformException):
+    http_status = 404
+    code = "not_found"
+
+class Conflict(PlatformException):
+    http_status = 409
+    code = "conflict"
+
+class ValidationFailed(PlatformException):
+    http_status = 422
+    code = "validation_failed"
+
+class NotAuthenticated(PlatformException):
+    http_status = 401
+    code = "not_authenticated"
+
+class NotAuthorized(PlatformException):
+    http_status = 403
+    code = "not_authorized"
+
+class OrdersException(PlatformException): ...
+
+class OrderAlreadyShipped(OrdersException, Conflict): ...
+```
+
+The shape has two uses. A caller at a boundary (gateway handler, worker
+loop, test harness) catches `PlatformException` and knows the failure is
+domain-originated and not a runtime crash. Translation to an HTTP
+response happens at that boundary, in one handler, using the status
+and code the exception carries. Managers raise domain exceptions and
+never format HTTP.
 
 ### Configuration
 

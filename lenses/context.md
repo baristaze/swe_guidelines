@@ -167,7 +167,7 @@ changed.
 thread locals, or hidden lookups. Everything ambient flows through the
 context.
 
-**Source.** OpContext; Cross-Cutting Conventions, Logs.
+**Source.** OpContext; Telemetry, Logs.
 
 **Look for.** Module-level globals holding a current user, tenant, or
 request; thread-local or context-variable reads of identity, tenant,
