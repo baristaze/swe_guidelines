@@ -37,6 +37,16 @@ lenses (`skills/`), and the checkers that keep the three consistent
   repository root is the plugin. `plugin.json` carries the one release
   version; `scripts/check_version.py` holds the marketplace manifest,
   the changelog, and `docs/adopting.md` to it.
+- `benchmark/` holds the harness that measures a subject against a
+  rubric: `run.py` with its inline dependencies, the `harness/` modules,
+  the scenarios, the result schema, and `serve.py`. Every harness module
+  imports the standard library only at import time, so the tests at
+  `tests/test_benchmark_*.py` run with nothing installed; the provider
+  clients, `pyyaml`, `jsonschema`, and `websockets` are imported inside
+  the functions that use them. A run writes into `benchmark/runs/`,
+  which git ignores: the repository is the manual, a run is a
+  measurement. `make benchmark` runs the smoke scenario and is not part
+  of `make check`, because a run calls paid APIs.
 - `scripts/_common.py` holds what the scripts share, the heading
   anchor rule above all: the generator that writes anchors and the
   checker that resolves them use the same function. `tests/` holds one

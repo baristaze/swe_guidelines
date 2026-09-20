@@ -13,3 +13,6 @@ __pycache__/
 
 # local scratch
 /tmp/
+
+# benchmark run folders (the manual is checked in, the runs are not)
+benchmark/runs/

@@ -6,6 +6,38 @@ which number.
 
 ## Unreleased
 
+### Added
+
+- `benchmark/`: a harness that runs a subject, keeps what happened, and
+  has frontier models from several providers score it against a rubric.
+  The subject is a skill of this plugin, a command, or a question
+  answered by a model directly. One command line,
+  `uv run benchmark/run.py --scenario <name> --providers <flag> --effort <level>`,
+  and one run folder holding the resolved scenario, the streams, the
+  artifact, every judgement, `results.json` in a fixed schema, and
+  `report.md`.
+- `benchmark/harness/`: the pieces, each importing the standard library
+  only at import time. Providers as one bit flag, scenarios as YAML or
+  JSON with unknown keys refused, three runtimes behind one protocol
+  (host, container, and a machine reached through a configured command
+  prefix), stream capture for the command line and for frames, the
+  judges with one prompt and one structured verdict shape, and the
+  result writers.
+- `benchmark/serve.py`: serves a runs folder with the standard library
+  alone, the command line as an event stream and a frame folder as
+  MJPEG, reading files the run writes whether anyone watches or not.
+- `benchmark/scenarios/`: three scenarios, an explanation of the tenant
+  fence, an object model review, and an on-call question answered with
+  no skill at all.
+- `skills/arch-benchmark/SKILL.md`: the skill that runs a scenario from
+  a checkout and reports the scores, the findings, and the run folder.
+- `tests/test_benchmark_*.py`: the harness logic under the repository's
+  own test run, standard library and fake judges, so no key and no
+  network is needed.
+- `Makefile`: `benchmark` runs the smoke scenario and `benchmark-serve`
+  serves the runs folder. Neither is part of `check`: a run calls paid
+  APIs and takes minutes.
+
 ## 0.20.0 (2026-09-20)
 
 Two fences, and two lanes. The guideline declined row-level security

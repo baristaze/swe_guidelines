@@ -66,6 +66,8 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("docs/*.md", ["product", "shape"]),
     ("agents/*.md", ["product", "shape"]),
     ("AGENTS.md", ["product"]),
+    ("benchmark/*.md", ["product", "shape"]),
+    ("benchmark/*/*.md", ["product", "shape"]),
 ]
 
 

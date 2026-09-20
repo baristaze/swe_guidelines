@@ -71,3 +71,18 @@ def test_a_copy_built_from_a_dump_with_model_copy_fails_in_every_snippet(repo, l
     assert "shape term 'model_copy(update={**'" in capsys.readouterr().out
     repo.edit("lenses/om.md", "`current.model_copy(update={**caller.model_dump()})`", "`current.model_copy(update={\"status\": s})`")
     assert leaks.main() == 0
+
+
+def test_the_benchmark_folder_is_scanned_for_product_terms(repo, leaks, capsys):
+    repo.write("benchmark/README.md", "# Benchmark\n\nRun it on a station.\n")
+    assert leaks.main() == 0
+    repo.write("benchmark/README.md", "# Benchmark\n\nRun it on a test bench.\n")
+    assert leaks.main() == 1
+    assert "benchmark/README.md:3: product term 'bench'" in capsys.readouterr().out
+
+
+def test_the_word_benchmark_itself_is_not_a_leak(repo, leaks):
+    repo.write("benchmark/harness/notes.md", "# Notes\n\nA benchmark run writes benchmarks, not benches.\n")
+    assert leaks.main() == 1  # "benches" is the refused word, "benchmark" is not
+    repo.write("benchmark/harness/notes.md", "# Notes\n\nA benchmark run writes benchmark results.\n")
+    assert leaks.main() == 0

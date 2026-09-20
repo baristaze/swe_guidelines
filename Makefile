@@ -4,7 +4,7 @@ PYTHON := python3
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
 
-.PHONY: help check lint lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc clean
+.PHONY: help check lint lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -51,6 +51,12 @@ gen-skills-check:  ## fail when a generated skill is out of date
 
 gen-toc:           ## regenerate the table of contents of architecture.md
 	$(PYTHON) scripts/gen_toc.py
+
+benchmark:         ## run the smoke benchmark scenario (calls paid APIs; not part of check)
+	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1
+
+benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
+	uv run benchmark/serve.py --runs benchmark/runs --port 8765
 
 clean:             ## remove tool caches
 	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache scripts/__pycache__ tests/__pycache__
