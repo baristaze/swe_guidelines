@@ -615,3 +615,28 @@ refreshed in place instead of closed; a frame missed with no expiry to
 cover it.
 
 **Severity.** high
+
+## CTX-28 An external identity provider is one more credential kind
+
+**Principle.** An external identity provider's token is a credential
+kind: the gateway verifies it against the provider's published keys
+and hands the tenancy manager the issuer and the subject, whose
+transition finds or creates the identity keyed on that pair and
+produces the `IdentityContext` a sign-in does. The provider is twinned
+locally; nothing below the gateway knows which spoke.
+
+**Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
+Domain Owns.
+
+**Look for.** Where a provider's token is verified and what it
+produces; the key the identity is stored under; whether the exchange
+into a tenant session, the memberships, and the sessions are the ones
+every person has; the provider's twin in the local infra root.
+
+**Violation.** A provider's token accepted as a session on tenant
+routes; an identity keyed on an email the provider may reassign; a
+second session or membership model for federated users; a tenant
+manager that branches on the provider; no local twin, so the sign-in
+cannot run without the network.
+
+**Severity.** high

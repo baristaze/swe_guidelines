@@ -36,21 +36,24 @@ than by namespace or by app-specific service.
 ## NET-02 Services split along namespace lines
 
 **Principle.** A web service is the scalability unit, one per major OM
-namespace, running with the whole OM in-process; a service-to-service
-call is rare and reserved for a workflow that exceeds one manager's
-scope.
+namespace; the first form of a split is the API image with a
+`namespaces` setting. Every service runs the whole OM in-process, a
+call across namespaces stays a manager call across a split, and a
+wire hop between processes sharing the OM and the database is a
+recorded decision.
 
 **Source.** The Network Layer, Web Services as Scalability Units.
 
-**Look for.** Which `platform.om.<ns>` packages each domain service's
+**Look for.** Which `acme.om.<ns>` packages each domain service's
 routers import; whether a service composes managers locally; the
 number and purpose of over-the-wire calls between services.
 
 **Violation.** A domain service whose routers import managers from more
 than one namespace package, or two domain services that both wrap the
-same namespace; a service that calls another service for something its
-own managers do in-process; a domain service cut along team or client
-lines instead of namespace lines.
+same namespace; a service that calls a sibling over the wire for what
+its own process holds the code and the roles to do, with no decision
+recorded; a domain service cut along team or client lines instead of
+namespace lines.
 
 **Severity.** medium
 
@@ -470,23 +473,24 @@ idle timeout defined in two places that can drift in separate changes.
 ## NET-22 The event row and its per-tenant seq
 
 **Principle.** The record behind every push is an `Event` in the
-`activity` role, appended by one named atomic storage method that
-assigns `seq`, a per-tenant, gapless sequence. A manager records one
-event per write through the outbox; an audit entry is the same shape
-plus the principal and the app. `seq` orders events, not core writes.
+`activity` role, appended by one named atomic method that assigns
+`seq`, per tenant and gapless, from a cursor row updated and returned
+inside the append's transaction, never from `MAX(seq) + 1` with a
+retry. A manager records one event per write through the outbox.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, a typed payload) and its table's role; the
-append method and where `seq` comes from; whether the event row is
-written by the outbox relay or by a second statement; the `after_seq`
-read; the audit entry's shape.
+append method, the cursor row it locks, and where the head `seq` the
+pong carries is read from; whether the event row is written by the
+outbox relay or by a second statement; the `after_seq` read.
 
 **Violation.** `seq` minted in Python, global across tenants, or with
-gaps; an event table in the `core` role; an event row written in a
-second statement after the core write; an audit entry with a shape of
-its own; code that reads `seq` as the order of core writes.
+gaps; `MAX(seq) + 1` computed in the append and retried on the
+collision; an event table in the `core` role; an event row written in
+a second statement after the core write; an audit entry with a shape
+of its own; code that reads `seq` as the order of core writes.
 
 **Severity.** high
 

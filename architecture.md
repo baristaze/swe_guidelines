@@ -170,12 +170,13 @@ through multiple inheritance, in a fixed declaration order so a class
 signature reads as a description of the entity.
 
 The base module holds the root class, the mixins, and the two helpers
-every entity constructor needs: an id factory and a clock. `platform`
-in every path below stands for the product's root package (see [Layout
+every entity constructor needs: an id factory and a clock. `acme` in
+every path below stands for the product's root package, one that
+shadows no standard-library module (see [Layout
 Conventions](#layout-conventions)).
 
 ``` python
-# platform/om/base.py
+# acme/om/base.py
 
 def new_id() -> UUID:
     """A time-ordered UUID v7 as a standard-library UUID."""
@@ -378,15 +379,15 @@ report on. These concepts interact heavily, but remain separate
 first-class domains rather than being buried under one another.
 
 ```text
-platform.om.catalog.*
-platform.om.orders.*
-platform.om.inventory.*
+acme.om.catalog.*
+acme.om.orders.*
+acme.om.inventory.*
 ```
 
 Each top-level namespace under `om` has the same internal shape:
 
 ```text
-platform/om/orders/
+acme/om/orders/
     __init__.py                # re-exports OrderManagerInterface
     manager.py                 # the manager interface
     types/                     # entity classes, value objects, read models
@@ -397,7 +398,7 @@ platform/om/orders/
 
 The manager interface is defined in `manager.py` and re-exported from
 the package root, so consumers import it with a short path:
-`from platform.om.orders import OrderManagerInterface`. `types/` holds
+`from acme.om.orders import OrderManagerInterface`. `types/` holds
 the classes of [Naming Entities](#naming-entities). `impl/` holds the
 concrete manager classes.
 
@@ -737,8 +738,9 @@ The stages name what is established, not the road taken. The exchange
 of a sign-in for a tenant session is not a transition: it takes the
 identity stage and issues a session, and that session comes back
 through `authenticate` as an `OpContext` on the next request, which is
-how a sign-in reaches a tenant without one stage refining the other. A
-transition builds a new object from the stage below and the evidence
+how a sign-in reaches a tenant without one stage refining the other.
+
+A transition builds a new object from the stage below and the evidence
 it consulted; it never copies the stage below with changed fields, and
 nothing but a transition constructs a stage above the request stage.
 The type is the fence at every call site; at the construction sites it
@@ -933,7 +935,8 @@ manager.
 Every write follows the same four steps: authorize, verify, copy,
 write. Reading it once is enough to read every manager in the system.
 The write lands the row and its outbox row in one storage call and
-relays the row at once (see [Database Roles](#database-roles)).
+relays the row at once, or leaves the relay to the sweep, the cheaper
+first step (see [Database Roles](#database-roles)).
 
 ``` python
 class WarehouseManagerImpl(WarehouseManagerInterface):
@@ -968,7 +971,9 @@ returns the row as stored: ids are minted above storage, so the only
 way to present one twice is a retry, and a retry must not create
 twice. The insert reports the existing id and the manager reads the
 row back; there is no check before the write and no window between
-the two (see [A Storage Impl](#a-storage-impl)). A create that issues
+the two (see [A Storage Impl](#a-storage-impl)).
+
+A create that issues
 a secret is the one case where the row as stored is not enough: the
 secret is stored as a digest and shown once. Its rerun finds the row,
 re-mints the secret on it in the same named atomic write, and returns
@@ -978,7 +983,9 @@ identity. The outcome the marker stores for such a create is the view
 with the secret absent, so a replay answers with the row and no
 secret, says so in its header, and the secret exists in one place, as
 a digest; a client that lost the first response revokes the key and
-issues another. The manager sets `updated_at` and `updated_by` on every
+issues another.
+
+The manager sets `updated_at` and `updated_by` on every
 update and `deleted_at` / `deleted_by` on a soft delete, always by
 copy. The copy on update starts from the stored row: the caller's
 entity supplies the fields a caller may change, and `PROVENANCE_FIELDS`,
@@ -990,6 +997,7 @@ entity, copies the request's set fields onto it, an absent field
 meaning unchanged and an explicit null meaning cleared where the field
 is optional, and hands the whole entity to the manager. That policy is
 the request type's contract, and no impl decides it.
+
 Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does. Last writer wins by default;
 an entity whose concurrent edits matter carries a `version`, the copy
@@ -1014,7 +1022,7 @@ injected through the constructor. The interface is untouched; only the
 impl gains the parameter.
 
 ``` python
-# platform/om/orders/impl/order_manager_impl.py
+# acme/om/orders/impl/order_manager_impl.py
 
 class OrderManagerImpl(OrderManagerInterface):
     def __init__(
@@ -1128,7 +1136,7 @@ Storage follows the same namespace pattern as the rest of the object
 model, scoped under its parent entity namespace:
 
 ```text
-platform/om/inventory/storage/
+acme/om/inventory/storage/
     __init__.py     # WarehouseStorageInterface
     impl/           # postgres.py, memory.py
     tables/         # ORM classes, not exposed
@@ -1197,7 +1205,7 @@ travels back with each row. These are the documented exceptions to the
 ### Storage Root
 
 Storage implementations are assembled behind a single root that
-implements `StorageInterface` and lives at `platform.om.storage`, with
+implements `StorageInterface` and lives at `acme.om.storage`, with
 one impl per engine, `StoragePostgresImpl` and `StorageMemoryImpl`,
 named like every other impl:
 
@@ -1221,7 +1229,7 @@ storage trivially mockable in tests. Two roots exist from day one, one
 over the relational engine and one in memory, and each constructs every
 namespace impl and wires cross-storage dependencies between them.
 
-`platform.om.storage` also hosts the shared building blocks used by
+`acme.om.storage` also hosts the shared building blocks used by
 every concrete storage: common ORM base classes under `tables/`,
 translation helpers under `utils/`, and the table-to-role map described
 under [Database Roles](#database-roles).
@@ -1231,13 +1239,13 @@ under [Database Roles](#database-roles).
 Table classes mirror the OM mixins from [Naming
 Entities](#naming-entities), so their definitions
 stay focused on what is specific to the entity. The common mixins live
-at `platform.om.storage.tables`, with one storage-only addition:
+at `acme.om.storage.tables`, with one storage-only addition:
 `org_id` rides on `IdentifiableMixin`, because every tenant table is
 tenant-scoped. A global table composes `GlobalIdentifiableMixin`, which
 carries `id` alone.
 
 ``` python
-# platform/om/storage/tables/base.py
+# acme/om/storage/tables/base.py
 
 class IdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
@@ -1271,7 +1279,7 @@ and compose the mixins their entity has, in the same house-style order
 as the OM:
 
 ``` python
-# platform/om/inventory/storage/tables/warehouses.py
+# acme/om/inventory/storage/tables/warehouses.py
 
 class Warehouses(IdentifiableMixin, NamedMixin, TrackableMixin, SoftDeletableMixin, Base):
     __tablename__ = "warehouses"
@@ -1312,16 +1320,22 @@ Three index rules cover almost every table:
     whose `org_id` carries none, and declares the compound one.
 3.  Index what the SQL filters on, not what Python filters afterwards.
     Reach for a compound index when a real query asks for one.
+4.  A unique key on a `SoftDeletable` table is unique among the
+    living: a partial unique index `WHERE deleted_at IS NULL`, so a
+    deleted row frees its key and the same slug, email, or membership
+    can be created again. The memory impl refuses only among the
+    living too, and a contract case creates, deletes, and creates
+    again.
 
 ### Translation
 
 Storage translates between the OM entity and the table row. For
 `Warehouse` and `Warehouses`, field names match one-to-one, so
 translation is mechanical in both directions. Module-level helpers in
-`platform.om.storage.utils` cover that case:
+`acme.om.storage.utils` cover that case:
 
 ``` python
-# platform/om/storage/utils/translation.py
+# acme/om/storage/utils/translation.py
 
 def to_row(entity: BaseModel, row_type: type[R], **extra: Any) -> R:
     """Build a row from an entity; `extra` carries storage-only columns such as org_id."""
@@ -1343,6 +1357,15 @@ scalars are dumped natively, and the helpers decide which by looking at
 the column type, so a namespace with plain shapes writes no translation
 code at all.
 
+A value object stored as JSON is a stored shape, and it evolves under
+the rule that governs every stored shape: it only gains optional,
+defaulted fields. A rename or a removal is a migration that rewrites
+the column, in the expand-and-contract shape of
+[Migrations](#migrations), before the class changes; `extra="forbid"`
+on the value object then makes a row the migration missed a read
+error, which is the check that it ran, and never a silently ignored
+key.
+
 Custom translation is written only when the row and the entity diverge,
 for example when a row carries a computed column or a field is
 denormalized. Module-level helpers are preferred over an inheritance
@@ -1358,7 +1381,7 @@ constructor and never surfaced through the interface. A shared base,
 an upsert that checks the tenant.
 
 ``` python
-# platform/om/inventory/storage/impl/postgres.py
+# acme/om/inventory/storage/impl/postgres.py
 
 class WarehouseStoragePostgresImpl(PgStorageBase, WarehouseStorageInterface):
     async def read_warehouses(self, org_id: UUID) -> list[Warehouse]:
@@ -1402,7 +1425,7 @@ dependency is injected through the constructor. The interface is
 untouched; only the impl gains the parameter.
 
 ``` python
-# platform/om/orders/storage/impl/postgres.py
+# acme/om/orders/storage/impl/postgres.py
 
 class OrderStoragePostgresImpl(PgStorageBase, OrderStorageInterface):
     def __init__(
@@ -1437,7 +1460,7 @@ role), and lives in the schema named after it:
 | `queue`    | the work queue and the channels that wake workers       |
 | `admin`    | the operator plane's own state, global rows             |
 
-A map from table name to role in `platform.om.storage.roles` is the
+A map from table name to role in `acme.om.storage.roles` is the
 single source of truth. The ORM base derives each table's schema from
 it, each role has its own connection URL that defaults to the shared
 one, and the storage root opens one engine and pool per distinct URL.
@@ -1461,6 +1484,16 @@ Rules that make the move safe, each checked by a unit test:
     left behind and marks the row done. The relay is idempotent on the
     row's key, so relaying twice is harmless (the transactional outbox
     pattern).
+-   The relay has a price, and it is named: after the one commit, the
+    event append in `activity`, the publish, and the mark in `core`
+    are three more round trips, four per write, six for a creating
+    request with the marker's `begin` and `finish` around it. Relaying
+    at once pays them in the request path for a push that arrives in
+    milliseconds. The cheaper first step is to relay from the sweep
+    alone, on an interval of a second or two: one round trip per
+    write, a push that arrives within the interval, the same relay
+    code, and no second path to test. A system moves the relay into
+    the request path when push latency earns it.
 -   The topic bus (see [Topics](#topics)), when it is backed by the database,
     connects to the queue role, because the processes that enqueue work
     and the workers they wake must share it.
@@ -1555,7 +1588,7 @@ the constructor.
 
 ### InfraInterface Root
 
-Infrastructure lives under `platform.infra` and is fronted by a single
+Infrastructure lives under `acme.infra` and is fronted by a single
 root so consumers can ask for what they need:
 
 ``` python
@@ -1850,10 +1883,16 @@ that target.
 
 ### Web Services as Scalability Units
 
-Web services are the network layer's scalability units. Each major OM
-namespace gets its own service: `catalog` has `catalog-api`, `orders`
-has `orders-api`, and so on. Splitting along namespace lines lets each
-service be scaled, rolled out, and deployed independently, and lets
+Web services are the network layer's scalability units, and the unit
+is a process, not a codebase. Each major OM namespace gets its own
+service: `catalog` has `catalog-api`, `orders` has `orders-api`, and
+so on. The first form of a split is the API process's own image with
+a `namespaces` setting naming the routers it mounts, so `catalog-api`
+is that image serving the `catalog` routers and nothing else, and the
+split is a deployment change. A service earns an image of its own
+when its code diverges, which is what an app-specific service with
+logic of its own is. Splitting along namespace lines lets each
+service be scaled, rolled out, and exposed independently, and lets
 products mix which services they expose. The independence is of the
 process, not of the data: every service runs the same OM against the
 same database roles, and the schema timeline stays with the OM (see
@@ -1863,11 +1902,17 @@ scaling out a matter of adding processes are collected in [Scalability
 by Design](#scalability-by-design).
 
 A service runs in its own container with the whole OM library
-available to it and calls managers and storages in-process. A
-service-to-service call over the wire is rare and reserved for
-workflows that exceed a single manager's scope, for example an order
-workflow that reserves stock before it commits (see [Direction of
-Calls](#direction-of-calls)).
+available to it and calls managers and storages in-process, and that
+holds across a split: a call from the orders routers into the
+inventory namespace is a manager call inside the orders process,
+before the split and after it, because the process holds the code and
+the roles the callee needs. The remote impl of a service interface is
+for the process that does not: an image that drops a namespace's
+code, a database role a service is not granted, a system outside the
+platform. A wire hop between two processes that share the OM and the
+database buys an unknown outcome and nothing else, so it is a
+recorded decision, never the shape a split takes by itself (see
+[Direction of Calls](#direction-of-calls)).
 
 ### Domain Services vs App-Specific Services
 
@@ -2019,32 +2064,19 @@ The gateway owns a short list of edge concerns, each done once:
     error envelope. The limits fail open: they guard against runaway
     clients and are not a security boundary.
 -   **Edge idempotency.** A creating `POST` accepts an
-    `Idempotency-Key` header. `begin` writes a pending marker per
-    tenant and principal under the key, carrying a digest of the
-    request, the id the create will use, minted before the marker, and
-    an attempt token minted with it; `finish` stores the outcome on it,
+    `Idempotency-Key` header, and the `IdempotencyMarker` of [Naming
+    Entities](#naming-entities) owns the retry. `begin` writes it
+    pending per tenant and principal under the key, carrying a digest
+    of the request, the id the create will use, minted before the
+    marker, and an attempt token; `finish` stores the outcome on it,
     and a retry replays the outcome, using the same storage primitive
     the queue handlers use. A key presented with another digest is
     refused. Only an outcome the client cannot change by retrying is
-    stored: a refusal (a `4xx`) is replayed, and a failure (a `5xx`)
-    releases the marker, so the retry runs again on the same id
-    instead of replaying the failure for good; a release keeps the
-    marker with its digest and its id and clears only the attempt, so
-    the retry that follows a failure after the row landed finds the
-    row by the same id instead of creating a second one. A pending marker older
-    than the pending lease, an option of the idempotency manager, was
-    abandoned by a crash between the marker and its outcome, or
-    belongs to an attempt still running past its lease; the next retry
-    takes it over in one conditional write that stamps an attempt
-    token of its own and runs the request again with the marker's id,
-    and because a create whose id is already written returns the row
-    as stored, the rerun cannot duplicate what the first attempt left
-    behind. `finish` and the release are conditional on the attempt
-    token, in the statement itself, so the attempt that lost the
-    marker can neither finish it with its own outcome nor release the
-    marker the retry now holds; it is refused, like a worker whose
-    lease has passed, and whatever it wrote is the row the retry
-    found.
+    stored: a refusal (a `4xx`) is replayed; a failure (a `5xx`)
+    releases the marker, keeping its digest and its id and clearing
+    only the attempt, so the retry reruns on the same id and finds the
+    row a failed attempt left instead of creating a second one. The
+    table after this list is the whole protocol.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
     counters and histograms. All three sit outside the versioned API.
@@ -2052,6 +2084,32 @@ The gateway owns a short list of edge concerns, each done once:
     beside the process reads it.
 -   **Versioning.** The API prefix (`/v1`) is applied once, where
     routers are mounted. Routers declare only their own sub-paths.
+
+The marker moves through four states, and every move is one
+conditional write whose guard is in the statement itself:
+
+| Marker            | Event                                   | Guard                          | Then                                              |
+|-------------------|-----------------------------------------|--------------------------------|---------------------------------------------------|
+| none              | `begin`                                 |                                | pending under attempt A, id minted; the request runs |
+| pending           | `finish` by A with a `2xx` or a `4xx`   | the attempt is A               | finished; the outcome stored                      |
+| pending           | a `5xx` in A                            | the attempt is A               | released; digest and id kept, no attempt          |
+| pending           | `finish` or release by an attempt not A | the attempt is not the caller's | unchanged; the caller is refused                  |
+| pending, lease out| a retry's `begin`                       | key and digest match           | pending under attempt B, same id; the request reruns |
+| released          | a retry's `begin`                       | key and digest match           | pending under attempt B, same id; the request reruns |
+| finished          | a retry's `begin`                       | the digest matches             | finished; the outcome replayed, the header says so |
+| any               | `begin` under another digest            |                                | unchanged; refused                                |
+
+The pending lease is an option of the idempotency manager: a marker
+older than it was abandoned by a crash between the marker and its
+outcome, or belongs to an attempt still running past its lease, and
+the next retry takes it over. Because a create whose id is already
+written returns the row as stored, a rerun on the marker's id cannot
+duplicate what an earlier attempt left behind; and because `finish`
+and the release are conditional on the attempt token, the attempt
+that lost the marker can neither finish it with its own outcome nor
+release the marker the retry now holds. It is refused, like a worker
+whose lease has passed, and whatever it wrote is the row the retry
+found.
 
 The operator plane has its own gate. It authenticates the bearer into
 the identity stage, which admits only the person's own sign-in (never
@@ -2074,6 +2132,17 @@ invite, role management, key rotation, session refresh) that belongs in
 the OM like any other domain; the gateway asks the tenancy manager for
 the principal behind a credential and owns nothing else.
 
+An external identity provider is one more credential kind. The
+gateway's dependency accepts the provider's token, verifies it against
+the provider's published keys, and hands the tenancy manager the
+issuer and the subject; the manager's transition finds or creates the
+identity keyed on that pair and produces the same `IdentityContext` a
+sign-in does, so the exchange into a tenant session, the memberships,
+and the sessions are the ones every person has. The provider is a
+backend of the infra root, twinned locally like any hosted service
+(see [Twins for External Services](#twins-for-external-services)), and
+nothing below the gateway knows which provider spoke.
+
 Nothing the tenancy namespace stores can be presented as a credential.
 A password is stored as a memory-hard hash (scrypt or argon2) under a
 salt of its own. An API key, a session token, and a socket ticket are
@@ -2093,14 +2162,18 @@ services and workers sit in private subnets, security groups admit
 only the platform's own processes, and only the gateway has a public
 address, all declared in Terraform; a runtime that offers mutual TLS
 between tasks at no cost turns it on. The rule is where the trust
-boundary is, not that traffic inside it is plain. A service-to-service
+boundary is, not that traffic inside it is plain.
+
+A service-to-service
 call carries a short-lived internal credential minted by the calling
 process: a token that names the principal, the tenant, the request id,
 and an expiry a few minutes out, signed with a key every process reads
 from the secret store (see [Secrets](#secrets)) and verified by the
 callee against the same key; the callee's gateway rebuilds `OpContext`
 from it like any other credential kind, and no service trusts a bare
-header. One key is one trust domain: every process that reads it can
+header.
+
+One key is one trust domain: every process that reads it can
 mint a credential naming any principal in any tenant, so the fence
 around that key is the private network and the secret store's access
 list, and a compromised process is a compromised platform, not a
@@ -2159,7 +2232,9 @@ page envelope (`items` and `next_cursor`) and pages by an opaque
 cursor over the list's own order, which is the id when that order is
 the creation order, since a v7 id sorts by time; an append-only
 stream pages by a monotonic sequence number (`after_seq`); nothing
-pages by an offset. Inside `/v1` a view only gains fields and a
+pages by an offset.
+
+Inside `/v1` a view only gains fields and a
 request only gains optional ones; a removal or a rename is a new
 prefix. Tolerance runs one way, and the deployment order covers the
 other. A reader ignores a field it does not know, which lets an old
@@ -2189,7 +2264,7 @@ builds against.
 
 ``` mermaid
 flowchart LR
-    OM[OM types<br/>Warehouse<br/>platform/om/...]
+    OM[OM types<br/>Warehouse<br/>acme/om/...]
     View[Wire types<br/>WarehouseView, AddWarehouseRequest<br/>services/inventory/types/]
     Router[Router<br/>hand-written, translates only]
     OpenAPI[openapi.json<br/>emitted by the app,<br/>committed, diffed in CI]
@@ -2197,7 +2272,7 @@ flowchart LR
     subgraph Clients [Client types, one per language]
         direction TB
         TsTypes[apps/portal/src/api/schema.d.ts<br/>generated from openapi.json]
-        PyClient[platform/clients/python/<br/>typed client over httpx]
+        PyClient[acme/clients/python/<br/>typed client over httpx]
     end
 
     OM -. projected selectively .-> View
@@ -2262,11 +2337,12 @@ exposes. `InventoryServiceInterface` has two impls like every
 interface: the in-process one calls the manager the container wired
 and exists from the start, since every router calls through it; the
 remote one is the typed client of [Clients Live in One
-Place](#clients-live-in-one-place), written at the split; and the swap
-at wiring time is what a namespace split changes. The orders service impl orchestrates:
+Place](#clients-live-in-one-place), written when a process stops
+holding what the callee needs; and the swap at wiring time is the
+whole of that change. The orders service impl orchestrates:
 
 ``` python
-# platform.services.orders.impl (network layer)
+# acme.services.orders.impl (network layer)
 
 class OrderServiceImpl(OrderServiceInterface):
     def __init__(
@@ -2289,7 +2365,9 @@ The service impl holds both a service-level dependency
 (`InventoryServiceInterface`) and a manager-level dependency
 (`OrderManagerInterface`), both injected through the constructor. The
 OM order manager receives `reservation` as a plain argument; it has no
-knowledge that a service was called to produce it. `order_id` is the
+knowledge that a service was called to produce it.
+
+`order_id` is the
 id the gateway minted before the idempotency marker (see [The
 Gateway](#the-gateway)), and it travels into the reservation as its
 idempotency key: inventory dedupes on it, so the retry that follows a
@@ -2297,7 +2375,9 @@ lost response, or a crash before the order row exists, finds the
 reservation it already made instead of making a second one, with no
 order row to find it by. A reservation is a record with an expiry, so
 a failed second step leaks nothing past it, and the order carries the
-reservation id. The retry is owned at the edge: the client retries
+reservation id.
+
+The retry is owned at the edge: the client retries
 under the same `Idempotency-Key`, the marker reruns the request with
 the same `order_id`, and a retry wrapper on the remote client (see
 [Composition by decoration](#composition-by-decoration)) repeats one
@@ -2359,10 +2439,14 @@ oldest frame is dropped and the drop is logged. That is safe because
 every push is also a record, and a client that reconnects asks for
 everything after the last sequence number it saw. The client keeps the
 last contiguous sequence, so a gap (42 arriving without 41) is a replay
-from 40, never a skip. Contiguity is per tenant, so the stream travels
+from 40, never a skip.
+
+Contiguity is per tenant, so the stream travels
 whole: the topic that carries it delivers every event of the tenant to
 a subscriber, and a client that cares about some kinds filters after
-it has ordered, never before. That is safe because the stream is a
+it has ordered, never before.
+
+That is safe because the stream is a
 stream of hints: a frame and a replayed record carry the identity of
 the change (`seq`, `kind`, `target_id`, the actor) and no field of the
 entity; a client reads the entity through the authorized read, which
@@ -2372,20 +2456,35 @@ it is named: the hint is metadata every member of the tenant may see,
 that a record exists, who touched it, and when. A product where the
 existence of a record is itself restricted keeps one stream per
 visibility scope, with a cursor per stream. An entity's snapshot lives
-in the record for audit and never on the wire. Replay from
+in the record for audit and never on the wire.
+
+Replay from
 storage is the durability mechanism; the socket is a hint that
 something changed. The record is an `Event` in the `activity` role:
 `Identifiable` plus `org_id`, `seq`, `kind`, `target_id`, and a typed
 payload, appended by one named atomic storage method that assigns
 `seq`, a per-tenant, gapless sequence and the one number storage
-assigns, because only the database can order commits. `seq` orders the
-events, not the core writes: it is assigned when the relay appends the
-event, after the core row committed, so two concurrent writes to one
-target can carry seqs in the other order. A consumer that needs the
-record's state reads it and never rebuilds it from events.
-A manager records one event per write through the outbox of [Database
-Roles](#database-roles); an audit entry is the same shape plus the
-principal and the app.
+assigns, because only the database can order commits. Gapless is a
+decision: a client treats a gap as a loss and replays, so a number
+that was skipped would cost a replay on every socket of the tenant.
+
+The append takes the next number from a cursor row per tenant in the
+same role, `UPDATE cursors SET head = head + 1 WHERE org_id = ...
+RETURNING head`, inside the append's own transaction: two appends to
+one tenant queue on that row's lock and each leaves with the next
+number, and a rollback returns the number with it. The cursor is also
+the tenant's head `seq`, the number the first frame and every pong
+carry (below), read from one row. The append never computes
+`MAX(seq) + 1` under a unique index and retries on the collision; on
+a busy tenant that loop is a `Conflict` generator in the request path.
+
+`seq` orders the events, not the core writes: it is assigned when the
+relay appends the event, after the core row committed, so two
+concurrent writes to one target can carry seqs in the other order. A
+consumer that needs the record's state reads it and never rebuilds it
+from events. A manager records one event per write through the outbox
+of [Database Roles](#database-roles); an audit entry is the same shape
+plus the principal and the app.
 
 ``` mermaid
 flowchart LR
@@ -2643,33 +2742,38 @@ flowchart LR
 ```
 
 A worker runs several items at once, each as its own task, up to a
-capacity it advertises. Each running item renews its lease on a timer.
-A renewal refused with `Conflict`, because another worker holds the
-item now, cancels the task at once; that answer is definitive. A
-renewal that fails for any other reason, a timeout, an engine out of
-reach, is retried, and a lease that could not be renewed for half its
-length cancels its own task before the lease expires. That is the
-first fence. The second is
-that every claim mints a claim token the claim returns, and completion,
-release, deferral, and renewal carry it and condition on it in the
-statement itself, the token on the queue row and not the worker's
-name, since one worker can hold one item twice across a requeue, so a
-worker whose lease has passed is refused with `Conflict` and hands the
-item back without spending an attempt. Together they guarantee one
-completion per item. They do not guarantee that a stale worker's write
-to the record never lands: the queue row and the record live in
-different roles, so no statement can check both, and a worker that
-stalls after reading the record can still write it before the new
-holder does. So a handler is idempotent on the item's key ([Idempotency
-on the Consumer Side](#idempotency-on-the-consumer-side)); a record
-whose concurrent edits matter carries a `version` and is written by
+capacity it advertises. Two fences hold one completion per item, and
+a third thing they do not hold is named with them:
+
+| Fence           | Where it is checked                   | What it refuses                                                                                                                                     |
+|-----------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| the lease       | in the worker, on the renewal timer   | a task whose renewal was refused with `Conflict`, cancelled at once; a task whose lease could not be renewed for half its length, cancelled before it expires |
+| the claim token | in the statement, on the queue row    | a completion, release, deferral, or renewal from a holder whose token the row no longer carries: `Conflict`, the item handed back, no attempt spent  |
+| neither         |                                       | a stale worker's write to the record: the record lives in another role, so no statement can check both                                             |
+
+Each running item renews its lease on a timer. A renewal refused with
+`Conflict`, because another worker holds the item now, is definitive
+and cancels the task at once; a renewal that fails for any other
+reason, a timeout, an engine out of reach, is retried, and a lease
+that could not be renewed for half its length cancels its own task
+before the lease expires. Every claim mints a claim token the claim
+returns, and completion, release, deferral, and renewal carry it and
+condition on it in the statement itself, the token on the queue row
+and not the worker's name, since one worker can hold one item twice
+across a requeue.
+
+What the fences do not hold is covered elsewhere: a worker that stalls
+after reading the record can still write it before the new holder
+does. So a handler is idempotent on the item's key ([Idempotency on
+the Consumer Side](#idempotency-on-the-consumer-side)); a record whose
+concurrent edits matter carries a `version` and is written by
 compare-and-set ([Shape of an Operation](#shape-of-an-operation)),
 which refuses the stale write once the new holder has written and not
 before; and an external side effect is keyed by the item or reconciled
-afterwards, never assumed exclusive. The
-worker heartbeats its own liveness (a key with a TTL under the system
-scope, written and read back on every beat); when heartbeats fail
-repeatedly it stops claiming new work but finishes what it holds.
+afterwards, never assumed exclusive. The worker heartbeats its own
+liveness (a key with a TTL under the system scope, written and read
+back on every beat); when heartbeats fail repeatedly it stops claiming
+new work but finishes what it holds.
 
 ### Shutdown
 
@@ -2921,7 +3025,9 @@ service that runs in the smaller environment runs in production with
 nothing more than scale changes. The smaller environment is staging,
 and it is `main`: every merge to `main` deploys it, with no approval,
 so staging is always the tip of the default branch and a merge is the
-deployment. Production is the `release` branch: it moves only by a
+deployment.
+
+Production is the `release` branch: it moves only by a
 fast-forward from `main`, never by a commit of its own, so its history
 is a prefix of `main`'s and a release is a `main` commit that has run
 on staging; a push to `release` plans production, waits for a person's
@@ -3083,10 +3189,10 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   ├── adr/                            # architecture decision records
 │   └── runbooks/
 │
-├── om/                                 # platform-om distribution
+├── om/                                 # acme-om distribution
 │   ├── pyproject.toml
 │   ├── src/
-│   │   └── platform/
+│   │   └── acme/
 │   │       └── om/
 │   │           ├── base.py             # Platform + mixins, new_id, utcnow
 │   │           ├── opcontext.py        # the context stages and the scopes
@@ -3116,10 +3222,10 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │       ├── sql/<role>/
 │       └── versions/<role>/
 │
-├── infra/                              # platform-infra distribution
+├── infra/                              # acme-infra distribution
 │   ├── pyproject.toml
 │   ├── src/
-│   │   └── platform/
+│   │   └── acme/
 │   │       └── infra/
 │   │           ├── cache/
 │   │           ├── buckets/
@@ -3132,14 +3238,14 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │
 ├── integrations/                       # third-party providers: interface, real client, twin
 │   ├── pyproject.toml
-│   ├── src/platform/integrations/
+│   ├── src/acme/integrations/
 │   └── tests/
 │
 ├── services/
 │   ├── api/                            # the one API process; splits into <ns>-api later
 │   │   ├── pyproject.toml
 │   │   ├── src/
-│   │   │   └── platform/
+│   │   │   └── acme/
 │   │   │       └── services/
 │   │   │           └── api/
 │   │   │               ├── app.py      # create_app: settings, middleware, routers
@@ -3159,10 +3265,10 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 ├── apps/
 │   ├── cli/                            # Python CLI
 │   │   ├── pyproject.toml
-│   │   ├── src/platform/apps/cli/
+│   │   ├── src/acme/apps/cli/
 │   │   └── tests/
 │   ├── portal/                         # React + TypeScript + Vite
-│   │   ├── package.json                # @platform/portal
+│   │   ├── package.json                # @acme/portal
 │   │   ├── openapi.json                # committed, regenerated by `make openapi`
 │   │   ├── src/
 │   │   │   ├── api/                    # schema.d.ts (generated), types.ts, client.ts
@@ -3198,19 +3304,19 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 
 ### Layout Conventions
 
-Every Python distribution uses the `src/platform/...` layout. Tests
+Every Python distribution uses the `src/acme/...` layout. Tests
 live in a `tests/` sibling, not inside the package, so the test runner
 exercises the installed package and surfaces packaging bugs before
 deploy.
 
-The OM is one distribution, `platform-om`, covering every namespace;
+The OM is one distribution, `acme-om`, covering every namespace;
 cross-namespace dependencies move together anyway.
 
 > **Principle:** The OM is one distribution. Namespaces are folders
 > inside it, not separate packages.
 
 Migrations live with the OM at `om/migrations/`. Tables live in
-`platform.om.<ns>.storage.tables`, and the schema timeline is owned by
+`acme.om.<ns>.storage.tables`, and the schema timeline is owned by
 the OM, not by any single service.
 
 Workers and services share the same project shape: `pyproject.toml`,
@@ -3430,9 +3536,20 @@ ADRs; this document describes how we build.
 The rules in this document that a program can check are checked: a
 unit test asserts that every table has a role and no key crosses one,
 that every storage method takes `org_id` first except the enumerated
-exceptions, that no manager imports a service, that the migration chain
-has one head per role. A rule that is only written down drifts. A rule
-that fails the build holds.
+exceptions, that no manager imports a service and nothing under infra
+imports the OM, that every `*Interface` is an `ABC` whose public
+methods are abstract, that only a transition constructs a stage above
+the request stage, that every root is built whole at boot, and that
+the migration chain has one head per role. The scaffold writes these
+tests into a new tree, and an existing tree copies them from one. A
+rule that is only written down drifts. A rule that fails the build
+holds.
+
+A decision this document makes for every system is named as one where
+it is made, with the reason it rests on and what would end it, so a
+reader who disagrees knows what to argue with; the alternatives it
+turned down are not listed, because a list of what we do not do is
+never complete and never current.
 
 ### Tests
 
@@ -3619,7 +3736,9 @@ the rotation of secrets and keys; service objectives, alerting, and
 the on-call posture behind them; request deadlines, retry budgets, and
 admission under overload; disaster recovery and multi-region; tenant
 export and offboarding; load testing; the deprecation of an API
-version; and supply-chain rules such as dependency scanning. The shape
+version; and supply-chain rules such as dependency scanning.
+
+The shape
 is what makes each of them tractable when its time comes: one settings
 object to carry a deadline, one gateway to admit or refuse, one role to
 restore, one `org_id` to export by. Where the shape already holds a
@@ -3635,7 +3754,10 @@ This document describes a system one layer at a time, with a commerce
 platform as the running example. The next step is to apply it whole:
 one small, scoped project, fun to build, that follows every section
 end to end, from the object model at the center to the apps at the
-edge, in the shapes and the technologies named here.
+edge, in the shapes and the technologies named here, and that records
+each place it does not yet as a deviation, in the shape of [Records of
+Decisions](#records-of-decisions), so the distance between the text
+and the code is always written down.
 
 That project is Tadas, a to-do app for teams, used by people and by
 agents alike. Its repository is <https://github.com/baristaze/tadas>.

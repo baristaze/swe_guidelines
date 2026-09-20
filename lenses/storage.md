@@ -449,10 +449,10 @@ before the copy is current, or with no rehearsal.
 ## STO-20 A handoff after a core write is a core row plus an outbox row
 
 **Principle.** A handoff after a core write is never a second
-statement the manager remembers to make: the manager writes the core
-row and an outbox row in one named atomic method in the `core` role
-and relays the row at once. The relay is idempotent on the row's key,
-so relaying twice is harmless (the transactional outbox).
+statement the manager remembers to make: the core row and an outbox
+row land in one named atomic method in the `core` role, relayed at
+once or by the sweep on a short interval, the cheaper first step. The
+relay is idempotent on the row's key (the transactional outbox).
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -559,5 +559,49 @@ by a new migration. A column dropped or renamed in the same release
 that stops reading it, so a rollout that runs both versions breaks.
 The check step is missing from the fast gate, or the roundtrip from
 CI.
+
+**Severity.** medium
+
+## STO-25 A stored value object only gains optional fields
+
+**Principle.** A value object stored as JSON is a stored shape: it
+only gains optional, defaulted fields. A rename or a removal is a
+migration that rewrites the column, expand and contract, before the
+class changes; `extra="forbid"` then makes a row the migration missed
+a read error, never a silently ignored key.
+
+**Source.** The Storage Layer, Translation.
+
+**Look for.** Every value object dumped into a JSON column and the
+history of its fields; for a field renamed or removed, the migration
+that rewrote the stored rows; whether the value object keeps
+`extra="forbid"`.
+
+**Violation.** A field of a stored value object renamed or removed
+with no migration of the column, so rows written before the change
+fail to read; a value object relaxed to `extra="ignore"` to make old
+rows load; a new field without a default.
+
+**Severity.** medium
+
+## STO-26 A unique key on a soft-deletable table is unique among the living
+
+**Principle.** A uniqueness constraint on a `SoftDeletable` table is a
+partial unique index `WHERE deleted_at IS NULL`, so a deleted row
+frees its key and the same value can be created again. The memory
+impl refuses only among the living, and a contract case creates,
+deletes, and creates again.
+
+**Source.** The Storage Layer, Defining ORM Classes.
+
+**Look for.** Every unique index on a table whose class composes
+`SoftDeletableMixin`, and its `WHERE` clause; the memory impl's
+uniqueness check and whether it skips deleted rows; a contract case
+that re-creates after a delete.
+
+**Violation.** A full unique index on a soft-deletable table, so a
+deleted slug, email, or membership can never be reused; a memory impl
+that refuses a key a deleted row holds while the engine accepts it;
+no contract case for the re-creation.
 
 **Severity.** medium

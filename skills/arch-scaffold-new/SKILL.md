@@ -70,7 +70,7 @@ OM distribution, under `om/`:
 | `src/<root>/om/root.py`                | `build_managers(storage, infra) -> Managers`                                                   |
 | `src/<root>/om/storage/root.py`        | `StorageInterface` with `healthcheck` and `close`                                             |
 | `src/<root>/om/storage/roles.py`       | `DatabaseRole`, the table-to-role map                                                          |
-| `src/<root>/om/events/`                | the `events` namespace of the guideline's Realtime at the Edge: `Event(Identifiable)` with `org_id`, `seq`, `kind`, `target_id`, and a typed payload, its `activity`-role table, storage with the named atomic `append` that assigns `seq` (per tenant, gapless) and `read_after(org_id, after_seq, limit)`, and a manager the outbox relay calls to record one event per entity write, because every push is also a record |
+| `src/<root>/om/events/`                | the `events` namespace of the guideline's Realtime at the Edge: `Event(Identifiable)` with `org_id`, `seq`, `kind`, `target_id`, and a typed payload, its `activity`-role table, storage with the named atomic `append` that assigns `seq` (per tenant, gapless, from a `cursors` row per tenant in the same role, `UPDATE ... SET head = head + 1 ... RETURNING head` inside the append's transaction, the row inserted on the tenant's first event; never `MAX(seq) + 1` with a retry), `read_head(org_id)` from the same row, and `read_after(org_id, after_seq, limit)`, and a manager the outbox relay calls to record one event per entity write, because every push is also a record |
 | `src/<root>/om/audit/`                 | the `audit` namespace, the cross-cutting swimlane of Namespaces as Swimlanes: `AuditEntry(Identifiable)` with the same shape as an `Event` plus the principal and the app (`org_id`, `seq`, `kind`, `target_id`, a typed payload, `user_id`, `credential_id`, `app_type`), as Realtime at the Edge states; its `activity`-role table, storage with the named atomic `append` that assigns `seq` and `read_after(org_id, after_seq, limit)`, and `AuditManagerInterface`, which the dead-letter path of a worker and the operator plane write through |
 | `src/<root>/om/outbox/`                | the transactional outbox of Database Roles: `OutboxRow(Identifiable, Created)`, as Naming Entities declares it, with `org_id`, `kind`, `target_id`, `payload` (a `FrozenMapping`), and `done_at`, its `core`-role table, storage with `read_pending(limit)` and `mark_done(org_id, row_id)`, and `OutboxRelayInterface.relay(org_id, row)` with its impl, which appends the `Event` through the events manager, publishes `ENTITY_CHANGED`, and marks the row done, idempotent on the row's id; a manager takes the relay by interface and calls it after every write, and the worker sweep relays what `read_pending` returns |
 | `src/<root>/om/idempotency/`           | the edge idempotency marker: `IdempotencyMarker(Identifiable, Created)`, as Naming Entities declares it, its `core`-role table unique on `(org_id, user_id, key)`, storage, and a manager with `begin` and `finish`, so a replayed creating request dedupes on a durable unique index like every queue handler, and the cache is only a read-through |
@@ -126,13 +126,16 @@ Nothing; the tree is new. Every later step appends to the files above.
    address.
 7. `git init` in `<target-dir>`, nothing staged (skipped when the
    target was a fresh repository).
-8. Read `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md` and run it
-   over the whole tree. Close every high finding and rerun `make
-   check`; list the rest in the output for the person. A fresh
-   scaffold passes the gates and still carries findings the gates
-   cannot see: a setting Terraform does not pass, a write without its
-   authorization line, a socket route outside the gateway, a creating
-   route without its idempotency key.
+8. Before the review, sweep the tree for the four misses a fresh
+   scaffold makes most, and fix each: a setting the Terraform root
+   does not pass to the service, a mutating manager operation whose
+   first line is not `ctx.require(...)`, a socket route mounted
+   outside the gateway, a creating route without the `Idempotency-Key`
+   dependency. Then read `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
+   and run it over the whole tree. Close every high finding and rerun
+   `make check`; list the rest in the output for the person. A high
+   finding on a fresh tree is a defect of this skill: name it in the
+   output so it can be closed at the source.
 
 Stop at the first step whose gate fails and report where it stopped.
 

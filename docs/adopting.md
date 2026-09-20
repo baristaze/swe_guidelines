@@ -33,12 +33,21 @@ release.
 
 The first review of a fresh scaffold lands about two thirds of the
 lenses and a dozen high findings. The review-and-fix pass is part of
-scaffolding, not an afterthought.
+scaffolding, not an afterthought, and the scaffold sweeps its four
+most common misses before the review runs.
+
+The rules a program can check travel as tests, not as a package: a
+fresh scaffold writes them into `om/tests/unit/` (the role map, the
+tenant-first storage signatures, the import direction, the interface
+check, the construction-site test for stages, the roots built whole,
+one head per migration chain), and an existing codebase copies them
+from a scaffolded tree or from the reference implementation and
+adjusts the module names. A rule that fails the build holds.
 
 For a team that pins versions, add the marketplace from a tag:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.9.0
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.10.0
 ```
 
 ## 2. Point at the guideline from `specs/`
@@ -50,8 +59,8 @@ nothing else that belongs to the guideline:
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.9.0/architecture.md>
-(pinned at `v0.9.0`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.10.0/architecture.md>
+(pinned at `v0.10.0`).
 
 The guideline is the source of truth for how this system is shaped.
 `docs/architecture.md` describes what is implemented; `docs/adr/`
@@ -109,7 +118,7 @@ A project that wants the guideline text in its tree without the plugin
 pinned tag into a folder it does not edit:
 
 ```makefile
-GUIDELINE_TAG ?= v0.9.0
+GUIDELINE_TAG ?= v0.10.0
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
