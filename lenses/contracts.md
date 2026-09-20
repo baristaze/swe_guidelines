@@ -79,17 +79,23 @@ interface or a caller.
 
 **Principle.** The in-memory impl is a full second implementation, not a
 stub: every read, write, filter, and tenancy rule the relational impl
-has, the memory impl has too, and the test suite runs both.
+has, the memory impl has too, and the test suite runs both. Every
+unique key the schema declares has a contract case, so the memory impl
+refuses what the engine refuses.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** The memory impl of every storage interface; the test
-fixtures that select an impl; parametrized tests that run against both.
+fixtures that select an impl; parametrized tests that run against both;
+the unique indexes the table classes declare and the contract case
+behind each one.
 
 **Violation.** A memory impl raises `NotImplementedError` or returns
 empty results for an operation the relational impl supports; a filter
 or ordering rule exists only in one impl; the test suite runs storage
-tests against one impl only.
+tests against one impl only; a unique key with no contract case, so the
+memory impl accepts a duplicate the engine refuses and the pair is two
+impls of two contracts.
 
 **Severity.** medium
 
@@ -155,12 +161,12 @@ options object; an options object is mutable or is rebuilt per call.
 
 ## CON-08 Cycles are broken above the managers
 
-**Principle.** When two managers genuinely need each other, the cycle is
-broken above them: extract the shared operation into the lower
-namespace, or pass a narrow callable for the one operation the upper
-manager needs. Reaching into another impl's private attributes after
-construction is not wiring. The context module carries ids and facts,
-never entities, and imports nothing above the base module.
+**Principle.** When two managers need each other, the cycle is broken
+above them: extract the shared operation into the lower namespace, or
+pass a narrow callable for the one operation the upper manager needs.
+Reaching into another impl's private attributes after construction is
+not wiring. The context module carries ids and facts, never entities,
+and imports nothing above the base module.
 
 **Source.** Interfaces, Injectability; OpContext.
 
@@ -274,21 +280,19 @@ service depends on an app-specific interface.
 ## CON-14 Cross-service orchestration lives in the service impl
 
 **Principle.** Cross-service orchestration lives in the service impl,
-not in the OM, and it composes; it never decides. The service impl
-holds both a service-level dependency and a manager-level dependency,
-and the manager receives the result of the other service as a plain
-argument. A service interface has two impls like every interface: the
-in-process one calls the manager the container wired, the remote one
-is the typed client, and the swap at wiring time is what a namespace
-split changes.
+not in the OM, and it composes; it never decides. A service interface
+has two impls: the in-process one calls the manager and exists from the
+start, since every router calls through it; the remote one is the typed
+client, written at the split.
 
 **Source.** The Network Layer, Direction of Calls.
 
 **Look for.** Service impl methods that call more than one namespace;
-the parameter list of the manager method such a service impl calls;
-manager methods that sequence calls to another namespace's
-service-level operation; what implements each `*ServiceInterface`
-and which impl the container wires.
+the parameter list of the manager method such a service impl calls,
+which takes the other service's result as a plain argument; manager
+methods that sequence calls to another namespace's service-level
+operation; what implements each `*ServiceInterface` and which impl the
+container wires, since the swap at wiring time is what a split changes.
 
 **Violation.** A manager method's signature accepts a `*ServiceInterface`
 or a service impl's dependency handle; a service impl passes its own
@@ -296,28 +300,32 @@ dependency into a manager instead of the result it produced; a sequence
 that needs a service-level operation of another namespace is written
 inside a manager; a service impl that holds a rule (availability,
 concurrency) a manager owns; a service interface with only a remote
-impl, so the single-process start goes over the wire, or only an
-in-process one, so a split rewrites its callers.
+impl, so the single-process start goes over the wire, or with no
+in-process impl from the start, so a router calls a manager directly
+and a split rewrites its callers.
 
 **Severity.** medium
 
-## CON-15 A router translates, it does not decide
+## CON-15 A router translates through its service impl, it does not decide
 
 **Principle.** A router builds the entity or the arguments from the
-request, calls one manager, and projects the result onto a view. When a
-router starts deciding something, the decision moves into a manager. A
-service impl may sequence calls across services and managers; it does
-not hold business rules either (CON-14).
+request, calls one operation of its service impl, which calls one
+manager, and projects the result onto a view. The router calls through
+the service interface from the first day, so a split is a wiring
+change. When a router starts deciding something, the decision moves
+into a manager.
 
 **Source.** The Network Layer, Service Interfaces and Impls.
 
 **Look for.** Router function bodies: any `if`, `for`, or arithmetic
-other than building request arguments and the view; direct storage
-access from a router; domain exceptions raised inside a router.
+other than building request arguments and the view; the callee of every
+router, which is one operation of the service impl; direct manager or
+storage access from a router; domain exceptions raised inside a router.
 
 **Violation.** A router validates a business rule, computes a value, or
-branches on entity state; a router composes several managers to enforce
-a rule the OM owns; a router calls storage directly; a router raises a
+branches on entity state; a router calls a manager directly, so a split
+rewrites it; a router composes several service operations to enforce a
+rule the OM owns; a router calls storage directly; a router raises a
 domain exception on its own.
 
 **Severity.** medium
@@ -325,10 +333,10 @@ domain exception on its own.
 ## CON-16 Every process boots through the same container in the same order
 
 **Principle.** Settings are read; logging, error reporting, the trust
-store, and tracing are configured; storage is built, then infra, then the managers, in that
-order. The container has `start()` and `close()`, and `close()` unwinds
-in reverse. A test constructs the same container over the in-memory
-storage root and the local infra root.
+store, and tracing are configured; storage is built, then infra, then
+the managers, in that order. The container has `start()` and `close()`,
+and `close()` unwinds in reverse. A test constructs the same container
+over the in-memory storage root and the local infra root.
 
 **Source.** Cross-Cutting Conventions, The App Container.
 
@@ -345,47 +353,40 @@ boots a different assembly than production.
 
 ## CON-17 Every write authorizes, verifies, copies, writes
 
-**Principle.** Every write follows the same four steps: authorize,
-verify, copy, write. The caller that originates an entity constructs
-it whole, with `id=new_id()`, both timestamps, and both principals
-(`created_by` and `updated_by`) set, and hands it to `create_*`; the
-manager's copy on create sets what is the manager's to decide (the
-actor from the context, the initial status, a position) and leaves
-the id and the timestamps as constructed. A create whose id is
-already written returns the row as stored, because the only way to
-present a minted id twice is a retry; the insert reports it, no check
-precedes the write. The manager sets `updated_at` and `updated_by` on
-every update and `deleted_at` / `deleted_by` on a soft delete, always
-by copy, and mutating methods return the entity that was written.
+**Principle.** Every write follows four steps: authorize, verify,
+copy, write. The caller constructs the entity whole (`id=new_id()`,
+timestamps, principals) and hands it to `create_*`; the manager's copy
+sets only what is its to decide and leaves the id and timestamps as
+constructed. Updates and soft deletes are stamped by the manager's
+copy, and a mutating method returns the entity it wrote.
 
 **Source.** The Business Layer, Shape of an Operation.
 
 **Look for.** Manager `create_*`, `update_*`, and `delete_*` bodies: the
 read that confirms existence and tenancy before an update, the copy
-that sets the timestamp and the principal, the return statement; the
-call site that constructs the entity handed to `create_*`.
+that sets the actor, the initial status, or a position on create and
+`updated_at` / `updated_by` or `deleted_at` / `deleted_by` after, the
+return statement; the call site that constructs the entity handed to
+`create_*`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; a create that raises `Conflict` on
-its own id, so a retried request creates twice or fails, or that
-checks for the id and then writes, leaving a window; a manager fills
-in `id`, a timestamp, or a principal that the originating caller left
-unset, or resets a timestamp the caller constructed; `updated_at`,
-`updated_by`, or `deleted_at` is set by the caller or by storage
-instead of by the manager; a mutating method returns `None` or a
-different snapshot than the one written.
+through the manager's own `get_*`; a manager fills in `id`, a
+timestamp, or a principal that the originating caller left unset, or
+resets a timestamp the caller constructed; `updated_at`, `updated_by`,
+or `deleted_at` is set by the caller or by storage instead of by the
+manager; a mutating method returns `None` or a different snapshot than
+the one written.
 
 **Severity.** medium
 
-## CON-18 Structural dependencies arrive by constructor, operation state by context, and neither crosses
+## CON-18 Constructors take structure, contexts take operation state
 
 **Principle.** A constructor takes what an impl needs for its lifetime:
-storage, peer managers, infrastructure capabilities, options. A
-context carries what one operation needs: state, authority, evidence.
-A manager does not arrive on a context, and a request id, an actor, or
-a tenant does not arrive in a constructor. When an operation's
-availability depends on what a request has established, the stage is
-in its signature; the manager does not move onto the context.
+storage, peer managers, infrastructure capabilities, options. A context
+carries what one operation needs: state, authority, evidence. A manager
+never arrives on a context, nor a request id, an actor, or a tenant
+through a constructor. When an operation depends on what the request
+established, its stage is in the signature.
 
 **Source.** Interfaces, Injectability; OpContext, Scopes.
 
@@ -407,26 +408,16 @@ service locator reached from an operation.
 the caller's entity supplies the fields a caller may change, and
 `PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
 `deleted_by`) stay as stored, so no caller rewrites who made a row or
-brings a deleted one back by sending an entity. A partial update is
-the router's translation: it reads the current entity, copies the
-request's set fields onto it, an absent field meaning unchanged and an
-explicit null meaning cleared where the field is optional, and hands
-the whole entity to the manager; that policy is the request type's
-contract, and no impl decides it.
+brings a deleted one back by sending an entity.
 
 **Source.** The Business Layer, Shape of an Operation.
 
 **Look for.** The copy in every `update_*`: what it starts from and
-what it excludes; the router behind every partial update and how it
-treats an absent field and a null; whether the request type states
-the policy.
+what it excludes.
 
 **Violation.** An update copied from the caller's entity, so a sent
 `created_by` or a cleared `deleted_at` is written; an update that
-excludes fewer fields than `PROVENANCE_FIELDS`; a manager or a storage
-impl that reads a null as unchanged or an absent field as cleared,
-deciding what the request type should state; a router that hands the
-manager a partial entity.
+excludes fewer fields than `PROVENANCE_FIELDS`.
 
 **Severity.** medium
 
@@ -434,11 +425,10 @@ manager a partial entity.
 
 **Principle.** The storage root constructs every namespace impl, the
 infra root every capability impl, and `build_managers` every manager,
-in dependency order, once per process, whether or not the process
-ever calls them; a constructor holds references and opens nothing,
-and nothing is built per request. A root that builds a member on
-first use is refused, and a test holds that the managers build once
-for any number of requests.
+in dependency order, once per process; a constructor holds references
+and opens nothing, and nothing is built per request. A root that
+builds a member on first use is refused, and a test holds that the
+managers build once across requests.
 
 **Source.** Cross-Cutting Conventions, The App Container.
 
@@ -451,5 +441,44 @@ request dependency; the build-once test.
 called and caches it; a manager built inside a router dependency; a
 constructor that opens a connection; no test counting constructions
 across requests, or a root member it does not cover.
+
+**Severity.** medium
+
+## CON-21 A create whose id is already written returns the row as stored
+
+**Principle.** The only way to present a minted id twice is a retry, so
+a create whose id is already written returns the row as stored: the
+insert reports the existing id, and no check precedes the write.
+
+**Source.** The Business Layer, Shape of an Operation.
+
+**Look for.** Manager `create_*` bodies: what happens when the insert
+reports an existing id; any read that precedes the insert; the return
+value of the storage create.
+
+**Violation.** A create that raises `Conflict` on its own id, so a
+retried request creates twice or fails; a create that checks for the
+id and then writes, leaving a window; a create that returns the
+caller's entity instead of the row as stored.
+
+**Severity.** medium
+
+## CON-22 A partial update is the router's translation
+
+**Principle.** A partial update is the router's translation: it reads
+the current entity, copies the request's set fields onto it, an absent
+field meaning unchanged and an explicit null meaning cleared where the
+field is optional, and hands the whole entity to the manager. That
+policy is the request type's contract, and no impl decides it.
+
+**Source.** The Business Layer, Shape of an Operation.
+
+**Look for.** The router behind every partial update and how it treats
+an absent field and a null; whether the request type states the
+policy.
+
+**Violation.** A manager or a storage impl that reads a null as
+unchanged or an absent field as cleared, deciding what the request
+type should state; a router that hands the manager a partial entity.
 
 **Severity.** medium
