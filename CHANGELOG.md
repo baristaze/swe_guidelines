@@ -8,6 +8,22 @@ which number.
 
 ### Added
 
+- `architecture.md`, "Namespace Shape" and "Tests": a signature is not
+  a guarantee, and the case that tries the breach is what says the
+  tenant is used. The test that enumerates the exceptions to the
+  `org_id`-first rule reads signatures, and the fence itself lives in
+  one place, the `WHERE` clause of the query, so a method that takes
+  the tenant and leaves the predicate out of its body passes every
+  check made on signatures. "Tests" names the coverage the
+  cross-tenant cases owe: reads and writes, the list and the page, the
+  bulk write, and the paths that return early or raise, over memory
+  and over the engine, with a new storage method arriving with its
+  case. Lens `CTX-30`; `CTX-12` now says the enumerating test reads
+  signatures and nothing more. `arch-scaffold-entity` generates the
+  cross-tenant case per method of an entity's storage interface,
+  `arch-scaffold-worker` the one its tenant-carrying method owes,
+  `arch-scaffold-new` names the enumerating test as a signature check,
+  and the shared scaffold conventions carry the rule.
 - `architecture.md`, "Correlation Across a Handoff": a handoff carries
   the request that caused it, so one id joins the request, the row it
   wrote, the item it queued, and the run that followed. The stage a

@@ -1208,8 +1208,8 @@ acme/om/inventory/storage/
 ```
 
 The interface exposes read and write operations on domain entities.
-Every operation takes `org_id` as a parameter, so tenancy is enforced at
-every query:
+Every operation takes `org_id` as a parameter, so every query the impl
+writes has the tenant to filter on:
 
 ``` python
 class InventoryStorageInterface(ABC):
@@ -1299,6 +1299,16 @@ as the outbox row below and the `Event` of [Realtime at the
 Edge](#realtime-at-the-edge) do, in which case the row already names
 its tenant and is returned alone. These are the documented exceptions
 to the `org_id`-first rule, and a test enumerates them.
+
+The enumerating test reads signatures. It says which methods take the
+tenant and which are excused from it, and that is all a signature
+says. The fence itself exists in one place, the `WHERE` clause of the
+query, so a method that takes `org_id` and leaves the predicate out of
+its body passes every check made on signatures. What says the tenant
+is used is a case that presents another tenant's identifier and finds
+nothing and changes nothing (see [Tests](#tests)). A new storage
+method arrives with that case the way a new exception arrives with its
+entry in the enumerating test.
 
 ### Storage Root
 
@@ -3954,6 +3964,17 @@ not only called: a contract case runs two callers at once against a
 claim, a take-over, a ticket redemption, and asserts that exactly one
 wins, over memory and over the engine, because a statement whose whole
 purpose is a race is not proven by a sequence.
+
+Tenant isolation is proven by the case that tries the breach. A
+contract case calls a storage method under one tenant with another
+tenant's identifier and asserts that it finds nothing and changes
+nothing. The cases cover reads and writes, the list and the page, the
+bulk write that takes many ids at once, and the failure paths where a
+method returns early or raises, since a path that skips the query
+skips the fence with it. A new storage method arrives with its case,
+over memory and over the engine, because the fence lives in the query
+and the signature says only that the tenant was offered (see
+[Namespace Shape](#namespace-shape)).
 
 ## Technology Choices and How to Override Them
 

@@ -98,7 +98,8 @@ the order the guideline presents them, never by number.
   handoff that takes `(org_id, row)`, global tables, cross-tenant
   sweeps), each documented in its docstring and listed in the
   repository's exceptions test, which also names every method that
-  takes the request stage.
+  takes the request stage. That test reads signatures; what says the
+  tenant is used is the cross-tenant case beside each method, below.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
@@ -107,7 +108,12 @@ the order the guideline presents them, never by number.
   `tests/unit/` runs them against the memory impl and one under
   `tests/integration/` runs the same cases against Postgres under the
   `integration` marker. Both impls sort by the `UUID` value, never by
-  its string.
+  its string. Every storage method gets a case that passes another
+  tenant's identifier and asserts that nothing is found and nothing
+  changes: reads and writes, the list and the page, the bulk write,
+  and the paths that return early or raise. A method added later
+  arrives with its case, as The Storage Layer (Namespace Shape) and
+  Cross-Cutting Conventions (Tests) state.
 - One manager impl, unless the namespace fronts something a caller
   cannot conjure (a payment processor, a carrier, a model provider).
   Then it gets a memory impl of its own, `<Ns>ManagerMemoryImpl`,

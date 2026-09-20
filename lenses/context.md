@@ -272,7 +272,8 @@ the same tenant.
 to the tenant-first rule: a global method takes no tenant and says why
 in its docstring; a bookkeeping sweep with no principal gets the
 tenant back with each row, as `tuple[UUID, Entity]` or on an entity
-carrying `org_id` itself; a test enumerates them.
+carrying `org_id` itself; a test enumerates them, reading signatures
+and nothing more (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Business Layer,
 Operations Without a Principal.
@@ -671,3 +672,26 @@ drops the causing id, so a run names no cause; a run whose lines carry
 one of the two and not both. (The field on the item is ASY-29.)
 
 **Severity.** medium
+
+## CTX-30 A cross-tenant case proves what a signature only offers
+
+**Principle.** The fence is the predicate in the query, so a signature
+test says only that the tenant was offered. Every storage method has a
+case that passes another tenant's identifier and asserts that nothing
+is found and nothing changes: reads and writes, the list and the page,
+the bulk write, the failure paths. A new method arrives with its case.
+
+**Source.** The Storage Layer, Namespace Shape; Cross-Cutting
+Conventions, Tests.
+
+**Look for.** The contract cases behind each storage interface: which
+methods have a case under another tenant's identifier, and whether the
+list, the page, the bulk write, and the paths that return early or
+raise are among them; the body of each query beside its signature.
+
+**Violation.** A method that takes `org_id` and writes a query without
+it, which the enumerating test of CTX-12 cannot see; a cross-tenant
+case on the single read alone, with the list, the page, or the bulk
+write untried; a storage method added with no case of its own.
+
+**Severity.** high
