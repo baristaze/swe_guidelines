@@ -4131,9 +4131,10 @@ instead of dying with it. The bounds that make it so:
 -   [A retry is classified and never stacked](#direction-of-calls):
     only a failure that can differ is retried, bounded in count and
     spaced by a delay that grows and carries jitter.
--   [A worker claims within its capacity](#shape-of-a-worker), stops
-    claiming when its heartbeats fail, and staggers its restart, so a
-    dependency coming back is not met by everything at once.
+-   [A worker claims within its capacity](#shape-of-a-worker) and
+    stops claiming when its heartbeats fail, and [resumes are
+    staggered](#maintenance-without-a-scheduler), so a dependency
+    coming back is not met by every parked record at once.
 -   [A lane on the work queue](#the-work-queue) carries a tenant whose
     bulk work starves its neighbours, and each [database
     role](#database-roles) has its own pool, so one load profile
