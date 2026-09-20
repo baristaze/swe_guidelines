@@ -47,7 +47,8 @@ database login: the role denies `rds-db:connect` and holds no database
 URL. The operator identity is the env file's,
 `~/.config/acme/ops/<env>.env`, owner-only and outside the
 repository: `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
-`ACME_OPERATOR_PASSWORD`, `ACME_ERROR_TRACKER_URL`,
+`ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
+`ACME_PROVISIONER_EMAIL`, belongs to the traffic generator alone), `ACME_ERROR_TRACKER_URL`,
 `ACME_ERROR_TRACKER_TOKEN`, and for `local.env` the twins
 `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`. The identity's allowlist
 entry is `READ`; a `WRITE` identity is refused by this skill even when

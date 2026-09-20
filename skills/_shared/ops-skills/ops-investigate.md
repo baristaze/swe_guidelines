@@ -47,7 +47,8 @@ substitute.
 
 The env file `~/.config/acme/ops/<env>.env` is owner-only and outside
 the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
-`ACME_OPERATOR_PASSWORD`, `ACME_ERROR_TRACKER_URL`, and
+`ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
+`ACME_PROVISIONER_EMAIL`, belongs to the traffic generator alone), `ACME_ERROR_TRACKER_URL`, and
 `ACME_ERROR_TRACKER_TOKEN`. `local.env` points at the compose stack
 and adds the twins, `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on
 the ports `.env` names. Read the file, use its values in commands, and
