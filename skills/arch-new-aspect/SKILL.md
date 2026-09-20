@@ -2,7 +2,7 @@
 name: arch-new-aspect
 description: "Incorporate a new aspect into the Software Design and Architecture Guidelines and cascade it through the lenses, skills, docs, README, and changelog. Runs in a checkout of the guideline repository."
 disable-model-invocation: true
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-skills), Bash(make gen-toc), Bash(make lenses), Bash(make leaks), Bash(make links), Bash(make toc), Bash(git log:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-skills), Bash(make gen-toc), Bash(git diff:*)
 ---
 
 # arch-new-aspect
@@ -99,7 +99,8 @@ for the aspect in one message and stop.
    any review skill was rewritten (a pointer or a rationale leaves all
    seven unchanged). Then the hand-written skills the aspect affects,
    the docs, the README, and the changelog.
-6. Search the repository for siblings of every change made: a second
+6. Search the repository for siblings of every change made
+   (`git diff --stat` lists the files touched so far): a second
    snippet with the same pattern, a second place that mentions the
    same noun without the link, a second table that lists what the
    first one lists. Fix them in the same change.

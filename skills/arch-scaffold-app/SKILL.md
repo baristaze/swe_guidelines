@@ -9,11 +9,10 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make chec
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
 Layer (Clients Live in One Place, Realtime at the Edge), Apps (Apps Are
-Dumb, Push-First Apps), Deployment (Cloud: AWS), Monorepo Folder
-Structure (Layout Conventions),
-Client App Architecture (Stack, State and Data, Views, View-Models,
-Models, API Access, Realtime: One Channel per App, The Operator
-Console, The CLI Is Different).
+Dumb, Push-First Apps), Client App Architecture (Stack, State and
+Data, Views, View-Models, Models, API Access, Realtime: One Channel
+per App, The Operator Console, The CLI Is Different), Deployment
+(Cloud: AWS), Monorepo Folder Structure (Layout Conventions).
 
 ## Input
 
@@ -82,8 +81,8 @@ CLI, under `apps/<app-name>/`:
 | `pnpm-workspace.yaml` (browser app)     | `apps/*` and `clients/*` listed                                           |
 | `package.json` (root, browser app)      | the workspace scripts for lint, typecheck, and test                       |
 | `Makefile`                              | the `openapi` target writes `apps/<portal>/openapi.json` and runs `generate`, and regenerates `clients/python/`; for a browser app, `check` also runs the workspace lint, typecheck, and test scripts, so CI's `make check` covers the app |
-| `deployment/realtime-timeouts.json` (portal, when absent) | the ping interval and load balancer idle timeout, asserted by a client test and a service test |
-| `deployment/terraform/modules/static-site/` (browser app, when absent) | a private S3 bucket with public access blocked, a CloudFront distribution reading it through origin access control, `index.html` as the fallback for client routes, `config.json` served uncached, a response headers policy on the distribution declaring `Content-Security-Policy` (the app's own origin and the API, nothing else) with the other security headers, the alias `<subdomain>.<base_domain>` with its certificate and DNS record |
+| `deployment/realtime-timeouts.json` (portal, when absent) | the ping interval and load balancer idle timeout; the service scaffold writes it with `--realtime`, and the portal asserts it from the client side, in `timeouts.ts` and its test, the client half of the shared-file rule |
+| `deployment/terraform/modules/static-site/` (browser app, when absent) | a private S3 bucket with public access blocked, a CloudFront distribution reading it through origin access control, `index.html` as the fallback for client routes, `config.json` served uncached, a response headers policy on the distribution declaring `Content-Security-Policy` (the app's own origin, the API, the error tracker's origin when one is configured, and the object store's origin when uploads are presigned, and nothing else) with the other security headers, the alias `<subdomain>.<base_domain>` with its certificate and DNS record |
 | `deployment/terraform/environments/*/` (browser app) | one `static-site` instance for the app in every environment, subdomain `app` (portal) or `admin` (console), its origin added to the API's allowed origins, its bucket and origin as outputs |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` (browser app) | the staging workflow builds the app once under the build id (the commit), keeps the bundle as a workflow artifact, syncs it to staging's bucket, writes staging's `config.json` from the Terraform outputs, and invalidates the distribution; the production workflow, in the job behind the approval on the plan, syncs the bundle staging built for the release commit to production's bucket and writes production's `config.json`, never building |
 | `pyproject.toml` (root, CLI)            | the member added to `[tool.uv.workspace] members`                         |
@@ -117,7 +116,13 @@ CLI, under `apps/<app-name>/`:
    `Content-Security-Policy` beside the distribution, the API allows
    its origin, and the deploy workflow ships its bundle, built once and
    promoted; a browser app with no cloud deployment is incomplete.
-6. Run the app's lint, typecheck, and tests instead of the Python gate.
+6. Browser app: add the package to the pnpm workspace and run
+   `pnpm install`, then `make openapi`, so `openapi.json` and the
+   generated `schema.d.ts` exist before the first screen is written.
+   CLI: add the member to the uv workspace and run `uv sync`.
+7. Browser app: run the app's lint, typecheck, and tests
+   (`pnpm --filter <app-name> run lint`, `typecheck`, and `test`)
+   instead of the Python gate.
 
 ## Output
 

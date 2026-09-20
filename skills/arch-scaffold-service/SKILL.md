@@ -1,18 +1,19 @@
 ---
 name: arch-scaffold-service
 description: "Create a web service the way the Software Design and Architecture Guidelines prescribe, either the first API process of a system or a domain or app-specific service split out of it: the app factory, container, gateway, per-namespace routers and wire types, service interfaces, health endpoints, the ops CLI entry point, the image, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make test-unit), Bash(make openapi), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openapi), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*), Bash(git diff:*)
 ---
 
 # arch-scaffold-service
 
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
-Layer (How It Starts and Where It Goes, Domain Services vs App-Specific
-Services, Service Interfaces and Impls, The Gateway, Public Types,
-Realtime at the Edge), Monorepo Folder Structure (Layout Conventions),
-Cross-Cutting Conventions (Exceptions, Configuration, The App
-Container).
+Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Business
+Layer (Shape of an Operation), The Network Layer (How It Starts and
+Where It Goes, Web Services as Scalability Units, Domain Services vs
+App-Specific Services, Service Interfaces and Impls, The Gateway,
+Intra-Service Communication, Public Types, Realtime at the Edge),
+Monorepo Folder Structure (Layout Conventions), Cross-Cutting
+Conventions (Exceptions, Configuration, The App Container).
 
 ## Input
 
@@ -54,11 +55,11 @@ Under `services/<service-name>/`:
 | `src/<root>/services/<svc>/gateway/idempotency.py` | the `Idempotency-Key` dependency over the OM's idempotency manager: `begin` before the call (it writes the pending marker with a digest of the request, the id the create will use, and an attempt token minted with it; a replay returns the stored response; a duplicate in flight is a conflict; another request digest under the same key is refused; a `5xx` releases the marker instead of being stored, the release keeping the marker with its digest and its `target_id` and clearing only the attempt, so the retry runs again and finds a row that landed by the same id; a pending marker past the pending lease is taken over in one conditional write that stamps an attempt token of its own, and the call runs again with the marker's `target_id`, the id minted before `begin` that the create uses) and `finish` after it, both `finish` and the release conditional on the attempt token in the statement itself, so the attempt that lost the marker is refused like a worker whose lease has passed; keyed per tenant and user on a durable unique index; the cache is at most a read-through in front of it. The outcome stored for a create that issued a secret (an API key, a session token, a socket ticket) is the view with the secret absent, so a replay answers with the row and no secret and says so in its header; the secret exists in one place, as a digest, and a client that lost the first response revokes and issues another. Every creating route (every `POST` that answers 201) in every hosted namespace declares it, not only the first namespace's, so a retried create returns the stored response |
 | `src/<root>/services/<svc>/gateway/observability.py` | request id middleware (accept or mint, stamp, echo, log context, span) over HTTP and websocket scopes alike, so a socket's context carries a request id too, metrics            |
 | `src/<root>/services/<svc>/routers/__init__.py` | `all_routers()`                                                                              |
-| `src/<root>/services/<svc>/routers/<ns>.py`   | one module per hosted namespace, translating only                                              |
+| `src/<root>/services/<svc>/routers/<ns>.py`   | one module per hosted namespace: each route declares its path, verb, status, and dependencies (the context, and the `Idempotency-Key` on a creating route), calls one operation of the service impl, and returns what it returns; no translation, no decision |
 | `src/<root>/services/<svc>/types/common.py`   | `View`, `RequestBody`, `ErrorBody`, `ErrorResponse`                                            |
 | `src/<root>/services/<svc>/types/<ns>.py`     | views and requests per hosted namespace                                                        |
 | `src/<root>/services/<svc>/services/<ns>.py`  | `<Ns>ServiceInterface`, the network operations of the namespace, and `ServicesInterface` (the root with one getter per service) in `services/__init__.py` |
-| `src/<root>/services/<svc>/impl/<ns>.py`      | `<Ns>ServiceImpl`, the in-process impl of `<Ns>ServiceInterface`, which exists from the first day: every router calls one operation of it, and each operation calls one manager the container wired, as The Network Layer (Service Interfaces and Impls) states; it composes across services where a workflow needs it and never decides. When this process stops holding what a sibling needs (its code, its database role), that sibling's `*ServiceInterface` is wired to its remote impl instead, the typed client of `clients/python/`, which mints the internal credential for each call and carries the timeout its settings name; the routers do not change, and a wire hop to a sibling this process could call in-process is a recorded decision |
+| `src/<root>/services/<svc>/impl/<ns>.py`      | `<Ns>ServiceImpl`, the in-process impl of `<Ns>ServiceInterface`, which exists from the first day: every router calls one operation of it, and each operation translates, building the entity or the arguments from the request, calling one manager the container wired, and projecting the result onto a view, as The Network Layer (Service Interfaces and Impls) states; it composes across services where a workflow needs it and never decides. When this process stops holding what a sibling needs (its code, its database role), that sibling's `*ServiceInterface` is wired to its remote impl instead, the typed client of `clients/python/`, which mints the internal credential for each call and carries the timeout its settings name; the routers do not change, and a wire hop to a sibling this process could call in-process is a recorded decision |
 | `src/<root>/services/<svc>/realtime/` (with `--realtime`) | `ticket.py` (the route that asks the tenancy manager to issue the ticket; redemption is the manager's, atomic, and re-checks the credential named by `ctx.security.credential_id`), `socket.py` (the route, resolving its context through the gateway's `socket_context` dependency and never parsing the query itself, then subscribe, unsubscribe, ping; the socket is bounded by its session's expiry, a deadline set when the ticket is redeemed that closes it at that instant whatever the client does, and it is closed on the `ENTITY_CHANGED` frame that names its session revoked or its user's membership ended, which every process holding sockets reads from the topic bus; the expiry covers a frame that was missed), `send_buffer.py` (the bounded per-socket send buffer and drainer), `envelopes.py` (typed envelopes on the `View` base with a curated payload view, never a dumped internal payload, carrying the event's `seq`; the portal's `envelopes.ts` mirrors it by hand, since socket frames are not in OpenAPI) |
 | `src/<root>/services/<svc>/routers/events.py` (with `--realtime`) | `GET /v1/events?after_seq=&limit=` over the events manager, the replay a reconnecting client uses |
 | `src/<root>/services/<svc>/main.py`           | `serve`, `migrate` (forwards to the OM migration CLI), `bootstrap` (org, slug, email, password, display name, `--operator`; with `--seed`, reads the development org and owner from settings, refuses at start when the database URL is not a local address, and exits without writing when the org's slug already exists), `openapi` subcommands |
@@ -84,24 +85,31 @@ hold no logic of their own at any stage.
 | `scripts/dev.sh`                        | starts the service on its port                                                   |
 | `README.md` (root)                      | a row in the `Local URLs` table: the service's interactive API docs at `http://localhost:<port>/docs` |
 | `deployment/local/docker-compose.full.yml` (with `--container`) | the service as a container                                 |
+| `deployment/realtime-timeouts.json` (with `--realtime`, when absent) | the ping interval and the load balancer idle timeout, the one shared file a service test and a client test both assert against; the portal asserts its half from the client side |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` | the service's image: built and pushed under the commit by the staging workflow, which records its digest by commit; promoted by that digest for the release commit in the production workflow's plan, never rebuilt |
 | `services/<existing>/gateway/` (when a service already exists) | moved into a workspace distribution `gateway/` that every service imports; nothing is copied |
 
 ## Procedure
 
-1. Write the container before the app, the app before the routers.
-2. A router function resolves `ctx`, builds the entity or the arguments
-   from the request, calls one operation of its service impl, which
-   calls one manager, and projects the result onto a view; the router
-   calls through the service interface from the first day, so a split
-   is a wiring change and never a rewrite of the routers. For a partial
-   update it reads the current entity through the manager's `get_*`,
-   copies the request's set fields onto it, an absent field meaning
-   unchanged and an explicit null meaning cleared where the field is
-   optional, and hands the whole entity to the manager; that policy is
-   the request type's contract, as The Business Layer (Shape of an
-   Operation) states. When a router starts deciding, move the decision
-   into a manager and say so in the output.
+1. Write `pyproject.toml`, add the member to the workspace, and run
+   `uv sync`; then the container before the app, the app before the
+   routers.
+2. A router function declares the route (path, verb, status, and the
+   dependencies that mint the context and the idempotency key), calls
+   one operation of its service impl with the context and the request
+   type, and returns what the impl returns; it translates nothing and
+   decides nothing. The impl translates: it builds the entity or the
+   arguments from the request, calls one manager, and projects the
+   result onto a view. The router calls through the service interface
+   from the first day, so a split is a wiring change and never a
+   rewrite of the routers. A partial update is the impl's translation:
+   it reads the current entity through the manager's `get_*`, copies
+   the request's set fields onto it, an absent field meaning unchanged
+   and an explicit null meaning cleared where the field is optional,
+   and hands the whole entity to the manager; that policy is the
+   request type's contract, as The Business Layer (Shape of an
+   Operation) states. When a router or an impl starts deciding, move
+   the decision into a manager and say so in the output.
 3. An app-specific service composes managers or sibling domain service
    clients for one app only and never calls another app-specific
    service.

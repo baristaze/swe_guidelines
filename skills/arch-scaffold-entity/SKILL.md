@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-entity
 description: "Add one entity to an existing object-model namespace the way the Software Design and Architecture Guidelines prescribe: the frozen Pydantic type, the table class and migration, storage interface methods with Postgres and memory impls, manager operations, wire types and router, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make test-unit), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*), Bash(git diff:*)
 ---
 
 # arch-scaffold-entity
@@ -10,8 +10,9 @@ Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
 Entities (Identifiers), The Business Layer (Shape of an Operation), The
 Storage Layer (Namespace Shape, Defining ORM Classes, Translation, A
-Storage Impl, Database Roles, Migrations), The Network Layer (Public
-Types, Realtime at the Edge), Cross-Cutting Conventions (Exceptions).
+Storage Impl, Database Roles, Migrations), The Network Layer (Service
+Interfaces and Impls, Public Types, Realtime at the Edge),
+Cross-Cutting Conventions (Exceptions).
 A section is read with its own introduction.
 
 ## Input
@@ -65,10 +66,12 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox row in the outbox memory storage the root wired |
 | `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map                   |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with an `OutboxRow(id=new_id(), org_id=ctx.org_id, kind="<ns>.<entity>.<created\|updated\|deleted>", target_id=<entity>.id, payload=<Entity>View-shaped dump)`, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, <Entity>View-shaped dump)` builds, carrying the actor, the request id, and the app from the context, then `relay`, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
-| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post (declaring the gateway's `Idempotency-Key` dependency, like every creating route), and, only when the manager has them, put and delete routes that translate and call the manager |
+| `<api>/.../services/<ns>.py` (unless `--no-api`)        | the operations on `<Ns>ServiceInterface`: list, get, create, and, only when the manager has them, update and delete, each taking `ctx` and the request type and returning the view |
+| `<api>/.../impl/<ns>.py` (unless `--no-api`)            | the translation on `<Ns>ServiceImpl`: build the entity from the request, call one manager operation, project the result onto the view; the partial update reads the current entity through the manager's `get_<entity>` and copies the request's set fields onto it before handing the whole entity to `update_<entity>` |
+| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes; each declares the route and its dependencies (the context, and on the post the gateway's `Idempotency-Key`, like every creating route), calls one operation of the service impl, and returns what it returns |
 | `<api>/.../routers/__init__.py` (when `<ns>` is new to it) | the router added to `all_routers()`                                       |
 | `apps/<portal>/src/api/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
 
@@ -79,24 +82,30 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
    dependency in place.
 2. Lists filter `deleted_at IS NULL` only when the entity is
    `SoftDeletable`, in both impls.
-3. The router builds the entity for `create_<entity>` from the request
-   with the id the gateway minted before the idempotency marker
-   (`new_id()` only where no gateway is involved) and, when the entity
-   is `Trackable`, `utcnow()` and
-   `ctx.user_id` for both timestamps and both principals; for
-   `update_<entity>` it reads the current entity through
-   `get_<entity>` and copies the request's set fields onto it, an
-   absent field meaning unchanged and an explicit null meaning cleared
-   where the field is optional (the request carries no `created_at`
-   or `created_by`, and that policy is the request type's contract),
-   then hands the whole entity to the manager, whose copy starts from
-   the stored row and sets `updated_at` and `updated_by`; `delete_<entity>` exists only for a
-   `SoftDeletable` entity and copies `deleted_at` and `deleted_by`;
-   the hard delete is the sweep's purge, never a route's. An
-   append-only entity has no update, no delete, and no
-   `Update<Entity>Request`.
-4. Run `make migrate-check` after the fast gate; it needs Postgres, so
-   it runs against the compose stack.
+3. The service impl builds the entity for `create_<entity>` from the
+   request with the id the gateway minted before the idempotency
+   marker (`new_id()` only where no gateway is involved) and, when the
+   entity is `Trackable`, `utcnow()` and `ctx.user_id` for both
+   timestamps and both principals; for `update_<entity>` it reads the
+   current entity through the manager's `get_<entity>` and copies the
+   request's set fields onto it, an absent field meaning unchanged and
+   an explicit null meaning cleared where the field is optional (the
+   request carries no `created_at` or `created_by`, and that policy is
+   the request type's contract), then hands the whole entity to the
+   manager, whose copy starts from the stored row and sets
+   `updated_at` and `updated_by`. The router declares the route and
+   its dependencies and calls that one operation; it translates
+   nothing. `delete_<entity>` exists only for a `SoftDeletable` entity
+   and copies `deleted_at` and `deleted_by`; the hard delete is the
+   sweep's purge, never a route's. An append-only entity has no
+   update, no delete, and no `Update<Entity>Request`.
+4. After the table and its migration: `make infra-up`, `make migrate`,
+   then `make migrate-check`, which compares the ORM metadata with the
+   migrated schema; it needs Postgres, so it runs only against the
+   compose stack, refused when the effective database URL is not a
+   local address.
+5. After the routes: `make openapi`, so the committed contract and the
+   consuming apps' generated types carry the new views and requests.
 
 ## Output
 

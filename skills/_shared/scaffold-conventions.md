@@ -42,11 +42,15 @@ the order the guideline presents them, never by number.
 
 ## Naming
 
-- Manager and storage interfaces are named after the namespace:
+- One naming rule: interfaces and getters are named after the
+  namespace in the singular, operations after the entity, handlers
+  after the work kind. Manager and storage interfaces read
   `InventoryManagerInterface`, `InventoryStorageInterface`,
-  `InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`,
-  `get_inventory_storage()`. A namespace with several aggregates may
-  add one storage interface per aggregate, named after the aggregate.
+  `InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`; the
+  storage root has one getter per namespace storage,
+  `get_inventory_storage()`, `get_order_storage()`. A namespace with
+  several aggregates may add one storage interface per aggregate,
+  named after the aggregate. The manager impl is `impl/manager.py`.
   The storage roots are `StoragePostgresImpl` and
   `StorageMemoryImpl`, named like every other impl.
 - Manager operations read `get_<entities>`, `get_<entity>`,
@@ -59,7 +63,9 @@ the order the guideline presents them, never by number.
   the manager has `update_<entity>`, `Update<Entity>Request`, on the
   `View` and `RequestBody` bases.
 - The one handler interface for background work is
-  `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`.
+  `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`, `<Kind>` the
+  work kind in CamelCase (`NOTIFY_SHIPMENT` gives
+  `NotifyShipmentHandlerImpl`).
 
 ## While writing
 
@@ -121,7 +127,9 @@ the order the guideline presents them, never by number.
   included (complete, fail, defer, release, extend the lease), as The
   Business Layer (Shape of an Operation) states. A `core`-role write lands the
   core row and its `OutboxRow` in one storage method and the manager
-  relays the row at once. The caller constructs the entity whole and hands it to
+  relays the row at once; the row comes from `outbox_row(ctx, kind,
+  target_id, payload)`, so it carries the actor, the request id, and
+  the app of the write. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
@@ -133,13 +141,15 @@ the order the guideline presents them, never by number.
   `class <Ns>Exception(PlatformException): ...` with no attributes;
   leaves multiply-inherit a shape (`NotFound`, `Conflict`, ...) so the
   status and code come from the shape.
-- Wire types are hand-written; routers translate and never decide;
-  list routes take a server-clamped `limit`. A partial update is the
-  router's translation: it reads the current entity, copies the
-  request's set fields onto it, an absent field unchanged and an
-  explicit null cleared where the field is optional, and hands the
-  whole entity to the manager; the request type states that policy,
-  and no impl decides it.
+- Wire types are hand-written; a router declares its route and its
+  dependencies, calls one operation of the service impl, and returns
+  what it returns; the impl translates and never decides; list routes
+  take a server-clamped `limit`. A partial update is the impl's
+  translation: it reads the current entity through the manager's
+  `get_<entity>`, copies the request's set fields onto it, an absent
+  field unchanged and an explicit null cleared where the field is
+  optional, and hands the whole entity to the manager; the request
+  type states that policy, and no manager sees a partial.
 - Every creating route (every `POST` that answers 201) declares the
   gateway's `Idempotency-Key` dependency, in every namespace, so a
   retried create returns the stored response, as The Network Layer
@@ -168,13 +178,14 @@ container.
 ## After writing
 
 1. Run the repository's fast gate (`make check` or its equivalent), and
-   the migration check when a table was added. Fix failures the
-   scaffold introduced. Report pre-existing failures and stop; do not
-   edit unrelated files.
+   the migration check when a table was added. A single tool runs
+   through the workspace (`uv run`, `pnpm run`), never through a
+   global install. Fix failures the scaffold introduced. Report
+   pre-existing failures and stop; do not edit unrelated files.
 2. Print the guideline version the skill ran from (release, or
    snapshot), then the list of files created and changed, one per
-   line, followed by the commands that were run and their outcome.
-   Nothing else.
+   line (`git status` names them in a repository), followed by the
+   commands that were run and their outcome. Nothing else.
 
 Never commit. Scaffolding produces a working tree for a person to
 review.
