@@ -84,7 +84,7 @@ and sharpened; none is reversed.
   split so each principle is one or two sentences; `CON-20` covers
   the roots built whole, which no lens checked; `STO-19` to `STO-21`,
   `NET-27`, `NET-28`, and `ASY-24` hold the split halves; `OM-03` and
-  `STO-10` name `PROVENANCE_FIELDS` and the two roots. 162 lenses.
+  `STO-10` name `PROVENANCE_FIELDS` and the two roots.
 - `skills/`: the worker scaffold's claim is one method, its tenant-less
   storage methods join the exceptions test, the dead letter's audit
   entry has a namespace `arch-scaffold-new` creates; the service
@@ -159,6 +159,70 @@ the guideline.
   the file that proved it, so a report carries its evidence.
 - `architecture.md`, "Namespace Shape": a doubled decorator removed
   from the storage interface snippet.
+- `architecture.md`, "Shape of a Worker": every claim mints a claim
+  token the claim returns, and completion, release, deferral, and
+  renewal condition on it in the statement, not on the worker's name,
+  since one worker can hold one item twice across a requeue.
+  Lens `ASY-26`.
+- `architecture.md`, "The Work Queue": enqueue is a create, the insert
+  that reports an existing id, so a retried enqueue never resets a
+  claim; the manager's copy stamps the actor, the timestamps, the
+  status, and the attempts, and clears every claim field, whatever the
+  caller sent. Lens `ASY-25`.
+- `architecture.md`, "Shape of an Operation": the outcome the marker
+  stores for a create that issued a secret is the view with the secret
+  absent; a replay answers with the row and no secret and says so in
+  its header. Lens `NET-31`.
+- `architecture.md`, "The Gateway" and "Direction of Calls": a router
+  calls one operation of its service impl, which calls one manager,
+  from the first day, so the split is a wiring change and not a
+  rewrite of the routers; the in-process impl exists from the start
+  and the remote one is written at the split. Lenses `CON-14` and
+  `CON-15`; the service scaffold follows.
+- `architecture.md`, "Multiple impls per interface": every unique key
+  the schema declares has a contract case, so the memory impl refuses
+  what the engine refuses. Lens `DEL-28`.
+- `architecture.md`, "Clients Live in One Place": the gateway bounds a
+  request with a deadline from settings and a work handler is bounded
+  by its lease; nothing runs unbounded. Lenses `NET-26` and `ASY-17`.
+- `architecture.md`, "Naming Entities": a mixin is composed only where
+  a manager operation exercises it, which `OM-05` restated before the
+  text said it. "Migrations": two migrations of one role in the same
+  minute collide on the stamp; the later waits a minute or takes a
+  suffix. "Identifiers": the ids in a log line sort by creation time;
+  nobody eyeballs a timestamp out of hex.
+- `lenses/`: every principle is at most sixty words and every Look for
+  and Violation at most three sentences, as `lenses/README.md` now
+  states and `check_lenses.py` holds; a lens that held two rules is
+  split (`ASY-16`, `ASY-20`, `CTX-03`, `CTX-05`, `CON-17`, `CON-19`,
+  `OM-10`, `OM-15`, `NET-17`, `STO-16`, `STO-18`, `DEL-02`, `DEL-04`,
+  `DEL-20`, `DEL-28`), the second rule taking the next id of its
+  group. Rules with no lens gain one: the data tier splits by role
+  (`NET-29`), operator writes through the operator plane's helper
+  (`CTX-24`), optional filters as keyword parameters (`CTX-10`), the
+  owner-only secrets file (`ASY-28`). `NET-12` is medium. `OM-14`
+  exempts value objects and read models. `DEL-26`, `STO-21`, `STO-24`,
+  and `ASY-03` ask for what a diff or a runbook shows, not for live
+  data. Ownership between groups is stated in each file's header:
+  async owns the sweep's duties, context owns operator gating. 186
+  lenses.
+- `scripts/`: `slug` keeps underscores, as GitHub anchors do;
+  `check_lenses.py` holds the word, sentence, and column limits and
+  the lens count the README states; `check_skills.py` holds the five
+  scaffold sections in order; the leak check reads `AGENTS.md`, which
+  names the product list as the regression guard it is. `README.md`
+  says `make check` needs pytest and npx.
+- `skills/`: `arch-review-full` defines the merge on a tie, what
+  "applied" counts, the fallback's path substitution, and what `all`
+  costs; `arch-upgrade-deps` raises caps one library at a time and
+  says `make reset` after a database major; `arch-new-aspect` agrees
+  with `CONTRIBUTING.md` on versioning, is not model-invoked, and has
+  a short description; `arch-deviate` dates the record today; the
+  worker scaffold carries the claim token and the create on enqueue;
+  the service scaffold the request deadline and the stripped outcome;
+  `arch-scaffold-new` may run the migration check. `AGENTS.md` says
+  what `uv run` and `pnpm run` grant and that the tools form is house
+  style.
 
 ## 0.7.0 (2026-09-19)
 
