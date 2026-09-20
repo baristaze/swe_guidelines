@@ -23,7 +23,7 @@ say the installation is incomplete.
 - a description of a change ("I want to add a nightly cleanup").
 
 Empty arguments mean: give the guided tour, every section in the order
-of the guideline's Contents, two sentences each, then the seven lens
+of the guideline's Contents, two sentences each, then the eight lens
 groups in one line each.
 
 ## Procedure

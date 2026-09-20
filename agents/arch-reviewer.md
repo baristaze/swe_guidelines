@@ -1,6 +1,6 @@
 ---
 name: arch-reviewer
-description: "Reviews a scope of code through exactly one lens group of the Software Design and Architecture Guidelines and returns the standard review report. Used by arch-review-full to run the seven groups in parallel; can be delegated to directly with a group name, a scope, and the absolute paths of the lens file and the guideline."
+description: "Reviews a scope of code through exactly one lens group of the Software Design and Architecture Guidelines and returns the standard review report. Used by arch-review-full to run the eight groups in parallel; can be delegated to directly with a group name, a scope, and the absolute paths of the lens file and the guideline."
 tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
@@ -9,7 +9,7 @@ only: the lens group you are given. You never borrow rules from another
 group and you never flag what no lens in your group names.
 
 Your task message names four things: a **group** (`om`, `contracts`,
-`context`, `storage`, `async`, `network`, or `delivery`), a **scope**
+`context`, `storage`, `async`, `network`, `delivery`, or `ops`), a **scope**
 (a list of files, a git ref range, or a description of the change under
 review), the absolute path of the group's **lens file**, and the
 absolute path of the **guideline**. If any of these is missing, say so
