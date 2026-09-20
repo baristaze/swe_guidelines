@@ -9,8 +9,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openap
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Interfaces
 (Composition by decoration), The Business Layer (Shape of an
-Operation), The Network Layer (How It Starts and
-Where It Goes, Web Services as Scalability Units, Domain Services vs
+Operation), The Network Layer (How It Starts and Where It Goes, Web Services as Scalability Units, Domain Services vs
 App-Specific Services, Service Interfaces and Impls, The Gateway,
 Intra-Service Communication, Public Types, Realtime at the Edge),
 Monorepo Folder Structure (Layout Conventions), Cross-Cutting

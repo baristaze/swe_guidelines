@@ -10,8 +10,8 @@ Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
 Entities, OpContext (Stages, Scopes, The Operator Context), The Storage
 Layer (Storage Root, Defining ORM Classes, Translation, A Storage
-Impl, Database Roles, Migrations), Infrastructure (InfraInterface Root), The Network Layer
-(The Gateway, Auth: the Gateway Verifies, the Tenancy Domain Owns,
+Impl, Database Roles, Migrations), Infrastructure (InfraInterface
+Root), The Network Layer (The Gateway, Auth: the Gateway Verifies, the Tenancy Domain Owns,
 Realtime at the Edge), Deployment (Local: Docker Compose, What a
 Process Refuses), Monorepo Folder Structure (Layout Conventions),
 Cross-Cutting Conventions (Exceptions, Configuration, Records of

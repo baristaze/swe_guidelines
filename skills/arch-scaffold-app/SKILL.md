@@ -9,8 +9,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make chec
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls, Realtime at the
-Edge), Apps (Apps Are
-Dumb, Push-First Apps), Client App Architecture (Stack, State and
+Edge), Apps (Apps Are Dumb, Push-First Apps), Client App
+Architecture (Stack, State and
 Data, Views, View-Models, Models, API Access, Realtime: One Channel
 per App, The Operator Console, The CLI Is Different), Deployment
 (Cloud: AWS), Monorepo Folder Structure (Layout Conventions).
