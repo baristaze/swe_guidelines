@@ -6,6 +6,59 @@ which number.
 
 ## Unreleased
 
+## 0.9.0 (2026-09-20)
+
+The branches carry the environments. This release names the smaller
+environment staging and makes it the default branch, makes production
+a branch that only a fast-forward moves, and closes two windows the
+text had left open: a socket's context outliving its evidence, and a
+released marker losing the id its row already carries. Minor: a rule
+is added and two are sharpened; none is reversed.
+
+### Added
+
+- `architecture.md`, "Cloud: AWS": staging is `main`, and every merge
+  to `main` deploys it with no approval, so a merge is the deployment.
+  Production is the `release` branch, moved only by a fast-forward
+  from `main` and never by a commit of its own, so a release is a
+  `main` commit that has run on staging; a push to `release` plans
+  production, waits for a person's approval on that plan, and applies
+  it; nobody pushes to `release` but the fast-forward, and a deploy of
+  production checks that `release` is an ancestor of `main` before it
+  plans. Lens `DEL-38`. Minor.
+
+### Changed
+
+- `architecture.md`, "Stages": the session's expiry bounds a socket,
+  which the process closes at that instant whatever the client does,
+  and a revocation or a membership's end travels on the topic bus, so
+  every process holding a socket for that session or user closes it on
+  the frame; the expiry covers a frame that was missed. A revocation
+  no longer waits for the next reconnect. Lens `CTX-27`.
+- `architecture.md`, "The Gateway": a release keeps the marker with
+  its digest and its id and clears only the attempt, so the retry that
+  follows a failure after the row landed finds the row by the same id
+  instead of creating a second one. Lens `NET-24`.
+- `architecture.md`, "Cloud: AWS": production promotes what staging
+  already ran, images by the digest staging built for that commit, and
+  a release commit staging never built is refused. Lens `DEL-31`.
+- `architecture.md`, "Cloud: AWS" and "Monorepo Folder Structure": the
+  smaller environment is staging, its Terraform tree
+  `environments/staging/` and its base domain `staging.<domain>`;
+  `arch-scaffold-new` writes the same. Local and `devx` keep their
+  names.
+- `skills/`: `arch-scaffold-new` writes `deploy-staging.yml` (every
+  push to `main`, no approval, the digests and the build id recorded
+  by commit), `deploy-production.yml` (a push to `release`: the
+  ancestor check, the digest lookup by the release commit, a refused
+  commit staging never built, the plan as a workflow artifact, the
+  apply behind the approval), and `release.yml` (the fast-forward of
+  `release` to `main` on dispatch); `arch-scaffold-app` syncs the
+  bundle staging built for the release commit; `arch-scaffold-service`
+  closes a socket at its session's expiry and on the revocation or
+  membership-end frame, tests both, keeps the marker's digest and
+  `target_id` on a release, and adds its image to the two workflows.
+
 ## 0.8.0 (2026-09-19)
 
 An outside review of 0.7.0, read against the reference implementation.
