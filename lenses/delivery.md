@@ -397,9 +397,9 @@ ignores the OS's.
 **Principle.** Every platform exception is rooted at
 `PlatformException`, which carries `http_status` and a stable `code`.
 Shape exceptions (`NotFound`, `Conflict`, `ValidationFailed`,
-`NotAuthenticated`, `NotAuthorized`, `Unavailable`) cover most cases; a namespace
-family multiply-inherits a shape. Translation to HTTP happens once, at
-the boundary. Managers never format HTTP.
+`NotAuthenticated`, `NotAuthorized`, `Unavailable`) cover most cases;
+a namespace family multiply-inherits a shape. Translation to HTTP
+happens once, at the boundary. Managers never format HTTP.
 
 **Source.** Cross-Cutting Conventions, Exceptions.
 

@@ -31,6 +31,42 @@ which number.
   names the field the request stage gained, `OM-03` the field the
   outbox row gained; `arch-scaffold-new`, `arch-scaffold-worker`, and
   the shared scaffold conventions carry the shape.
+- `architecture.md`, "Resilience by Design": a bound on every call and
+  a named behaviour at the bound, each rule stated beside the
+  mechanism it bounds and gathered into a section that is the sibling
+  of "Scalability by Design". "Database Roles": a role's pool declares
+  its size and the bound on waiting for a connection, both from
+  settings, and a checkout past the bound fails rather than queueing
+  without end, with the size chosen against the process's own
+  concurrency. "A Storage Impl": a statement carries a deadline, so
+  the one dependency the timeout doctrine never named is bounded like
+  every other call, and a hung query costs one call and not a held
+  connection. "The Gateway": `/readyz` answers under a deadline of its
+  own, shorter than the interval it is polled on, and a timeout is a
+  negative answer and never a missing one; a process bounds what it
+  has in flight and refuses past the bound at once, which is the
+  process defending itself and fails closed, where the rate limit
+  beside it is per-subject fairness and fails open. "Composition by
+  decoration": a breaker counts consecutive failures, refuses for a
+  cool-down past a bound from settings, and lets one call through to
+  decide whether to close, because a dependency that is down turns
+  every call into a full timeout and the timeouts exhaust a pool.
+  "Direction of Calls": the retry we send is classified, bounded in
+  count, spaced by a delay that grows and carries jitter, and never
+  stacked. "Cache": a degraded answer is declared where it is chosen,
+  so nothing silently substitutes a stale answer for a fresh one.
+  "Exceptions" gains the `Unavailable` shape with the status it
+  carries, so an open breaker, a refused admission, and a backend that
+  is down present alike on both exception roots. Every rule states the
+  shape of a bound and never a number: "What This Document Does Not
+  Cover" keeps excluding the tuning of deadlines and retry budgets and
+  now excludes the numbers an admission bound is set to. Lenses
+  `STO-27`, `NET-32`, `NET-33`, `CON-23`, `ASY-30`; `NET-26` carries
+  the statement deadline, `NET-10` the bounded readiness probe, and
+  `DEL-18` the new shape. `arch-scaffold-new` writes the shape
+  exception, and `arch-scaffold-service` writes the admission
+  middleware, the bounded readiness probe, and the settings behind
+  them.
 
 ### Changed
 
