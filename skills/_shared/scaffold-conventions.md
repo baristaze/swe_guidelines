@@ -47,6 +47,8 @@ the order the guideline presents them, never by number.
   `InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`,
   `get_inventory_storage()`. A namespace with several aggregates may
   add one storage interface per aggregate, named after the aggregate.
+  The storage roots are `StoragePostgresImpl` and
+  `StorageMemoryImpl`, named like every other impl.
 - Manager operations read `get_<entities>`, `get_<entity>`,
   `create_<entity>`, `update_<entity>` (only when the entity is
   `Trackable`), `delete_<entity>` (only when it is `SoftDeletable`); an
@@ -93,15 +95,22 @@ the order the guideline presents them, never by number.
   marker. Both impls sort by the `UUID` value, never by its string.
 - Tests are counted in cases, not files: one contract case per storage
   method (the read after the write, the filter, the tenant that sees
-  nothing), one refusal per authorization rule a manager states, one
-  test per rate-limited route, one per exit code of a command, one per
-  capability of the infra root over its local impl. A test file with
-  one round trip is a placeholder.
-- Every write follows authorize, verify, copy (an update sets
-  `updated_at` and `updated_by` in the copy; a create sets what the
-  manager decides, the actor from the context and the initial state,
-  and leaves the id and the timestamps as constructed),
-  write, and returns the copy it wrote. Authorize is
+  nothing), one race per named atomic method (two callers at once,
+  exactly one wins, the same case over memory and over Postgres), one
+  refusal per authorization rule a manager states, one test per
+  rate-limited route, one per exit code of a command, one per
+  capability of the infra root over its local impl, one
+  construction-site test enumerating every site that builds a stage
+  above the request stage, and one build-once test per root. A test
+  file with one round trip is a placeholder.
+- Every write follows authorize, verify, copy (an update starts from
+  the stored row: the caller's entity supplies the fields a caller may
+  change, `model_dump(exclude=PROVENANCE_FIELDS)`, and the copy sets
+  `updated_at` and `updated_by`, so no caller rewrites who made a row
+  or brings a deleted one back; a create sets what the manager
+  decides, the actor from the context and the initial state, and
+  leaves the id and the timestamps as constructed), write, and
+  returns the copy it wrote. Authorize is
   `ctx.require(<permission>)` as the first line of every mutating
   manager operation, before any read, the ones a worker calls
   included (complete, fail, defer, release, extend the lease), as The
@@ -110,7 +119,9 @@ the order the guideline presents them, never by number.
   relays the row at once. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
-  and returns an `Issued...` shape once.
+  and returns an `Issued...` shape once, and whose rerun finds the
+  row, re-mints the secret on it in the same named atomic write, and
+  returns a fresh `Issued...` with the same id.
 - Feeds get a compound index on `(org_id, id)` and no single-column
   index on a column that already leads a compound one.
 - A namespace's exception family, when one is needed, is
@@ -118,7 +129,12 @@ the order the guideline presents them, never by number.
   leaves multiply-inherit a shape (`NotFound`, `Conflict`, ...) so the
   status and code come from the shape.
 - Wire types are hand-written; routers translate and never decide;
-  list routes take a server-clamped `limit`.
+  list routes take a server-clamped `limit`. A partial update is the
+  router's translation: it reads the current entity, copies the
+  request's set fields onto it, an absent field unchanged and an
+  explicit null cleared where the field is optional, and hands the
+  whole entity to the manager; the request type states that policy,
+  and no impl decides it.
 - Every creating route (every `POST` that answers 201) declares the
   gateway's `Idempotency-Key` dependency, in every namespace, so a
   retried create returns the stored response, as The Network Layer

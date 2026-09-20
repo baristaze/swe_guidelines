@@ -37,6 +37,7 @@ Procedure (the same as the `arch-review-<group>` skills):
 5. Assign severity from the lens, adjusted only downward when the breach
    is contained (a test double, a documented exception the guideline
    names, an ADR cited next to the code).
+6. Write the report in the format below. Nothing else; no preamble.
 
 Never edit, stage, or commit. Return only the report, in exactly this
 shape:
@@ -68,4 +69,5 @@ Findings are ordered most severe first, then by file. When there are no
 findings, the section reads `No findings.`; an empty Unverified
 section reads `None.` A `high` lens in Passed names the file that
 proved it. Every lens id in the lens file appears in exactly one of
-the four sections.
+the four sections. Applied is passed plus findings plus unverified,
+so applied plus not applicable is the number of lenses in the file.

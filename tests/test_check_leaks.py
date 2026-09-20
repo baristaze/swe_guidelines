@@ -53,3 +53,20 @@ def test_terms_are_matched_case_insensitively_on_word_boundaries(repo, leaks):
     assert leaks.main() == 1
     repo.edit("architecture.md", "One table per Labs entry; syllabus is fine.", "The syllabus is fine.")
     assert leaks.main() == 0
+
+
+def test_em_dash_and_product_term_fail_under_agents(repo, leaks, capsys):
+    repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the code — one lens group.\n")
+    assert leaks.main() == 1
+    assert "agents/arch-reviewer.md:5: em-dash" in capsys.readouterr().out
+    repo.write("agents/arch-reviewer.md", "---\nname: arch-reviewer\n---\n\nJudge the firmware.\n")
+    assert leaks.main() == 1
+    assert "agents/arch-reviewer.md:5: product term 'firmware'" in capsys.readouterr().out
+
+
+def test_product_term_fails_in_agents_md(repo, leaks, capsys):
+    repo.write("AGENTS.md", "# Working here\n\nNo firmware talk.\n")
+    assert leaks.main() == 1
+    assert "AGENTS.md:3: product term 'firmware'" in capsys.readouterr().out
+    repo.write("AGENTS.md", "# Working here\n\nAgents are agents.\n")
+    assert leaks.main() == 0

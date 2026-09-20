@@ -21,10 +21,11 @@ lenses (`skills/`), and the checkers that keep the three consistent
   a new aspect into the guideline and cascades it through the lenses,
   skills, docs, and changelog.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
-  to. Its procedure and report shape mirror the review template by
-  hand; a change to one is a change to both. The sentence "Never
-  edit, stage, or commit" is repeated in every review skill on
-  purpose.
+  to. Its procedure and report shape mirror the review template, and
+  `scripts/check_agents.py` holds the two together: the four decision
+  words, the report block, and the count of procedure steps must
+  agree. The sentence "Never edit, stage, or commit" is repeated in
+  every review skill on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
   version; `scripts/check_version.py` holds the marketplace manifest,
@@ -37,9 +38,12 @@ lenses (`skills/`), and the checkers that keep the three consistent
 
 ## Invariants
 
-- No product or hardware vocabulary in the guideline or the lenses
-  (`scripts/check_leaks.py` lists the terms). Agents are named as
-  agents.
+- No product or hardware vocabulary in the guideline, the lenses, the
+  skills, the docs, the agents, or this file (`scripts/check_leaks.py`
+  lists the terms). The product list is a regression guard for the
+  vocabulary of the one origin the guideline was extracted from, not a
+  general check: it catches that vocabulary flowing back in, and a
+  fork replaces it with its own. Agents are named as agents.
 - No history in the guideline: it states what we do, in the present
   tense, with no rejected alternatives and no changelog phrasing.
 - No em-dashes anywhere.
@@ -53,12 +57,19 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - Every skill's `name` equals its folder name and starts with `arch-`;
   every `${CLAUDE_SKILL_DIR}/...` reference resolves; frontmatter is
   flat `key: value` lines; descriptions are one complete double-quoted
-  string; `allowed-tools` is comma-separated in the `Bash(cmd:*)` form
-  and names only what the skill runs.
+  string; `allowed-tools` is comma-separated, the `Bash(cmd:*)` prefix
+  form is house style (an exact `Bash(make check)` is accepted too),
+  and it names only what the skill runs. `Bash(uv run:*)` and
+  `Bash(pnpm run:*)` are a shell in practice: either runs whatever the
+  workspace holds. They stay listed because a scaffold has to run the
+  project's own tools through the workspace, and naming them says so
+  in the frontmatter instead of hiding it behind a bare `Bash`.
+- Scaffold skills have the five sections Input, Created, Changed,
+  Procedure, Output, in that order (`scripts/check_skills.py` holds
+  them to it).
 - The release version is written once, in `.claude-plugin/plugin.json`;
   every other copy is checked against it.
-- Scaffold skills share `skills/_shared/scaffold-conventions.md` and
-  have the same sections: Input, Created, Changed, Procedure, Output.
+- Scaffold skills share `skills/_shared/scaffold-conventions.md`.
 - Exactly one review skill per lens group; `arch-review-full` names all
   of them.
 
@@ -84,5 +95,7 @@ claude plugin validate . --strict   # manifests, skills, agents (when claude is 
 - Commit messages: a specific subject line, a short body naming the
   rule that changed and why.
 - A change that removes or reverses a rule is a major release; one
-  that adds or sharpens a rule is a minor release. Record it in
-  `CHANGELOG.md`.
+  that adds or sharpens a rule is a minor release; before 1.0.0 a
+  removed or reversed rule bumps the minor number, as semver reads
+  0.x, and the changelog entry names the reversal (`CONTRIBUTING.md`,
+  Versioning). Record it in `CHANGELOG.md`.

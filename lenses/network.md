@@ -121,38 +121,20 @@ from storage after a reconnect.
 
 **Principle.** The gateway mints the request stage, runs the tenancy
 manager's transitions into `OpContext`, and routes; services never
-parse raw headers or tokens. A
-service-to-service call carries a short-lived internal credential
-minted by the caller: a token naming the principal, the tenant, the
-request id, and an expiry minutes out, signed with a key from the
-secret store and verified by the callee against the same key; the
-callee's gateway rebuilds the context from it like any other
-credential kind, and no service trusts a bare header. The edge
-idempotency marker carries the request digest and the id the create
-will use, minted before `begin`; a stale pending marker is taken over
-and the request rerun with that id; a failure releases the marker
-rather than being stored. It accepts
-cross-origin requests only from the browser apps' origins, read from
-settings. It accepts an inbound `x-request-id` or mints one, stamps it on the context, echoes
-it in the response header, and attaches it to the log context and the
-trace span. Edge idempotency stores the first response per tenant and
-principal under the key.
+parse raw headers or tokens, and no endpoint is reachable without
+passing the gateway's dependencies. It accepts cross-origin requests
+only from the browser apps' origins, read from settings.
 
 **Source.** The Network Layer, The Gateway.
 
 **Look for.** Where bearer tokens and headers are parsed; whether any
 router, service impl, or manager reads `Authorization` or an app
 header itself; whether a second path to the internet bypasses the
-gateway; the `internal` credential kind, who mints it, and how the
-callee rebuilds a context from it; the allowed-origins setting; the request-id middleware and what it writes to the response
-and the span; the key the idempotency store uses.
+gateway; the allowed-origins setting.
 
 **Violation.** A router that inspects headers to decide who is calling;
-a callee that trusts a tenant or user id in a header from a peer
-service; a wildcard or hard-coded allowed origin; an endpoint reachable without passing the gateway's dependencies; a
-response without the `x-request-id` header; a span without the request
-id; an idempotent response stored per tenant alone, so one principal
-replays another's.
+a wildcard or hard-coded allowed origin; an endpoint reachable without
+passing the gateway's dependencies.
 
 **Severity.** high
 
@@ -246,21 +228,21 @@ own paths.
 ## NET-11 The gateway verifies; the tenancy domain owns identity
 
 **Principle.** The gateway verifies credentials and asks the tenancy
-manager for the principal behind them; organizations, identities,
-users, memberships, teams, credentials, sessions, and invitations are
-a regular namespace with types, a manager, and storage. Nothing it
-stores can be presented as a credential: a password is a memory-hard
-hash under its own salt; an API key, a session token, and a socket
-ticket are stored as their SHA-256 digest, shown once in the
-`Issued...View` that minted them, and compared in constant time.
+manager for the principal; tenancy is a namespace with types, a
+manager, and storage. Nothing it stores can be presented as a
+credential: a password is a memory-hard hash under its own salt, and a
+key, a token, or a ticket is a SHA-256 digest, shown once and compared
+in constant time.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
 **Look for.** Where signup, invitation, role management, key rotation,
-and session refresh are implemented; whether the gateway holds its own
-user or token tables; the hashing in the tenancy rules and what the
-credential tables hold.
+and session refresh are implemented (organizations, identities, users,
+memberships, teams, credentials, sessions, invitations); whether the
+gateway holds its own user or token tables; the hashing in the tenancy
+rules, what the credential tables hold, and the `Issued...View` that
+shows a secret once.
 
 **Violation.** Identity logic inside gateway middleware; credential
 tables owned by the gateway rather than the tenancy namespace; a
@@ -276,42 +258,44 @@ in the clear or compared with `==`.
 without TLS, and that rests on the network being private: services and
 workers in private subnets, security groups that admit only the
 platform's own processes, only the gateway with a public address, all
-declared in Terraform; a runtime that offers mutual TLS at no cost
-turns it on. Managed backends that require TLS get it as a connection
+in Terraform. Managed backends that require TLS get a connection
 string; outbound TLS verification uses the operating system's trust
-store in every process.
+store.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
 **Look for.** The subnet and security-group declarations for services
-and workers; certificate handling in service impls; how HTTP clients
-are constructed; whether a bundled certificate store is used instead
-of the system's.
+and workers; whether a runtime that offers mutual TLS at no cost has
+it on; certificate handling in service impls; how HTTP clients are
+constructed and whether a bundled certificate store stands in for the
+system's.
 
-**Violation.** A service or worker with a public address, or a
-security group open past the platform's own processes; certificate
-rotation logic inside a service; an HTTP client pinned to a bundled CA
-set so a corporate proxy or private CA fails; TLS configured per
-component instead of once at boot.
+**Violation.** A service or worker with a public address, which is an
+exposure and not a convention slip, or a security group open past the
+platform's own processes; certificate rotation logic inside a service;
+an HTTP client pinned to a bundled CA set so a corporate proxy or
+private CA fails; TLS configured per component instead of once at
+boot.
 
-**Severity.** low
+**Severity.** medium
 
 ## NET-13 Wire types are curated, immutable, and hand-written
 
 **Principle.** Wire types are hand-written on two bases, a frozen
-`View` built from attributes and a `RequestBody` that forbids unknown
-fields; names end in `View`, `Request`, or `Issued...View`; lists
-return a bare list with a clamped limit, a list that can outgrow the
-clamp returns a page envelope and pages by an opaque cursor over its
-own order, streams page by `after_seq`, and nothing pages by an
-offset; the OM never changes to match the wire. Within a version
-a change is additive (NET-23).
+`View` and a `RequestBody` that forbids unknown fields; names end in
+`View`, `Request`, or `Issued...View`. Lists return a bare list with a
+clamped limit; a list that outgrows the clamp pages by an opaque
+cursor, a stream by `after_seq`, nothing by an offset. The OM never
+changes to match the wire.
 
 **Source.** The Network Layer, Public Types.
 
-**Look for.** The `types/` modules and their base classes; whether
-entities are returned directly from routers; naming of request and
-response classes; list endpoints and their paging parameters.
+**Look for.** The `types/` modules and their base classes (`View`
+built from attributes); whether entities are returned directly from
+routers; naming of request and response classes; list endpoints,
+their paging parameters, and the page envelope (`items`,
+`next_cursor`) over the list's own order; what changes within a
+version is NET-23.
 
 **Violation.** An OM entity serialized straight onto the wire; a
 mutable view; a request body that silently ignores unknown keys; an OM
@@ -382,39 +366,26 @@ client's subscriptions.
 
 ## NET-17 The socket is a hint; storage is the truth
 
-**Principle.** Each socket has one bounded in-memory send buffer
-drained by a task; when it is full the oldest frame is dropped and
-logged; every push is also a record, and a reconnecting client asks
-for everything after the last contiguous sequence it saw, so a gap is
-a replay, never a skip. Contiguity is per tenant, so the stream
-travels whole and a client filters by kind after ordering, never
-before; that is safe because a frame and a replayed record carry the
-identity of the change (`seq`, `kind`, `target_id`, the actor) and no
-field of the entity, and the client reads the entity through the
-authorized read; the hint is metadata every member of the tenant may
-see, and a product where existence itself is restricted keeps one
-stream per visibility scope. The first frame and every pong carry the tenant's
-head `seq`, so a quiet socket cannot hide a dropped last frame. `seq`
-orders events, not core writes.
+**Principle.** Each socket has one bounded send buffer; when it is
+full the oldest frame is dropped and logged. Every push is also a
+record, and a reconnecting client asks for everything after the last
+contiguous sequence it saw, so a gap is a replay, never a skip. The
+first frame and every pong carry the tenant's head `seq`.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The send buffer capacity and overflow behavior; whether
-every pushed event has a durable record; the reconnect path and its
-`after_seq` parameter; which sequence the client keeps as its cursor;
-whether the stream topic filters by kind before the client; what the
-hello, the pong, a frame, and a replayed record carry.
+**Look for.** The send buffer capacity, its drainer task, and its
+overflow behavior; whether every pushed event has a durable record;
+the reconnect path and its `after_seq` parameter; which sequence the
+client keeps as its cursor; what the hello and the pong carry, so a
+quiet socket cannot hide a dropped last frame.
 
 **Violation.** A push that exists only as a frame; a send buffer that
 grows without bound or blocks the producer; a client that cannot
 recover missed events after a reconnect; a client that tracks the last
 frame seen instead of the last contiguous one, so a dropped frame is
-skipped for good; a server-side filter by kind on the sequenced
-stream, so a legitimate gap reads as a loss; a pong with no head
-`seq`, so a dropped last frame waits for the next event; an entity
-field on a frame or in the replay, so the stream leaks what the read
-would have refused; a consumer that rebuilds a record's state from
-events.
+skipped for good; a pong with no head `seq`, so a dropped last frame
+waits for the next event.
 
 **Severity.** high
 
@@ -499,45 +470,43 @@ idle timeout defined in two places that can drift in separate changes.
 ## NET-22 The event row and its per-tenant seq
 
 **Principle.** The record behind every push is an `Event` in the
-`activity` role: `Identifiable` plus `org_id`, `seq`, `kind`,
-`target_id`, and a typed payload, appended by one named atomic storage
-method that assigns `seq`, a per-tenant, gapless sequence and the one
-number storage assigns. A manager records one event per write through
-the outbox; an audit entry is the same shape plus the principal and
-the app.
+`activity` role, appended by one named atomic storage method that
+assigns `seq`, a per-tenant, gapless sequence. A manager records one
+event per write through the outbox; an audit entry is the same shape
+plus the principal and the app. `seq` orders events, not core writes.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
-**Look for.** The `Event` type and its table's role; the append method
-and where `seq` comes from; whether the event row is written by the
-outbox relay or by a second statement; the `after_seq` read; the audit
-entry's shape.
+**Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
+`kind`, `target_id`, a typed payload) and its table's role; the
+append method and where `seq` comes from; whether the event row is
+written by the outbox relay or by a second statement; the `after_seq`
+read; the audit entry's shape.
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; an event table in the `core` role; an event row written in a
 second statement after the core write; an audit entry with a shape of
-its own.
+its own; code that reads `seq` as the order of core writes.
 
 **Severity.** high
 
 ## NET-23 Wire and payload changes are additive within a version
 
 **Principle.** Inside `/v1` a view only gains fields and a request only
-gains optional ones; a removal or a rename is a new prefix. Tolerance
-runs one way: a reader ignores a field it does not know, and a new
-reader in front of an old writer holds only when the new field is
-optional with a default. So a topic payload, a work item payload, and
-a realtime envelope only gain optional, defaulted fields, and the two
-sides roll out in either order; a request forbids what it does not
-know, so a service rolls out before its apps.
+gains optional ones; a removal or a rename is a new prefix. A reader
+ignores a field it does not know, and a payload or an envelope only
+gains optional, defaulted fields, so producer and consumer roll out
+in either order. A service rolls out before its apps.
 
 **Source.** The Network Layer, Public Types.
 
-**Look for.** The diff of every `types/` module, payload class, and
-envelope against the committed OpenAPI document; the model config of
-payload and envelope bases; whether a consumer fails on an unknown
-field; whether a field added to a payload has a default; the order in
-which a service and its apps are deployed.
+**Look for.** The diff of every `types/` module, payload class (topic,
+work item), and envelope against the committed OpenAPI document; the
+model config of payload and envelope bases; whether a consumer fails
+on an unknown field; whether a field added to a payload has a default,
+since a new reader in front of an old writer holds only then; the
+order in which a service and its apps are deployed, since a request
+forbids what it does not know.
 
 **Violation.** A field removed or renamed on a view, or a required
 field added to a request, under the same prefix; a payload or envelope
@@ -548,3 +517,186 @@ to parse; an app that sends a new request field before the service
 that accepts it is deployed.
 
 **Severity.** medium
+
+## NET-24 The pending marker's attempt token fences finish and release
+
+**Principle.** The pending marker carries the request digest, the id
+the create will use, and an attempt token, minted before `begin`. A
+marker older than the pending lease is taken over in one conditional
+write that stamps a new attempt token and reruns with the marker's
+id. `finish` and the release are conditional on the attempt token, in
+the statement itself.
+
+**Source.** The Network Layer, The Gateway (Edge idempotency).
+
+**Look for.** The marker row and what `begin` writes on it; the
+take-over statement, what it compares, and which markers it takes
+(abandoned by a crash, or held by an attempt still running past its
+lease); the `WHERE` of `finish` and of the release; what the losing
+attempt's `finish` returns, since it can neither finish the marker
+with its own outcome nor release the one the retry holds.
+
+**Violation.** A marker with no attempt token, so two attempts can
+finish it; a take-over that overwrites the marker without a condition;
+a `finish` or a release that matches on the key alone; a rerun that
+mints a new id instead of using the marker's; a losing attempt that
+is not refused like a worker whose lease has passed.
+
+**Severity.** high
+
+## NET-25 A create that issues a secret re-mints it on the rerun
+
+**Principle.** A create that issues a secret stores it as a digest and
+shows it once, so the row as stored is not enough on a rerun: the rerun
+finds the row, re-mints the secret on it in the same named atomic
+write, and returns a fresh `Issued...View` with the same id, since the
+first secret reached no one.
+
+**Source.** The Business Layer, Shape of an Operation; The Network
+Layer, The Gateway (Edge idempotency).
+
+**Look for.** The create of every entity that issues a secret (an API
+key, a session token, a socket ticket) and what it does when the
+insert reports an existing id; the atomic method that re-mints. A
+rerun is a retry whose marker holds no outcome; a replay, whose
+marker holds one, is NET-31.
+
+**Violation.** A rerun that returns the stored row with no secret, so
+the client holds an id and nothing to present; a rerun that inserts a
+second row under a new id; a re-mint written in a second statement
+after the read; an `Issued...View` whose id differs between the first
+run and the rerun.
+
+**Severity.** high
+
+## NET-26 Every outbound call carries a timeout from settings
+
+**Principle.** Every outbound call carries a timeout: the transport
+client reads one from settings, one per client, and no call goes out
+without one, so a downstream that hangs cannot hold a replica's whole
+pool. The gateway bounds a request the same way, with a deadline from
+settings, and a work handler is bounded by its lease; nothing runs
+unbounded.
+
+**Source.** The Network Layer, Clients Live in One Place.
+
+**Look for.** The construction of every transport client, in Python
+and in TypeScript; the settings field it reads; any call site that
+builds a request outside the client; the request deadline setting and
+the middleware or dependency that applies it to every route (the
+lease side is judged by `async`).
+
+**Violation.** A client constructed with no timeout, or with a library
+default nothing in settings names; a timeout hard-coded in the client
+instead of read from settings; a per-call override that disables it; a
+`fetch` or an `httpx` call outside the client with no deadline; a
+request path with no deadline, so a slow handler holds a server slot
+for good.
+
+**Severity.** medium
+
+## NET-27 A service-to-service call carries a short-lived internal credential
+
+**Principle.** A service-to-service call carries a short-lived internal
+credential minted by the caller: a token naming the principal, the
+tenant, the request id, and an expiry minutes out, signed with a key
+from the secret store and verified by the callee. The callee's gateway
+rebuilds the context from it like any other credential kind, and no
+service trusts a bare header.
+
+**Source.** The Network Layer, The Gateway.
+
+**Look for.** The `internal` credential kind, who mints it, where the
+signing key comes from, and how the callee rebuilds a context from it;
+the remote impl of every service interface.
+
+**Violation.** A callee that trusts a tenant or user id in a header
+from a peer service; an internal token with no expiry, or one signed
+with a key held in settings instead of the secret store; a peer call
+that reaches a router without the gateway's dependencies.
+
+**Severity.** high
+
+## NET-28 The request id is accepted or minted at the edge
+
+**Principle.** The gateway accepts an inbound `x-request-id` or mints
+one, stamps it on the context, echoes it in the response header, and
+attaches it to the log context and the trace span.
+
+**Source.** The Network Layer, The Gateway.
+
+**Look for.** The request-id middleware and what it writes to the
+context, the response, the log context, and the span; whether the
+socket route gets the same treatment.
+
+**Violation.** A response without the `x-request-id` header; a span
+without the request id; a request id minted below the gateway or read
+from the header by a router; a socket whose context carries none.
+
+**Severity.** medium
+
+## NET-29 The data tier splits by role, never by service
+
+**Principle.** The independence of services is of the process, not of
+the data: every service runs the same OM against the same database
+roles, and the schema timeline stays with the OM, so the data tier
+splits by role, never by service.
+
+**Source.** The Network Layer, Web Services as Scalability Units; The
+Storage Layer, Database Roles.
+
+**Look for.** Which database URLs and schemas each service's settings
+name; where migration chains live; whether a table's role comes from
+the OM's role map or is implied by the service that writes it.
+
+**Violation.** A database or a schema per service; a table owned by a
+service rather than a role; a migration chain under a service; two
+services that read one role from two databases.
+
+**Severity.** medium
+
+## NET-30 The stream is a stream of hints, whole per tenant
+
+**Principle.** Contiguity is per tenant, so the stream travels whole
+and a client filters by kind after ordering, never before. A frame and
+a replayed record carry the identity of the change and no field of the
+entity; the client reads the entity through the authorized read, so
+the hint is metadata every member of the tenant may see.
+
+**Source.** The Network Layer, Realtime at the Edge.
+
+**Look for.** Whether the stream topic filters by kind before the
+client; what a frame and a replayed record carry (`seq`, `kind`,
+`target_id`, the actor); how a client obtains the entity after a hint;
+whether a product where existence itself is restricted keeps one
+stream per visibility scope, with a cursor per stream.
+
+**Violation.** A server-side filter by kind on the sequenced stream,
+so a legitimate gap reads as a loss; an entity field on a frame or in
+the replay, so the stream leaks what the read would have refused; a
+consumer that rebuilds a record's state from events.
+
+**Severity.** high
+
+## NET-31 A replay of a create that issued a secret carries no secret
+
+**Principle.** The outcome the marker stores for a create that issued
+a secret is the view with the secret absent, so a replay answers with
+the row and no secret and says so in its header. The secret exists in
+one place, as a digest; a client that lost the first response revokes
+the key and issues another.
+
+**Source.** The Business Layer, Shape of an Operation; The Network
+Layer, The Gateway (Edge idempotency).
+
+**Look for.** What `finish` stores for a create that issued a secret;
+what the replay returns and which header marks the absent secret;
+every place a secret in the clear could land (the marker, a cache, a
+log line).
+
+**Violation.** A stored outcome that carries the secret in the clear,
+so the marker is a second copy; a replay that re-mints the secret, so
+a retry of a delivered response mints a credential nobody asked for; a
+replay with no header saying the secret is absent.
+
+**Severity.** high

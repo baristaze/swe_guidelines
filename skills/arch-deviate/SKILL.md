@@ -1,7 +1,7 @@
 ---
 name: arch-deviate
 description: "Record a deliberate deviation from the Software Design and Architecture Guidelines as an architecture decision record (ADR) in the current repository, quoting the rule, stating the decision, and naming the consequences. Use when a review finding is accepted as intentional or when a project needs to diverge from a section."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(git log:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(date:*)
 ---
 
 # arch-deviate
@@ -35,8 +35,8 @@ has a condition for ending.
    ask where ADRs live and write nothing until answered. Number the new
    record as one more than the highest numeric prefix present
    (`NNNN-<slug>.md`). Refuse to write a path that already exists.
-3. Take the date from `git log -1 --format=%cd --date=short`; when the
-   repository has no commits, ask for it.
+3. Take the date from `date +%F`: the ADR records the day the decision
+   is made, which is today, not the day of the last commit.
 4. Write the ADR with the template below, under the ADR folder only.
    Keep it under one page.
 5. When `specs/architecture.md` exists and has a `## Deviations` table,

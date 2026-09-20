@@ -4,12 +4,12 @@ PYTHON := python3
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
 
-.PHONY: help check lint lenses leaks links toc version skills test plugin gen-skills gen-skills-check gen-toc clean
+.PHONY: help check lint lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: lint lenses leaks links toc version gen-skills-check skills test plugin ## run every check (what CI runs)
+check: lint lenses leaks links toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
@@ -31,6 +31,9 @@ version:           ## every copy of the release version agrees with .claude-plug
 
 skills:            ## every skill has valid frontmatter and references files that exist
 	$(PYTHON) scripts/check_skills.py
+
+agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count)
+	$(PYTHON) scripts/check_agents.py
 
 test:              ## the checkers and generators pass their own tests (needs pytest)
 	$(PYTHON) -m pytest tests -q

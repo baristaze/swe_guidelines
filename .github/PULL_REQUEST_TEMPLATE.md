@@ -9,5 +9,5 @@ skill that changes and why.
 - [ ] A rule change updates `architecture.md`, its lens, and (via
       `make gen-skills`) the generated skills together.
 - [ ] `CHANGELOG.md` has an entry under Unreleased.
-- [ ] No product, hardware, or assistant-tooling vocabulary entered the
-      guideline or the lenses.
+- [ ] No product or hardware vocabulary entered the guideline or the
+      lenses.

@@ -11,8 +11,10 @@ apps at the edge, the repository they are built from, the environments
 they run in, and the conventions every process shares for errors,
 logs, telemetry, and configuration. It leaves the realtime channel
 rules (one channel per app, envelopes, degraded mode) to `network`,
-the app container boot order to `contracts`, and the credential and
-operator-gate rules behind the operator console to `context`.
+the app container boot order to `contracts`, and the operator
+console's gating (the allowlist, the refusal of a tenant role or a
+portal flag) with the credential rules behind it to `context`
+(CTX-20).
 
 ## DEL-01 Apps are dumb, and logic lands in the layer it belongs to
 
@@ -39,45 +41,30 @@ service holding a rule a second app later copies.
 
 **Severity.** medium
 
-## DEL-02 One cloud, environments that differ by variables, promotion without a rebuild
+## DEL-02 One cloud, environments that differ by variables
 
 **Principle.** Cloud deployments target AWS. Services and workers run
 on the container runtime; each browser app ships from a private S3
 bucket served through CloudFront. Every environment has the same
-module graph; everything that differs between two environments is a
-variable, the base domain included, under which `api.` is the gateway,
-`app.` the portal, and `admin.` the operator console. Production does
-not rebuild: it promotes images by digest and browser bundles by build
-id, behind an approval gate, and a bundle reads what differs between
-environments from a `config.json` deployed next to it. Every
-environment collects what its processes emit: logs through the log
-driver into one log group per process with retention set; metrics and
-traces through a non-essential collector beside each task that adds
-only the service and the environment as dimensions.
+module graph, and everything that differs between two environments is
+a variable, the base domain included, under which `api.` is the
+gateway, `app.` the portal, and `admin.` the operator console.
 
 **Source.** Deployment, Cloud: AWS.
 
 **Look for.** `deployment/terraform/environments/*`: the set of modules
 each environment instantiates and the variables it passes, the base
 domain among them; resources that exist in one environment and not
-another; a bucket and a distribution for each browser app under
+another. A bucket and a distribution for each browser app under
 `apps/`, the bucket's public-access block and read policy; the
-`api.`, `app.`, and `admin.` records; the deploy workflow's production
-job, how it obtains its images and bundles, the `config.json` each
-environment writes, and whether an approval step guards it; the log
-configuration and the collector container in each task definition.
+`api.`, `app.`, and `admin.` records.
 
 **Violation.** A module, resource, or wiring present only in
 production; environment-specific branches in module code instead of
 variables; a hostname hard-coded in a module instead of derived from
-the base domain; a browser app with no bucket and distribution in some
+the base domain. A browser app with no bucket and distribution in some
 environment; a public bucket or website endpoint; a bundle served from
-a container; a production job that builds an image or a bundle; a
-production task definition pinned to a tag rather than a digest; an
-API origin or DSN compiled into a bundle; a promotion path with no
-approval gate; a log group with no retention; `/metrics` or spans
-emitted in an environment where no collector reads them; a collector
-marked essential; a task identifier copied into metric dimensions.
+a container.
 
 **Severity.** medium
 
@@ -105,63 +92,47 @@ others.
 
 **Principle.** Every technology dependency runs as a local container
 through one compose stack, using cloud images or wire-compatible
-stand-ins. Application processes run on the host, started by one
-script; a second compose file runs the application containers when the
-real images are needed. Developer dashboards (pgweb for Postgres,
-Valkey Admin for the cache, the consoles the local images ship, Jaeger
-for traces, GlitchTip for errors, the metrics view) live in an optional `devx` profile that
-nothing in CI starts, on host ports read from `.env`. The repository's
-`README.md` lists the local URL of each dashboard, of each service's
-API docs, and of each browser app. `make seed` runs `bootstrap` with a
-development org and owner from `.env` (an `.example` address and a
-development password), changes nothing when run again, and the
-`README.md` lists it with the seeded sign-in.
+stand-ins, each at the version Versions sets. Application processes
+run on the host, started by one script; a second compose file runs
+the application containers too. Four targets cover the stack: `up`,
+`down`, `reset`, and `urls`.
 
 **Source.** Deployment, Local: Docker Compose.
 
 **Look for.** `deployment/local/docker-compose.yml` and its full
-variant; the start script; the `devx` profile and the dashboards it
-holds; the local URLs in `README.md`; the `up`, `down`, `reset`, and
-`urls` targets; the `seed` target, the seed
-settings in `.env.example`, and the seeded sign-in in `README.md`; CI
-jobs that reference compose services.
+variant, and the image tag of each dependency; the start script; the
+`up`, `down`, `reset`, and `urls` targets and what each does; CI jobs
+that reference compose services.
 
 **Violation.** A dependency the application needs that the compose
 stack does not run; application services baked into the default
-compose file so a code change needs an image rebuild; a CI job that
-depends on a dashboard container; a dashboard in the default profile;
-a backing service with no dashboard in `devx`; a dashboard port fixed
-in the compose file; a dashboard, a service's API docs, or a browser
-app whose local URL the `README.md` does not list; no `seed` target,
-so a developer creates the first org and user by hand; a seed that
-fails or duplicates on a second run; a seed owner on a routable domain;
-seeded credentials the `README.md` does not show.
+compose file so a code change needs an image rebuild; an `up` that
+skips the migration or the seed, or a `reset` that keeps a volume.
 
 **Severity.** medium
 
 ## DEL-05 External services have a twin behind the same interface
 
-**Principle.** A hosted external service has one interface and at
-least two impls: the real client and a deterministic twin with the same
-wire shapes that signs its own synthetic deliveries. Tests, the local
-stack, and CI run against the twin; the real client is proven against
-fixtures and a separate non-gating sandbox workflow. A twin refuses to
-run outside a local environment, and every record it produces names
-its provenance. This is a strong suggestion; a service that cannot be
-twinned faithfully gets a shared development tenant, and that list
-stays short.
+**Principle.** An external service has one interface and two impls:
+the real client and a deterministic twin with the same wire shapes.
+Tests, the local stack, and CI run against the twin; the real client
+is proven against fixtures and a non-gating sandbox workflow. A twin
+refuses to run off loopback and names its provenance on every record.
 
 **Source.** Deployment, Twins for External Services.
 
 **Look for.** `integrations/` and provider selection in settings: one
 interface per external service, the impls behind it, provenance fields
 on records the provider produces, the guard that refuses a twin off
-loopback, the workflow that exercises real clients.
+loopback, the workflow that exercises real clients. The short list of
+services that cannot be twinned faithfully and use a shared
+development tenant instead.
 
 **Violation.** A test suite that needs a live account or network to
 pass; a twin that can be selected in a production-named environment;
 records from a twin indistinguishable from real ones; a gating CI job
-that calls a sandbox.
+that calls a sandbox; a shared development tenant where a faithful
+twin is possible.
 
 **Severity.** medium
 
@@ -378,18 +349,18 @@ that duplicate generated ones; `fetch` outside the client.
 
 **Principle.** The operator console is a separate application sharing
 the portal's stack, design tokens, component kit, sign-in flow, and API
-client. It has its own origin, bundle, and routes under `/v1/admin/*`,
-holds no realtime socket, and derives its authority as The Gateway
-states, not from a tenant role or a portal flag.
+client, and never its security context. It has its own origin, bundle,
+and routes under `/v1/admin/*`, and holds no realtime socket.
 
 **Source.** Client App Architecture, The Operator Console.
 
 **Look for.** `apps/admin/`: its origin configuration, route prefix,
-and absence of a socket provider; operator screens inside the portal.
+and absence of a socket provider; operator screens inside the portal's
+bundle.
 
-**Violation.** Operator pages in the portal behind a flag or role
-check; the console opening the realtime channel; the console served
-from the portal's origin; a design kit forked instead of shared.
+**Violation.** Operator screens built into the portal's bundle; the
+console opening the realtime channel; the console served from the
+portal's origin; a design kit forked instead of shared.
 
 **Severity.** high
 
@@ -416,9 +387,9 @@ ignores the OS's.
 **Principle.** Every platform exception is rooted at
 `PlatformException`, which carries `http_status` and a stable `code`.
 Shape exceptions (`NotFound`, `Conflict`, `ValidationFailed`,
-`NotAuthorized`) cover most cases; a namespace family multiply-inherits
-a shape. Translation to HTTP happens once, at the boundary. Managers
-never format HTTP.
+`NotAuthenticated`, `NotAuthorized`) cover most cases; a namespace
+family multiply-inherits a shape. Translation to HTTP happens once, at
+the boundary. Managers never format HTTP.
 
 **Source.** Cross-Cutting Conventions, Exceptions.
 
@@ -456,29 +427,23 @@ absent from them.
 
 **Principle.** Traces use OpenTelemetry directly; the tracer provider
 is configured only when an endpoint is set, otherwise the no-op tracer
-runs. Metrics are exposed on `/metrics` in Prometheus format through
-the client library directly: every request counts once with its route
-template and status, and every queue, cache, and rate limit has a
-counter with an outcome label; label values are bounded, never an id.
-Every process serves `/metrics`, a worker on a small port of its own.
+runs and the code paths stay identical. Metrics are exposed on
+`/metrics` in Prometheus format through the client library directly.
 Observability is the one capability used through its vendor API
-rather than a platform interface.
+rather than a platform interface; the backend is a config detail.
 
 **Source.** Cross-Cutting Conventions, Traces and Metrics;
 Infrastructure, Infrastructure Principles.
 
 **Look for.** Tracing and metrics setup; a platform module that
 re-exposes spans, counters, or histograms under its own names; code
-paths that branch on whether tracing is configured; the counters
-declared next to each queue, cache, and rate limit; the labels each
-metric takes; each worker's metrics port.
+paths that branch on whether tracing is configured; the exporter
+configuration that selects the backend.
 
 **Violation.** A `PlatformTracer` or `MetricsInterface` wrapper; a
 second metrics system; code that skips instrumentation when no
-exporter is set instead of relying on the no-op tracer; a request
-counter missing the route template or status label; a queue, cache,
-or rate limit with no outcome counter; an id as a label value; a
-worker that records metrics nothing can read.
+exporter is set instead of relying on the no-op tracer; a backend
+swap that touches code beyond the exporter config.
 
 **Severity.** low
 
@@ -487,11 +452,9 @@ worker that records metrics nothing can read.
 **Principle.** Configuration is read once at boot into one settings
 object from environment variables under one product prefix, with an
 optional `.env` and a committed `.env.example` documenting every knob.
-A browser app reads its settings once at start from the `config.json`
-deployed next to its bundle; nothing that differs between environments
-is compiled into it.
-Backends are selected there and nowhere else. Managers and service
-impls receive handles and options through constructors.
+A browser app reads its settings at start from the `config.json` next
+to its bundle. Backends are selected there and nowhere else; managers
+and service impls receive handles and options through constructors.
 
 **Source.** Cross-Cutting Conventions, Configuration.
 
@@ -501,8 +464,9 @@ modules.
 
 **Violation.** An environment read inside a manager, storage, or
 router; a build-time variable in a browser app carrying a value that
-differs between environments; a knob missing from `.env.example`; a second prefix; backend
-selection performed outside the settings and boot path.
+differs between environments; a knob missing from `.env.example`; a
+second prefix; backend selection performed outside the settings and
+boot path.
 
 **Severity.** medium
 
@@ -569,9 +533,9 @@ whose completeness nothing asserts.
 **Principle.** The technologies the guideline names are defaults. A
 project that substitutes an equivalent keeps every rule that does not
 name the technology and records each substitution in one ADR under
-`docs/adr/`: the choice as named, the substitute, the reason, and the
-rules the substitute must still satisfy. A substitution that changes a
-shape is a deviation and is recorded as one, rule by rule.
+`docs/adr/`: the choice as named, the substitute, the reason, the
+rules it must still satisfy. A substitution that changes a shape is a
+deviation, recorded as one.
 
 **Source.** Technology Choices and How to Override Them, Overriding a
 Choice.
@@ -602,16 +566,20 @@ sits behind it, never the day it ships.
 
 **Source.** Technology Choices and How to Override Them, Versions.
 
-**Look for.** `.python-version` and `requires-python`, `.nvmrc`, the
+**Look for.** The version declared where the tool reads it:
+`.python-version` and `requires-python`, `.nvmrc`, the
 `packageManager` field of `package.json`, Dockerfile base images,
 image tags in the local compose files, runtime steps in CI workflows,
-engine versions in Terraform, and the lock files.
+engine versions in Terraform. The lock files, resolving to what those
+declarations name. A dated upgrade record under `docs/`, when the
+project keeps one, as the evidence of the scheduled bump.
 
-**Violation.** A runtime, tool, or service on an older release line
-than the current stable or LTS one; a Node line outside active LTS; an
-image tag or engine version past its end of life; a pre-release or
-release candidate; a `.0` release adopted before a patch sits behind
-it.
+**Violation.** A declaration naming a pre-release or a release
+candidate (`rc`, `beta`, `alpha`, a `-dev` tag), or a `.0` release with
+no patch behind it in the same declaration. A lock file that resolves
+below what the declarations name, or a declaration moved without the
+lock following in the same diff. Two declarations of one dependency
+that disagree, such as `.nvmrc` and the CI runtime step.
 
 **Severity.** low
 
@@ -620,19 +588,17 @@ it.
 **Principle.** Errors are reported through the Sentry SDK, used
 directly, initialized at boot in every web service, worker, and
 browser app. Unhandled exceptions and `ERROR` log records become
-events tagged with the service, the release, and the request id.
-Reporting is off until a DSN is set, an empty value or `off` means
-unset, and a missing tracker never stops a boot. A browser app reports
-from each route's error element and from the React root's error
-callbacks. Locally the `devx` profile runs GlitchTip seeded with a
-fixed project key.
+events tagged with service, release, and request id. Reporting is off
+until a DSN is set (empty or `off` means unset), and a missing tracker
+never stops a boot.
 
 **Source.** Cross-Cutting Conventions, Error Tracking.
 
 **Look for.** SDK initialization in each process's boot path; the tags
 set on events; how the DSN setting is read and what an empty or `off`
-value does; the browser app's route definitions and root; the local
-tracker in the compose file and its seeding.
+value does; the browser app's route error elements and the React
+root's error callbacks; the `devx` profile's GlitchTip and the fixed
+project key it is seeded with.
 
 **Violation.** A worker or browser app with no error reporting; a boot
 that fails when the DSN is unset or the tracker is unreachable; events
@@ -642,29 +608,227 @@ created by hand.
 
 **Severity.** medium
 
-## DEL-28 Tests run over memory, the contract cases over both, end to end in-process
+## DEL-28 Unit tests run over memory, the contract cases over both
 
 **Principle.** Unit tests run over the memory roots and the pure rules
 with no infrastructure. The storage contract cases are plain modules
 parameterized by a storage fixture: the fast gate runs them over
-memory, the integration job runs the same cases over Postgres on the
-compose stack. End-to-end tests build the container over the memory
-storage root and the local infra root, every backend a twin, and drive
-the app in-process. Markers `integration`, `e2e`, and `slow` decide
-which gate runs what. A run against a deployed environment is a smoke
-test of the deployment, in addition to the in-process suite and never
-in its place.
+memory, and the integration job runs the same cases over Postgres on
+the compose stack.
 
 **Source.** Cross-Cutting Conventions, Tests.
 
 **Look for.** The storage fixture and the modules parameterized by it;
-which suites the fast gate and the integration job run; how end-to-end
-tests build the container; the markers on each test module.
+which suites the fast gate and the integration job run; a unit test
+that opens a connection.
 
 **Violation.** A storage case written twice, once per impl; a unit
 test that needs a running database; the memory impl tested and the
-Postgres impl assumed; an end-to-end suite that runs only against a
-deployed environment, so nothing drives the app in-process; a slow or
-integration test with no marker, so the fast gate runs it.
+Postgres impl assumed.
+
+**Severity.** medium
+
+## DEL-29 Infra has its own exception root, presented alike
+
+**Principle.** Infra imports nothing from the OM, so it has its own
+root, `InfraException`, with the same two fields as
+`PlatformException`, a status and a stable code; the gateway and the
+worker loop present both alike, and a boundary that must translate
+one into the other does it by those fields, never by catching a name
+from the other side.
+
+**Source.** Cross-Cutting Conventions, Exceptions; Infrastructure,
+Infrastructure Principles.
+
+**Look for.** The infra distribution's exception module; what the
+cloud impls raise on a driver error; the gateway's handlers and the
+worker loop's catch; any `except` that names a class from the other
+distribution.
+
+**Violation.** An infra impl raising `PlatformException` or letting a
+driver exception escape; an `InfraException` without a status or a
+code; a gateway that presents `PlatformException` in the envelope and
+lets `InfraException` fall to the catch-all; a manager or a boundary
+that catches `InfraException` by name instead of translating by its
+status and code.
+
+**Severity.** medium
+
+## DEL-30 The bearer lives in session storage; the distribution sends a CSP
+
+**Principle.** The bearer lives in memory and in the tab's session
+storage, so a reload survives and a closed tab forgets, never in local
+storage, which every tab and every later visit reads. The distribution
+sends a `Content-Security-Policy` that names the app's own origin and
+the API and nothing else, declared beside the distribution in
+Terraform with the other security headers.
+
+**Source.** Client App Architecture, API Access.
+
+**Look for.** Where the transport client and the session store read
+and write the bearer; every `localStorage` reference in the app; the
+response headers policy of the static-site module in Terraform.
+
+**Violation.** A token written to `localStorage`; a bearer kept only
+in memory, so every reload signs out; a distribution with no
+`Content-Security-Policy`; a policy that allows a third-party script
+origin; the header set in `index.html` as a meta tag instead of in
+Terraform beside the distribution.
+
+**Severity.** high
+
+## DEL-31 Production promotes, it never rebuilds
+
+**Principle.** Production does not rebuild: it promotes images by
+digest and browser bundles by build id, behind an approval gate, so
+production receives what the smaller environment already ran. A bundle
+is built once and reads what differs between environments (the API
+origin, the DSN, the environment name) from a `config.json` deployed
+next to it.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The deploy workflow's production job, how it obtains its
+images and bundles, and whether an approval step guards it; the
+`config.json` each environment's deploy writes next to the bundle, and
+what the bundle reads at start.
+
+**Violation.** A production job that builds an image or a bundle; a
+production task definition pinned to a tag rather than a digest; an
+API origin or DSN compiled into a bundle; a promotion path with no
+approval gate.
+
+**Severity.** medium
+
+## DEL-32 Every environment collects what its processes emit
+
+**Principle.** Every environment collects what its processes emit; an
+endpoint nothing reads is not observability. Logs leave through the
+container runtime's log driver into one log group per process, with
+retention set. Metrics and traces leave through a non-essential
+OpenTelemetry collector beside each task that adds only the service
+and the environment as dimensions.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The log configuration of each task definition and the
+log group it names, with its retention; the collector container
+beside each task, what it scrapes and receives, the dimensions it
+adds, and whether it is marked essential.
+
+**Violation.** A log group with no retention; a task definition with
+no collector container; a collector marked essential; a task
+identifier copied into metric dimensions.
+
+**Severity.** medium
+
+## DEL-33 Developer dashboards live in the devx profile
+
+**Principle.** Developer dashboards live in an optional compose profile
+named `devx`, started only when a developer asks and never by CI: one
+browser per backing service the stack runs (pgweb for Postgres, Valkey
+Admin for the cache, the consoles the local images ship, Jaeger for
+traces, GlitchTip for errors) and the metrics view, each on a host
+port read from `.env`.
+
+**Source.** Deployment, Local: Docker Compose.
+
+**Look for.** The `devx` profile in the compose file and the
+dashboards it holds against the backing services the default profile
+runs; the host port of each dashboard and where it is read from; CI
+jobs that reference a dashboard container.
+
+**Violation.** A CI job that depends on a dashboard container; a
+dashboard in the default profile; a backing service with no dashboard
+in `devx`; a dashboard port fixed in the compose file.
+
+**Severity.** medium
+
+## DEL-34 The README lists every local URL and the seeded sign-in
+
+**Principle.** The repository's `README.md` lists every local URL a
+developer opens: each dashboard, each service's interactive API docs,
+each browser app. `make seed` runs `bootstrap` with a development org
+and owner read from `.env` (an `.example` address, a development
+password), changes nothing when run again, and the `README.md` lists
+the command and the seeded sign-in next to the URLs.
+
+**Source.** Deployment, Local: Docker Compose.
+
+**Look for.** The local URLs in `README.md` against the dashboards,
+services, and apps the tree holds; the `seed` target and the
+`bootstrap` subcommand it runs; the seed settings in `.env.example`;
+the seeded sign-in in `README.md`.
+
+**Violation.** A dashboard, a service's API docs, or a browser app
+whose local URL the `README.md` does not list; no `seed` target, so a
+developer creates the first org and user by hand; a seed that fails or
+duplicates on a second run; a seed owner on a routable domain; seeded
+credentials the `README.md` does not show.
+
+**Severity.** medium
+
+## DEL-35 Requests, queues, caches, and limits are counted with bounded labels
+
+**Principle.** Every request counts once with its route template and
+status; every queue, cache, and rate limit has a counter with an
+outcome label. Label values are bounded: a template, a status, an
+outcome, never an id. Every process serves `/metrics`, workers
+included; a worker has no API, so it serves the endpoint alone on a
+small port of its own.
+
+**Source.** Cross-Cutting Conventions, Traces and Metrics.
+
+**Look for.** The request counter and its labels; the counters
+declared next to each queue, cache, and rate limit; the labels each
+metric takes and the set of values each can hold; each worker's
+metrics port.
+
+**Violation.** A request counter missing the route template or status
+label; a queue, cache, or rate limit with no outcome counter; an id as
+a label value; a worker that records metrics nothing can read.
+
+**Severity.** low
+
+## DEL-36 End to end runs in-process; a deployed run is a smoke test
+
+**Principle.** End-to-end tests build the container over the memory
+storage root and the local infra root, every backend a twin, and drive
+the app in-process. Markers `integration`, `e2e`, and `slow` decide
+which gate runs what. A run against a deployed environment is a small
+smoke test of the deployment, in addition to the in-process suite and
+never in its place.
+
+**Source.** Cross-Cutting Conventions, Tests.
+
+**Look for.** How end-to-end tests build the container and which
+backends they select; the markers on each test module and which gate
+runs each marker; the deployed run and what it covers (a sign-in, a
+write, a push).
+
+**Violation.** An end-to-end suite that runs only against a deployed
+environment, so nothing drives the app in-process; a slow or
+integration test with no marker, so the fast gate runs it; a deployed
+run that grows into the suite it was meant to complement.
+
+**Severity.** medium
+
+## DEL-37 The named atomic methods are raced, not only called
+
+**Principle.** The named atomic methods are raced, not only called: a
+contract case runs two callers at once against a claim, a take-over, a
+ticket redemption, and asserts that exactly one wins, over memory and
+over the engine, because a statement whose whole purpose is a race is
+not proven by a sequence.
+
+**Source.** Cross-Cutting Conventions, Tests.
+
+**Look for.** The contract case behind every named atomic method and
+whether it runs two callers at once; which storage fixtures the case
+is parameterized by.
+
+**Violation.** A named atomic method proven by a sequence of calls and
+never by a race; a race run over memory only, so the engine's locking
+is assumed; a race that asserts both callers succeed.
 
 **Severity.** medium

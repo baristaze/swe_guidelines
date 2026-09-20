@@ -7,9 +7,12 @@ Worker Roles of `architecture.md`.
 This group judges everything that happens off the request path: the
 infrastructure capabilities managers lean on, how work is handed off
 and picked up, how a worker behaves over its life, and what a
-long-running record does when it cannot continue. It leaves the
-`org_id` and `EMPTY_UUID` keying rules and the provenance of a worker's
-context to `context`, database roles and the storage side of the work
+long-running record does when it cannot continue. It owns the sweep's
+duties (requeue expired leases, resume parked records, relay what a
+crash left in the outbox, purge soft-deleted rows past retention). It
+leaves the `org_id` and `EMPTY_UUID` keying rules and the provenance
+of a worker's context to `context`, database roles, the retention
+periods, the life of an outbox row, and the storage side of the work
 queue to `storage`, and the realtime edge with its wait-versus-notify
 patterns to `network`.
 
@@ -63,9 +66,9 @@ names exactly what the process is talking to.
 **Look for.** A `describe()` on each impl; the one-line inventory the
 container logs after `start()`.
 
-**Violation.** An impl with no description; a boot log that never names
-the backends; an operator who has to read settings to know whether a
-process is on the local or the cloud backend.
+**Violation.** An impl with no description; a boot with no one-line
+inventory naming each backend it chose, so the log cannot say whether
+the process is on the local or the cloud impl.
 
 **Severity.** low
 
@@ -186,12 +189,9 @@ consumer name missing from `subscribe`.
 
 **Principle.** A topic is best effort: a published event reaches the
 processes subscribed at the time, at most once, and a bus hiccup may
-lose it. It carries wake-ups and live updates; durable work is a row
-in the work queue, and a missed notification degrades to polling
-latency, never to lost work.
-When the bus is backed by the database, it connects to the queue role,
-because the processes that enqueue work and the workers they wake must
-share it.
+lose it. Durable work is a row in the work queue, and a missed
+notification degrades to polling latency, never to lost work. A bus
+backed by the database connects to the queue role.
 
 **Source.** Infrastructure, Topics; The Storage Layer, Database Roles.
 
@@ -251,23 +251,20 @@ handler that does the whole job inline.
 references. A value is resolved for exactly one operation and
 discarded. It never enters an entity, a log line, an audit payload, an
 error message, or a subprocess environment. An error names the secret
-and the store it was looked up in, never a value. A process that names
-itself staging or production and finds the file backend configured
-refuses to start.
+and the store it was looked up in, never a value.
 
 **Source.** Infrastructure, Secrets.
 
 **Look for.** Entity fields that hold credentials; where `get(name)` is
 called and how long the value lives; log and audit calls near secret
 resolution; the text of the not-found error; subprocess environment
-construction; the boot-time backend check.
+construction.
 
 **Violation.** An entity with a token or password field; a secret
 resolved at boot and kept on an object; a value in a log line, an
 error string, or an audit payload; a not-found error that omits the
 secret name or the store; a subprocess inheriting the parent's full
-environment; a production deployment on the file backend that starts
-anyway.
+environment.
 
 **Severity.** medium
 
@@ -275,10 +272,10 @@ anyway.
 
 **Principle.** Delivery is at-least-once on every queue. Every message
 carries a producer-generated idempotency key (or the outside system's
-delivery id), the handler dedupes before doing work through a unique
-index or an upsert keyed on it, and every pipeline stage forwards the
-key. The key lives on the row the effect produces, or marker and
-effect are one named atomic write (the idempotent consumer).
+delivery id), the handler dedupes on it through a unique index or an
+upsert before doing work, and every pipeline stage forwards it. The
+key lives on the row the effect produces, or marker and effect are one
+named atomic write.
 
 **Source.** The Network Layer, Idempotency on the Consumer Side.
 
@@ -298,11 +295,11 @@ webhook handler that ignores the provider's delivery id.
 ## ASY-15 Web services do not spawn background jobs
 
 **Principle.** Web services do not spawn background jobs or schedule
-recurring tasks. Every such need is an explicit worker role with its
-own container, its own deployment, and its own place in the service
-catalog. The one thing that is not a job is a topic subscriber that
-only forwards events to sockets its own process holds; anything that
-writes, retries, or outlives a connection is a worker.
+recurring tasks; every such need is a worker role with its own
+container, deployment, and catalog entry. The one thing that is not a
+job is a topic subscriber that only forwards events to sockets its own
+process holds; anything that writes, retries, or outlives a connection
+is a worker.
 
 **Source.** Worker Roles, Workers, Not Web-Service Side Jobs.
 
@@ -321,60 +318,40 @@ that writes to storage or retries deliveries.
 **Principle.** A work item names its kind and target, carries a unique
 idempotency key, a `lane` routing string, a status, an `available_at`,
 its claim (`claimed_by`, `lease_expires_at`), and its attempts; payload
-shapes are fixed per kind by `WORK_PAYLOADS`. Enqueue writes the row
-and then publishes the wake-up. Claim takes the oldest available row
-in the named lane and stamps claim and lease together. Completion
-marks done, requeues with a growing delay, or fails when attempts run
-out, and a failed item is a dead letter named by an audit entry and
-counted by a metric; handing an item back costs no attempt.
+shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
+one table serves a shared pool and any dedicated lane.
 
 **Source.** Worker Roles, The Work Queue.
 
-**Look for.** The work item type; the enqueue, claim, complete, defer,
-and requeue methods; the order of write and publish in enqueue.
+**Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
+table and the index on `idempotency_key`; how routing is expressed.
 
-**Violation.** A publish before the row exists; a row with no lease or
-no attempt count; a payload with no shape fixed for its kind; a failed
-attempt requeued immediately with no delay; an item that fails its
-last attempt with no audit entry and no metric; a hand-back that
-spends an attempt; a second table or topic invented for routing when
-the `lane` string would do.
+**Violation.** A row with no lease or no attempt count; a payload with
+no shape fixed for its kind; no unique index on the idempotency key; a
+second table or topic invented for routing when the `lane` string
+would do.
 
 **Severity.** medium
 
-## ASY-17 A worker claims within capacity, renews, and fences itself
+## ASY-17 A worker claims within capacity and renews its leases
 
 **Principle.** A worker runs several items at once up to a capacity it
-advertises, each as its own task. Each running item renews its lease on
-a timer, and a lease that could not be renewed for half its length
-cancels its own task before the lease expires: the first fence. The
-second is that completion, release, and renewal check the claim in the
-statement itself (`claimed_by` and `lease_expires_at` on the queue
-row), so a stale worker is refused with `Conflict` and hands the item
-back without spending an attempt. Together they guarantee one
-completion per item and nothing about the record, which lives in
-another role: a handler is idempotent on the item's key, a contended
-record carries a `version` written by compare-and-set, and an external
-side effect is keyed by the item or reconciled, never assumed
-exclusive. Liveness is a key with a TTL under the system scope,
-written and read back on every beat; repeated failures stop claiming
-but let held work finish.
+advertises, each as its own task, and each running item renews its
+lease on a timer; a lease not renewed for half its length cancels its
+own task before the lease expires, the first fence. A work handler is
+bounded by its lease; nothing runs unbounded.
 
-**Source.** Worker Roles, Shape of a Worker.
+**Source.** Worker Roles, Shape of a Worker; The Network Layer, Clients
+Live in One Place.
 
 **Look for.** The claim loop and its capacity check; the per-item lease
-renewal task; what happens when renewal fails; what the completion
-statement and the record writes compare against; the heartbeat key
-and the failure path.
+renewal task; what happens when renewal fails; whether a handler can
+outlive its lease.
 
 **Violation.** A worker that claims without bound; an item with no
-renewal so long work loses its lease; a completion, release, or
-renewal that does not check the claim in its own statement, so a
-worker whose lease passed completes; a record write that treats the
-lease alone as exclusive, with no `version` and no idempotent handler
-behind it; a stale write that spends an attempt; a heartbeat that
-is only written and never read back; a heartbeat failure that either
-crashes the worker or lets it keep claiming.
+renewal so long work loses its lease; a task that keeps running after
+half a lease without a successful renewal; a handler with no bound
+but the process's life.
 
 **Severity.** high
 
@@ -401,11 +378,10 @@ deploy.
 
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
-leader, no lock, and no scheduler component: requeue expired leases,
-resume parked records, relay the outbox rows a crash left behind,
-purge soft-deleted rows past their retention period. Resumes are
-staggered so a recovered dependency is not met by every parked record
-at once.
+leader, no lock, and no scheduler: requeue expired leases, resume
+parked records, relay the outbox rows a crash left behind, purge
+soft-deleted rows past retention. Resumes are staggered so every parked
+record does not wake at once.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler.
 
@@ -426,24 +402,18 @@ every parked record resumed in the same instant.
 **Principle.** Work that takes minutes or hours is a durable record with
 a status and a cursor, claimed and advanced by stateless workers, so
 another worker picks up at the persisted position when one dies. The
-claim is a separate row from the record it advances. A synchronous
-chain across services gives its first step an expiry and carries its
-id forward; a chain that must survive a crash between steps is such a
-record, the irreversible step last and a compensating step for each
-one before it (a saga).
+claim is a separate row from the record it advances, so one record can
+carry several kinds of work over its life.
 
-**Source.** The Network Layer, Long-Running Orchestrations; Direction
-of Calls.
+**Source.** The Network Layer, Long-Running Orchestrations.
 
 **Look for.** How long operations are modelled; what is persisted
-between steps; whether the claim lives on the record or on a work item;
-the expiry and the compensation of each step in a cross-service chain.
+between steps; whether the claim lives on the record or on a work
+item.
 
 **Violation.** Progress held only in a process's memory; a record with
 no cursor so a restart begins from the start; a claim stamped onto the
-record itself so it can carry only one kind of work; a synchronous
-chain across services whose first step has no expiry or compensation;
-an irreversible step followed by one that can fail.
+record itself so it can carry only one kind of work.
 
 **Severity.** high
 
@@ -453,8 +423,7 @@ an irreversible step followed by one that can fail.
 reason and, where known, a time to resume, and keeps everything
 achieved. A dependency that is down, a limit an operator can raise, or
 an input a person must supply parks the record; only a real limit
-terminates it. A parked record is woken by the event that clears its
-reason, by the sweep at its resume time, or by a person.
+terminates it.
 
 **Source.** The Network Layer, Long-Running Orchestrations.
 
@@ -487,5 +456,135 @@ each worker.
 serverless function rather than an always-on container; a worker
 whose shape differs from a web service's for reasons of compute
 alone.
+
+**Severity.** low
+
+## ASY-23 A renewal refused with Conflict cancels at once
+
+**Principle.** A renewal refused with `Conflict`, because another
+worker holds the item now, cancels the task at once; that answer is
+definitive. A renewal that fails for any other reason, a timeout, an
+engine out of reach, is retried, and only half a lease without a
+successful renewal cancels the task.
+
+**Source.** Worker Roles, Shape of a Worker.
+
+**Look for.** The renewal task's error handling: which exception ends
+the task and which is retried; the clock the half-lease rule reads.
+
+**Violation.** A `Conflict` on renewal retried until the half-lease
+deadline, so a worker keeps running an item another worker holds; a
+timeout or a connection error treated as definitive, so a blip cancels
+sound work; a renewal failure of any kind that leaves the task running
+past the lease.
+
+**Severity.** high
+
+## ASY-24 The fences guarantee one completion, not the record
+
+**Principle.** The two fences guarantee one completion per item and
+nothing about the record, which lives in another role: a handler is
+idempotent on the item's key, a contended record carries a `version`
+written by compare-and-set, and an external side effect is keyed by
+the item or reconciled, never assumed exclusive. Liveness is read
+back on every beat.
+
+**Source.** Worker Roles, Shape of a Worker.
+
+**Look for.** What the record writes compare against; the handler's
+dedupe on the item's key; how an external call is keyed; the
+heartbeat key and the failure path.
+
+**Violation.** A record write that treats the lease alone as
+exclusive, with no `version` and no idempotent handler behind it; an
+external side effect performed as if the lease made it exclusive; a
+heartbeat that is only written and never read back; a heartbeat
+failure that either crashes the worker or lets it keep claiming.
+
+**Severity.** high
+
+## ASY-25 Enqueue is a create; completion spends or keeps an attempt
+
+**Principle.** Enqueue is a create: the insert that reports an existing
+id without touching it, so a retried enqueue never resets a claim, and
+a duplicate idempotency key is a conflict; the manager's copy stamps
+actor, timestamps, status, and attempts and clears every claim field,
+whatever the caller sent. Enqueue then publishes the wake-up; claim
+stamps claim and lease together.
+
+**Source.** Worker Roles, The Work Queue.
+
+**Look for.** The enqueue path: the insert primitive it uses, what the
+manager's copy overwrites, and the order of write and publish; the
+claim, complete, defer, requeue, and fail methods and what each does to
+`attempts`.
+
+**Violation.** An enqueue that upserts, so a retry resets a claim or
+announces twice; a caller-supplied status, attempt count, or claim
+field written as sent; a publish before the row exists; a failed
+attempt requeued with no delay; an item that fails its last attempt
+with no audit entry and no metric; a hand-back that spends an attempt.
+
+**Severity.** high
+
+## ASY-26 The claim token fences every write to the queue row
+
+**Principle.** Every claim mints a claim token the claim returns, and
+completion, release, deferral, and renewal carry it and condition on it
+in the statement itself, the token and never the worker's name, since
+one worker can hold one item twice across a requeue; a stale holder is
+refused with `Conflict` and hands the item back without spending an
+attempt.
+
+**Source.** Worker Roles, Shape of a Worker.
+
+**Look for.** What the claim returns beside the item; the `WHERE` of
+completion, release, deferral, and renewal in both storage impls; what
+the loop does with a `Conflict` from any of them.
+
+**Violation.** A completion, release, deferral, or renewal that matches
+on `claimed_by` alone or on the key alone, so a stale holder writes; a
+claim that returns no token, so the fence has nothing to compare; a
+refused write that spends an attempt.
+
+**Severity.** high
+
+## ASY-27 A cross-service chain expires its first step or is a saga
+
+**Principle.** A synchronous chain across services gives its first step
+an expiry and carries its id forward; a chain that must survive a
+crash between steps is a durable record advanced by workers, the
+irreversible step last and a compensating step for each one before it
+(a saga).
+
+**Source.** The Network Layer, Long-Running Orchestrations; Direction
+of Calls.
+
+**Look for.** Every service impl that sequences calls across services;
+the expiry of the first step and the id it passes on; the compensation
+of each step before the irreversible one.
+
+**Violation.** A synchronous chain across services whose first step has
+no expiry or compensation; an irreversible step followed by one that
+can fail; a chain that must outlive a crash held only in the service's
+memory.
+
+**Severity.** high
+
+## ASY-28 The local secrets impl reads the environment and an owner-only file
+
+**Principle.** The local secrets impl reads environment variables and an
+owner-only file; the cloud impl talks to the managed secret manager.
+
+**Source.** Infrastructure, Secrets.
+
+**Look for.** The local impl's file read and the permission check it
+makes before reading; where the file's path comes from; which impl
+the configured root selects per environment.
+
+**Violation.** A local impl that accepts a secrets file readable by
+group or others, or reads values from a world-readable path with no
+check; a local impl that reaches a network store; the cloud impl
+reading a file.
 
 **Severity.** low

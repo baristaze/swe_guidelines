@@ -1,6 +1,7 @@
 ---
 name: arch-new-aspect
-description: "Incorporate a new aspect (a rule, a clarification, a rationale, or a pointer) into the Software Design and Architecture Guidelines and every file derived from it: decide whether it is a section, a subsection, a paragraph, or a mention; place it; add or sharpen the lenses it implies; and cascade it through the skills, the docs, the README, and the changelog so the repository stays consistent. Runs inside a checkout of the guideline repository, including a fork that carries its own aspects."
+description: "Incorporate a new aspect into the Software Design and Architecture Guidelines and cascade it through the lenses, skills, docs, README, and changelog. Runs in a checkout of the guideline repository."
+disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-skills), Bash(make gen-toc), Bash(make lenses), Bash(make leaks), Bash(make links), Bash(make toc), Bash(git log:*), Bash(git status:*), Bash(git diff:*)
 ---
 
@@ -82,9 +83,10 @@ for the aspect in one message and stop.
      section lists gain a section; `docs/adopting.md` when an adopter
      must do something or gains a place to look; `README.md` when a
      count or a summary changes; `CHANGELOG.md` with the release level
-     (a new or sharpened rule is minor, a removed or reversed rule is
-     major, a pointer, a rationale, or a wording change that states no
-     new rule is patch); `AGENTS.md` when a new invariant appears.
+     (a new or sharpened rule is minor; a removed or reversed rule is
+     major, and before 1.0.0 bumps the minor number with the entry
+     naming the reversal, as `CONTRIBUTING.md` states; a pointer, a
+     rationale, or a wording change that states no new rule is patch); `AGENTS.md` when a new invariant appears.
 4. Write the guideline text first, in its voice: present tense, no
    history and no rejected alternatives, one idea per paragraph,
    wrapped at about 72 columns, no em-dashes, cross-references as

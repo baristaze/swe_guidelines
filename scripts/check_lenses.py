@@ -8,7 +8,12 @@ Rules:
 - Source names sections of architecture.md by title, never by number:
   `<Section>` or `<Section>, <Subsection>`, several separated by `;`, where a
   bare `<Subsection>` after a `;` belongs to the section cited before it;
-- Severity is high, medium, or low.
+- Severity is high, medium, or low;
+- a Principle is at most 60 words, and Look for and Violation are at most
+  three sentences each, so a lens stays one rule a reviewer can hold;
+- no line of a lens file is wider than 80 columns;
+- a lens count stated in README.md or lenses/README.md ("N lenses") equals
+  the size of the catalog.
 
 Exit status is non-zero when any rule fails. Standard library only.
 """
@@ -22,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
 LENSES = ROOT / "lenses"
+README = ROOT / "README.md"
 
 FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
@@ -30,6 +36,11 @@ FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity)\.\*\*\s
 NUMBERED = re.compile(r"\bSections? \d+")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
+COUNT = re.compile(r"\b(\d+) lenses\b")
+SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+MAX_PRINCIPLE_WORDS = 60
+MAX_SENTENCES = 3
+MAX_COLUMNS = 80
 
 
 def sections() -> dict[str, set[str]]:
@@ -114,6 +125,8 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
     for ln, line in enumerate(lines, start=1):
         if NUMBERED.search(line):
             errors.append(f"{path.name}:{ln}: refers to a section by number")
+        if len(line) > MAX_COLUMNS:
+            errors.append(f"{path.name}:{ln}: {len(line)} columns, limit {MAX_COLUMNS}")
     while i < len(lines):
         m = HEADING.match(lines[i])
         if not m:
@@ -149,6 +162,14 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
             if name == "Source":
                 check_source(value, path, ln, known, errors)
+            if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
+                errors.append(
+                    f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}"
+                )
+            if name in ("Look for", "Violation"):
+                n = len(SENTENCE_END.findall(value))
+                if n > MAX_SENTENCES:
+                    errors.append(f"{path.name}:{ln}: {name} is {n} sentences, limit {MAX_SENTENCES}")
         i = j
     if count == 0:
         errors.append(f"{path.name}: no lenses found")
@@ -172,6 +193,15 @@ def main() -> int:
     total = 0
     for name in sorted(files):
         total += check_file(files[name], known, errors)
+    for path in (README, LENSES / "README.md"):
+        if not path.exists():
+            continue
+        for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in COUNT.finditer(line):
+                if int(m.group(1)) != total:
+                    errors.append(
+                        f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}"
+                    )
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(files)} lens file(s)")
