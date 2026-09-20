@@ -1,0 +1,43 @@
+# The judge matrix. One model per provider, the fallbacks tried in order
+# when the first is refused or out of quota, and the word each SDK wants
+# for an effort level.
+#
+# This file is a snapshot, not a rule. A monthly run redefines it: put
+# the newest frontier model of each provider first and move the one it
+# replaces into the fallbacks. `harness/judge.py` holds the same matrix
+# as a default, so a missing file is not a broken run.
+
+anthropic:
+  model: claude-opus-5
+  fallbacks: [claude-sonnet-5]
+  effort:
+    low: low
+    medium: medium
+    high: high
+
+openai:
+  model: gpt-5.5
+  fallbacks: [gpt-5.4, gpt-5.1]
+  effort:
+    low: low
+    medium: medium
+    high: high
+
+gemini:
+  # The pro preview is the judge when the account has quota for it; the
+  # flash model answers when it does not, and the results name whichever
+  # model answered.
+  model: gemini-3.1-pro-preview
+  fallbacks: [gemini-3.8-flash]
+  effort:
+    low: low
+    medium: medium
+    high: high
+
+xai:
+  model: grok-4
+  fallbacks: []
+  effort:
+    low: low
+    medium: high
+    high: high

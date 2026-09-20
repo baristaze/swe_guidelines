@@ -1,0 +1,29 @@
+name: support-turn
+kind: qa
+subject:
+  provider: anthropic
+  model: claude-opus-5
+  prompt: |
+    A service returns 500 for one tenant only, on one endpoint, since a
+    deploy an hour ago. Nothing changed in that endpoint's code. Answer
+    as the person on call: what you look at, in what order, and what
+    each step would rule out.
+  context: []
+  timeout_s: 600
+artifact:
+  stdout: true
+  files: []
+rubric: |
+  Score the answer 0 to 100 as an engineer on call would.
+
+  A good answer starts from the signals the request id ties together,
+  moves from the deploy to the data, and says what each step rules out.
+  It names the tenant-shaped causes, a row that only that tenant has, a
+  limit only that tenant reaches, a flag only that tenant carries.
+
+  Take points off for a checklist that could be written before reading
+  the question, for steps that need access the answer does not say it
+  has, and for a cause named with no way to confirm it.
+judges:
+  providers: 7
+  effort: medium

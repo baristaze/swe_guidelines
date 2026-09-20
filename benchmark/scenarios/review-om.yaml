@@ -1,0 +1,28 @@
+name: review-om
+kind: skill
+subject:
+  skill: arch-review-om
+  prompt: "Review om/ against the object model lenses and report findings by lens id."
+  max_turns: 30
+  allowed_tools: [Read, Grep, Glob]
+  # Pass a checkout to review with --target; the subject works in the
+  # workspace and reads the target read-only.
+  target: null
+  timeout_s: 1800
+artifact:
+  stdout: true
+  files: []
+rubric: |
+  Score the review 0 to 100 as the author of the guideline would.
+
+  A good review names each finding by its lens id, points at a file and
+  a line, quotes the rule it rests on, and says what to change. It
+  separates what the guideline requires from what the reviewer prefers.
+  It reports nothing it did not read.
+
+  Take points off for a finding with no lens id, for a lens id that
+  does not exist, for advice the guideline does not support, and for a
+  review that edits or stages anything instead of reporting.
+judges:
+  providers: 3
+  effort: high

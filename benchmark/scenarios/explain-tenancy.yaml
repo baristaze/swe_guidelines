@@ -1,0 +1,30 @@
+name: explain-tenancy
+kind: skill
+subject:
+  skill: arch-explain
+  prompt: "How does the guideline hold the tenant fence, and what proves it?"
+  max_turns: 14
+  allowed_tools: [Read, Grep, Glob]
+  target: null
+  timeout_s: 900
+artifact:
+  stdout: true
+  files: []
+rubric: |
+  Score the answer 0 to 100 as a senior architect would.
+
+  A full answer names the tenant predicate as the fence, and says where
+  it is applied rather than where it is hoped for. It names the
+  cross-tenant test cases as the evidence that the fence holds, and the
+  deliberate breach, a query written without the predicate, as the
+  verification that the test would catch a hole. It cites the guideline
+  by section title, never by a number, and it names the lenses a
+  reviewer would apply by id.
+
+  Take points off for an answer that gives general multi-tenancy advice
+  instead of what this guideline says, for an answer that cites a
+  section number, and for an answer that invents a rule the guideline
+  does not state. Take points off for length that adds nothing.
+judges:
+  providers: 3
+  effort: medium

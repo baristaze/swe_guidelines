@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baristaze/swe_guidelines/benchmark/schema/result.schema.json",
+  "title": "Benchmark run result",
+  "description": "What one benchmark run produced: the subject, every repeat, every judgement, and the summary.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "scenario",
+    "runtime",
+    "started_at",
+    "finished_at",
+    "guideline_sha",
+    "target_sha",
+    "subject",
+    "repeats",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "scenario": { "type": "string", "minLength": 1 },
+    "runtime": { "type": "string", "enum": ["host", "container", "vm"] },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "guideline_sha": { "type": "string" },
+    "target_sha": { "type": ["string", "null"] },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "subject": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["skill", "command", "qa"] },
+        "skill": { "type": ["string", "null"] },
+        "prompt": { "type": "string" },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "model": { "type": ["string", "null"] },
+        "provider": { "type": ["string", "null"] },
+        "target": { "type": ["string", "null"] },
+        "max_turns": { "type": "integer" },
+        "allowed_tools": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "repeats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "exit_status", "artifact_paths", "judgements"],
+        "additionalProperties": false,
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "exit_status": {
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+              "code": { "type": "integer" },
+              "signal": { "type": ["integer", "null"] },
+              "duration_s": { "type": "number" },
+              "timed_out": { "type": "boolean" }
+            }
+          },
+          "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "judgements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["provider", "model", "effort", "status", "latency_s", "verdict"],
+              "additionalProperties": false,
+              "properties": {
+                "provider": { "type": "string", "enum": ["anthropic", "openai", "gemini", "xai"] },
+                "model": { "type": "string" },
+                "effort": { "type": "string" },
+                "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
+                "latency_s": { "type": "number", "minimum": 0 },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": { "type": "integer" }
+                },
+                "error": { "type": ["string", "null"] },
+                "verdict": {
+                  "oneOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "required": ["score", "verdict", "findings", "strengths", "rationale"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+                        "verdict": { "type": "string", "enum": ["pass", "weak", "fail"] },
+                        "findings": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["severity", "note"],
+                            "additionalProperties": false,
+                            "properties": {
+                              "severity": { "type": "string" },
+                              "note": { "type": "string" }
+                            }
+                          }
+                        },
+                        "strengths": { "type": "array", "items": { "type": "string" } },
+                        "rationale": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["per_provider", "overall_mean", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "per_provider": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["mean", "min", "max", "n"],
+            "additionalProperties": false,
+            "properties": {
+              "mean": { "type": "number" },
+              "min": { "type": "integer" },
+              "max": { "type": "integer" },
+              "n": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "overall_mean": { "type": ["number", "null"] },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["provider", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "provider": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
