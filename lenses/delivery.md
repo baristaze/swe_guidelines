@@ -653,18 +653,74 @@ storage root and the local infra root, every backend a twin, and drive
 the app in-process. Markers `integration`, `e2e`, and `slow` decide
 which gate runs what. A run against a deployed environment is a smoke
 test of the deployment, in addition to the in-process suite and never
-in its place.
+in its place. The named atomic methods are raced, not only called: a
+contract case runs two callers at once against a claim, a take-over,
+a ticket redemption, and asserts that exactly one wins, over memory
+and over the engine.
 
 **Source.** Cross-Cutting Conventions, Tests.
 
 **Look for.** The storage fixture and the modules parameterized by it;
 which suites the fast gate and the integration job run; how end-to-end
-tests build the container; the markers on each test module.
+tests build the container; the markers on each test module; the
+contract case behind every named atomic method and whether it runs
+two callers at once.
 
 **Violation.** A storage case written twice, once per impl; a unit
 test that needs a running database; the memory impl tested and the
 Postgres impl assumed; an end-to-end suite that runs only against a
 deployed environment, so nothing drives the app in-process; a slow or
-integration test with no marker, so the fast gate runs it.
+integration test with no marker, so the fast gate runs it; a named
+atomic method proven by a sequence of calls and never by a race, or
+raced over memory only.
 
 **Severity.** medium
+
+## DEL-29 Infra has its own exception root, presented alike
+
+**Principle.** Infra imports nothing from the OM, so it has a root of
+its own, `InfraException`, with the same two fields as
+`PlatformException`, a status and a stable code; the gateway and the
+worker loop present both alike, and a boundary that must translate
+one into the other does it by those fields, never by catching a name
+from the other side.
+
+**Source.** Cross-Cutting Conventions, Exceptions; Infrastructure,
+Infrastructure Principles.
+
+**Look for.** The infra distribution's exception module; what the
+cloud impls raise on a driver error; the gateway's handlers and the
+worker loop's catch; any `except` that names a class from the other
+distribution.
+
+**Violation.** An infra impl raising `PlatformException` or letting a
+driver exception escape; an `InfraException` without a status or a
+code; a gateway that presents `PlatformException` in the envelope and
+lets `InfraException` fall to the catch-all; a manager or a boundary
+that catches `InfraException` by name instead of translating by its
+status and code.
+
+**Severity.** medium
+
+## DEL-30 The bearer lives in memory and session storage; the distribution sends a Content-Security-Policy
+
+**Principle.** The bearer lives in memory and in the tab's session
+storage, so a reload survives and a closed tab forgets, never in local
+storage, which every tab and every later visit reads. The distribution
+sends a `Content-Security-Policy` that names the app's own origin and
+the API and nothing else, declared beside the distribution in
+Terraform with the other security headers.
+
+**Source.** Client App Architecture, API Access.
+
+**Look for.** Where the transport client and the session store read
+and write the bearer; every `localStorage` reference in the app; the
+response headers policy of the static-site module in Terraform.
+
+**Violation.** A token written to `localStorage`; a bearer kept only
+in memory, so every reload signs out; a distribution with no
+`Content-Security-Policy`; a policy that allows a third-party script
+origin; the header set in `index.html` as a meta tag instead of in
+Terraform beside the distribution.
+
+**Severity.** high

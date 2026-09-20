@@ -489,3 +489,24 @@ whose shape differs from a web service's for reasons of compute
 alone.
 
 **Severity.** low
+
+## ASY-23 A renewal refused with Conflict cancels at once
+
+**Principle.** A renewal refused with `Conflict`, because another
+worker holds the item now, cancels the task at once; that answer is
+definitive. A renewal that fails for any other reason, a timeout, an
+engine out of reach, is retried, and only half a lease without a
+successful renewal cancels the task.
+
+**Source.** Worker Roles, Shape of a Worker.
+
+**Look for.** The renewal task's error handling: which exception ends
+the task and which is retried; the clock the half-lease rule reads.
+
+**Violation.** A `Conflict` on renewal retried until the half-lease
+deadline, so a worker keeps running an item another worker holds; a
+timeout or a connection error treated as definitive, so a blip cancels
+sound work; a renewal failure of any kind that leaves the task running
+past the lease.
+
+**Severity.** high

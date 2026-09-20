@@ -401,3 +401,56 @@ or the container as a member; a per-stage bundle of managers; a
 service locator reached from an operation.
 
 **Severity.** medium
+
+## CON-19 The copy on update starts from the stored row
+
+**Principle.** The manager's copy on update starts from the stored row:
+the caller's entity supplies the fields a caller may change, and
+`PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
+`deleted_by`) stay as stored, so no caller rewrites who made a row or
+brings a deleted one back by sending an entity. A partial update is
+the router's translation: it reads the current entity, copies the
+request's set fields onto it, an absent field meaning unchanged and an
+explicit null meaning cleared where the field is optional, and hands
+the whole entity to the manager; that policy is the request type's
+contract, and no impl decides it.
+
+**Source.** The Business Layer, Shape of an Operation.
+
+**Look for.** The copy in every `update_*`: what it starts from and
+what it excludes; the router behind every partial update and how it
+treats an absent field and a null; whether the request type states
+the policy.
+
+**Violation.** An update copied from the caller's entity, so a sent
+`created_by` or a cleared `deleted_at` is written; an update that
+excludes fewer fields than `PROVENANCE_FIELDS`; a manager or a storage
+impl that reads a null as unchanged or an absent field as cleared,
+deciding what the request type should state; a router that hands the
+manager a partial entity.
+
+**Severity.** medium
+
+## CON-20 Roots are built whole, once per process
+
+**Principle.** The storage root constructs every namespace impl, the
+infra root every capability impl, and `build_managers` every manager,
+in dependency order, once per process, whether or not the process
+ever calls them; a constructor holds references and opens nothing,
+and nothing is built per request. A root that builds a member on
+first use is refused, and a test holds that the managers build once
+for any number of requests.
+
+**Source.** Cross-Cutting Conventions, The App Container.
+
+**Look for.** The three roots and `build_managers`: whether every
+member is constructed in the root's constructor; properties or
+getters that construct on first call; anything constructed inside a
+request dependency; the build-once test.
+
+**Violation.** A getter that constructs an impl the first time it is
+called and caches it; a manager built inside a router dependency; a
+constructor that opens a connection; no test counting constructions
+across requests, or a root member it does not cover.
+
+**Severity.** medium

@@ -548,3 +548,72 @@ to parse; an app that sends a new request field before the service
 that accepts it is deployed.
 
 **Severity.** medium
+
+## NET-24 The pending marker carries an attempt token, and finish and release are conditional on it
+
+**Principle.** The pending marker carries the request digest, the id
+the create will use, and an attempt token, all minted before `begin`;
+a pending marker older than the pending lease, abandoned by a crash or
+held by an attempt still running past its lease, is taken over in one
+conditional write that stamps an attempt token of its own and runs the
+request again with the marker's id. `finish` and the release are
+conditional on the attempt token, in the statement itself, so the
+attempt that lost the marker can neither finish it with its own
+outcome nor release the marker the retry now holds.
+
+**Source.** The Network Layer, The Gateway (Edge idempotency).
+
+**Look for.** The marker row and what `begin` writes on it; the
+take-over statement and what it compares; the `WHERE` of `finish` and
+of the release; what the losing attempt's `finish` returns.
+
+**Violation.** A marker with no attempt token, so two attempts can
+finish it; a take-over that overwrites the marker without a condition;
+a `finish` or a release that matches on the key alone; a rerun that
+mints a new id instead of using the marker's; a losing attempt that
+is not refused like a worker whose lease has passed.
+
+**Severity.** high
+
+## NET-25 A create that issues a secret re-mints it on the rerun
+
+**Principle.** A create that issues a secret stores it as a digest and
+shows it once, so the row as stored is not enough on a rerun: the rerun
+finds the row, re-mints the secret on it in the same named atomic
+write, and returns a fresh `Issued...View` with the same id, since the
+first secret reached no one and the row keeps its identity.
+
+**Source.** The Business Layer, Shape of an Operation; The Network
+Layer, The Gateway (Edge idempotency).
+
+**Look for.** The create of every entity that issues a secret (an API
+key, a session token, a socket ticket) and what it does when the
+insert reports an existing id; the atomic method that re-mints.
+
+**Violation.** A rerun that returns the stored row with no secret, so
+the client holds an id and nothing to present; a rerun that inserts a
+second row under a new id; a re-mint written in a second statement
+after the read; an `Issued...View` whose id differs between the first
+run and the rerun.
+
+**Severity.** high
+
+## NET-26 Every outbound call carries a timeout from settings
+
+**Principle.** Every outbound call carries a timeout: the transport
+client reads one from settings, one per client, and no call goes out
+without one, so a downstream that hangs cannot hold a replica's whole
+pool.
+
+**Source.** The Network Layer, Clients Live in One Place.
+
+**Look for.** The construction of every transport client, in Python
+and in TypeScript; the settings field it reads; any call site that
+builds a request outside the client.
+
+**Violation.** A client constructed with no timeout, or with a library
+default nothing in settings names; a timeout hard-coded in the client
+instead of read from settings; a per-call override that disables it; a
+`fetch` or an `httpx` call outside the client with no deadline.
+
+**Severity.** medium

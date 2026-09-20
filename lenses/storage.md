@@ -205,8 +205,10 @@ table class lives outside `storage/tables/`.
 **Principle.** Storage implementations are assembled behind a single
 root that implements `StorageInterface`, with one getter per entity
 storage plus `healthcheck` and `close`. Two roots exist from day one,
-one over the relational engine and one in memory, and each constructs
-every namespace impl and wires cross-storage dependencies between them.
+`StoragePostgresImpl` over the relational engine and
+`StorageMemoryImpl` in memory, named like every other impl, and each
+constructs every namespace impl and wires cross-storage dependencies
+between them.
 Cross-storage dependencies are injected through the constructor; the
 interface is untouched.
 
@@ -223,7 +225,9 @@ root.
 **Violation.** A manager or container constructs a namespace storage
 impl directly. A storage impl reaches a sibling storage through a
 global, the root, or an attribute set after construction. The memory
-root lacks a getter the relational root has.
+root lacks a getter the relational root has. A root named for what it
+is rather than as an impl (`Storage`, `PostgresStorage`), so the
+technology is not last.
 
 **Severity.** medium
 

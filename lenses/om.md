@@ -61,19 +61,23 @@ fieldless root, each declaring exactly the fields the guideline lists:
 `Identifiable` (`id`), `Named` (`name`), `Trackable` (`created_at`,
 `updated_at`, `created_by`, `updated_by`), and `SoftDeletable` (`deleted_at`,
 `deleted_by`). A new trait is a new mixin, not a field on an existing
-one. The `new_id()` and `utcnow()` helpers live in the same base
-module.
+one. The `new_id()` and `utcnow()` helpers and `PROVENANCE_FIELDS`, the
+constant naming `created_at`, `created_by`, `deleted_at`, and
+`deleted_by`, live in the same base module.
 
 **Source.** Naming Entities.
 
 **Look for.** The base module of the OM; the fields each mixin
 declares; whether entities redeclare a mixin's fields locally; whether
-`new_id()` and `utcnow()` are the helpers used to construct entities.
+`new_id()` and `utcnow()` are the helpers used to construct entities;
+what `PROVENANCE_FIELDS` names.
 
 **Violation.** A field added to one of the listed mixins instead of a
 new mixin for the new trait; an entity declaring its own `created_at`
 next to `Trackable`; a root class that holds fields; a local
-`datetime.now()` or id factory used in place of the base helpers.
+`datetime.now()` or id factory used in place of the base helpers; a
+`PROVENANCE_FIELDS` declared per namespace or naming other fields than
+the four.
 
 **Severity.** medium
 
@@ -312,18 +316,28 @@ another namespace's `types/`.
 arithmetic, eligibility, aggregation rules) lives in a module of plain
 functions that read no storage, consult no clock, and open no
 settings. Manager impls and every storage impl call them; nothing
-re-implements them.
+re-implements them. A rule the engine must evaluate inside a
+statement, a filter or an ordering, is spelled once more in that
+statement, named as such, and the contract case that runs both impls
+holds the two spellings together; everything a rule decides before or
+after the statement calls the function.
 
 **Source.** Namespaces as Swimlanes, Pure Rules.
 
 **Look for.** Arithmetic and eligibility logic inside manager or
 storage impls; the same rule implemented twice for two storage
-backends; a rules module that imports storage, settings, or a clock.
+backends; a rules module that imports storage, settings, or a clock; a
+rule spelled inside a statement, whether it names the function it
+restates, and the contract case that runs both impls over it.
 
 **Violation.** A relational impl aggregating in SQL and an in-memory
 impl aggregating with different arithmetic; a rules function calling
 `utcnow()` internally instead of taking the time as an argument; a
-pricing rule duplicated in a manager and a report builder.
+pricing rule duplicated in a manager and a report builder; a rule
+spelled in a statement with no name pointing at the function, or with
+no contract case holding the two spellings together; a rule decided
+before or after the statement re-implemented instead of calling the
+function.
 
 **Severity.** medium
 

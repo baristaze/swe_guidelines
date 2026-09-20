@@ -70,18 +70,27 @@ the context's request id.
 ## CTX-03 Permissions are a pure function of role, and a credential never outranks its issuer
 
 **Principle.** Permissions derive from role through one table in the
-tenancy namespace. A credential issued by a principal carries a role no
-higher than the issuer's.
+tenancy namespace. A credential never carries a role above its
+issuer's, where above means the permission set: a role is at most
+another when its permissions are a subset of the other's, and a rank
+used for comparison is derived from the table or held to it by a unit
+test. The role reserved for services is not a rung on that ladder: no
+credential a person mints carries it, and every operation that issues
+a credential refuses it by name, whatever the rank says.
 
 **Source.** OpContext.
 
 **Look for.** The role-to-permission table, credential issuing paths
-(API keys, invitations, session tokens), and any code that assigns
-permissions.
+(API keys, invitations, session tokens), the comparison each issuing
+path makes and the test that holds a rank to the table, and any code
+that assigns permissions.
 
 **Violation.** Permissions stored per user or per credential
 independently of role; a second mapping elsewhere; an issuing path that
-does not cap the new credential's role at the issuer's role.
+does not cap the new credential's role at the issuer's; a rank declared
+apart from the permission table with no test tying the two; an issuing
+path that lets the service role through because its rank sits below
+the issuer's.
 
 **Severity.** high
 
@@ -112,20 +121,25 @@ of the tenancy manager or one that asks it (a sign-in into the
 identity stage, a credential or a claim into `OpContext`, the operator
 admission into `OperatorContext`), which takes the stage below and the
 evidence and returns the stage above or refuses. Nothing else
-constructs a stage.
+constructs a stage, and since a stage is an ordinary class anything can
+call, a unit test enumerates every site that constructs a stage above
+the request stage and fails when a new one appears, the way the
+exceptions test enumerates the tenant-less storage methods.
 
 **Source.** OpContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
 
 **Look for.** Every construction site of every stage type and its
-sub-objects; the transitions on the tenancy manager and what they take.
+sub-objects; the transitions on the tenancy manager and what they take;
+the test that enumerates the construction sites.
 
 **Violation.** A manager, storage impl, or test helper used in
 production code that builds a stage; a router that assembles a context
 from headers or tokens; a service that constructs one for an internal
 call; a second construction site for a stage the tenancy manager
 already produces; a transition that takes raw parameters where the
-stage below exists.
+stage below exists; a construction site the enumerating test does not
+name, or no such test at all.
 
 **Severity.** high
 
@@ -252,19 +266,30 @@ the same tenant.
 ## CTX-12 Exceptions to tenant-first are enumerated and tested
 
 **Principle.** Global tables and cross-tenant sweeps are the documented
-exceptions to the tenant-first rule. Global methods take no tenant and
-say why in their docstring; sweeps return the tenant with each row as
-`tuple[UUID, Entity]`; a test enumerates the exceptions.
+exceptions to the tenant-first rule: global methods take no tenant and
+say why in their docstring, a sweep that is bookkeeping with no
+principal (relaying the outbox, expiring a lease) reads across tenants
+in one statement and gets the tenant back with each row as
+`tuple[UUID, Entity]`, and a test enumerates the exceptions. A sweep
+that performs a tenant operation (a purge, a requeue that audits) holds
+one service context per live tenant instead, minted for the tenant and
+not for a member: it carries the tenant, the role reserved for
+services, and the system user `EMPTY_UUID` as its user id.
 
-**Source.** The Storage Layer, Namespace Shape.
+**Source.** The Storage Layer, Namespace Shape; The Business Layer,
+Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the test that
-lists them.
+lists them; each step of the sweep and which shape it takes; what the
+service context carries as its user id.
 
 **Violation.** A tenant-less storage method with no docstring
 justifying it; a sweep that returns entities without their tenant; a
 new tenant-less method that the enumerating test does not know about;
-no such test at all.
+no such test at all; a purge or a requeue that audits done in a
+cross-tenant statement with no principal; a service context minted on
+a member, so a tenant whose members have all left is never swept, or
+costing one read per member instead of one per page of tenants.
 
 **Severity.** medium
 
