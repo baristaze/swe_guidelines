@@ -225,7 +225,10 @@ class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
 
 A row the platform writes for its own bookkeeping composes `Created`:
 the outbox row, the idempotency marker, the socket ticket. No person
-stands behind it, so it carries no `created_by`, and what the platform
+stands behind it, so it carries no `created_by`; the outbox row names
+instead the actor, the request, and the app of the write it announces,
+the provenance of the [OpContext](#opcontext) that made it, which is
+why the relay takes `(org_id, row)` and no context. What the platform
 stamps on it later is a field named for what happened, `done_at`,
 `redeemed_at`, the outcome, never an `updated_at` that says only that
 something did. A work item is `Trackable`, because the person who
@@ -241,6 +244,9 @@ class OutboxRow(Identifiable, Created):  # written with the core row, in the sam
     kind: str                 # "<namespace>.<entity>.<created|updated|deleted>"
     target_id: UUID
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
+    actor_id: UUID            # the principal of the write it announces; EMPTY_UUID for the platform
+    request_id: UUID          # the request that made the write
+    app: AppContext           # the app that made it
     done_at: datetime | None = None
 
 class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, and key
@@ -391,7 +397,7 @@ acme/om/orders/
     __init__.py                # re-exports OrderManagerInterface
     manager.py                 # the manager interface
     types/                     # entity classes, value objects, read models
-    impl/                      # manager implementations
+    impl/                      # manager.py, the manager impl
     storage/                   # storage interface, impls, tables (see The Storage Layer)
     rules.py                   # pure functions, when the namespace has any
 ```
@@ -400,7 +406,20 @@ The manager interface is defined in `manager.py` and re-exported from
 the package root, so consumers import it with a short path:
 `from acme.om.orders import OrderManagerInterface`. `types/` holds
 the classes of [Naming Entities](#naming-entities). `impl/` holds the
-concrete manager classes.
+concrete manager classes, in `impl/manager.py`.
+
+Names follow the namespace. A manager interface and a storage
+interface are named after the namespace in the singular
+(`OrderManagerInterface`, `OrderStorageInterface`,
+`InventoryStorageInterface`, `InventoryStoragePostgresImpl`); the
+storage root has one getter per namespace storage
+(`get_inventory_storage()`, `get_order_storage()`); and a namespace
+with several aggregates may add one storage interface per aggregate,
+named after the aggregate. Operations are named after the entity
+(`write_warehouse`, `read_warehouses`). A work handler impl is
+`<Kind>HandlerImpl`, the work kind in CamelCase
+(`NotifyShipmentHandlerImpl`; see [Shape of a
+Worker](#shape-of-a-worker)).
 
 Cross-cutting namespaces are namespaces like any other. Tenancy
 (organizations, users, memberships, credentials) and audit (who did
@@ -422,7 +441,9 @@ runs both impls is what holds the two spellings together; everything a
 rule decides before or after the statement calls the function.
 
 > **Principle:** A namespace's rules are pure functions in one module.
-> Storage impls and manager impls call them; nothing re-implements them.
+> Storage impls and manager impls call them; a rule the engine must
+> evaluate inside a statement is spelled there once more, and the
+> contract case holds the two spellings together.
 
 ## Separation of Layers
 
@@ -462,7 +483,7 @@ signature is a contract.
 ``` python
 from abc import ABC, abstractmethod
 
-class WarehouseManagerInterface(ABC):
+class InventoryManagerInterface(ABC):
     @abstractmethod
     async def get_warehouses(self, ctx: OpContext) -> list[Warehouse]: ...
     @abstractmethod
@@ -484,7 +505,7 @@ lets one `*Interface` back several impls at once.
 An interface has at least two impls, a technology impl and an in-memory
 impl, and they are interchangeable at wiring time. Callers never know
 which one they are holding. Names put the technology last:
-`WarehouseStoragePostgresImpl`, `WarehouseStorageMemoryImpl`.
+`InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`.
 
 The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
@@ -499,8 +520,8 @@ the pair is then two impls of two contracts.
 
 Technology-specific impls for storage follow the same interface:
 
--   `WarehouseStoragePostgresImpl`
--   `WarehouseStorageClickHouseImpl`
+-   `InventoryStoragePostgresImpl`
+-   `InventoryStorageClickHouseImpl`
 
 Swapping the impl at the storage root moves the system onto a different
 engine without any caller changing.
@@ -939,8 +960,8 @@ relays the row at once, or leaves the relay to the sweep, the cheaper
 first step (see [Database Roles](#database-roles)).
 
 ``` python
-class WarehouseManagerImpl(WarehouseManagerInterface):
-    def __init__(self, storage: WarehouseStorageInterface, relay: OutboxRelayInterface):
+class InventoryManagerImpl(InventoryManagerInterface):
+    def __init__(self, storage: InventoryStorageInterface, relay: OutboxRelayInterface):
         self._storage = storage
         self._relay = relay
 
@@ -952,10 +973,7 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
             **warehouse.model_dump(exclude=PROVENANCE_FIELDS),  # the caller's fields, never who made or deleted it
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
-        row = OutboxRow(
-            id=new_id(), org_id=ctx.org_id, kind="inventory.warehouse.updated",
-            target_id=updated.id, payload=updated.model_dump(mode="json"),
-        )
+        row = outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json"))
         await self._storage.write_warehouse(ctx.org_id, updated, row)  # one atomic method
         await self._relay.relay(ctx.org_id, row)
         return updated
@@ -992,11 +1010,12 @@ entity supplies the fields a caller may change, and `PROVENANCE_FIELDS`,
 a constant beside the mixins naming `created_at`, `created_by`,
 `deleted_at`, and `deleted_by`, stay as stored, so no caller rewrites
 who made a row or brings a deleted one back by sending an entity. A
-partial update is the router's translation: it reads the current
-entity, copies the request's set fields onto it, an absent field
-meaning unchanged and an explicit null meaning cleared where the field
-is optional, and hands the whole entity to the manager. That policy is
-the request type's contract, and no impl decides it.
+partial update is the service impl's translation: it reads the current
+entity through the manager's `get_*`, copies the request's set fields
+onto it, an absent field meaning unchanged and an explicit null meaning
+cleared where the field is optional, and hands the whole entity to the
+manager. That policy is the request type's contract, and no manager
+decides it.
 
 Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does. Last writer wins by default;
@@ -1022,7 +1041,7 @@ injected through the constructor. The interface is untouched; only the
 impl gains the parameter.
 
 ``` python
-# acme/om/orders/impl/order_manager_impl.py
+# acme/om/orders/impl/manager.py
 
 class OrderManagerImpl(OrderManagerInterface):
     def __init__(
@@ -1137,7 +1156,7 @@ model, scoped under its parent entity namespace:
 
 ```text
 acme/om/inventory/storage/
-    __init__.py     # WarehouseStorageInterface
+    __init__.py     # InventoryStorageInterface
     impl/           # postgres.py, memory.py
     tables/         # ORM classes, not exposed
 ```
@@ -1147,7 +1166,7 @@ Every operation takes `org_id` as a parameter, so tenancy is enforced at
 every query:
 
 ``` python
-class WarehouseStorageInterface(ABC):
+class InventoryStorageInterface(ABC):
     @abstractmethod
     async def read_warehouses(self, org_id: UUID) -> list[Warehouse]: ...
     @abstractmethod
@@ -1190,7 +1209,7 @@ scope within the tenant.
 
 The interface never exposes the underlying technology. A session object
 or connection pool is injected into the implementation, never referenced
-in the interface. A consumer of `WarehouseStorageInterface` must not be
+in the interface. A consumer of `InventoryStorageInterface` must not be
 able to tell whether it is talking to SQLAlchemy, Postgres, or a
 columnar store.
 
@@ -1212,10 +1231,10 @@ named like every other impl:
 ``` python
 class StorageInterface(ABC):
     @abstractmethod
-    def get_warehouse_storage(self) -> WarehouseStorageInterface: ...
+    def get_inventory_storage(self) -> InventoryStorageInterface: ...
     @abstractmethod
     def get_order_storage(self) -> OrderStorageInterface: ...
-    # ... one getter per entity storage
+    # ... one getter per namespace storage
 
     @abstractmethod
     async def healthcheck(self) -> bool: ...
@@ -1310,7 +1329,7 @@ the class stay in step when the column is appended.
 > on the mixins (`-1000` for identity, `-900` for name, and so on) pin
 > the header block to the front.
 
-Three index rules cover almost every table:
+Four index rules cover almost every table:
 
 1.  A feed wants a compound index on `(org_id, id)`. Because ids are
     v7, that index sorts by creation time, and a B-tree scans backwards
@@ -1374,16 +1393,17 @@ base so that multi-entity storages, which touch more than one
 
 ### A Storage Impl
 
-`WarehouseStoragePostgresImpl` implements `WarehouseStorageInterface`
+`InventoryStoragePostgresImpl` implements `InventoryStorageInterface`
 against a SQLAlchemy session factory. The factory is injected into the
 constructor and never surfaced through the interface. A shared base,
-`PgStorageBase`, provides the one write primitive every namespace uses:
-an upsert that checks the tenant.
+`PgStorageBase`, provides the two write primitives every namespace
+uses: an insert that reports an existing id and an upsert, both
+checking the tenant.
 
 ``` python
 # acme/om/inventory/storage/impl/postgres.py
 
-class WarehouseStoragePostgresImpl(PgStorageBase, WarehouseStorageInterface):
+class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
     async def read_warehouses(self, org_id: UUID) -> list[Warehouse]:
         stmt = (
             select(Warehouses)
@@ -1431,10 +1451,10 @@ class OrderStoragePostgresImpl(PgStorageBase, OrderStorageInterface):
     def __init__(
         self,
         sessions: SessionFactory,
-        warehouse_storage: WarehouseStorageInterface,
+        inventory_storage: InventoryStorageInterface,
     ):
         super().__init__(sessions)
-        self._warehouse_storage = warehouse_storage
+        self._inventory_storage = inventory_storage
 ```
 
 The dependency is an implementation detail, not part of
@@ -1579,9 +1599,10 @@ the constructor.
     Container](#the-app-container)). Managers and service impls receive
     infra handles through their constructors, never through globals,
     thread locals, or a context, whichever stage or scope it is.
--   Observability is the one capability used through its vendor API
-    directly (see [Traces and Metrics](#traces-and-metrics) and [Error
-    Tracking](#error-tracking)).
+-   Observability is used through its vendor API directly (see [Traces
+    and Metrics](#traces-and-metrics) and [Error
+    Tracking](#error-tracking)), and so is a feature flag SDK on the
+    rare day one is needed (see [Configuration](#configuration)).
 -   Every impl can `describe()` itself in one line, and the container
     logs the chosen backends once at start, so an operator reading a
     boot log knows exactly what a process is talking to.
@@ -1628,6 +1649,7 @@ class CacheScope(str, Enum):
     NETWORK_RESPONSE = "network_response"
     CATALOG_INDEX = "catalog_index"
     RATE_LIMIT = "rate_limit"
+    WORKER_LIVENESS = "worker_liveness"
 
 class CacheInterface(ABC):
     @abstractmethod
@@ -1931,9 +1953,10 @@ pattern:
 
 App-specific services are thin: they exist so client apps can stay
 dumb, and an app talks only to its own backing service. In the
-single-process start, an app-specific service is a router module that
-composes managers on behalf of one app, and every request carries an
-app type on its context so app-aware branches stay explicit.
+single-process start, an app-specific service is a router module and
+its service impl, which composes managers on behalf of one app, and
+every request carries an app type on its context so app-aware branches
+stay explicit.
 
 ### At a Glance
 
@@ -1994,11 +2017,12 @@ accumulated context are recovered on demand from storage or cache
 
 The network layer follows the same interface/impl pattern as managers
 and storages. Each service declares its network operations through a
-`*ServiceInterface`; the impl handles HTTP wiring. A `ServicesInterface`
-plays the role of the network-layer root:
+`*ServiceInterface`; the impl translates between the wire and the
+managers. A `ServicesInterface` plays the role of the network-layer
+root:
 
 ``` python
-class WarehouseServiceInterface(ABC):
+class InventoryServiceInterface(ABC):
     @abstractmethod
     async def get_warehouses(self, ctx: OpContext) -> list[WarehouseView]: ...
     @abstractmethod
@@ -2006,20 +2030,21 @@ class WarehouseServiceInterface(ABC):
 
 class ServicesInterface(ABC):
     @abstractmethod
-    def get_warehouse_service(self) -> WarehouseServiceInterface: ...
+    def get_inventory_service(self) -> InventoryServiceInterface: ...
     @abstractmethod
     def get_order_service(self) -> OrderServiceInterface: ...
     # ... one getter per service
 ```
 
-The impl handles routing, request and response serialization, and
-translation between the public types and the OM entities. A router
-translates: it builds the entity or the arguments from the request,
-calls one operation of its service impl, which calls one manager, and
-projects the result onto a view. The router calls through the service
-interface from the first day, so the split is a wiring change and not
-a rewrite of the routers. When a router starts deciding something, the
-decision moves into a manager.
+A router declares the route: the path, the verb, the status, and the
+dependencies that mint the context and the idempotency key. It calls
+one operation of its service impl with the context and the request
+type and returns what the impl returns. The service impl translates:
+it builds the entity or the arguments from the request, calls one
+manager, and projects the result onto a view. The router calls through
+the service interface from the first day, so the split is a wiring
+change and not a rewrite of the routers. When a router starts deciding
+something, the decision moves into a manager.
 
 ### The Gateway
 
@@ -2138,10 +2163,13 @@ the provider's published keys, and hands the tenancy manager the
 issuer and the subject; the manager's transition finds or creates the
 identity keyed on that pair and produces the same `IdentityContext` a
 sign-in does, so the exchange into a tenant session, the memberships,
-and the sessions are the ones every person has. The provider is a
-backend of the infra root, twinned locally like any hosted service
-(see [Twins for External Services](#twins-for-external-services)), and
-nothing below the gateway knows which provider spoke.
+and the sessions are the ones every person has. The provider is an
+integration: an interface with a real client and a twin in the
+`integrations/` distribution (see [Monorepo Folder
+Structure](#monorepo-folder-structure) and [Twins for External
+Services](#twins-for-external-services)), wired at boot by the
+container like a backend of the infra root, and nothing below the
+gateway knows which provider spoke.
 
 Nothing the tenancy namespace stores can be presented as a credential.
 A password is stored as a memory-hard hash (scrypt or argon2) under a
@@ -2252,35 +2280,38 @@ it: a service rolls out before its apps.
 
 > **Python tip:** `from_attributes=True` makes
 > `WarehouseView.model_validate(warehouse)` the whole translation when
-> field names line up. A module-private `_view()` helper in the router
-> covers the cases where they do not.
+> field names line up. A module-private `_view()` helper in the
+> service impl covers the cases where they do not.
 
 ### From OM to Wire
 
 `Warehouse` lives in the OM; the view decides what the wire looks
-like; the router is the shell that connects them; the OpenAPI document
-is emitted from the running app and is the contract every client
-builds against.
+like; the service impl translates between them and the router binds
+the route to it; the OpenAPI document is emitted from the running app
+and is the contract every client builds against.
 
 ``` mermaid
 flowchart LR
     OM[OM types<br/>Warehouse<br/>acme/om/...]
-    View[Wire types<br/>WarehouseView, AddWarehouseRequest<br/>services/inventory/types/]
-    Router[Router<br/>hand-written, translates only]
+    View[Wire types<br/>WarehouseView, AddWarehouseRequest<br/>services/api/.../types/inventory.py]
+    Impl[Service impl<br/>hand-written, translates only]
+    Router[Router<br/>declares the route]
     OpenAPI[openapi.json<br/>emitted by the app,<br/>committed, diffed in CI]
 
     subgraph Clients [Client types, one per language]
         direction TB
         TsTypes[apps/portal/src/api/schema.d.ts<br/>generated from openapi.json]
-        PyClient[acme/clients/python/<br/>typed client over httpx]
+        PyClient[clients/python/<br/>typed client over httpx]
     end
 
     OM -. projected selectively .-> View
-    View --> Router
+    View --> Impl
+    Impl --> Router
     Router --> OpenAPI
     OpenAPI --> TsTypes
     OpenAPI --> PyClient
 
+    style Impl fill:#eef
     style Router fill:#eef
     style OM fill:#efe
     style View fill:#fef
@@ -2342,7 +2373,7 @@ holding what the callee needs; and the swap at wiring time is the
 whole of that change. The orders service impl orchestrates:
 
 ``` python
-# acme.services.orders.impl (network layer)
+# services/orders-api/src/acme/services/orders_api/impl/orders.py (network layer)
 
 class OrderServiceImpl(OrderServiceInterface):
     def __init__(
@@ -2426,12 +2457,13 @@ happens (the idempotent consumer pattern).
 Pushes travel on the topic bus. Every process that holds sockets
 subscribes its handlers to the topics its clients care about; a
 producer publishes once; every replica receives the event and each
-socket handler filters by tenant and by the subscriptions its client
-registered. No process needs to know which replica holds which user.
-Fan-out to replicas that hold no interested socket is the price, and it
-is the right price for a handful of replicas; past that, a routing
-store mapping user to instance replaces the broadcast without any
-producer changing.
+socket handler filters by tenant and by the streams its client
+subscribed, never by kind within a stream, so a subscribed stream
+arrives whole. No process needs to know which replica holds which
+user. Fan-out to replicas that hold no interested socket is the price,
+and it is the right price for a handful of replicas; past that, a
+routing store mapping user to instance replaces the broadcast without
+any producer changing.
 
 Per socket, the process keeps one bounded send buffer in memory and
 a drainer task that writes it to the wire. When the buffer is full, the
@@ -2461,8 +2493,9 @@ in the record for audit and never on the wire.
 Replay from
 storage is the durability mechanism; the socket is a hint that
 something changed. The record is an `Event` in the `activity` role:
-`Identifiable` plus `org_id`, `seq`, `kind`, `target_id`, and a typed
-payload, appended by one named atomic storage method that assigns
+`Identifiable` plus `org_id`, `seq`, `kind`, `target_id`, `actor_id`
+(the principal of the write, `EMPTY_UUID` for the platform), and a
+typed payload, appended by one named atomic storage method that assigns
 `seq`, a per-tenant, gapless sequence and the one number storage
 assigns, because only the database can order commits. Gapless is a
 decision: a client treats a gap as a loss and replays, so a number
@@ -2484,7 +2517,7 @@ concurrent writes to one target can carry seqs in the other order. A
 consumer that needs the record's state reads it and never rebuilds it
 from events. A manager records one event per write through the outbox
 of [Database Roles](#database-roles); an audit entry is the same shape
-plus the principal and the app.
+plus the request id and the app.
 
 ``` mermaid
 flowchart LR
@@ -2493,8 +2526,8 @@ flowchart LR
 
     subgraph Replicas [Service replicas holding sockets]
         direction TB
-        I1[Replica 1<br/>filter: tenant, subscriptions<br/>bounded send buffer per socket]
-        I2[Replica 2<br/>filter: tenant, subscriptions<br/>bounded send buffer per socket]
+        I1[Replica 1<br/>filter: tenant, subscribed streams<br/>bounded send buffer per socket]
+        I2[Replica 2<br/>filter: tenant, subscribed streams<br/>bounded send buffer per socket]
     end
 
     Sto[(Storage<br/>every push is a record)]
@@ -2634,7 +2667,8 @@ class WorkItem(Identifiable, Trackable):
     lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
     available_at: datetime     # not before
-    claimed_by: str | None = None
+    claimed_by: str | None = None    # the worker's name, for an operator; never a fence
+    claim_token: UUID | None = None  # the fence every write to the row conditions on
     lease_expires_at: datetime | None = None
     attempts: int = 0
     max_attempts: int = 3
@@ -2642,23 +2676,25 @@ class WorkItem(Identifiable, Trackable):
 ```
 
 The queue lives in the `queue` database role (see [Database
-Roles](#database-roles)). Enqueue is a
-create, the insert that reports an existing id without touching it, so
-a retried enqueue never resets a claim, and a duplicate idempotency key
-is a conflict; the manager's copy stamps the actor, the timestamps, the
-status, and the attempts, and clears every claim field, whatever the
-caller sent. Enqueue then publishes `WORK_AVAILABLE` on the topic bus;
-claim is one storage method that selects the oldest available row in
+Roles](#database-roles)). Enqueue is a create, the insert that reports
+an existing id without touching it, so a retried enqueue never resets
+a claim, and a duplicate idempotency key is a conflict; the manager's
+copy stamps the actor from the context, the status, and the attempts,
+clears every claim field, and leaves the id and the timestamps as
+constructed, whatever the caller sent. Enqueue then publishes
+`WORK_AVAILABLE` on the topic bus. Payload shapes are fixed per
+`WorkKind` by a payload map, `WORK_PAYLOADS`, as `TOPIC_PAYLOADS`
+fixes them per topic; the row stores the dump.
+
+Claim is one storage method that selects the oldest available row in
 the named lane, skipping locked ones (competing consumers), and stamps
-the claim and the lease in the same statement. Completion marks the row
-done, requeues it with a growing delay, or fails it when attempts run
-out; a failed item is a dead letter, named by an audit entry and
+the claim and the lease in the same statement. Completion marks the
+row done, requeues it with a growing delay, or fails it when attempts
+run out; a failed item is a dead letter, named by an audit entry and
 counted by a metric. A worker that finds an item is not its to run
 hands it back without spending an attempt. The lane on the row is the
 routing: one table serves a shared pool and any number of dedicated
-lanes. Payload shapes are fixed per `WorkKind` by a payload map,
-`WORK_PAYLOADS`, as `TOPIC_PAYLOADS` fixes them per topic; the row
-stores the dump.
+lanes.
 
 Because the row carries `created_by`, the worker rebuilds the
 enqueuer's principal under the `Role` reserved for services when it
@@ -2694,7 +2730,7 @@ class WorkHandlerInterface(ABC):
     @abstractmethod
     async def handle(self, ctx: OpContext, item: WorkItem) -> None: ...
 
-class ShipmentNotifierImpl(WorkHandlerInterface):
+class NotifyShipmentHandlerImpl(WorkHandlerInterface):  # handles WorkKind.NOTIFY_SHIPMENT
     def __init__(
         self,
         order_manager: OrderManagerInterface,
@@ -2771,9 +2807,10 @@ compare-and-set ([Shape of an Operation](#shape-of-an-operation)),
 which refuses the stale write once the new holder has written and not
 before; and an external side effect is keyed by the item or reconciled
 afterwards, never assumed exclusive. The worker heartbeats its own
-liveness (a key with a TTL under the system scope, written and read
-back on every beat); when heartbeats fail repeatedly it stops claiming
-new work but finishes what it holds.
+liveness (a key with a TTL under the system scope and the
+`WORKER_LIVENESS` cache scope, written and read back on every beat);
+when heartbeats fail repeatedly it stops claiming new work but
+finishes what it holds.
 
 ### Shutdown
 
@@ -2787,11 +2824,13 @@ desired at once, because a worker holds leases.
 ### Maintenance Without a Scheduler
 
 Recurring housekeeping (requeue items whose lease expired, expire
-leases, resume records whose park time has passed, roll periods) is a
-sweep that every worker runs on its own timer. The sweep is idempotent
-and serialized by the database, so it needs no leader, no lock, and no
-scheduler component. Resumes are staggered by a small delay so a
-recovered dependency is not met by every parked record at once.
+leases, resume records whose park time has passed, roll periods, relay
+what a crash left in the outbox, purge done outbox rows and
+soft-deleted rows past retention) is a sweep that every worker runs on
+its own timer. The sweep is idempotent and serialized by the database,
+so it needs no leader, no lock, and no scheduler component. Resumes
+are staggered by a small delay so a recovered dependency is not met by
+every parked record at once.
 
 ### Implementation Options
 
@@ -2922,11 +2961,12 @@ server-side rendering out, so the simpler tool wins.
 ### Client Rendering
 
 Rendering happens in the client only. The deployed artifact is a
-static bundle that hydrates against backing services and the realtime
-channel, and those are the only network surfaces it talks to.
+static bundle that talks to backing services, the realtime channel,
+and the object store through a presigned URL it was handed (see
+[Buckets](#buckets)), and nothing else.
 
 > **Principle:** The app is a static bundle that talks to backing
-> services and the realtime channel.
+> services, the realtime channel, and a presigned URL it was handed.
 
 ### State and Data
 
@@ -2974,10 +3014,11 @@ lives in memory and in the tab's session storage, so a reload survives
 and a closed tab forgets; never in local storage, which every tab and
 every later visit reads. The distribution sends a
 `Content-Security-Policy` that names the app's own origin, the API,
-and the error tracker's origin when one is configured, and nothing
-else, so a script the app did not ship does not run; the header is
-declared beside the distribution in Terraform, with the other security
-headers.
+the error tracker's origin when one is configured, and the object
+store's origin when the app moves bytes through presigned URLs, and
+nothing else, so a script the app did not ship does not run; the
+header is declared beside the distribution in Terraform, with the
+other security headers.
 
 ### Realtime: One Channel per App
 
@@ -3100,7 +3141,8 @@ possible or a wire-compatible stand-in where not, each at the version
 [Versions](#versions) sets. Application processes run on the host,
 started by one script, so a code change is a restart and a
 debugger attaches without ceremony; a second compose file runs the
-application containers too.
+application in containers too, for the case that asks for it, and is
+never the default.
 
 Developer dashboards live in an optional compose profile named `devx`,
 started only when a developer asks for it and never by CI. The profile
@@ -3126,12 +3168,13 @@ lists the command and the seeded sign-in next to the local URLs, so a
 developer goes from a clone to a signed-in session without creating an
 account by hand.
 
-Four shortcuts cover the whole stack. `make up` starts everything in
-containers, the application and the `devx` profile included, migrates,
-seeds, and prints the local URLs; `make down` stops it all and keeps
-the data for the next `make up`; `make reset` wipes every local
-container and volume and runs `make up` again; `make urls` prints the
-local URLs, read from the same `.env` as the ports.
+Four shortcuts cover the whole stack. `make up` starts every
+dependency and the `devx` profile in containers and the application on
+the host through the one start script, migrates, seeds, and prints the
+local URLs; `make down` stops the containers and the host processes
+and keeps the data for the next `make up`; `make reset` wipes every
+local container and volume and runs `make up` again; `make urls`
+prints the local URLs, read from the same `.env` as the ports.
 
 > **Principle:** Every dependency runs in a local container. The
 > application runs on the host.
@@ -3179,7 +3222,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 ├── pyrightconfig.json
 ├── .python-version
 ├── .nvmrc
-├── Makefile                            # setup, infra-up, migrate, check, test-*, openapi
+├── Makefile                            # setup, infra-up, migrate, check, test-*, openapi, up, down, reset, urls, seed
 ├── README.md
 │
 ├── specs/
@@ -3211,6 +3254,9 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │           ├── tenancy/
 │   │           ├── events/
 │   │           ├── audit/
+│   │           ├── outbox/             # OutboxRow, the relay
+│   │           ├── idempotency/        # IdempotencyMarker
+│   │           ├── work/               # WorkItem, the work queue
 │   │           └── storage/            # storage root, roles, shared base classes
 │   ├── tests/
 │   │   ├── unit/
@@ -3252,6 +3298,8 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   │   │               ├── container.py
 │   │   │               ├── gateway/    # auth, errors, ratelimit, observability
 │   │   │               ├── routers/    # one module per namespace
+│   │   │               ├── services/   # service interfaces, one module per namespace
+│   │   │               ├── impl/       # service impls, one module per namespace
 │   │   │               ├── types/      # one module per namespace: views and requests
 │   │   │               └── main.py     # serve | migrate | bootstrap | openapi
 │   │   ├── tests/
@@ -3327,7 +3375,7 @@ A service binary is also its own operations CLI: `serve`, `migrate`,
 container image and the operator's laptop run the same code paths.
 
 Dockerfiles live together under `deployment/docker/`, one per image,
-sharing an entrypoint. An image builds in two stages, installs one
+sharing an entrypoint. Every image builds in two stages, installs one
 workspace package with locked dependencies, runs as a non-root user,
 and declares a healthcheck against `/healthz`.
 
@@ -3440,7 +3488,8 @@ outcome label. Label values are bounded: a template, a status, an
 outcome, never an id.
 
 Every process serves `/metrics`, workers included. A worker has no
-API, so it serves the endpoint alone on a small port of its own.
+API, so it serves `/metrics` and `/healthz` alone on a small port of
+its own.
 
 > **Principle:** OpenTelemetry for traces, a Prometheus endpoint for
 > metrics, both used directly. The backend is a config detail.
@@ -3733,8 +3782,9 @@ concerns are real and are not here on purpose. They are commitments a
 team makes per system, once the shape holds and the numbers are known,
 and a rule that fit every system would say nothing: a threat model and
 the rotation of secrets and keys; service objectives, alerting, and
-the on-call posture behind them; request deadlines, retry budgets, and
-admission under overload; disaster recovery and multi-region; tenant
+the on-call posture behind them; the tuning of deadlines and retry
+budgets, and admission under overload; disaster recovery beyond the
+backup and rehearsed restore of each role, and multi-region; tenant
 export and offboarding; load testing; the deprecation of an API
 version; and supply-chain rules such as dependency scanning.
 
