@@ -30,7 +30,7 @@ which number.
   showed is recorded, the query it was run against and what the suite
   reported, because a negative control nobody ran is a claim and not
   evidence. Which mechanism takes the predicate out is the project's
-  choice; that the control is run and recorded is not. Lens `DEL-40`.
+  choice; that the control is run and recorded is not. Lens `CTX-31`.
 - `architecture.md`, "Intra-Service Communication": a key per issuer is
   attribution, never containment. One signing key stays one trust
   domain, and the system that gives each issuing process a key of its

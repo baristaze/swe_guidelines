@@ -7,8 +7,9 @@ authorization step and parameter order of The Business Layer and its
 "Operations Without a Principal", the tenancy rules of The Storage
 Layer, the tenant keying of Infrastructure, the credential and
 operator concerns of The Gateway in The Network Layer, the worker
-context provenance of Worker Roles, and the causing request a handoff's
-stage names in Telemetry.
+context provenance of Worker Roles, the causing request a handoff's
+stage names in Telemetry, and the tenant isolation suite and its
+negative control in the Tests of Cross-Cutting Conventions.
 
 This group judges one question: does every operation know who is
 acting, for which tenant, with what authority, and is that knowledge
@@ -693,5 +694,26 @@ raise are among them; the body of each query beside its signature.
 it, which the enumerating test of CTX-12 cannot see; a cross-tenant
 case on the single read alone, with the list, the page, or the bulk
 write untried; a storage method added with no case of its own.
+
+**Severity.** high
+
+## CTX-31 The isolation suite is verified against a deliberate breach
+
+**Principle.** An isolation suite is worth what it catches, so a tenant
+predicate is taken out of one query, the suite is run and fails, and
+the predicate is put back. What the run showed, the query and what the
+suite reported, is recorded. Which mechanism takes the predicate out
+is the project's choice; that the control is run is not.
+
+**Source.** Cross-Cutting Conventions, Tests.
+
+**Look for.** The record of the last such run against the tenant
+isolation cases (CTX-30): which query lost its predicate, what the
+suite reported, and when.
+
+**Violation.** An isolation suite whose worth rests on its existence,
+with no run that removed a predicate; a run made and not recorded, so
+the next reader takes it on trust; a record showing the suite still
+passed with the predicate gone and nothing done about it.
 
 **Severity.** high

@@ -14,7 +14,10 @@ rules (one channel per app, envelopes, degraded mode) to `network`,
 the app container boot order to `contracts`, and the operator
 console's gating (the allowlist, the refusal of a tenant role or a
 portal flag) with the credential rules behind it to `context`
-(CTX-20). What a handoff carries across a process boundary, the
+(CTX-20). The tenant isolation suite in Tests, and the negative
+control that proves it catches a breach, it leaves to `context`
+(CTX-30, CTX-31), which owns the tenancy evidence end to
+end. What a handoff carries across a process boundary, the
 causing request and the link from a run's span to the causing trace,
 it leaves to `context` (CTX-29) and `async` (ASY-29).
 
@@ -903,24 +906,3 @@ the gateway's lines and absent from the worker's. (The filter that
 attaches them is DEL-19.)
 
 **Severity.** medium
-
-## DEL-40 The isolation suite is verified against a deliberate breach
-
-**Principle.** An isolation suite is worth what it catches, so a tenant
-predicate is taken out of one query, the suite is run and fails, and
-the predicate is put back. What the run showed, the query and what the
-suite reported, is recorded. Which mechanism takes the predicate out
-is the project's choice; that the control is run is not.
-
-**Source.** Cross-Cutting Conventions, Tests.
-
-**Look for.** The record of the last such run against the tenant
-isolation cases (CTX-30): which query lost its predicate, what the
-suite reported, and when.
-
-**Violation.** An isolation suite whose worth rests on its existence,
-with no run that removed a predicate; a run made and not recorded, so
-the next reader takes it on trust; a record showing the suite still
-passed with the predicate gone and nothing done about it.
-
-**Severity.** high
