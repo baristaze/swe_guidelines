@@ -6,6 +6,96 @@ which number.
 
 ## Unreleased
 
+## 0.10.0 (2026-09-20)
+
+The text closes the gaps an outside review of 0.8.0 found between what
+it promised and what its reference implementation could follow: the
+update copy said two things, the system rows had no declared shape,
+the sequence had a requirement and no mechanism, the split implied a
+wire hop it never argued for, and four rules were missing. Minor:
+rules are added and sharpened; the sentence that made a wire hop the
+shape of a split is reversed, and the changelog names it.
+
+### Added
+
+- `architecture.md`, "Naming Entities": a `Created` mixin
+  (`created_at` alone) for a row the platform writes for itself; the
+  outbox row, the idempotency marker, and the socket ticket compose
+  it, and what the platform stamps on such a row later is a field
+  named for what happened. `Trackable` builds on `Created`.
+  `OutboxRow(Identifiable, Created)` and
+  `IdempotencyMarker(Identifiable, Created)` are declared with their
+  fields, each in its namespace. Lenses `OM-03`, `OM-05`.
+- `architecture.md`, "Realtime at the Edge": the mechanism behind the
+  gapless `seq`: a cursor row per tenant in the `activity` role,
+  updated and returned inside the append's transaction, which is also
+  where the head `seq` the pong carries is read; never `MAX(seq) + 1`
+  under a unique index with a retry. Gapless is named as a decision
+  with its reason. Lens `NET-22`.
+- `architecture.md`, "Database Roles": the relay's price, four round
+  trips per write and six for a creating request, and its cheaper
+  first step, the relay from the sweep alone on a short interval.
+  Lens `STO-20`.
+- `architecture.md`, "Translation": a value object stored as JSON only
+  gains optional, defaulted fields; a rename or a removal is a
+  migration that rewrites the column before the class changes. Lens
+  `STO-25`.
+- `architecture.md`, "Defining ORM Classes": a unique key on a
+  `SoftDeletable` table is a partial unique index among the living,
+  the memory impl refuses only among the living, and a contract case
+  creates, deletes, and creates again. Lens `STO-26`.
+- `architecture.md`, "Auth: the Gateway Verifies, the Tenancy Domain
+  Owns": an external identity provider is one more credential kind,
+  verified at the gateway, keyed on issuer and subject in the tenancy
+  manager, and twinned locally. Lens `CTX-28`.
+- `architecture.md`, "The Gateway" and "Shape of a Worker": the
+  marker's four states and the worker's two fences as tables.
+- `architecture.md`, "Records of Decisions": every test the guideline
+  asks a build to hold is listed, the scaffold writes them, and an
+  existing tree copies them; a decision is named where it is made,
+  with its reason, and the alternatives are not listed.
+- `scripts/check_prose.py`, `make prose`: no paragraph of the
+  guideline over 200 words, a list item counted on its own.
+- `scripts/check_leaks.py`: the one spelling the guideline forbids in
+  a snippet, `model_copy(update={**`, is refused in the guideline,
+  the lenses, the skills, the docs, and the agents.
+
+### Changed
+
+- `architecture.md`, "Immutability" and "Shape of an Operation": the
+  update copy is one vocabulary. A copy that carries a dump, the
+  caller's fields above all, is `model_validate` over a dict, because
+  `model_copy` does not validate and leaves a dumped value object a
+  dict; `model_copy` is for values constructed of the field's own
+  type. The flagship snippet does what the tip says. Lenses `OM-10`,
+  `CON-19`; `arch-scaffold-entity` and the scaffold conventions
+  follow.
+- `architecture.md`, "Web Services as Scalability Units" and
+  "Direction of Calls": the scalability unit is a process, and the
+  first form of a split is the API image with a `namespaces` setting.
+  A call across namespaces stays a manager call across a split,
+  because the process holds the code and the roles; the remote impl
+  is for the process that does not, and a wire hop between two
+  processes sharing the OM and the database is a recorded decision.
+  This reverses the sentence that had the remote impl written at the
+  split. Lenses `NET-02`, `CON-14`; `arch-scaffold-service` follows.
+- `architecture.md`, "Identifiers": `new_id()` is `uuid.uuid7()` from
+  the standard library, which ships it since Python 3.14; the scaffold
+  installs no package for it.
+- `architecture.md`: the placeholder root package in every snippet is
+  `acme`, a name that shadows no standard-library module, as the tip
+  under "Layout Conventions" asks; `platform` remains the name of the
+  OM root class and the exception root.
+- `architecture.md`: ten paragraphs over 200 words are split at their
+  seams, and the closing section says the reference implementation
+  records each place it does not yet follow the text.
+- `skills/arch-scaffold-new`: the events namespace assigns `seq` from
+  the cursor row; step 8 sweeps the four most common misses of a
+  fresh scaffold before the review and names a high finding on a
+  fresh tree as a defect of the skill.
+- `docs/adopting.md`: how the checkable rules travel, as tests a
+  scaffold writes and an existing tree copies.
+
 ## 0.9.0 (2026-09-20)
 
 The branches carry the environments. This release names the smaller
