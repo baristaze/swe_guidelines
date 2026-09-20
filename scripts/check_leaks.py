@@ -58,10 +58,12 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("README.md", ["product"]),
     ("CONTRIBUTING.md", ["product"]),
     ("docs/*.md", ["product"]),
+    ("agents/*.md", ["product"]),
+    ("AGENTS.md", ["product"]),
 ]
 
 # file glob -> em-dashes are refused in every one of these
-EVERYWHERE = ["*.md", "lenses/*.md", "skills/*/*.md", "skills/*/*/*.md", "docs/*.md", ".github/**/*.md"]
+EVERYWHERE = ["*.md", "lenses/*.md", "skills/*/*.md", "skills/*/*/*.md", "docs/*.md", "agents/*.md", ".github/**/*.md"]
 
 
 def files(root: Path, globs: list[str]) -> list[Path]:

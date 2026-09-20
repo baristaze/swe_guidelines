@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    name: markdown, lenses, leaks, links, toc, version, skills, tests, plugin
+    name: markdown, lenses, leaks, links, toc, version, skills, agents, tests, plugin
     runs-on: ubuntu-26.04
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.

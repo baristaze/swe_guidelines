@@ -6,6 +6,98 @@ which number.
 
 ## Unreleased
 
+## 0.8.0 (2026-09-19)
+
+An outside review of 0.7.0, read against the reference implementation.
+This release closes the protocols the text prescribed in detail and
+left open at one step each: the idempotency marker gains an attempt
+token, a refused lease renewal cancels at once, a create that issues a
+secret has a rerun, the update copy starts from the stored row, and
+"above" is defined for roles. It resolves the places where two rules
+could not both be followed, names the tests that make two claims of the
+type system true, and repairs the lens catalog where it had added,
+duplicated, or outgrown the text it restates. Minor: rules are added
+and sharpened; none is reversed.
+
+### Changed
+
+- `architecture.md`, opening: the audience names the agent that writes
+  most of the code and the person who reads it, since the second impl
+  of every interface and the reference implementation's size rest on
+  that assumption.
+- `architecture.md`, "OpContext": above means the permission set; a
+  role is at most another when its permissions are a subset, a rank is
+  derived from the permission table or held to it by a test, and the
+  role reserved for services is not a rung: every operation that
+  issues a credential refuses it by name. Lens `CTX-03`.
+- `architecture.md`, "Stages" and "The Operator Context": the type is
+  the fence at call sites; at construction sites a unit test enumerates
+  every site that constructs a stage above the request stage, since a
+  stage is an ordinary class and anything can call its constructor.
+  Lens `CTX-05`.
+- `architecture.md`, "Shape of an Operation": the copy on update
+  starts from the stored row and `PROVENANCE_FIELDS` (`created_at`,
+  `created_by`, `deleted_at`, `deleted_by`, a constant beside the
+  mixins) stay as stored; a partial update is the router's translation
+  with an absent field unchanged and an explicit null cleared, the
+  request type's contract and no impl's decision; a create that issues
+  a secret re-mints it on the row its rerun finds and returns a fresh
+  `Issued...View` with the same id. Lenses `CON-19` and `NET-25`.
+- `architecture.md`, "The Gateway": the idempotency marker carries an
+  attempt token; a take-over stamps one of its own, and `finish` and
+  the release are conditional on it in the statement, so an attempt
+  that ran past the pending lease can neither finish nor release the
+  marker a retry holds. Lens `NET-24`.
+- `architecture.md`, "Shape of a Worker": a renewal refused with
+  `Conflict` cancels the task at once; the half-lease rule is for
+  failures that are not answers. Lens `ASY-23`.
+- `architecture.md`, "Operations Without a Principal": a sweep has two
+  shapes and who acts decides which; a service context is minted for
+  the tenant on the system user, never bound to a member, so a tenant
+  whose members have all left is still swept. Lens `CTX-12`.
+- `architecture.md`, "Exceptions": infra has a root of its own,
+  `InfraException`, with the same two fields, presented alike by the
+  gateway and the worker loop; the import direction and the one root
+  no longer contradict. Lens `DEL-29`.
+- `architecture.md`, "Pure Rules": a rule the engine must evaluate
+  inside a statement is spelled once more there, named as such, and
+  held to the function by the contract case. Lens `OM-15`.
+- `architecture.md`, "Clients Live in One Place": every outbound call
+  carries a timeout from settings, one per client. Lens `NET-26`.
+- `architecture.md`, "API Access": the bearer lives in memory and the
+  tab's session storage, never local storage, and the distribution
+  sends a `Content-Security-Policy` declared in Terraform. Lens `DEL-30`.
+- `architecture.md`, "Tests": the named atomic methods are raced in a
+  contract case, two callers at once and exactly one wins. Lens
+  `DEL-28`.
+- `architecture.md`, "Storage Root": the two roots are
+  `StoragePostgresImpl` and `StorageMemoryImpl`, named like every impl.
+  "Database Roles": a role's move to its own engine is a copy with a
+  window and a cut-over of one URL, not a URL change. "Auth": a lookup
+  reads the row by the digest; the constant-time claim is gone.
+- `lenses/`: `CON-17` matches "Shape of an Operation" (the caller
+  constructs whole, the manager's copy sets the actor); `DEL-18` lists
+  `NotAuthenticated`; `CON-15` is medium, since a router that decides
+  is a shape and not a breach of the classes `high` is reserved for;
+  the database-backed bus lives in `ASY-10` alone and the file secrets
+  refusal in `DEL-06` alone; `STO-17`, `NET-06`, and `ASY-17` are
+  split so each principle is one or two sentences; `CON-20` covers
+  the roots built whole, which no lens checked; `STO-19` to `STO-21`,
+  `NET-27`, `NET-28`, and `ASY-24` hold the split halves; `OM-03` and
+  `STO-10` name `PROVENANCE_FIELDS` and the two roots.
+- `skills/`: the worker scaffold's claim is one method, its tenant-less
+  storage methods join the exceptions test, the dead letter's audit
+  entry has a namespace `arch-scaffold-new` creates; the service
+  scaffold's router calls one manager and reads the current entity for
+  a partial update; the app scaffold keeps the bearer in session
+  storage and declares the policy; `arch-upgrade-deps` adopts a release
+  once a patch release sits behind it.
+- `scripts/`: the leak check reads `agents/`; `check_agents.py` holds
+  `agents/arch-reviewer.md` to the review template, and found the agent
+  one procedure step short. `README.md` lists
+  what `make check` runs; the pull request template no longer asks for
+  a rule that is gone.
+
 ## 0.7.1 (2026-09-19)
 
 An outside review of 0.7.0. This release takes the findings where the
@@ -67,6 +159,70 @@ the guideline.
   the file that proved it, so a report carries its evidence.
 - `architecture.md`, "Namespace Shape": a doubled decorator removed
   from the storage interface snippet.
+- `architecture.md`, "Shape of a Worker": every claim mints a claim
+  token the claim returns, and completion, release, deferral, and
+  renewal condition on it in the statement, not on the worker's name,
+  since one worker can hold one item twice across a requeue.
+  Lens `ASY-26`.
+- `architecture.md`, "The Work Queue": enqueue is a create, the insert
+  that reports an existing id, so a retried enqueue never resets a
+  claim; the manager's copy stamps the actor, the timestamps, the
+  status, and the attempts, and clears every claim field, whatever the
+  caller sent. Lens `ASY-25`.
+- `architecture.md`, "Shape of an Operation": the outcome the marker
+  stores for a create that issued a secret is the view with the secret
+  absent; a replay answers with the row and no secret and says so in
+  its header. Lens `NET-31`.
+- `architecture.md`, "The Gateway" and "Direction of Calls": a router
+  calls one operation of its service impl, which calls one manager,
+  from the first day, so the split is a wiring change and not a
+  rewrite of the routers; the in-process impl exists from the start
+  and the remote one is written at the split. Lenses `CON-14` and
+  `CON-15`; the service scaffold follows.
+- `architecture.md`, "Multiple impls per interface": every unique key
+  the schema declares has a contract case, so the memory impl refuses
+  what the engine refuses. Lens `DEL-28`.
+- `architecture.md`, "Clients Live in One Place": the gateway bounds a
+  request with a deadline from settings and a work handler is bounded
+  by its lease; nothing runs unbounded. Lenses `NET-26` and `ASY-17`.
+- `architecture.md`, "Naming Entities": a mixin is composed only where
+  a manager operation exercises it, which `OM-05` restated before the
+  text said it. "Migrations": two migrations of one role in the same
+  minute collide on the stamp; the later waits a minute or takes a
+  suffix. "Identifiers": the ids in a log line sort by creation time;
+  nobody eyeballs a timestamp out of hex.
+- `lenses/`: every principle is at most sixty words and every Look for
+  and Violation at most three sentences, as `lenses/README.md` now
+  states and `check_lenses.py` holds; a lens that held two rules is
+  split (`ASY-16`, `ASY-20`, `CTX-03`, `CTX-05`, `CON-17`, `CON-19`,
+  `OM-10`, `OM-15`, `NET-17`, `STO-16`, `STO-18`, `DEL-02`, `DEL-04`,
+  `DEL-20`, `DEL-28`), the second rule taking the next id of its
+  group. Rules with no lens gain one: the data tier splits by role
+  (`NET-29`), operator writes through the operator plane's helper
+  (`CTX-24`), optional filters as keyword parameters (`CTX-10`), the
+  owner-only secrets file (`ASY-28`). `NET-12` is medium. `OM-14`
+  exempts value objects and read models. `DEL-26`, `STO-21`, `STO-24`,
+  and `ASY-03` ask for what a diff or a runbook shows, not for live
+  data. Ownership between groups is stated in each file's header:
+  async owns the sweep's duties, context owns operator gating. 186
+  lenses.
+- `scripts/`: `slug` keeps underscores, as GitHub anchors do;
+  `check_lenses.py` holds the word, sentence, and column limits and
+  the lens count the README states; `check_skills.py` holds the five
+  scaffold sections in order; the leak check reads `AGENTS.md`, which
+  names the product list as the regression guard it is. `README.md`
+  says `make check` needs pytest and npx.
+- `skills/`: `arch-review-full` defines the merge on a tie, what
+  "applied" counts, the fallback's path substitution, and what `all`
+  costs; `arch-upgrade-deps` raises caps one library at a time and
+  says `make reset` after a database major; `arch-new-aspect` agrees
+  with `CONTRIBUTING.md` on versioning, is not model-invoked, and has
+  a short description; `arch-deviate` dates the record today; the
+  worker scaffold carries the claim token and the create on enqueue;
+  the service scaffold the request deadline and the stripped outcome;
+  `arch-scaffold-new` may run the migration check. `AGENTS.md` says
+  what `uv run` and `pnpm run` grant and that the tools form is house
+  style.
 
 ## 0.7.0 (2026-09-19)
 
@@ -85,9 +241,9 @@ less than `OpContext` declares less.
   `OpContext`, and `OperatorContext` are concrete frozen types, each a
   subclass of the stage it refines, each produced by exactly one
   transition on the tenancy manager (`authenticate_login`,
-  `exchange_login`, `authenticate`, `admit_operator`, the claim, the
-  service contexts of a sweep); a function that takes a stage relies
-  on its invariant instead of checking it again, and the stage in a
+  `authenticate`, `admit_operator`, the claim, the service contexts
+  of a sweep); a function that takes a stage relies on its invariant
+  instead of checking it again, and the stage in a
   signature is what fences which operations a holder can call, with
   no bundle of managers per stage. "Scopes": `RequestScope`,
   `TenantScope`, `ActorScope`, `CredentialScope`, and

@@ -31,11 +31,10 @@ service.
 ## OM-02 Wire and table shapes are projections
 
 **Principle.** The OM is the source of truth for entities; the wire
-format and the table layout are projections derived from it, and
-neither changes the OM to suit itself. Tenant entities carry no
-`org_id`; tenancy is a storage concern. The one exception is an entity
-whose readers have no tenant, which carries `org_id` as a model field
-so the reader knows whose it is.
+format and the table layout are projections of it, and neither changes
+the OM to suit itself. Tenant entities carry no `org_id`; tenancy is a
+storage concern. The one exception is an entity whose readers have no
+tenant, which carries `org_id` so the reader knows whose it is.
 
 **Source.** The Domain as the Source of Truth; The Storage Layer,
 Defining ORM Classes.
@@ -59,21 +58,25 @@ operations read; an entity read across every tenant without it.
 **Principle.** Orthogonal traits are captured by small mixins on a
 fieldless root, each declaring exactly the fields the guideline lists:
 `Identifiable` (`id`), `Named` (`name`), `Trackable` (`created_at`,
-`updated_at`, `created_by`, `updated_by`), and `SoftDeletable` (`deleted_at`,
-`deleted_by`). A new trait is a new mixin, not a field on an existing
-one. The `new_id()` and `utcnow()` helpers live in the same base
-module.
+`updated_at`, `created_by`, `updated_by`), and `SoftDeletable`
+(`deleted_at`, `deleted_by`). A new trait is a new mixin, not a field
+on an existing one. The `new_id()` and `utcnow()` helpers and
+`PROVENANCE_FIELDS` live in the same base module.
 
 **Source.** Naming Entities.
 
 **Look for.** The base module of the OM; the fields each mixin
 declares; whether entities redeclare a mixin's fields locally; whether
-`new_id()` and `utcnow()` are the helpers used to construct entities.
+`new_id()` and `utcnow()` are the helpers used to construct entities;
+what `PROVENANCE_FIELDS` names (`created_at`, `created_by`,
+`deleted_at`, `deleted_by`).
 
 **Violation.** A field added to one of the listed mixins instead of a
 new mixin for the new trait; an entity declaring its own `created_at`
 next to `Trackable`; a root class that holds fields; a local
-`datetime.now()` or id factory used in place of the base helpers.
+`datetime.now()` or id factory used in place of the base helpers; a
+`PROVENANCE_FIELDS` declared per namespace or naming other fields than
+the four.
 
 **Severity.** medium
 
@@ -93,11 +96,13 @@ ordering that departs from identity, label, lifecycle, cross-cutting.
 
 **Severity.** low
 
-## OM-05 Inheritance expresses abstraction, not reuse
+## OM-05 A mixin is a promise, composed only where an operation exercises it
 
-**Principle.** Each mixin is a promise about what the entity is. An
-entity opts into a trait by adding the mixin and opts out by leaving it
-off. Inheritance in the OM is never a way to share code.
+**Principle.** Each mixin is a promise about what the entity is, and an
+entity composes only the mixins a manager operation exercises:
+`Trackable` where an update exists, `SoftDeletable` where a delete
+does. An entity opts into a trait by adding the mixin and opts out by
+leaving it off. Inheritance in the OM is never a way to share code.
 
 **Source.** Naming Entities.
 
@@ -152,15 +157,15 @@ or context type that relaxes the setting so a caller's typo passes.
 **Principle.** An entity has an identity and is stored. A value object
 is a typed piece of an entity with no identity, stored inline with its
 owner. A read model is a shape a manager returns that is never written
-back as truth: a persisted copy of one (a cache entry, a reporting
-mirror, a projection table) is derived and rebuildable. The mixins
-tell them apart.
+back as truth: a persisted copy of one is derived and rebuildable. The
+mixins tell them apart.
 
 **Source.** Naming Entities, Entities, Value Objects, and Read Models.
 
 **Look for.** Classes on the OM base chain that carry `Identifiable`;
 classes returned by managers that are not entities; whether read models
-compose mixins or get persisted.
+compose mixins or get persisted (a cache entry, a reporting mirror, a
+projection table).
 
 **Violation.** A value object with an `id` and its own table; a read
 model composed with `Identifiable`, persisted as truth, or read as
@@ -193,32 +198,24 @@ manager and the storage.
 
 **Principle.** OM entities are frozen snapshots. An update takes the
 entity, produces a modified copy, and passes the copy to a write
-method. No layer mutates an entity after construction. Fields are
-tuples and frozen models, never `list` or `dict`; a mapping field is
-`FrozenMapping`, a `Mapping` whose validator wraps the dict in a
-`MappingProxyType`, because a frozen model with a bare `Mapping` still
-holds a mutable dict; its empty default is validated too, because
-pydantic does not validate a default. A copy that carries caller
-input is rebuilt from
-a dict (`model_validate({**current.model_dump(), **changes})`), because
-`model_copy` does not validate and `model_validate` hands an instance
-back untouched.
+method; nothing mutates an entity once constructed. A copy that
+carries caller input is rebuilt from a dict
+(`model_validate({**current.model_dump(), **changes})`): `model_copy`
+does not validate, and `model_validate` hands an instance back
+untouched.
 
 **Source.** Naming Entities, Immutability.
 
 **Look for.** The root's frozen configuration; assignment to entity
-attributes anywhere; the update path in managers; `list`, `dict`, or
-bare `Mapping` fields on the chain; a `model_copy(update=...)` fed
-from a request; a `model_validate` called on an instance.
+attributes anywhere; the update path in managers; a
+`model_copy(update=...)` fed from a request; a `model_validate` called
+on an instance.
 
 **Violation.** `order.status = ...` in a manager or service; a class on
 the chain that unfreezes itself; an update that reaches into a nested
-value object to change it in place; a `list` field appended to through
-the snapshot; a bare `Mapping` field holding the dict pydantic built;
-a `FrozenMapping` whose default is a plain dict for want of
-`validate_default`;
-caller input copied into an entity with no validation, or passed to
-`model_validate` as the instance it already is.
+value object to change it in place; caller input copied into an entity
+with no validation, or passed to `model_validate` as the instance it
+already is.
 
 **Severity.** medium
 
@@ -264,13 +261,12 @@ minted inside a storage impl.
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 
-**Principle.** `EMPTY_UUID` is the platform's own reference: the
+**Principle.** `EMPTY_UUID` is the platform's reference: the
 system scope on infra calls and the value of a required reference no
-tenant and no person owns (`created_by` on a row the platform itself
-wrote), which keeps the column `NOT NULL` and the index simple. Both
-readings say the same thing. A reference that is genuinely optional is
-`None`, never `EMPTY_UUID`. Its use as the system scope on infra calls
-is judged by `context`.
+tenant and no person owns (`created_by` on a row the platform wrote),
+which keeps the column `NOT NULL` and the index simple. A reference
+that is optional is `None`, never `EMPTY_UUID`. Its use as the system
+scope is judged by `context`.
 
 **Source.** Naming Entities, Identifiers.
 
@@ -299,10 +295,11 @@ interface is defined and whether the package root re-exports it; where
 entity classes and manager impls live.
 
 **Violation.** A namespace whose interface can only be imported from a
-deep path; entity classes next to the manager impl; a `types/` folder
-holding an entity that no manager interface in the same namespace
-accepts or returns; a product swimlane living as a sub-folder of
-another namespace's `types/`.
+deep path; entity classes next to the manager impl; an entity in
+`types/` that no manager accepts or returns (a value object or a read
+model is exempt, since it travels inside an entity or is returned by a
+manager); a product swimlane living as a sub-folder of another
+namespace's `types/`.
 
 **Severity.** medium
 
@@ -344,5 +341,46 @@ namespace.
 module; audit rows written by a helper function with no storage
 interface; credential handling spread across services with no owning
 namespace.
+
+**Severity.** medium
+
+## OM-17 Entity fields are tuples, frozen models, and FrozenMapping
+
+**Principle.** Fields are tuples and frozen models, never `list` or
+`dict`. A mapping field is `FrozenMapping`, a `Mapping` whose validator
+wraps the dict in a `MappingProxyType`, because a frozen model with a
+bare `Mapping` still holds a mutable dict; its empty default is
+validated too, because pydantic does not validate a default.
+
+**Source.** Naming Entities, Immutability.
+
+**Look for.** `list`, `dict`, or bare `Mapping` fields on the chain;
+the validator behind `FrozenMapping`; the default of every mapping
+field and whether `validate_default` is set on it.
+
+**Violation.** A `list` field appended to through the snapshot; a bare
+`Mapping` field holding the dict pydantic built; a `FrozenMapping`
+whose default is a plain dict for want of `validate_default`.
+
+**Severity.** medium
+
+## OM-18 A rule spelled in a statement is named and held to the function
+
+**Principle.** A rule the engine must evaluate inside a statement, a
+filter or an ordering, is spelled once more in that statement, named
+as such, and the contract case that runs both impls holds the two
+spellings together; everything a rule decides before or after the
+statement calls the function.
+
+**Source.** Namespaces as Swimlanes, Pure Rules.
+
+**Look for.** A rule spelled inside a statement, whether it names the
+function it restates, and the contract case that runs both impls over
+it.
+
+**Violation.** A rule spelled in a statement with no name pointing at
+the function, or with no contract case holding the two spellings
+together; a rule decided before or after the statement re-implemented
+instead of calling the function.
 
 **Severity.** medium

@@ -10,6 +10,11 @@ def test_slug_lowercases_drops_punctuation_and_hyphenates():
     assert slug("  Park vs. fail  ") == "park-vs-fail"
 
 
+def test_slug_keeps_underscores_the_way_github_does():
+    assert slug("CTX-13 The system scope is EMPTY_UUID") == "ctx-13-the-system-scope-is-empty_uuid"
+    assert slug("`snake_case` heading") == "snake_case-heading"
+
+
 def test_headings_skip_fenced_code_and_keep_levels():
     text = "# One\n\n```\n# not a heading\n```\n\n## Two\n\n### Three  \n"
     assert headings(text) == [(1, "One"), (2, "Two"), (3, "Three")]

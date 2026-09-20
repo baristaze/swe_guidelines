@@ -65,3 +65,35 @@ def test_unlisted_and_missing_files_fail(repo, lenses, capsys):
     out = capsys.readouterr().out
     assert "lenses/extra.md is not listed" in out
     assert "lists ctx -> context.md, file missing" in out
+
+
+def test_stated_count_must_equal_the_catalog(repo, lenses, capsys):
+    repo.edit("README.md", "2 lenses", "3 lenses")
+    assert lenses.main() == 1
+    assert "README.md:3: says 3 lenses, the catalog has 2" in capsys.readouterr().out
+    repo.edit("README.md", "3 lenses", "2 lenses")
+    repo.edit("lenses/README.md", "Ids are the group prefix", "The 5 lenses here. Ids are the group prefix")
+    assert lenses.main() == 1
+    assert "lenses/README.md" in capsys.readouterr().out
+
+
+def test_principle_over_sixty_words_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 61)
+    assert lenses.main() == 1
+    assert "Principle is 61 words, limit 60" in capsys.readouterr().out
+
+
+def test_four_sentences_in_look_for_or_violation_fail(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.",
+              "**Violation.** One. Two. Three. Four.")
+    assert lenses.main() == 1
+    assert "Violation is 4 sentences, limit 3" in capsys.readouterr().out
+    repo.edit("lenses/om.md", "**Violation.** One. Two. Three. Four.",
+              "**Violation.** One; two; three; four `x.y`. Five.")
+    assert lenses.main() == 0
+
+
+def test_line_wider_than_eighty_columns_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Look for.** Tables holding two entities.", "**Look for.** " + "x" * 70)
+    assert lenses.main() == 1
+    assert "84 columns, limit 80" in capsys.readouterr().out

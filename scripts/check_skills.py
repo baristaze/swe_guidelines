@@ -18,6 +18,8 @@ Rules:
   and nothing but a comment follows the closing quote;
 - an unquoted value contains no ": " or " #", and does not start with a
   YAML indicator character, so strict YAML loaders accept it;
+- every arch-scaffold-* skill has the five scaffold sections, `## Input`,
+  `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
 - no em-dashes.
 
 Exit status is non-zero on any failure. Standard library only.
@@ -40,6 +42,8 @@ TOOL = re.compile(r"^[A-Za-z]+(\([^()]*\))?$")
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = "0abtnvfre \"/\\N_LP\t"  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
+SCAFFOLD_SECTIONS = ("Input", "Created", "Changed", "Procedure", "Output")
+SECTION = re.compile(r"^## (.+?)\s*$", re.M)
 INDICATORS = ("'", "[", "{", "&", "*", "!", "|", ">", "%", "@", "`", "#", "-", "?", ",", "]", "}")
 
 
@@ -160,6 +164,12 @@ def main() -> int:
             target = (folder / ref).resolve()
             if not target.exists():
                 errors.append(f"{rel}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
+        if name.startswith("arch-scaffold-"):
+            found = [h for h in SECTION.findall(text) if h in SCAFFOLD_SECTIONS]
+            if found != list(SCAFFOLD_SECTIONS):
+                errors.append(
+                    f"{rel}: scaffold sections are {found}, expected {list(SCAFFOLD_SECTIONS)} in that order"
+                )
         if name.startswith("arch-review-") and name != "arch-review-full":
             group = name.removeprefix("arch-review-")
             if group not in groups:

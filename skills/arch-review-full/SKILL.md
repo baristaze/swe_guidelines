@@ -18,7 +18,10 @@ reads it (see `${CLAUDE_SKILL_DIR}/../arch-review-om/SKILL.md`, Input).
 Resolve it once, here, into a concrete description (the list of files,
 or the range) and hand the same description to every reviewer so the
 seven reports cover the same ground. An empty scope is reported as
-"nothing to review" and the skill stops.
+"nothing to review" and the skill stops. `all` costs seven full reads
+of the repository, one per reviewer, and on a large tree takes minutes
+and a large share of each reviewer's context; a path or a range is the
+cheaper question whenever the change is narrower than the tree.
 
 ## Procedure
 
@@ -32,7 +35,9 @@ seven reports cover the same ground. An empty scope is reported as
    absolute path of the guideline. Use the `arch-reviewer` agent
    (`swe-guidelines:arch-reviewer` when installed as the plugin). When
    no such agent exists, use a general-purpose agent and give it the
-   text of `${CLAUDE_SKILL_DIR}/../arch-review-<group>/SKILL.md`. When
+   text of `${CLAUDE_SKILL_DIR}/../arch-review-<group>/SKILL.md` with
+   every `${CLAUDE_SKILL_DIR}` in it substituted by the absolute path
+   first, since the agent has no such variable. When
    subagents are not available at all, run the seven group procedures
    one after another in this session. The groups:
    - `arch-review-om`
@@ -49,9 +54,17 @@ seven reports cover the same ground. An empty scope is reported as
    - Concatenate all findings and sort by severity (high, medium, low),
      then by file and line.
    - When two groups flag the same `path:line`, keep both lens ids on
-     one line; the fix text comes from the higher-severity one.
+     one line; the fix text comes from the higher-severity one. At
+     equal severity the group whose header partition (the opening
+     paragraphs of its lens file) owns the rule wins the fix text, and
+     the other id stays on the line.
+   - Two findings whose fix names the same symbol (the same class,
+     method, or setting) merge into one line the same way, whatever
+     their `path:line`; the line named is the higher-severity one's.
    - Count applied, passed, findings, unverified, and not-applicable
-     lenses across groups.
+     lenses across groups. Applied is passed plus findings plus
+     unverified; applied plus not applicable is the size of the
+     catalog, so every lens is counted once.
 6. Write the merged report below. Then, if the report has three or
    more `high` findings, say so in one sentence after the report,
    with the count. Nothing else.
