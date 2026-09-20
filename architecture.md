@@ -23,7 +23,12 @@ It is written for a small team that starts with one process and one
 database and does not want a rewrite when it grows. Most of the rules
 exist so that the next step, when load asks for it, is a deployment
 change and not a code change, up to the limits [Scalability by
-Design](#scalability-by-design) names.
+Design](#scalability-by-design) names. It assumes that an agent writes
+most of the code and a person reads it. Several rules, the second impl
+of every interface above all, are cheap on that assumption and a tax
+without it, and the reference implementation is the price in full: a
+to-do app carries the whole shape. That is the audience, and it is
+said here so nobody discovers it in the middle.
 
 ## Contents
 
@@ -200,6 +205,8 @@ class SoftDeletable(Platform):
     deleted_at: datetime | None = None
     deleted_by: UUID | None = None
 
+PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "deleted_by"})  # stay as stored on update
+
 EMPTY_UUID = UUID(int=0)
 ```
 
@@ -369,7 +376,11 @@ arithmetic, eligibility checks, aggregation rules. These functions take
 values and return values; they read no storage, consult no clock, and
 open no settings. That makes them unit-testable without infrastructure
 and shareable: when two storage impls must produce the same aggregate,
-both call the same function and cannot drift apart.
+both call the same function and cannot drift apart. A rule the engine
+must evaluate inside a statement, a filter or an ordering, is spelled
+once more in that statement, named as such, and the contract case that
+runs both impls is what holds the two spellings together; everything a
+rule decides before or after the statement calls the function.
 
 > **Principle:** A namespace's rules are pure functions in one module.
 > Storage impls and manager impls call them; nothing re-implements them.
@@ -586,7 +597,13 @@ class OpContext(RequestContext):
 
 Permissions are a pure function of role, declared in one table in the
 tenancy namespace. A credential never carries a role above its
-issuer's. Teams are a second authorization axis inside a tenant: an
+issuer's, and above means the permission set: a role is at most another
+when its permissions are a subset of the other's, and a rank, when one
+exists for comparison, is derived from the permission table or held to
+it by a unit test. A role reserved for services is not a rung on that
+ladder: no credential a person mints carries it, and every operation
+that issues a credential refuses it by name, whatever the rank says.
+Teams are a second authorization axis inside a tenant: an
 entity may be owned by a team, and visibility rules consult
 `ctx.in_team`. The context carries ids and facts, never entities: a
 manager that needs the user loads it, so a role change is seen on the
@@ -684,6 +701,12 @@ how a sign-in reaches a tenant without one stage refining the other. A
 transition builds a new object from the stage below and the evidence
 it consulted; it never copies the stage below with changed fields, and
 nothing but a transition constructs a stage above the request stage.
+The type is the fence at every call site; at the construction sites it
+is a test: a unit test enumerates every site that constructs a stage
+above the request stage and fails when a new one appears, the way the
+exceptions test enumerates the tenant-less storage methods. A stage is
+an ordinary class, and anything can call its constructor; the test is
+what makes "only a transition" hold.
 
 The request stage is minted at the edge, once: by the gateway (see [The
 Gateway](#the-gateway)) for every request and every socket, by the
@@ -837,7 +860,8 @@ refuses otherwise (see [Stages](#stages)).
 
 `OperatorContext` has no `org_id`, on purpose. Operator managers take it
 and nothing else; tenant managers take `OpContext` and nothing else. The
-type system, not convention, keeps the two planes apart: an operator
+type system at every call site, and the construction-site test at the
+few places a stage is built, keep the two planes apart: an operator
 route cannot act inside a tenant, and a tenant route cannot reach the
 operator plane. The operator plane is described further in [The
 Gateway](#the-gateway) and [The Operator Console](#the-operator-console).
@@ -876,8 +900,11 @@ class WarehouseManagerImpl(WarehouseManagerInterface):
 
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
-        await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
-        updated = warehouse.model_copy(update={"updated_at": utcnow(), "updated_by": ctx.user_id})
+        current = await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
+        updated = current.model_copy(update={
+            **warehouse.model_dump(exclude=PROVENANCE_FIELDS),  # the caller's fields, never who made or deleted it
+            "updated_at": utcnow(), "updated_by": ctx.user_id,
+        })
         row = OutboxRow(
             id=new_id(), org_id=ctx.org_id, kind="inventory.warehouse.updated",
             target_id=updated.id, payload=updated.model_dump(mode="json"),
@@ -897,9 +924,24 @@ returns the row as stored: ids are minted above storage, so the only
 way to present one twice is a retry, and a retry must not create
 twice. The insert reports the existing id and the manager reads the
 row back; there is no check before the write and no window between
-the two (see [A Storage Impl](#a-storage-impl)). The manager sets
-`updated_at` and `updated_by` on every update and `deleted_at` /
-`deleted_by` on a soft delete, always by copy.
+the two (see [A Storage Impl](#a-storage-impl)). A create that issues
+a secret is the one case where the row as stored is not enough: the
+secret is stored as a digest and shown once. Its rerun finds the row,
+re-mints the secret on it in the same named atomic write, and returns
+a fresh `Issued...View` with the same id. The first secret reached no
+one, since the marker never stored an outcome, and the row keeps its
+identity. The manager sets `updated_at` and `updated_by` on every
+update and `deleted_at` / `deleted_by` on a soft delete, always by
+copy. The copy on update starts from the stored row: the caller's
+entity supplies the fields a caller may change, and `PROVENANCE_FIELDS`,
+a constant beside the mixins naming `created_at`, `created_by`,
+`deleted_at`, and `deleted_by`, stay as stored, so no caller rewrites
+who made a row or brings a deleted one back by sending an entity. A
+partial update is the router's translation: it reads the current
+entity, copies the request's set fields onto it, an absent field
+meaning unchanged and an explicit null meaning cleared where the field
+is optional, and hands the whole entity to the manager. That policy is
+the request type's contract, and no impl decides it.
 Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does. Last writer wins by default;
 an entity whose concurrent edits matter carries a `version`, the copy
@@ -953,6 +995,17 @@ the identity stage, a claim returns the `OpContext` under which the
 work runs, and a sweep asks for one service context per live tenant.
 There are very few of them, and a test names each one, so a new
 operation that takes the request stage is a decision and not a slip.
+
+A sweep has two shapes, and who acts decides which. A sweep that
+performs a tenant operation, a purge, a requeue that audits, holds one
+service context per live tenant and calls the manager as any caller
+would. Bookkeeping with no principal, relaying the outbox, expiring a
+lease, reads across tenants in one statement and gets the tenant back
+with each row (see [Namespace Shape](#namespace-shape)). A service
+context is minted for the tenant, not for a member: it carries the
+tenant, the role reserved for services, and the system user
+(`EMPTY_UUID`) as its user id, so it costs one read per page of
+tenants and a tenant whose members have all left is still swept.
 
 One more kind takes a tenant id in place of a context: the handoff of
 a row the tenant's own write already produced. The outbox relay of
@@ -1095,8 +1148,10 @@ travels back with each row. These are the documented exceptions to the
 
 ### Storage Root
 
-Storage implementations are assembled behind a single root, `Storage`,
-which implements `StorageInterface` and lives at `platform.om.storage`:
+Storage implementations are assembled behind a single root that
+implements `StorageInterface` and lives at `platform.om.storage`, with
+one impl per engine, `StoragePostgresImpl` and `StorageMemoryImpl`,
+named like every other impl:
 
 ``` python
 class StorageInterface(ABC):
@@ -1337,8 +1392,10 @@ single source of truth. The ORM base derives each table's schema from
 it, each role has its own connection URL that defaults to the shared
 one, and the storage root opens one engine and pool per distinct URL.
 The default deployment is one database holding every role schema; when
-metrics demand it, a role moves to its own database by changing one
-URL and copying one schema.
+metrics demand it, a role moves to its own database: the schema is
+copied under replication or a dual write until the copy is current,
+and the cut-over is one URL. The copy has a window and a rehearsal;
+the code does not change.
 
 Rules that make the move safe, each checked by a unit test:
 
@@ -1909,19 +1966,27 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Edge idempotency.** A creating `POST` accepts an
     `Idempotency-Key` header. `begin` writes a pending marker per
     tenant and principal under the key, carrying a digest of the
-    request and the id the create will use, minted before the marker;
-    `finish` stores the outcome on it, and a retry replays the outcome,
-    using the same storage primitive the queue handlers use. A key
-    presented with another digest is refused. Only an outcome the
-    client cannot change by retrying is stored: a refusal (a `4xx`) is
-    replayed, and a failure (a `5xx`) releases the marker, so the
-    retry runs again on the same id instead of replaying the failure
-    for good. A pending marker older than the pending lease, an option
-    of the idempotency manager, was abandoned by a crash between the
-    marker and its outcome; the next retry takes it over in one
-    conditional write and runs the request again with the marker's id,
+    request, the id the create will use, minted before the marker, and
+    an attempt token minted with it; `finish` stores the outcome on it,
+    and a retry replays the outcome, using the same storage primitive
+    the queue handlers use. A key presented with another digest is
+    refused. Only an outcome the client cannot change by retrying is
+    stored: a refusal (a `4xx`) is replayed, and a failure (a `5xx`)
+    releases the marker, so the retry runs again on the same id
+    instead of replaying the failure for good. A pending marker older
+    than the pending lease, an option of the idempotency manager, was
+    abandoned by a crash between the marker and its outcome, or
+    belongs to an attempt still running past its lease; the next retry
+    takes it over in one conditional write that stamps an attempt
+    token of its own and runs the request again with the marker's id,
     and because a create whose id is already written returns the row
-    as stored, the rerun cannot duplicate what the crash left behind.
+    as stored, the rerun cannot duplicate what the first attempt left
+    behind. `finish` and the release are conditional on the attempt
+    token, in the statement itself, so the attempt that lost the
+    marker can neither finish it with its own outcome nor release the
+    marker the retry now holds; it is refused, like a worker whose
+    lease has passed, and whatever it wrote is the row the retry
+    found.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O; `/readyz` awaits the storage healthcheck; `/metrics` exposes
     counters and histograms. All three sit outside the versioned API.
@@ -1956,7 +2021,8 @@ A password is stored as a memory-hard hash (scrypt or argon2) under a
 salt of its own. An API key, a session token, and a socket ticket are
 stored as their SHA-256 digest and shown once, in the `Issued...View`
 that minted them (see [Public Types](#public-types)); a lookup hashes
-the presented value and compares digests in constant time.
+the presented value and reads the row by the digest, and the secret's
+entropy is the defense.
 
 ### Intra-Service Communication
 
@@ -2103,7 +2169,10 @@ transport in one small hand-written client that knows the error
 envelope and the request id. A Python consumer imports one typed client
 package built the same way. When the document changes, every consumer
 picks up the new shapes on the next build; the import path is the
-version.
+version. Every outbound call carries a timeout: the transport client
+reads one from settings, one per client, and no call goes out without
+one, so a deadline a team sets later has a place to land and a
+downstream that hangs cannot hold a replica's whole pool.
 
 ### Direction of Calls
 
@@ -2510,8 +2579,12 @@ flowchart LR
 
 A worker runs several items at once, each as its own task, up to a
 capacity it advertises. Each running item renews its lease on a timer.
-A lease that could not be renewed for half its length cancels its own
-task before the lease expires. That is the first fence. The second is
+A renewal refused with `Conflict`, because another worker holds the
+item now, cancels the task at once; that answer is definitive. A
+renewal that fails for any other reason, a timeout, an engine out of
+reach, is retried, and a lease that could not be renewed for half its
+length cancels its own task before the lease expires. That is the
+first fence. The second is
 that completion, release, and renewal check the claim in the statement
 itself (`claimed_by` and `lease_expires_at` on the queue row), so a
 worker whose lease has passed is refused with `Conflict` and hands the
@@ -2725,7 +2798,15 @@ A curated facade module re-exports the names feature code uses, so no
 feature imports a generated path. One small hand-written client owns
 transport: it attaches the bearer and the app header, parses the error
 envelope into a typed error that carries the request id, and clears
-authentication on a 401. Feature code never calls `fetch`.
+authentication on a 401. Feature code never calls `fetch`. The bearer
+lives in memory and in the tab's session storage, so a reload survives
+and a closed tab forgets; never in local storage, which every tab and
+every later visit reads. The distribution sends a
+`Content-Security-Policy` that names the app's own origin, the API,
+and the error tracker's origin when one is configured, and nothing
+else, so a script the app did not ship does not run; the header is
+declared beside the distribution in Terraform, with the other security
+headers.
 
 ### Realtime: One Channel per App
 
@@ -3087,7 +3168,12 @@ A short set of conventions that apply across the whole system.
 
 Every exception raised inside the platform is rooted at
 `PlatformException`. The root carries the two things a boundary needs
-to present it: a status and a stable machine-readable code. A small
+to present it: a status and a stable machine-readable code. Infra
+imports nothing from the OM, so it has a root of its own,
+`InfraException`, with the same two fields, and the gateway and the
+worker loop present both alike; a boundary that must translate one
+into the other does it by those fields, never by catching a name from
+the other side. A small
 set of shape exceptions covers almost every case, and a namespace that
 needs its own family multiply-inherits a shape so the status comes
 along:
@@ -3285,7 +3371,11 @@ against a deployed environment checks what no in-process test can:
 the gateway in front, the credentials, the network, the worker
 processes beside the app. It is a smoke test of the deployment, in
 addition to the in-process suite and never in its place, and it is
-small: a sign-in, a write, a push.
+small: a sign-in, a write, a push. The named atomic methods are raced,
+not only called: a contract case runs two callers at once against a
+claim, a take-over, a ticket redemption, and asserts that exactly one
+wins, over memory and over the engine, because a statement whose whole
+purpose is a race is not proven by a sequence.
 
 ## Technology Choices and How to Override Them
 
