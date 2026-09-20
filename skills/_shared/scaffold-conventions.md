@@ -188,6 +188,28 @@ the order the guideline presents them, never by number.
   version the scaffold cannot confirm is named in its output.
 - No placeholder files (a module exists when it has content), no
   `TODO` left behind, no dead imports.
+- Every folder that is an abstraction level carries a README at that
+  level, in that level's language: `om/README.md` names the nouns and
+  how they relate, for a reader with no code, and carries no
+  developer instruction and no operator instruction; `om/<ns>/`
+  one level down; `deployment/README.md` says how it runs;
+  `ops/README.md` says how it is operated. `llms.txt` at the root
+  lists what each audience is served, one section per audience, one
+  link per document; a document is exposed by being listed, never by
+  its folder.
+- The ops package is a workspace member like any other, `<root>-ops`,
+  package `<root>.ops`, binary `<root>-ops`. It rides
+  `clients/python/` and the operator plane and drives the edge, never
+  a manager. The signals it reads back go through one interface with
+  a local impl over the `devx` twins and a cloud impl over the
+  cloud's own APIs, so a run against `local` proves the same path
+  the cloud runs. The nine project-local skills under
+  `.claude/skills/` are copied from
+  `skills/_shared/ops-skills/` with `acme` replaced by `<root>`;
+  every one takes `--env local|staging|production`, holds the
+  read-only investigate profile of its environment (the
+  administrator profile for create and nuke alone), and reads the
+  owner-only env file `~/.config/<root>/ops/<env>.env`.
 
 ## Changing existing files
 

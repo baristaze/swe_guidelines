@@ -115,6 +115,41 @@ numbering, quoting the rule verbatim and naming what the project
 accepts in exchange. Review skills treat a deviation recorded this way
 as a documented exception when its ADR is cited next to the code.
 
+## Operate with the built-in skills
+
+A scaffolded tree carries nine project-local skills under
+`.claude/skills/`, one folder each: `ops-investigate`, `ops-watch`,
+`ops-root-cause`, `ops-infra-as-code`, `ops-cloud-deployment-create`,
+`ops-cloud-deployment-nuke`, `ops-simulate-traffic`,
+`stress-test-create-or-update`, and `stress-test-run`. They are not
+namespaced under the plugin, because they belong to the project:
+`/ops-investigate --env staging`.
+
+Each one names what it needs. The reads (investigate, watch, root
+cause, the plan in infra-as-code, the signals a traffic or stress run
+reads back) hold the read-only investigate profile of the
+environment, `<root>-<env>-investigate` in `~/.aws/config`, and
+refuse to run under a wider one. Create and nuke hold the
+administrator profile `<root>-admin` and refuse anything else. The
+application side (the operator identity, the error tracker's URL and
+token) comes from one owner-only env file per environment,
+`~/.config/<root>/ops/<env>.env`, outside the repository; a skill
+reads it and never prints a secret from it.
+
+Every skill takes `--env local|staging|production`, and `local` runs
+against the compose stack's `devx` twins with no cloud and no
+account, so a skill is tested on the developer's machine before it
+is trusted with an environment.
+
+An existing tree copies the templates from
+`skills/_shared/ops-skills/` in this repository into
+`.claude/skills/<name>/SKILL.md` and substitutes its root package for
+`acme` (`ACME` and `Acme` for the upper and capitalized spellings),
+and changes nothing else. The skills assume the roles, the profiles,
+the env file, the `<root>-ops` binary, and the operator plane's read
+routes that `arch-scaffold-new` writes; a tree without them adds
+them first.
+
 ## Optional: vendor the text
 
 A project that wants the guideline text in its tree without the plugin
