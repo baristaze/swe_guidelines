@@ -3,40 +3,132 @@
   "$id": "https://github.com/baristaze/swe_guidelines/benchmark/schema/browser-session.schema.json",
   "title": "A browser-driven benchmark run",
   "type": "object",
-  "required": ["run_id", "started_at", "finished_at", "prompt", "contract", "sizes", "sessions"],
+  "required": [
+    "run_id",
+    "started_at",
+    "finished_at",
+    "prompt",
+    "contract",
+    "sizes",
+    "sessions"
+  ],
   "additionalProperties": false,
   "properties": {
-    "run_id": {"type": "string"},
-    "started_at": {"type": "string", "format": "date-time"},
-    "finished_at": {"type": "string", "format": "date-time"},
-    "prompt": {"type": "string"},
-    "contract": {"type": "string"},
+    "run_id": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "contract": {
+      "type": "string"
+    },
     "sizes": {
       "type": "object",
-      "required": ["model", "effort"],
+      "required": [
+        "model",
+        "effort"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model": {"enum": ["xs", "s", "m", "l", "xl"]},
-        "effort": {"enum": ["xs", "s", "m", "l", "xl"]}
+        "model": {
+          "enum": [
+            "xs",
+            "s",
+            "m",
+            "l",
+            "xl"
+          ]
+        },
+        "effort": {
+          "enum": [
+            "xs",
+            "s",
+            "m",
+            "l",
+            "xl"
+          ]
+        }
       }
     },
     "sessions": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["site", "url", "model_label", "effort_label", "started_at", "finished_at", "score", "response_path", "status"],
+        "required": [
+          "site",
+          "url",
+          "model_label",
+          "effort_label",
+          "started_at",
+          "finished_at",
+          "score",
+          "response_path",
+          "status"
+        ],
         "additionalProperties": false,
         "properties": {
-          "site": {"enum": ["chatgpt.com", "claude.ai", "gemini.google.com"]},
-          "url": {"type": "string", "description": "the conversation's own URL, the session id is in it"},
-          "model_label": {"type": "string", "description": "what the picker showed when the prompt was sent"},
-          "effort_label": {"type": "string"},
-          "started_at": {"type": "string", "format": "date-time"},
-          "finished_at": {"type": "string", "format": "date-time"},
-          "score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
-          "response_path": {"type": "string", "description": "the saved answer, relative to the run folder"},
-          "status": {"enum": ["ok", "no-score", "refused", "timed-out", "not-signed-in"]},
-          "note": {"type": "string"}
+          "site": {
+            "enum": [
+              "chatgpt.com",
+              "claude.ai",
+              "gemini.google.com"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "the conversation's own URL, the session id is in it"
+          },
+          "model_label": {
+            "type": "string",
+            "description": "what the picker showed when the prompt was sent"
+          },
+          "effort_label": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "when the page showed the answer complete; approximate when read off a relative time"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "response_path": {
+            "type": "string",
+            "description": "the saved answer, relative to the run folder"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "no-score",
+              "refused",
+              "errored",
+              "timed-out",
+              "not-signed-in"
+            ],
+            "description": "errored is the product's own error message in place of an answer; refused is a decline"
+          },
+          "note": {
+            "type": "string"
+          }
         }
       }
     }

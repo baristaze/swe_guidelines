@@ -1,15 +1,20 @@
-# The t-shirt sizes, and what each site shows for them. Two sizes per run:
-# the model and the effort. Sizes are xs, s, m, l, xl, so a new tier slots
-# in without renaming the others. The labels are what the picker shows on
-# 2026-09-20; when a site renames a model, this file changes and the skill
-# does not.
+# The t-shirt sizes, and what each site's picker calls them. Two sizes per
+# run: the model and the effort. Sizes are xs, s, m, l, xl, so a new tier
+# slots in without renaming the others. The labels are what the pickers
+# showed on 2026-09-20; when a site renames a model, this file changes and
+# the skill does not.
+#
+# The label is what the skill clicks. What the composer shows afterwards
+# can read differently (chatgpt.com shows the effort stop, not the model;
+# gemini.google.com shortens "3.1 Pro" to "Pro"), and the results carry
+# what the page showed, never what this file says.
 model:
-  chatgpt.com:
-    xs: GPT-6 Astra          # one model behind the slider; the size goes to effort
-    s: GPT-6 Astra
-    m: GPT-6 Astra
-    l: GPT-6 Astra
-    xl: GPT-6 Astra
+  chatgpt.com:                # a chevron inside the "Thinking effort" popover opens the model list
+    xs: Latest
+    s: Latest
+    m: Latest
+    l: Latest
+    xl: Latest                # "Latest" is the current flagship; GPT-5.6 Sol and GPT-5.5 sit below it
   claude.ai:
     xs: Haiku 4.5
     s: Sonnet 5
@@ -21,21 +26,21 @@ model:
     s: 3.8 Flash
     m: 3.1 Pro
     l: 3.1 Pro
-    xl: Extended thinking     # the picker's top entry; it is the Pro model at its deepest
+    xl: 3.1 Pro               # "Extended thinking" at the bottom of the list is a toggle on Flash, not a model
 effort:
-  chatgpt.com:                # the "Thinking effort" slider has five stops, left to right
-    xs: 1
+  chatgpt.com:                # the "Thinking effort" slider has five stops, left to right; the stop labels are
+    xs: 1                     # names ("Instant" at the left, "6 Pro" at the right), not effort words
     s: 2
     m: 3
     l: 4
     xl: 5
-  claude.ai:                  # the Effort submenu of the model picker
+  claude.ai:                  # the Effort submenu of the model picker: Low, Medium, High, Extra, Max
     xs: Low
-    s: Low
-    m: Medium
-    l: High
+    s: Medium
+    m: High
+    l: Extra
     xl: Max
-  gemini.google.com:          # no effort control of its own; the model size carries it
+  gemini.google.com:          # no effort control on the Pro model; the model size carries it
     xs: none
     s: none
     m: none
