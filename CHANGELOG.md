@@ -6,6 +6,23 @@ which number.
 
 ## Unreleased
 
+## 0.17.0 (2026-09-20)
+
+Three outside readings of the operational half of the guideline: that
+telemetry is treated as a convention rather than as structure, that
+resilience under degradation is thin, and that the tenant fence claims
+more than convention and a signature test establish. Minor: rules are
+added and sharpened, none is removed or reversed. Telemetry becomes a
+section of its own and a handoff carries the request that caused it,
+so a reader holding a request id follows the work past the queue it
+crossed. Every call gains a bound and a named behaviour at the bound,
+each stated where the call is made and gathered by "Resilience by
+Design", with the numbers left to the system that runs it. The tenant
+fence keeps its decision and states what actually holds it: the
+predicate is the fence, the case that presents another tenant's
+identifier is its evidence, and the suite is verified against a
+deliberate breach.
+
 ### Added
 
 - `architecture.md`, "Namespace Shape" and "Tests": a signature is not
