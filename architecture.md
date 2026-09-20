@@ -1236,6 +1236,7 @@ class OutboxRow(Identifiable, Created):  # written with the core row, in the sam
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     actor_id: UUID            # the principal of the write it announces; EMPTY_UUID for the platform
     request_id: UUID          # the request that made the write
+    traceparent: str | None = None  # the trace context of that request, for a link
     app: AppContext           # the app that made it
     done_at: datetime | None = None
 ```
@@ -1244,7 +1245,11 @@ It carries its own `org_id` because the relay runs with no context
 (see [Operations Without a
 Principal](#operations-without-a-principal)), and it names the actor,
 the request, and the app of the write it announces, the provenance of
-the [OpContext](#opcontext) that made it.
+the [OpContext](#opcontext) that made it. It carries the trace context
+of that request too, as the `traceparent` header spells it and not as
+`trace_id`, because an id names a trace and only the header carries
+what a later span links to (see [Correlation Across a
+Handoff](#correlation-across-a-handoff)).
 
 Some scopes are strictly user-bound. An order board, where the
 column layout and pinned filters are personal to each user, is not just
@@ -2796,6 +2801,7 @@ class WorkItem(Identifiable, Trackable):
     target_id: UUID            # the record it advances
     idempotency_key: UUID      # unique
     request_id: UUID           # the request that caused the work
+    traceparent: str | None = None   # the trace context of that request, for a link
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
     lane: str = "default"      # routing: "default", "region:<id>", ...
     status: WorkStatus         # queued | claimed | done | failed
@@ -2839,12 +2845,13 @@ and the direct create presents its caller's. Either way the two are
 one insert in storage under one key, so a relay that runs twice and a
 caller that retries meet the row already there.
 
-The item's `request_id` is the request that caused the work, and it
-comes from the same two places: the relay takes it off the outbox row,
-which carries the request that made the write, and the direct create
-takes it from its caller's context. It is the item's, not the
-enqueue's, and the manager's copy leaves it as constructed. It is what
-a run names as its cause (see [Correlation Across a
+The item's `request_id` is the request that caused the work, and its
+`traceparent` is that request's trace context. Both come from the same
+two places: the relay takes them off the outbox row, which carries the
+request that made the write, and the direct create takes them from its
+caller's context. They are the item's, not the enqueue's, and the
+manager's copy leaves them as constructed. They are what a run names
+as its cause and links its spans to (see [Correlation Across a
 Handoff](#correlation-across-a-handoff)).
 
 Claim is one storage method that selects the oldest available row in
@@ -3685,13 +3692,25 @@ and both reach every log line. Neither is written over the other,
 because a reader asks two questions of a run: what happened in it, and
 what asked for it.
 
-A span raised on the far side of a handoff links to the causing trace
-rather than starting an unrelated one, so the run hangs under the
-request that asked for it and not beside it.
+The handoff carries the trace context of the causing request beside
+its id, as a `traceparent` and not as a `trace_id`: an id names a
+trace, and a span links to a span, so the field that crosses is the
+header the causing request held. It rides the outbox row (see
+[Namespace Shape](#namespace-shape)) and the work item, and it is
+empty when the causing request ran with no tracer configured, which is
+the no-op tracer of [Traces and Metrics](#traces-and-metrics) reaching
+the row; the far side then starts a trace of its own and nothing else
+changes.
 
-> **Principle:** A handoff carries the request that caused it. The
-> stage on the far side is a new request that names the causing one,
-> in a field of its own, and its spans link to the causing trace.
+The span a run raises links to that trace context rather than becoming
+its child. A durable queue holds an item as long as it holds it, well
+past the end of the request that filled it, so the causal edge is a
+link between two traces and not one trace stretched over both.
+
+> **Principle:** A handoff carries the request that caused it and that
+> request's trace context. The stage on the far side is a new request
+> that names the causing one in a field of its own, and the span it
+> raises links to the causing trace.
 
 ## Cross-Cutting Conventions
 

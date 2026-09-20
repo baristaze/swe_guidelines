@@ -13,16 +13,24 @@ which number.
   wrote, the item it queued, and the run that followed. The stage a
   worker mints for a claim is a new request that names the causing one
   in a field of its own, both are logged, and a span raised on the far
-  side links to the causing trace rather than starting an unrelated
-  one. `WorkItem` gains `request_id`, which the relay takes off the
-  outbox row and a direct create off its caller's context, and
-  `RequestContext` gains `caused_by_request_id`, which the claim's
-  transition fills from the item. "Logs" says what every line carries:
-  the service and the environment, which is what lets one query read
-  across processes, the request id, and the causing request where a
-  handoff supplied one. Lenses `CTX-29`, `ASY-29`, `DEL-39`; `CTX-02`
-  names the field the request stage gained; `arch-scaffold-new` and
-  `arch-scaffold-worker` carry the shape.
+  side links to the causing trace rather than becoming its child,
+  because a durable queue holds an item past the end of the request
+  that filled it. `WorkItem` gains `request_id` and `traceparent`, and
+  `OutboxRow` gains `traceparent` beside the request id it already
+  carried: the trace context as the header spells it and not as a
+  `trace_id`, since an id names a trace and only the header carries
+  what a later span links to. A traceparent is empty when the causing
+  request ran with no tracer configured, and the far side then starts
+  a trace of its own. The relay takes both fields off the outbox row
+  and a direct create off its caller's context, and `RequestContext`
+  gains `caused_by_request_id`, which the claim's transition fills
+  from the item. "Logs" says what every line carries: the service and
+  the environment, which is what lets one query read across processes,
+  the request id, and the causing request where a handoff supplied
+  one. Lenses `CTX-29`, `ASY-29`, `DEL-39`; `CTX-02`
+  names the field the request stage gained, `OM-03` the field the
+  outbox row gained; `arch-scaffold-new`, `arch-scaffold-worker`, and
+  the shared scaffold conventions carry the shape.
 
 ### Changed
 

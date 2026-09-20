@@ -607,23 +607,25 @@ reading a file.
 
 ## ASY-29 The work item carries the request that caused it
 
-**Principle.** A work item names the request that caused it: the relay
-takes the item's `request_id` off the outbox row of the write, and a
-direct create takes it from its caller's context. The span the run
-raises links to that causing trace rather than starting an unrelated
-one.
+**Principle.** A work item carries the request that caused it and that
+request's trace context, a `traceparent` and not a `trace_id`: the
+relay takes both off the outbox row of the write, a direct create off
+its caller's context. The span the run raises links to that trace
+context rather than becoming its child.
 
 **Source.** Worker Roles, The Work Queue; Telemetry, Correlation
 Across a Handoff.
 
-**Look for.** The work item type and the column behind it; both
-enqueue paths, the relay's build from `(org_id, row)` and the direct
-create, and where each reads the request id; what the span a handler
-raises is linked to.
+**Look for.** The work item type and the columns behind the two
+fields; both enqueue paths, the relay's build from `(org_id, row)` and
+the direct create, and where each reads them; what the span a handler
+raises is linked to, and what it does when the item's traceparent is
+empty.
 
-**Violation.** A work item with no request id, so the trail ends at the
-queue; a relayed enqueue that mints a fresh id instead of taking the
-row's; a manager copy that overwrites the caller's; a run whose span
-starts a trace of its own with no link to the causing one.
+**Violation.** A work item with no request id or no traceparent, so
+the trail ends at the queue or the link has nothing to point at; a
+relayed enqueue that mints either afresh instead of taking the row's;
+a run whose span starts an unlinked trace, or one that runs as a child
+of the causing span, stretching one trace across the queue.
 
 **Severity.** medium

@@ -140,8 +140,8 @@ the order the guideline presents them, never by number.
   lands the core row and its `OutboxRow`s in one storage method,
   `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
   once; a row comes from `outbox_row(ctx, kind,
-  target_id, payload)`, so it carries the actor, the request id, and
-  the app of the write. The caller constructs the entity whole and hands it to
+  target_id, payload)`, so it carries the actor, the request id, the
+  trace context, and the app of the write. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the

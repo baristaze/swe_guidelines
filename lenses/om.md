@@ -72,7 +72,8 @@ declares; whether entities redeclare a mixin's fields locally; whether
 what `PROVENANCE_FIELDS` names (`created_at`, `created_by`,
 `deleted_at`, `deleted_by`); the fields of `OutboxRow`, which carries
 the provenance of the write it announces (`actor_id`, `request_id`,
-`app`) and no `created_by`, since no person stands behind the row.
+`traceparent`, `app`) and no `created_by`, since no person stands
+behind the row.
 
 **Violation.** A field added to one of the listed mixins instead of a
 new mixin for the new trait; an entity declaring its own `created_at`
