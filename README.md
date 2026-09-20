@@ -93,10 +93,11 @@ make gen-toc      # regenerate the table of contents of architecture.md
 ```
 
 Requirements: Python 3.14 and Node 24, the latest stable and LTS
-releases. The scripts need nothing past the standard library; the pin
-follows the guideline's own latest-stable rule on purpose. `make lint`
-fetches `markdownlint-cli2` through `npx` at a pinned version. CI runs
-`make check` on every pull request.
+releases. The scripts need nothing past the standard library; `make
+check` also needs `pytest`, for the scripts' own tests, and `npx`, for
+markdownlint (`make lint` fetches `markdownlint-cli2` through `npx` at
+a pinned version). The pin follows the guideline's own latest-stable
+rule on purpose. CI runs `make check` on every pull request.
 
 The review skills are generated from `skills/_template/review.SKILL.md`
 and the lens catalog. Edit the template or the lenses, not the
