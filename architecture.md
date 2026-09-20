@@ -729,16 +729,19 @@ produced in one place, and its exact type says who produced it.
 
 A stage lives as long as the request that minted it and no longer: a
 request, a claim, a sweep pass, a socket. A socket is a request that
-stays open, so it holds the `OpContext` its ticket produced for the
-life of the connection; a membership revoked meanwhile stops the next
-request at `authenticate` and reaches the socket at its next
-reconnect. That is a decision, and what bounds it is what a socket
-carries: hints, never a field of an entity (see [Realtime at the
-Edge](#realtime-at-the-edge)), so the window is one of metadata. A
-product where that window is too long closes the tenant's sockets
-from the operation that revokes. Work that runs later than the
-request that asked for it runs on an authority of its own, which [The
-Work Queue](#the-work-queue) names.
+stays open, so it holds the `OpContext` its ticket produced, and that
+context outlives its evidence unless the socket is closed when the
+evidence goes. So it is: the session's expiry bounds the socket, which
+the process closes at that instant whatever the client does, and a
+revocation or a membership's end travels on the topic bus like any
+other change (see [Realtime at the Edge](#realtime-at-the-edge)), and
+every process that holds a socket for that session or that user closes
+it on the frame. The expiry covers a frame that was missed. What a
+socket carries in the meantime is hints, never a field of an entity,
+so the window a missed frame opens is one of metadata and one of
+expiry. Work that runs later than the request that asked for it runs
+on an authority of its own, which [The Work Queue](#the-work-queue)
+names.
 
 The stages fence capabilities without a second registry. An operation
 declares the weakest stage that proves what it needs, and a caller that
@@ -1986,7 +1989,10 @@ The gateway owns a short list of edge concerns, each done once:
     refused. Only an outcome the client cannot change by retrying is
     stored: a refusal (a `4xx`) is replayed, and a failure (a `5xx`)
     releases the marker, so the retry runs again on the same id
-    instead of replaying the failure for good. A pending marker older
+    instead of replaying the failure for good; a release keeps the
+    marker with its digest and its id and clears only the attempt, so
+    the retry that follows a failure after the row landed finds the
+    row by the same id instead of creating a second one. A pending marker older
     than the pending lease, an option of the idempotency manager, was
     abandoned by a crash between the marker and its outcome, or
     belongs to an attempt still running past its lease; the next retry
@@ -2873,10 +2879,20 @@ Cloud deployments target AWS. Services and workers run on the same
 container runtime. Every environment has the same module graph, and
 everything that differs between two environments is a variable, so a
 service that runs in the smaller environment runs in production with
-nothing more than scale changes. Production does not rebuild: it
-promotes what the smaller environment already ran, behind an approval
-gate: service and worker images by digest, browser bundles by build
-id.
+nothing more than scale changes. The smaller environment is staging,
+and it is `main`: every merge to `main` deploys it, with no approval,
+so staging is always the tip of the default branch and a merge is the
+deployment. Production is the `release` branch: it moves only by a
+fast-forward from `main`, never by a commit of its own, so its history
+is a prefix of `main`'s and a release is a `main` commit that has run
+on staging; a push to `release` plans production, waits for a person's
+approval on that plan, and applies it. Production does not rebuild: it
+promotes what staging already ran, service and worker images by the
+digest staging built for that commit, browser bundles by build id, and
+a release commit that staging never built is refused. These are the
+rules that hold the branches: nobody pushes to `release` but the
+fast-forward, and a deploy of production checks that `release` is an
+ancestor of `main` before it plans.
 
 A browser app is a static bundle (see [Client
 Rendering](#client-rendering)), and it ships from a private S3 bucket
@@ -3124,7 +3140,7 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 │   ├── terraform/
 │   │   ├── modules/
 │   │   └── environments/
-│   │       ├── dev/
+│   │       ├── staging/
 │   │       └── prod/
 │   ├── local/
 │   │   ├── docker-compose.yml          # postgres, cache, queue, object store
@@ -3136,8 +3152,9 @@ Goes](#how-it-starts-and-where-it-goes) describes.
 └── .github/
     └── workflows/
         ├── ci.yml
-        ├── deploy.yml
-        └── release.yml
+        ├── deploy-staging.yml              # every push to main
+        ├── deploy-production.yml           # every push to release, behind the approval
+        └── release.yml                     # fast-forwards release to main on dispatch
 ```
 
 ### Layout Conventions
