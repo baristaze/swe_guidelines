@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# One run per ref. A new push to a pull request cancels the run it
+# replaces; a push to main always finishes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: lint, ruff, mypy, lenses, leaks, links, toc, version, gen-skills-check, skills, agents, test, plugin
