@@ -35,6 +35,9 @@ synchronous method on an interface that describes I/O.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the interface base of every impl and the
+async manager and storage operations; the rest is judged.
+
 ## CON-02 Interfaces are abstract classes with empty bodies, impls subclass them
 
 **Principle.** An interface is an `ABC` whose methods are
@@ -56,6 +59,9 @@ subclass the interface it claims to implement; an impl adds public
 methods the interface does not declare and callers use them.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the ABC base and the abstract, empty
+interface methods; the rest is judged.
 
 ## CON-03 Satisfiable without its technology, which is named last
 
@@ -83,6 +89,9 @@ leaks into an interface or a caller.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the Impl suffix and the second impl of
+every storage and infra interface; the rest is judged.
+
 ## CON-04 The in-memory impl is a full implementation
 
 **Principle.** The in-memory impl is a full second implementation, not a
@@ -106,6 +115,9 @@ memory impl accepts a duplicate the engine refuses and the pair is two
 impls of two contracts.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the stubs in a memory impl; the rest is
+judged.
 
 ## CON-05 Decoration composes impls behind one interface
 
@@ -149,6 +161,9 @@ a peer manager or storage as an argument.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the typed constructor, the impl built
+outside a root, and the peer taken by an interface; the rest is judged.
+
 ## CON-07 Tunables arrive as a frozen options object
 
 **Principle.** A manager that has tunables (a default page size, a lease
@@ -166,6 +181,9 @@ deployments; tunables arrive as loose positional numbers instead of one
 options object; an options object is mutable or is rebuilt per call.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the loose number in a manager
+constructor; the rest is judged.
 
 ## CON-08 Cycles are broken above the managers
 
@@ -188,6 +206,9 @@ namespaces import each other's impls.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the private attribute set from outside
+and the impl import cycle; the rest is judged.
+
 ## CON-09 Roots wire everything at boot
 
 **Principle.** A root class constructs the concrete impls in the right
@@ -207,6 +228,9 @@ concrete impl type instead of an interface; the business root returns a
 mutable container or a dict; wiring is spread across request handlers.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the frozen business root and the
+interface types of the root getters; the rest is judged.
 
 ## CON-10 Upper layers depend on lower layers through interfaces only
 
@@ -230,6 +254,9 @@ each other.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the import graph across infra, the OM,
+and the network layer; the rest is judged.
+
 ## CON-11 Infrastructure never leaks a technology across a boundary
 
 **Principle.** Infrastructure capabilities are injected into
@@ -248,6 +275,9 @@ branches on which backend is configured.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the vendor import in an interface module
+or a manager impl; the rest is judged.
+
 ## CON-12 Calls flow downward, never up
 
 **Principle.** Services call services and managers; managers call
@@ -265,6 +295,9 @@ layer invoke an upper one.
 handed a callback that invokes an upper layer.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the imports that reach up a layer; the
+rest is judged.
 
 ## CON-13 App-specific services stay bounded to one app
 
@@ -313,6 +346,9 @@ from the start, so a split rewrites its callers.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the in-process impl of every service
+interface; the rest is judged.
+
 ## CON-15 A router binds the route; its service impl translates
 
 **Principle.** A router declares the route and its dependencies, calls
@@ -339,6 +375,9 @@ on its own.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the one-call route body and the manager
+or storage parameter; the rest is judged.
+
 ## CON-16 Every process boots through the same container in the same order
 
 **Principle.** Settings are read; logging, error reporting, the trust
@@ -359,6 +398,9 @@ tears down in construction order or skips a member; the test suite
 boots a different assembly than production.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the container with start and close in
+every process; the rest is judged.
 
 ## CON-17 Every write authorizes, verifies, copies, writes
 
@@ -414,6 +456,9 @@ operation.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the service on a context and the request
+state in a constructor; the rest is judged.
+
 ## CON-19 The copy on update starts from the stored row
 
 **Principle.** The manager's copy on update starts from the stored row:
@@ -457,6 +502,9 @@ constructor that opens a connection; no test counting constructions
 across requests, or a root member it does not cover.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the getter that builds or caches on
+first use; the rest is judged.
 
 ## CON-21 A create whose id is already written returns the row as stored
 
@@ -534,3 +582,6 @@ where its interface says a failure is an answer; a failure bound or a
 cool-down hard-coded instead of read from settings.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the breaker in the OM and the literal
+bound; the rest is judged.

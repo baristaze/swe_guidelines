@@ -45,6 +45,9 @@ handoffs included, is CTX-16's to judge.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the position of a stage or scope and the
+scope on a manager; the rest is judged.
+
 ## CTX-02 The context carries ids and facts, never entities
 
 **Principle.** The security context holds `user_id`, `org_id`, role,
@@ -71,6 +74,9 @@ gateway; a request id threaded by hand; an audit row written without
 the context's request id.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the imports and entity fields of the
+stage module and its id fields; the rest is judged.
 
 ## CTX-03 Permissions derive from role; a credential never outranks its issuer
 
@@ -141,6 +147,9 @@ stage below exists.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the stage built in the OM, infra, a
+router, or a service; the rest is judged.
+
 ## CTX-06 The context is immutable and narrowing is an explicit argument
 
 **Principle.** Once built, a context flows through every downstream
@@ -163,6 +172,9 @@ changed.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the copy or assignment of a stage and
+the with or override helper; the rest is judged.
+
 ## CTX-07 No ambient state outside the context
 
 **Principle.** Operations never reach for ambient state through globals,
@@ -182,6 +194,9 @@ allowed context variable carries the request id for log enrichment
 only, and the authoritative value stays on the context.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the context variable outside the log
+module and the thread local; the rest is judged.
 
 ## CTX-08 Authorization lives in managers
 
@@ -203,6 +218,9 @@ absent from the manager; a storage impl that inspects role or
 permissions.
 
 **Severity.** high
+
+**Check.** `arch-check` decides the permission read in a router or a
+storage module; the rest is judged.
 
 ## CTX-09 Tenancy is enforced in storage on read and checked on write
 
@@ -253,6 +271,9 @@ scoping id, or a filter with no default that every caller must spell.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the position of org_id and user_id and
+the org_id beside OpContext; the rest is judged.
+
 ## CTX-11 Both keys appear in every user-scoped query
 
 **Principle.** When a scope is personal to a user within a tenant, the
@@ -293,6 +314,9 @@ or no such test at all.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the docstring and the enumeration of
+every tenant-less method; the rest is judged.
+
 ## CTX-13 The system scope is EMPTY_UUID
 
 **Principle.** Cross-tenant reference data uses `EMPTY_UUID` as the
@@ -331,6 +355,9 @@ keys unprefixed so a list by prefix can cross tenants.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the org_id first on every cache and
+bucket operation; the rest is judged.
+
 ## CTX-15 Topic payloads carry the tenant
 
 **Principle.** Every topic payload carries `org_id`, so a consumer can
@@ -346,6 +373,9 @@ carries no tenant; a socket handler that forwards an event to a client
 without comparing the payload's tenant to the connection's tenant.
 
 **Severity.** high
+
+**Check.** `arch-check` decides the org_id on the payload base and the
+base of every payload; the rest is judged.
 
 ## CTX-16 Principal-less operations take the request stage and return a stage
 
@@ -466,6 +496,9 @@ sign-in.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the base and tenant field of the
+operator stage and the union of two stages; the rest is judged.
+
 ## CTX-21 An operation takes the weakest stage that proves what it needs
 
 **Principle.** Stages are concrete frozen types, each a subclass of
@@ -494,6 +527,8 @@ a bundle of managers per stage, or a manager reachable from a context.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the stage hierarchy; the rest is judged.
+
 ## CTX-22 A consumer declares the narrowest scope, and a scope is a Protocol
 
 **Principle.** A consumer that needs less than a stage carries declares
@@ -518,6 +553,9 @@ authorization scope, since no consumer needs the permissions without
 the tenant and the actor.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the Protocol shape and the use of every
+scope; the rest is judged.
 
 ## CTX-23 A scope combination is named only for a concept of the domain
 
@@ -563,6 +601,9 @@ hand in a router or a storage impl instead of through the helper.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the outbox_row call and the OpContext
+built on the operator plane; the rest is judged.
+
 ## CTX-25 The service role is not a rung a person can mint
 
 **Principle.** The role reserved for services is not a rung on the
@@ -601,6 +642,8 @@ no such test at all; a test that lists the transitions by name but
 never scans the code for a new site.
 
 **Severity.** high
+
+**Check.** `arch-check` decides it.
 
 ## CTX-27 A socket closes at its session's expiry and on the revocation frame
 
@@ -675,6 +718,9 @@ drops the causing id, so a run names no cause; a run whose lines carry
 one of the two and not both. (The field on the item is ASY-29.)
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the two request ids and the worker's
+reused request id; the rest is judged.
 
 ## CTX-30 A cross-tenant case proves what a signature only offers
 
