@@ -22,6 +22,14 @@ which number.
   machine, refused before the run when missing.
 - `benchmark/`: a relative path in a scenario is read from the scenario
   file's folder, not from wherever the run started.
+- `arch-upgrade-deps`: step 7 upgrades within the ranges first, with
+  `pnpm update --recursive`, and then raises one major at a time. It
+  ran `pnpm update --recursive --latest`, which ignores the ranges and
+  moves every package past its major at once, and it called that
+  staying within the caps. The one-at-a-time rule that followed had
+  nothing left to isolate. The majors to raise are listed with
+  `pnpm outdated --recursive` and `uv tree --outdated --depth 1`; the
+  pin-back runs over the workspace (`--recursive`).
 
 ### Added
 
