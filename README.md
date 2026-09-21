@@ -94,7 +94,7 @@ Claude Code 2.1 and later.
 
 ```bash
 make benchmark    # the smoke scenario, judged by three providers (costs money, not part of check)
-make check        # what CI runs: markdownlint, ruff and mypy over the scripts, lens format and citations,
+make check        # what CI runs: markdownlint, ruff and mypy over the scripts and the benchmark, lens format and citations,
                   # vocabulary leaks, links, table of contents, version copies, generated skills up to date,
                   # skill shape, the reviewer agent against the review template, the checkers' tests,
                   # plugin validation

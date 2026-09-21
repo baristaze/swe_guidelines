@@ -17,11 +17,11 @@ check: lint ruff mypy lenses leaks links toc version gen-skills-check skills age
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
 
-ruff:              ## lint and format check of scripts/ and tests/
+ruff:              ## lint and format check of scripts/, benchmark/, and tests/
 	$(RUFF) check
 	$(RUFF) format --check
 
-mypy:              ## type check of scripts/ and tests/
+mypy:              ## type check of scripts/, benchmark/, and tests/
 	$(MYPY)
 
 lenses:            ## every lens follows the format and cites a real section

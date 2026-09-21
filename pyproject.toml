@@ -13,22 +13,21 @@ managed = false
 
 [tool.ruff]
 line-length = 130
-src = ["scripts", "tests"]
-include = ["scripts/**/*.py", "tests/**/*.py"]
-# benchmark/ and its tests come under the same tools in a change of their own.
-extend-exclude = ["benchmark", "tests/test_benchmark_*.py"]
+src = ["scripts", "tests", "benchmark"]
+include = ["scripts/**/*.py", "tests/**/*.py", "benchmark/**/*.py"]
+extend-exclude = ["benchmark/runs", "benchmark/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["_common", "conftest"]
+known-first-party = ["_common", "conftest", "harness"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["scripts", "tests"]
-exclude = ["^benchmark/", "^tests/test_benchmark_"]
-mypy_path = ["scripts", "tests"]
+files = ["scripts", "tests", "benchmark"]
+exclude = ["^benchmark/runs/", "^benchmark/fixtures/"]
+mypy_path = ["scripts", "tests", "benchmark"]
 explicit_package_bases = true
 check_untyped_defs = true
 warn_unused_ignores = true
