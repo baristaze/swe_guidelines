@@ -18,7 +18,8 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last, methods
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, methods
+from arch_check.rules._text_util import kwarg
 
 SQL_DIR = "om/migrations/sql"
 """Where the SQL files of each role live (The Storage Layer, Migrations)."""
@@ -147,12 +148,33 @@ def call_name(node: ast.AST) -> str | None:
     return last(dotted(node.func)) if isinstance(node, ast.Call) else None
 
 
-def kwarg(call: ast.Call, name: str) -> ast.expr | None:
-    return next((k.value for k in call.keywords if k.arg == name), None)
-
-
 def is_true(node: ast.AST | None) -> bool:
     return isinstance(node, ast.Constant) and node.value is True
+
+
+def config_value(cls: ast.ClassDef, key: str) -> ast.expr | None:
+    """A model config key set on a class: `model_config = ConfigDict(key=...)`, a dict literal, or a class keyword."""
+    kw = keywords(cls).get(key)
+    if kw is not None:
+        return kw
+    for stmt in cls.body:
+        target: ast.expr | None = None
+        value: ast.expr | None = None
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            target, value = stmt.targets[0], stmt.value
+        elif isinstance(stmt, ast.AnnAssign):
+            target, value = stmt.target, stmt.value
+        if not (isinstance(target, ast.Name) and target.id == "model_config") or value is None:
+            continue
+        if isinstance(value, ast.Call):
+            found = kwarg(value, key)
+            if found is not None:
+                return found
+        elif isinstance(value, ast.Dict):
+            for k, v in zip(value.keys, value.values, strict=True):
+                if isinstance(k, ast.Constant) and k.value == key:
+                    return v
+    return None
 
 
 def negative_int(node: ast.AST | None) -> int | None:

@@ -249,6 +249,12 @@ def test_a_manager_requiring_a_permission_passes_ctx_08(tmp_path):
     assert code == 0
 
 
+def test_a_storage_reading_a_column_of_a_row_named_like_a_permission_passes_ctx_08(tmp_path):
+    storage = "def f(row):\n    return RolePermission.role_id == row.role_id\n"
+    code, _, _ = run(tmp_path, "CTX-08", {f"{OM}/tenancy/storage/impl/postgres.py": storage})
+    assert code == 0
+
+
 def test_a_router_or_storage_reading_a_permission_is_ctx_08(tmp_path):
     files = {
         f"{API}/routers/tasks.py": "async def create(ctx):\n    ctx.require(Permission.WRITE)\n",

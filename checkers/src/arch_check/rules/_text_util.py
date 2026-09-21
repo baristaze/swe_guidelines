@@ -15,7 +15,6 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from pathlib import Path
 from typing import Any
 
 import tomllib
@@ -239,35 +238,57 @@ class Instruction:
     line: int
 
 
+HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
+
+
+def instruction(buffer: str, line: int) -> Instruction:
+    """One instruction from its joined text: the keyword up to the first run of whitespace, a tab included."""
+    parts = re.split(r"\s+", buffer.strip(), maxsplit=1)
+    return Instruction(parts[0].upper(), parts[1].strip() if len(parts) > 1 else "", line)
+
+
 def dockerfile(project: Project, rel: str) -> list[Instruction]:
-    """The instructions of a Dockerfile, comments dropped and `\\` continuations joined."""
+    """The instructions of a Dockerfile: comments dropped, `\\` continuations joined across a blank line, and
+    a heredoc body (`RUN <<EOF ... EOF`) carried as the rest of its instruction."""
     out: list[Instruction] = []
     buffer = ""
     start = 0
+    terminator: str | None = None
     for number, raw in enumerate(project.lines(rel), start=1):
+        if terminator is not None:
+            if raw.strip() == terminator:
+                out.append(instruction(buffer, start))
+                buffer, terminator = "", None
+            else:
+                buffer += " " + raw.strip()
+            continue
         text = raw.strip()
-        if not buffer and (not text or text.startswith("#")):
-            continue
-        if buffer and text.startswith("#"):
-            continue
+        if not text or text.startswith("#"):
+            continue  # a blank line or a comment inside a continuation is skipped, as the engine skips it
         if not buffer:
             start = number
         if text.endswith("\\"):
             buffer += text[:-1] + " "
             continue
         buffer += text
-        keyword, _, args = buffer.partition(" ")
-        out.append(Instruction(keyword.upper(), args.strip(), start))
+        opened = HEREDOC.search(buffer)
+        if opened is not None:
+            terminator = opened.group(1)
+            continue
+        out.append(instruction(buffer, start))
         buffer = ""
     if buffer:
-        keyword, _, args = buffer.partition(" ")
-        out.append(Instruction(keyword.upper(), args.strip(), start))
+        out.append(instruction(buffer, start))
     return out
 
 
+NOT_AN_IMAGE = (".dockerignore", ".md", ".rst", ".txt", ".bak", ".orig", ".example")
+
+
 def is_dockerfile(name: str) -> bool:
-    """Whether a file name is a Dockerfile: `Dockerfile`, `*.Dockerfile`, or `Dockerfile.*`, never a `*.dockerignore`."""
-    if name.endswith(".dockerignore"):
+    """Whether a file name is a Dockerfile: `Dockerfile`, `*.Dockerfile`, or `Dockerfile.*`, never a `*.dockerignore`
+    or a document or a backup named after one (`Dockerfile.md`, `Dockerfile.bak`)."""
+    if name.endswith(NOT_AN_IMAGE):
         return False
     return name == "Dockerfile" or name.endswith(".Dockerfile") or name.startswith("Dockerfile.")
 
@@ -334,7 +355,3 @@ def is_file(project: Project, rel: str) -> bool:
 
 def is_dir(project: Project, rel: str) -> bool:
     return (project.root / rel).is_dir()
-
-
-def rel_of(project: Project, path: Path) -> str:
-    return path.relative_to(project.root).as_posix()

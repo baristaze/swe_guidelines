@@ -11,7 +11,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Iterator
 
-from arch_check.project import Function, Project, SourceFile, classes, dotted, is_under, last, methods, parameters
+from arch_check.project import Function, Project, SourceFile, classes, dotted, is_under, last, methods
 
 STAGES = ("RequestContext", "IdentityContext", "OpContext", "OperatorContext")
 """The four stages, by the names the guideline gives them (OpContext, Stages)."""
@@ -221,14 +221,5 @@ def interface_methods(cls: ast.ClassDef) -> list[Function]:
     return [m for m in methods(cls) if public(m)]
 
 
-def first_parameter_name(fn: Function) -> str | None:
-    args = arguments(fn)
-    return args[0].arg if args else None
-
-
 def init_of(cls: ast.ClassDef) -> Function | None:
     return next((m for m in methods(cls) if m.name == "__init__"), None)
-
-
-def signature_names(fn: Function) -> list[str]:
-    return [p.name for p in parameters(fn)]

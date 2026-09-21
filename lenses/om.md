@@ -28,8 +28,9 @@ service.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the OM's own distribution and the
-dependency of every distribution that imports it; the rest is judged.
+**Check.** `arch-check` decides that the OM's manifest names a
+distribution and that every distribution importing the OM depends on
+it; the rest is judged.
 
 ## OM-02 Wire and table shapes are projections
 

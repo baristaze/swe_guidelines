@@ -144,12 +144,16 @@ class Catalog(GlobalIdentifiableMixin, CreatedMixin, Base):
 from abc import ABC, abstractmethod
 
 from acme.om.tasks.storage import TasksStorageInterface
+from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.widgets.storage import WidgetsStorageInterface
 
 
 class StorageInterface(ABC):
     @abstractmethod
     def get_tasks_storage(self) -> TasksStorageInterface: ...
+
+    @abstractmethod
+    def get_tenancy_storage(self) -> TenancyStorageInterface: ...
 
     @abstractmethod
     def get_widgets_storage(self) -> WidgetsStorageInterface: ...
@@ -164,6 +168,9 @@ class StorageInterface(ABC):
 class StorageMemoryImpl(StorageInterface):
     def get_tasks_storage(self):
         return self._tasks
+
+    def get_tenancy_storage(self):
+        return self._tenancy
 
     def get_widgets_storage(self):
         return self._widgets
@@ -185,6 +192,9 @@ def engine(url, pool):
 class StoragePostgresImpl(StorageInterface):
     def get_tasks_storage(self):
         return self._tasks
+
+    def get_tenancy_storage(self):
+        return self._tenancy
 
     def get_widgets_storage(self):
         return self._widgets
@@ -941,10 +951,26 @@ def test_sto_06_a_write_returning_uuids_in_another_spelling(tmp_path, ret):
     assert "create_widget returns a UUID" in messages(report)[0]
 
 
-def test_sto_10_no_root_at_all(tmp_path):
+def test_sto_10_no_impl_root_at_all(tmp_path):
     code, report = run(tmp_path, "STO-10", drop=[MEMORY, PG])
     assert code == 1
     assert messages(report) == ["StorageInterface needs two roots, one of them StorageMemoryImpl"]
+
+
+def test_sto_10_no_storage_root_at_all(tmp_path):
+    code, report = run(tmp_path, "STO-10", drop=[ROOT, MEMORY, PG])
+    assert code == 1
+    assert messages(report) == ["acme.om has namespace storages and no StorageInterface under acme.om.storage"]
+
+
+def test_sto_18_the_role_as_a_keyword_passes(tmp_path):
+    files = edit(
+        WRAPPER,
+        'run_sql(DatabaseRole.CORE, "202601010000_initial.up.sql")',
+        'run_sql("202601010000_initial.up.sql", role=DatabaseRole.CORE)',
+    )
+    code, _ = run(tmp_path, "STO-18", files)
+    assert code == 0
 
 
 def test_sto_17_a_foreign_key_constraint_across_roles(tmp_path):
@@ -1067,7 +1093,7 @@ def test_sto_08_and_10_a_root_in_the_storage_package_init(tmp_path):
     files[init] = GOOD[ROOT].replace("    @abstractmethod\n    async def close(self) -> None: ...\n", "")
     code, report = run(tmp_path, "STO-10", files, drop=[ROOT])
     assert code == 1
-    assert rules_found(report) == [("STO-10", init, 7)]
+    assert rules_found(report) == [("STO-10", init, 8)]
     assert messages(report) == ["StorageInterface declares no close()"]
     files[init] = "from sqlalchemy.ext.asyncio import AsyncEngine\n" + GOOD[ROOT]
     code, report = run(tmp_path, "STO-08", files, drop=[ROOT])

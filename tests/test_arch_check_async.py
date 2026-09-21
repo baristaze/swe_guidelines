@@ -405,10 +405,27 @@ def test_asy_09_every_shape_of_the_topics_package(tmp_path):
         'TopicPayload does not set extra="ignore"; an old consumer must read a new payload',
         "WorkAvailablePayload does not extend TopicPayload",
         "a topic published by its string name; publish a Topics member",
-        "publish returns something; it returns None",
+        "publish is not annotated `-> None`; it returns None",
         "subscribe returns no unsubscribe callable",
         "subscribe takes no consumer name",
     ]
+
+
+def test_asy_08_and_asy_09_an_empty_capability_package_is_judged(tmp_path):
+    files = {"infra/src/acme/infra/buckets/__init__.py": "", "infra/src/acme/infra/topics/__init__.py": ""}
+    for rule_id in ("ASY-08", "ASY-09"):
+        code, _ = run(tmp_path, rule_id, files)
+        assert code == 0, rule_id
+
+
+def test_asy_09_the_payload_config_as_class_keywords_passes(tmp_path):
+    text = GOOD[TOPICS].replace(
+        'class TopicPayload(BaseModel):\n    model_config = ConfigDict(frozen=True, extra="ignore")\n',
+        'class TopicPayload(BaseModel, frozen=True, extra="ignore"):\n',
+    )
+    assert text != GOOD[TOPICS]
+    code, _ = run(tmp_path, "ASY-09", {TOPICS: text})
+    assert code == 0
 
 
 def test_asy_09_a_payload_base_on_the_om_root(tmp_path):
