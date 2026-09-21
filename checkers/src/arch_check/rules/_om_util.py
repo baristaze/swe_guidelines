@@ -79,11 +79,26 @@ class Index:
         self.roots: set[Key] = {
             info.key
             for info in self.classes.values()
-            if info.file.module == self.base_module and any(last(dotted(b)) == "BaseModel" for b in info.node.bases)
+            if info.file.module == self.base_module
+            and any(last(self.qualified(info.file.module, dotted(b))) == "BaseModel" for b in info.node.bases)
         }
         self._chain: dict[Key, bool] = {}
 
     # --- names
+
+    def qualified(self, module: str, name: str | None) -> str | None:
+        """A dotted name written in `module` with its head read through the module's imports.
+
+        `dt.now` after `from datetime import datetime as dt` gives
+        `datetime.datetime.now`; `u.uuid4` after `import uuid as u` gives
+        `uuid.uuid4`. A head no import binds is returned as written, so
+        `slot.end_time.time` stays itself and never reads as `time.time`.
+        """
+        if not name:
+            return None
+        head, _, rest = name.partition(".")
+        bound = self.bindings.get(module, {}).get(head, head)
+        return f"{bound}.{rest}" if rest else bound
 
     def lookup(self, module: str, name: str, depth: int = 0) -> Key | None:
         """The class `name` means inside `module`, followed through imports; None when it is not a project class."""

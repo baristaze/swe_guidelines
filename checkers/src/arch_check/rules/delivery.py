@@ -35,6 +35,7 @@ from arch_check.rules._text_util import (
     npm_dependencies,
     resolved,
     subdirs,
+    subtable,
     walk,
     workspace_members,
 )
@@ -175,7 +176,7 @@ def one_project_shape(project: Project) -> Iterator[Violation]:
             if data is None:
                 yield Violation(folder, 1, 1, f"{folder} has no pyproject.toml; a {role[:-1]} is a distribution")
                 continue
-            if not data.get("project", {}).get("scripts"):
+            if not subtable(data, "project").get("scripts"):
                 yield Violation(where, 1, 1, f"{folder} declares no [project.scripts] console entry point")
             packages = sorted(p for p in (project.root / folder / "src" / root / role).glob("*") if p.is_dir())
             packages = [p for p in packages if not p.name.startswith(("_", "."))]
@@ -230,6 +231,7 @@ def stage_user(stages: list[list[Instruction]], index: int, listed: list[str]) -
 
 @rule(
     "DEL-10",
+    options=("unprivileged_bases",),
     coverage="partial",
     summary="Dockerfiles live in deployment/docker/, build in two stages, install locked, run non-root, declare a HEALTHCHECK.",
 )
@@ -296,6 +298,7 @@ LINT_FILES = ("ruff.toml", ".ruff.toml", "pyrightconfig.json", "mypy.ini", ".myp
 
 @rule(
     "DEL-11",
+    options=("python_workspace", "typescript_workspace"),
     coverage="partial",
     summary="The workspaces are declared at the root, lint and type config live only there, and the Makefile has check.",
 )
@@ -329,9 +332,9 @@ def workspace_tooling_at_the_root(project: Project) -> Iterator[Violation]:
     for rel in walk(project, names=("pyproject.toml",)):
         if rel == "pyproject.toml":
             continue
-        tool = (load_toml(project, rel) or {}).get("tool", {})
+        tool = subtable(load_toml(project, rel), "tool")
         for name in LINT_TABLES:
-            if isinstance(tool, dict) and name in tool:
+            if name in tool:
                 yield Violation(rel, 1, 1, f"[tool.{name}] in a member; lint and type config live at the root")
     for rel in walk(project, names=LINT_FILES):
         if "/" in rel:
@@ -368,6 +371,7 @@ def browser_apps(project: Project) -> Iterator[tuple[str, set[str]]]:
 
 @rule(
     "DEL-12",
+    options=("framework", "bundler"),
     coverage="partial",
     summary="Every browser app depends on the framework and the bundler (react, vite) and on no other; apps/cli is Python.",
 )
@@ -410,6 +414,7 @@ def react_on_vite(project: Project) -> Iterator[Violation]:
 
 @rule(
     "DEL-13",
+    options=("server_state", "client_state"),
     coverage="partial",
     summary="No browser app depends on a state library other than TanStack Query and Zustand.",
 )
@@ -600,6 +605,7 @@ def is_logging_receiver(node: ast.expr, names: dict[str, str], bound: set[str]) 
 
 @rule(
     "DEL-19",
+    options=("boot_modules", "library"),
     coverage="partial",
     summary="Loggers come from getLogger(__name__); only the boot modules configure logging; no second logging library.",
 )
@@ -660,6 +666,7 @@ def standard_logging(project: Project) -> Iterator[Violation]:
 
 @rule(
     "DEL-20",
+    options=("metrics",),
     coverage="partial",
     summary="No second metrics system is imported and no tracer or metrics interface wraps the vendor API.",
 )
@@ -752,7 +759,9 @@ def adrs_numbered_and_cited(project: Project) -> Iterator[Violation]:
 
 # --- DEL-26
 
-PRE_RELEASE = re.compile(r"(?<![A-Za-z0-9.])\d+(?:\.\d+)*(?:[-.]?(?:rc|alpha|beta|dev|pre|preview)\d*|(?:a|b)\d+)(?![A-Za-z])")
+PRE_RELEASE = re.compile(r"(?<![A-Za-z0-9.])\d+(?:\.\d+)*(?:[-.]?(?:rc|alpha|beta|dev|pre|preview)\d*|(?:a|b)\d+)(?![A-Za-z0-9])")
+GIT_SHA = re.compile(r"[0-9a-f]{7,40}")
+"""A tag that is a commit id (`7a91c0d`): its digits and letters are hex, never a version and a pre-release suffix."""
 DIGEST = re.compile(r"@sha256:[0-9a-f]+")
 VERSION = re.compile(r"^\d+(?:\.\d+)*")
 
@@ -838,7 +847,7 @@ def stable_versions_agree(project: Project) -> Iterator[Violation]:
             if m:
                 declared.append((rel, number, m.group(1)))
     for rel, line, text in declared:
-        m = PRE_RELEASE.search(text)
+        m = None if GIT_SHA.fullmatch(text) else PRE_RELEASE.search(text)
         if m:
             yield Violation(rel, line, 1, f"{text!r} is a pre-release; a dependency runs on a stable release")
     for kind, (pin_rel, _, pin) in pins.items():

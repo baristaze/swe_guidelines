@@ -52,9 +52,10 @@ missing, stop and say the installation is incomplete.
    fallbacks each would use, the effort, and the repeats. There is no
    score to report, and inventing one is the worst thing this skill
    could do.
-6. `--runtime container` shells out to `docker build` and `docker run`.
-   The first run of it takes minutes while the image builds, so say
-   that before starting one.
+6. `--runtime container` runs the subject with `docker run`, from an
+   image it builds only when `--build` is passed. The first run on a
+   machine needs `--build`; a later run adds it when the image's inputs
+   changed. A build takes minutes, so say that before starting one.
 7. List the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
    needs its source.

@@ -653,3 +653,57 @@ class SecretsLocalImpl(SecretsInterface):
     code, report = run(tmp_path, "ASY-28", files)
     assert code == 1
     assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
+
+
+# --- review fixes
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from acme.infra.cache import memory\n\n\ndef f():\n    return memory.CacheMemoryImpl()\n",
+        "import acme.infra.cache.memory as m\n\n\ndef f():\n    return m.CacheMemoryImpl()\n",
+    ],
+)
+def test_asy_01_a_manager_building_an_impl_through_its_module(tmp_path, source):
+    code, report = run(tmp_path, "ASY-01", {MANAGER: source})
+    assert code == 1
+    assert [(p, line) for _, p, line in rules_found(report)] == [(MANAGER, 5)]
+
+
+def test_asy_19_a_brace_in_a_string_or_a_comment_does_not_end_the_block(tmp_path):
+    files = {
+        "deployment/terraform/a.tf": (
+            'resource "aws_cloudwatch_event_rule" "a" {\n  description = "fires at } midnight"\n'
+            '  schedule_expression = "cron(0 0 * * ? *)"\n}\n'
+        ),
+        "deployment/terraform/b.tf": (
+            'resource "aws_cloudwatch_event_rule" "b" {\n  # a comment with } in it\n'
+            '  /* and } here */\n  schedule_expression = "rate(1 day)"\n}\n'
+        ),
+        "deployment/terraform/c.tf": (
+            'resource "aws_cloudwatch_event_rule" "c" {\n  event_pattern = "{}"\n}\nlocals {\n  schedule_expression = "x"\n}\n'
+        ),
+    }
+    code, report = run(tmp_path, "ASY-19", files)
+    assert code == 1
+    assert sorted(p for _, p, _ in rules_found(report)) == ["deployment/terraform/a.tf", "deployment/terraform/b.tf"]
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        "with self._file.open() as f:\n            return f.read()",
+        "with open(self._file, mode=self._mode) as f:\n            return f.read()",
+    ],
+)
+def test_asy_28_a_path_open_or_an_unread_mode_is_a_read(tmp_path, read):
+    source = (
+        "class SecretsLocalImpl(SecretsInterface):\n    def describe(self) -> str:\n        return 'secrets=local'\n\n"
+        f"    def _read(self) -> str:\n        {read}\n"
+    )
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source})
+    assert code == 1
+    assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace("self._file.open()", "self._file.open('w')")})
+    assert code == (0 if "open()" in read else 1)

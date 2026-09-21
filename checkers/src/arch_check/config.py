@@ -94,9 +94,12 @@ def table(path: Path) -> dict[str, Any] | None:
     """The `[tool.arch-check]` table of a pyproject.toml, or None when it has none."""
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as e:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         raise ConfigError(f"{path}: {e}") from e
-    found = data.get("tool", {}).get(TABLE)
+    tool = data.get("tool", {})
+    if not isinstance(tool, dict):
+        raise ConfigError(f"{path}: [tool] is not a table")
+    found = tool.get(TABLE)
     if found is not None and not isinstance(found, dict):
         raise ConfigError(f"{path}: [tool.{TABLE}] is not a table")
     return found
@@ -123,6 +126,20 @@ def glob_match(pattern: str, rel: str) -> bool:
     segments, none included. Both sides use `/`.
     """
     return re.fullmatch(glob_regex(pattern), rel) is not None
+
+
+def relative_glob(pattern: str) -> bool:
+    """Whether a glob stays under the root: not empty, not absolute, never `..`."""
+    return bool(pattern.strip()) and not pattern.startswith(("/", "\\")) and ".." not in re.split(r"[/\\]", pattern)
+
+
+def globs(value: Any, where: str) -> tuple[str, ...]:
+    """A list of globs relative to the root; an empty, absolute, or climbing one is a `ConfigError`."""
+    out = strings(value, where)
+    for pattern in out:
+        if not relative_glob(pattern):
+            raise ConfigError(f"{where}: {pattern!r} is not a glob relative to the root")
+    return out
 
 
 def glob_regex(pattern: str) -> str:
@@ -234,9 +251,9 @@ def load(root: Path, package: str | None = None, *, need_package: bool = True) -
     return Config(
         root=root,
         package=name,
-        src=strings(data["src"], f"[tool.{TABLE}] `src`") if "src" in data else DEFAULT_SRC,
-        exclude=strings(data["exclude"], f"[tool.{TABLE}] `exclude`") if "exclude" in data else DEFAULT_EXCLUDE,
-        local=strings(data["local"], f"[tool.{TABLE}] `local`") if "local" in data else (),
+        src=globs(data["src"], f"[tool.{TABLE}] `src`") if "src" in data else DEFAULT_SRC,
+        exclude=globs(data["exclude"], f"[tool.{TABLE}] `exclude`") if "exclude" in data else DEFAULT_EXCLUDE,
+        local=globs(data["local"], f"[tool.{TABLE}] `local`") if "local" in data else (),
         disabled=deviations(root, data.get("disable", []), "disable", DISABLE_KEYS),
         exceptions=deviations(root, data.get("exception", []), "exception", EXCEPTION_KEYS),
         options=rule_options(data.get("options", {})),
@@ -246,8 +263,9 @@ def load(root: Path, package: str | None = None, *, need_package: bool = True) -
 def rule_options(value: Any) -> dict[str, dict[str, Any]]:
     """`[tool.arch-check.options.<RULE-ID>]` tables, each keyed by a lens id.
 
-    The runner holds each id to a known rule; a rule reads its keys with
-    `Project.option` and refuses a key it does not know.
+    The command line holds each id to a known rule and each key to the
+    keys that rule's registration names (`options=`); a rule reads them
+    with `Project.option`.
     """
     where = f"[tool.{TABLE}.options]"
     if not isinstance(value, dict):

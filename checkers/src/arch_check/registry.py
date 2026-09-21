@@ -56,6 +56,7 @@ def make(
     group: str | None = None,
     severity: Severity | None = None,
     origin: Origin = "guideline",
+    options: Sequence[str] = (),
 ) -> Rule:
     """A rule checked against the catalog: the lens exists, and group and severity are the lens's.
 
@@ -74,7 +75,16 @@ def make(
         raise RegistryError(f"{id}: coverage {coverage!r} is not full or partial")
     if not summary.strip():
         raise RegistryError(f"{id}: empty summary")
-    return Rule(id=id, group=lens_group, severity=LENSES[id], coverage=coverage, summary=summary, check=check, origin=origin)
+    return Rule(
+        id=id,
+        group=lens_group,
+        severity=LENSES[id],
+        coverage=coverage,
+        summary=summary,
+        check=check,
+        origin=origin,
+        options=frozenset(options),
+    )
 
 
 def register(new: Rule) -> Rule:
@@ -98,17 +108,22 @@ def rule(
     summary: str,
     group: str | None = None,
     severity: Severity | None = None,
+    options: Sequence[str] = (),
 ) -> Callable[[Check], Check]:
     """Register the decorated function as the rule that decides lens `id`.
 
     `coverage` is `full` when the rule decides the whole lens and
     `partial` when the rest is judged by a review. `summary` is one
     line for `--list`. Group and severity come from the lens.
+    `options` names every key the rule reads with `Project.option`, so
+    a key it does not read exits 2 before the run.
     """
 
     def wrap(check: Check) -> Check:
         origin: Origin = "local" if _collecting is not None else "guideline"
-        register(make(id, check, coverage=coverage, summary=summary, group=group, severity=severity, origin=origin))
+        register(
+            make(id, check, coverage=coverage, summary=summary, group=group, severity=severity, origin=origin, options=options)
+        )
         return check
 
     return wrap

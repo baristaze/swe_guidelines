@@ -55,9 +55,10 @@ of a changed signature.
    checker finding leaves the rest to judge; the lens passes only when
    that rest passes too. A lens absent from `rules_run` is judged whole
    in step 4. When the checker cannot run (a Python older than 3.11,
-   exit code 2, a project pinned to a newer Python than `python3`), say so in the report's Scope line and judge
-   every lens in step 4, the ones it would have decided included. The
-   review is the checker's fallback.
+   exit code 2, a project pinned to a newer Python than `python3`),
+   say so in the report's Scope line and judge every lens in step 4,
+   the ones it would have decided included. The review is the
+   checker's fallback.
 4. For every lens the checker did not decide, in id order, decide one
    of: **finding** (evidence of a breach, with a file and line),
    **pass** (the lens applies and the code satisfies it), **not
@@ -65,8 +66,9 @@ of a changed signature.
    **unverified** (the lens applies, and what would decide it lies
    outside the scope and the neighbors the Input section says to read;
    name what would decide it). A partial lens whose judged part touches
-   nothing in scope is not applicable, whatever the checker read. Keep the "Look for" and "Violation" text of the lens
-   in front of you while deciding.
+   nothing in scope is not applicable, whatever the checker read. Keep
+   the "Look for" and "Violation" text of the lens in front of you
+   while deciding.
 5. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
    Drop a finding you cannot point at. Verify a **pass** on a `high`

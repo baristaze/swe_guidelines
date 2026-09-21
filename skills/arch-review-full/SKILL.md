@@ -45,9 +45,12 @@ cheaper question whenever the change is narrower than the tree.
    no such agent exists, use a general-purpose agent and give it the
    text of `${CLAUDE_SKILL_DIR}/../arch-review-<group>/SKILL.md` with
    every `${CLAUDE_SKILL_DIR}` in it substituted by the absolute path
-   first, since the agent has no such variable. When
-   subagents are not available at all, run the eight group procedures
-   one after another in this session. The groups:
+   first, since the agent has no such variable. Tell that agent to skip
+   the procedure's checker step and to use the part of the output
+   passed to it instead, so the checker runs once. When subagents are
+   not available at all, run the eight group procedures one after
+   another in this session, each on its part of the same output. The
+   groups:
    - `arch-review-om`
    - `arch-review-contracts`
    - `arch-review-context`

@@ -173,3 +173,22 @@ def test_check_comes_after_severity(repo, lenses, capsys):
     repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
     assert lenses.main() == 1
     assert "optionally followed by Check" in capsys.readouterr().out
+
+
+def test_an_id_repeated_in_another_file_fails(repo, lenses, capsys):
+    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `st` | `storage.md` | The Storage Layer: tables |\n")
+    repo.write("lenses/storage.md", repo.read("lenses/om.md").replace("## OM-02 Tables are per entity\n", "## ST-01 Tables\n"))
+    repo.edit("lenses/storage.md", "## OM-01 Interfaces first", "## OM-01 Interfaces again")
+    repo.edit("README.md", "2 lenses", "4 lenses")
+    assert lenses.main() == 1
+    out = capsys.readouterr().out
+    assert "storage.md:5: id OM-01 is already used in om.md" in out
+    repo.edit("lenses/storage.md", "## OM-01 Interfaces again", "## ST-01 Interfaces again")
+    repo.edit("lenses/storage.md", "## ST-01 Tables\n", "## ST-02 Tables\n")
+    assert lenses.main() == 0
+
+
+def test_a_section_cited_by_number_in_lowercase_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "Tables holding two entities.", "Tables holding two entities, as in section 4.")
+    assert lenses.main() == 1
+    assert "om.md:24: refers to a section by number" in capsys.readouterr().out

@@ -9,7 +9,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Business
 Layer (Operations Without a Principal), The Storage Layer (Database
-Roles), Infrastructure (Cache, Topics, Idempotency), The Network Layer
+Roles, The Second Fence), Infrastructure (Cache, Topics, Idempotency), The Network Layer
 (Long-Running Orchestrations), Worker Roles (The Work Queue, Shape of a
 Worker, Shutdown, Maintenance Without a Scheduler, Implementation
 Options), Cross-Cutting Conventions (The App Container).
@@ -72,7 +72,7 @@ Worker, under `workers/<worker-name>/`:
 | File                                        | Change                                                          |
 |---------------------------------------------|-----------------------------------------------------------------|
 | `om/src/<root>/om/work/types/work_item.py`   | `<KIND>` added to `WorkKind`                                     |
-| `om/src/<root>/om/storage/roles.py` (new namespace only) | `"work_items": DatabaseRole.QUEUE` in the role map, and `"work_items": TenancyScope.ORG` in the tenancy scope map beside it |
+| `om/src/<root>/om/storage/roles.py` (new namespace only) | `"work_items": DatabaseRole.QUEUE` in the role map `TABLE_ROLES`, and `"work_items": TenancyScope.ORG` in the tenancy scope map `TABLE_SCOPES` beside it |
 | `om/src/<root>/om/storage/root.py` and both impls (new namespace only) | `get_work_storage()`                    |
 | `om/src/<root>/om/root.py` (new namespace only) | `WorkManagerImpl` constructed and added to `Managers`, before the outbox relay impl, which now takes it        |
 | `om/src/<root>/om/outbox/impl/` (new namespace only) | the relay's second branch: a row whose `kind` is `work.<kind>` calls `WorkManagerInterface.enqueue_relayed(org_id, row)` and publishes `WORK_AVAILABLE`, beside the entity-change branch `arch-scaffold-new` wrote; the relay takes the work manager by interface, so `enqueue_relayed` has its caller from this step on |

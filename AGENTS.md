@@ -35,8 +35,11 @@ lenses (`skills/`), and the checkers that keep the three consistent
   every review skill on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
-  version; `scripts/check_version.py` holds the marketplace manifest,
-  the changelog, `docs/adopting.md`, and the arch-check package to it.
+  version. `scripts/check_version.py` holds every copy to it: the
+  marketplace manifest, the changelog's latest release heading, the
+  pinned tags in `README.md`, `docs/adopting.md`, and
+  `checkers/README.md`, and the arch-check package's version in
+  `checkers/pyproject.toml` and `checkers/src/arch_check/__init__.py`.
 - `benchmark/` holds the harness that measures a subject against a
   rubric (`.github/workflows/benchmark.yml` runs every scenario on
   demand, never on push): `run.py` with its inline dependencies, the `harness/` modules,
@@ -70,8 +73,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
 ## Invariants
 
 - No product or hardware vocabulary in the guideline, the lenses, the
-  skills, the docs, the agents, or this file (`scripts/check_leaks.py`
-  lists the terms). The product list is a regression guard for the
+  skills, the docs, the agents, the `.github/` templates, or this file
+  (`scripts/check_leaks.py` lists the terms). The product list is a regression guard for the
   vocabulary of the one origin the guideline was extracted from, not a
   general check: it catches that vocabulary flowing back in, and a
   fork replaces it with its own. Agents are named as agents.

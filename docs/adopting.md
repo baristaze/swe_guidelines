@@ -44,12 +44,13 @@ change.
 The rules a program can check travel two ways. A rule that reads
 only the source travels as `arch-check`, the static checker in this
 repository's `checkers/`, which a project runs from the tag it pins
-(see "Run the checker" below). A rule that needs the built system or
-a migrated database travels as a test the project writes: the role
-map, the roots built whole, and one head per migration chain in
-`om/tests/unit/`; the tenancy scope of every table against the
-policies the migrations carry, and the login that is neither
-superuser nor `BYPASSRLS`, in `om/tests/integration/`. The guideline's
+(see "Run the checker" below). The role map and one head per
+migration chain are among those. A rule that needs the built system
+or a migrated database travels as a test the project writes. The
+roots built whole are a unit test in `om/tests/unit/`. The tenancy
+scope of every table against the policies the migrations carry, and
+the login that is neither superuser nor `BYPASSRLS`, are integration
+tests in `om/tests/integration/`. The guideline's
 Records of Decisions lists each rule and says which way it is
 checked. A fresh scaffold sets up both. An existing codebase adds the
 checker to its gate and writes the tests from that list. A rule that
@@ -91,19 +92,25 @@ the same commit that bumps the pin in `specs/architecture.md`: the
 checker and the lenses it decides move together.
 
 Configure it in the root `pyproject.toml`. A project in the layout the
-guideline prescribes names its package and nothing else:
+guideline prescribes names its package in this table. A scaffolded
+tree puts no other key there:
 
 ```toml
 [tool.arch-check]
 package = "acme"
 ```
 
-Three more things go in the same table, each only when needed:
+Three more things go beside it, each only when needed:
 
 - **Options.** A rule that needs the project's own names reads them
   from `[tool.arch-check.options.<RULE-ID>]`, for example the storage
   methods allowed to take no tenant. The default is the name the
-  guideline uses, so a scaffolded tree sets none.
+  guideline uses. A scaffolded tree sets two lists and no other
+  option: the sites that construct a stage, under
+  `[tool.arch-check.options.CTX-26] sites`, and the tenant-less
+  storage methods, under `[tool.arch-check.options.CTX-12]
+  tenantless`. Its role map and scope map carry the default names,
+  `TABLE_ROLES` and `TABLE_SCOPES`, so they need no option.
 - **Exceptions.** A rule turned off, or a file allowed to break it, is
   a deviation. Each entry names its ADR, and the run refuses an entry
   whose ADR does not exist. An exception that no longer matches

@@ -8,8 +8,8 @@ The dataclasses below are the whole shape. A key a scenario does not set
 takes the default here, and an unknown key is refused: a misspelled key
 is a scenario that silently judges something else.
 
-A relative path in a scenario (`subject.target`, `evidence.expected`)
-is read from the scenario file's folder, so a scenario means the same
+A relative path in a scenario (`subject.target`, `subject.context`,
+`evidence.expected`) is read from the scenario file's folder, so a scenario means the same
 thing from wherever the run starts.
 """
 
@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from . import providers as P
+from .judge import EFFORTS
 
 KINDS = ("skill", "command", "qa")
 SUFFIXES = (".yaml", ".yml", ".json")
@@ -210,6 +211,12 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         providers=str(raw_judges.get("providers", "3")),
         effort=str(raw_judges.get("effort", "medium")),
     )
+    try:
+        P.parse(judges.providers)
+    except ValueError as exc:
+        raise ScenarioError(f"scenario {name}: judges.providers: {exc}") from exc
+    if judges.effort not in EFFORTS:
+        raise ScenarioError(f"scenario {name}: judges.effort is one of {', '.join(EFFORTS)}, got {judges.effort!r}")
     raw_evidence = data.get("evidence") or {}
     if not isinstance(raw_evidence, dict):
         raise ScenarioError(f"scenario {name}: evidence holds a mapping")

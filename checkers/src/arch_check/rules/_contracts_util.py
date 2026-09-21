@@ -198,19 +198,21 @@ def called_name(call: ast.Call) -> str | None:
 
 
 def enclosing(tree: ast.Module) -> dict[ast.AST, str]:
-    """Each node's enclosing definition as a dotted qualname (`Class.method`), `<module>` at the top."""
+    """Each node's enclosing definition as a dotted qualname (`Class.method`), `<module>` at the top.
+
+    Walked with a stack, not recursion: a long chain of `+` nests as deep
+    as it is long.
+    """
     out: dict[ast.AST, str] = {}
-
-    def visit(node: ast.AST, scope: list[str]) -> None:
+    stack: list[tuple[ast.AST, tuple[str, ...]]] = [(tree, ())]
+    while stack:
+        node, scope = stack.pop()
         for child in ast.iter_child_nodes(node):
+            out[child] = ".".join(scope) or "<module>"
             if isinstance(child, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
-                out[child] = ".".join(scope) or "<module>"
-                visit(child, [*scope, child.name])
+                stack.append((child, (*scope, child.name)))
             else:
-                out[child] = ".".join(scope) or "<module>"
-                visit(child, scope)
-
-    visit(tree, [])
+                stack.append((child, scope))
     return out
 
 

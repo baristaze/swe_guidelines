@@ -182,3 +182,39 @@ def test_scaffold_sections_must_appear_in_order(repo, skills, capsys):
     )
     assert skills.main() == 1
     assert "expected ['Input', 'Created', 'Changed', 'Procedure', 'Output']" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("rule", ["Bash(*)", "Bash(rm -rf /)", "Bash(curl*)", "Bash(git*:*)", "Bash(make check:*:*)"])
+def test_a_bash_rule_in_neither_allowed_form_fails(repo, skills, capsys, rule):
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", f"Bash(make check), {rule}")
+    assert skills.main() == 1
+    assert f"{rule!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)" in capsys.readouterr().out
+
+
+def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):
+    # `make che` is not run by `make check`, and `make test` is not run by `make test-e2e`
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", "Bash(make check), Bash(make che), Bash(make test)")
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "2. Run `make check`.", "2. Run `make check` and `make test-e2e`.")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert "never runs make che" in out
+    assert "never runs make test" in out
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "`make test-e2e`", "`make test` and `make che`")
+    assert skills.main() == 0
+
+
+def test_a_reference_in_the_scaffold_conventions_resolves_from_each_including_skill(repo, skills, capsys):
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `${CLAUDE_SKILL_DIR}/../../missing.json`.\n")
+    assert skills.main() == 0  # no skill references the conventions file yet
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "2. Run `make check`.",
+        "2. Run `make check`.\n3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+    )
+    assert skills.main() == 1
+    assert (
+        "skills/arch-scaffold-thing/SKILL.md (via skills/_shared/scaffold-conventions.md): "
+        "reference ${CLAUDE_SKILL_DIR}/../../missing.json does not exist"
+    ) in capsys.readouterr().out
+    repo.write("missing.json", "{}\n")
+    assert skills.main() == 0

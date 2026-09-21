@@ -102,9 +102,11 @@ the order the guideline presents them, never by number.
   used is the cross-tenant case beside each method, below.
 - The predicate in the query is the fence, and the database policy is
   the second fence, taken by default. Every table declares its tenancy
-  scope (`system`, `org`, `identity`, `both`) in one map beside the
-  role map; the migration that creates the table creates its policy,
-  with `ENABLE` and `FORCE ROW LEVEL SECURITY`; and the Postgres base
+  scope (`system`, `org`, `identity`, `both`) in one map,
+  `TABLE_SCOPES`, beside the role map, `TABLE_ROLES` (the names
+  `arch-check` reads by default); the migration that creates the
+  table creates its policy, with `ENABLE` and `FORCE ROW LEVEL
+  SECURITY`; and the Postgres base
   opens every session through one funnel that takes `org_id` and an
   optional `user_id` and sets `app.org_id`, `app.user_id`, and
   `app.identity_id` with `set_config(..., true)`, so the settings die
@@ -222,11 +224,18 @@ the order the guideline presents them, never by number.
   cloud's own APIs, so a run against `local` proves the same path
   the cloud runs. The nine project-local skills under
   `.claude/skills/` are copied from
-  `skills/_shared/ops-skills/` with `acme` replaced by `<root>`;
-  every one takes `--env local|staging|production`, holds the
-  read-only investigate profile of its environment (the
-  administrator profile for create and nuke alone), and reads the
-  owner-only env file `~/.config/<root>/ops/<env>.env`.
+  `skills/_shared/ops-skills/` with `acme` replaced by `<root>`.
+  Every one takes `--env local|staging|production`. Each holds the
+  credential of the role Operations (Operational Skills) gives it.
+  The investigator and supporter skills hold the read-only
+  investigate profile of their environment and read the owner-only
+  env file `~/.config/<root>/ops/<env>.env`. Create and nuke hold the
+  administrator profile alone. The traffic and stress skills have no
+  role: `ops-simulate-traffic` and `stress-test-run` read the env
+  file for the provisioner identity, and hold the investigate profile
+  only to read the signals back from a cloud environment;
+  `stress-test-create-or-update` writes a file and holds no profile
+  and no env file.
 
 ## Changing existing files
 

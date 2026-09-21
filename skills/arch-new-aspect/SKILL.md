@@ -21,8 +21,7 @@ repository: `architecture.md`, `lenses/README.md`, `AGENTS.md`, and a
 `Makefile` with the `gen-toc`, `gen-skills`, and `check` targets all
 present. Otherwise stop and say so. The copy under
 `${CLAUDE_SKILL_DIR}/../..` is the installed plugin, not the checkout
-being changed; read `${CLAUDE_SKILL_DIR}/../../AGENTS.md` only when the
-checkout has none.
+being changed; read and edit the checkout's files, never the plugin's.
 
 ## Input
 
@@ -77,17 +76,31 @@ for the aspect in one message and stop.
      terms in the guideline. An agent is an agent; say so. When the
      aspect needs a refused term, rephrase and say so in the report
      rather than widening the list.
-   - What cascades? The Contents (`make gen-toc`); the review skills
-     (`make gen-skills`, driven by `lenses/README.md`); the scaffold
-     skills whose `Created` or `Changed` tables gain a file, or whose
-     section lists gain a section; `docs/adopting.md` when an adopter
-     must do something or gains a place to look; `README.md` when a
-     count or a summary changes; the release level, which goes in
-     the report and never into `CHANGELOG.md`, since the release pull
-     request writes the changelog (a new or sharpened rule is minor; a removed or reversed rule is
-     major, and before 1.0.0 bumps the minor number with the entry
-     naming the reversal, as `CONTRIBUTING.md` states; a pointer, a
-     rationale, or a wording change that states no new rule is patch); `AGENTS.md` when a new invariant appears.
+   - What cascades? List each of these that applies:
+     - The Contents, through `make gen-toc`.
+     - The review skills, through `make gen-skills`, driven by
+       `lenses/README.md`.
+     - `checkers/src/arch_check/lenses.py`, for every lens added,
+       removed, or re-rated: its id and its severity, equal to the
+       lens file.
+     - A new lens group. Its name and its id prefix go in `GROUPS` in
+       `checkers/src/arch_check/model.py`. Its skill goes in the group
+       list of `skills/arch-review-full/SKILL.md`, and its name in the
+       group list of `agents/arch-reviewer.md`. Its lens file goes in
+       the vendor loop of `docs/adopting.md`.
+     - The scaffold skills whose `Created` or `Changed` tables gain a
+       file, or whose section lists gain a section.
+     - `docs/adopting.md`, when an adopter must do something or gains
+       a place to look.
+     - `README.md`, when a count or a summary changes.
+     - `AGENTS.md`, when a new invariant appears.
+     - The release level. It goes in the report and never into
+       `CHANGELOG.md`, since the release pull request writes the
+       changelog. A new or sharpened rule is minor. A removed or
+       reversed rule is major; before 1.0.0 it bumps the minor number,
+       and the entry names the reversal, as `CONTRIBUTING.md` states.
+       A pointer, a rationale, or a wording change that states no new
+       rule is patch.
 4. Write the guideline text first, in its voice: present tense, no
    history and no rejected alternatives, one idea per paragraph,
    short sentences, wrapped at about 72 columns, cross-references as

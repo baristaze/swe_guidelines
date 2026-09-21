@@ -170,12 +170,12 @@ def test_the_edge_minting_the_request_stage_passes_ctx_05(tmp_path):
 
 def test_a_stage_minted_below_the_edge_is_ctx_05(tmp_path):
     files = {
-        f"{OM}/tasks/impl.py": "def f():\n    return RequestContext.model_validate({})\n",
+        f"{OM}/tasks/impl/manager.py": "def f():\n    return RequestContext.model_validate({})\n",
         f"{API}/routers/tasks.py": "def g():\n    return opcontext.OpContext(security=s)\n",
     }
     code, found, messages = run(tmp_path, "CTX-05", files)
     assert code == 1
-    assert [p for _, p, _ in found] == [f"{OM}/tasks/impl.py", f"{API}/routers/tasks.py"]
+    assert [p for _, p, _ in found] == [f"{OM}/tasks/impl/manager.py", f"{API}/routers/tasks.py"]
     assert "constructs RequestContext" in messages[0]
     assert "constructs OpContext" in messages[1]
 
@@ -189,7 +189,7 @@ def test_a_context_passed_on_unchanged_passes_ctx_06(tmp_path):
         "    return rctx.model_copy(update={'caused_by_request_id': item.request_id})\n\n"
         "async def get(ctx: OpContext, override: bool = False):\n    return await other(ctx, override=override)\n"
     )
-    code, _, _ = run(tmp_path, "CTX-06", {f"{OM}/tasks/impl.py": src})
+    code, _, _ = run(tmp_path, "CTX-06", {f"{OM}/tasks/impl/manager.py": src})
     assert code == 0
 
 
@@ -214,12 +214,12 @@ def test_a_context_variable_in_the_log_module_passes_ctx_07(tmp_path):
 
 def test_a_context_variable_or_a_thread_local_elsewhere_is_ctx_07(tmp_path):
     files = {
-        f"{OM}/tasks/impl.py": "import contextvars\n\ncurrent_org = contextvars.ContextVar('org')\n",
+        f"{OM}/tasks/impl/manager.py": "import contextvars\n\ncurrent_org = contextvars.ContextVar('org')\n",
         f"{API}/gateway/auth.py": "from threading import local\n\nstate = local()\n",
     }
     code, found, _ = run(tmp_path, "CTX-07", files)
     assert code == 1
-    assert [p for _, p, _ in found] == [f"{OM}/tasks/impl.py", f"{API}/gateway/auth.py"]
+    assert [p for _, p, _ in found] == [f"{OM}/tasks/impl/manager.py", f"{API}/gateway/auth.py"]
 
 
 def test_the_gateway_log_module_holds_the_context_variable_under_ctx_07(tmp_path):
@@ -242,7 +242,7 @@ def test_the_log_module_is_an_option_of_ctx_07(tmp_path):
 def test_a_manager_requiring_a_permission_passes_ctx_08(tmp_path):
     src = "async def create(self, ctx):\n    ctx.require(Permission.WRITE)\n"
     storage = "async def write_membership(self, org_id, membership):\n    row.role = membership.role\n"
-    code, _, _ = run(tmp_path, "CTX-08", {f"{OM}/tasks/impl.py": src, f"{OM}/tenancy/storage/impl/memory.py": storage})
+    code, _, _ = run(tmp_path, "CTX-08", {f"{OM}/tasks/impl/manager.py": src, f"{OM}/tenancy/storage/impl/memory.py": storage})
     assert code == 0
 
 
@@ -548,3 +548,51 @@ def test_a_worker_reusing_the_items_request_id_or_a_stage_without_the_cause_is_c
     assert code == 1
     assert [p for _, p, _ in found] == [STAGES, f"{WORKER}/loop.py"]
     assert messages[0] == "RequestContext declares no caused_by_request_id"
+
+
+# --- review fixes
+
+
+def test_a_stage_module_class_named_like_an_entity_passes_ctx_02(tmp_path):
+    stages = OPCONTEXT.replace(
+        "class SecurityContext(Platform):\n", "class Role(str):\n    pass\n\n\nclass SecurityContext(Platform):\n"
+    ).replace("    credential_id: UUID\n", "    credential_id: UUID\n    role: Role\n")
+    files = {STAGES: stages, f"{OM}/tenancy/types/role.py": "class Role:\n    pass\n"}
+    code, found, _ = run(tmp_path, "CTX-02", files)
+    assert (code, found) == (0, [])
+
+
+def test_a_nested_function_sees_only_what_it_does_not_rebind_for_ctx_06(tmp_path):
+    src = (
+        "def outer(ctx: OpContext):\n"
+        "    def shadow(ctx):\n        return ctx.model_copy()\n\n"
+        "    def other(item):\n        item.x = 1\n\n"
+        "    return shadow, other\n"
+    )
+    code, found, _ = run(tmp_path, "CTX-06", {f"{OM}/tasks/impl/manager.py": src})
+    assert (code, found) == (0, [])
+    closure = "def outer(ctx: OpContext):\n    def inner():\n        return ctx.model_copy()\n\n    return inner\n"
+    code, found, _ = run(tmp_path, "CTX-06", {f"{OM}/tasks/impl/manager.py": closure})
+    assert (code, [line for _, _, line in found]) == (1, [3])
+
+
+def test_an_empty_tenantless_list_still_enumerates_for_ctx_12(tmp_path):
+    pyproject = PYPROJECT + "\n[tool.arch-check.options.CTX-12]\ntenantless = []\n"
+    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=pyproject)
+    assert (code, [p for _, p, _ in found]) == (1, [f"{OM}/tasks/storage/__init__.py"])
+    assert "not on the tenantless list" in messages[0]
+
+
+def test_a_closure_inside_a_listed_method_is_part_of_the_site_for_ctx_26(tmp_path):
+    source = (
+        "class TenancyManagerImpl:\n    async def login(self, rctx):\n"
+        "        def make():\n            return IdentityContext(identity_id=i)\n\n        return make()\n"
+    )
+    pyproject = (
+        PYPROJECT + f'\n[tool.arch-check.options.CTX-26]\nsites = ["{STAGES}", "{TRANSITIONS}::TenancyManagerImpl.login"]\n'
+    )
+    code, found, _ = run(tmp_path, "CTX-26", {TRANSITIONS: source}, pyproject=pyproject)
+    assert (code, found) == (0, [])
+    renamed = source.replace("async def login", "async def log")
+    code, found, _ = run(tmp_path, "CTX-26", {TRANSITIONS: renamed}, pyproject=pyproject)
+    assert code == 1

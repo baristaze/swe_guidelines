@@ -19,6 +19,7 @@ from typing import Any
 
 import tomllib
 
+from arch_check.config import relative_glob
 from arch_check.project import SKIP_DIRS, Project, dotted
 
 WALK_SKIP = SKIP_DIRS | {"dist", "build", ".terraform", ".venv", "coverage", ".next", ".turbo"}
@@ -72,9 +73,22 @@ def load_toml(project: Project, rel: str) -> dict[str, Any] | None:
     if text is None:
         return None
     try:
-        return tomllib.loads(text)
+        return tomllib.loads(text.removeprefix("\ufeff"))
     except tomllib.TOMLDecodeError:
         return None
+
+
+def subtable(data: Any, *keys: str) -> dict[str, Any]:
+    """The table at `keys` inside parsed TOML, or an empty one when a step is missing or not a table."""
+    for key in keys:
+        data = data.get(key) if isinstance(data, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
+def strings_at(table: dict[str, Any], key: str) -> list[str]:
+    """The strings of the array at `key`; anything else there reads as empty."""
+    value = table.get(key)
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
 
 def load_json(project: Project, rel: str) -> Any:
@@ -83,7 +97,7 @@ def load_json(project: Project, rel: str) -> Any:
     if text is None:
         return None
     try:
-        return json.loads(text)
+        return json.loads(text.removeprefix("\ufeff"))  # a BOM is how some editors save UTF-8
     except json.JSONDecodeError:
         return None
 
@@ -104,18 +118,11 @@ REQUIREMENT = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 def python_dependencies(pyproject: dict[str, Any]) -> set[str]:
     """Every distribution a `pyproject.toml` requires, names lowercased with `_` as `-`."""
-    raw: list[Any] = []
-    project = pyproject.get("project", {})
-    if isinstance(project, dict):
-        raw.extend(project.get("dependencies", []) or [])
-        optional = project.get("optional-dependencies", {})
-        if isinstance(optional, dict):
-            for group in optional.values():
-                raw.extend(group or [])
-    groups = pyproject.get("dependency-groups", {})
-    if isinstance(groups, dict):
-        for group in groups.values():
-            raw.extend(group or [])
+    project = subtable(pyproject, "project")
+    raw: list[Any] = list(strings_at(project, "dependencies"))
+    for table in (subtable(project, "optional-dependencies"), subtable(pyproject, "dependency-groups")):
+        for group in table:
+            raw.extend(strings_at(table, group))
     out: set[str] = set()
     for item in raw:
         if isinstance(item, str):
@@ -133,13 +140,15 @@ def workspace_members(project: Project) -> list[str] | None:
     root = load_toml(project, "pyproject.toml")
     if root is None:
         return None
-    workspace = root.get("tool", {}).get("uv", {}).get("workspace")
+    workspace = subtable(root, "tool", "uv").get("workspace")
     if not isinstance(workspace, dict):
         return None
-    members = [m for m in workspace.get("members", []) if isinstance(m, str)]
-    excluded = [m for m in workspace.get("exclude", []) if isinstance(m, str)]
+    members = strings_at(workspace, "members")
+    excluded = strings_at(workspace, "exclude")
     found: set[str] = set()
     for pattern in members:
+        if not relative_glob(pattern):
+            continue
         for p in project.root.glob(pattern):
             if p.is_dir() and (p / "pyproject.toml").is_file():
                 rel = p.relative_to(project.root).as_posix()
@@ -150,7 +159,8 @@ def workspace_members(project: Project) -> list[str] | None:
 
 # --- Makefile
 
-TARGET = re.compile(r"^([A-Za-z0-9_./%-]+(?:[ \t]+[A-Za-z0-9_./%-]+)*)[ \t]*:(?![=:])(.*)$")
+TARGET = re.compile(r"^([A-Za-z0-9_./%-]+(?:[ \t]+[A-Za-z0-9_./%-]+)*)[ \t]*(?:::(?![=:])|:(?![=:]))(.*)$")
+"""A rule line, `target:` or the double-colon `target::`; never an assignment (`:=`, `::=`)."""
 
 
 @dataclass(frozen=True)

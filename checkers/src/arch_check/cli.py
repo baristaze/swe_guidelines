@@ -16,7 +16,7 @@ from pathlib import Path
 
 from arch_check import __version__, registry, report
 from arch_check.config import ConfigError, find_root, load
-from arch_check.model import GROUPS
+from arch_check.model import GROUPS, Rule
 from arch_check.project import Project
 from arch_check.runner import run
 
@@ -53,8 +53,13 @@ def pinned_python(root: Path) -> tuple[int, int] | None:
     path = root / ".python-version"
     if not path.is_file():
         return None
-    m = re.match(r"\s*(\d+)\.(\d+)", path.read_text(encoding="utf-8"))
+    m = re.match(r"\s*(\d+)\.(\d+)", path.read_text(encoding="utf-8", errors="replace"))
     return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def options_of(id: str, rules: Sequence[Rule]) -> set[str]:
+    """Every option key the rules with this id declare: a shipped rule and a local one may share an id."""
+    return {key for r in rules if r.id == id for key in r.options}
 
 
 def error(message: str) -> int:
@@ -89,9 +94,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     for d in (*config.disabled, *config.exceptions):
         if d.rule not in known:
             return error(f"[tool.arch-check] names unknown rule {d.rule}")
-    for name in config.options:
+    for name, table in config.options.items():
         if name not in known:
             return error(f"[tool.arch-check.options] names unknown rule {name}")
+        unknown_keys = sorted(set(table) - options_of(name, everything))
+        if unknown_keys:
+            return error(f"[tool.arch-check.options.{name}]: unknown key(s) {', '.join(unknown_keys)}")
     disabled = {d.rule for d in config.disabled}
     selected = [r for r in selected if r.id not in disabled]
 

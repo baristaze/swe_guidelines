@@ -88,6 +88,7 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("AGENTS.md", ["product"]),
     ("benchmark/", ["product", "shape"]),
     ("checkers/", ["product", "shape"]),
+    (".github/", ["product"]),
 ]
 
 
@@ -97,9 +98,12 @@ def in_scope(rel: str, scope: str) -> bool:
 
 def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
     compiled = [re.compile(p, re.IGNORECASE) for p in REFUSED_TERMS[label]]
+    # The Next section links the reference on purpose, in the guideline only;
+    # the same heading pasted anywhere else exempts nothing.
+    exempt = label == "reference" and path.relative_to(root).as_posix() == "architecture.md"
     in_next = False
     for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if label == "reference" and line.startswith("## "):
+        if exempt and line.startswith("## "):
             in_next = line.strip() == NEXT_SECTION
         if in_next:
             continue

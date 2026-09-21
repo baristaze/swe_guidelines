@@ -64,7 +64,7 @@ def test_an_impl_of_an_interface_with_async_operations_passes_con_01(tmp_path):
     impl = (
         "from acme.om.tasks.manager import TasksManagerInterface\n\n\nclass TasksManagerImpl(TasksManagerInterface):\n    pass\n"
     )
-    code, _, _ = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": MANAGER_INTERFACE, f"{OM}/tasks/impl.py": impl})
+    code, _, _ = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": MANAGER_INTERFACE, f"{OM}/tasks/impl/manager.py": impl})
     assert code == 0
 
 
@@ -73,10 +73,10 @@ def test_an_impl_with_no_interface_and_a_sync_operation_are_con_01(tmp_path):
     code, found, messages = run(
         tmp_path,
         "CON-01",
-        {f"{OM}/tasks/manager.py": iface, f"{OM}/tasks/impl.py": "class TasksManagerImpl:\n    pass\n"},
+        {f"{OM}/tasks/manager.py": iface, f"{OM}/tasks/impl/manager.py": "class TasksManagerImpl:\n    pass\n"},
     )
     assert code == 1
-    assert found == [("CON-01", f"{OM}/tasks/impl.py", 1), ("CON-01", f"{OM}/tasks/manager.py", 6)]
+    assert found == [("CON-01", f"{OM}/tasks/impl/manager.py", 1), ("CON-01", f"{OM}/tasks/manager.py", 6)]
     assert "subclasses no *Interface" in messages[0]
     assert "is synchronous" in messages[1]
 
@@ -207,7 +207,7 @@ def test_a_constructor_typed_by_interface_passes_con_06(tmp_path):
         "    def __init__(self, storage: TasksStorageInterface, clock: Callable[..., Any]) -> None:\n"
         "        self._storage = storage\n"
     )
-    code, _, _ = run(tmp_path, "CON-06", {f"{OM}/tasks/impl.py": impl})
+    code, _, _ = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl})
     assert code == 0
 
 
@@ -221,14 +221,14 @@ def test_an_untyped_any_or_impl_dependency_and_a_self_built_one_are_con_06(tmp_p
         "from abc import ABC, abstractmethod\n\n\nclass TasksManagerInterface(ABC):\n"
         "    @abstractmethod\n    async def move(self, ctx, events: EventsManagerInterface): ...\n"
     )
-    code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl.py": impl, f"{OM}/tasks/manager.py": iface})
+    code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl, f"{OM}/tasks/manager.py": iface})
     assert code == 1
-    assert [(p.rpartition("/")[2], line) for _, p, line in found] == [
-        ("impl.py", 2),
-        ("impl.py", 2),
-        ("impl.py", 2),
-        ("impl.py", 3),
-        ("manager.py", 6),
+    assert [(p, line) for _, p, line in found] == [
+        (f"{OM}/tasks/impl/manager.py", 2),
+        (f"{OM}/tasks/impl/manager.py", 2),
+        (f"{OM}/tasks/impl/manager.py", 2),
+        (f"{OM}/tasks/impl/manager.py", 3),
+        (f"{OM}/tasks/manager.py", 6),
     ]
     assert "untyped" in messages[0]
     assert "as Any" in messages[1]
@@ -251,7 +251,7 @@ def test_a_root_may_construct_impls_under_con_06(tmp_path):
 
 def test_an_options_object_passes_con_07(tmp_path):
     impl = "class TasksManagerImpl:\n    def __init__(self, storage: S, options: TasksOptions) -> None:\n        pass\n"
-    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl.py": impl})
+    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl})
     assert code == 0
 
 
@@ -260,7 +260,7 @@ def test_a_loose_tunable_is_con_07(tmp_path):
         "class TasksManagerImpl:\n"
         "    def __init__(self, storage: S, page_size: int, lease: timedelta | None) -> None:\n        pass\n"
     )
-    code, found, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl.py": impl})
+    code, found, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl})
     assert code == 1
     assert len(found) == 2
 
@@ -308,7 +308,7 @@ def test_two_namespaces_importing_each_others_impl_are_con_08(tmp_path):
         f"{OM}/events/impl/__init__.py": "",
         f"{OM}/events/impl/manager.py": "from acme.om.tasks.impl import manager\n",
     }
-    code, found, _ = run(tmp_path, "CON-08", {**files, f"{OM}/tasks/impl.py": ""})
+    code, found, _ = run(tmp_path, "CON-08", files)
     assert code == 1
     assert len(found) == 2
 
@@ -416,7 +416,7 @@ def test_a_vendor_in_an_interface_module_or_a_manager_impl_is_con_11(tmp_path):
         f"{OM}/tasks/impl/__init__.py": "",
         f"{OM}/tasks/impl/manager.py": "def f():\n    from sqlalchemy.exc import IntegrityError\n",
     }
-    code, found, _ = run(tmp_path, "CON-11", {**files, f"{OM}/tasks/impl.py": ""})
+    code, found, _ = run(tmp_path, "CON-11", files)
     assert code == 1
     assert [(p, line) for _, p, line in found] == [(f"{INFRA}/cache/__init__.py", 1), (f"{OM}/tasks/impl/manager.py", 2)]
 
@@ -559,7 +559,7 @@ def test_contexts_of_ids_and_structural_constructors_pass_con_18(tmp_path):
         "class TasksManagerImpl(TasksManagerInterface):\n"
         "    def __init__(self, storage: TasksStorageInterface) -> None:\n        pass\n"
     )
-    code, _, _ = run(tmp_path, "CON-18", {STAGE_MODULE: stages, f"{OM}/tasks/impl.py": impl})
+    code, _, _ = run(tmp_path, "CON-18", {STAGE_MODULE: stages, f"{OM}/tasks/impl/manager.py": impl})
     assert code == 0
 
 
@@ -578,9 +578,9 @@ def test_a_manager_on_a_context_or_a_tenant_in_a_constructor_is_con_18(tmp_path)
         "class TasksManagerImpl(TasksManagerInterface):\n    def __init__(self, storage: S, org_id: UUID) -> None:\n"
         "        pass\n"
     )
-    code, found, _ = run(tmp_path, "CON-18", {STAGE_MODULE: stages, f"{OM}/tasks/impl.py": impl})
+    code, found, _ = run(tmp_path, "CON-18", {STAGE_MODULE: stages, f"{OM}/tasks/impl/manager.py": impl})
     assert code == 1
-    assert found == [("CON-18", STAGE_MODULE, 2), ("CON-18", f"{OM}/tasks/impl.py", 2)]
+    assert found == [("CON-18", STAGE_MODULE, 2), ("CON-18", f"{OM}/tasks/impl/manager.py", 2)]
 
 
 # --- CON-20
@@ -628,11 +628,11 @@ def test_a_breaker_fed_by_settings_passes_con_23(tmp_path):
 def test_a_literal_bound_or_a_breaker_in_the_om_is_con_23(tmp_path):
     files = {
         f"{INFRA}/impl/configured.py": "def build():\n    return Breaker('cache', 5, cool_down=30.0)\n",
-        f"{OM}/tasks/impl.py": "from acme.infra.breaker import Breaker\n",
+        f"{OM}/tasks/impl/manager.py": "from acme.infra.breaker import Breaker\n",
     }
     code, found, _ = run(tmp_path, "CON-23", files)
     assert code == 1
-    assert [(p, line) for _, p, line in found] == [(f"{INFRA}/impl/configured.py", 2), (f"{OM}/tasks/impl.py", 1)]
+    assert [(p, line) for _, p, line in found] == [(f"{INFRA}/impl/configured.py", 2), (f"{OM}/tasks/impl/manager.py", 1)]
 
 
 def test_a_literal_probe_count_or_an_open_refusal_passes_con_23(tmp_path):
@@ -650,3 +650,49 @@ def test_a_literal_failure_threshold_is_con_23(tmp_path):
     code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/impl/configured.py": src})
     assert code == 1
     assert found == [("CON-23", f"{INFRA}/impl/configured.py", 2)]
+
+
+# --- review fixes
+
+
+def test_an_overload_stub_before_the_abstract_method_passes_con_02(tmp_path):
+    iface = (
+        "from abc import ABC, abstractmethod\nfrom typing import overload\n\n\nclass TasksManagerInterface(ABC):\n"
+        "    @overload\n    async def get(self, ctx, key: int) -> int: ...\n\n"
+        "    @overload\n    async def get(self, ctx, key: str) -> str: ...\n\n"
+        "    @abstractmethod\n    async def get(self, ctx, key): ...\n"
+    )
+    code, _, _ = run(tmp_path, "CON-02", {f"{OM}/tasks/manager.py": iface})
+    assert code == 0
+    code, found, _ = run(tmp_path, "CON-02", {f"{OM}/tasks/manager.py": iface.replace("    @abstractmethod\n", "")})
+    assert (code, [line for _, _, line in found]) == (1, [12])
+
+
+def test_a_stubbed_manager_memory_impl_is_con_04(tmp_path):
+    memory = "class TasksManagerMemoryImpl:\n    async def get_task(self, ctx, task_id):\n        raise NotImplementedError\n"
+    code, found, _ = run(tmp_path, "CON-04", {f"{OM}/tasks/impl/memory.py": memory})
+    assert code == 1
+    assert found == [("CON-04", f"{OM}/tasks/impl/memory.py", 3)]
+
+
+@pytest.mark.parametrize("annotation", ["Callable[[], float]", "list[int]", "dict[str, timedelta]"])
+def test_a_container_of_numbers_is_not_a_tunable_for_con_07(tmp_path, annotation):
+    impl = f"class TasksManagerImpl:\n    def __init__(self, storage: S, clock: {annotation}) -> None:\n        pass\n"
+    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl})
+    assert code == 0
+    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl.replace(annotation, "float | None")})
+    assert code == 1
+
+
+def test_a_root_behind_a_shared_base_is_still_a_root_for_con_06_and_con_20(tmp_path):
+    root = (
+        "class InfraBaseImpl(InfraInterface):\n    pass\n\n\n"
+        "class InfraLocalImpl(InfraBaseImpl):\n"
+        "    def __init__(self) -> None:\n        self._cache = CacheMemoryImpl()\n\n"
+        "    @cached_property\n    def get_topics(self):\n        return self._topics\n"
+    )
+    code, found, _ = run(tmp_path, "CON-06", {f"{INFRA}/impl/local.py": root})
+    assert (code, found) == (0, [])
+    code, found, messages = run(tmp_path, "CON-20", {f"{INFRA}/impl/local.py": root})
+    assert (code, [line for _, _, line in found]) == (1, [10])
+    assert "caches on first use" in messages[0]

@@ -15,7 +15,7 @@ from __future__ import annotations
 import ast
 import fnmatch
 import re
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 
 from arch_check.model import Violation
 from arch_check.project import Import, Project, SourceFile, base_names, classes, dotted, is_under, last, methods, parameters
@@ -157,6 +157,21 @@ def module_globs(module: str, patterns: list[str]) -> bool:
 
 # --- ASY-01
 
+
+def infra_names(project: Project, file: SourceFile) -> set[str]:
+    """The local names a module binds to something under `<pkg>.infra`: `from acme.infra.cache import memory`
+    binds `memory`, `import acme.infra.cache.memory as m` binds `m`."""
+    infra = project.sub("infra")
+    out: set[str] = set()
+    for imp in project.imports(file):
+        if isinstance(imp.node, ast.ImportFrom):
+            if is_under(imp.module, infra):
+                out.update(a.asname or a.name for a in imp.node.names)
+        else:
+            out.update(a.asname for a in imp.node.names if a.asname and a.name == imp.module and is_under(a.name, infra))
+    return out
+
+
 CLIENTS = [
     "boto3.client",
     "boto3.resource",
@@ -179,6 +194,7 @@ CLIENTS = [
 
 @rule(
     "ASY-01",
+    options=("clients",),
     coverage="partial",
     summary="No module-level infra client or impl, and no manager constructs an infra impl.",
 )
@@ -190,8 +206,13 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
     """
     clients = project.option("ASY-01", "clients", CLIENTS, {"clients"})
     infra = project.sub("infra")
+
+    def infra_impl(file: SourceFile, called: str) -> bool:
+        """Whether a call builds an infra `*Impl`: by a name, or through a module, imported from infra."""
+        head = called.split(".")[0]
+        return (last(called) or "").endswith("Impl") and (head in infra_names(project, file) or is_under(called, infra))
+
     for file, tree in project.trees():
-        from_infra = {n for imp in project.imports(file) if is_under(imp.module, infra) for n in imp.names}
         for node in tree.body:
             value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
             if isinstance(value, ast.Await):
@@ -199,20 +220,16 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
             if not isinstance(value, ast.Call):
                 continue
             called = dotted(value.func) or ""
-            built = (last(called) or "").endswith("Impl") and (called.split(".")[0] in from_infra or is_under(called, infra))
-            if called in clients or built:
+            if called in clients or infra_impl(file, called):
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
-    infra = project.sub("infra")
     for file in manager_impl_files(project):
         impl = project.tree(file)
         if impl is None:
             continue
-        from_infra = {n for imp in project.imports(file) if is_under(imp.module, infra) for n in imp.names}
         for call in ast.walk(impl):
-            if isinstance(call, ast.Call):
-                name = last(dotted(call.func)) or ""
-                if name.endswith("Impl") and name in from_infra:
-                    yield Violation.at(file.rel, call, f"a manager constructs {name}; the container hands it in")
+            if isinstance(call, ast.Call) and infra_impl(file, dotted(call.func) or ""):
+                name = last(dotted(call.func))
+                yield Violation.at(file.rel, call, f"a manager constructs {name}; the container hands it in")
 
 
 # --- ASY-02
@@ -229,6 +246,7 @@ def impl_classes(project: Project) -> set[str]:
 
 @rule(
     "ASY-02",
+    options=("boot",),
     coverage="partial",
     summary="InfraInterface has a getter per capability, start and close; only boot modules import an infra impl.",
 )
@@ -573,6 +591,7 @@ def resolved(node: ast.AST, bound: dict[str, str]) -> str | None:
 
 @rule(
     "ASY-15",
+    options=("edge",),
     coverage="partial",
     summary="No web service module outside the socket edge starts a task, a thread, a timer, or a scheduler.",
 )
@@ -625,6 +644,7 @@ WORK_FIELDS = (
 
 @rule(
     "ASY-16",
+    options=("namespace", "item"),
     coverage="partial",
     summary="WorkItem has the queue's fields, WORK_PAYLOADS is a dict literal, the work table has a unique idempotency_key.",
 )
@@ -675,6 +695,31 @@ def work_item_shape(project: Project) -> Iterator[Violation]:
 TF_SCHEDULE = re.compile(r'resource\s+"(aws_scheduler_schedule|aws_cloudwatch_event_rule)"\s+"[^"]*"\s*\{')
 
 
+def block_end(text: str, start: int) -> int:
+    """The offset just past the `}` that closes an HCL block opened before `start`.
+
+    A brace inside a string (`"fires at } midnight"`) or a comment (`#`,
+    `//`, `/* */`) is not counted.
+    """
+    depth, i, n = 1, start, len(text)
+    while i < n and depth:
+        c = text[i]
+        if c == '"':
+            i += 1
+            while i < n and text[i] not in '"\n':
+                i += 2 if text[i] == "\\" else 1
+        elif c == "#" or text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 1
+        else:
+            depth += {"{": 1, "}": -1}.get(c, 0)
+        i += 1
+    return i
+
+
 @rule(
     "ASY-19",
     coverage="partial",
@@ -692,11 +737,7 @@ def no_scheduler(project: Project) -> Iterator[Violation]:
             continue
         text = project.read(rel) or ""
         for m in TF_SCHEDULE.finditer(text):
-            depth, i = 1, m.end()
-            while i < len(text) and depth:
-                depth += {"{": 1, "}": -1}.get(text[i], 0)
-                i += 1
-            body = text[m.end() : i]
+            body = text[m.end() : block_end(text, m.end())]
             if m.group(1) == "aws_scheduler_schedule" or re.search(r"^\s*schedule_expression\s*=", body, re.MULTILINE):
                 line = text.count("\n", 0, m.start()) + 1
                 yield Violation(rel, line, 1, f"a scheduled {m.group(1)}; maintenance is a sweep every worker runs")
@@ -711,16 +752,35 @@ OWNER_ONLY = frozenset({0o600, 0o400})
 WRITE_FLAGS = frozenset({"O_WRONLY", "O_RDWR", "O_CREAT", "O_APPEND", "O_TRUNC"})
 
 
-def reads_a_file(call: ast.Call) -> bool:
-    """A call that opens a file to read it: `read_text`, `read_bytes`, or an `open` in a read mode."""
+def is_path(node: ast.expr, paths: Collection[str]) -> bool:
+    """Whether an expression is a file path: a `Path(...)`, a name typed `Path`, or a name that says path or file."""
+    if isinstance(node, ast.Call):
+        return last(dotted(node.func)) in ("Path", "PurePath")
+    name = dotted(node) or ""
+    return name in paths or any(w in (last(name) or "").lower() for w in ("path", "file"))
+
+
+def reads_a_file(call: ast.Call, paths: Collection[str] = ()) -> bool:
+    """A call that opens a file to read it: `read_text`, `read_bytes`, or an `open` (the builtin, or
+    `.open()` on a path, `paths` being the names typed `Path`) in a read mode or a mode that is not a literal."""
     if isinstance(call.func, ast.Attribute) and call.func.attr in READS:
         return True
     name = dotted(call.func) or ""
-    if name in ("open", "io.open"):
-        mode = call.args[1] if len(call.args) > 1 else kwarg(call, "mode")
+    path_open = (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "open"
+        and name not in ("io.open", "os.open")
+        and is_path(call.func.value, paths)
+    )
+    if name in ("open", "io.open") or path_open:
+        # `open(path, mode)` takes the mode second; `path.open(mode)` takes it first
+        position = 0 if path_open else 1
+        mode = call.args[position] if len(call.args) > position else kwarg(call, "mode")
         if mode is None:
             return True
-        return isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not set("wax+") & set(mode.value)
+        if not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)):
+            return True  # a mode the checker cannot read may read
+        return not set("wax+") & set(mode.value)
     if name == "os.open":
         flags = call.args[1] if len(call.args) > 1 else kwarg(call, "flags")
         return flags is None or not WRITE_FLAGS & {last(dotted(n)) for n in ast.walk(flags)}
@@ -756,7 +816,8 @@ def secrets_files_are_private(project: Project) -> Iterator[Violation]:
         helpers = {fn.name for fn in fns if checks_mode([n for s in fn.body for n in ast.walk(s)])}
         for fn in fns:
             body = [n for s in fn.body for n in ast.walk(s)]
-            reads = [n for n in body if isinstance(n, ast.Call) and reads_a_file(n)]
+            paths = {a.arg for a in [*fn.args.args, *fn.args.kwonlyargs] if last(dotted(a.annotation)) == "Path"}
+            reads = [n for n in body if isinstance(n, ast.Call) and reads_a_file(n, paths)]
             if not reads:
                 continue
             first = min(r.lineno for r in reads)
@@ -771,6 +832,7 @@ def secrets_files_are_private(project: Project) -> Iterator[Violation]:
 
 @rule(
     "ASY-29",
+    options=("classes",),
     coverage="partial",
     summary="WorkItem and OutboxRow declare request_id and traceparent, and neither declares trace_id.",
 )

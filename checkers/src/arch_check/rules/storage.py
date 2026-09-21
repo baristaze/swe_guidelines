@@ -14,13 +14,14 @@ from __future__ import annotations
 import ast
 import itertools
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from arch_check.model import Violation
 from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, parameters
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
     MIXIN_RANK,
+    NAME,
     ROLE_MAP,
     SCOPE_MAP,
     SQL_DIR,
@@ -44,6 +45,7 @@ from arch_check.rules._storage_util import (
     mixin_columns,
     mixins,
     module_value,
+    name_list,
     names_in,
     namespace_of,
     negative_int,
@@ -55,6 +57,7 @@ from arch_check.rules._storage_util import (
     roles_of,
     sql_code,
     sql_files,
+    statement_tail,
     storage_interfaces,
     string_args,
     string_constants,
@@ -137,6 +140,9 @@ def no_transaction_above_storage(project: Project) -> Iterator[Violation]:
 # --- STO-03
 
 LOCKING = re.compile(r"\bFOR\s+(?:NO\s+KEY\s+)?(?:UPDATE|SHARE)\b|\bSKIP\s+LOCKED\b")
+LOCKING_ANY_CASE = re.compile(LOCKING.pattern, re.IGNORECASE)
+SELECT = re.compile(r"\bselect\b", re.IGNORECASE)
+"""Lower-case `for update` counts only in a string that reads as a query, so prose saying "wait for update" does not."""
 HANDLE_SOURCES = ("sqlalchemy", "asyncpg", "psycopg", "psycopg2", "asyncio", "threading", "multiprocessing")
 """The packages a lock, a session, or a transaction handle is imported from."""
 
@@ -164,7 +170,8 @@ def locking_stays_in_one_method(project: Project) -> Iterator[Violation]:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "with_for_update":
                 yield Violation.at(file.rel, node, "with_for_update() outside a storage impl; a lock lives inside one method")
         for const in string_constants(tree):
-            m = LOCKING.search(str(const.value))
+            text = str(const.value)
+            m = LOCKING.search(text) or (LOCKING_ANY_CASE.search(text) if SELECT.search(text) else None)
             if m:
                 yield Violation.at(file.rel, const, f"`{m.group(0)}` outside a storage impl; a lock lives inside one method")
     for file, cls in storage_interfaces(project):
@@ -183,39 +190,92 @@ def locking_stays_in_one_method(project: Project) -> Iterator[Violation]:
 # --- STO-05
 
 DB_OBJECT = re.compile(
-    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?(?P<kind>TRIGGER|FUNCTION|PROCEDURE|RULE)\s+(?P<name>[\w.\"]+)",
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?(?P<kind>TRIGGER|FUNCTION|PROCEDURE|RULE)\s+(?P<name>" + NAME + ")",
     re.IGNORECASE,
 )
-DROP_OBJECT = re.compile(
-    r"\bDROP\s+(?P<kind>TRIGGER|FUNCTION|PROCEDURE|RULE)\s+(?:IF\s+EXISTS\s+)?(?P<name>[\w.\"]+)",
-    re.IGNORECASE,
-)
+DROP_OBJECT = re.compile(r"\bDROP\s+(?P<kind>TRIGGER|FUNCTION|PROCEDURE|ROUTINE|RULE|TABLE)\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
+ON_TABLE = re.compile(r"\bON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")", re.IGNORECASE)
+TO_TABLE = re.compile(r"\bTO\s+(?P<table>" + NAME + ")", re.IGNORECASE)
+EXECUTES = re.compile(r"\bEXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?P<name>" + NAME + ")", re.IGNORECASE)
+CASCADE = re.compile(r"\bCASCADE\s*$", re.IGNORECASE)
 DB_TIMESTAMPS = frozenset({"created_at", "updated_at", "deleted_at"})
 DB_SET = ("onupdate", "server_onupdate")
 """What makes the database or the ORM set a timestamp on update. A `server_default` is allowed: a schema-level
 default is a convenience for hand-written SQL."""
 
 
+def short(name: str) -> str:
+    """An object's name without its schema, as the database folds it."""
+    return ident(name).rpartition(".")[2]
+
+
+class Schema:
+    """The triggers, functions, procedures, and rules a role's chain has created and not dropped.
+
+    A function or a procedure is keyed by its name; a trigger or a rule
+    by its table and its name, since the database scopes those names to
+    a table. Dropping a table drops its triggers and rules; dropping a
+    function with CASCADE drops the triggers that execute it.
+    """
+
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str, str], tuple[str, int, str, str]] = {}
+        """(kind, table, name) to (file, line, name as written, the function a trigger executes)."""
+
+    def replay(self, rel: str, code: str) -> None:
+        events = [(m.start(), m, True) for m in DB_OBJECT.finditer(code)]
+        events += [(m.start(), m, False) for m in DROP_OBJECT.finditer(code)]
+        for offset, m, create in sorted(events, key=lambda e: e[0]):
+            kind = m.group("kind").upper()
+            tail = statement_tail(code, m.end())
+            if create:
+                self.create(rel, line_of(code, offset), kind, m.group("name"), tail)
+            else:
+                self.drop(kind, tail)
+
+    def create(self, rel: str, line: int, kind: str, name: str, tail: str) -> None:
+        table, executes = "", ""
+        if kind in ("TRIGGER", "RULE"):
+            on = (ON_TABLE if kind == "TRIGGER" else TO_TABLE).search(tail)
+            table = short(on.group("table")) if on else ""
+            fn = EXECUTES.search(tail)
+            executes = short(fn.group("name")) if fn else ""
+        self.objects[(kind, table, short(name))] = (rel, line, name, executes)
+
+    def drop(self, kind: str, tail: str) -> None:
+        if kind in ("TRIGGER", "RULE"):
+            names = name_list(tail)
+            on = ON_TABLE.search(tail)
+            if names and on:
+                self.objects.pop((kind, short(on.group("table")), short(names[0])), None)
+            return
+        dropped = {short(n) for n in name_list(tail)}
+        if kind == "TABLE":
+            self.forget(lambda key, _: key[0] in ("TRIGGER", "RULE") and key[1] in dropped)
+            return
+        kinds = ("FUNCTION", "PROCEDURE") if kind == "ROUTINE" else (kind,)
+        self.forget(lambda key, _: key[0] in kinds and key[2] in dropped)
+        if CASCADE.search(tail):
+            self.forget(lambda key, value: key[0] == "TRIGGER" and value[3] in dropped)
+
+    def forget(self, gone: Callable[[tuple[str, str, str], tuple[str, int, str, str]], bool]) -> None:
+        for key in [k for k, v in self.objects.items() if gone(k, v)]:
+            del self.objects[key]
+
+
 @rule(
     "STO-05",
+    options=("sql_dir",),
     coverage="partial",
     summary="The migration chain leaves no trigger, function, procedure or rule; no timestamp is set on update by the database.",
 )
 def no_triggers_or_functions(project: Project) -> Iterator[Violation]:
     sql_dir = project.option("STO-05", "sql_dir", SQL_DIR, {"sql_dir"})
     for chain in up_chain(project, sql_dir).values():
-        alive: dict[tuple[str, str], tuple[str, int, str]] = {}
+        alive = Schema()
         for f in chain:
-            code = sql_code(project.read(f.rel) or "")
-            events = [(m.start(), "create", m) for m in DB_OBJECT.finditer(code)]
-            events += [(m.start(), "drop", m) for m in DROP_OBJECT.finditer(code)]
-            for offset, what, m in sorted(events, key=lambda e: e[0]):
-                key = (m.group("kind").upper(), ident(m.group("name")).rpartition(".")[2])
-                if what == "create":
-                    alive[key] = (f.rel, line_of(code, offset), m.group("name"))
-                else:
-                    alive.pop(key, None)
-        for (kind, _), (rel, line, name) in sorted(alive.items(), key=lambda e: (e[1][0], e[1][1])):
+            alive.replay(f.rel, sql_code(project.read(f.rel) or ""))
+        for (kind, _, _), (rel, line, name, _) in sorted(alive.objects.items(), key=lambda e: (e[1][0], e[1][1])):
             yield Violation(rel, line, 1, f"CREATE {kind} {name} is left in the schema; logic happens in the code")
     known = mixins(project)
     targets = [(t.file, t.node) for t in om_tables(project)] + [(m.file, m.node) for m in known.values()]
@@ -233,7 +293,40 @@ def no_triggers_or_functions(project: Project) -> Iterator[Violation]:
 
 # --- STO-06
 
-ID_DEFAULTS = ("server_default", "default", "server_onupdate")
+ID_DEFAULTS = ("server_default", "default", "insert_default", "default_factory", "server_onupdate")
+COLLECTIONS = frozenset(
+    {"list", "List", "Sequence", "tuple", "Tuple", "set", "Set", "frozenset", "FrozenSet", "AbstractSet", "Collection"}
+)
+"""The containers a storage method returns many things in."""
+
+
+def annotation_node(node: ast.expr | None) -> ast.expr | None:
+    """An annotation, a string one parsed: `"UUID"` reads as `UUID`."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            return ast.parse(node.value, mode="eval").body
+        except SyntaxError:
+            return None
+    return node
+
+
+def spells(node: ast.expr | None, found: Callable[[ast.expr], bool]) -> bool:
+    """Whether `found` holds for the annotation or for a member of its unions, `Optional`s, and containers."""
+    node = annotation_node(node)
+    if node is None:
+        return False
+    if found(node):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return spells(node.left, found) or spells(node.right, found)
+    if isinstance(node, ast.Subscript) and last(dotted(node.value)) in COLLECTIONS | {"Optional", "Union"}:
+        elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+        return any(spells(e, found) for e in elts)
+    return False
+
+
+def is_uuid(node: ast.expr) -> bool:
+    return isinstance(node, ast.Name | ast.Attribute) and dotted(node) in ("UUID", "uuid.UUID")
 
 
 @rule(
@@ -258,12 +351,10 @@ def ids_come_from_above(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, call, f"{cls.name}.id has {b}; an id is minted above storage with new_id()")
     for file, cls in storage_interfaces(project):
         for fn in public_methods(cls):
-            if fn.name.split("_")[0] in ("create", "write", "insert") and fn.returns is not None:
-                ret = ast.unparse(fn.returns).replace(" ", "")
-                if ret in ("UUID", "uuid.UUID", "UUID|None", "Optional[UUID]"):
-                    yield Violation.at(
-                        file.rel, fn, f"{cls.name}.{fn.name} returns a UUID; the caller already holds the id it passed"
-                    )
+            if fn.name.split("_")[0] in ("create", "write", "insert") and spells(fn.returns, is_uuid):
+                yield Violation.at(
+                    file.rel, fn, f"{cls.name}.{fn.name} returns a UUID; the caller already holds the id it passed"
+                )
 
 
 # --- STO-08
@@ -273,6 +364,7 @@ DRIVERS = ["sqlalchemy", "asyncpg", "psycopg", "psycopg2", "sqlmodel", "alembic"
 
 @rule(
     "STO-08",
+    options=("packages",),
     coverage="partial",
     summary="Types, storage interfaces, manager interfaces and manager impls import no ORM or database driver.",
 )
@@ -394,7 +486,7 @@ def one_storage_root(project: Project) -> Iterator[Violation]:
         own = {m.name for n in chain(cls.name) if n != "StorageInterface" for m in public_methods(index[n][1])}
         for name in sorted(set(declared) - own):
             yield Violation.at(file.rel, cls, f"{cls.name} does not define {name}()")
-    if impls and (len(impls) < 2 or "StorageMemoryImpl" not in {c.name for _, c in impls}):
+    if len(impls) < 2 or "StorageMemoryImpl" not in {c.name for _, c in impls}:
         yield Violation.at(root.rel, iface, "StorageInterface needs two roots, one of them StorageMemoryImpl")
 
 
@@ -403,6 +495,7 @@ def one_storage_root(project: Project) -> Iterator[Violation]:
 
 @rule(
     "STO-11",
+    options=("base",),
     coverage="partial",
     summary="Table mixins in house order with the base last; no mixin column redeclared; no org_id on a global table.",
 )
@@ -590,6 +683,7 @@ def index_rules(project: Project) -> Iterator[Violation]:
 
 @rule(
     "STO-17",
+    options=("map",),
     coverage="partial",
     summary="The role map and the table classes match; no table declares a schema; no foreign key crosses a role.",
 )
@@ -603,6 +697,10 @@ def one_role_per_table(project: Project) -> Iterator[Violation]:
                 yield Violation.at(t.file.rel, arg, f"{t.node.name} declares its schema; the role map derives it")
     read = roles_of(project, name)
     if read is None:
+        if found:
+            yield Violation.at(
+                found[0].file.rel, found[0].node, f"the OM has tables and no {name} map; it names every table's role"
+            )
         return
     rmap, roles = read
     names = {t.name for t in found}
@@ -614,27 +712,35 @@ def one_role_per_table(project: Project) -> Iterator[Violation]:
         if e.table not in names:
             yield Violation.at(rmap.file.rel, e.key, f"{name} names {e.table}, which no table class declares")
     by_class = {t.node.name: t.name for t in found}
-    values = set(roles.values())
+    values = set(roles.values()) | role_names(project, name)
     for t in found:
         mine = roles.get(t.name)
         if mine is None:
             continue
         for node in ast.walk(t.node):
-            if not (isinstance(node, ast.Call) and call_name(node) == "ForeignKey" and node.args):
+            if not isinstance(node, ast.Call):
                 continue
-            target = node.args[0]
-            other: str | None = None
-            if isinstance(target, ast.Constant) and isinstance(target.value, str):
-                parts = target.value.split(".")
-                if len(parts) >= 2:
-                    other = roles.get(parts[-2])
-                if other is None and len(parts) == 3 and parts[0] in values:
-                    other = parts[0]
-            elif isinstance(target, ast.Attribute):
-                owner = last(dotted(target.value))
-                other = roles.get(by_class.get(owner or "", ""))
-            if other is not None and other != mine:
-                yield Violation.at(t.file.rel, node, f"{t.node.name} has a foreign key into role {other}; it is in {mine}")
+            if call_name(node) == "ForeignKey" and node.args:
+                targets = [node.args[0]]
+            elif call_name(node) == "ForeignKeyConstraint":
+                refs = node.args[1] if len(node.args) > 1 else kwarg(node, "refcolumns")
+                targets = list(refs.elts) if isinstance(refs, ast.List | ast.Tuple) else []
+            else:
+                continue
+            for target in targets:
+                other: str | None = None
+                if isinstance(target, ast.Constant) and isinstance(target.value, str):
+                    parts = target.value.split(".")
+                    if len(parts) >= 2:
+                        other = roles.get(parts[-2])
+                    if other is None and len(parts) == 3 and parts[0] in values:
+                        other = parts[0]
+                elif isinstance(target, ast.Attribute):
+                    owner = last(dotted(target.value))
+                    other = roles.get(by_class.get(owner or "", ""))
+                if other is not None and other != mine:
+                    yield Violation.at(t.file.rel, node, f"{t.node.name} has a foreign key into role {other}; it is in {mine}")
+                    break
 
 
 # --- STO-18
@@ -649,6 +755,7 @@ def wrapper_call(fn: ast.FunctionDef) -> ast.Call | None:
 
 @rule(
     "STO-18",
+    options=("sql_dir", "versions_dir", "runner", "map"),
     coverage="partial",
     summary="Migrations are named up and down SQL pairs per role, each wrapper one run_sql call, each file naming only its role.",
 )
@@ -758,6 +865,7 @@ def single_row(node: ast.AST | None) -> bool:
 
 @rule(
     "STO-20",
+    options=("namespace",),
     coverage="partial",
     summary="No storage interface outside the outbox's own takes a single OutboxRow; outbox rows travel as a tuple.",
 )
@@ -781,6 +889,7 @@ def outbox_rows_are_a_tuple(project: Project) -> Iterator[Violation]:
 
 @rule(
     "STO-23",
+    options=("versions_dir",),
     coverage="partial",
     summary="Each wrapper's revision is its file's stamp, unique in its role; each role has one first migration and one head.",
 )
@@ -903,16 +1012,17 @@ def pools_declare_their_bounds(project: Project) -> Iterator[Violation]:
 
 # --- STO-28
 
-RLS = re.compile(
-    r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?P<table>[\w.\"]+)\s+"
-    r"(?P<what>ENABLE|DISABLE|NO\s+FORCE|FORCE)\s+ROW\s+LEVEL\s+SECURITY",
+ALTER_TABLE = re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?P<table>" + NAME + ")", re.IGNORECASE)
+RLS_ACTION = re.compile(r"(?:^|,)\s*(?P<what>ENABLE|DISABLE|NO\s+FORCE|FORCE)\s+ROW\s+LEVEL\s+SECURITY\b", re.IGNORECASE)
+"""One action of an `ALTER TABLE` action list: `ALTER TABLE t ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY`."""
+CREATE_POLICY = re.compile(
+    r"\bCREATE\s+POLICY\s+(?P<name>" + NAME + r")\s+ON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")", re.IGNORECASE
+)
+DROP_POLICY = re.compile(
+    r"\bDROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?P<name>" + NAME + r")\s+ON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")",
     re.IGNORECASE,
 )
-CREATE_POLICY = re.compile(r"\bCREATE\s+POLICY\s+(?P<name>[\w\"]+)\s+ON\s+(?:ONLY\s+)?(?P<table>[\w.\"]+)", re.IGNORECASE)
-DROP_POLICY = re.compile(
-    r"\bDROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?P<name>[\w\"]+)\s+ON\s+(?:ONLY\s+)?(?P<table>[\w.\"]+)", re.IGNORECASE
-)
-DROP_TABLE = re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?P<table>[\w.\"]+)", re.IGNORECASE)
+DROP_TABLE = re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
 
 
 def is_system(value: ast.AST) -> bool:
@@ -926,6 +1036,7 @@ def is_system(value: ast.AST) -> bool:
 
 @rule(
     "STO-28",
+    options=("scopes", "roles", "sql_dir"),
     coverage="partial",
     summary="The scope map matches the role map; the chain leaves every tenant table with RLS enabled, forced and a policy.",
 )
@@ -939,6 +1050,12 @@ def scopes_match_policies(project: Project) -> Iterator[Violation]:
     smap = table_map(project, scopes_name)
     read = roles_of(project, roles_name)
     if smap is None or read is None:
+        found = om_tables(project)
+        if found:
+            absent = " and ".join(n for n, m in ((scopes_name, smap), (roles_name, read)) if m is None)
+            yield Violation.at(
+                found[0].file.rel, found[0].node, f"the OM has tables and no {absent}; every table declares its scope there"
+            )
         return
     rmap, roles = read
     rkeys = {e.table for e in rmap.entries}
@@ -959,24 +1076,31 @@ def scopes_match_policies(project: Project) -> Iterator[Violation]:
         for f in chain:
             code = sql_code(project.read(f.rel) or "")
             events: list[tuple[int, str, re.Match[str]]] = []
-            for kind, pattern in (("rls", RLS), ("create", CREATE_POLICY), ("drop", DROP_POLICY), ("table", DROP_TABLE)):
+            for kind, pattern in (
+                ("alter", ALTER_TABLE),
+                ("create", CREATE_POLICY),
+                ("drop", DROP_POLICY),
+                ("table", DROP_TABLE),
+            ):
                 events += [(m.start(), kind, m) for m in pattern.finditer(code)]
             for _, kind, m in sorted(events, key=lambda e: e[0]):
-                table = ident(m.group("table"))
-                if kind == "rls":
-                    what = re.sub(r"\s+", " ", m.group("what").upper())
-                    if what in ("ENABLE", "DISABLE"):
-                        enabled[table] = what == "ENABLE"
-                    else:
-                        forced[table] = what == "FORCE"
+                if kind == "alter":
+                    table = ident(m.group("table"))
+                    for action in RLS_ACTION.finditer(statement_tail(code, m.end())):
+                        what = re.sub(r"\s+", " ", action.group("what").upper())
+                        if what in ("ENABLE", "DISABLE"):
+                            enabled[table] = what == "ENABLE"
+                        else:
+                            forced[table] = what == "FORCE"
                 elif kind == "create":
-                    policies.setdefault(table, set()).add(ident(m.group("name")))
+                    policies.setdefault(ident(m.group("table")), set()).add(ident(m.group("name")))
                 elif kind == "drop":
-                    policies.get(table, set()).discard(ident(m.group("name")))
+                    policies.get(ident(m.group("table")), set()).discard(ident(m.group("name")))
                 else:
-                    enabled.pop(table, None)
-                    forced.pop(table, None)
-                    policies.pop(table, None)
+                    for table in map(ident, name_list(statement_tail(code, m.end()))):
+                        enabled.pop(table, None)
+                        forced.pop(table, None)
+                        policies.pop(table, None)
     for e in smap.entries:
         role = roles.get(e.table)
         if role is None or role not in chains:
@@ -1005,17 +1129,10 @@ def scopes_match_policies(project: Project) -> Iterator[Violation]:
 
 # --- STO-29
 
-LIST_TYPES = frozenset({"list", "List", "Sequence", "tuple", "Tuple"})
 
-
-def returns_many(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    node = fn.returns
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        try:
-            node = ast.parse(node.value, mode="eval").body
-        except SyntaxError:
-            return False
-    if not isinstance(node, ast.Subscript) or last(dotted(node.value)) not in LIST_TYPES:
+def is_many(node: ast.expr) -> bool:
+    """A container of many: `list[T]`, `set[T]`, `tuple[T, ...]`; a fixed tuple is judged by its members."""
+    if not isinstance(node, ast.Subscript) or last(dotted(node.value)) not in COLLECTIONS:
         return False
     if last(dotted(node.value)) in ("tuple", "Tuple"):
         s = node.slice
@@ -1023,6 +1140,11 @@ def returns_many(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
             isinstance(s, ast.Tuple) and len(s.elts) == 2 and isinstance(s.elts[1], ast.Constant) and s.elts[1].value is Ellipsis
         )
     return True
+
+
+def returns_many(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether a method returns a list: `list[T]`, `list[T] | None`, or a page `tuple[list[T], str | None]`."""
+    return spells(fn.returns, is_many)
 
 
 @rule(

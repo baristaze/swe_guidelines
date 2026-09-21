@@ -430,7 +430,8 @@ context's; on an update or a delete, `updated_at`, `updated_by`, or
 manager; a mutating method returns `None` or a different snapshot than
 the one written. The work item is the one row the guideline exempts:
 every write after its enqueue signs `updated_by` with `EMPTY_UUID`,
-and the relayed enqueue takes the actor off the outbox row (OM-13).
+and the relayed enqueue takes the actor off the outbox row (CTX-16,
+ASY-25).
 
 **Severity.** medium
 
@@ -511,28 +512,19 @@ first use; the rest is judged.
 
 **Principle.** A create whose id is already written returns the row as
 stored: the insert reports the existing id, and no check precedes the
-write. A create that issues a secret is the one exception: its rerun
-re-mints the secret on the found row in one atomic write, guarded by
-the attempt the idempotency marker holds, and returns a
-fresh `Issued...View`.
+write. (A create that issues a secret re-mints on its rerun, NET-25;
+its replay carries no secret, NET-31.)
 
 **Source.** The Business Layer, Shape of an Operation.
 
 **Look for.** Manager `create_*` bodies: what happens when the insert
 reports an existing id; any read that precedes the insert; the return
-value of the storage create; for a secret-issuing create, whether the
-re-mint and the row land in one named atomic method and what its
-statement is conditional on.
+value of the storage create.
 
 **Violation.** A create that raises `Conflict` on its own id, so a
 retried request creates twice or fails; a create that checks for the
 id and then writes, leaving a window; a create that returns the
-caller's entity instead of the row as stored; a secret-issuing create
-whose rerun returns the stored digest instead of re-minting in the
-same atomic write, or whose stored outcome carries the secret, so a
-replay hands it out again rather than answering with the row, no
-secret, and a header saying so, and a client that lost the first
-response cannot revoke and reissue it.
+caller's entity instead of the row as stored.
 
 **Severity.** medium
 

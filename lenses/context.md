@@ -24,9 +24,9 @@ types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context as its first argument: `OpContext`, the identity or
-the operator stage on the operator plane (CTX-20), or the request
-stage for the enumerated transitions (CTX-16). A helper below the
+takes a context as its first argument: `OpContext` for a tenant
+operation, `OperatorContext` for an operator one (CTX-20), or a lower
+stage only where CTX-16 allows it. A helper below the
 managers that needs less takes a scope (CTX-22); no manager operation
 takes one.
 
@@ -40,7 +40,7 @@ method that has none.
 org id, or a token instead of a context; a method that takes the
 context in any position other than first; a handler that fetches
 identity from a request object; a manager operation that takes a
-scope. A method carrying no context at all, the relay's three
+scope. A method carrying no context at all, the relay and its two
 handoffs included, is CTX-16's to judge.
 
 **Severity.** medium
@@ -147,8 +147,9 @@ stage below exists.
 
 **Severity.** high
 
-**Check.** `arch-check` decides the stage built in the OM, infra, a
-router, or a service; the rest is judged.
+**Check.** `arch-check` decides the request stage built in the OM or
+infra, and any stage built in a router or a service; the rest is
+judged.
 
 ## CTX-06 The context is immutable and narrowing is an explicit argument
 
@@ -190,8 +191,9 @@ or request in managers, storage, or workers.
 **Violation.** A manager reading the current tenant from a context
 variable; a storage impl reading a global "current org"; a request id
 read from a context variable where the context is in hand. The one
-allowed context variable carries the request id for log enrichment
-only, and the authoritative value stays on the context.
+allowed context variable carries the request id, and the request that
+caused it, for log enrichment only, and the authoritative value stays
+on the context.
 
 **Severity.** medium
 
@@ -290,27 +292,27 @@ the same tenant.
 
 **Severity.** high
 
-## CTX-12 Exceptions to tenant-first are enumerated and tested
+## CTX-12 Exceptions to tenant-first are enumerated
 
 **Principle.** Global tables and cross-tenant sweeps are the exceptions
 to the tenant-first rule: a global method takes no tenant and its
 interface docstring says why; a bookkeeping sweep with no principal
 gets the tenant back with each row, as `tuple[UUID, Entity]` or on an
-entity carrying `org_id` itself; a test enumerates them, reading
-signatures and nothing more (CTX-30).
+entity carrying `org_id` itself; `arch-check` enumerates them,
+reading signatures and nothing more (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Business Layer,
 Operations Without a Principal.
 
-**Look for.** Storage methods without a tenant parameter; the test that
-lists them; each step of the sweep and whether it is bookkeeping with
+**Look for.** Storage methods without a tenant parameter; the list the
+checker holds; each step of the sweep and whether it is bookkeeping with
 no principal (relaying the outbox, expiring a lease) or a tenant
 operation (CTX-17); what each cross-tenant read returns.
 
 **Violation.** A tenant-less storage method whose interface docstring
 does not justify it; a sweep that returns entities without their
-tenant; a new tenant-less method that the enumerating test does not
-know about, or no such test at all.
+tenant; a new tenant-less method that the enumeration does not know
+about, or no enumeration at all.
 
 **Severity.** medium
 
@@ -369,8 +371,8 @@ filter by tenant before it acts.
 subscriber handler.
 
 **Violation.** A payload class that does not extend the base and so
-carries no tenant; a socket handler that forwards an event to a client
-without comparing the payload's tenant to the connection's tenant.
+carries no tenant. (A socket handler that forwards an event without
+comparing the payload's tenant to the connection's is NET-16.)
 
 **Severity.** high
 
@@ -415,17 +417,20 @@ as its user id.
 **Source.** Worker Roles, The Work Queue; The Business Layer, Operations
 Without a Principal.
 
-**Look for.** The worker's claim path and how it obtains a context;
+**Look for.** The worker's claim path and how it obtains a context,
+and from which tenant;
 each sweep step that purges or requeues with an audit entry, and the
 context it runs under; what the service context carries as its user
 id.
 
 **Violation.** A worker running every item under one shared machine
 principal so attribution is lost; a worker inventing a context with a
-made-up user; a sweep acting across tenants under one tenant's context
-or with no tenant at all; a service context minted on a member, so a
-tenant whose members have all left is never swept, or costing one read
-per member instead of one per page of tenants.
+made-up user; a worker configured with a tenant of its own, or a context
+carried from one item to the next; an item whose tenant is gone run
+under another context; a sweep acting across tenants under one tenant's
+context or with no tenant at all; a service context minted on a member,
+so a tenant whose members have all left is never swept, or costing one
+read per member instead of one per page of tenants.
 
 **Severity.** high
 
@@ -483,12 +488,14 @@ Console.
 subclasses, the operator admission, every manager signature on the
 operator plane and the tenant plane, and for one that takes a stage
 below, whether it is a tenancy transition or an operation with no
-principal (CTX-21); how the console and its screens decide that a
-person is an operator.
+principal (CTX-21); what the allowlist entry grants and where an
+operator write requires it; how the console and its screens decide
+that a person is an operator.
 
 **Violation.** An operator route gated by a tenant role or a feature
 flag, or operator pages shown in the portal behind a flag or a role
-check; an `OperatorContext` with a tenant field; a manager method that
+check; an `OperatorContext` with a tenant field; an operator write
+that a read-only allowlist entry reaches; a manager method that
 accepts either context type; an operator route that reaches a tenant
 manager; an API key or an invitation-minted session admitted to the
 operator plane, since the identity stage admits only the person's own
@@ -625,22 +632,22 @@ never names the role.
 
 **Severity.** high
 
-## CTX-26 Every stage construction site is enumerated by a test
+## CTX-26 Every stage construction site is enumerated
 
-**Principle.** A stage is an ordinary class anything can call, so a
-unit test enumerates every site that constructs a stage above the
-request stage and fails when a new one appears, the way the exceptions
-test enumerates the tenant-less storage methods.
+**Principle.** A stage is an ordinary class anything can call, so
+`arch-check` enumerates every site that constructs a stage above the
+request stage and fails when a new one appears, the way it enumerates
+the tenant-less storage methods.
 
 **Source.** OpContext, Stages.
 
-**Look for.** The test that enumerates the construction sites; every
+**Look for.** The list of construction sites the checker holds; every
 construction site of `IdentityContext`, `OpContext`, `OperatorContext`,
 and their sub-objects, in production code and in test helpers.
 
-**Violation.** A construction site the enumerating test does not name;
-no such test at all; a test that lists the transitions by name but
-never scans the code for a new site.
+**Violation.** A construction site the list does not name; no
+enumeration at all; a list that names the transitions but never scans
+the code for a new site.
 
 **Severity.** high
 
@@ -716,8 +723,8 @@ a run emits and which of the two ids each carries.
 
 **Violation.** A claim context that carries the item's request id as
 its own `request_id`, so the run and its cause are one id; a mint that
-drops the causing id, so a run names no cause; a run whose lines carry
-one of the two and not both. (The field on the item is ASY-29.)
+drops the causing id, so a run names no cause. (The field on the item
+is ASY-29; log lines carrying both are DEL-39.)
 
 **Severity.** medium
 
@@ -741,7 +748,7 @@ list, the page, the bulk write, and the paths that return early or
 raise are among them; the body of each query beside its signature.
 
 **Violation.** A method that takes `org_id` and writes a query without
-it, which the enumerating test of CTX-12 cannot see; a cross-tenant
+it, which the enumeration of CTX-12 cannot see; a cross-tenant
 case on the single read alone, with the list, the page, or the bulk
 write untried; a storage method added with no case of its own.
 
@@ -772,22 +779,22 @@ recorded, so the next reader takes it on trust.
 ## CTX-32 The funnel sets the scope on every transaction
 
 **Principle.** A storage impl opens its session in one funnel, which
-takes `org_id` and an optional `user_id` and sets them as settings that
-die with the transaction. `EMPTY_UUID` as the `org_id` is the system
-scope: never a default, passed explicitly, and enumerated by the
-exceptions test.
+takes `org_id` with an optional `user_id`, or an `identity_id`, and
+sets them as settings that die with the transaction. `EMPTY_UUID` as
+the `org_id` is the system scope: never a default, passed explicitly,
+and enumerated by `arch-check` (CTX-12).
 
 **Source.** The Storage Layer, The Second Fence; A Storage Impl.
 
 **Look for.** The session helper every impl opens through: what it
 takes, which settings it sets, and whether each is local to the
 transaction; every call site that passes `EMPTY_UUID`, and the
-exceptions test that lists them.
+enumeration that lists them.
 
 **Violation.** A session opened without the scope, or a setting that
 outlives its transaction, so a pooled connection hands one caller's
 tenant to the next; a funnel with a default `org_id`, so a forgotten
-argument reads across tenants; a cross-tenant call the exceptions test
+argument reads across tenants; a cross-tenant call the enumeration
 does not know about.
 
 **Severity.** high

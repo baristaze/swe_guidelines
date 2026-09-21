@@ -426,12 +426,28 @@ def role_names(project: Project, name: str = ROLE_MAP) -> set[str]:
 # --- SQL
 
 
+DOLLAR = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
+"""The opening of a dollar-quoted body: `$$` or `$tag$`."""
+
+
+def blank(text: str) -> str:
+    return "".join(ch if ch == "\n" else " " for ch in text)
+
+
 def sql_code(text: str) -> str:
-    """SQL with comments and string literals blanked out, line breaks kept so offsets keep their lines."""
+    """SQL with comments and string literals blanked out, line breaks kept so offsets keep their lines.
+
+    A `'...'` string is blanked, `''` inside it included; an `E'...'`
+    string also skips a backslash and the character after it. A
+    dollar-quoted body (`$$...$$`, `$tag$...$tag$`) is a function or
+    `DO` body: its own strings and comments are blanked the same way,
+    and its code is kept, so a statement it runs is still read.
+    """
     out: list[str] = []
     i, n = 0, len(text)
     while i < n:
         c = text[i]
+        word_before = i > 0 and (text[i - 1].isalnum() or text[i - 1] in "_$")
         if text.startswith("--", i):
             j = text.find("\n", i)
             j = n if j < 0 else j
@@ -440,19 +456,32 @@ def sql_code(text: str) -> str:
         elif text.startswith("/*", i):
             j = text.find("*/", i + 2)
             j = n if j < 0 else j + 2
-            out.append("".join(ch if ch == "\n" else " " for ch in text[i:j]))
+            out.append(blank(text[i:j]))
             i = j
-        elif c == "'":
-            j = i + 1
+        elif c == "$" and not word_before and (m := DOLLAR.match(text, i)):
+            tag = m.group(0)
+            j = text.find(tag, m.end())
+            j = n if j < 0 else j
+            out.append(tag + sql_code(text[m.end() : j]) + (tag if j < n else ""))
+            i = j + len(tag) if j < n else n
+        elif c == "'" or (c in "eE" and text.startswith("'", i + 1) and not word_before):
+            escapes = c != "'"
+            start = i + 1 if escapes else i
+            if escapes:
+                out.append(c)
+            j = start + 1
             while j < n:
-                if text[j] == "'" and text.startswith("''", j):
+                if escapes and text[j] == "\\":
+                    j += 2
+                    continue
+                if text.startswith("''", j):
                     j += 2
                     continue
                 if text[j] == "'":
                     break
                 j += 1
             j = min(j + 1, n)
-            out.append("'" + "".join(ch if ch == "\n" else " " for ch in text[i + 1 : j - 1]) + "'")
+            out.append("'" + blank(text[start + 1 : j - 1]) + "'")
             i = j
         else:
             out.append(c)
@@ -460,13 +489,50 @@ def sql_code(text: str) -> str:
     return "".join(out)
 
 
+NAME = r'(?:"[^"\n]+"|[\w$]+)(?:\s*\.\s*(?:"[^"\n]+"|[\w$]+))*'
+"""An SQL name, maybe schema-qualified, each part bare or double-quoted (`"tenant fence"`)."""
+
+
+def statement_tail(code: str, start: int) -> str:
+    """The rest of the statement from `start`: up to the next `;`, or the end."""
+    end = code.find(";", start)
+    return code[start : end if end >= 0 else len(code)]
+
+
+def name_list(text: str) -> list[str]:
+    """The names of a comma-separated list, each item's `(args)` and trailing words dropped.
+
+    `a(int), "b c"(), d CASCADE` gives `a`, `"b c"`, `d`.
+    """
+    items: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            items.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    items.append("".join(current))
+    out = []
+    for item in items:
+        m = re.match(r"\s*(" + NAME + ")", item)
+        if m:
+            out.append(m.group(1))
+    return out
+
+
 def line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
 def ident(name: str) -> str:
-    """An SQL identifier as the database folds it: quotes dropped, lower case."""
-    return name.replace('"', "").lower()
+    """An SQL identifier as the database folds it: quotes and the space around a dot dropped, lower case."""
+    return re.sub(r"\s*\.\s*", ".", name.strip()).replace('"', "").lower()
 
 
 @dataclass(frozen=True)

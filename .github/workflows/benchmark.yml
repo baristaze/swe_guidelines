@@ -58,21 +58,47 @@ jobs:
       - name: run every scenario
         # Each scenario brings its own target, if it needs one; a target
         # passed to all of them would drop the planted findings of one.
+        # The inputs reach the shell as variables, never as text spliced
+        # into the script. A failing scenario is recorded and the rest
+        # still run; the step fails at the end if any of them did.
+        env:
+          SCENARIOS: ${{ inputs.scenarios }}
+          PROVIDERS: ${{ inputs.providers }}
+          EFFORT: ${{ inputs.effort }}
+          REPEAT: ${{ inputs.repeat }}
         run: |
-          set -euo pipefail
-          if [ "${{ inputs.scenarios }}" = "all" ]; then
-            names=$(ls benchmark/scenarios/*.yaml | xargs -n1 basename | sed 's/\.yaml$//')
-          else
-            names="${{ inputs.scenarios }}"
+          set -uo pipefail
+          set -f  # a scenario name is never a glob
+          if ! [[ "$PROVIDERS" =~ ^[0-9]+$|^[a-z]+(,[a-z]+)*$ ]]; then
+            echo "::error::providers is a number or comma-separated names, got '$PROVIDERS'"
+            exit 2
           fi
+          if ! [[ "$REPEAT" =~ ^[1-9][0-9]?$ ]]; then
+            echo "::error::repeat is a whole number from 1 to 99, got '$REPEAT'"
+            exit 2
+          fi
+          if [ "$SCENARIOS" = "all" ]; then
+            # The suffixes benchmark/harness/scenario.py catalogs; one name per stem.
+            names=$(find benchmark/scenarios -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.json' \) \
+              | xargs -n1 basename | sed -E 's/\.(yaml|yml|json)$//' | sort -u)
+          else
+            names="$SCENARIOS"
+          fi
+          failed=()
           for name in $names; do
             echo "::group::$name"
-            uv run benchmark/run.py --scenario "$name" \
-              --providers "${{ inputs.providers }}" --effort "${{ inputs.effort }}" \
-              --repeat "${{ inputs.repeat }}" --out benchmark/runs \
-              --claude "$(command -v claude)"
+            if ! uv run benchmark/run.py --scenario "$name" \
+              --providers "$PROVIDERS" --effort "$EFFORT" \
+              --repeat "$REPEAT" --out benchmark/runs \
+              --claude "$(command -v claude)"; then
+              failed+=("$name")
+            fi
             echo "::endgroup::"
           done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::failed scenarios: ${failed[*]}"
+            exit 1
+          fi
       - name: write the summary
         if: always()
         run: |
