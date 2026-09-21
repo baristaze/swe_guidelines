@@ -49,6 +49,21 @@ which number.
   data can be worth keeping, since `make seed` rebuilds only the seeded
   org. Without the option, that row is held back and the report says
   how to move it.
+- Every script under `scripts/` parses its command line and refuses an
+  unknown argument with exit status 2. A mistyped `--check` no longer
+  makes `gen_toc.py` or `gen_skills.py` rewrite the tree and pass.
+- Heading anchors follow GitHub's: each space is a hyphen, a link keeps
+  only its text, and a closing `#` sequence is not part of the heading.
+  A table of github-slugger's own output holds the rule.
+- `check_links.py` resolves a link that starts with `/` against the
+  repository root, as GitHub does, and fails a link that leaves the
+  repository.
+- `check_lenses.py` skips fenced code, so a lens file can show the lens
+  format in an example. A field value includes its list items, so a
+  Principle written as a list is held to the 60-word cap.
+- `check_leaks.py` and `check_links.py` read one list of the
+  repository's Markdown, at any depth. A file in `docs/sub/` is
+  scanned, and a tool cache is not.
 
 ### Added
 
@@ -66,6 +81,12 @@ which number.
   `review-om` scenario runs on it by default and scores recall and
   precision against it. `--target` still reviews any checkout; the
   planted list is then dropped and the run says so.
+- `make ruff` and `make mypy` lint, format-check, and type-check
+  `scripts/` and `tests/` at pinned versions, as part of `make check`.
+- `check_version.py --tag <name>`, and a workflow that fails a pushed
+  `v*` tag that differs from the version in `plugin.json`.
+- Dependabot proposes the updates to the pinned actions, weekly, in one
+  pull request.
 - Lens `STO-29` Every read that returns a list is bounded in its
   statement. The only lens that named the clamp was `NET-13`, which
   judges the wire; nothing judged the read under it. 232 lenses.
@@ -79,6 +100,10 @@ which number.
   has the manager set both on every update; the lens looked only for
   the time, so an update that left the creator as the last changer
   passed.
+- The Python floor is 3.10, declared in `pyproject.toml`. CI runs
+  `make check` on 3.10 and on 3.14.
+- CI caches its npm and uv downloads, and a new push to a pull request
+  cancels the run it replaces. A benchmark run is never cancelled.
 - `architecture.md`: the main list example is bounded. `get_warehouses`
   on the manager and the service, and `read_warehouses` on storage,
   take a `limit`, and the Postgres statement carries it. The paging

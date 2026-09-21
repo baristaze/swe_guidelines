@@ -41,3 +41,20 @@ def test_plugin_version_must_be_semver(repo, version, capsys):
     repo.write(".claude-plugin/plugin.json", '{"version": "v1.2"}\n')
     assert version.main() == 1
     assert "is not MAJOR.MINOR.PATCH" in capsys.readouterr().out
+
+
+def test_tag_that_matches_the_manifest_passes(repo, version, capsys):
+    assert version.main(["--tag", "v1.2.3"]) == 0
+    assert "version ok: 1.2.3, tag v1.2.3" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("tag", ["v1.2.4", "1.2.3", "v1.2.3-rc1", "refs/tags/v1.2.3"])
+def test_tag_that_differs_from_the_manifest_fails(repo, version, capsys, tag):
+    assert version.main(["--tag", tag]) == 1
+    assert f"tag {tag!r} does not match plugin.json, which says v1.2.3" in capsys.readouterr().out
+
+
+def test_tag_without_a_value_is_refused(repo, version):
+    with pytest.raises(SystemExit) as exit_:
+        version.main(["--tag"])
+    assert exit_.value.code == 2

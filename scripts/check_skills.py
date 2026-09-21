@@ -35,7 +35,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
@@ -49,7 +52,7 @@ BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-ESCAPES = "0abtnvfre \"/\\N_LP\t"  # single-character escapes YAML defines after a backslash
+ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
 SCAFFOLD_SECTIONS = ("Input", "Created", "Changed", "Procedure", "Output")
 SECTION = re.compile(r"^## (.+?)\s*$", re.M)
@@ -166,7 +169,8 @@ def lens_groups() -> set[str]:
     return groups
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     groups = lens_groups()
     review_groups: set[str] = set()
@@ -228,9 +232,7 @@ def main() -> int:
         if name.startswith("arch-scaffold-"):
             found = [h for h in SECTION.findall(text) if h in SCAFFOLD_SECTIONS]
             if found != list(SCAFFOLD_SECTIONS):
-                errors.append(
-                    f"{rel}: scaffold sections are {found}, expected {list(SCAFFOLD_SECTIONS)} in that order"
-                )
+                errors.append(f"{rel}: scaffold sections are {found}, expected {list(SCAFFOLD_SECTIONS)} in that order")
         if name.startswith("arch-review-") and name != "arch-review-full":
             group = name.removeprefix("arch-review-")
             if group not in groups:
@@ -259,4 +261,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

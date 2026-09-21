@@ -1,0 +1,16 @@
+# Dependabot keeps the actions current. Actions are pinned by commit with
+# the tag in a trailing comment; an update moves the commit and the
+# comment together. One weekly pull request carries every action update.
+# A release waits a week before it is proposed: the guideline adopts a
+# release once a patch sits behind it, never the day it ships.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

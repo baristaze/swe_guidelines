@@ -36,9 +36,10 @@ its own voice.
 1. Open an issue first for anything beyond a typo, so the change can be
    discussed as a rule before it is discussed as a diff.
 2. Fork, branch from `main`, make the change.
-3. Run `make check`. It needs Python 3.14 with `pytest`, and Node 24
-   (the current LTS); markdownlint is fetched by `npx` on first run,
-   and the plugin validation runs when `claude` is installed.
+3. Run `make check`. It needs Python 3.10 or newer with `pytest`, Node 24
+   (the current LTS), and `uv`; markdownlint is fetched by `npx` and
+   ruff and mypy by `uvx` on first run, and the plugin validation runs
+   when `claude` is installed.
 4. Open a pull request. Describe the rule that changes and why, in the
    same voice as the guideline. Link the issue.
 
@@ -59,6 +60,9 @@ rule is a minor release. Everything else is a patch. Before 1.0.0 a
 removed or reversed rule bumps the minor number, as semver reads
 0.x, and the changelog entry names the reversal; 1.0.0 is for the
 text that has stopped moving. `CHANGELOG.md` lists every release.
+A pushed `v*` tag runs `.github/workflows/release-tag.yml`, which
+fails when the tag names a version other than the one in
+`.claude-plugin/plugin.json`.
 
 ## License
 

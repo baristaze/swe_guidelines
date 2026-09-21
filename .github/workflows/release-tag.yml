@@ -1,0 +1,25 @@
+name: release tag
+
+# docs/adopting.md tells a project to pin `git#vX.Y.Z`. This run fails
+# when a pushed tag names a version other than the one plugin.json
+# carries at that commit, so a pin never lands on the wrong release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: the tag matches plugin.json
+    runs-on: ubuntu-26.04
+    steps:
+      # Actions are pinned by commit; the comment names the tag the commit carries.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.17"
+          python-version: "3.14"
+      - name: check the tag against every copy of the version
+        run: uv run --no-project python scripts/check_version.py --tag "$GITHUB_REF_NAME"

@@ -25,6 +25,12 @@ on:
 permissions:
   contents: read
 
+# One run per ref at a time. A second dispatch waits and never cancels
+# the first: a run in progress has already spent money on the providers.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   benchmark:
     name: every scenario, judged

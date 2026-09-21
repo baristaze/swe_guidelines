@@ -11,6 +11,9 @@ Rules:
 - Severity is high, medium, or low;
 - a Principle is at most 60 words, and Look for and Violation are at most
   three sentences each, so a lens stays one rule a reviewer can hold;
+- a field value runs to the next field or lens heading, wrapped lines
+  and list items included; fenced code is neither a lens nor a field,
+  so a lens file can show lens syntax in an example;
 - no line of a lens file is wider than 80 columns;
 - a lens count stated in README.md or lenses/README.md ("N lenses") equals
   the size of the catalog.
@@ -22,7 +25,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
@@ -33,6 +39,7 @@ FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
 HEADING = re.compile(r"^## ([A-Z]{2,3})-(\d{2}) (.+)$")
 FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity)\.\*\*\s*(.*)$")
+LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 NUMBERED = re.compile(r"\bSections? \d+")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
@@ -77,9 +84,7 @@ def listed_groups() -> dict[str, str]:
     return groups
 
 
-def check_source(
-    value: str, path: Path, ln: int, known: dict[str, set[str]], errors: list[str]
-) -> None:
+def check_source(value: str, path: Path, ln: int, known: dict[str, set[str]], errors: list[str]) -> None:
     """A source is one or more citations separated by ';'.
 
     Each citation is `<Section>`, `<Section>, <Subsection>`, or, after a
@@ -108,9 +113,7 @@ def check_source(
         if head in known:
             errors.append(f"{path.name}:{ln}: '{head}' has no subsection '{tail.strip()}'")
         elif sec is not None:
-            errors.append(
-                f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'"
-            )
+            errors.append(f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'")
         else:
             errors.append(f"{path.name}:{ln}: '{citation}' is not a section of architecture.md")
 
@@ -127,8 +130,16 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
             errors.append(f"{path.name}:{ln}: refers to a section by number")
         if len(line) > MAX_COLUMNS:
             errors.append(f"{path.name}:{ln}: {len(line)} columns, limit {MAX_COLUMNS}")
+    fenced: set[int] = set()
+    in_fence = False
+    for n, line in enumerate(lines):
+        if line.startswith("```"):
+            in_fence = not in_fence
+            fenced.add(n)
+        elif in_fence:
+            fenced.add(n)
     while i < len(lines):
-        m = HEADING.match(lines[i])
+        m = None if i in fenced else HEADING.match(lines[i])
         if not m:
             i += 1
             continue
@@ -145,14 +156,15 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
         # collect fields until next heading
         fields: list[tuple[str, str, int]] = []
         j = i + 1
-        while j < len(lines) and not HEADING.match(lines[j]):
-            fm = FIELD.match(lines[j])
+        while j < len(lines) and (j in fenced or not HEADING.match(lines[j])):
+            fm = None if j in fenced else FIELD.match(lines[j])
             if fm:
                 fields.append((fm.group(1), fm.group(2).strip(), j + 1))
-            elif fields and lines[j].strip() and not lines[j].startswith(("**", "-", "*")):
-                # continuation of a wrapped field value
+            elif fields and j not in fenced and lines[j].strip():
+                # a wrapped line or a list item continues the field before it
                 name, value, ln = fields[-1]
-                fields[-1] = (name, f"{value} {lines[j].strip()}".strip(), ln)
+                line = LIST_MARKER.sub("", lines[j].strip())
+                fields[-1] = (name, f"{value} {line}".strip(), ln)
             j += 1
         names = [f[0] for f in fields]
         if names != list(FIELDS):
@@ -163,9 +175,7 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
             if name == "Source":
                 check_source(value, path, ln, known, errors)
             if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
-                errors.append(
-                    f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}"
-                )
+                errors.append(f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}")
             if name in ("Look for", "Violation"):
                 n = len(SENTENCE_END.findall(value))
                 if n > MAX_SENTENCES:
@@ -176,7 +186,8 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
     return count
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     known = sections()
     groups = listed_groups()
@@ -199,9 +210,7 @@ def main() -> int:
         for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for m in COUNT.finditer(line):
                 if int(m.group(1)) != total:
-                    errors.append(
-                        f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}"
-                    )
+                    errors.append(f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}")
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(files)} lens file(s)")
@@ -211,4 +220,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

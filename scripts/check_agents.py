@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "skills" / "_template" / "review.SKILL.md"
@@ -56,7 +59,8 @@ def decision_order(proc: str) -> list[str]:
     return [word for pos, word in sorted(found) if pos >= 0]
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     files = {}
     for path in (TEMPLATE, AGENT):
@@ -93,4 +97,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

@@ -128,17 +128,23 @@ def test_make_target_the_body_runs_passes(repo, skills, capsys):
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`, then `make migrate-check --dry-run`.\n3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`, then `make migrate-check --dry-run`.\n"
+        "3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
     )
     assert skills.main() == 0
     assert "skills ok" in capsys.readouterr().out
 
 
 def test_make_target_the_body_never_runs_fails(repo, skills, capsys):
-    repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", "Bash(make check), Bash(make test-unit), Bash(make openapi:*)")
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", "Bash(make check), Bash(make test-unit), Bash(make openapi:*)"
+    )
     assert skills.main() == 1
     out = capsys.readouterr().out
-    assert "skills/arch-scaffold-thing/SKILL.md: allowed-tools names Bash(make test-unit) but the body never runs make test-unit" in out
+    assert (
+        "skills/arch-scaffold-thing/SKILL.md: allowed-tools names Bash(make test-unit) but the body never runs make test-unit"
+        in out
+    )
     assert "allowed-tools names Bash(make openapi) but the body never runs make openapi" in out
     assert "never runs make check" not in out
     # a target named only in the conventions file counts only when the body references that file
@@ -171,6 +177,8 @@ def test_scaffold_sections_must_appear_in_order(repo, skills, capsys):
     repo.write("skills/arch-scaffold-thing/SKILL.md", swapped)
     assert skills.main() == 1
     assert "scaffold sections are ['Input', 'Changed', 'Created', 'Procedure', 'Output']" in capsys.readouterr().out
-    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Procedure\n\n1. Write the thing.\n2. Run `make check`.\n\n", ""))
+    repo.write(
+        "skills/arch-scaffold-thing/SKILL.md", text.replace("## Procedure\n\n1. Write the thing.\n2. Run `make check`.\n\n", "")
+    )
     assert skills.main() == 1
     assert "expected ['Input', 'Created', 'Changed', 'Procedure', 'Output']" in capsys.readouterr().out

@@ -22,5 +22,6 @@
     // A Makefile snippet in a code block needs its tabs.
     "MD010": { "code_blocks": false }
   },
-  "ignores": ["node_modules/**", ".git/**", "benchmark/runs/**"]
+  // The same files scripts/_common.py leaves out of the repository's Markdown.
+  "ignores": ["**/node_modules/**", ".git/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/**"]
 }

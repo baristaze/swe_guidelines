@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments, markdown_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,26 +57,26 @@ REFUSED_TERMS: dict[str, list[str]] = {
     ],
 }
 
-# file glob -> the term groups refused there; a file matched by several globs is
-# scanned once per group, whichever globs name it
+# scope -> the term groups refused there. A scope ending in "/" is a
+# directory and covers every Markdown file under it at any depth; any
+# other scope is one file. A file inside several scopes is scanned once
+# per group, whichever scopes name it. The files come from
+# `markdown_files`, the one list of the repository's Markdown.
 SCOPES: list[tuple[str, list[str]]] = [
     ("architecture.md", ["product", "history", "shape"]),
-    ("lenses/*.md", ["product", "shape"]),
-    ("skills/*/*.md", ["product", "shape"]),
-    ("skills/*/*/*.md", ["product", "shape"]),
+    ("lenses/", ["product", "shape"]),
+    ("skills/", ["product", "shape"]),
     ("README.md", ["product"]),
     ("CONTRIBUTING.md", ["product"]),
-    ("docs/*.md", ["product", "shape"]),
-    ("agents/*.md", ["product", "shape"]),
+    ("docs/", ["product", "shape"]),
+    ("agents/", ["product", "shape"]),
     ("AGENTS.md", ["product"]),
-    ("benchmark/*.md", ["product", "shape"]),
-    ("benchmark/*/*.md", ["product", "shape"]),
+    ("benchmark/", ["product", "shape"]),
 ]
 
 
-def files(root: Path, globs: list[str]) -> list[Path]:
-    """Every file one of the globs names, once, in path order."""
-    return sorted({p for g in globs for p in root.glob(g) if p.is_file()})
+def in_scope(rel: str, scope: str) -> bool:
+    return rel.startswith(scope) if scope.endswith("/") else rel == scope
 
 
 def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
@@ -85,13 +88,16 @@ def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
                 errors.append(f"{path.relative_to(root)}:{ln}: {label} term '{m.group(0)}'")
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     labels: dict[Path, list[str]] = {}
-    for glob, groups in SCOPES:
-        for path in files(ROOT, [glob]):
-            mine = labels.setdefault(path, [])
-            mine.extend(g for g in groups if g not in mine)
+    for path in markdown_files(ROOT):
+        rel = path.relative_to(ROOT).as_posix()
+        for scope, groups in SCOPES:
+            if in_scope(rel, scope):
+                mine = labels.setdefault(path, [])
+                mine.extend(g for g in groups if g not in mine)
     for path in sorted(labels):
         for label in labels[path]:
             scan(ROOT, path, label, errors)
@@ -104,4 +110,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
