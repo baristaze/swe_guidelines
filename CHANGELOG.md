@@ -31,6 +31,9 @@ which number.
   `git status --porcelain --untracked-files=all`. Plain `git status`
   names an untracked folder, not the files in it, so on a fresh tree it
   listed `om/` and `services/` and nothing else.
+- `arch-scaffold-new`: replacing `README.md` and `.gitignore` in a fresh
+  repository is named as the one exception to the collision rule of the
+  scaffold conventions. The two texts contradicted each other.
 
 ### Added
 

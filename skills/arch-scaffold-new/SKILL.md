@@ -28,7 +28,9 @@ positional arguments are required; ask for them when missing.
 repository holding nothing but `.git`, `README.md`, `LICENSE`, and
 `.gitignore` (the shape a hosting service creates); refuse otherwise.
 In the fresh-repository case `README.md` and `.gitignore` are replaced,
-`LICENSE` is kept, and the `git init` of step 1 is skipped. Refuse when a `.git`
+`LICENSE` is kept, and the `git init` of step 1 is skipped. Those two
+replacements are the one exception to the collision rule of the
+conventions; any other path that exists is a collision. Refuse when a `.git`
 directory exists in a parent of `<target-dir>` (`git rev-parse
 --show-toplevel` from it names one), because `git init` never runs
 inside an existing repository.
