@@ -457,8 +457,7 @@ declared schemas, and cross-role foreign keys; the rest is judged.
 hand-written, schema-qualified SQL files with a thin wrapper, one
 revision chain and one version table per role, the minute stamp as
 sort key and revision id. The runner refuses a file that names another
-role's table, and refuses to migrate one role when the caller meant
-all.
+role's table, and a run that names no role migrates every role.
 
 **Source.** The Storage Layer, Migrations.
 
@@ -466,13 +465,12 @@ all.
 and `.down.sql` pairs, with a wrapper under `versions/<role>/` that
 only calls the SQL runner. Wrappers containing hand-written schema
 operations instead of `run_sql`, and SQL in one role's chain naming a
-table of another role. The runner's refusal of a single-role run where
-every role was meant.
+table of another role. What a run that names no role migrates.
 
 **Violation.** A migration lives in a service instead of with the OM,
 or a wrapper carries schema operations of its own. A migration names a
-table of another role and the runner accepts it. A runner that
-migrates one role and stays silent when the caller meant all.
+table of another role and the runner accepts it. A run that names no
+role and migrates a subset of the roles.
 
 **Severity.** medium
 
@@ -709,8 +707,9 @@ every engine a storage impl builds; the rest is judged.
 
 **Principle.** Every table declares its tenancy scope (`system`, `org`,
 `identity`, `both`) in one map beside the role map, and the database
-carries the policy that scope implies, with row-level security enabled
-and forced. The login the application connects with is never a
+carries the policy that scope implies: for `org`, `identity`, and
+`both`, one policy with row-level security enabled and forced; for
+`system`, none. The login the application connects with is never a
 superuser and never carries `BYPASSRLS`.
 
 **Source.** The Storage Layer, The Second Fence; Database Roles;

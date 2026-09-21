@@ -808,10 +808,11 @@ retried; a count or a delay hard-coded instead of read from settings.
 ## NET-34 An issuer key attributes; a declaration of assertions contains
 
 **Principle.** A key per issuer answers who signed, and that is
-attribution. Containment is a declaration per issuer of what it may
-assert: the tenants it may name, the roles it may carry, the
-principals it may speak for. The callee verifies the signature, then
-refuses a credential that reaches past the issuer's declaration.
+attribution. Where a system contains an issuer, containment is a
+declaration per issuer, configured at the callee, of what it may
+assert: the tenants, the roles, the principals. The callee verifies
+the signature, then refuses a credential that reaches past the
+declaration, before the gateway rebuilds the context.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
@@ -820,9 +821,10 @@ whether it reads a declaration for the issuer that signed before the
 gateway rebuilds the context, and where that declaration is
 configured.
 
-**Violation.** A callee that accepts any tenant, role, or principal
-from any issuer whose signature checks out; a key per issuer presented
-as containment with no declaration behind it; a declaration the issuer
-supplies in its own token, so it widens its own reach.
+**Violation.** A key per issuer presented as containment with no
+declaration behind it; a declaration the issuer supplies in its own
+token, so it widens its own reach; a declaration checked after the
+context is rebuilt. (One key shared by processes that are all the
+platform's own is a decision the guideline makes, not a breach.)
 
 **Severity.** high

@@ -219,8 +219,8 @@ configuration. (The platform's own secrets are ASY-13 and ASY-28.)
 **Principle.** The local stack is an environment too. Its file names
 the compose stack and the developer dashboards of the `devx` profile,
 so every skill runs against the developer's machine with no cloud at
-all. Every skill takes the environment it acts on, and `local` is one
-of them.
+all. Every skill but the administrator's two takes the environment it
+acts on, and `local` is one of them.
 
 **Source.** Operations, Operator Credentials; Operational Skills.
 
@@ -295,14 +295,12 @@ What it cannot explain, it escalates with everything it read.
 
 **Source.** Operations, Operational Skills.
 
-**Look for.** Who or what the alarm topic reaches first; the size read
-in `ops-investigate` before any escalation; the reason a suppressed
-alarm carries; what an escalation carries.
+**Look for.** The size read in `ops-investigate` before any escalation;
+the reason a suppressed alarm carries; what an escalation carries.
 
-**Violation.** An alarm that pages a person before an agent has read
-it; an agent that escalates without reading the tenant, user, and
-traffic counts; a suppression with no reason; an escalation that names
-the alarm and nothing the agent read.
+**Violation.** An agent that escalates without reading the tenant, user,
+and traffic counts; a suppression with no reason; an escalation that
+names the alarm and nothing the agent read.
 
 **Severity.** medium
 

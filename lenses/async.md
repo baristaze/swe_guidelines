@@ -288,7 +288,7 @@ error string, or an audit payload; a not-found error that omits the
 secret name or the store; a subprocess inheriting the parent's full
 environment.
 
-**Severity.** medium
+**Severity.** high
 
 ## ASY-14 Every handler is idempotent on a producer-generated key
 
@@ -543,8 +543,8 @@ claiming.
 id, so a retried enqueue never resets a claim, and a duplicate
 `idempotency_key` is reported, never a driver error; the manager's
 copy stamps actor, status, and attempts, clears every claim field, and
-leaves the timestamps as constructed. Enqueue then publishes the
-wake-up; claim stamps claim and lease together.
+keeps the id and the timestamps. Enqueue then publishes the wake-up;
+claim stamps claim and lease together.
 
 **Source.** Worker Roles, The Work Queue.
 
@@ -633,7 +633,7 @@ group or others, or reads values from a world-readable path with no
 check; a local impl that reaches a network store; the cloud impl
 reading a file.
 
-**Severity.** low
+**Severity.** high
 
 **Check.** `arch-check` decides the owner-only mode check before every
 secrets file read; the rest is judged.

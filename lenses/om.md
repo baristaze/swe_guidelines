@@ -40,14 +40,15 @@ storage concern. The one exception is an entity whose readers have no
 tenant, which carries `org_id` so the reader knows whose it is.
 
 **Source.** The Domain as the Source of Truth; The Storage Layer,
-Defining ORM Classes.
+Defining ORM Classes; The Storage Layer, Namespace Shape.
 
 **Look for.** Fields added to an entity that exist only to satisfy a
 response shape or a column (what crosses the wire is NET-13);
 storage-only concerns leaking into entity classes; whether `org_id`
 appears on an entity and, when it does, whether a reader with no
-tenant reads it: an operator across tenants, the outbox relay, a
-sweep.
+tenant reads it: an operator across tenants, or the outbox relay. A
+cross-tenant sweep may instead get the tenant back beside each row
+(CTX-12).
 
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying a column-oriented attribute such as a raw
@@ -238,7 +239,7 @@ it does not validate and leaves a dumped value object a dict.
 **Look for.** The root's frozen configuration; assignment to entity
 attributes anywhere; the update path in managers; a
 `model_copy(update=...)` fed a `model_dump()` or a request; a
-`model_validate` called on an instance.
+`model_validate` called on an instance of the class it builds.
 
 **Violation.** `order.status = ...` in a manager or service; a class on
 the chain that unfreezes itself; an update that reaches into a nested

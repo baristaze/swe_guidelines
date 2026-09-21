@@ -160,8 +160,8 @@ origin, a worker's registration with its expected tenant, the
 development seed with a local database; the start-up inventory log
 line.
 
-**Violation.** A production-named environment that can start on the
-file secrets backend; a twin selectable off a loopback origin; a
+**Violation.** A staging or production environment that can start on
+the file secrets backend; a twin selectable off a loopback origin; a
 development seed that runs against a non-local database; a boot
 with no line saying which backends are in use; a runbook that carries
 a check the process could make itself.
@@ -170,14 +170,12 @@ a check the process could make itself.
 
 ## DEL-07 The monorepo is grouped by role, with one OM distribution
 
-**Principle.** The repository root groups code by role: `om/`,
-`infra/`, `integrations/`, `gateway/`, `services/`, `workers/`,
-`apps/`, `clients/`, `deployment/`, `scripts/`, `specs/`, `docs/`. A
+**Principle.** The repository root groups code by role: `om/`, `infra/`,
+`integrations/`, `gateway/`, `services/`, `workers/`, `apps/`,
+`clients/`, `ops/`, `deployment/`, `scripts/`, `specs/`, `docs/`. A
 system that starts as one API process has one entry under `services/`
-and grows
-the rest.
-The OM is a single distribution covering every namespace, and
-namespaces are folders inside it.
+and grows the rest. The OM is a single distribution covering every
+namespace, and namespaces are folders inside it.
 
 **Source.** Monorepo Folder Structure; Layout Conventions.
 
@@ -552,7 +550,7 @@ lint or type suppression on one, or takes an exception to a rule the
 guideline states, and whether an ADR number appears in the same diff;
 whether the code that embodies a decision cites it. An addition to an
 enumerated-exceptions list is documented by a docstring and the
-enumerating test instead (CTX-12).
+checker's enumeration instead (CTX-12).
 
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
@@ -563,23 +561,25 @@ ADR; code that embodies an ADR's decision without citing its number;
 **Check.** `arch-check` decides the number, date, and sections of each
 ADR and every ADR number code cites; the rest is judged.
 
-## DEL-24 Checkable rules are checked by tests
+## DEL-24 Checkable rules fail the build
 
-**Principle.** A rule that a program can check is checked: every table
-has a role and no key crosses one, storage methods take `org_id` first
-except the enumerated exceptions, no manager imports a service, the
-migration chain has one head per role. A rule that fails the build
-holds.
+**Principle.** A rule that a program can check is checked. A rule that
+reads only the source is decided by `arch-check`, run in the gate at
+the pinned tag. A rule that needs the built system or a migrated
+database is a test: the tenancy scope, and every root built whole. A
+rule that fails the build holds.
 
 **Source.** Cross-Cutting Conventions, Records of Decisions.
 
-**Look for.** Conformance tests in the unit suite; a new rule or
-exception introduced without a test that asserts it; a rule stated in
-docs that a test could enforce and does not.
+**Look for.** The `arch-check` run in the gate and the tag it pins;
+the tests for the rules the checker cannot decide; a rule stated in
+docs that a program could enforce and nothing does.
 
-**Violation.** A new storage exception not added to the enumerated
-list a test checks; an import-direction rule with no test; a role map
-whose completeness nothing asserts.
+**Violation.** A gate with no `arch-check` run, or a run at a tag
+other than the one the project pins; no test of the tenancy scope
+against a migrated database; no test that the roots build whole.
+(The enumerated tenant-less methods are CTX-12; the scope map and its
+policies are STO-28.)
 
 **Severity.** medium
 

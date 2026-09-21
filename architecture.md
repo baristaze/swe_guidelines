@@ -343,10 +343,11 @@ across async tasks, and no layer can quietly rewrite an entity after it
 was constructed.
 
 > **Python tip:** the copy is one of two calls, and what the update
-> carries decides which. Values constructed of the field's own type, a
-> timestamp, an id, a status, go through
-> `entity.model_copy(update={...})`. A copy that carries a dump, the
-> caller's fields above all, is rebuilt from a dict:
+> carries decides which. When every updated value already has the
+> field's type (a timestamp, an id, a status), the copy is
+> `entity.model_copy(update={...})`. When the update carries dumped
+> data, the caller's fields above all, the entity is rebuilt from a
+> dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
 > `model_copy` does not validate, so it would leave a dumped value
 > object as a plain dict. A manager that updates an entity sets
@@ -453,8 +454,8 @@ Names follow the namespace:
 
 -   A manager interface and a storage interface are named after the
     namespace in the singular: `OrderManagerInterface`,
-    `OrderStorageInterface`, `InventoryStorageInterface`,
-    `InventoryStoragePostgresImpl`.
+    `OrderStorageInterface`, `InventoryStorageInterface`. An impl adds
+    its technology last: `InventoryStoragePostgresImpl`.
 -   The storage root has one getter per namespace storage:
     `get_inventory_storage()`, `get_order_storage()`.
 -   A namespace with several aggregates may add one storage interface
@@ -571,7 +572,7 @@ soon as it is wired over the memory roots, and that is what lets the
 whole business layer run in a test. The exception is a manager that
 fronts something a caller cannot conjure: a payment processor, a
 carrier, a model provider. That one gets a memory impl of its own,
-`PaymentsManagerMemoryImpl`, answering the same interface from an
+`PaymentManagerMemoryImpl`, answering the same interface from an
 in-process dict. Every caller above that namespace then runs with no
 account, no network, and no sandbox.
 
@@ -627,7 +628,7 @@ Because an impl depends on an interface, impls compose. Caching is a
 common case:
 
 ``` python
-# CacheInterface is declared under [Cache](#cache): every call takes org_id.
+# CacheInterface is declared under Cache, below: every call takes org_id.
 
 class CacheLocalImpl(CacheInterface): ...  # in-process
 
@@ -748,6 +749,7 @@ class RequestContext(Platform):
     request_id: UUID
     app: AppContext
     trace_id: str | None = None
+    traceparent: str | None = None  # the trace context a handoff carries on
     caused_by_request_id: UUID | None = None  # the request behind this one across a handoff
 
 class OpContext(RequestContext):
@@ -861,8 +863,9 @@ requiring a permission at their first line, and not before.
 
 `OpContext` does not refine `IdentityContext`. What a tenant operation
 knows about the person is the user inside the tenant, not the identity
-across tenants. An API key or a worker's service context has no sign-in
-behind it at all.
+across tenants. An API key or a worker's service context (see
+[Operations Without a Principal](#operations-without-a-principal)) has
+no sign-in behind it at all.
 
 A stage above the request stage is produced only by a transition. A
 transition takes the stage below, consults the evidence, and returns
@@ -895,12 +898,13 @@ A transition builds a new object from the stage below and the evidence
 it consulted. It never copies the stage below with changed fields, and
 nothing but a transition constructs a stage above the request stage.
 
-At every call site the type is the fence. At the construction sites a
-test is. A unit test enumerates every site that constructs a stage
-above the request stage and fails when a new one appears, the way the
-exceptions test enumerates the tenant-less storage methods. A stage is
-an ordinary class, and anything can call its constructor. The test is
-what makes "only a transition" hold.
+At every call site the type is the fence. At the construction sites
+the checker is. `arch-check` enumerates every site that constructs a
+stage above the request stage and fails when a new one appears, the
+way it enumerates the tenant-less storage methods (see [Records of
+Decisions](#records-of-decisions)). A stage is an ordinary class, and
+anything can call its constructor. The checker is what makes "only a
+transition" hold.
 
 The request stage is minted at the edge, once:
 
@@ -984,6 +988,8 @@ class RequestScope(Protocol):
     def request_id(self) -> UUID: ...
     @property
     def app(self) -> AppContext: ...
+    @property
+    def traceparent(self) -> str | None: ...
 
 class TenantScope(Protocol):
     @property
@@ -1004,7 +1010,7 @@ class ProvenanceScope(ActorScope, RequestScope, Protocol): ...
 
 ``` python
 def outbox_row(ctx: ProvenanceScope, kind: str, target_id: UUID, payload: FrozenMapping) -> OutboxRow: ...
-async def subscribe(self, ctx: ActorScope, ...) -> ...: ...  # on the socket handler, not a manager
+async def subscribe(self, ctx: ActorScope, topic: str) -> None: ...  # on the socket handler, not a manager
 ```
 
 A scope is a `Protocol` and not an `ABC`, on purpose. A stage satisfies
@@ -1027,9 +1033,9 @@ it, as `ActorScope` is built on `TenantScope`. There is no
 `AuthorizationScope`, because no consumer needs the permissions without
 the tenant and the actor.
 
-A manager operation takes `OpContext`, which is its scope, and says
-nothing narrower. It authorizes, and authorization rests on the live
-membership. Only the stage proves that. No scope can.
+A tenant manager operation takes `OpContext`, which is its scope, and
+says nothing narrower. It authorizes, and authorization rests on the
+live membership. Only the stage proves that. No scope can.
 
 Scopes compose. `ProvenanceScope` is `ActorScope` and `RequestScope`
 together, and it has a name because provenance is a concept of the
@@ -1087,15 +1093,17 @@ A manager operation that acts for a principal takes exactly one of the
 two, and never a choice between them. An operator operation takes
 `OperatorContext`. A tenant operation takes `OpContext`.
 
-A stage below either one is a parameter in two places only: where the
-stage is what the operation establishes, and where the operation has no
-principal at all. Those are the transitions of the tenancy manager, and
-the operations of [Operations Without a
+A stage below either one is a parameter in three places only: where
+the stage is what the operation establishes, where the identity stage
+is the principal, and where the operation has no principal at all.
+Those are the transitions of the tenancy manager, the exchange of a
+sign-in for a tenant session (see [Stages](#stages)), and the
+operations of [Operations Without a
 Principal](#operations-without-a-principal), which take `RequestContext`
 or a tenant id.
 
 Two things keep the planes apart: the type system at every call site,
-and the construction-site test at the few places a stage is built. An
+and `arch-check` at the few places a stage is built. An
 operator route cannot act inside a tenant. A tenant route cannot reach
 the operator plane. [The Gateway](#the-gateway) and [The Operator
 Console](#the-operator-console) describe the plane further.
@@ -1296,8 +1304,9 @@ enqueue of a work item. The row carries its tenant, its actor, and its
 request id from the write that made it, and the relay runs again from
 the sweep, where no principal exists.
 
-All three are declared on their interfaces as such, and they are the
-only operations of their kind.
+All three kinds, the operations on the request stage, the bookkeeping
+with no principal, and the handoffs by tenant id, are declared on their
+interfaces as such, and they are the only operations of their kinds.
 
 ## The Storage Layer
 
@@ -1480,17 +1489,19 @@ tenant users, platform-owned reference data, a health row per external
 provider. Their storage methods take no `org_id`, and the interface
 docstring says why.
 
-Cross-tenant sweeps are the other exception. A sweep that expires every
-lease past due, in every tenant, returns `tuple[UUID, Entity]`, so the
-tenant travels back with each row. The pair is unnecessary when the
-entity carries `org_id` itself, as the outbox row and the `Event` of
-[Realtime at the Edge](#realtime-at-the-edge) do. Such a row already
-names its tenant and is returned alone.
+Cross-tenant sweeps are the other exception. A sweep that expires the
+leases past due, in every tenant, up to its batch size, returns
+`list[tuple[UUID, Entity]]`, so the tenant travels back with each row.
+The pair is unnecessary when the entity carries `org_id` itself, as the
+outbox row and the `Event` of [Realtime at the
+Edge](#realtime-at-the-edge) do. Such a row already names its tenant and
+is returned alone.
 
-These are the documented exceptions to the `org_id`-first rule, and a
-test enumerates them.
+These are the documented exceptions to the `org_id`-first rule, and
+`arch-check` enumerates them (see [Records of
+Decisions](#records-of-decisions)).
 
-The enumerating test reads signatures. It says which methods take the
+The enumeration reads signatures. It says which methods take the
 tenant and which are excused from it. That is all a signature says.
 
 The fence itself exists in one place: the `WHERE` clause of the query.
@@ -1499,7 +1510,7 @@ body passes every check made on signatures. What says the tenant is
 used is a case that presents another tenant's identifier, finds
 nothing, and changes nothing (see [Tests](#tests)). A new storage
 method arrives with that case, the way a new exception arrives with its
-entry in the enumerating test.
+entry in the enumeration.
 
 ### Storage Root
 
@@ -1596,8 +1607,10 @@ the mixins.
 Tables carry `org_id` while tenant OM entities do not. Tenancy is a
 storage concern, populated by the business layer from `OpContext` at
 call time. The exception is an entity whose readers have no tenant. A
-row an operator reads across every tenant carries `org_id` as a model
-field too, so the reader knows whose it is.
+row the relay reads, or one an operator reads across every tenant,
+carries `org_id` as a model field too, so the reader knows whose it
+is. A cross-tenant sweep may instead get the tenant back beside each
+row (see [Namespace Shape](#namespace-shape)).
 
 Unlike OM entities, table classes are mutable by design. The SQLAlchemy
 session tracks in-place changes to produce SQL, so rows must not be
@@ -1816,18 +1829,20 @@ runs more work at once than its pool serves spends the difference
 waiting on a checkout. The role is the bulkhead between load profiles,
 and the size is how wide it is.
 
-Rules that make the move safe, each checked by a unit test:
+Rules that make the move safe:
 
 -   No cross-role foreign keys and no cross-role statements. A
     statement touches one role; the base class routes it by the table
-    it names and refuses one that spans roles.
+    it names and refuses one that spans roles. `arch-check` refuses a
+    key that crosses roles (see [Records of
+    Decisions](#records-of-decisions)).
 -   A handoff that follows a core write, an event row or a work item,
     is never a second statement the manager remembers to make. The
     manager writes the core row and its outbox rows in one named atomic
-    method in the `core` role, then relays each to its destination at
-    once. The sweep of [Maintenance Without a
-    Scheduler](#maintenance-without-a-scheduler) relays whatever a
-    crash left behind and marks the row done.
+    method in the `core` role. The relay then carries each row to its
+    destination, at once or from the sweep of [Maintenance Without a
+    Scheduler](#maintenance-without-a-scheduler), and marks it done.
+    The sweep also relays whatever a crash left behind.
 
     The destination is the row's `kind`. An entity change becomes an
     `Event` in `activity` and an `ENTITY_CHANGED` publish. A request
@@ -1835,23 +1850,23 @@ Rules that make the move safe, each checked by a unit test:
     (see [The Work Queue](#the-work-queue)). The relay is idempotent on
     the row's key, so relaying twice is harmless (the transactional
     outbox pattern).
--   The relay has a price, and it is named. After the one commit come
-    three more round trips: the event append in `activity`, the
-    publish, and the mark in `core`. That is four per write. It is six
-    for a creating request, with the marker's `begin` and `finish`
-    around it.
-
-    Relaying at once pays those trips in the request path, and buys a
-    push that arrives in milliseconds.
-
-    The cheaper first step is to relay from the sweep alone, on an
-    interval of a second or two. One round trip per write. A push that
-    arrives within the interval. The same relay code, and no second
-    path to test. A system moves the relay into the request path when
-    push latency earns it.
 -   The topic bus (see [Topics](#topics)), when it is backed by the
     database, connects to the queue role. The processes that enqueue
     work and the workers they wake must share it.
+
+The relay has a price, and it is named. After the one commit come
+three more round trips: the event append in `activity`, the publish,
+and the mark in `core`. That is four per write. It is six for a
+creating request, with the marker's `begin` and `finish` around it.
+
+Relaying at once pays those trips in the request path, and buys a push
+that arrives in milliseconds.
+
+The cheaper first step is to relay from the sweep alone, on an
+interval of a second or two. One round trip per write. A push that
+arrives within the interval. The same relay code, and no second path
+to test. A system moves the relay into the request path when push
+latency earns it.
 
 Analytics across tenants never runs in the request path of any role.
 When reporting is needed it reads a mirror fed by change data capture
@@ -1903,8 +1918,9 @@ carry the column their policy rests on, and the map names it.
 A storage impl opens a session in one place, the base class's session
 helper. That funnel is the one place every statement already passes, so
 it is where the tenant is set. It takes the scope of the call, `org_id`
-and an optional `user_id`, and sets three transaction settings before
-the first statement runs:
+with an optional `user_id`, or an `identity_id` for a table scoped to
+an identity. It sets three transaction settings before the first
+statement runs, and a setting the call does not name stays unset:
 
 ``` sql
 SELECT set_config('app.org_id', :org_id, true);
@@ -1954,14 +1970,16 @@ org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
 ```
 
 A setting that was never set reads as NULL. A setting that an earlier
-transaction set on the same pooled connection reads as the empty
-string once that transaction ends, and `''::uuid` is an error, not a
-miss. `NULLIF` folds both to NULL, and `org_id = NULL::uuid` is false.
-So a transaction that named no tenant fails closed: a read returns
-nothing and a write is refused. The `both` narrowing applies when the
-transaction names a person and is absent when it does not. The
-system-scope clause is the one deliberate bypass, and it is spelled out
-in every policy so that it can be grepped.
+transaction set on the same pooled connection reads as the empty string
+once that transaction ends, and `''::uuid` is an error, not a miss.
+`NULLIF` folds both to NULL, and `org_id = NULL::uuid` is NULL, which a
+policy treats as a refusal. So a transaction that named no tenant fails
+closed: a read returns nothing and a write is refused. The `both`
+narrowing applies when the transaction names a person and is absent when
+it does not. The system-scope clause is the one deliberate bypass. It is
+spelled out in the `org` expression, which `both` includes, so that it
+can be grepped. An `identity` policy has no bypass: its rows are read
+under the identity they belong to.
 
 The login the application connects with is never a superuser and never
 carries `BYPASSRLS`. A superuser bypasses every policy, so a fence
@@ -2004,8 +2022,8 @@ takes a suffix. Two migrations that name the same parent are a real
 conflict, and the tool reporting it is the point.
 
 A migration file is never edited once it has been applied anywhere. The
-runner refuses a file that names a table of another role, and it
-refuses to migrate one role when the caller meant all of them.
+runner refuses a file that names a table of another role. A run that
+names no role migrates every role, never a subset.
 
 A migration is compatible with the release before it, because a rollout
 runs both at once. Add and backfill in one release, switch the code,
@@ -2718,19 +2736,20 @@ write whose guard is in the statement itself:
 | pending           | `finish` by A with a `2xx` or a `4xx`   | the attempt is A               | finished; the outcome stored                      |
 | pending           | a `5xx` in A                            | the attempt is A               | released; digest and id kept, no attempt          |
 | pending           | `finish` or release by an attempt not A | the attempt is not the caller's | unchanged; the caller is refused                  |
-| pending, lease out| a retry's `begin`                       | key and digest match           | pending under attempt B, same id; the request reruns |
+| pending, lease live | a retry's `begin`                     | key and digest match           | unchanged; refused as `Conflict`, the first attempt still running |
+| pending, lease expired | a retry's `begin`                  | key and digest match           | pending under attempt B, same id; the request reruns |
 | released          | a retry's `begin`                       | key and digest match           | pending under attempt B, same id; the request reruns |
-| finished          | a retry's `begin`                       | the digest matches             | finished; the outcome replayed, the header says so |
+| finished          | a retry's `begin`                       | key and digest match           | finished; the outcome replayed, the header says so |
 | any               | `begin` under another digest            |                                | unchanged; refused                                |
 
 The pending lease is an option of the idempotency manager. It runs from
-the attempt, never from the marker. The attempt token is a `uuid_v7`,
-so an attempt older than the lease was either abandoned by a crash
-between the marker and its outcome, or is still running past it. Either
-way, the next retry takes it over, and the token that retry stamps
-starts the lease again. A marker handed on twice is not stale for
-having been minted long ago. A released marker holds no attempt and is
-taken over at once.
+the attempt, never from the marker. The attempt token is a `uuid_v7`, so
+an attempt older than the lease was either abandoned by a crash between
+the marker and its outcome, or is still running past it. Either way, the
+next retry takes it over, and the token that retry stamps starts the
+lease again. Staleness is measured from the current attempt, never from
+when the marker was first written. A released marker holds no attempt
+and is taken over at once.
 
 Two facts make the takeover safe.
 
@@ -2893,8 +2912,9 @@ freshly minted secret in the clear.
 Paging is fixed too. A list returns a bare list with a server-clamped
 `limit`: the route takes the limit the client asks for, the manager
 clamps it to its page size, and the storage read carries it in the
-statement (see [Storage Principles](#storage-principles)). A list that can outgrow the clamp returns a page envelope
-(`items` and `next_cursor`) and pages by an opaque cursor over the
+statement (see [Storage Principles](#storage-principles)). A list that
+can outgrow the clamp returns a page envelope (`items` and
+`next_cursor`) and pages by an opaque cursor over the
 list's own order; that cursor is the id when the order is the creation
 order, since a v7 id sorts by time. An append-only stream pages by a
 monotonic sequence number (`after_seq`). Nothing pages by an offset.
@@ -3068,10 +3088,12 @@ timeout, a connection refused, an unavailable answer. A refusal or a
 validation failure is not. A retry is bounded in count and spaced by a
 delay that grows and carries jitter, both from settings.
 
-Retries do not stack. One layer of a call chain owns them, because a
-retry under a retry multiplies the load on a dependency that is
-already failing. What stops the calls that cannot succeed at all is a
-breaker (see [Composition by
+Retries do not stack. Inside the platform, one layer of a call chain
+owns them, because a retry under a retry multiplies the load on a
+dependency that is already failing. The client's retry at the edge is
+outside that count: the marker turns it into a replay or a rerun under
+the same key, never new work. What stops the calls that cannot succeed
+at all is a breaker (see [Composition by
 decoration](#composition-by-decoration)), never another attempt.
 
 A chain that must survive a crash between steps is a durable record
@@ -3106,8 +3128,10 @@ the key and applies the same check. [Topics](#topics) shows this on
 delivery, and the `Idempotency-Key` header at the HTTP edge.
 
 The key lives on the row the effect produces, or marker and effect are
-one named atomic write. A marker written before its effect turns a
-crash into work that never happens (the idempotent consumer pattern).
+one named atomic write (the idempotent consumer pattern). A marker
+marked done before its effect turns a crash into work that never
+happens. The edge marker is written pending, under a lease, and holds
+no outcome until the effect has one, which is why it may come first.
 
 ### Realtime at the Edge
 
@@ -3144,10 +3168,10 @@ The revocation close and the transport keepalive stay out of the
 buffer. A close is not a frame to be queued behind a backlog, and the
 keepalive belongs to the transport.
 
-Dropping a stream frame is safe because every push is also a record. A client that
-reconnects asks for everything after the last sequence number it saw.
-The client keeps the last contiguous sequence, so a gap (42 arriving
-without 41) is a replay from 40, never a skip.
+Dropping a stream frame is safe because every push is also a record. A
+client that reconnects asks for everything after the last sequence
+number it saw. The client keeps the last contiguous sequence, so a gap
+(42 arriving without 41) is a replay after 40, never a skip.
 
 Contiguity is per tenant, so the stream travels whole. The topic that
 carries it delivers every event of the tenant to a subscriber. A
@@ -3266,7 +3290,7 @@ sequenceDiagram
     Svc-->>Portal: 202 (record id)
     Note over Portal: returns to event loop
     Wrk->>Wrk: do work (minutes)
-    Wrk->>Svc: publish (catalog_imported)
+    Wrk->>Svc: publish on the topic bus (catalog_imported)
     Svc-->>Portal: push envelope
     Note over Portal: reconciles against durable state
 ```
@@ -3432,7 +3456,8 @@ failed item is a dead letter: an audit entry names it and a metric
 counts it.
 
 A worker that finds an item is not its to run hands it back without
-spending an attempt.
+spending an attempt. A release hands it back available at once, and a
+deferral hands it back available after a delay.
 
 The lane on the row is the routing. One table serves a shared pool and
 any number of dedicated lanes.
@@ -3594,9 +3619,9 @@ the worker stops claiming new work, and it finishes what it holds.
 
 On a stop signal the worker drains first and goes offline last.
 
-Every in-flight task is cancelled, and each returns its work item to
-the queue with a note. Then the heartbeat stops. Then the worker marks
-itself offline.
+Every in-flight task is cancelled, and each releases its work item back
+to the queue with a note. Then the heartbeat stops. Then the worker
+marks itself offline.
 
 Read from the outside, the worker is alive until its work is safely
 back in the queue.
@@ -3609,8 +3634,8 @@ worker holds leases.
 Recurring housekeeping is a sweep that every worker runs on its own
 timer. The sweep does the standing chores:
 
-- requeue items whose lease expired
-- expire leases
+- requeue work items whose lease expired
+- expire the leases other records hold, past their due time
 - resume records whose park time has passed
 - roll periods
 - relay what a crash left in the outbox
@@ -4076,7 +4101,7 @@ service. That list stays short.
 Settings that are only safe locally are refused by the process, not by
 a checklist. Each of these is refused at boot:
 
-- a production-named environment on the file secrets backend
+- a staging or production environment on the file secrets backend
 - a twin selected off a loopback origin
 - a worker registered under the wrong tenant
 - the development seed against a database that is not local
@@ -4098,16 +4123,18 @@ at an environment. The person chooses what to do. The agent does it.
 The safety boundary is the credential the skill holds, never the
 prompt. A credential that can only read cannot break anything, so an
 agent holding one may look at everything it reaches. A credential that
-writes is held by a pipeline, or by a person for one named step, and
-by nothing else.
+writes is held by a pipeline, or by the administrator for its two
+named steps, creating an environment and destroying one, and by
+nothing else.
 
-That is the whole posture. Today the loop has a person in it at every
-write. The shapes below are built so the person can step back one step
-at a time, without a redesign, when an agent has earned it.
+That is the whole posture. The loop has a person in it at every write.
+The shapes below let the person step back one step at a time, without
+a redesign, when an agent has earned it.
 
 > **Principle:** Every operational task is a skill a person runs with
-> an agent. The boundary is the credential, and a credential a person
-> or an agent holds reads and never writes.
+> an agent. The boundary is the credential. A credential a person or
+> an agent holds reads and never writes, except the administrator's,
+> which creates and destroys an environment and does nothing else.
 
 ### Operator Roles
 
@@ -4119,10 +4146,11 @@ destroys one (see [Creating and Destroying an
 Environment](#creating-and-destroying-an-environment)). It does
 nothing else, and no skill but those two runs under it.
 
-The **deployer** is the pipeline. There is one per environment, and it
-is assumed by the workflow through the identity federation of the
-repository host, never by a person. Production has two: one that plans
-and one that applies, so the approval gates the credential that writes
+The **deployer** is the pipeline. It is assumed by the workflow
+through the identity federation of the repository host, never by a
+person. There is one per environment and two for production, one that
+plans and one that applies, so the approval gates the credential that
+writes
 (see [Cloud: AWS](#cloud-aws)).
 
 The **investigator** reads everything and writes nothing. There is one
@@ -4139,10 +4167,11 @@ parameter of every read. The credential that reads it is an identity
 on the operator allowlist whose entry says read, and nothing in the
 cloud role changes.
 
-No role a person or an agent holds writes to the cloud. An
-infrastructure change is a pull request, and the deployer applies it.
-A data change is an operation of the platform, under a tenant context
-or an operator context, and the manager decides it.
+No role a person or an agent holds writes to the cloud, except the
+administrator's two steps. An infrastructure change is a pull request,
+and the deployer applies it. A data change is an operation of the
+platform, under a tenant context or an operator context, and the manager
+decides it.
 
 Roles are named `<product>-<role>-<environment>`, so the name says
 what it is and where it reaches. A role's permissions stop at its
@@ -4168,7 +4197,8 @@ cloud who it is and compares the answer with the role it expects. A
 skill that finds itself under a wider credential than it needs stops
 and says so. It never proceeds on the reasoning that more is enough.
 The two administrator skills do the same in reverse: they refuse to run
-under anything but the administrator profile.
+under anything but the administrator profile. They act on a cloud
+environment only; the local stack has no administrator.
 
 The credentials an operator holds are of two kinds, and both are
 first-class. The cloud profiles live in the cloud tool's own
@@ -4211,7 +4241,8 @@ they read the product's own documents for what is specific to it.
 | `stress-test-run`                | none          | a run against the scenario, pass or fail against the target |
 
 Every skill takes the environment it acts on, and `local` is one of
-them. Every skill states its role, the credential check, what it
+them for every skill but the administrator's two, which act on a
+cloud. Every skill states its role, the credential check, what it
 reads, what it never does, and the shape of its report.
 
 A watch is a loop that outlives the conversation that started it. The
@@ -4231,7 +4262,8 @@ tenant's rows by an operator is logged with the tenant and the
 operator, so support access has a trail.
 
 > **Principle:** The operational skills are built in, one per task
-> that repeats, and every one runs against the local stack. The first
+> that repeats, and every one but the administrator's two runs against
+> the local stack. The first
 > responder is an agent that reads the platform's size before it
 > escalates.
 
@@ -4259,9 +4291,9 @@ numbers are the system's. The set and the topic are the shape.
 
 A tenant admin's view of their own organization is a product screen:
 a feature served by the app-specific service from the activity role.
-It is never a telemetry query. Telemetry carries no tenant id, by the
-rule of [Traces and Metrics](#traces-and-metrics), so nothing there
-could answer a tenant's question.
+It is never a telemetry query. A metric carries no tenant id, by the
+rule of [Traces and Metrics](#traces-and-metrics), and a log search is
+an operator's tool, never a tenant's screen.
 
 > **Principle:** One operator dashboard per environment, declared as
 > code in both twins with the same panels. A default alarm set to one
@@ -4294,10 +4326,10 @@ and a full disk is an outage.
 
 ### Cost Boundaries
 
-An account has a budget from its first apply. The budget names a
-monthly amount and alerts the owner at half of it, at most of it, at
-all of it, and when the forecast crosses it. Beside the budget, an
-anomaly monitor watches each service's spend and reports a jump.
+An account has a budget from its first apply. The budget names a monthly
+amount and alerts the owner at half of it, at nine-tenths of it, at all
+of it, and when the forecast crosses it. Beside the budget, an anomaly
+monitor watches each service's spend and reports a jump.
 
 The amount is the team's. A reference for a team of two with a
 staging and a production environment is a few hundred dollars a
@@ -4385,7 +4417,8 @@ reads is a claim.
 
 One integration test closes the loop. It starts the process for real,
 with the trace exporter and the error tracker configured, drives one
-session through the edge, and then reads every signal back through
+session through the edge, one call of which fails on purpose, and then
+reads every signal back through
 its own API by the request id the response carried: the log line that
 names it, the counter that moved, the trace that exists, the error
 event that carries it.
@@ -4418,7 +4451,7 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 ├── pyrightconfig.json
 ├── .python-version
 ├── .nvmrc
-├── Makefile                            # setup, infra-up, migrate, migrate-check, check, test-*, openapi, up, down, reset, urls, seed, traffic
+├── Makefile                            # setup, infra-up, infra-down, infra-reset, migrate, migrate-check, check, test-*, openapi, up, down, reset, urls, seed, traffic
 ├── README.md
 ├── llms.txt                            # the knowledge map: what each audience is served
 │
@@ -4770,10 +4803,10 @@ nothing.
 
 A handoff carries the request that caused it.
 
-One id joins four things: the request, the row it wrote, the item it
-queued, and the run that followed. A reader holding a request id then
-follows the work it set off past the boundary it crossed, instead of
-stopping at the edge of the queue.
+One id joins four things: the request, the outbox row that announced its
+write, the item it queued, and the run that followed. A reader holding a
+request id then follows the work it set off past the boundary it
+crossed, instead of stopping at the edge of the queue.
 
 The stage a worker runs a claim under is a new request. The run has
 its own lifetime, its own failures, and its own `request_id`, minted
@@ -4878,8 +4911,8 @@ react reads the code, not the class it came from.
 The shape has two uses.
 
 A caller at a boundary (gateway handler, worker loop, test harness)
-catches `PlatformException` and knows the failure is domain-originated
-and not a runtime crash.
+catches `PlatformException` and `InfraException` and knows the failure
+is one the platform raised on purpose, not a runtime crash.
 
 Translation to an HTTP response happens at that boundary, in one
 handler, using the status and code the exception carries. Managers
@@ -5018,11 +5051,11 @@ job runs the same cases over Postgres on the compose stack.
 End-to-end tests build the container over the memory storage root and
 the local infra root, every backend a twin, and drive the app
 in-process. Markers `integration`, `e2e`, and `slow` decide which gate
-runs what. The checks of [Records of
-Decisions](#records-of-decisions) live in the unit suite, except the
-tenancy scope check, which reads a migrated database and runs in the
-integration job beside the schema diff (see [The Second
-Fence](#the-second-fence)).
+runs what. The tests [Records of Decisions](#records-of-decisions)
+lists live in the unit suite, except the tenancy scope check, which
+reads a migrated database and runs in the integration job beside the
+schema diff (see [The Second Fence](#the-second-fence)). The rules
+`arch-check` decides run in the fast gate beside them.
 
 A run against a deployed environment checks what no in-process test
 can: the gateway in front, the credentials, the network, the worker
@@ -5117,7 +5150,8 @@ Each of these is stated where it applies. None of them is a shape.
 
 ### Versions
 
-Every dependency runs on its latest stable release. That covers the
+Every dependency runs on its latest stable release, adopted once a
+patch release sits behind it (below). That covers the
 language runtimes (Python, Node), the workspace and package tools (uv,
 pnpm), the container engine (Docker), the backing services (Postgres,
 the cache, the queue), and the libraries every workspace member
@@ -5297,9 +5331,9 @@ The bounds that make it so:
     resumable.
 -   [A degraded answer is declared where it is chosen](#cache), so
     nothing silently substitutes a stale answer for a fresh one.
--   [One shape exception](#exceptions) presents an open breaker, a
-    refused admission, and a backend that is down alike, so a caller
-    reads one code for "not right now".
+-   [One shape exception](#exceptions) presents an open breaker that
+    raises, a refused admission, and a backend that is down alike, so a
+    caller reads one code for "not right now".
 
 Every bound here is a shape: that it exists, that it is named in
 settings, and what happens when it is reached. What each one is set to
