@@ -9,6 +9,10 @@ against:
 - `docs/adopting.md`: every `vMAJOR.MINOR.PATCH` tag it tells a project
   to pin.
 
+`--tag <name>` also checks a release tag: it must be `v` followed by
+the version in plugin.json. The release workflow passes the tag it
+runs on, so a tag that disagrees with the manifest fails.
+
 Exit status is non-zero when any copy disagrees. Standard library only.
 """
 
@@ -19,7 +23,7 @@ import re
 import sys
 from collections.abc import Sequence
 
-from _common import ROOT, arguments
+from _common import ROOT, parser
 
 PLUGIN = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
@@ -55,18 +59,22 @@ def check(version: str, errors: list[str]) -> None:
 
 
 def main(argv: Sequence[str] = ()) -> int:
-    arguments(__doc__, argv)
+    cli = parser(__doc__)
+    cli.add_argument("--tag", help="a release tag, such as v1.2.3, that must match plugin.json")
+    tag = cli.parse_args(list(argv)).tag
     errors: list[str] = []
     version = source()
     if not SEMVER.match(version):
         errors.append(f"{PLUGIN.relative_to(ROOT)}: version {version!r} is not MAJOR.MINOR.PATCH")
     else:
         check(version, errors)
+        if tag is not None and tag != f"v{version}":
+            errors.append(f"tag {tag!r} does not match plugin.json, which says v{version}")
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} version mismatch(es)")
         return 1
-    print(f"version ok: {version}")
+    print(f"version ok: {version}" + (f", tag {tag}" if tag is not None else ""))
     return 0
 
 

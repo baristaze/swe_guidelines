@@ -103,15 +103,23 @@ def anchors(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+def parser(doc: str | None) -> argparse.ArgumentParser:
+    """The command line parser every script starts from.
+
+    Abbreviations are off, so only a flag spelled in full is read.
+    """
+    return argparse.ArgumentParser(description=(doc or "").split("\n", 1)[0], allow_abbrev=False)
+
+
 def arguments(doc: str | None, argv: Sequence[str], check: str | None = None) -> argparse.Namespace:
     """Parse a script's command line; an unknown argument exits 2.
 
-    Every script parses its arguments here, so a typo such as
-    `--chekc` stops the run instead of falling through to the default
-    action. `check` is the help text of a `--check` flag, for the
-    generators that have one.
+    Every script parses its arguments here or through `parser`, so a
+    typo such as `--chekc` stops the run instead of falling through to
+    the default action. `check` is the help text of a `--check` flag,
+    for the generators that have one.
     """
-    parser = argparse.ArgumentParser(description=(doc or "").split("\n", 1)[0], allow_abbrev=False)
+    p = parser(doc)
     if check is not None:
-        parser.add_argument("--check", action="store_true", help=check)
-    return parser.parse_args(list(argv))
+        p.add_argument("--check", action="store_true", help=check)
+    return p.parse_args(list(argv))

@@ -60,6 +60,9 @@ rule is a minor release. Everything else is a patch. Before 1.0.0 a
 removed or reversed rule bumps the minor number, as semver reads
 0.x, and the changelog entry names the reversal; 1.0.0 is for the
 text that has stopped moving. `CHANGELOG.md` lists every release.
+A pushed `v*` tag runs `.github/workflows/release-tag.yml`, which
+fails when the tag names a version other than the one in
+`.claude-plugin/plugin.json`.
 
 ## License
 
