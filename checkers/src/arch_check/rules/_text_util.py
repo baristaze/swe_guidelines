@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import json
+import posixpath
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -150,9 +151,13 @@ def workspace_members(project: Project) -> list[str] | None:
     excluded = strings_at(workspace, "exclude")
     found: set[str] = set()
     for pattern in members:
-        if not relative_glob(pattern):
+        if not relative_glob(pattern) or pattern.strip().strip("/") in {"", "."}:
+            continue  # the root is the workspace, never one of its members
+        try:
+            matches = list(project.root.glob(pattern))
+        except ValueError:  # a pattern the library refuses, such as one of dots alone
             continue
-        for p in project.root.glob(pattern):
+        for p in matches:
             if p.is_dir() and (p / "pyproject.toml").is_file():
                 rel = p.relative_to(project.root).as_posix()
                 if not any(fnmatchcase(rel, x) for x in excluded) and not project.excluded(rel + "/pyproject.toml"):
@@ -176,10 +181,32 @@ class Target:
     recipe: tuple[str, ...]
 
 
+INCLUDE = re.compile(r"^-?s?include\s+(.+?)\s*$")
+
+
+def make_lines(project: Project, rel: str, seen: set[str] | None = None) -> list[str]:
+    """The lines of a Makefile with every `include` of a literal path spliced in, each file once."""
+    seen = set() if seen is None else seen
+    if rel in seen:
+        return []
+    seen.add(rel)
+    out: list[str] = []
+    for line in project.lines(rel):
+        m = INCLUDE.match(line)
+        if m and "$(" not in m.group(1):
+            base = posixpath.dirname(rel)
+            for inc in m.group(1).split():
+                if relative_glob(inc):
+                    out.extend(make_lines(project, posixpath.normpath(posixpath.join(base, inc)), seen))
+            continue
+        out.append(line)
+    return out
+
+
 def make_targets(project: Project, rel: str = "Makefile") -> dict[str, Target]:
-    """The explicit targets of a Makefile by name; the first rule of a name wins."""
+    """The explicit targets of a Makefile by name, its includes read too; the first rule of a name wins."""
     out: dict[str, Target] = {}
-    lines = project.lines(rel)
+    lines = make_lines(project, rel)
     i = 0
     while i < len(lines):
         m = TARGET.match(lines[i])

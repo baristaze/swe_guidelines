@@ -281,11 +281,25 @@ def from_a_gateway(project: Project, call: ast.Call, names: dict[str, str]) -> b
 
 
 def creates(call: ast.Call) -> bool:
+    """Whether a route decorator answers 201 or 202: a literal, `status.HTTP_201_CREATED`, or `HTTPStatus.CREATED`."""
     status = kwarg(call, "status_code")
     if isinstance(status, ast.Constant):
         return status.value in (201, 202)
     name = last(dotted(status))
-    return bool(name and re.match(r"^HTTP_20[12]_", name))
+    return bool(name and (re.match(r"^HTTP_20[12]_", name) or name in {"CREATED", "ACCEPTED"}))
+
+
+def posts(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.Call]]:
+    """Every `@<router>.post(...)`, and every `@<router>.api_route(..., methods=[..., "POST", ...])`."""
+    for fn, call, verb in routes(tree):
+        if verb == "post":
+            yield fn, call
+        elif verb == "api_route":
+            methods = kwarg(call, "methods")
+            if isinstance(methods, ast.List | ast.Tuple | ast.Set) and any(
+                isinstance(m, ast.Constant) and str(m.value).upper() == "POST" for m in methods.elts
+            ):
+                yield fn, call
 
 
 @rule(
@@ -334,10 +348,10 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
             if (
                 isinstance(node, ast.Call)
                 and last(dotted(node.func)) == "include_router"
-                and node.args
                 and heads(kwarg(node, "dependencies")) & idem
             ):
-                full = resolved(dotted(node.args[0]), names)
+                mounted_router = node.args[0] if node.args else kwarg(node, "router")
+                full = resolved(dotted(mounted_router), names) if mounted_router is not None else None
                 if full:
                     mounted.update({full, full.rpartition(".")[0]})
     for file in service_files(project, "routers"):
@@ -345,18 +359,18 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         if tree is None:
             continue
         idem = idem_names(file)
-        covered = {  # router variables declared with the dependency
+        covered = {  # router variables declared with the dependency, annotated or not
             t.id
             for node in ast.walk(tree)
-            if isinstance(node, ast.Assign)
+            if isinstance(node, ast.Assign | ast.AnnAssign)
             and isinstance(node.value, ast.Call)
             and last(dotted(node.value.func)) == "APIRouter"
             and heads(kwarg(node.value, "dependencies")) & idem
-            for t in node.targets
+            for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
             if isinstance(t, ast.Name)
         }
-        for fn, call, verb in routes(tree):
-            if verb != "post" or not creates(call):
+        for fn, call in posts(tree):
+            if not creates(call):
                 continue
             router = dotted(call.func.value) if isinstance(call.func, ast.Attribute) else None
             if router in covered or file.module in mounted or f"{file.module}.{router}" in mounted:

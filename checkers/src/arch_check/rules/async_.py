@@ -659,12 +659,15 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, imp.node, f"a web service imports {imp.module}; recurring work is a worker")
         bound = bindings(tree)
         loops, executors = held(tree, bound)
+        awaited = {id(n.value) for n in ast.walk(tree) if isinstance(n, ast.Await)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = resolved(node.func, bound)
                 attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
                 on = receiver(node.func.value, bound, loops, executors) if isinstance(node.func, ast.Attribute) else None
-                if (on == "loop" and attr in LOOP_SPAWNS) or (on == "executor" and attr in EXECUTOR_SPAWNS):
+                # `await loop.run_in_executor(...)` finishes before the response, as `asyncio.to_thread` does
+                spawned = on == "loop" and attr in LOOP_SPAWNS and not (attr == "run_in_executor" and id(node) in awaited)
+                if spawned or (on == "executor" and attr in EXECUTOR_SPAWNS):
                     yield Violation.at(
                         file.rel, node, f"a web service calls {on}.{attr}(); work that outlives a request is a worker"
                     )

@@ -53,7 +53,9 @@ def pinned_python(root: Path) -> tuple[int, int] | None:
     path = root / ".python-version"
     if not path.is_file():
         return None
-    m = re.match(r"\s*(\d+)\.(\d+)", path.read_text(encoding="utf-8", errors="replace"))
+    text = path.read_text(encoding="utf-8", errors="replace").replace("\ufffd", "")
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    m = re.match(r"\s*(\d+)\.(\d+)", lines[0]) if lines else None
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
@@ -102,6 +104,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return error(f"[tool.arch-check.options.{name}]: unknown key(s) {', '.join(unknown_keys)}")
     disabled = {d.rule for d in config.disabled}
     selected = [r for r in selected if r.id not in disabled]
+    if not selected:
+        return error("every selected rule is disabled by [tool.arch-check]; nothing to run")
 
     paths: list[str] = []
     for raw in args.paths:

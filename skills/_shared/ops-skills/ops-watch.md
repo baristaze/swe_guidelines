@@ -75,7 +75,8 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
      --profile acme-<env>-investigate
    ```
 
-   One tail per process the watch covers (`api`, `maintenance`).
+   One tail per process `deployment/README.md` lists (`api` and
+   `maintenance` on a tree the scaffold built with its worker).
    Local:
 
    ```bash

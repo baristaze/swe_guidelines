@@ -60,9 +60,11 @@ is read; this skill touches no application credential.
      default `false`; every service passes `{ max, target_cpu }` with
      `enabled = true`, so the root switch is the one flip.
    - The destroyable switch. `destroyable` at the root, default
-     `false`: buckets `force_destroy`, the database
-     `skip_final_snapshot`, deletion protection off, all under the one
-     variable.
+     `false`: buckets `force_destroy` and the database
+     `skip_final_snapshot`, under the one variable. The database's
+     deletion protection is a variable of its own,
+     `database_deletion_protection`, `true` in production, so only a
+     merged change turns it off.
    - The budget in `shared`: `monthly_budget_usd`, the four
      notifications, the anomaly monitor, to `owner_email`.
    - The alarm topic `acme-<env>-alarms` and the six alarms, the

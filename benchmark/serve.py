@@ -32,9 +32,10 @@ FILES = {"report.md": "text/markdown; charset=utf-8", "results.json": "applicati
 POLL_S = 0.5
 # A run that never writes results.json (a dry run, a crash) would keep a
 # viewer waiting forever; a stream that has not grown for this long ends.
-# It is longer than a subject's default timeout, because `claude -p` with
-# JSON output writes nothing until it answers.
-IDLE_S = 1800.0
+# It is longer than the longest scenario timeout (`review-om` allows 1800
+# seconds), because `claude -p` with JSON output writes nothing until it
+# answers.
+IDLE_S = 3600.0
 BOUNDARY = "benchmarkframe"
 
 

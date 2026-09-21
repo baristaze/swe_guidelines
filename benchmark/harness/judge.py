@@ -46,7 +46,7 @@ DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
     },
     "openai": {
         "model": "gpt-5.5",
-        "fallbacks": ["gpt-5.1"],
+        "fallbacks": ["gpt-5.4", "gpt-5.1"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
     },
     "gemini": {

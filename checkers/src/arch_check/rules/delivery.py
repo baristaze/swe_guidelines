@@ -584,7 +584,8 @@ def infra_exception_root(project: Project) -> Iterator[Violation]:
                 continue
             for expr, written in except_names(node):
                 full = resolved(written, names)
-                if full and is_under(full, infra) and last(full) in family:
+                # the root itself is what a boundary catches; a subclass is a name from the other side
+                if full and is_under(full, infra) and last(full) in family and last(full) != "InfraException":
                     yield Violation.at(file.rel, expr, f"catches {last(full)} by name; a boundary translates by status and code")
 
 

@@ -15,16 +15,17 @@ tenants, members, concurrency, and think time.
 
 ## Input
 
-`--env local|staging|production --profile light|regular|heavy|stress [--duration 60] [--report <path>]`
+`--env local|staging|production --profile light|regular|heavy|stress [--duration 60] [--orgs N] [--report <path>]`
 
 `--env` and `--profile` are required; ask for them when missing.
-`--duration` is in seconds, sixty by default. `--report` writes the
-table as JSON beside printing it. `local` drives the API at
-`http://127.0.0.1:8000`, started by `scripts/dev.sh` or `make up`, and
-needs no cloud; its file is `~/.config/acme/ops/local.env`, which
-`make seed` writes with a local provisioner, and when the file is
-absent the seeded people of `.env` are used. `stress` is the top profile; a run at it with a target
-is `stress-test-run`, not this skill.
+`--duration` is in seconds, sixty by default. `--orgs` is how many
+tenants the run provisions, the profile's number by default; `0`
+drives the seeded people alone. `--report` writes the table as JSON
+beside printing it. `local` drives the API at the `ACME_API_URL` of
+`~/.config/acme/ops/local.env`, which `make seed` writes with a local
+provisioner, started by `scripts/dev.sh` or `make up`, and needs no
+cloud. `stress` is the top profile; a run at it with a target is
+`stress-test-run`, not this skill.
 
 ## Role and credential
 

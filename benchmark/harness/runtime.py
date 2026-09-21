@@ -241,7 +241,13 @@ class ContainerRuntime(BaseRuntime):
         """Build the image, writing the build output into the stream when given."""
         command = self.build_command()
         started = time.monotonic()
-        proc = subprocess.run(command, capture_output=True, text=True)
+        try:
+            proc = subprocess.run(command, capture_output=True, text=True)
+        except OSError as exc:
+            # No container engine: the build failed, recorded as the shell records it.
+            if streams is not None:
+                streams.note(f"[build] could not start: {type(exc).__name__}: {exc}")
+            return ExitStatus(code=127, duration_s=time.monotonic() - started)
         if streams is not None:
             for line in (proc.stdout + proc.stderr).splitlines():
                 streams.write("err", line)

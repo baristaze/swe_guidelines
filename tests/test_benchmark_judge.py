@@ -108,6 +108,12 @@ def test_the_matrix_file_names_every_provider():
         assert f"{P.name(provider)}:" in text
 
 
+def test_the_matrix_file_and_the_built_in_matrix_agree():
+    pytest.importorskip("yaml")
+    path = Path(__file__).resolve().parent.parent / "benchmark" / "models.yaml"
+    assert J.load_matrix(path) == J.DEFAULT_MATRIX
+
+
 def test_a_missing_matrix_file_falls_back_to_the_built_in_one(tmp_path):
     assert J.load_matrix(tmp_path / "nothing.yaml") == J.DEFAULT_MATRIX
     assert J.load_matrix(None) == J.DEFAULT_MATRIX

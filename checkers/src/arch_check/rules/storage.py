@@ -1224,17 +1224,23 @@ def returns_many(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return spells(fn.returns, is_many)
 
 
+WRITE_VERBS = frozenset({"write", "create", "insert", "upsert", "update", "append", "delete", "remove", "purge", "put"})
+
+
 @rule(
     "STO-29",
     coverage="partial",
     summary="Every storage interface method and bucket interface method that returns a list takes a limit.",
 )
 def list_reads_take_a_limit(project: Project) -> Iterator[Violation]:
-    """A bucket method that returns a list is a listing, whatever its name: `list`, `keys`, `list_prefix`."""
+    """A bucket method that returns a list is a listing, whatever its name: `list`, `keys`, `list_prefix`.
+    A write or a delete that reports the ids it touched is not a read, and takes no limit."""
     found = list(storage_interfaces(project))
     for file, tree in project.trees(project.sub("infra.buckets")):
         found += [(file, c) for c in classes(tree) if c.name.endswith("Interface")]
     for file, cls in found:
         for fn in public_methods(cls):
+            if fn.name.split("_")[0] in WRITE_VERBS:
+                continue
             if returns_many(fn) and "limit" not in {p.name for p in parameters(fn)}:
                 yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} returns a list and takes no limit")

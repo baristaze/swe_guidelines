@@ -430,6 +430,16 @@ def test_model_copy_fed_an_annotated_dump_is_om_10(tmp_path):
     assert "model_copy(update=...) fed a dump" in messages(report)[0]
 
 
+def test_a_scalar_taken_out_of_a_dump_is_not_om_10(tmp_path):
+    source = IMPL_SOURCE + (
+        "\n\ndef fine(current: Task, other: Task) -> Task:\n"
+        "    title = other.model_dump()['title']\n"
+        "    return current.model_copy(update={'title': title, 'n': other.model_dump()['n']})\n"
+    )
+    code, _ = run(tmp_path, "OM-10", {TASK_IMPL: source})
+    assert code == 0
+
+
 def test_model_validate_on_an_entity_is_om_10(tmp_path):
     source = "from acme.om.tasks.types import Task\n\n\ndef again(task: Task) -> Task:\n    return Task.model_validate(task)\n"
     code, report = run(tmp_path, "OM-10", {SERVICE: source})

@@ -350,10 +350,10 @@ was constructed.
 > data, as the caller's fields do, the entity is rebuilt from a dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
 > It takes that dict, never an instance of its own class, which it
-> would hand back unvalidated. `model_copy` does not validate, so it would leave a dumped value
-> object as a plain dict. A manager that updates an entity sets
-> `updated_at` and `updated_by` in the same copy, so the caller gets
-> back the copy that was written.
+> would hand back unvalidated. `model_copy` does not validate, so it
+> would leave a dumped value object as a plain dict. A manager that
+> updates an entity sets `updated_at` and `updated_by` in the same
+> copy, so the caller gets back the copy that was written.
 
 Fields are tuples and frozen models, never `list` or `dict`. A mapping
 field is a `FrozenMapping`: a `Mapping` annotated with a validator that
@@ -1952,7 +1952,9 @@ reads across tenants. The system scope is never a default. It is passed
 explicitly, and the methods that pass it are the ones `arch-check`
 already enumerates (see [Records of
 Decisions](#records-of-decisions)): the cross-tenant sweeps, and the
-lookups by identity that sign a person in.
+lookups by credential digest that sign a person in, which read tenant
+rows before any tenant is known. An `identity` table is not among
+them: its policy has no bypass, so a lookup on it names the identity.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
@@ -4175,8 +4177,7 @@ The **deployer** is the pipeline. It is assumed by the workflow
 through the identity federation of the repository host, never by a
 person. There is one per environment and two for production, one that
 plans and one that applies, so the approval gates the credential that
-writes
-(see [Cloud: AWS](#cloud-aws)).
+writes (see [Cloud: AWS](#cloud-aws)).
 
 The **investigator** reads everything and writes nothing. There is one
 per environment. It reads every log group, every metric, every trace,
@@ -4289,9 +4290,8 @@ operator, so support access has a trail.
 
 > **Principle:** The operational skills are built in, one per task
 > that repeats, and every one but the administrator's two runs against
-> the local stack. The first
-> responder is an agent that reads the platform's size before it
-> escalates.
+> the local stack. The first responder is an agent that reads the
+> platform's size before it escalates.
 
 ### Dashboards and Alarms as Code
 
@@ -4456,7 +4456,8 @@ The readers are one interface with two impls. The local impl reads the
 `devx` profile's stores. The cloud impl reads the cloud's. The test is
 the same, and run against a deployed environment it is the smoke test
 of [Tests](#tests), which is how the local stack and the cloud are
-held to the same shape: not by a checklist, but by one test that reads both.
+held to the same shape: not by a checklist, but by one test that
+reads both.
 
 > **Principle:** One test drives real traffic and reads every signal
 > back by request id, through one reader interface with a local and a
@@ -5183,11 +5184,10 @@ Each of these is stated where it applies. None of them is a shape.
 ### Versions
 
 Every dependency runs on its latest stable release, adopted once a
-patch release sits behind it (below). That covers the
-language runtimes (Python, Node), the workspace and package tools (uv,
-pnpm), the container engine (Docker), the backing services (Postgres,
-the cache, the queue), and the libraries every workspace member
-installs.
+patch release sits behind it (below). That covers the language
+runtimes (Python, Node), the workspace and package tools (uv, pnpm),
+the container engine (Docker), the backing services (Postgres, the
+cache, the queue), and the libraries every workspace member installs.
 
 Where a technology publishes a long-term support line, the version is
 the current active LTS release, not a newer line that has not entered
@@ -5265,8 +5265,8 @@ The rules that make it so:
 
 -   [Domain services are stateless](#stateless-vs-stateful-services)
     and an app-specific service holds only its open sockets and what
-    each one carries, so any
-    replica serves any request and any replica can be killed.
+    each one carries, so any replica serves any request and any replica
+    can be killed.
 -   [Web services are the scalability
     units](#web-services-as-scalability-units), one per namespace, so
     each scales, rolls out, and deploys on its own.

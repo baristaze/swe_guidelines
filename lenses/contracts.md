@@ -83,8 +83,9 @@ names that appear in interface signatures and in callers.
 **Violation.** An interface with one impl and no way to run it without
 its technology, a storage or infra or integration interface above all; a
 provider client with no twin, so nothing above that namespace runs
-without an account; an impl name leads with the technology or omits
-`Impl`; a technology-specific name leaks into an interface or a caller.
+without an account (the twin itself is DEL-05); an impl name leads with
+the technology or omits `Impl`; a technology-specific name leaks into an
+interface or a caller.
 
 **Severity.** medium
 

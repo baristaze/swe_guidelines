@@ -188,15 +188,15 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-05",
     coverage="partial",
-    summary="No OM, infra, router, or service module constructs the request stage; no router or service builds a stage.",
+    summary="No OM, infra, router, or service module constructs the request stage; a stage above it built there is CTX-26.",
 )
 def request_stage_at_the_edge(project: Project) -> Iterator[Violation]:
-    """No module under `<pkg>.om` or `<pkg>.infra` constructs
-    `RequestContext`, and no module under
+    """No module under `<pkg>.om`, `<pkg>.infra`,
     `<pkg>.services.<process>.routers`, `.services`, or `.impl`
-    constructs any stage. A call to the class, or to its
+    constructs `RequestContext`. A call to the class, or to its
     `model_validate`, `model_construct`, or `model_copy`, is a
-    construction. Stages above the request stage are CTX-26."""
+    construction. A stage above the request stage built in any of
+    them is CTX-26's finding alone, never a second one here."""
     below = {project.sub("om"), project.sub("infra")}
     for file, tree in project.trees():
         network = service_part(project, file.module) in {"routers", "services", "impl"}
@@ -204,7 +204,7 @@ def request_stage_at_the_edge(project: Project) -> Iterator[Violation]:
         if not (network or lower):
             continue
         for call in calls(tree):
-            name = constructed(call, set(STAGES) if network else {REQUEST_STAGE})
+            name = constructed(call, {REQUEST_STAGE})
             if name is not None:
                 yield Violation.at(file.rel, call, f"{file.module} constructs {name}; the request stage is minted at the edge")
 
@@ -752,17 +752,16 @@ def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     summary="RequestContext carries request_id and caused_by_request_id; a worker mint never reuses the item's id.",
 )
 def handoff_names_its_cause(project: Project) -> Iterator[Violation]:
-    """`RequestContext` in the stage module declares `request_id` and
-    `caused_by_request_id`. Under `<pkg>.workers`, no call that
+    """`RequestContext` in the stage module declares
+    `caused_by_request_id` (`request_id` is CTX-02). Under `<pkg>.workers`, no call that
     constructs `RequestContext` passes `request_id=<x>.request_id`: the
     run mints its own id and names the cause in `caused_by_request_id`.
     Log lines carrying both are DEL-39."""
     file = stage_module(project)
     request = stage_classes(project).get(REQUEST_STAGE)
-    if file is not None and request is not None:
-        missing = [f for f in ("request_id", "caused_by_request_id") if f not in declared_fields(request)]
-        if missing:
-            yield Violation.at(file.rel, request, f"{REQUEST_STAGE} declares no {' or '.join(missing)}")
+    # request_id itself is CTX-02
+    if file is not None and request is not None and "caused_by_request_id" not in declared_fields(request):
+        yield Violation.at(file.rel, request, f"{REQUEST_STAGE} declares no caused_by_request_id")
     for f, tree in project.trees(project.sub("workers")):
         for call in calls(tree):
             if constructed(call, {REQUEST_STAGE}) is None:

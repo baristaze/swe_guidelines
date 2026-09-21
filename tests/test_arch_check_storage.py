@@ -822,6 +822,17 @@ def test_sto_29_a_list_read_without_a_limit(tmp_path):
     )
 
 
+def test_sto_29_a_write_that_reports_ids_is_not_a_read(tmp_path):
+    files = edit(
+        IFACE,
+        "class WidgetsStorageInterface(ABC):\n",
+        "class WidgetsStorageInterface(ABC):\n"
+        "    async def delete_widgets(self, org_id: UUID, ids: list[UUID]) -> list[UUID]: ...\n\n",
+    )
+    code, _ = run(tmp_path, "STO-29", files)
+    assert code == 0
+
+
 def test_sto_29_a_bucket_listing_under_another_name(tmp_path):
     files = {
         "infra/src/acme/infra/buckets/__init__.py": (

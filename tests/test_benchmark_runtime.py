@@ -213,3 +213,11 @@ def test_collect_leaves_out_a_file_outside_the_workspace(tmp_path):
     (tmp_path / "outside.md").write_text("x", encoding="utf-8")
     (rt.workspace / "inside.md").write_text("y", encoding="utf-8")
     assert [p.name for p in rt.collect(["*.md", "../*.md"])] == ["inside.md"]
+
+
+def test_a_build_with_no_container_engine_is_a_recorded_failure(tmp_path):
+    rt = RT.ContainerRuntime(tmp_path, config={"docker": str(tmp_path / "no-such-docker")})
+    with CliStream(tmp_path / "build.jsonl") as streams:
+        status = rt.build(streams)
+    assert status.code == 127
+    assert "could not start" in (tmp_path / "build.jsonl").read_text(encoding="utf-8")

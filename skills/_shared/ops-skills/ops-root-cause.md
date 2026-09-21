@@ -57,9 +57,13 @@ the file holds one. Never print the password or the token.
 
 ## Procedure
 
+The process names below are the ones `deployment/README.md` lists;
+`api` and `maintenance` are a tree the scaffold built with its worker,
+and a worker added since is one more name.
+
 1. Verify the credential as Role and credential states. Read the env
-   file. Sign the operator in through `POST /v1/auth/login` at
-   `$ACME_API_URL` with `curl` (the identity stage is what the operator
+   file. Sign the operator in through `POST /v1/auth/login`, the route the
+   service scaffold declares, at `$ACME_API_URL` with `curl` (the identity stage is what the operator
    plane admits; no tenant session is exchanged), keep the bearer in a
    shell variable (the login body is `{"email": ..., "password": ...}`
    and the answer's `token` is the bearer), read `GET /v1/admin/me`,

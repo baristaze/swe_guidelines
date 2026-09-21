@@ -321,7 +321,8 @@ the CLI's language; the rest is judged.
 
 **Principle.** Server state lives in TanStack Query with one query-key
 factory per domain. Client state lives in Zustand. Realtime envelopes
-write into the query cache, never directly into components.
+write into the query cache or the client store, never directly into
+components.
 
 **Source.** Client App Architecture, State and Data.
 
@@ -565,10 +566,10 @@ ADR and every ADR number code cites; the rest is judged.
 ## DEL-24 Checkable rules fail the build
 
 **Principle.** A rule that a program can check is checked. A rule that
-reads only the source is decided by `arch-check`, run in the gate at
-the pinned tag. A rule that needs the built system or a migrated
-database is a test: the tenancy scope, and every root built whole. A
-rule that fails the build holds.
+reads only the source is decided by `arch-check`, run in the gate. A
+rule that needs the built system or a migrated database is a test: the
+tenancy scope, every root built whole, and the list of request-stage
+methods. A rule that fails the build holds.
 
 **Source.** Cross-Cutting Conventions, Records of Decisions.
 
@@ -578,9 +579,10 @@ docs that a program could enforce and nothing does.
 
 **Violation.** A gate with no `arch-check` run, or a run at a tag
 other than the one the project pins; no test of the tenancy scope
-against a migrated database; no test that the roots build whole.
-(The enumerated tenant-less methods are CTX-12; the scope map and its
-policies are STO-28.)
+against a migrated database; a gate that runs neither the build-once
+test (CON-20) nor the request-stage list (CTX-16). (The enumerated
+tenant-less methods are CTX-12; the scope map and its policies are
+STO-28.)
 
 **Severity.** medium
 
@@ -708,8 +710,8 @@ distribution.
 driver exception escape; an `InfraException` without a status or a
 code; a gateway that presents `PlatformException` in the envelope and
 lets `InfraException` fall to the catch-all; a manager or a boundary
-that catches `InfraException` by name instead of translating by its
-status and code.
+that catches an infra subclass by name instead of translating the root
+by its status and code.
 
 **Severity.** medium
 

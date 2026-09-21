@@ -311,9 +311,10 @@ MANAGER_IMPL = re.compile(r"Manager\w*Impl$")
 def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
     """No parameter of a manager impl's constructor is annotated `int`,
     `float`, `timedelta`, or `Decimal`: tunables arrive as one options
-    object. A manager impl is a class named `<Ns>Manager<Tech>Impl`
-    (`OrderManagerImpl`, `PaymentManagerStripeImpl`) or one that
-    subclasses a `*ManagerInterface`. Whether a module constant differs
+    object. A manager impl is a class named `<Ns>ManagerImpl`
+    (`OrderManagerImpl`; a manager carries one impl, since the twin
+    below it is what runs without technology) or one that subclasses a
+    `*ManagerInterface`. Whether a module constant differs
     between deployments, and whether the options object is frozen, is
     judged."""
     for file, cls in classes_named(project, ""):

@@ -239,6 +239,13 @@ def test_a_disabled_rule_does_not_run(tmp_path):
     assert [r["id"] for r in report["rules_run"]] == [id for id in SHIPPED if id != "CON-12"]
 
 
+def test_a_selection_of_only_disabled_rules_exits_2(tmp_path):
+    bad_project(tmp_path, pyproject=PYPROJECT + DISABLE.format(adr=ADR))
+    code, _, err = check(tmp_path, "--rule", "CON-12")
+    assert code == 2
+    assert "disabled" in err
+
+
 def test_a_disable_without_an_existing_adr_exits_2(tmp_path):
     bad_project(tmp_path, pyproject=PYPROJECT + DISABLE.format(adr="docs/adr/0099-missing.md"))
     code, _, err = check(tmp_path)
@@ -648,7 +655,9 @@ def test_a_root_pyproject_of_an_odd_shape_never_crashes_a_rule(tmp_path, pyproje
     assert check(tmp_path)[0] in (0, 1)
 
 
-def test_a_python_version_that_is_not_utf8_is_read(tmp_path):
+def test_a_python_version_behind_a_comment_or_a_stray_byte_is_still_read(tmp_path):
     write_project(tmp_path)
-    (tmp_path / ".python-version").write_bytes(b"\xff3.11\n")
-    assert check(tmp_path)[0] == 0
+    (tmp_path / ".python-version").write_bytes(b"# the pin\n\xff9.99\n")
+    code, _, err = check(tmp_path)
+    assert code == 2
+    assert "pins Python 9.99" in err
