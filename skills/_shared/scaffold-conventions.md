@@ -133,12 +133,13 @@ the order the guideline presents them, never by number.
   and the paths that return early or raise. A method added later
   arrives with its case, as The Storage Layer (Namespace Shape) and
   Cross-Cutting Conventions (Tests) state.
-- One manager impl, unless the namespace fronts something a caller
-  cannot conjure (a payment processor, a carrier, a model provider).
-  Then it gets a memory impl of its own, `<Ns>ManagerMemoryImpl`,
-  answering the same interface from an in-process dict, so every
-  caller above the namespace runs with no account and no network.
-  Otherwise the memory storage root under the one impl is its twin.
+- One manager impl. The memory storage root under it is its twin. A
+  namespace that fronts something a caller cannot conjure (a payment
+  processor, a carrier, a model provider) reaches it through a
+  provider client with a real impl and a deterministic twin under
+  `integrations/`, so the one manager impl, wired over the twin, runs
+  with no account and no network, and needs no memory impl of its
+  own.
 - Tests are counted in cases, not files: one contract case per storage
   method (the read after the write, the filter, the tenant that sees
   nothing), one race per named atomic method (two callers at once,
@@ -152,7 +153,7 @@ the order the guideline presents them, never by number.
   file with one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update starts from
   the stored row: the caller's entity supplies the fields a caller may
-  change, `model_dump(exclude=PROVENANCE_FIELDS)`, the copy is
+  change, `model_dump(exclude=set(PROVENANCE_FIELDS))`, the copy is
   `model_validate` over the two dumps and sets
   `updated_at` and `updated_by`, so no caller rewrites who made a row
   or brings a deleted one back; a create sets what the manager
@@ -211,8 +212,11 @@ the order the guideline presents them, never by number.
 - Every folder that is an abstraction level carries a README at that
   level, in that level's language: `om/README.md` names the nouns and
   how they relate, for a reader with no code, and carries no
-  developer instruction and no operator instruction; `om/<ns>/`
-  one level down; `deployment/README.md` says how it runs;
+  developer instruction and no operator instruction;
+  `om/src/<root>/om/<ns>/README.md` one level down, one per namespace,
+  saying what its nouns are, what can happen to them, and which rules
+  hold, which the namespace scaffold writes and the entity scaffold
+  extends; `deployment/README.md` says how it runs;
   `ops/README.md` says how it is operated. `llms.txt` at the root
   lists what each audience is served, one section per audience, one
   link per document; a document is exposed by being listed, never by
@@ -220,7 +224,7 @@ the order the guideline presents them, never by number.
 - The ops package is a workspace member like any other, `<root>-ops`,
   package `<root>.ops`, binary `<root>-ops`. It rides
   `clients/python/` and the operator plane and drives the edge, never
-  a manager. The signals it reads back go through one interface with
+  a manager, so it is written after the client exists. The signals it reads back go through one interface with
   a local impl over the `devx` twins and a cloud impl over the
   cloud's own APIs, so a run against `local` proves the same path
   the cloud runs. The nine project-local skills under
@@ -231,7 +235,9 @@ the order the guideline presents them, never by number.
   credential of the role Operations (Operational Skills) gives it.
   The investigator and supporter skills hold the read-only
   investigate profile of their environment and read the owner-only
-  env file `~/.config/<root>/ops/<env>.env`. Create and nuke hold the
+  env file `~/.config/<root>/ops/<env>.env`, except
+  `ops-infra-as-code`, which plans against the cloud and reads no env
+  file. `make seed` writes `local.env`. Create and nuke hold the
   administrator profile alone. The traffic and stress skills have no
   role: `ops-simulate-traffic` and `stress-test-run` read the env
   file for the provisioner identity, and hold the investigate profile

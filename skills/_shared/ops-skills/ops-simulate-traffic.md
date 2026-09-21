@@ -21,8 +21,9 @@ tenants, members, concurrency, and think time.
 `--duration` is in seconds, sixty by default. `--report` writes the
 table as JSON beside printing it. `local` drives the API at
 `http://127.0.0.1:8000`, started by `scripts/dev.sh` or `make up`, and
-needs no cloud; its file is `~/.config/acme/ops/local.env`, and when
-the file is absent the seeded people of `.env` are used. `stress` is the top profile; a run at it with a target
+needs no cloud; its file is `~/.config/acme/ops/local.env`, which
+`make seed` writes with a local provisioner, and when the file is
+absent the seeded people of `.env` are used. `stress` is the top profile; a run at it with a target
 is `stress-test-run`, not this skill.
 
 ## Role and credential
@@ -62,8 +63,8 @@ token.
      --duration <seconds> [--report <path>]
    ```
 
-   The thirty-second wiring check, which CI runs against the local
-   stack, is `make traffic PROFILE=light DURATION=30`; it proves the
+   The thirty-second wiring check, which CI's integration job runs
+   against the local stack, is `make traffic PROFILE=light DURATION=30`; it proves the
    edge, the client, and the signals are wired and is never a stress
    test.
 3. Read the table the run prints: requests by route and status, p50,

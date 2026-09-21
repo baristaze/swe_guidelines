@@ -50,7 +50,8 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
 `ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
 `ACME_PROVISIONER_EMAIL` with `ACME_PROVISIONER_PASSWORD`, belongs to
 the traffic generator alone), `ACME_ERROR_TRACKER_URL`, and
-`ACME_ERROR_TRACKER_TOKEN`. `local.env` points at the compose stack
+`ACME_ERROR_TRACKER_TOKEN`. `local.env`, which `make seed` writes,
+points at the compose stack
 and adds the twins, `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on
 the ports `.env` names. Read the file, use its values in commands, and
 never print the password or the token.
@@ -67,7 +68,8 @@ never print the password or the token.
    ```
 
    It prints tenants, users, and the entities written in the last day
-   (for a to-do product, the tasks and the events), through `GET /v1/admin/size` with the env file's
+   (one count per entity the product exposes on the operator plane,
+   and the events), through `GET /v1/admin/size` with the env file's
    operator identity. A platform of one tenant and one user is the
    developer. Every finding below is read against this number.
 3. Alarms. Cloud:

@@ -24,25 +24,28 @@ Procedure (the same as the `arch-review-<group>` skills):
    full, plus the interface a class implements, the root that wires it,
    and the callers of a changed signature. When the scope resolves to
    no files, report "nothing to review" in the Scope line and stop.
-3. Apply the checker's output when the task message carries it. Drop
-   its findings on files outside the scope, and anything under
-   `exceptions_applied`: a deviation recorded with an ADR, which is
-   not a finding. A finding whose `group` is `framework` is about the
-   checker's own input: `PARSE`, a file no rule could read, or
-   `IGNORE`, an inline ignore that does not resolve. One in scope is a
-   finding under its own id, at `high`, and no lens passes on the
-   checker's evidence for a file that does not parse. Its `rules_run` says which lenses it covered, the
-   guideline's rules and the project's own alike, each with a coverage
-   and a summary. A lens covered `full` is decided by that output: each
-   finding in scope is a finding, and no finding is a pass whose
-   evidence is the checker. A lens covered `partial` is decided in
-   step 4, and the rule's summary says which part the checker holds: a
-   checker finding in scope makes the lens a finding, and no checker
-   finding leaves the rest to judge; the lens passes only when that
-   rest passes too. A lens absent from `rules_run` is judged whole in
-   step 4. When the message carries no
-   output, or says the checker did not run, judge every lens in step 4
-   and say so in the Scope line. The review is the checker's fallback.
+3. Apply the checker's output when the task message carries it:
+   - Drop its findings on files outside the scope. Drop anything under
+     `exceptions_applied`: a deviation recorded with an ADR, which is
+     not a finding.
+   - A finding whose `group` is `framework` is about the checker's own
+     input: `PARSE`, a file no rule could read, or `IGNORE`, an inline
+     ignore that does not resolve. One in scope is a finding under its
+     own id, at `high`. No lens passes on the checker's evidence for a
+     file that does not parse.
+   - `rules_run` says which lenses it covered, the guideline's rules
+     and the project's own alike, each with a coverage and a summary.
+   - A lens covered `full` is decided by that output. Each finding in
+     scope is a finding. No finding is a pass whose evidence is the
+     checker.
+   - A lens covered `partial` is decided in step 4, and the rule's
+     summary says which part the checker holds. A checker finding in
+     scope makes the lens a finding. With no checker finding, the rest
+     is judged, and the lens passes only when that rest passes too.
+   - A lens absent from `rules_run` is judged whole in step 4.
+   - When the message carries no output, or says the checker did not
+     run, judge every lens in step 4 and say so in the Scope line. The
+     review is the checker's fallback.
 4. For every lens the checker did not decide, in id order, decide
    **finding**, **pass**, **not applicable**, or **unverified** (the
    lens applies, and what would decide it lies outside the scope and

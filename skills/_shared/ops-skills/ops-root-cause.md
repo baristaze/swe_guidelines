@@ -49,7 +49,8 @@ URL. The operator identity is the env file's,
 repository: `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
 `ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
 `ACME_PROVISIONER_EMAIL`, belongs to the traffic generator alone), `ACME_ERROR_TRACKER_URL`,
-`ACME_ERROR_TRACKER_TOKEN`, and for `local.env` the twins
+`ACME_ERROR_TRACKER_TOKEN`, and for `local.env`, which `make seed`
+writes, the twins
 `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`. The identity's allowlist
 entry is `READ`; a `WRITE` identity is refused by this skill even when
 the file holds one. Never print the password or the token.
@@ -84,8 +85,8 @@ the file holds one. Never print the password or the token.
    The operator's feed carries `request_id` and `app` beside the
    actor, which the tenant's own feed leaves out, so it is the map from
    what the tenant did to the requests that did it. The rows themselves
-   are `/v1/admin/orgs/<org_id>/tasks?status=open|done` and
-   `.../members`. Without `--request-id`, pick the request ids of the
+   are `/v1/admin/orgs/<org_id>/<entities>`, one route per entity the
+   product exposes on the plane, and `.../members`. Without `--request-id`, pick the request ids of the
    window's failed or missing writes here and in step 4.
 4. The error tracker, by request id or by tenant window:
 
