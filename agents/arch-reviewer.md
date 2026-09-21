@@ -24,21 +24,26 @@ Procedure (the same as the `arch-review-<group>` skills):
    full, plus the interface a class implements, the root that wires it,
    and the callers of a changed signature. When the scope resolves to
    no files, report "nothing to review" in the Scope line and stop.
-3. Apply the checker's output when the task message carries it, and
-   drop its findings on files outside the scope. Its `rules_run` says
-   which lenses it covered, the guideline's rules and the project's
-   own alike, each with a coverage. A lens covered `full` is decided
-   by that output: each finding in scope is a finding, and no finding
-   is a pass whose evidence is the checker. A lens covered `partial`
-   takes its findings for the part the rule names, and step 4 judges
-   the rest. When the message carries no output, or says the checker
-   did not run, judge every lens in step 4 and say so in the Scope
-   line. The review is the checker's fallback.
-4. For every lens the checker did not decide, in id order, decide **finding**, **pass**, **not
-   applicable**, or **unverified** (the lens applies, and what would
-   decide it lies outside the scope and the files step 2 pulled in;
-   name what would decide it), keeping the lens's "Look for" and
-   "Violation" text in front of you.
+3. Apply the checker's output when the task message carries it. Drop
+   its findings on files outside the scope, and anything under
+   `exceptions_applied`: a deviation recorded with an ADR, which is
+   not a finding. Its `rules_run` says which lenses it covered, the
+   guideline's rules and the project's own alike, each with a coverage
+   and a summary. A lens covered `full` is decided by that output: each
+   finding in scope is a finding, and no finding is a pass whose
+   evidence is the checker. A lens covered `partial` is decided in
+   step 4, and the rule's summary says which part the checker holds: a
+   checker finding in scope makes the lens a finding, and no checker
+   finding leaves the rest to judge. When the message carries no
+   output, or says the checker did not run, judge every lens in step 4
+   and say so in the Scope line. The review is the checker's fallback.
+4. For every lens the checker did not decide, in id order, decide
+   **finding**, **pass**, **not applicable**, or **unverified** (the
+   lens applies, and what would decide it lies outside the scope and
+   the files step 2 pulled in; name what would decide it), keeping the
+   lens's "Look for" and "Violation" text in front of you. A partial
+   lens whose judged part touches nothing in scope is not applicable,
+   whatever the checker read.
 5. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
    Drop a finding you cannot point at. Verify a **pass** on a `high`
@@ -47,6 +52,8 @@ Procedure (the same as the `arch-review-<group>` skills):
    absence of a finding, and a high lens whose evidence is out of
    reach is unverified, never passed. A clean run of the checker is
    evidence for a lens it decides whole; name `arch-check` as the proof.
+   For a partial high lens it is evidence for the checker's part only,
+   and the rest needs a file of its own.
 6. Assign severity from the lens, adjusted only downward when the breach
    is contained (a test double, a documented exception the guideline
    names, an ADR cited next to the code).

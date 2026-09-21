@@ -40,25 +40,31 @@ of a changed signature.
 3. Run the checker that shipped with this lens file, from the root of
    the repository under review:
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --group contracts --format json`.
-   Its findings on files outside the scope are dropped. The output's
+   Exit 0 means no findings and exit 1 means findings; both are a
+   run. Its findings on files outside the scope are dropped, and so is
+   anything under `exceptions_applied`: a deviation the project
+   recorded with an ADR, which is not a finding. The output's
    `rules_run` says which lenses it covered, the rules this guideline
-   ships and the project's own alike, each with a coverage. A lens
-   covered `full` is decided here: each of its findings in scope is a
-   finding, with the checker's file and line, and no finding is a pass
-   whose evidence is the checker, which read every file. A lens covered
-   `partial` takes the checker's findings for the part the lens's
-   `Check` line or the rule's summary names, and step 4 judges the
-   rest. When the checker cannot run (no Python 3.11, exit code 2,
-   a project pinned to a newer Python than `python3`), say so in the
-   report's Scope line and judge every lens in step 4, the ones it
-   would have decided included. The review is the checker's fallback.
+   ships and the project's own alike, each with a coverage and a
+   summary. A lens covered `full` is decided here: each of its
+   findings in scope is a finding, with the checker's file and line,
+   and no finding is a pass whose evidence is the checker, which read
+   every file. A lens covered `partial` is decided in step 4, and the
+   rule's summary says which part the checker holds: a checker finding
+   in scope makes the lens a finding whatever the rest shows, and no
+   checker finding leaves the rest to judge. When the checker cannot
+   run (no Python 3.11, exit code 2, a project pinned to a newer
+   Python than `python3`), say so in the report's Scope line and judge
+   every lens in step 4, the ones it would have decided included. The
+   review is the checker's fallback.
 4. For every lens the checker did not decide, in id order, decide one
    of: **finding** (evidence of a breach, with a file and line),
    **pass** (the lens applies and the code satisfies it), **not
    applicable** (nothing in scope touches what the lens judges), or
    **unverified** (the lens applies, and what would decide it lies
-   outside the scope and the files step 2 pulled in; name what would
-   decide it). Keep the "Look for" and "Violation" text of the lens
+   outside the scope and the neighbors the Input section says to read;
+   name what would decide it). A partial lens whose judged part touches
+   nothing in scope is not applicable, whatever the checker read. Keep the "Look for" and "Violation" text of the lens
    in front of you while deciding.
 5. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
@@ -68,6 +74,8 @@ of a changed signature.
    absence of a finding, and a high lens whose evidence is out of
    reach is unverified, never passed. A clean run of the checker is
    evidence for a lens it decides whole; name `arch-check` as the proof.
+   For a partial high lens it is evidence for the checker's part only,
+   and the rest needs a file of its own.
 6. Assign severity from the lens, adjusted only downward when the
    breach is contained (a test double, a documented exception the
    guideline names, an ADR cited next to the code).
