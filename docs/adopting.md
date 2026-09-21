@@ -27,9 +27,11 @@ version it shipped with. Before a scaffold or a review:
 /reload-plugins
 ```
 
-Read the version a scaffold names in its output: a copy whose
-changelog lists changes under `Unreleased` is a snapshot between
-releases, not a release.
+Read the version a scaffold names in its output. It is the last
+release in the copy that ran. A copy installed from `main` can carry
+changes made after that release, because the version moves only when a
+release is cut. Pin the tag, and see what came after it with
+`git log v<version>..main` in a checkout.
 
 The review-and-fix pass is part of bootstrapping a system, not an
 afterthought: `arch-scaffold-new` sweeps the four misses a fresh tree

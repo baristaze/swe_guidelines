@@ -18,13 +18,11 @@ the order the guideline presents them, never by number.
 ## Before writing anything
 
 0. Find the guideline version. Read `version` in
-   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and the first
-   release heading of `${CLAUDE_SKILL_DIR}/../../CHANGELOG.md`. They
-   agree on a release, or the changelog lists changes under
-   `Unreleased` and the copy is a snapshot between releases. Name what
-   was found in the output, and pin only a release the two agree on;
-   a snapshot is pinned by hand by the person, after
-   `/plugin marketplace update` and `/plugin update`.
+   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json`. That is the
+   last release in this copy. A copy installed from `main` can carry
+   changes made after it, because the version moves only when a
+   release is cut. Name the version in the output as "`<version>`, or a
+   later snapshot of main", and pin that release.
 1. Find the root package. Read `om/pyproject.toml`; the import root is
    the folder under `om/src/`. Call it `<root>` below. When
    bootstrapping a system, `<root>` is the argument the user gave.
@@ -250,9 +248,10 @@ container.
    (`uv run`, `pnpm run`), never through a global install. Fix
    failures the scaffold introduced. Report pre-existing failures and
    stop; do not edit unrelated files.
-2. Print the guideline version the skill ran from (release, or
-   snapshot), then the list of files created and changed, one per
-   line, followed by the commands that were run and their outcome.
+2. Print the guideline version the skill ran from (the release, or a
+   later snapshot of main), then the list of files created and
+   changed, one per line, followed by the commands that were run and
+   their outcome.
    Nothing else. The list comes from
    `git status --porcelain --untracked-files=all`, which names every
    new file rather than the folder that holds it. Every scaffold runs
