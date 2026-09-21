@@ -4,6 +4,72 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.23.0 (2026-09-21)
+
+The lenses a program can decide are decided by a program. The
+guideline ships `arch-check`, a static checker, beside its lenses and
+skills: it reads a project's source with `ast`, imports nothing, needs
+only Python 3.11, and runs in `make check` in about a second. The
+review skills run it first and judge the rest; when it cannot run,
+they judge every lens, so the review is the checker's fallback. Minor,
+with one rule reversed: the rules a program checks no longer travel
+only as tests a project copies from another tree.
+
+### Added
+
+- `checkers/`: `arch-check`, standard library only. 106 rules over
+  the 232 lenses; a rule's id is the lens id it decides. Two decide
+  their lens whole (`OM-07`, `STO-09`); 104 decide a named part and
+  leave the rest to the review. A rule never checks more than its lens
+  states. Per-rule options, `[tool.arch-check.options.<RULE-ID>]`,
+  feed a rule the project's own names, defaulting to the guideline's:
+  the tenant-less storage methods, the stage construction sites, a
+  substituted technology. A disable or an exception names an ADR that
+  exists, and an exception that matches nothing fails the run.
+  Project-local rules load from the project's own folders against the
+  same API and decide a lens in that project. Text or JSON output;
+  exit 0, 1, or 2. It refuses a Python older than the project's
+  `.python-version`, whose syntax its parser could misread.
+- Lenses: an optional `Check` line after `Severity` says whether
+  `arch-check` decides the lens or a named part of it. `make lenses`
+  holds each `Check` line and its rule together both ways, coverage
+  included.
+- `docs/adopting.md`, "Run the checker": the Makefile target pinned at
+  the guideline's tag and run on the project's Python, the
+  `[tool.arch-check]` table, options, exceptions, project-local rules.
+  A recorded technology substitution is told to the checker as an
+  option, never as a disable. The README carries a quick reference.
+
+### Changed
+
+- `architecture.md`, "Records of Decisions": the rules a program
+  checks are split. `arch-check` decides the role map, `org_id` first,
+  the import direction, the interface check, the stage construction
+  sites, and one head per role. A test asserts the tenancy policies
+  against a migrated database and the roots built whole. **Reversal:**
+  an existing codebase no longer copies these checks from a scaffolded
+  tree; it adds the checker to its gate and writes the remaining tests
+  from the list.
+- `architecture.md`: two passages that pointed at the reference
+  implementation as their evidence state the point directly.
+- The review skills, the reviewer agent, and `arch-review-full` run
+  the checker first. A lens it covers whole is decided by its output,
+  a clean run being the evidence; a lens it covers in part takes its
+  findings for that part and is judged for the rest; a recorded
+  exception is not a finding; a lens it never ran is judged whole.
+- `arch-scaffold-new` writes `[tool.arch-check]` and an `arch-check`
+  target into the fast gate. The tenant-less storage methods and the
+  stage construction sites are checker options instead of hand-kept
+  tests, in `arch-scaffold-new`, `arch-scaffold-worker`, and the
+  scaffold conventions. `arch-upgrade-deps` leaves the checker's tag
+  to the guideline pin.
+- `make leaks` refuses the reference implementation's name in every
+  tracked text file, code and config included, except the closing Next
+  section and this changelog: the guideline stands alone.
+- `benchmark/` and its tests pass `make ruff` and `make mypy` like
+  `scripts/`; `benchmark/fixtures/` stays excluded, because its planted
+  defects must not be linted away.
+
 ## 0.22.0 (2026-09-21)
 
 Every list is bounded, down to the statement. The main list example
