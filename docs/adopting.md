@@ -41,23 +41,83 @@ a tree that already exists run the repository's own gate instead, so
 the review of a change is `/swe-guidelines:arch-review-full` on the
 change.
 
-The rules a program can check travel as tests, not as a package: a
-fresh scaffold writes them into `om/tests/unit/` (the role map, the
-tenant-first storage signatures, the import direction, the interface
-check, the construction-site test for stages, the roots built whole,
-one head per migration chain) and into `om/tests/integration/` (the
-tenancy scope of every table against the policies the migrations
-carry, and the login that is neither superuser nor `BYPASSRLS`, both
-of which need a migrated database), and an existing codebase copies
-them from a scaffolded tree, which writes every one of them, or from
-the reference implementation, and adjusts the module names. A rule
-that fails the build holds.
+The rules a program can check travel two ways. A rule that reads
+only the source travels as `arch-check`, the static checker in this
+repository's `checkers/`, which a project runs from the tag it pins
+(see "Run the checker" below). A rule that needs the built system or
+a migrated database travels as a test the project writes: the role
+map, the roots built whole, and one head per migration chain in
+`om/tests/unit/`; the tenancy scope of every table against the
+policies the migrations carry, and the login that is neither
+superuser nor `BYPASSRLS`, in `om/tests/integration/`. The guideline's
+Records of Decisions lists each rule and says which way it is
+checked. A fresh scaffold sets up both. An existing codebase adds the
+checker to its gate and writes the tests from that list. A rule that
+fails the build holds.
 
 For a team that pins versions, add the marketplace from a tag:
 
 ```text
 /plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.22.0
 ```
+
+## Run the checker
+
+`arch-check` decides the lenses a program can decide: an import that
+crosses a layer, a mixin out of order, a storage method without its
+tenant. It reads the source with Python's `ast` and never imports it.
+It needs Python 3.11 and nothing else. It runs in a second, offline,
+in the same gate as the tests. The lenses it cannot decide stay with
+the review skills, which run it first and judge the rest.
+
+Pin it at the tag of the guideline the project follows, in the
+`Makefile`, and put it in the fast gate:
+
+```make
+ARCH_CHECK := uvx --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
+
+arch-check: ## the guideline's static checks
+	$(ARCH_CHECK)
+
+check: lint format-check typecheck arch-check test-unit
+```
+
+CI runs `make check`, so nothing else changes there. Bump the tag in
+the same commit that bumps the pin in `specs/architecture.md`: the
+checker and the lenses it decides move together.
+
+Configure it in the root `pyproject.toml`. A project in the layout the
+guideline prescribes names its package and nothing else:
+
+```toml
+[tool.arch-check]
+package = "acme"
+```
+
+Three more things go in the same table, each only when needed:
+
+- **Options.** A rule that needs the project's own names reads them
+  from `[tool.arch-check.options.<RULE-ID>]`, for example the storage
+  methods allowed to take no tenant. The default is the name the
+  guideline uses, so a scaffolded tree sets none.
+- **Exceptions.** A rule turned off, or a file allowed to break it, is
+  a deviation. Each entry names its ADR, and the run refuses an entry
+  whose ADR does not exist. An exception that no longer matches
+  anything fails the run too.
+- **Project-local rules.** `local = ["tools/arch_check"]` loads the
+  project's own rules, written against the same API. Write one when a
+  rule needs the project's own logic, not only its names; names go in
+  options. A local rule names the lens it decides, and the review
+  skills treat it exactly like a shipped one.
+
+`arch-check --list` prints every rule with the lens it decides and
+whether it decides the whole lens or a part. `checkers/README.md` in
+this repository is the full reference: flags, exit codes, the JSON
+report, and how to write a rule.
+
+A rule the checker cannot hold without guessing is not shipped. Its
+lens stays with the review, which is the fallback for every lens the
+checker does not decide.
 
 ## Point at the guideline from `specs/`
 

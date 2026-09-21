@@ -611,9 +611,7 @@ Two impls per interface read as overhead only when a person keeps them
 in step. For an agent the pair is cheap. The agent writes the memory
 impl alongside the technology impl, and the shape generalizes. A memory
 storage impl is a dict keyed by tenant and id, plus the same filters
-the relational impl applies. The storage layer of the [reference
-implementation](#next-an-end-to-end-reference-implementation) has one
-per namespace.
+the relational impl applies, one per namespace.
 
 An agent also mixes and composes impls far more readily than a person
 does, which makes the duality a lever rather than a cost. The pair is
@@ -4953,10 +4951,8 @@ the process and readiness never reports ready. On first use, it
 surfaces at the first request that needs the missing piece, where
 readiness already reports ready.
 
-The [reference
-implementation](#next-an-end-to-end-reference-implementation) measures
-this: a boot benchmark, and a test that the managers build once for
-any number of requests.
+A system measures this with a boot benchmark, and with a test that
+the managers build once for any number of requests.
 
 ### Records of Decisions
 
@@ -4970,23 +4966,31 @@ to the line.
 ADRs. This document describes how we build.
 
 The rules in this document that a program can check are checked. A
-test asserts each of these:
+rule that reads only the source is decided by `arch-check`, the
+static checker this guideline ships beside its lenses, run at the tag
+the project pins. A rule that needs the built system or a migrated
+database is a test the project carries. `arch-check` decides these:
 
 -   Every table has a role, and no key crosses one.
--   Every table declares its tenancy scope, and the migrated policies
-    match it. This one reads a migrated database, so it runs in the
-    integration job; the rest are unit tests.
 -   Every storage method takes `org_id` first, except the enumerated
     exceptions.
 -   No manager imports a service, and nothing under infra imports the
     OM.
 -   Every `*Interface` is an `ABC` whose public methods are abstract.
 -   Only a transition constructs a stage above the request stage.
--   Every root is built whole at boot.
 -   The migration chain has one head per role.
 
-The scaffold writes these tests into a new tree. An existing tree
-copies them from one.
+A test asserts these, because each needs the built system or a
+migrated database:
+
+-   Every table declares its tenancy scope, and the migrated policies
+    match it. This one reads a migrated database, so it runs in the
+    integration job.
+-   Every root is built whole at boot. This one is a unit test.
+
+The scaffold wires the checker into a new tree's gate and writes the
+tests. An existing tree adds the checker to its gate and writes the
+tests from this list.
 
 A rule that is only written down drifts. A rule that fails the build
 holds.

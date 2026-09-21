@@ -23,6 +23,10 @@ the prescribed shape.
   a deviation recorder, a dependency upgrader, one skill that grows the
   guideline itself, one that measures a skill against a rubric, and one
   that asks the products a reader would use.
+- **[`checkers/`](checkers/README.md)**: `arch-check`, the static
+  checker. It decides the lenses a program can decide, from the source,
+  in a second, with nothing but Python 3.11. The review skills run it
+  first and judge the rest.
 - **[`benchmark/`](benchmark/README.md)**: the harness that runs a
   subject, keeps what happened, and has frontier models from several
   providers score it against a rubric. It is not part of `make check`:
@@ -55,6 +59,26 @@ claude --plugin-dir /path/to/swe_guidelines
 
 Non-plugin use, version pinning, and the pointer file a project keeps
 in its own `specs/` folder are in [`docs/adopting.md`](docs/adopting.md).
+
+## Run the checker
+
+In a project, pinned at the guideline's tag, in the `Makefile`'s fast
+gate:
+
+```make
+arch-check: ## the guideline's static checks
+	uvx --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
+```
+
+and in the root `pyproject.toml`:
+
+```toml
+[tool.arch-check]
+package = "acme"
+```
+
+The scaffolds write both. Options, exceptions, and project-local rules
+are in [`docs/adopting.md`](docs/adopting.md#run-the-checker).
 
 ## The skills
 
