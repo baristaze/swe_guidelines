@@ -48,7 +48,9 @@ The flags:
 - `0`: clean.
 - `1`: findings.
 - `2`: a configuration or usage error. Bad TOML, an ADR that does not
-  exist, an unknown rule id, a local rule that fails to load.
+  exist, an unknown rule id or option key, a `src` or `exclude` glob
+  that is empty, absolute, or climbs out of the root, a local rule
+  that fails to load.
 
 A file that does not parse is a `PARSE` finding, never a crash. A
 broken inline ignore is an `IGNORE` finding.
@@ -88,8 +90,8 @@ the root. `**` spans directories; `*` stays inside one.
 
 A rule that needs the project's own names reads them as options, one
 table per rule id. Each rule documents its keys and defaults them to
-the names the guideline uses; a key the rule does not read, or a value
-of the wrong type, exits 2:
+the names the guideline uses. A key the rule does not read, or a value
+of the wrong type, exits 2, whether or not the rule runs:
 
 ```toml
 [tool.arch-check.options.CTX-26]
@@ -122,14 +124,17 @@ reason = "one line"
 ```
 
 One line can carry its own exception. The comment names the rule and
-an ADR number, and `docs/adr/NNNN-*.md` must exist:
+an ADR number, and `docs/adr/NNNN-*.md` must exist. In a Python file
+it is a real comment; the same text inside a string or a docstring is
+not an ignore:
 
 ```python
 from acme.services.api import app  # arch-check: ignore[CON-12] ADR-0012
 ```
 
 An exception that matches nothing is itself a finding. So is an
-inline ignore on a line the rule does not flag. An exception never
+inline ignore on a line the rule does not flag. Two exceptions that
+match the same finding are both in use. An exception never
 outlives the code it excused.
 
 ## Adding a rule
@@ -154,7 +159,10 @@ def entities_are_not_tables(project: Project) -> Iterator[Violation]:
 ```
 
 The registration refuses an id no lens has. Group and severity come
-from the lens. `Project` holds the parsed tree: the Python files under
+from the lens. A rule that reads options names their keys in the
+registration, `@rule("STO-05", options=("sql_dir",), ...)`, and reads
+each with `project.option`; a key the registration does not name
+exits 2 before the run. `Project` holds the parsed tree: the Python files under
 the source roots, each module's name, its imports resolved to absolute
 names, and any other file of the repository by glob. `project.py` also
 holds the `ast` helpers for classes, bases, decorators, and
@@ -179,7 +187,7 @@ local = ["tools/arch_check"]
 ```
 
 Every `*.py` file there is loaded and registers rules with the same
-`@rule` a shipped rule uses. A file whose name starts with `_` is
+`@rule` a shipped rule uses, `options=` included. A file whose name starts with `_` is
 skipped. Each file stands alone: it imports `arch_check` and the
 standard library, never a sibling. A file that fails to load stops the
 run with exit 2 and its path.

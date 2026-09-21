@@ -123,7 +123,6 @@ GOOD: dict[str, str | None] = {
     f"{OM}/tasks/manager.py": "from abc import ABC\n\n\nclass TaskManagerInterface(ABC):\n    pass\n",
     f"{OM}/tasks/types/__init__.py": "from .task import Task\n",
     TASK: TASK_SOURCE,
-    f"{OM}/tasks/impl.py": None,
     f"{OM}/tasks/impl/__init__.py": "",
     TASK_IMPL: IMPL_SOURCE,
     f"{OM}/tasks/storage/__init__.py": "",
@@ -144,7 +143,6 @@ GOOD: dict[str, str | None] = {
     f"{OM}/storage/tables/__init__.py": "class Tasks:\n    org_id: int\n    title: list\n",
     SERVICE: "from acme.om.tasks.types import Task\n\n\ndef show(task: Task) -> str:\n    return task.title\n",
 }
-# The base tree's tasks/impl.py module would shadow the impl/ package; a None entry is not written.
 
 
 def project(tmp_path, files=None, pyproject=None):
@@ -654,3 +652,108 @@ def test_a_frozen_mapping_default_without_validation_is_om_17(tmp_path):
 def test_a_table_class_off_the_chain_may_hold_a_list(tmp_path):
     code, _ = run(tmp_path, "OM-17")
     assert code == 0
+
+
+# --- names read through imports
+
+
+def test_a_root_on_an_aliased_base_model_keeps_the_chain(tmp_path):
+    source = BASE_SOURCE.replace(
+        "from pydantic import BaseModel, ConfigDict", "from pydantic import BaseModel as Model, ConfigDict"
+    )
+    source = source.replace("class Platform(BaseModel):", "class Platform(Model):")
+    project(tmp_path, {BASE: source})
+    assert check(tmp_path, "--group", "om")[0] == 0
+    bad = source.replace('model_config = ConfigDict(frozen=True, extra="forbid")', "model_config = ConfigDict(frozen=True)")
+    code, report = run(tmp_path, "OM-07", {BASE: bad})
+    assert code == 1
+    assert found(report) == [("OM-07", BASE)]
+
+
+def test_an_org_id_brought_in_by_a_mixin_is_om_02(tmp_path):
+    scoped = "from uuid import UUID\n\nfrom acme.om.base import Platform\n\n\nclass OrgScoped(Platform):\n    org_id: UUID\n"
+    source = TASK_SOURCE.replace(
+        "from acme.om.base import", "from acme.om.tasks.scoped import OrgScoped\nfrom acme.om.base import"
+    ).replace(
+        "class Task(Identifiable, Named, Trackable, SoftDeletable):",
+        "class Task(Identifiable, Named, Trackable, SoftDeletable, OrgScoped):",
+    )
+    code, report = run(tmp_path, "OM-02", {f"{OM}/tasks/scoped.py": scoped, TASK: source})
+    assert code == 1
+    assert found(report) == [("OM-02", TASK)]
+    assert "Task inherits org_id from OrgScoped" in messages(report)[0]
+
+
+def test_a_flat_layout_is_one_distribution_per_pyproject_for_om_01(tmp_path):
+    files = {
+        "om/pyproject.toml": '[project]\nname = "acme-om"\ndependencies = []\n',
+        "om/acme/om/__init__.py": "",
+        "services/api/pyproject.toml": '[project]\nname = "acme-api"\ndependencies = ["acme-om"]\n',
+        "services/api/acme/services/api/main.py": "from acme.om import base\n",
+    }
+    pyproject = '[tool.arch-check]\npackage = "acme"\nsrc = ["om", "services/*"]\n'
+    write_project(tmp_path, files, pyproject=pyproject)
+    code, report = check_json(tmp_path, "--rule", "OM-01")
+    assert (code, rules_found(report)) == (0, [])
+    (tmp_path / "services/api/pyproject.toml").write_text('[project]\nname = "acme-api"\ndependencies = []\n')
+    code, report = check_json(tmp_path, "--rule", "OM-01")
+    assert (code, rules_found(report)) == (1, [("OM-01", "services/api/pyproject.toml", 1)])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import uuid as u\n\nx = u.uuid4()\n",
+        "from uuid import uuid4 as mint\n",
+    ],
+)
+def test_an_aliased_id_factory_is_om_12(tmp_path, source):
+    code, report = run(tmp_path, "OM-12", {SERVICE: source})
+    assert code == 1
+    assert found(report) == [("OM-12", SERVICE)]
+
+
+def test_an_annotated_empty_uuid_in_the_base_module_is_not_om_13(tmp_path):
+    code, report = run(
+        tmp_path, "OM-13", {BASE: BASE_SOURCE.replace("EMPTY_UUID = UUID(int=0)", "EMPTY_UUID: UUID = UUID(int=0)")}
+    )
+    assert (code, report["findings"]) == (0, [])
+
+
+def test_an_impl_module_where_a_package_belongs_is_om_14(tmp_path):
+    code, report = run(tmp_path, "OM-14", {f"{OM}/tasks/impl/__init__.py": None, TASK_IMPL: None, f"{OM}/tasks/impl.py": ""})
+    assert code == 1
+    assert found(report) == [("OM-14", f"{OM}/tasks/impl.py")]
+    assert "has impl.py where impl/ belongs" in messages(report)[0]
+
+
+@pytest.mark.parametrize(
+    "source,bad",
+    [
+        ("def ends(slot):\n    return slot.end_time.time()\n", False),
+        ("from datetime import datetime as dt\n\n\ndef late(due):\n    return due < dt.now()\n", True),
+        ("import datetime as d\n\n\ndef today():\n    return d.date.today()\n", True),
+    ],
+)
+def test_a_clock_read_through_an_alias_is_om_15(tmp_path, source, bad):
+    code, _ = run(tmp_path, "OM-15", {RULES: source})
+    assert code == (1 if bad else 0)
+
+
+def test_a_clock_read_through_an_alias_is_om_03(tmp_path):
+    source = "from datetime import datetime as dt\n\n\ndef stamp():\n    return dt.now()\n"
+    code, report = run(tmp_path, "OM-03", {SERVICE: source})
+    assert code == 1
+    assert found(report) == [("OM-03", SERVICE)]
+    code, _ = run(tmp_path, "OM-03", {SERVICE: "def stamp(clock):\n    return clock.now()\n"})
+    assert code == 0
+
+
+def test_annotated_metadata_is_not_om_17(tmp_path):
+    source = "from typing import Annotated\n" + TASK_SOURCE.replace(
+        "    tags: tuple[str, ...] = ()\n", "    tags: Annotated[tuple[str, ...], Coerce(list)] = ()\n"
+    )
+    code, _ = run(tmp_path, "OM-17", {TASK: source})
+    assert code == 0
+    code, _ = run(tmp_path, "OM-17", {TASK: source.replace("Annotated[tuple[str, ...]", "Annotated[list[str]")})
+    assert code == 1

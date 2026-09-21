@@ -119,6 +119,7 @@ SHELL_FENCE = re.compile(r"^\s*(```|~~~)\s*(bash|sh|shell|console|zsh|fish|power
 
 @rule(
     "OPS-25",
+    options=("not_namespaces",),
     coverage="partial",
     summary="Every OM namespace has a README.md, and om/README.md holds no shell block or command line.",
 )

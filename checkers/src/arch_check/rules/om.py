@@ -76,8 +76,16 @@ def all_fields(idx: Index, info: ClassInfo) -> set[str]:
 
 
 def distribution_dir(project: Project, file: SourceFile) -> str:
-    """The directory of the distribution a file ships in: `om/src/acme/om/x.py` gives `om`."""
+    """The directory of the distribution a file ships in: `om/src/acme/om/x.py` gives `om`.
+
+    It is the nearest directory above the file that holds a
+    `pyproject.toml`, so a flat layout (`om/acme/om/x.py`) reads the same
+    as the src layout; with none, the directory above the source root.
+    """
     parts = file.rel.split("/")
+    for i in range(len(parts) - 1, 0, -1):
+        if (project.root / "/".join(parts[:i]) / "pyproject.toml").is_file():
+            return "/".join(parts[:i])
     depth = len(file.module.split(".")) + 1
     src = parts[: len(parts) - depth]
     if src and src[-1] == "src":
@@ -155,6 +163,7 @@ def one_object_model(project: Project) -> Iterator[Violation]:
 
 @rule(
     "OM-02",
+    options=("tenantless",),
     coverage="partial",
     summary="org_id is a field of an OM type only on the entities a reader with no tenant takes, and those carry it.",
 )
@@ -173,19 +182,37 @@ def org_id_only_where_no_tenant(project: Project) -> Iterator[Violation]:
     tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "Event"], {"tenantless"}))
     tenancy = project.sub(f"om.{project.option('OM-16', 'namespace', 'tenancy', {'namespace'})}")
     idx = index(project)
+
+    def in_types(info: ClassInfo) -> bool:
+        types = "types" in info.file.module.removeprefix(project.sub("om")).split(".")
+        return types and not is_under(info.file.module, tenancy)
+
     for info in idx.chain(project.sub("om")):
-        in_types = "types" in info.file.module.removeprefix(project.sub("om")).split(".")
-        in_types = in_types and not is_under(info.file.module, tenancy)
         declared = next((f for f in fields(info.node) if field_name(f) == "org_id"), None)
         if info.node.name in tenantless:
             if "org_id" not in all_fields(idx, info):
                 yield Violation.at(info.file.rel, info.node, f"{info.node.name} is read with no tenant and declares no org_id")
-        elif declared is not None and in_types:
+        elif declared is not None and in_types(info):
             yield Violation.at(
                 info.file.rel,
                 declared,
                 f"{info.node.name}.org_id: a tenant entity carries no org_id; tenancy is a storage concern",
             )
+        elif declared is None and in_types(info):
+            # org_id brought in by a mixin; a parent in types/ is reported where it declares it
+            parents = ancestors(idx, info)
+            if any(p.node.name in tenantless for p in parents):
+                continue
+            source = next(
+                (p for p in parents if any(field_name(f) == "org_id" for f in fields(p.node))),
+                None,
+            )
+            if source is not None and not in_types(source):
+                yield Violation.at(
+                    info.file.rel,
+                    info.node,
+                    f"{info.node.name} inherits org_id from {source.node.name}; a tenant entity carries no org_id",
+                )
 
 
 # --- OM-03
@@ -279,7 +306,7 @@ def mixins_declare_exactly_their_fields(project: Project) -> Iterator[Violation]
                 target = node.target if node.target.id == "PROVENANCE_FIELDS" else None
             if target is not None:
                 yield Violation.at(file.rel, node, "PROVENANCE_FIELDS is declared again; it lives in the base module only")
-            if isinstance(node, ast.Call) and dotted(node.func) in CLOCK_CALLS:
+            if isinstance(node, ast.Call) and idx.qualified(file.module, dotted(node.func)) in CLOCK_CALLS:
                 yield Violation.at(
                     file.rel, node, f"{dotted(node.func)}() in place of utcnow(); the clock is the base module's helper"
                 )
@@ -571,10 +598,11 @@ def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
                     if name in OTHER_FACTORIES or (name == "uuid7" and not in_base):
                         yield Violation.at(file.rel, imp.node, f"{file.module} imports uuid.{name}; every id comes from new_id()")
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                called = dotted(node.func)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                # a bare `uuid4()` is reported at its import; `u.uuid4()` after `import uuid as u` is read through it
+                called = idx.qualified(file.module, dotted(node.func))
                 if called in {f"uuid.{f}" for f in OTHER_FACTORIES} or (called == "uuid.uuid7" and not in_base):
-                    yield Violation.at(file.rel, node, f"{called}() mints an id; every id comes from new_id()")
+                    yield Violation.at(file.rel, node, f"{dotted(node.func)}() mints an id; every id comes from new_id()")
 
 
 # --- OM-13
@@ -650,12 +678,8 @@ def empty_uuid_defined_once(project: Project) -> Iterator[Violation]:
                 if isinstance(node, ast.AnnAssign) and optional(node.annotation) and is_empty_uuid(node.value):
                     yield Violation.at(file.rel, node, "an optional reference defaults to EMPTY_UUID; absence is None")
             if isinstance(node, ast.Call) and all_zero_uuid(node):
-                assigned_here = in_base and any(
-                    isinstance(n, ast.Assign)
-                    and n.value is node
-                    and any(isinstance(t, ast.Name) and t.id == "EMPTY_UUID" for t in n.targets)
-                    for n in tree.body
-                )
+                defined = module_assign(tree, "EMPTY_UUID") if in_base else None
+                assigned_here = defined is not None and defined.value is node
                 if not assigned_here:
                     yield Violation.at(file.rel, node, "an all-zero UUID is a second sentinel; use EMPTY_UUID")
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -675,6 +699,7 @@ def empty_uuid_defined_once(project: Project) -> Iterator[Violation]:
 
 @rule(
     "OM-14",
+    options=("entry", "not_namespaces"),
     coverage="partial",
     summary="Each OM namespace has its entry module, types/, impl/, and storage/, re-exports its interface, "
     "and keeps no entity in impl/.",
@@ -710,10 +735,15 @@ def namespace_shape(project: Project) -> Iterator[Violation]:
         module = next((c for c in candidates if project.module(f"{ns}.{c}") is not None), candidates[0])
         init = project.module(ns)
         for part, is_pkg in ((module, False), ("types", True), ("impl", True), ("storage", True)):
-            if project.module(f"{ns}.{part}") is None:
-                shown = f"{part}/" if is_pkg else f"{part}.py"
+            found = project.module(f"{ns}.{part}")
+            shown = f"{part}/" if is_pkg else f"{part}.py"
+            if found is None:
                 yield Violation(
                     f"{directory}/__init__.py", 1, 1, f"namespace {name} has no {shown}; every namespace has one shape"
+                )
+            elif is_pkg and not found.is_package:
+                yield Violation(
+                    found.rel, 1, 1, f"namespace {name} has {part}.py where {shown} belongs; every namespace has one shape"
                 )
         if init is not None and project.module(f"{ns}.{module}") is not None:
             reexports = any(
@@ -731,17 +761,20 @@ def namespace_shape(project: Project) -> Iterator[Violation]:
 
 # --- OM-15
 
-CLOCK_CALLS_IN_RULES = (
-    "datetime.now",
-    "datetime.utcnow",
-    "datetime.today",
-    "date.today",
-    "time.time",
-    "time.time_ns",
-    "time.monotonic",
-    "time.perf_counter",
-    "os.getenv",
+CLOCK_CALLS_IN_RULES = frozenset(
+    {
+        "datetime.datetime.now",
+        "datetime.datetime.utcnow",
+        "datetime.datetime.today",
+        "datetime.date.today",
+        "time.time",
+        "time.time_ns",
+        "time.monotonic",
+        "time.perf_counter",
+        "os.getenv",
+    }
 )
+"""The clock and environment reads, by the absolute name a call resolves to through the module's imports."""
 
 
 @rule(
@@ -758,6 +791,7 @@ def rules_are_pure(project: Project) -> Iterator[Violation]:
     `acme.om.orders.types.notification_settings`. Duplicated arithmetic in
     impls is judged."""
     om = project.sub("om")
+    idx = index(project)
     for file in project.modules_under(om):
         parts = file.module.split(".")
         if parts[-1] != "rules" or file.module.rpartition(".")[0].rpartition(".")[0] != om:
@@ -784,7 +818,7 @@ def rules_are_pure(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, node, f"async def {node.name}: a rule is a plain function over values")
             elif isinstance(node, ast.Call):
                 name = dotted(node.func) or ""
-                if last(name) in ("utcnow", "getenv") or name.endswith(CLOCK_CALLS_IN_RULES):
+                if last(name) in ("utcnow", "getenv") or idx.qualified(file.module, name) in CLOCK_CALLS_IN_RULES:
                     yield Violation.at(file.rel, node, f"{name}() in a rule; take the time or the setting as an argument")
             elif isinstance(node, ast.Attribute) and dotted(node) == "os.environ":
                 yield Violation.at(file.rel, node, "os.environ in a rule; take the setting as an argument")
@@ -797,6 +831,7 @@ IDENTITY_CLASSES = frozenset({"User", "Org", "Organization", "Membership", "Cred
 
 @rule(
     "OM-16",
+    options=("namespace",),
     coverage="partial",
     summary="Tenancy is a namespace of the OM, and no identity or audit class lives in the base module or a utils module.",
 )
@@ -851,7 +886,10 @@ MUTABLE = frozenset(
 
 
 def mutable_names(node: ast.expr) -> list[str]:
-    """The mutable container names an annotation spells, quoted parts included; a `Literal[...]` holds values, not types."""
+    """The mutable container names an annotation spells, quoted parts included.
+
+    A `Literal[...]` holds values, not types, and so does the metadata of an `Annotated[...]`.
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
@@ -862,6 +900,14 @@ def mutable_names(node: ast.expr) -> list[str]:
         for sub in ast.walk(node)
         if isinstance(sub, ast.Subscript) and last(dotted(sub.value)) == "Literal"
         for inner in ast.walk(sub.slice)
+    }
+    # `Annotated[T, ...]`: only T is the type; the metadata after it are values
+    literals |= {
+        id(inner)
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Subscript) and last(dotted(sub.value)) == "Annotated" and isinstance(sub.slice, ast.Tuple)
+        for meta in sub.slice.elts[1:]
+        for inner in ast.walk(meta)
     }
     found = []
     for sub in ast.walk(node):

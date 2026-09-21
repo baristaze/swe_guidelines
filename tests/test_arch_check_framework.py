@@ -21,7 +21,7 @@ from arch_check.project import Project, parameters
 from arch_check_fixtures import ADR, BASE, PYPROJECT, WORKSPACE, check, check_json, rules_found, write, write_project
 
 REPO = Path(__file__).resolve().parent.parent
-IMPL = "om/src/acme/om/tasks/impl.py"
+IMPL = "om/src/acme/om/tasks/impl/manager.py"
 BAD = "from acme.services.api import app\n"
 SHIPPED = [r.id for r in registry.rules()]
 PY_FILES = sum(1 for rel in BASE if rel.endswith(".py") and "/src/" in rel)
@@ -55,7 +55,7 @@ def test_a_finding_exits_1_with_a_text_line(tmp_path):
     bad_project(tmp_path)
     code, out, _ = check(tmp_path)
     assert code == 1
-    assert out.splitlines()[0].startswith(f"{IMPL}:1:1: CON-12 acme.om.tasks.impl imports acme.services.api;")
+    assert out.splitlines()[0].startswith(f"{IMPL}:1:1: CON-12 acme.om.tasks.impl.manager imports acme.services.api;")
     assert f"1 finding(s) from {len(SHIPPED)} rule(s)" in out
 
 
@@ -254,7 +254,7 @@ def test_a_disable_of_an_unknown_rule_exits_2(tmp_path):
 
 
 def test_an_exception_accepts_the_findings_its_path_matches(tmp_path):
-    bad_project(tmp_path, pyproject=PYPROJECT + EXCEPTION.format(path="om/src/**/tasks/*.py", adr=ADR))
+    bad_project(tmp_path, pyproject=PYPROJECT + EXCEPTION.format(path="om/src/**/tasks/impl/*.py", adr=ADR))
     code, report = check_json(tmp_path)
     assert code == 0
     assert report["exceptions_applied"] == [
@@ -397,7 +397,7 @@ def test_module_names_follow_the_src_roots(tmp_path):
     assert "acme.services.api" in modules
     assert "acme.workers.maintenance" in modules
     assert project.module("acme.om.tasks.impl") is not None
-    [impl] = project.modules_under("acme.om.tasks.impl")
+    [impl] = project.modules_under("acme.om.tasks.impl.manager")
     assert [i.module for i in project.imports(impl)] == ["acme.om.root"]
     assert project.import_graph("acme.workers")["acme.workers.maintenance"] == {"acme.om", "acme.om.tasks"}
 
@@ -542,3 +542,98 @@ def test_a_project_pinned_to_this_python_or_older_runs(tmp_path):
     write_project(tmp_path, {".python-version": "3.11\n"})
     code, _, _ = check(tmp_path)
     assert code == 0
+
+
+def test_an_option_key_no_rule_reads_exits_2(tmp_path):
+    # OM-05 reads no option at all, so any key under its table is a typo.
+    write_project(tmp_path, pyproject=PYPROJECT + "\n[tool.arch-check.options.OM-05]\nbogus = 1\n")
+    code, _, err = check(tmp_path, "--rule", "CON-12")
+    assert code == 2
+    assert "[tool.arch-check.options.OM-05]: unknown key(s) bogus" in err
+    write_project(tmp_path, pyproject=PYPROJECT + '\n[tool.arch-check.options.CTX-26]\nbuilder = ["x"]\n')
+    assert "unknown key(s) builder" in check(tmp_path, "--rule", "CON-12")[2]
+
+
+def test_every_option_a_rule_reads_is_declared(tmp_path):
+    write_project(tmp_path, pyproject=PYPROJECT + '\n[tool.arch-check.options.CTX-26]\nbuilders = ["x"]\n')
+    assert check(tmp_path)[0] == 0
+    declared = {r.id: r.options for r in registry.rules()}
+    assert declared["CTX-26"] == {"sites", "stages", "builders"}
+    assert declared["OM-05"] == frozenset()
+
+
+def test_overlapping_exceptions_are_all_used(tmp_path):
+    narrow = EXCEPTION.format(path=IMPL, adr=ADR)
+    broad = EXCEPTION.format(path="om/**", adr=ADR)
+    bad_project(tmp_path, pyproject=PYPROJECT + broad + narrow)
+    code, report = check_json(tmp_path)
+    assert (code, rules_found(report)) == (0, [])
+    assert len(report["exceptions_applied"]) == 1
+
+
+def test_an_inline_ignore_quoted_in_a_string_is_not_an_ignore(tmp_path):
+    doc = '"""Example:\n\n    x = 1  # arch-check: ignore[CON-12] ADR-0001\n"""\n'
+    write_project(tmp_path, {IMPL: doc})
+    assert check(tmp_path)[0] == 0
+    # A real comment still is one.
+    bad_project(tmp_path, **{IMPL: doc + "from acme.services.api import app  # arch-check: ignore[CON-12] ADR-0001\n"})
+    assert check(tmp_path)[0] == 0
+
+
+def test_a_bom_or_a_coding_line_parses(tmp_path):
+    write_project(tmp_path, {"om/src/acme/om/bom.py": "﻿x = 1\n"})
+    (tmp_path / "om/src/acme/om/latin.py").write_bytes(b"# -*- coding: latin-1 -*-\nNAME = '\xe9'\n")
+    assert check(tmp_path)[0] == 0
+    (tmp_path / "om/src/acme/om/latin.py").write_bytes(b"NAME = '\xe9'\n")
+    code, report = check_json(tmp_path)
+    assert (code, rules_found(report)) == (1, [("PARSE", "om/src/acme/om/latin.py", 1)])
+
+
+def test_a_symlink_out_of_the_root_is_read_where_it_sits(tmp_path):
+    outside = tmp_path / "outside.py"
+    outside.write_text("x = 1\n", encoding="utf-8")
+    write_project(tmp_path / "p")
+    (tmp_path / "p/om/src/acme/om/linked.py").symlink_to(outside)
+    assert check(tmp_path / "p")[0] == 0
+
+
+def test_a_long_concatenation_does_not_crash_a_rule(tmp_path):
+    long = "MSG = (\n" + '    "line " +\n' * 1500 + '    "end"\n)\n'
+    write_project(tmp_path, {"om/src/acme/om/long.py": long})
+    assert check(tmp_path)[0] == 0
+
+
+@pytest.mark.parametrize(
+    "pyproject,message",
+    [
+        ("tool = 1\n", "[tool] is not a table"),
+        (PYPROJECT + 'src = ["/abs"]\n', "'/abs' is not a glob relative to the root"),
+        (PYPROJECT + 'src = [""]\n', "'' is not a glob relative to the root"),
+        (PYPROJECT + 'exclude = ["../x"]\n', "'../x' is not a glob relative to the root"),
+    ],
+)
+def test_a_config_of_the_wrong_shape_exits_2(tmp_path, pyproject, message):
+    write_project(tmp_path, pyproject=pyproject)
+    code, _, err = check(tmp_path, "--package", "acme")
+    assert code == 2
+    assert message in err
+
+
+@pytest.mark.parametrize(
+    "pyproject",
+    [
+        '[tool]\nuv = 1\n[tool.arch-check]\npackage = "acme"\n',
+        '[tool.uv.workspace]\nmembers = ["", "/abs", "../x", 3]\n[tool.arch-check]\npackage = "acme"\n',
+        'project = "x"\n' + PYPROJECT,
+        "[dependency-groups]\ndev = 3\n" + PYPROJECT,
+    ],
+)
+def test_a_root_pyproject_of_an_odd_shape_never_crashes_a_rule(tmp_path, pyproject):
+    write_project(tmp_path, pyproject=pyproject)
+    assert check(tmp_path)[0] in (0, 1)
+
+
+def test_a_python_version_that_is_not_utf8_is_read(tmp_path):
+    write_project(tmp_path)
+    (tmp_path / ".python-version").write_bytes(b"\xff3.11\n")
+    assert check(tmp_path)[0] == 0

@@ -144,6 +144,7 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
     for f, t in project.trees(project.sub("om")):
         if ".types" in f".{f.module}" and "types" in f.module.split(".")[project.sub("om").count(".") + 2 :]:
             entities.update(c.name for c in classes(t))
+    entities -= {c.name for c in classes(tree)}  # a name the stage module defines means its own class
     stages = stage_classes(project)
     for cls in stages.values():
         for name, node in declared_fields(cls).items():
@@ -190,19 +191,53 @@ def request_stage_at_the_edge(project: Project) -> Iterator[Violation]:
 # --- CTX-06
 
 
-def stage_bindings(fn: Function) -> dict[str, str]:
-    """Names bound in a function to a stage above the request stage: its parameters and annotated locals."""
-    out: dict[str, str] = {}
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def own_nodes(fn: Function) -> Iterator[ast.AST]:
+    """The nodes of a function body, never descending into a nested function, lambda, or class."""
+    todo: list[ast.AST] = list(fn.body)
+    while todo:
+        node = todo.pop()
+        yield node
+        if not isinstance(node, SCOPES):
+            todo.extend(ast.iter_child_nodes(node))
+
+
+def stage_bindings(fn: Function, inherited: dict[str, str]) -> dict[str, str]:
+    """Names bound in a function to a stage above the request stage: its parameters and annotated locals.
+
+    A name the enclosing function bound keeps its stage here unless this
+    function binds the name again, as a parameter or an assignment.
+    """
+    params = [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg]
+    rebound = {a.arg for a in params if a is not None}
+    rebound |= {n.id for n in own_nodes(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+    out = {k: v for k, v in inherited.items() if k not in rebound}
     for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
         stage = stage_of(arg)
         if stage in ABOVE_REQUEST:
             out[arg.arg] = stage
-    for node in ast.walk(fn):
+    for node in own_nodes(fn):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             members = [m for m in union_members(node.annotation) if m != "None"]
             if len(members) == 1 and members[0] in ABOVE_REQUEST:
                 out[node.target.id] = members[0]
     return out
+
+
+def scoped_functions(tree: ast.Module) -> Iterator[tuple[Function, dict[str, str]]]:
+    """Every function with the stage bindings it sees: its own, and those of the functions around it."""
+    todo: list[tuple[ast.AST, dict[str, str]]] = [(tree, {})]
+    while todo:
+        node, inherited = todo.pop()
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            bound = stage_bindings(node, inherited)
+            yield node, bound
+            nested = (n for n in own_nodes(node) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef))
+            todo.extend((n, bound) for n in nested)
+        else:
+            todo.extend((n, inherited) for n in ast.iter_child_nodes(node))
 
 
 def returns_stage(fn: Function) -> bool:
@@ -224,13 +259,12 @@ def context_is_immutable(project: Project) -> Iterator[Violation]:
     module = stage_module(project)
     prefixes = (project.sub("om"), project.sub("services"), project.sub("workers"))
     for file, tree in project.trees(*prefixes):
-        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
+        for fn, bound in sorted(scoped_functions(tree), key=lambda e: (e[0].lineno, e[0].col_offset)):
             if fn.name.startswith(("with_", "override")) and returns_stage(fn) and file != module:
                 yield Violation.at(file.rel, fn, f"{fn.name} returns a stage; narrowing is an argument, not a new context")
-            bound = stage_bindings(fn)
             if not bound:
                 continue
-            for node in ast.walk(fn):
+            for node in own_nodes(fn):
                 if (
                     isinstance(node, ast.Call)
                     and isinstance(node.func, ast.Attribute)
@@ -256,6 +290,7 @@ LOG_MODULES = ("infra.observability", "gateway.observability")
 
 @rule(
     "CTX-07",
+    options=("modules",),
     coverage="partial",
     summary="A ContextVar lives only in the log module; nothing uses a thread local.",
 )
@@ -334,6 +369,7 @@ def tenant_first(project: Project) -> Iterator[Violation]:
 
 @rule(
     "CTX-12",
+    options=("tenantless",),
     coverage="partial",
     summary="Every tenant-less storage method is documented on it or its interface, and listed when a list is kept.",
 )
@@ -346,6 +382,8 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
     that names no such method are findings, so the list is the
     enumerating test. Whether a sweep returns its tenant is judged."""
     listed: list[str] = project.option("CTX-12", "tenantless", [], {"tenantless"})
+    # the key set is the switch, not its truthiness: `tenantless = []` says no method is tenant-less
+    enumerated = "tenantless" in project.config.options.get("CTX-12", {})
     seen: set[str] = set()
     for file, cls in classes_named(project, "StorageInterface"):
         if cls.name == "StorageInterface":
@@ -359,7 +397,7 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
                 yield Violation.at(
                     file.rel, fn, f"{key} takes no tenant, and neither it nor its interface has a docstring saying why"
                 )
-            if listed and key not in listed:
+            if enumerated and key not in listed:
                 yield Violation.at(file.rel, fn, f"{key} takes no tenant and is not on the tenantless list")
     for key in sorted(set(listed) - seen):
         yield Violation.at(
@@ -372,6 +410,7 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
 
 @rule(
     "CTX-14",
+    options=("interfaces",),
     coverage="partial",
     summary="Every cache and bucket operation takes org_id first.",
 )
@@ -610,12 +649,14 @@ DEFAULT_SITES = ["**/om/tenancy/impl/**", "**/om/opcontext.py"]
 
 
 def site_matches(entry: str, rel: str, qualname: str) -> bool:
+    """Whether a call at `qualname` of `rel` sits at a listed site; a closure inside a listed method is part of it."""
     path, _, where = entry.partition("::")
-    return glob_match(path, rel) and (not where or where == qualname)
+    return glob_match(path, rel) and (not where or qualname == where or qualname.startswith(where + "."))
 
 
 @rule(
     "CTX-26",
+    options=("sites", "stages", "builders"),
     coverage="partial",
     summary="Every production site that constructs a stage above the request stage is listed, and every entry is used.",
 )

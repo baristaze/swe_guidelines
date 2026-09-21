@@ -49,11 +49,14 @@ def bases(cls: ast.ClassDef) -> list[str]:
     return [last(b) or b for b in base_names(cls)]
 
 
-def roots(project: Project, rule_id: str) -> list[str]:
-    return project.option(rule_id, "roots", list(ROOT_INTERFACES), {"roots"})
+def roots(project: Project, rule_id: str) -> set[str]:
+    """The root interfaces named in `roots`, and every class that implements one, through any depth of bases."""
+    names: list[str] = project.option(rule_id, "roots", list(ROOT_INTERFACES), {"roots"})
+    impls = implementers(project)
+    return set(names) | {sub for n in names for sub in impls.get(n, [])}
 
 
-def is_root(cls: ast.ClassDef, names: list[str]) -> bool:
+def is_root(cls: ast.ClassDef, names: set[str]) -> bool:
     return cls.name in names or any(b in names for b in bases(cls))
 
 
@@ -62,6 +65,7 @@ def is_root(cls: ast.ClassDef, names: list[str]) -> bool:
 
 @rule(
     "CON-01",
+    options=("sync_methods",),
     coverage="partial",
     summary="Every *Impl subclasses an interface; manager and storage interface operations are async.",
 )
@@ -105,6 +109,8 @@ def interfaces_are_abstract(project: Project) -> Iterator[Violation]:
         if not any(b == "ABC" or b.endswith("Interface") for b in bases(cls)) and meta != "ABCMeta":
             yield Violation.at(file.rel, cls, f"{cls.name} is not an ABC; an interface is an abstract class")
         for fn in interface_methods(cls):
+            if "overload" in {last(d) for d in decorator_names(fn)}:
+                continue  # an @overload stub types the abstract method after it
             if "abstractmethod" not in {last(d) for d in decorator_names(fn)}:
                 yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} is not @abstractmethod")
             elif not is_ellipsis_body(fn):
@@ -169,12 +175,12 @@ def impls_are_named_and_paired(project: Project) -> Iterator[Violation]:
 
 
 def is_memory_module(project: Project, file: SourceFile) -> bool:
-    """A memory impl module: `<pkg>.om...storage.impl.memory*` or `<pkg>.infra...memory*`."""
+    """A memory impl module: `<pkg>.om...impl.memory*` (a storage impl or a manager impl) or `<pkg>.infra...memory*`."""
     name = file.module.rpartition(".")[2]
     if not name.startswith("memory"):
         return False
     if is_under(file.module, project.sub("om")):
-        return ".storage.impl." in f".{file.module}."
+        return ".impl." in f".{file.module}."
     return is_under(file.module, project.sub("infra"))
 
 
@@ -247,6 +253,7 @@ def memory_impls_are_whole(project: Project) -> Iterator[Violation]:
 
 @rule(
     "CON-06",
+    options=("roots",),
     coverage="partial",
     summary="Impl constructors are typed by interface; impls build no impl; interfaces take no manager or storage.",
 )
@@ -307,7 +314,8 @@ def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
     for file, cls in classes_named(project, "ManagerImpl"):
         init = init_of(cls)
         for arg in arguments(init) if init else []:
-            loose = sorted(names_in(arg.annotation) & LOOSE_TUNABLES)
+            # the annotation itself or a member of its union: `ids: list[int]` is a list, not a tunable
+            loose = sorted(set(union_members(arg.annotation)) & LOOSE_TUNABLES)
             if loose:
                 yield Violation.at(
                     file.rel,
@@ -344,6 +352,7 @@ WIRING_MODULES = frozenset({"root", "container"})
 
 @rule(
     "CON-08",
+    options=("roots",),
     coverage="partial",
     summary="Wiring code assigns no other object's private attribute; no two namespaces import each other's impls.",
 )
@@ -413,6 +422,7 @@ def decorated_frozen(cls: ast.ClassDef) -> bool | None:
 
 @rule(
     "CON-09",
+    options=("roots",),
     coverage="partial",
     summary="build_managers returns one frozen object of interface fields; root getters return interfaces.",
 )
@@ -484,6 +494,7 @@ def declares_interface(tree: ast.Module) -> bool:
 
 @rule(
     "CON-11",
+    options=("vendors",),
     coverage="partial",
     summary="No interface module and no manager impl imports a vendor library.",
 )
@@ -692,6 +703,7 @@ def returns_held(fn: Function) -> bool:
 
 @rule(
     "CON-20",
+    options=("roots",),
     coverage="partial",
     summary="A root's getters return what the constructor built: `return self._x`, no lazy build, no caching decorator.",
 )
@@ -702,10 +714,11 @@ def roots_build_once(project: Project) -> Iterator[Violation]:
     `self._x[key]`). Option `[tool.arch-check.options.CON-20]`: `roots`
     (default `StorageInterface`, `InfraInterface`, `ServicesInterface`).
     The build-once test is the project's."""
+    listed = set(project.option("CON-20", "roots", list(ROOT_INTERFACES), {"roots"}))
     root_names = roots(project, "CON-20")
     for file, tree in project.trees():
         for cls in classes(tree):
-            if cls.name in root_names or not any(b in root_names for b in bases(cls)):
+            if cls.name in listed or not is_root(cls, root_names):
                 continue
             for fn in interface_methods(cls):
                 if not fn.name.startswith("get_"):

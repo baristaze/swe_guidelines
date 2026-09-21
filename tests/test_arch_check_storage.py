@@ -834,3 +834,165 @@ def test_sto_29_a_bucket_listing_under_another_name(tmp_path):
     code, report = run(tmp_path, "STO-29", files)
     assert code == 1
     assert messages(report) == ["BucketsInterface.keys returns a list and takes no limit"]
+
+
+# --- the SQL reader and the replays
+
+
+def test_sql_code_blanks_dollar_bodies_and_escape_strings():
+    from arch_check.rules._storage_util import name_list, sql_code
+
+    text = (
+        "CREATE FUNCTION f() AS $body$ BEGIN RAISE 'don''t'; END $body$;\n"
+        "SELECT E'it\\'s ; here', $1;\n"
+        "CREATE TABLE core.after (id uuid);\n"
+    )
+    code = sql_code(text)
+    assert len(code) == len(text)
+    assert "BEGIN RAISE" in code and "don" not in code and "here" not in code
+    assert "CREATE TABLE core.after" in code
+    assert name_list(' a(int, text), "b c"(), d CASCADE') == ["a", '"b c"', "d"]
+
+
+def test_sto_05_a_quote_in_a_dollar_body_does_not_hide_the_rest(tmp_path):
+    later = "om/migrations/sql/core/202601020000_touch.up.sql"
+    files = {
+        later: (
+            "COMMENT ON TABLE core.widgets IS $$it's a widget$$;\n"
+            "COMMENT ON TABLE core.catalog IS E'the shop\\'s list';\n"
+            "CREATE FUNCTION core.gate() RETURNS trigger AS $fn$ BEGIN RETURN NEW; END $fn$ LANGUAGE plpgsql;\n"
+        )
+    }
+    code, report = run(tmp_path, "STO-05", files)
+    assert code == 1
+    assert rules_found(report) == [("STO-05", later, 3)]
+
+
+def test_sto_05_triggers_are_scoped_to_their_table(tmp_path):
+    first = "om/migrations/sql/core/202601020000_touch.up.sql"
+    second = "om/migrations/sql/core/202601030000_untouch.up.sql"
+    files = {
+        first: (
+            "CREATE TRIGGER touch BEFORE UPDATE ON core.widgets EXECUTE FUNCTION core.a();\n"
+            "CREATE TRIGGER touch BEFORE UPDATE ON core.catalog EXECUTE FUNCTION core.a();\n"
+        ),
+        second: "DROP TRIGGER touch ON core.widgets;\n",
+    }
+    code, report = run(tmp_path, "STO-05", files)
+    assert code == 1
+    assert [(r, p, line) for r, p, line in rules_found(report)] == [("STO-05", first, 2)]
+
+
+@pytest.mark.parametrize(
+    "drop",
+    [
+        "DROP FUNCTION core.a(), core.b() CASCADE;\n",
+        "DROP TABLE core.widgets, core.catalog;\nDROP FUNCTION core.a(), core.b();\n",
+        "DROP ROUTINE IF EXISTS core.a, core.b CASCADE;\n",
+    ],
+)
+def test_sto_05_a_cascade_a_table_drop_and_a_list_clear_the_chain(tmp_path, drop):
+    first = "om/migrations/sql/core/202601020000_touch.up.sql"
+    second = "om/migrations/sql/core/202601030000_untouch.up.sql"
+    files = {
+        first: (
+            "CREATE FUNCTION core.a() RETURNS trigger AS $$ $$;\n"
+            "CREATE FUNCTION core.b() RETURNS trigger AS $$ $$;\n"
+            "CREATE TRIGGER ta BEFORE UPDATE ON core.widgets EXECUTE FUNCTION core.a();\n"
+            "CREATE TRIGGER tb BEFORE UPDATE ON core.catalog EXECUTE PROCEDURE core.b();\n"
+        ),
+        second: drop,
+    }
+    code, report = run(tmp_path, "STO-05", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[second] = "DROP FUNCTION core.a(), core.b();\n"
+    code, report = run(tmp_path, "STO-05", files)
+    assert code == 1
+    assert [line for _, _, line in rules_found(report)] == [3, 4]
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "mapped_column(primary_key=True, insert_default=uuid4, sort_order=-1000)",
+        "mapped_column(primary_key=True, default_factory=uuid4, sort_order=-1000)",
+    ],
+)
+def test_sto_06_an_orm_minted_id(tmp_path, column):
+    test_sto_06_a_database_minted_id(tmp_path, column)
+
+
+@pytest.mark.parametrize("ret", ['"UUID"', "tuple[UUID, ...]", "None | UUID", "list[uuid.UUID]"])
+def test_sto_06_a_write_returning_uuids_in_another_spelling(tmp_path, ret):
+    code, report = run(tmp_path, "STO-06", edit(IFACE, "tuple[OutboxRow, ...]) -> bool", f"tuple[OutboxRow, ...]) -> {ret}"))
+    assert code == 1
+    assert "create_widget returns a UUID" in messages(report)[0]
+
+
+def test_sto_10_no_root_at_all(tmp_path):
+    code, report = run(tmp_path, "STO-10", drop=[MEMORY, PG])
+    assert code == 1
+    assert messages(report) == ["StorageInterface needs two roots, one of them StorageMemoryImpl"]
+
+
+def test_sto_17_a_foreign_key_constraint_across_roles(tmp_path):
+    files = edit(
+        WIDGETS,
+        "    __table_args__ = (\n",
+        '    __table_args__ = (\n        ForeignKeyConstraint(["parent_id"], ["activity.events.id"]),\n',
+    )
+    code, report = run(tmp_path, "STO-17", files)
+    assert code == 1
+    assert messages(report) == ["Widgets has a foreign key into role activity; it is in core"]
+    files[WIDGETS] = files[WIDGETS].replace('["activity.events.id"]', '["core.catalog.id"]')
+    assert run(tmp_path, "STO-17", files)[0] == 0
+
+
+@pytest.mark.parametrize("rule,missing", [("STO-17", ROLES), ("STO-28", SCOPES)])
+def test_sto_17_and_28_tables_with_no_map(tmp_path, rule, missing):
+    code, report = run(tmp_path, rule, drop=[missing])
+    assert code == 1
+    assert rules_found(report) == [(rule, CATALOG, 4)]
+    assert "the OM has tables and no TABLE_" in messages(report)[0]
+
+
+def test_sto_28_rls_actions_in_one_statement(tmp_path):
+    files = edit(
+        UP,
+        "ALTER TABLE core.widgets ENABLE ROW LEVEL SECURITY;\nALTER TABLE core.widgets FORCE ROW LEVEL SECURITY;\n",
+        "ALTER TABLE core.widgets ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;\n",
+    )
+    code, report = run(tmp_path, "STO-28", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[UP] = files[UP].replace(", FORCE ROW", ", NO FORCE ROW")
+    code, report = run(tmp_path, "STO-28", files)
+    assert code == 1
+    assert "without FORCE ROW LEVEL SECURITY" in messages(report)[0]
+
+
+def test_sto_28_a_quoted_policy_name(tmp_path):
+    files = edit(UP, "CREATE POLICY tenant_fence ON", 'CREATE POLICY "tenant fence" ON')
+    assert run(tmp_path, "STO-28", files)[0] == 0
+    files["om/migrations/sql/core/202601020000_drop.up.sql"] = 'DROP POLICY IF EXISTS "tenant fence" ON core.widgets;\n'
+    code, report = run(tmp_path, "STO-28", files)
+    assert code == 1
+    assert "without a policy" in messages(report)[0]
+
+
+@pytest.mark.parametrize(
+    "ret", ["list[Widget] | None", "tuple[list[Widget], str | None]", "frozenset[Widget]", '"Sequence[Widget]"']
+)
+def test_sto_29_other_list_shapes(tmp_path, ret):
+    files = edit(IFACE, "org_id: UUID, limit: int) -> list[Widget]", f"org_id: UUID) -> {ret}")
+    code, report = run(tmp_path, "STO-29", files)
+    assert code == 1
+    assert messages(report) == ["WidgetsStorageInterface.read_widgets returns a list and takes no limit"]
+
+
+def test_sto_03_a_lower_case_lock_in_a_query(tmp_path):
+    files = {f"{OM}/widgets/impl/manager.py": 'Q = "select id from core.widgets for update skip locked"\nW = "wait for update"\n'}
+    code, report = run(tmp_path, "STO-03", files)
+    assert code == 1
+    assert rules_found(report) == [("STO-03", f"{OM}/widgets/impl/manager.py", 1)]

@@ -66,6 +66,8 @@ class Rule:
 
     `origin` is `guideline` for a rule this package ships and `local`
     for one a project keeps in its own tree (`local` in the config).
+    `options` is every key the rule reads under
+    `[tool.arch-check.options.<id>]`; any other key there exits 2.
     """
 
     id: str
@@ -75,6 +77,7 @@ class Rule:
     summary: str
     check: Check
     origin: Origin = "guideline"
+    options: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

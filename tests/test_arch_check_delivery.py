@@ -450,3 +450,32 @@ def test_del_35_an_id_label_fails(tmp_path):
 def test_del_35_an_email_label_is_not_an_id(tmp_path):
     source = "from prometheus_client import Counter\n\nC = Counter('n', 'd', ['email', 'outcome'])\n"
     assert found(tmp_path, "DEL-35", {"infra/src/acme/infra/observability.py": source}) == (0, [])
+
+
+# --- review fixes
+
+
+def test_del_11_a_double_colon_check_target_passes(tmp_path):
+    files = workspace(**{"Makefile": "check:: lint\n\ttrue\nX ::= 1\n"})
+    assert found(tmp_path, "DEL-11", files) == (0, [])
+    files["Makefile"] = "X ::= 1\ncheck := 2\n"
+    assert found(tmp_path, "DEL-11", files) == (1, [("DEL-11", "Makefile", 1)])
+
+
+def test_del_12_a_package_json_saved_with_a_bom_is_read(tmp_path):
+    files = {"apps/portal/package.json": "﻿" + PORTAL}
+    assert found(tmp_path, "DEL-12", files) == (0, [])
+    files = {"apps/portal/package.json": "﻿" + PORTAL.replace('"zustand": "^5"', '"zustand": "^5", "vue": "3"')}
+    assert found(tmp_path, "DEL-12", files) == (1, [("DEL-12", "apps/portal/package.json", 1)])
+
+
+@pytest.mark.parametrize("tag", ["7a91c0d", "0123a45", "3.11-slim"])
+def test_del_26_a_commit_id_tag_is_no_pre_release(tmp_path, tag):
+    files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": f"FROM python:3.11 AS b\nFROM acme/base:{tag}\n"}
+    assert found(tmp_path, "DEL-26", files) == (0, [])
+
+
+@pytest.mark.parametrize("tag", ["3.15.0a1", "3.15.0b2-slim", "1.2.0-rc.1"])
+def test_del_26_a_pre_release_tag_still_fails(tmp_path, tag):
+    files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": f"FROM python:3.11 AS b\nFROM acme/base:{tag}\n"}
+    assert found(tmp_path, "DEL-26", files) == (1, [("DEL-26", "deployment/docker/api.Dockerfile", 2)])

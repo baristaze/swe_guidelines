@@ -87,18 +87,42 @@ def is_fastapi_header(name: str | None) -> bool:
 REQUEST_TYPES = frozenset({"Request", "HTTPConnection", "WebSocket"})
 
 
-def request_params(tree: ast.AST) -> set[str]:
-    """The parameter names that hold an inbound request: annotated `Request`, `HTTPConnection`, or `WebSocket`,
-    or an unannotated `request`."""
+def request_params(fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> set[str]:
+    """The parameters of one function that hold an inbound request: annotated `Request`, `HTTPConnection`, or
+    `WebSocket`, or an unannotated `request`."""
     out: set[str] = set()
+    for a in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
+        annotation = last(dotted(a.annotation)) if a.annotation is not None else None
+        if annotation in REQUEST_TYPES or (a.annotation is None and a.arg == "request"):
+            out.add(a.arg)
+    return out
+
+
+def header_reads(tree: ast.AST) -> Iterator[ast.Attribute]:
+    """Every `.headers` read on a request parameter, judged in the function that has the parameter.
+
+    A name is a request only where a function takes it (a closure inside
+    that function included), so a `request` of one function never taints
+    an unrelated `request` of another.
+    """
+    stores = written(tree)
+    seen: set[int] = set()
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
             continue
-        for a in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
-            annotation = last(dotted(a.annotation)) if a.annotation is not None else None
-            if annotation in REQUEST_TYPES or (a.annotation is None and a.arg == "request"):
-                out.add(a.arg)
-    return out
+        inbound = request_params(fn)
+        if not inbound:
+            continue
+        for node in ast.walk(fn):
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "headers"
+                and dotted(node.value) in inbound
+                and id(node) not in stores
+                and id(node) not in seen
+            ):
+                seen.add(id(node))
+                yield node
 
 
 def written(tree: ast.AST) -> set[int]:
@@ -145,13 +169,10 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
         if tree is None:
             continue
         names = imported_names(project, file)
-        inbound = request_params(tree)
-        stores = written(tree)
+        for read in header_reads(tree):
+            yield Violation.at(file.rel, read, "reads `.headers`; the gateway parses headers, nothing below it does")
         for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr == "headers":
-                if dotted(node.value) in inbound and id(node) not in stores:
-                    yield Violation.at(file.rel, node, "reads `.headers`; the gateway parses headers, nothing below it does")
-            elif isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
+            if isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
                 yield Violation.at(file.rel, node, "takes a `Header(...)` parameter; the gateway parses headers")
             elif (
                 file.rel in routers
@@ -177,6 +198,10 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
 # --- NET-07
 
 
+RESPONSES = frozenset({"JSONResponse", "Response", "PlainTextResponse", "HTMLResponse", "ORJSONResponse"})
+"""The response classes; each takes the body first and the status second, by position or by keyword."""
+
+
 def http_error_status(node: ast.expr | None) -> bool:
     if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
         return node.value >= 400
@@ -193,8 +218,9 @@ def one_error_handler(project: Project) -> Iterator[Violation]:
     """Routers never set error statuses, and one module maps exceptions to responses.
 
     In `<pkg>.services.<svc>.{routers,services,impl}`: no `raise` of an
-    `HTTPException`, and no response built with a 4xx or 5xx
-    `status_code`. Within each service, `<pkg>.services.<svc>`, and
+    `HTTPException`, no response built with a 4xx or 5xx status (by
+    keyword or as the second argument), and no 4xx or 5xx assigned to a
+    `status_code` attribute. Within each service, `<pkg>.services.<svc>`, and
     within the shared `<pkg>.gateway`, at most one module registers
     exception handlers of its own (`@app.exception_handler`, or
     `add_exception_handler` with a handler not imported from a gateway
@@ -212,9 +238,16 @@ def one_error_handler(project: Project) -> Iterator[Violation]:
                 target = resolved(dotted(node.exc), names)
                 if last(target) in {"HTTPException", "StarletteHTTPException"}:
                     yield Violation.at(file.rel, node, "raises an HTTP exception; one handler at the gateway sets statuses")
-            elif isinstance(node, ast.Call) and last(dotted(node.func)) in {"JSONResponse", "Response", "PlainTextResponse"}:
-                if http_error_status(kwarg(node, "status_code")):
+            elif isinstance(node, ast.Call) and last(dotted(node.func)) in RESPONSES:
+                status = kwarg(node, "status_code") or (node.args[1] if len(node.args) > 1 else None)
+                if http_error_status(status):
                     yield Violation.at(file.rel, node, "builds an error response by hand; one handler at the gateway does")
+            elif isinstance(node, ast.Assign | ast.AugAssign | ast.AnnAssign):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(isinstance(t, ast.Attribute) and t.attr == "status_code" for t in targets) and http_error_status(
+                    node.value
+                ):
+                    yield Violation.at(file.rel, node, "sets an error status by hand; one handler at the gateway does")
     registering: dict[str, list[tuple[SourceFile, ast.AST]]] = {}
     for file in project.modules_under(project.sub("services"), project.sub("gateway")):
         tree = project.tree(file)
@@ -257,6 +290,7 @@ def creates(call: ast.Call) -> bool:
 
 @rule(
     "NET-09",
+    options=("module",),
     coverage="partial",
     summary="Every POST answering 201 or 202 takes the gateway's idempotency dependency.",
 )
@@ -283,7 +317,8 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         return {
             local
             for local, full in imported_names(project, file).items()
-            if full.rpartition(".")[0] == tail or full.rpartition(".")[0].endswith("." + tail)
+            # a name imported from the module, or the module itself (`from acme.gateway import idempotency`)
+            if any(m == tail or m.endswith("." + tail) for m in (full, full.rpartition(".")[0]))
         }
 
     def heads(node: ast.expr | None) -> set[str]:
@@ -457,6 +492,7 @@ def wire_types_are_curated(project: Project) -> Iterator[Violation]:
 
 @rule(
     "NET-14",
+    options=("target",),
     coverage="partial",
     summary="The Makefile has the openapi target, and a CI workflow runs it and fails on a diff.",
 )
@@ -482,6 +518,7 @@ def openapi_is_diffed(project: Project) -> Iterator[Violation]:
         return
     if target not in make_targets(project):
         yield Violation("Makefile", 1, 1, f"no `{target}` target; it regenerates the committed OpenAPI document")
+        return
     targets = make_targets(project)
     for rel in project.files(".github/workflows/*.yml", ".github/workflows/*.yaml"):
         text = project.read(rel) or ""

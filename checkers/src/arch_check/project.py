@@ -19,7 +19,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import TypeVar
 
-from arch_check.config import Config, ConfigError, glob_match
+from arch_check.config import Config, ConfigError, glob_match, relative_glob
 
 T = TypeVar("T")
 
@@ -111,7 +111,15 @@ class Project:
         return f"{self.package}.{name}"
 
     def rel(self, path: Path) -> str:
-        return path.resolve().relative_to(self.root).as_posix()
+        """A path under the root as the root spells it, `/`-separated.
+
+        The lexical path comes first: a symlink inside the tree that
+        points outside it is named where it sits, never where it points.
+        """
+        try:
+            return path.relative_to(self.root).as_posix()
+        except ValueError:
+            return path.resolve().relative_to(self.root).as_posix()
 
     def excluded(self, rel: str) -> bool:
         parts = rel.split("/")
@@ -166,12 +174,13 @@ class Project:
         """The parsed module, cached; None when it does not parse (see `parse_errors`)."""
         if file.rel not in self._trees:
             try:
-                source = file.path.read_text(encoding="utf-8")
+                # bytes, so the parser honours a BOM or a PEP 263 coding line as the interpreter would
+                source = file.path.read_bytes()
                 self._trees[file.rel] = ast.parse(source, filename=file.rel)
             except SyntaxError as e:
                 self._trees[file.rel] = None
                 self.parse_errors[file.rel] = (e.lineno or 1, e.msg)
-            except (UnicodeDecodeError, ValueError) as e:
+            except (OSError, ValueError, RecursionError) as e:
                 self._trees[file.rel] = None
                 self.parse_errors[file.rel] = (1, str(e))
         return self._trees[file.rel]
@@ -229,6 +238,8 @@ class Project:
         """Paths relative to the root of every file a glob matches, excluded ones left out."""
         found: set[str] = set()
         for pattern in patterns:
+            if not relative_glob(pattern):
+                raise ConfigError(f"{pattern!r} is not a glob relative to the root; check the options that name it")
             for p in self.root.glob(pattern):
                 if p.is_file():
                     rel = self.rel(p)

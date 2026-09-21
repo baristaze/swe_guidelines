@@ -308,3 +308,51 @@ def test_net_29_a_table_or_a_migration_in_a_service_fails(tmp_path):
     )
     assert code == 1
     assert sorted(p for _, p, _ in where) == ["services/api/migrations", f"{SVC}/tables.py"]
+
+
+# --- review fixes
+
+
+def test_net_06_a_request_is_a_request_only_in_the_function_that_takes_it(tmp_path):
+    source = (
+        "def f(request: Request):\n    return request.url\n\n\ndef g(request: OutboundRequest):\n    return request.headers\n"
+    )
+    code, where, _ = found(tmp_path, "NET-06", {ROUTER: source})
+    assert (code, where) == (0, [])
+    source = source.replace("return request.url", "return request.headers")
+    code, where, _ = found(tmp_path, "NET-06", {ROUTER: source})
+    assert (code, where) == (1, [("NET-06", ROUTER, 2)])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def f():\n    return JSONResponse({'e': 1}, 404)\n",
+        "def f(response):\n    response.status_code = 409\n",
+        "def f(response):\n    response.status_code = status.HTTP_409_CONFLICT\n",
+    ],
+)
+def test_net_07_a_positional_or_assigned_error_status_fails(tmp_path, source):
+    code, where, _ = found(tmp_path, "NET-07", {ROUTER: source})
+    assert (code, [p for _, p, _ in where]) == (1, [ROUTER])
+
+
+def test_net_07_a_success_status_set_by_hand_passes(tmp_path):
+    source = "def f(response):\n    response.status_code = 201\n    return JSONResponse({}, 200)\n"
+    code, _, _ = found(tmp_path, "NET-07", {ROUTER: source})
+    assert code == 0
+
+
+def test_net_09_the_idempotency_module_imported_whole_passes(tmp_path):
+    source = (
+        "from fastapi import Depends\nfrom acme.services.api.gateway import idempotency\n\n"
+        '@router.post("", status_code=201)\nasync def create(ctx: Ctx, key=Depends(idempotency.idempotency_key)): ...\n'
+    )
+    code, where, _ = found(tmp_path, "NET-09", {IDEM: "def idempotency_key(): ...\n", ROUTER: source})
+    assert (code, where) == (0, [])
+
+
+def test_net_14_a_missing_target_is_reported_once(tmp_path):
+    code, where, msgs = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": "check:\n\techo\n"})
+    assert (code, where) == (1, [("NET-14", "Makefile", 1)])
+    assert "no `openapi` target" in msgs[0]

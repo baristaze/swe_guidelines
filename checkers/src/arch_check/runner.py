@@ -11,8 +11,10 @@ exception cannot outlive the code it excused.
 
 from __future__ import annotations
 
+import io
 import re
-from collections.abc import Sequence
+import tokenize
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
 from arch_check import __version__
@@ -53,15 +55,39 @@ def framework(rule: str, path: str, line: int, col: int, message: str) -> Findin
     )
 
 
+def comments(project: Project, rel: str) -> Iterator[tuple[int, int, str]]:
+    """(line, column offset, text) of each place a marker may sit in a file.
+
+    In a Python file that is each `#` comment token, so a marker quoted
+    in a docstring or a string is text, not an ignore. Any other file,
+    or a Python file that does not tokenize, is read line by line.
+    """
+    if rel.endswith(".py"):
+        try:
+            raw = (project.root / rel).read_bytes()
+            found = [
+                (t.start[0], t.start[1], t.string)
+                for t in tokenize.tokenize(io.BytesIO(raw).readline)
+                if t.type == tokenize.COMMENT
+            ]
+        except (OSError, SyntaxError, tokenize.TokenError):
+            pass
+        else:
+            yield from found
+            return
+    for ln, text in enumerate(project.lines(rel), start=1):
+        yield ln, 0, text
+
+
 def read_markers(project: Project, paths: set[str], known: set[str], findings: list[Finding]) -> dict[tuple[str, int], Inline]:
     """The valid inline ignores of `paths`; a malformed one becomes an `IGNORE` finding."""
     out: dict[tuple[str, int], Inline] = {}
     for rel in sorted(paths):
-        for ln, text in enumerate(project.lines(rel), start=1):
+        for ln, offset, text in comments(project, rel):
             m = MARKER.search(text)
             if not m:
                 continue
-            col = m.start() + 1
+            col = offset + m.start() + 1
             names = tuple(r.strip() for r in m.group("rules").split(",") if r.strip())
             adr = ADR.match(m.group("rest"))
             if not names:
@@ -117,13 +143,18 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
             used_markers.add(((f.path, f.line), f.rule))
             applied.append(Applied(f.rule, f.path, f.line, inline.adr, "inline", ""))
             continue
-        for i, e in enumerate(project.config.exceptions):
-            if e.rule == f.rule and e.path is not None and glob_match(e.path, f.path):
-                used_exceptions.add(i)
-                applied.append(Applied(f.rule, f.path, f.line, e.adr, "config", e.reason))
-                break
-        else:
+        # every exception that matches is used, so a narrow one under a broad one is never reported stale
+        matching = [
+            i
+            for i, e in enumerate(project.config.exceptions)
+            if e.rule == f.rule and e.path is not None and glob_match(e.path, f.path)
+        ]
+        if not matching:
             kept.append(f)
+            continue
+        used_exceptions.update(matching)
+        first = project.config.exceptions[matching[0]]
+        applied.append(Applied(f.rule, f.path, f.line, first.adr, "config", first.reason))
 
     for key, inline in sorted(markers.items()):
         for name in inline.rules:

@@ -17,11 +17,14 @@ def test_the_base_tree_is_clean(tmp_path):
 @pytest.mark.parametrize(
     "rel,source",
     [
-        ("om/src/acme/om/tasks/impl.py", "from acme.services.api import app\n"),
-        ("om/src/acme/om/tasks/impl.py", "import acme.workers.maintenance\n"),
-        ("om/src/acme/om/tasks/impl.py", "from acme import services\n"),
-        ("om/src/acme/om/tasks/impl.py", "def f():\n    from acme.services import api\n"),
-        ("om/src/acme/om/tasks/impl.py", "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import acme.services\n"),
+        ("om/src/acme/om/tasks/impl/manager.py", "from acme.services.api import app\n"),
+        ("om/src/acme/om/tasks/impl/manager.py", "import acme.workers.maintenance\n"),
+        ("om/src/acme/om/tasks/impl/manager.py", "from acme import services\n"),
+        ("om/src/acme/om/tasks/impl/manager.py", "def f():\n    from acme.services import api\n"),
+        (
+            "om/src/acme/om/tasks/impl/manager.py",
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import acme.services\n",
+        ),
         ("infra/src/acme/infra/cache/__init__.py", "from acme.workers import maintenance\n"),
     ],
 )
@@ -34,11 +37,11 @@ def test_om_or_infra_importing_a_service_or_a_worker_is_con_12(tmp_path, rel, so
 
 
 def test_a_relative_import_is_resolved_before_it_is_judged(tmp_path):
-    # om/src/acme/om/tasks/impl.py is acme.om.tasks.impl; `...services` is acme.services.
-    write_project(tmp_path, {"om/src/acme/om/tasks/impl.py": "from ...services import api\n"})
+    # om/src/acme/om/tasks/impl/manager.py is acme.om.tasks.impl.manager; `....services` is acme.services.
+    write_project(tmp_path, {"om/src/acme/om/tasks/impl/manager.py": "from ....services import api\n"})
     code, report = check_json(tmp_path, "--rule", "CON-12")
     assert code == 1
-    assert report["findings"][0]["message"].startswith("acme.om.tasks.impl imports acme.services;")
+    assert report["findings"][0]["message"].startswith("acme.om.tasks.impl.manager imports acme.services;")
 
 
 def test_a_relative_import_from_a_package_init_resolves_against_the_package(tmp_path):
@@ -50,7 +53,7 @@ def test_a_relative_import_from_a_package_init_resolves_against_the_package(tmp_
 
 
 def test_a_name_that_only_starts_like_services_is_not_a_service(tmp_path):
-    write_project(tmp_path, {"om/src/acme/om/tasks/impl.py": "from acme.servicesx import y\nimport acme.om.services\n"})
+    write_project(tmp_path, {"om/src/acme/om/tasks/impl/manager.py": "from acme.servicesx import y\nimport acme.om.services\n"})
     code, _, _ = check(tmp_path, "--rule", "CON-12")
     assert code == 0
 
@@ -86,7 +89,7 @@ def test_the_om_importing_infra_is_not_con_10(tmp_path):
 
 def test_the_package_name_comes_from_the_config(tmp_path):
     # With package "other", nothing here is under other.om, so nothing is judged.
-    write_project(tmp_path, {"om/src/acme/om/tasks/impl.py": "import acme.services\n"})
+    write_project(tmp_path, {"om/src/acme/om/tasks/impl/manager.py": "import acme.services\n"})
     code, _, _ = check(tmp_path, "--package", "other", "--group", "contracts")
     assert code == 0
 
@@ -108,7 +111,7 @@ OM = "om/src/acme/om"
     ],
 )
 def test_reaching_past_an_interface_is_con_10(tmp_path, rel, source):
-    write_project(tmp_path, {rel: source, f"{OM}/tasks/impl/__init__.py": "", f"{OM}/tasks/impl.py": ""})
+    write_project(tmp_path, {f"{OM}/tasks/impl/manager.py": "", rel: source})
     code, report = check_json(tmp_path, "--rule", "CON-10")
     assert code == 1
     assert [(r, p) for r, p, _ in rules_found(report)] == [("CON-10", rel)]
@@ -121,7 +124,6 @@ def test_the_roots_and_interfaces_are_the_right_imports_for_con_10(tmp_path):
         f"{API}/routers/tasks.py": "from acme.om.tasks.types.task import TaskStatus\n",
         f"{OM}/tasks/impl/__init__.py": "",
         f"{OM}/tasks/impl/manager.py": "from acme.om.tasks.storage import TasksStorageInterface\n",
-        f"{OM}/tasks/impl.py": "",
     }
     write_project(tmp_path, files)
     code, _, _ = check(tmp_path, "--rule", "CON-10")
