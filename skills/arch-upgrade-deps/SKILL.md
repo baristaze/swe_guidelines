@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-deps
 description: "Upgrade every dependency of the current repository to its latest stable release, the current active LTS line where one exists, as the Software Design and Architecture Guidelines prescribe: runtimes, workspace tools, container images, CI steps, Terraform engine versions, and locked libraries; then run the repository's gates and hold back any upgrade that breaks them. Use periodically, or when a review raises DEL-26."
-allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(uv tree:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(pnpm outdated:*), Bash(git status:*)
 ---
 
 # arch-upgrade-deps
@@ -67,19 +67,33 @@ the plan table and edits nothing. Nothing else is asked for.
    suffix (`-alpine`, `-slim`). A managed-service engine in Terraform
    moves only to a version the provider offers; when that is not
    confirmable, the row is unconfirmed.
-7. Upgrade the libraries. Run `uv lock --upgrade` and `uv sync`, and
-   `pnpm update --recursive --latest` and `pnpm install`, when the
-   repository has those workspaces; that moves every library within
-   its cap. A cap in a `pyproject.toml` or `package.json` that holds a
-   library below a major release is raised one library at a time, each
-   raise followed by step 8 before the next, never every cap at once,
-   so a failing gate names the major that broke it. Then hold each
-   library to the same
-   rule as a runtime: a resolved release with no patch release behind
-   it is pinned back to the release before it in the lock (`uv lock
-   --upgrade-package <name>==<release>`, `pnpm update <name>@<release>`),
-   and the report names it under Held back with "no patch behind it"
-   in place of a failing check.
+7. Upgrade the libraries in two passes, when the repository has those
+   workspaces.
+
+   First, within the ranges: `uv lock --upgrade` and `uv sync`, and
+   `pnpm update --recursive` and `pnpm install`. Both keep to the range
+   each manifest declares, so this pass moves no library across a
+   major. Never run `pnpm update --latest` over the workspace: it
+   ignores the ranges and moves every package past its major at once,
+   which is the move the second pass makes one library at a time.
+
+   Then the majors. List the libraries whose range holds them below a
+   newer major: `pnpm outdated --recursive` for npm, and
+   `uv tree --outdated --depth 1` for Python. Raise them one library
+   at a time, never every range at once. For npm,
+   `pnpm update --recursive --latest <name>` rewrites that one range.
+   For Python, edit the range in each `pyproject.toml` that declares
+   it, then run `uv lock --upgrade-package <name>` and `uv sync`. Run
+   step 8 after each raise and before the next, so a failing gate
+   names the major that broke it.
+
+   Then hold each library to the same rule as a runtime: a resolved
+   release with no patch release behind it is pinned back to the
+   release before it in the lock
+   (`uv lock --upgrade-package <name>==<release>`,
+   `pnpm update --recursive <name>@<release>`), and the report names
+   it under Held back with "no patch behind it" in place of a failing
+   check.
 8. Validate: `make check`; then, when Docker is available,
    `make infra-up` (`make infra-reset` in its place when the plan says
    a database moved a major, which recreates the dependency volumes and
