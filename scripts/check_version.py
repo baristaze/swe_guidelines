@@ -18,7 +18,6 @@ import json
 import re
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 
 from _common import ROOT, arguments
 

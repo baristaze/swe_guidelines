@@ -1,6 +1,7 @@
 """scripts/_common.py: the heading and anchor rule every script shares."""
 
 import pytest
+
 from _common import anchors, headings, markdown_files, slug
 
 SCRIPTS = [

@@ -3,16 +3,26 @@ SHELL := /bin/bash
 PYTHON := python3
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
+# ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
+RUFF := uvx ruff@0.16.8
+MYPY := uvx --with pytest==9.1.1 mypy@2.3.1
 
-.PHONY: help check lint lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
+.PHONY: help check lint ruff mypy lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: lint lenses leaks links toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
+check: lint ruff mypy lenses leaks links toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
+
+ruff:              ## lint and format check of scripts/ and tests/
+	$(RUFF) check
+	$(RUFF) format --check
+
+mypy:              ## type check of scripts/ and tests/
+	$(MYPY)
 
 lenses:            ## every lens follows the format and cites a real section
 	$(PYTHON) scripts/check_lenses.py

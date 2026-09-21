@@ -128,7 +128,8 @@ def test_make_target_the_body_runs_passes(repo, skills, capsys):
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`, then `make migrate-check --dry-run`.\n3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`, then `make migrate-check --dry-run`.\n"
+        "3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
     )
     assert skills.main() == 0
     assert "skills ok" in capsys.readouterr().out

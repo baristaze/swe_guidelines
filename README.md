@@ -94,8 +94,8 @@ Claude Code 2.1 and later.
 
 ```bash
 make benchmark    # the smoke scenario, judged by three providers (costs money, not part of check)
-make check        # what CI runs: markdownlint, lens format and citations, vocabulary leaks, links,
-                  # table of contents, version copies, generated skills up to date,
+make check        # what CI runs: markdownlint, ruff and mypy over the scripts, lens format and citations,
+                  # vocabulary leaks, links, table of contents, version copies, generated skills up to date,
                   # skill shape, the reviewer agent against the review template, the checkers' tests,
                   # plugin validation
 make gen-skills   # regenerate the eight group review skills from the template
@@ -104,10 +104,12 @@ make gen-toc      # regenerate the table of contents of architecture.md
 
 Requirements: Python 3.14 and Node 24, the latest stable and LTS
 releases. The scripts need nothing past the standard library; `make
-check` also needs `pytest`, for the scripts' own tests, and `npx`, for
+check` also needs `pytest`, for the scripts' own tests; `npx`, for
 markdownlint (`make lint` fetches `markdownlint-cli2` through `npx` at
-a pinned version). The pin follows the guideline's own latest-stable
-rule on purpose. CI runs `make check` on every pull request.
+a pinned version); and `uv`, for ruff and mypy (`make ruff` and `make
+mypy` fetch them through `uvx` at pinned versions). The pins follow
+the guideline's own latest-stable rule on purpose. CI runs `make check`
+on every pull request.
 
 The review skills are generated from `skills/_template/review.SKILL.md`
 and the lens catalog. Edit the template or the lenses, not the

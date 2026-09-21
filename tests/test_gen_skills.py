@@ -1,6 +1,7 @@
 """scripts/gen_skills.py: the review skills follow the template and the lens table."""
 
 import pytest
+
 from conftest import render_template
 
 
