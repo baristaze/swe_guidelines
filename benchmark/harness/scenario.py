@@ -7,6 +7,10 @@ tests at the repository root use JSON, so they need nothing installed.
 The dataclasses below are the whole shape. A key a scenario does not set
 takes the default here, and an unknown key is refused: a misspelled key
 is a scenario that silently judges something else.
+
+A relative path in a scenario (`subject.target`, `evidence.expected`)
+is read from the scenario file's folder, so a scenario means the same
+thing from wherever the run starts.
 """
 
 from __future__ import annotations
@@ -49,6 +53,24 @@ class ArtifactSpec:
 
 
 @dataclass(frozen=True)
+class EvidenceSpec:
+    """What the judges get besides the artifact, so they need not take its word.
+
+    `files` are globs over the target: the source the artifact talks
+    about, shown to the judges with line numbers. `expected` is a file
+    of the findings planted in the scenario's own target, kept outside
+    that target so the subject never reads the answers.
+    """
+
+    files: list[str] = field(default_factory=list)
+    expected: str | None = None
+
+    @property
+    def empty(self) -> bool:
+        return not self.files and not self.expected
+
+
+@dataclass(frozen=True)
 class JudgeSpec:
     """The default judge selection of the scenario; the flags override it."""
 
@@ -66,7 +88,17 @@ class Scenario:
     artifact: ArtifactSpec
     rubric: str
     judges: JudgeSpec
+    evidence: EvidenceSpec = field(default_factory=EvidenceSpec)
     path: Path | None = None
+
+    def resolve(self, value: str | None) -> Path | None:
+        """A path the scenario names, read from the scenario file's folder."""
+        if not value:
+            return None
+        path = Path(value)
+        if not path.is_absolute() and self.path is not None:
+            path = self.path.parent / path
+        return path.resolve()
 
     def as_dict(self) -> dict[str, Any]:
         """The scenario as plain data, for `run.json`."""
@@ -88,6 +120,7 @@ class Scenario:
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
             "judges": {"providers": self.judges.providers, "effort": self.judges.effort},
+            "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
             "path": str(self.path) if self.path else None,
         }
 
@@ -112,7 +145,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     """Build a scenario from parsed data."""
     if not isinstance(data, dict):
         raise ScenarioError("a scenario file holds a mapping at the top level")
-    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges"), "scenario")
+    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "evidence"), "scenario")
     name = str(data.get("name") or (path.stem if path else ""))
     if not name:
         raise ScenarioError("scenario: name is required")
@@ -168,7 +201,19 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         providers=str(raw_judges.get("providers", "3")),
         effort=str(raw_judges.get("effort", "medium")),
     )
-    return Scenario(name=name, kind=kind, subject=subject, artifact=artifact, rubric=rubric, judges=judges, path=path)
+    raw_evidence = data.get("evidence") or {}
+    if not isinstance(raw_evidence, dict):
+        raise ScenarioError(f"scenario {name}: evidence holds a mapping")
+    _only(raw_evidence, ("files", "expected"), f"scenario {name}: evidence")
+    evidence = EvidenceSpec(
+        files=_strings(raw_evidence.get("files"), f"scenario {name}: evidence.files"),
+        expected=raw_evidence.get("expected"),
+    )
+    if evidence.expected and not subject.target:
+        raise ScenarioError(f"scenario {name}: evidence.expected describes a target, and subject.target names none")
+    return Scenario(
+        name=name, kind=kind, subject=subject, artifact=artifact, rubric=rubric, judges=judges, evidence=evidence, path=path
+    )
 
 
 def parse_text(text: str, suffix: str = ".json") -> Any:

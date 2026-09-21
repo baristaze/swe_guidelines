@@ -82,3 +82,25 @@ def test_find_takes_a_name_or_a_path(tmp_path):
 def test_the_shipped_scenarios_are_a_catalog_of_three():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
+
+
+def test_evidence_is_read_and_its_unknown_keys_refused(tmp_path):
+    data = dict(MINIMAL, subject={"skill": "arch-explain", "target": "t"}, evidence={"files": ["**/*.py"], "expected": "e.yaml"})
+    scn = S.load(write(tmp_path, "one.json", data))
+    assert scn.evidence.files == ["**/*.py"] and scn.evidence.expected == "e.yaml"
+    assert scn.as_dict()["evidence"] == {"files": ["**/*.py"], "expected": "e.yaml"}
+    with pytest.raises(S.ScenarioError, match="unknown key"):
+        S.from_data(dict(MINIMAL, evidence={"file": []}))
+
+
+def test_expected_findings_need_a_target_of_their_own():
+    with pytest.raises(S.ScenarioError, match="describes a target"):
+        S.from_data(dict(MINIMAL, evidence={"expected": "e.yaml"}))
+
+
+def test_a_relative_path_is_read_from_the_scenario_folder(tmp_path):
+    (tmp_path / "scenarios").mkdir()
+    scn = S.load(write(tmp_path / "scenarios", "one.json", MINIMAL))
+    assert scn.resolve("../fixtures/x") == (tmp_path / "fixtures" / "x").resolve()
+    assert scn.resolve("/abs/x") == Path("/abs/x").resolve()
+    assert scn.resolve(None) is None

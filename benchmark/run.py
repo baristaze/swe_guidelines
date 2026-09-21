@@ -36,6 +36,7 @@ ROOT = BENCHMARK.parent
 if str(BENCHMARK) not in sys.path:
     sys.path.insert(0, str(BENCHMARK))
 
+from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
 from harness import providers as P  # noqa: E402
 from harness import results as R  # noqa: E402
@@ -74,14 +75,40 @@ def plugin_name(root: Path) -> str:
     return "swe-guidelines"
 
 
-def subject_argv(scn: S.Scenario, root: Path, claude: str = "claude") -> list[str]:
-    """The command a subject of each kind runs. `qa` runs no command."""
+def subject_prompt(scn: S.Scenario, target: str | None) -> str:
+    """The prompt with the target in it, as the subject sees the target.
+
+    `{target}` in the prompt is replaced with the path. A prompt that does
+    not name it gets one sentence saying where the target is. The subject
+    runs in its own empty workspace, so a target it is not told about is
+    a target it never reads.
+    """
+    prompt = scn.subject.prompt
+    if "{target}" in prompt:
+        if not target:
+            raise S.ScenarioError(f"scenario {scn.name}: the prompt names {{target}} and the run has no target")
+        return prompt.replace("{target}", target)
+    if target:
+        return f"{prompt}\n\nThe checkout to work on is at {target}. Read it; do not change it."
+    return prompt
+
+
+def subject_argv(scn: S.Scenario, name: str, plugin: str | None, target: str | None, claude: str = "claude") -> list[str]:
+    """The command a subject of each kind runs. `qa` runs no command.
+
+    `plugin` and `target` are paths as the subject sees them, which the
+    runtime answers: this machine's paths on the host, the mount points
+    in a container, the configured paths on another machine.
+    """
     if scn.kind == "command":
-        return list(scn.subject.argv)
+        return [w.replace("{target}", target or "").replace("{plugin}", plugin or "") for w in scn.subject.argv]
     if scn.kind == "qa":
         return []
-    prompt = f"/{plugin_name(root)}:{scn.subject.skill} {scn.subject.prompt}".strip()
-    argv = [claude, "-p", prompt, "--plugin-dir", str(root), "--output-format", "json", "--max-turns", str(scn.subject.max_turns)]
+    prompt = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip()
+    argv = [claude, "-p", prompt, "--plugin-dir", str(plugin), "--output-format", "json", "--max-turns", str(scn.subject.max_turns)]
+    if target:
+        # The workspace is the subject's working directory; the target is outside it.
+        argv += ["--add-dir", target]
     if scn.subject.allowed_tools:
         argv += ["--allowedTools", ",".join(scn.subject.allowed_tools)]
     return argv
@@ -190,7 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
-    target = Path(args.target).resolve() if args.target else (Path(scn.subject.target).resolve() if scn.subject.target else None)
+    own_target = scn.resolve(scn.subject.target)
+    target = Path(args.target).resolve() if args.target else own_target
+    if target is not None and not target.is_dir():
+        print(f"the target {target} is not a folder", file=sys.stderr)
+        return 2
 
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scn.name}"
     run_dir = out / run_id
@@ -203,9 +234,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.runtime == "container":
         wanted = ["ANTHROPIC_API_KEY"] + [n for p in P.members(flags) for n in P.KEY_NAMES[p]]
         config.setdefault("keys", list(dict.fromkeys(n for n in wanted if os.environ.get(n))))
-    rt = RT.build(args.runtime, run_dir, target, config)
+    rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None)
+    try:
+        argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude)
+    except (S.ScenarioError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
 
-    argv_subject = subject_argv(scn, ROOT, args.claude)
+    # The evidence the judges get. The expected findings describe the
+    # scenario's own target; on any other target they would be wrong, so
+    # they are dropped and the run says so. The source goes either way.
+    source_text = E.source(target, scn.evidence.files) if target and scn.evidence.files else ""
+    expected_path = scn.resolve(scn.evidence.expected)
+    expected_note = None
+    if expected_path and target != own_target:
+        expected_note = f"expected findings dropped: they describe {own_target}, and the run is on {target}"
+        expected_path = None
+    expected_text = expected_path.read_text(encoding="utf-8") if expected_path else None
+    expected_data = S.parse_text(expected_text, expected_path.suffix) if expected_path else None
+    evidence_text = E.render(expected_text, source_text)
     resolved = {
         "run_id": run_id,
         "scenario": scn.as_dict(),
@@ -217,10 +264,18 @@ def main(argv: list[str] | None = None) -> int:
         "subject_argv": argv_subject,
         "guideline_sha": git_sha(ROOT),
         "target_sha": git_sha(target) if target else None,
+        "evidence": {
+            "files": list(scn.evidence.files),
+            "source_chars": len(source_text),
+            "expected": str(expected_path) if expected_path else None,
+            "note": expected_note,
+        },
         "started_at": R.now(),
     }
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     print(f"run folder: {run_dir}")
+    if expected_note:
+        print(expected_note)
 
     if args.dry_run:
         print(json.dumps(resolved, indent=2))
@@ -240,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
             return 4
 
     rt.prepare()
-    notes: list[str] = []
+    notes: list[str] = [expected_note] if expected_note else []
     screencast = None
     if args.screencast_port:
         from harness.capture import CdpScreencast
@@ -263,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             "model": scn.subject.model,
             "provider": scn.subject.provider,
             "target": str(target) if target else None,
+            "plugin": rt.plugin_path(),
             "max_turns": scn.subject.max_turns,
             "allowed_tools": list(scn.subject.allowed_tools),
         },
@@ -298,7 +354,10 @@ def main(argv: list[str] | None = None) -> int:
                 parts.append(f"### File: {file.name}\n\n{text}")
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
 
-            prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob)
+            prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
+            expected = E.named(expected_data, blob)
+            if expected is not None:
+                print(f"  repeat {index} names {len(expected['named'])} of {expected['expected']} planted findings")
             (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
             judgements = J.judge_all(flags, prompt, effort, matrix)
             for j in judgements:
@@ -316,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
                     exit_status=status.as_dict(),
                     artifact_paths=paths,
                     judgements=judgements,
+                    expected=expected,
                 )
             )
     finally:
