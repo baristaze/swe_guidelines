@@ -95,3 +95,35 @@ def test_an_unknown_runtime_name_is_refused(tmp_path):
 def test_passthrough_takes_only_what_it_is_asked_for():
     env = {"PATH": "/usr/bin", "SECRET": "s", "EMPTY": ""}
     assert RT.passthrough_env(["PATH", "EMPTY", "MISSING"], env) == {"PATH": "/usr/bin"}
+
+
+def test_each_runtime_names_the_plugin_and_the_target_as_the_subject_sees_them(tmp_path):
+    plugin, target = tmp_path / "plugin", tmp_path / "checkout"
+    plugin.mkdir()
+    target.mkdir()
+    host = RT.build("host", tmp_path, target, None, plugin=plugin)
+    assert (host.plugin_path(), host.target_path()) == (str(plugin.resolve()), str(target.resolve()))
+    box = RT.build("container", tmp_path, target, {"image": "img:1"}, plugin=plugin)
+    assert (box.plugin_path(), box.target_path()) == ("/plugin", "/target")
+    vm = RT.build("vm", tmp_path, target, {"exec_prefix": ["x"], "remote_plugin": "/opt/p", "remote_target": "/opt/t"}, plugin=plugin)
+    assert (vm.plugin_path(), vm.target_path()) == ("/opt/p", "/opt/t")
+    bare = RT.build("container", tmp_path)
+    assert (bare.plugin_path(), bare.target_path()) == (None, None)
+
+
+def test_the_container_mounts_the_plugin_checkout_it_names(tmp_path):
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    rt = RT.build("container", tmp_path, None, {"image": "img:1"}, plugin=plugin)
+    rt.prepare()
+    assert f"{plugin.resolve()}:/plugin:ro" in rt.command(["claude"], rt.workspace)
+
+
+def test_the_vm_refuses_a_plugin_or_a_target_it_was_not_told_where_to_find(tmp_path):
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    vm = RT.build("vm", tmp_path, tmp_path, {"exec_prefix": ["x"]}, plugin=plugin)
+    with pytest.raises(ValueError, match="remote_plugin"):
+        vm.plugin_path()
+    with pytest.raises(ValueError, match="remote_target"):
+        vm.target_path()

@@ -10,11 +10,16 @@ Isolation is a choice, and the choice is named:
 - `host` isolates by convention only. A private `HOME` and a private
   `TMPDIR` under the run folder keep a subject from writing into the
   operator's account by accident. Nothing stops a subject that means to.
-- `container` isolates with Docker: the target read-only, the workspace
-  read-write, the keys passed one by one.
+- `container` isolates with Docker: the plugin checkout and the target
+  read-only, the workspace read-write, the keys passed one by one.
 - `vm` runs the command on another machine through a configured prefix.
   The harness provisions nothing; it composes the prefix and the sync
   command, and the tests cover that composition with a fake prefix.
+
+A path on this machine means nothing inside a container or on another
+machine. So a runtime also answers where the plugin checkout and the
+target are as the subject sees them, and the subject is told those
+paths, never the ones on this machine.
 """
 
 from __future__ import annotations
@@ -32,6 +37,9 @@ from .capture import CliStream
 
 NAMES = ("host", "container", "vm")
 DEFAULT_IMAGE = "swe-guidelines-benchmark:latest"
+# Where the container mounts what it is given. Both are read-only.
+CONTAINER_PLUGIN = "/plugin"
+CONTAINER_TARGET = "/target"
 
 
 @dataclass(frozen=True)
@@ -63,6 +71,10 @@ class Runtime(Protocol):
 
     def prepare(self, workspace: Path) -> Path: ...
 
+    def plugin_path(self) -> str | None: ...
+
+    def target_path(self) -> str | None: ...
+
     def run(self, argv: list[str], cwd: Path, env: dict[str, str], streams: CliStream, timeout_s: int = 900) -> ExitStatus: ...
 
     def collect(self, globs: list[str]) -> list[Path]: ...
@@ -75,12 +87,23 @@ class BaseRuntime:
 
     name = "base"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None) -> None:
+    def __init__(
+        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
+    ) -> None:
         self.run_dir = Path(run_dir)
         self.target = Path(target).resolve() if target else None
+        self.plugin = Path(plugin).resolve() if plugin else None
         self.config = dict(config or {})
         self.workspace = self.run_dir / "workspace"
         self.prepared = False
+
+    def plugin_path(self) -> str | None:
+        """The plugin checkout as the subject sees it. On this machine, where it is."""
+        return str(self.plugin) if self.plugin else None
+
+    def target_path(self) -> str | None:
+        """The target as the subject sees it. On this machine, where it is."""
+        return str(self.target) if self.target else None
 
     def prepare(self, workspace: Path | None = None) -> Path:
         """Make the workspace the subject works in and return it."""
@@ -181,8 +204,10 @@ class ContainerRuntime(BaseRuntime):
 
     name = "container"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None) -> None:
-        super().__init__(run_dir, target, config)
+    def __init__(
+        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
+    ) -> None:
+        super().__init__(run_dir, target, config, plugin)
         self.image = self.config.get("image", DEFAULT_IMAGE)
         self.dockerfile = Path(self.config.get("dockerfile", Path(__file__).resolve().parent.parent / "runtime" / "Dockerfile"))
         self.docker = self.config.get("docker", "docker")
@@ -202,10 +227,18 @@ class ContainerRuntime(BaseRuntime):
                 streams.write("err", line)
         return ExitStatus(code=proc.returncode, duration_s=time.monotonic() - started)
 
+    def plugin_path(self) -> str | None:
+        return CONTAINER_PLUGIN if self.plugin else None
+
+    def target_path(self) -> str | None:
+        return CONTAINER_TARGET if self.target else None
+
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         out = [self.docker, "run", "--rm", "-v", f"{self.workspace}:/workspace:rw", "-w", "/workspace"]
+        if self.plugin:
+            out += ["-v", f"{self.plugin}:{CONTAINER_PLUGIN}:ro"]
         if self.target:
-            out += ["-v", f"{self.target}:/target:ro"]
+            out += ["-v", f"{self.target}:{CONTAINER_TARGET}:ro"]
         for key in self.keys:
             out += ["-e", key]
         out.append(self.image)
@@ -224,6 +257,8 @@ class VmConfig:
     sync: list[str] = field(default_factory=list)
     remote_workspace: str = "/tmp/benchmark-workspace"
     fetch: list[str] = field(default_factory=list)
+    remote_plugin: str | None = None
+    remote_target: str | None = None
 
 
 class VmRuntime(BaseRuntime):
@@ -233,20 +268,41 @@ class VmRuntime(BaseRuntime):
     `["limactl", "shell", "default", "--"]`. The sync command is
     configuration too; `{local}` and `{remote}` in any of its words are
     replaced with the two workspace paths. The harness provisions no
-    machine and starts none.
+    machine and starts none, and copies neither the plugin checkout nor
+    the target there: `remote_plugin` and `remote_target` say where the
+    operator put them, and a run that needs one and is not told is
+    refused before it starts.
     """
 
     name = "vm"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None) -> None:
-        super().__init__(run_dir, target, config)
+    def __init__(
+        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
+    ) -> None:
+        super().__init__(run_dir, target, config, plugin)
         raw = self.config
         self.vm = VmConfig(
             exec_prefix=list(raw.get("exec_prefix", [])),
             sync=list(raw.get("sync", [])),
             remote_workspace=str(raw.get("remote_workspace", "/tmp/benchmark-workspace")),
             fetch=list(raw.get("fetch", [])),
+            remote_plugin=raw.get("remote_plugin"),
+            remote_target=raw.get("remote_target"),
         )
+
+    def plugin_path(self) -> str | None:
+        if not self.plugin:
+            return None
+        if not self.vm.remote_plugin:
+            raise ValueError("the vm runtime needs remote_plugin in its runtime config to run a skill")
+        return str(self.vm.remote_plugin)
+
+    def target_path(self) -> str | None:
+        if not self.target:
+            return None
+        if not self.vm.remote_target:
+            raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
+        return str(self.vm.remote_target)
 
     def _fill(self, words: list[str]) -> list[str]:
         return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.vm.remote_workspace) for w in words]
@@ -276,14 +332,16 @@ class VmRuntime(BaseRuntime):
         return super().collect(globs)
 
 
-def build(name: str, run_dir: Path, target: Path | None = None, config: dict | None = None) -> BaseRuntime:
+def build(
+    name: str, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
+) -> BaseRuntime:
     """The runtime one of the three names asks for."""
     if name == "host":
-        return HostRuntime(run_dir, target, config)
+        return HostRuntime(run_dir, target, config, plugin)
     if name == "container":
-        return ContainerRuntime(run_dir, target, config)
+        return ContainerRuntime(run_dir, target, config, plugin)
     if name == "vm":
-        return VmRuntime(run_dir, target, config)
+        return VmRuntime(run_dir, target, config, plugin)
     raise ValueError(f"runtime {name!r} is not one of {', '.join(NAMES)}")
 
 

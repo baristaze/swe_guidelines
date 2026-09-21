@@ -6,9 +6,10 @@
 #
 # `benchmark/run.py --runtime container --build` runs that command for you.
 # The image carries the runtimes the guideline names as current, the uv
-# workspace tool, and the Claude Code command line, and nothing else: the
-# guideline checkout is mounted read-only at /target and the workspace
-# read-write at /workspace.
+# workspace tool, and the Claude Code command line, and nothing else. The
+# run mounts the plugin checkout read-only at /plugin, the target, when
+# there is one, read-only at /target, and the workspace read-write at
+# /workspace, and it hands the subject those paths, never the host's.
 FROM python:3.14-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
