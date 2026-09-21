@@ -88,8 +88,9 @@ the order the guideline presents them, never by number.
   and leaves a dumped value object a dict.
 - Every manager and service operation takes a context first: `ctx:
   OpContext` for a tenant operation, `rctx: RequestContext` for the
-  transitions that produce a stronger stage (sign-in, claim, sweep),
-  `ictx: IdentityContext` for the exchange and the operator admission,
+  transitions that produce a stronger stage (sign-up, sign-in, claim,
+  sweep), `ictx: IdentityContext` for the memberships read, the
+  exchange, and the operator admission,
   `OperatorContext` for an operation on the operator plane,
   a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
   `CredentialScope`) for a helper or an edge concern that needs less.

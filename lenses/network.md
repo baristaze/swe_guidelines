@@ -221,7 +221,8 @@ stored without the tenant and the principal in its scope; a
 `5xx` stored and replayed, so a transient failure is the answer for
 good and the client's only exit is a new key and a second row; a
 bespoke replay mechanism for one route that differs from the shared
-primitive. (What a create that issued a secret stores is NET-31.)
+primitive. (What a create that issued a secret stores is NET-31. A
+sign-up has no tenant or principal to hold a marker, and is NET-35.)
 
 **Severity.** high
 
@@ -268,7 +269,7 @@ defense.
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
-**Look for.** Where signup, invitation, role management, key rotation,
+**Look for.** Where sign-up, invitation, role management, key rotation,
 and session refresh are implemented (organizations, identities, users,
 memberships, teams, credentials, sessions, invitations); whether the
 gateway holds its own user or token tables; the hashing in the tenancy
@@ -829,3 +830,29 @@ context is rebuilt. (One key shared by processes that are all the
 platform's own is a decision the guideline makes, not a breach.)
 
 **Severity.** high
+
+## NET-35 Sign-up opens a deployed environment
+
+**Principle.** Sign-up takes no principal. It creates the identity,
+its first org, and the owner membership in one transaction, and
+answers as a sign-in does. It is rate-limited, takes no idempotency
+key, and refuses a held email as a conflict. It is open by default;
+one setting closes it to a not found. Email is not verified, by
+choice.
+
+**Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
+Domain Owns; The Business Layer, Operations Without a Principal.
+
+**Look for.** The sign-up route and the tenancy operation behind it:
+its transaction, its answer beside the sign-in's, its rate limit, and
+the setting that closes it. How a person enters a deployed
+environment, which carries no seed.
+
+**Violation.** Sign-up writes spread over several transactions, so a
+failure leaves an identity with no org or an org with no owner; an
+answer without the memberships, so the client needs a second path into
+the exchange; no rate limit; a held email answered with anything but a
+conflict; a deployed environment no person can enter; a closed sign-up
+that answers differently from a missing route.
+
+**Severity.** medium

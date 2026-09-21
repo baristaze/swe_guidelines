@@ -11,8 +11,8 @@ Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls, Realtime at the
 Edge), Apps (Apps Are Dumb, Push-First Apps), Client App
 Architecture (Stack; State and Data; Views, View-Models, Models; API
-Access; Realtime: One Channel per App; The Operator Console; The CLI
-Is Different), Deployment (Cloud: AWS), Monorepo Folder Structure
+Access; One Tenant at a Time; Realtime: One Channel per App; The
+Operator Console; The CLI Is Different), Deployment (Cloud: AWS), Monorepo Folder Structure
 (Layout Conventions).
 
 ## Input
@@ -56,10 +56,11 @@ Browser app (`portal` or `admin`), under `apps/<app-name>/`:
 | `src/config.ts`                                          | loads `/config.json` once before the first render (API origin, request timeout, error-tracking DSN, environment name) and exposes it typed; no `import.meta.env` value that differs between environments |
 | `src/main.tsx`, `src/app/App.tsx`, `src/app/routes.tsx`  | the shell and the routes; `main.tsx` awaits the config, then initializes the Sentry SDK only when the DSN is set, reporting from the React root's error callbacks and from each route's error element |
 | `src/app/RequireAuth.tsx` (portal) or `src/app/RequireAdmin.tsx` (admin) | the sign-in gate; the console renders the API's own refusal |
-| `src/features/sign_in/` (portal)                         | the sign-in screen the gate renders: login, org choice, exchange for a tenant session, in the same split as every screen |
+| `src/features/sign_in/` (portal)                         | the sign-in screen the gate renders, in the same split as every screen: login (`POST /v1/auth/login`) and sign-up (`POST /v1/auth/signup`, the same answer), then the membership choice from the answer's `memberships` (one goes straight in, several show the picker before the first screen, none show a plain message), then the exchange for a tenant session (`POST /v1/auth/exchange` with the `org_id`), after which the login credential is dropped and only the session is held |
+| `src/features/org_chip/` (portal)                        | the org chip in the app's chrome, in the same split: the current org's name; with more than one membership it opens the list (`GET /v1/auth/memberships`) and switches by a second exchange presenting the current session, then, before the new session is used, clears the query cache and every tenant store entry and reopens the realtime socket |
 | `src/design/tokens.ts` and `src/design/kit/` (first browser app only) | design tokens and a minimal component kit; the second app imports the first app's |
 | `src/queries/keys.ts`, `src/queries/<domain>.ts`         | the query-key factory (entity name first in every key, so the envelope router invalidates by name) and one TanStack Query hooks module per domain |
-| `src/store/<domain>.ts`                                  | one Zustand store per client-state domain; the session and the connection state are two; the session store holds the bearer in memory and mirrors it to `sessionStorage`, so a reload survives and a closed tab forgets, and never touches `localStorage` |
+| `src/store/<domain>.ts`                                  | one Zustand store per client-state domain; the session and the connection state are two; the session store holds the bearer in memory and mirrors it to `sessionStorage`, so a reload survives and a closed tab forgets, and never touches `localStorage`; it holds one bearer and the current org, never two sessions |
 | `src/realtime/RealtimeProvider.tsx`, `envelopes.ts`, `router.ts`, `timeouts.ts` (portal only) | the one socket, the discriminated union on `type` (mirroring the service's `envelopes.py`), the router into the query cache, the last contiguous `seq` as the cursor (a gap is a replay from it, never a skip) and the replay from `GET /v1/events?after_seq=` on reconnect or on a gap, the ping interval read from the shared timeouts file |
 | `src/features/<screen>/<Screen>Page.tsx`, `use<Screen>Vm.ts`, `<screen>Model.ts`, `<screen>Model.test.ts` | one screen per entity the API hosts, plus the home screen, each in the view, view-model, model split |
 | `README.md`                                              | the app's conventions in one page                                         |
@@ -108,23 +109,34 @@ CLI, under `apps/<app-name>/`:
 2. Portal: every realtime envelope routes into the query cache, never
    into components; the provider owns reconnection with backoff and the
    degraded polling mode with its banner.
-3. Console: no socket, no tenant context, the portal's sign-in flow,
-   the operator gate rendered from the API's own refusal.
-4. CLI: every call goes through `<root>-client`; creating calls send
+3. Portal: the app works in one tenant at a time, as Client App
+   Architecture (One Tenant at a Time) states. No screen past the gate
+   renders before a membership is chosen and exchanged. A switch is a
+   second exchange that ends the presented session; the new session
+   replaces the old in the session store, the query cache and every
+   tenant store are cleared, and the socket reopens under the new
+   session before the first request of the new tenant.
+4. Console: no socket, no tenant context, no membership picker and no
+   org chip; the portal's sign-in form without its exchange, since the
+   operator plane admits only the login credential; the operator gate
+   rendered from the API's own refusal.
+5. CLI: every call goes through `<root>-client`; creating calls send
    `Idempotency-Key`; followed operations poll at a fixed cadence and
    exit non-zero on failure; the settings are read once at the start
    of `main` and reach the client through its constructor, as
    Cross-Cutting Conventions (Configuration) states for every process.
-5. Browser app: the app is not done until every Terraform environment
+   Its API key is scoped to one membership, so it takes no org choice
+   and holds one credential.
+6. Browser app: the app is not done until every Terraform environment
    declares its bucket, distribution, subdomain, and the
    `Content-Security-Policy` beside the distribution, the API allows
    its origin, and the deploy workflow ships its bundle, built once and
    promoted; a browser app with no cloud deployment is incomplete.
-6. Browser app: add the package to the pnpm workspace and run
+7. Browser app: add the package to the pnpm workspace and run
    `pnpm install`, then `make openapi`, so `openapi.json` and the
    generated `schema.d.ts` exist before the first screen is written.
    CLI: add the member to the uv workspace and run `uv sync`.
-7. Browser app: run `make check`, which the Makefile row made cover
+8. Browser app: run `make check`, which the Makefile row made cover
    the app's lint, typecheck, and tests.
 
 ## Output

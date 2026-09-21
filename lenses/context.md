@@ -129,14 +129,15 @@ that asks it, as the claim of a worker does.
 **Source.** OpContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
 
-**Look for.** Where the request stage is built (the gateway
-dependency, the worker loop, the bootstrap command); the transitions on
-the tenancy manager (a sign-in into the identity stage, a credential
-into `OpContext`, the operator admission into `OperatorContext`, and
-one service context per live tenant for a sweep), what each takes (the
-stage below and the evidence) and returns (the stage above, or a
-refusal); the operations that ask a transition, the worker's claim
-among them; every other place a stage object is constructed.
+**Look for.** Where the request stage is built (the gateway dependency,
+the worker loop, the bootstrap command); the transitions on the tenancy
+manager (a sign-in or a live session into the identity stage, a
+credential into `OpContext`, the operator admission into
+`OperatorContext`, and one service context per live tenant for a sweep),
+what each takes (the stage below and the evidence) and returns (the
+stage above, or a refusal); the operations that ask a transition, the
+worker's claim among them; every other place a stage object is
+constructed.
 
 **Violation.** A manager, storage impl, or test helper used in
 production code that builds a stage; a router that assembles a context
@@ -382,10 +383,10 @@ base of every payload; the rest is judged.
 ## CTX-16 Principal-less operations take the request stage and return a stage
 
 **Principle.** The operations that exist before a principal does (a
-sign-in, a claim, a sweep, a webhook token) take the request stage and
-produce the stage the work runs under; a test names each. The outbox
-relay and its two handoffs, the event append and the work enqueue,
-take `(org_id, row)` instead: the row carries tenant, actor, and
+sign-up, a sign-in, a claim, a sweep, a webhook token) take the request
+stage and produce the stage the work runs under; a test names each.
+The outbox relay and its two handoffs, the event append and the work
+enqueue, take `(org_id, row)` instead: the row carries tenant, actor,
 request id.
 
 **Source.** The Business Layer, Operations Without a Principal; OpContext,
@@ -398,7 +399,8 @@ them as transitions; the test that enumerates them; any method with no
 context at all, and whether the relay runs again from the sweep.
 
 **Violation.** A request-stage method that performs tenant work
-directly instead of returning a stage; a request-stage method the
+directly instead of returning a stage (a sign-up creating the tenant it
+answers with acts inside no tenant); a request-stage method the
 enumerating test does not name; a method with no context that performs
 a tenant operation, where bookkeeping with no principal (the relay and
 its two handoffs, the expiry of a lease) is declared as such on its
@@ -442,16 +444,20 @@ read per member instead of one per page of tenants.
 prefix decides which gateway dependency accepts it. An agent's
 key is membership-scoped, expiring, and role-capped; a person's login
 credential carries no tenant and is exchanged for a tenant-scoped
-session token.
+session token. A live session also proves its identity, and an
+exchange presented with one ends it in the same write.
 
-**Source.** The Network Layer, The Gateway.
+**Source.** The Network Layer, The Gateway; OpContext, Stages.
 
 **Look for.** Credential formats, the dependencies that parse them,
-which routes accept which kind.
+which routes accept which kind; what the identity dependency accepts,
+and what the exchange does with a session it is handed.
 
 **Violation.** One dependency that accepts any bearer on any route; a
 login credential usable directly on tenant routes; a key that never
-expires or that carries a tenant it was not scoped to.
+expires or that carries a tenant it was not scoped to; a revoked or
+expired session accepted into the identity stage; an exchange that
+leaves the presented session live, so one tab holds two.
 
 **Severity.** high
 
@@ -499,8 +505,8 @@ flag (operator screens in the portal's bundle are DEL-16); an
 `OperatorContext` with a tenant field; an operator write that a
 read-only allowlist entry reaches; a manager method that accepts either
 context type; an operator route that reaches a tenant manager; an API
-key or an invitation-minted session admitted to the operator plane,
-since the identity stage admits only the person's own sign-in.
+key or a session admitted to the operator plane, since the operator
+gate admits only the person's own sign-in.
 
 **Severity.** high
 
