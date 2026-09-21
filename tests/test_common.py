@@ -63,6 +63,10 @@ GITHUB_SLUGGER = [
     ("`snake_case` heading", "snake_case-heading"),
     # inline code and emphasis keep their text
     ("`OpContext` and *friends*", "opcontext-and-friends"),
+    ("the _emph_ word", "the-emph-word"),
+    ("**Bold** and __strong__", "bold-and-strong"),
+    ("Glob `*`", "glob-"),
+    ("a_b_c stays", "a_b_c-stays"),
     # punctuation drops out
     ("What's new?", "whats-new"),
     ("Tables (and more)", "tables-and-more"),
@@ -98,6 +102,7 @@ def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
         ".pytest_cache/README.md",
         ".venv/lib/README.md",
         ".git/x.md",
+        ".claude/worktrees/agent-1/architecture.md",
         "benchmark/runs/one/report.md",
         "benchmark/README.md",
         "docs/notes.txt",
@@ -106,7 +111,7 @@ def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
     found = {p.relative_to(repo.root).as_posix() for p in markdown_files(repo.root)}
     assert "docs/sub/deep/x.md" in found
     assert "benchmark/README.md" in found
-    assert not {f for f in found if f.split("/")[0] in {"node_modules", ".pytest_cache", ".venv", ".git"}}
+    assert not {f for f in found if f.split("/")[0] in {"node_modules", ".pytest_cache", ".venv", ".git", ".claude"}}
     assert "docs/node_modules/pkg/README.md" not in found
     assert "benchmark/runs/one/report.md" not in found
     assert "docs/notes.txt" not in found

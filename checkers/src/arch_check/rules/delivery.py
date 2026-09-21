@@ -221,12 +221,30 @@ def stage_user(stages: list[list[Instruction]], index: int, listed: list[str]) -
     users = [s for s in steps if s.keyword == "USER"]
     if users:
         return users[-1], False, base
-    aliases = {stage_alias(stages[i][0].args): i for i in range(index)}
-    earlier = aliases.get(base.lower())
+    earlier = earlier_stage(stages, index)
     if earlier is not None:
         return stage_user(stages, earlier, listed)
     nonroot = bool(UNPRIVILEGED.search(base)) or base.split("@")[0] in listed or base.split(":")[0] in listed
     return None, nonroot, base
+
+
+def earlier_stage(stages: list[list[Instruction]], index: int) -> int | None:
+    """The index of the earlier stage a stage is built `FROM`, or None when its base is an image."""
+    aliases = {stage_alias(stages[i][0].args): i for i in range(index)}
+    return aliases.get(image_of(stages[index][0].args).lower())
+
+
+def stage_healthcheck(stages: list[list[Instruction]], index: int) -> Instruction | None:
+    """The last `HEALTHCHECK` of a stage, following `FROM <earlier stage>` there as `stage_user` does."""
+    checks = [s for s in stages[index] if s.keyword == "HEALTHCHECK"]
+    if checks:
+        return checks[-1]
+    earlier = earlier_stage(stages, index)
+    return stage_healthcheck(stages, earlier) if earlier is not None else None
+
+
+LOCKED_FLAG = re.compile(r"(?<![\w-])--(frozen|locked)(?![\w-])")
+"""`--frozen` or `--locked` as a flag of its own, never the head of `--frozen-lockfile`."""
 
 
 @rule(
@@ -243,9 +261,11 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
     its final stage runs as a `USER` that is not `root` or `0`, set in
     that stage or in the earlier stage it is built `FROM`, unless its
     base image is non-root by name (`-unprivileged`, `nonroot`) or
-    listed; it declares a `HEALTHCHECK`; and every `uv sync` passes
+    listed; its final stage declares a `HEALTHCHECK`, in that stage or
+    in the earlier stage it is built `FROM`; and every `uv sync` passes
     `--frozen` or `--locked`, or runs after `UV_FROZEN` or `UV_LOCKED`
-    is set, and every `pnpm install` passes `--frozen-lockfile`. A
+    is set in its stage or the earlier stage it is built `FROM`, and
+    every `pnpm install` passes `--frozen-lockfile`. A
     `*.dockerignore` file is not a Dockerfile. What the healthcheck
     probes and the shared entrypoint are judged.
 
@@ -274,20 +294,27 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
                 yield Violation(rel, user.line, 1, "the final stage runs as root; the process runs non-root")
             elif user is None and not nonroot_base:
                 yield Violation(rel, froms[-1].line, 1, f"the final stage on {base} sets no USER; the process runs non-root")
-        checks = [s for s in steps if s.keyword == "HEALTHCHECK"]
-        if not checks or checks[-1].args.strip().upper() == "NONE":
-            yield Violation(rel, 1, 1, "no HEALTHCHECK; an image declares one against /healthz")
-        locked_env = False
-        for s in steps:
-            if s.keyword in {"ENV", "ARG"} and LOCKED_ENV.search(s.args):
-                locked_env = True
-            if s.keyword != "RUN":
-                continue
-            locked = locked_env or bool(re.search(r"--(frozen|locked)\b", s.args)) or bool(LOCKED_ENV.search(s.args))
-            if re.search(r"\buv\s+sync\b", s.args) and not locked:
-                yield Violation(rel, s.line, 1, "`uv sync` without --frozen or --locked; an image installs from the lock")
-            if re.search(r"\bpnpm\s+(install|i)\b", s.args) and "--frozen-lockfile" not in s.args:
-                yield Violation(rel, s.line, 1, "`pnpm install` without --frozen-lockfile; an image installs from the lock")
+            check = stage_healthcheck(stages, len(stages) - 1)
+        else:
+            stages, check = [], None
+        if check is None or check.args.strip().upper() == "NONE":
+            yield Violation(rel, 1, 1, "no HEALTHCHECK in the final stage; an image declares one against /healthz")
+        # an `ENV UV_FROZEN=1` holds in its stage and in every stage built `FROM` it, never in a stage on an image
+        locked_at_end: list[bool] = []
+        for index, stage in enumerate(stages):
+            earlier = earlier_stage(stages, index)
+            locked_env = locked_at_end[earlier] if earlier is not None else False
+            for s in stage:
+                if s.keyword in {"ENV", "ARG"} and LOCKED_ENV.search(s.args):
+                    locked_env = True
+                if s.keyword != "RUN":
+                    continue
+                locked = locked_env or bool(LOCKED_FLAG.search(s.args)) or bool(LOCKED_ENV.search(s.args))
+                if re.search(r"\buv\s+sync\b", s.args) and not locked:
+                    yield Violation(rel, s.line, 1, "`uv sync` without --frozen or --locked; an image installs from the lock")
+                if re.search(r"\bpnpm\s+(install|i)\b", s.args) and "--frozen-lockfile" not in s.args:
+                    yield Violation(rel, s.line, 1, "`pnpm install` without --frozen-lockfile; an image installs from the lock")
+            locked_at_end.append(locked_env)
 
 
 # --- DEL-11

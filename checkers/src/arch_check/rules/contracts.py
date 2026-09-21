@@ -12,6 +12,7 @@ direction (CON-10, CON-12) lives in `imports.py`.
 from __future__ import annotations
 
 import ast
+import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
@@ -299,19 +300,25 @@ def dependencies_are_injected(project: Project) -> Iterator[Violation]:
 # --- CON-07
 
 LOOSE_TUNABLES = frozenset({"int", "float", "timedelta", "Decimal"})
+MANAGER_IMPL = re.compile(r"Manager\w*Impl$")
 
 
 @rule(
     "CON-07",
     coverage="partial",
-    summary="No *ManagerImpl constructor takes a loose number or duration.",
+    summary="No manager impl constructor takes a loose number or duration.",
 )
 def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
-    """No parameter of a `*ManagerImpl` constructor is annotated `int`,
+    """No parameter of a manager impl's constructor is annotated `int`,
     `float`, `timedelta`, or `Decimal`: tunables arrive as one options
-    object. Whether a module constant differs between deployments, and
-    whether the options object is frozen, is judged."""
-    for file, cls in classes_named(project, "ManagerImpl"):
+    object. A manager impl is a class named `<Ns>Manager<Tech>Impl`
+    (`OrderManagerImpl`, `PaymentManagerStripeImpl`) or one that
+    subclasses a `*ManagerInterface`. Whether a module constant differs
+    between deployments, and whether the options object is frozen, is
+    judged."""
+    for file, cls in classes_named(project, ""):
+        if not (MANAGER_IMPL.search(cls.name) or any(b.endswith("ManagerInterface") for b in base_names(cls))):
+            continue
         init = init_of(cls)
         for arg in arguments(init) if init else []:
             # the annotation itself or a member of its union: `ids: list[int]` is a list, not a tunable
@@ -755,11 +762,21 @@ def breakers_are_infrastructure(project: Project) -> Iterator[Violation]:
     `threshold`, `bound`, `failure`, `cooldown`, `cool_down`, or
     `reset`), so both come from settings. A positional argument, the
     one probe a half-open breaker lets through, and a `*Error` or
-    `*Open` raised while open are not judged here. What a breaker
-    answers while open is judged."""
+    `*Open` raised while open are not judged here. Nor is the settings
+    model's own default (`BreakerSettings(failure_threshold=5)`, or a
+    call in a field of a class named `*Settings`): that is where the
+    bound comes from. What a breaker answers while open is judged."""
     om = project.sub("om")
     for file, tree in project.trees():
         in_om = is_under(file.module, om)
+        defaults = {
+            id(n)
+            for cls in classes(tree)
+            if cls.name.endswith("Settings") or "BaseSettings" in {last(b) for b in base_names(cls)}
+            for stmt in cls.body
+            if isinstance(stmt, ast.AnnAssign | ast.Assign) and stmt.value is not None
+            for n in ast.walk(stmt.value)
+        }
         if in_om:
             for imp in project.imports(file):
                 if any("breaker" in part.lower() for t in imp.targets() for part in t.split(".")):
@@ -771,7 +788,7 @@ def breakers_are_infrastructure(project: Project) -> Iterator[Violation]:
             if in_om:
                 yield Violation.at(file.rel, call, f"{file.module} builds {name}; a manager never holds a breaker")
                 continue
-            if name.endswith(("Error", "Open")):
+            if name.endswith(("Error", "Open", "Settings")) or id(call) in defaults:
                 continue
             if any(
                 is_bound_keyword(k.arg)

@@ -90,8 +90,9 @@ the root. `**` spans directories; `*` stays inside one.
 
 A rule that needs the project's own names reads them as options, one
 table per rule id. Each rule documents its keys and defaults them to
-the names the guideline uses. A key the rule does not read, or a value
-of the wrong type, exits 2, whether or not the rule runs:
+the names the guideline uses. A key the rule does not read exits 2,
+whether or not the rule runs. A value of the wrong type exits 2 when
+the rule runs:
 
 ```toml
 [tool.arch-check.options.CTX-26]
@@ -146,19 +147,22 @@ every module there; there is nothing else to wire.
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, base_names, classes
+from arch_check.project import Project, base_names, classes, last
 from arch_check.registry import rule
 
+LIFECYCLE = {"Trackable", "SoftDeletable"}
 
-@rule("OM-05", coverage="partial", summary="No entity class subclasses a table class.")
-def entities_are_not_tables(project: Project) -> Iterator[Violation]:
+
+@rule("OM-06", coverage="partial", summary="No event or audit entry composes Trackable or SoftDeletable.")
+def append_only_records_carry_identity(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(project.sub("om")):
         for cls in classes(tree):
-            if any(b.endswith("Table") for b in base_names(cls)):
-                yield Violation.at(file.rel, cls, f"{cls.name} subclasses a table class")
+            if cls.name.endswith(("Event", "AuditEntry")) and LIFECYCLE & {last(b) for b in base_names(cls)}:
+                yield Violation.at(file.rel, cls, f"{cls.name} composes a lifecycle mixin; it is Identifiable only")
 ```
 
-The registration refuses an id no lens has. Group and severity come
+The registration refuses an id no lens has, and an id a shipped
+rule already decides. Group and severity come
 from the lens. A rule that reads options names their keys in the
 registration, `@rule("STO-05", options=("sql_dir",), ...)`, and reads
 each with `project.option`; a key the registration does not name

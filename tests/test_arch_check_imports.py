@@ -26,6 +26,8 @@ def test_the_base_tree_is_clean(tmp_path):
             "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import acme.services\n",
         ),
         ("infra/src/acme/infra/cache/__init__.py", "from acme.workers import maintenance\n"),
+        ("om/src/acme/om/tasks/impl/manager.py", "from acme.gateway.auth import principal\n"),
+        ("infra/src/acme/infra/cache/__init__.py", "import acme.gateway\n"),
     ],
 )
 def test_om_or_infra_importing_a_service_or_a_worker_is_con_12(tmp_path, rel, source):
@@ -33,7 +35,7 @@ def test_om_or_infra_importing_a_service_or_a_worker_is_con_12(tmp_path, rel, so
     code, report = check_json(tmp_path, "--rule", "CON-12")
     assert code == 1
     assert [(r, p) for r, p, _ in rules_found(report)] == [("CON-12", rel)]
-    assert "a lower layer never imports a service or a worker" in report["findings"][0]["message"]
+    assert "a lower layer never imports a service, the gateway, or a worker" in report["findings"][0]["message"]
 
 
 def test_a_relative_import_is_resolved_before_it_is_judged(tmp_path):

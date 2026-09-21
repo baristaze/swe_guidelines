@@ -40,25 +40,34 @@ of a changed signature.
 3. Run the checker that shipped with this lens file, from the root of
    the repository under review:
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --group {group} --format json`.
-   Exit 0 means no findings and exit 1 means findings; both are a
-   run. Its findings on files outside the scope are dropped, and so is
-   anything under `exceptions_applied`: a deviation the project
-   recorded with an ADR, which is not a finding. The output's
-   `rules_run` says which lenses it covered, the rules this guideline
-   ships and the project's own alike, each with a coverage and a
-   summary. A lens covered `full` is decided here: each of its
-   findings in scope is a finding, with the checker's file and line,
-   and no finding is a pass whose evidence is the checker, which read
-   every file. A lens covered `partial` is decided in step 4, and the
-   rule's summary says which part the checker holds: a checker finding
-   in scope makes the lens a finding whatever the rest shows, and no
-   checker finding leaves the rest to judge; the lens passes only when
-   that rest passes too. A lens absent from `rules_run` is judged whole
-   in step 4. When the checker cannot run (a Python older than 3.11,
-   exit code 2, a project pinned to a newer Python than `python3`),
-   say so in the report's Scope line and judge every lens in step 4,
-   the ones it would have decided included. The review is the
-   checker's fallback.
+   Then read its output:
+   - Exit 0 means no findings and exit 1 means findings. Both are a
+     run.
+   - Drop its findings on files outside the scope. Drop anything under
+     `exceptions_applied`: a deviation the project recorded with an
+     ADR, which is not a finding.
+   - A finding whose `group` is `framework` is about the checker's own
+     input: `PARSE`, a file no rule could read, or `IGNORE`, an inline
+     ignore that does not resolve. One in scope is a finding under its
+     own id, at `high`. No lens passes on the checker's evidence for a
+     file that does not parse.
+   - `rules_run` says which lenses it covered, the rules this guideline
+     ships and the project's own alike, each with a coverage and a
+     summary.
+   - A lens covered `full` is decided here. Each of its findings in
+     scope is a finding, with the checker's file and line. No finding
+     is a pass whose evidence is the checker, which read every file.
+   - A lens covered `partial` is decided in step 4, and the rule's
+     summary says which part the checker holds. A checker finding in
+     scope makes the lens a finding whatever the rest shows. With no
+     checker finding, the rest is judged, and the lens passes only
+     when that rest passes too.
+   - A lens absent from `rules_run` is judged whole in step 4.
+   - When the checker cannot run (a Python older than 3.11, exit code
+     2, a project pinned to a newer Python than `python3`), say so in
+     the report's Scope line and judge every lens in step 4, the ones
+     it would have decided included. The review is the checker's
+     fallback.
 4. For every lens the checker did not decide, in id order, decide one
    of: **finding** (evidence of a breach, with a file and line),
    **pass** (the lens applies and the code satisfies it), **not

@@ -40,7 +40,10 @@ def test_net_06_a_router_that_reads_a_header_fails(tmp_path, source):
 
 
 def test_net_06_the_gateway_may_read_headers(tmp_path):
-    code, _, _ = found(tmp_path, "NET-06", {f"{SVC}/gateway/auth.py": "def f(r):\n    return r.headers['authorization']\n"})
+    source = "from fastapi import Request\n\n\ndef f(request: Request):\n    return request.headers['authorization']\n"
+    code, where, _ = found(tmp_path / "impl", "NET-06", {f"{SVC}/impl/auth.py": source})
+    assert (code, where) == (1, [("NET-06", f"{SVC}/impl/auth.py", 5)])
+    code, _, _ = found(tmp_path / "gateway", "NET-06", {f"{SVC}/gateway/auth.py": source})
     assert code == 0
 
 

@@ -48,9 +48,16 @@ SCENARIOS = BENCHMARK / "scenarios"
 SCHEMA = BENCHMARK / "schema" / "result.schema.json"
 MODELS = BENCHMARK / "models.yaml"
 DEFAULT_OUT = BENCHMARK / "runs"
-# What a subject inherits beyond its private HOME and TMPDIR. A key is on
-# this list because the subject needs it, not because it happened to be set.
-PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+# What a subject inherits beyond its private HOME and TMPDIR and its keys.
+PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
+# The keys a subject that runs a command is handed: `claude -p` needs the
+# Anthropic key and nothing else. The judges' keys stay in this process.
+SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
+
+
+def subject_keys(scn: S.Scenario) -> list[str]:
+    """The key names the subject's command needs. A `qa` subject runs no command."""
+    return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
 
 
 def git_sha(path: Path) -> str:
@@ -181,6 +188,27 @@ def run_subject_qa(scn: S.Scenario, streams: CliStream, env: dict[str, str]) -> 
     return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text
 
 
+def collect_files(rt: RT.BaseRuntime, globs: list[str], art_dir: Path, index: int) -> tuple[list[str], list[str]]:
+    """Copy the collected files of one repeat and return their paths and their text.
+
+    A file keeps its path inside the workspace, under `workspace/` in the
+    repeat's artifact folder: two files of the same name in two folders
+    stay two files, and none of them overwrites the harness's own
+    `answer.md` or `judge-prompt.md`.
+    """
+    paths: list[str] = []
+    parts: list[str] = []
+    for file in rt.collect(globs) if globs else []:
+        rel = file.relative_to(rt.workspace).as_posix()
+        text = file.read_text(encoding="utf-8", errors="replace")
+        copy = art_dir / "workspace" / rel
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_text(text, encoding="utf-8")
+        paths.append(f"artifacts/{index}/workspace/{rel}")
+        parts.append(f"### File: {rel}\n\n{text}")
+    return paths, parts
+
+
 def describe_subject(scn: S.Scenario, argv: list[str]) -> str:
     """The sentence the judge reads about what made the artifact."""
     if scn.kind == "skill":
@@ -236,7 +264,7 @@ def command_list(out: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    out = Path(args.out)
+    out = Path(args.out).resolve()
     if args.command == "list":
         return command_list(out)
     if not args.scenario:
@@ -268,8 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
     if args.runtime == "container":
-        wanted = ["ANTHROPIC_API_KEY"] + [n for p in P.members(flags) for n in P.KEY_NAMES[p]]
-        config.setdefault("keys", list(dict.fromkeys(n for n in wanted if os.environ.get(n))))
+        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(n)])
     rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None)
     try:
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude)
@@ -333,7 +360,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"the image build failed with {status.code}; see streams/build.jsonl", file=sys.stderr)
             return 4
 
-    rt.prepare()
     notes: list[str] = [expected_note] if expected_note else []
     screencast = None
     if args.screencast_port:
@@ -363,12 +389,13 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
 
-    env = RT.passthrough_env(PASSTHROUGH)
+    env = RT.passthrough_env(PASSTHROUGH + subject_keys(scn))
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
     try:
         for index in range(max(1, args.repeat)):
             mark = streams.count
             streams.note(f"[repeat {index}] start")
+            rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
             if scn.kind == "qa":
                 status, artifact = run_subject_qa(scn, streams, dict(os.environ))
             else:
@@ -383,14 +410,10 @@ def main(argv: list[str] | None = None) -> int:
             if scn.artifact.stdout:
                 (art_dir / "answer.md").write_text(artifact + "\n", encoding="utf-8")
                 paths.append(f"artifacts/{index}/answer.md")
-            collected = rt.collect(scn.artifact.files) if scn.artifact.files else []
             parts = [artifact] if scn.artifact.stdout else []
-            for file in collected:
-                text = file.read_text(encoding="utf-8", errors="replace")
-                copy = art_dir / file.name
-                copy.write_text(text, encoding="utf-8")
-                paths.append(f"artifacts/{index}/{file.name}")
-                parts.append(f"### File: {file.name}\n\n{text}")
+            file_paths, file_parts = collect_files(rt, scn.artifact.files, art_dir, index)
+            paths += file_paths
+            parts += file_parts
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
 
             prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)

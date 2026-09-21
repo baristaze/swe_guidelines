@@ -325,6 +325,19 @@ def storage_interfaces(project: Project) -> Iterator[tuple[SourceFile, ast.Class
                 yield file, cls
 
 
+def storage_root(project: Project) -> tuple[SourceFile, ast.ClassDef] | None:
+    """The class `StorageInterface` under `<pkg>.om.storage`: in `root.py`, in the package's `__init__.py`, or in
+    any module below it, the conventional `root.py` first."""
+    base = f"{project.sub('om')}.storage"
+    files = sorted(project.modules_under(base), key=lambda f: f.module != f"{base}.root")
+    for file in files:
+        tree = project.tree(file)
+        found = next((c for c in classes(tree) if c.name == "StorageInterface"), None) if tree else None
+        if found is not None:
+            return file, found
+    return None
+
+
 def public_methods(cls: ast.ClassDef) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     return [m for m in methods(cls) if not m.name.startswith("_")]
 
@@ -569,4 +582,240 @@ def up_chain(project: Project, sql_dir: str) -> dict[str, list[SqlFile]]:
     for f in files:
         if f.direction == "up":
             out.setdefault(f.role, []).append(f)
+    return out
+
+
+# --- the tables a chain leaves: columns, keys, and unique indexes
+
+CREATE_TABLE = re.compile(
+    r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?(?:(?:TEMP|TEMPORARY|UNLOGGED)\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(?P<table>" + NAME + r")\s*\(",
+    re.IGNORECASE,
+)
+ALTER_TABLE_ANY = re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?P<table>" + NAME + ")", re.IGNORECASE)
+CREATE_INDEX = re.compile(
+    r"\bCREATE\s+(?P<unique>UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(?:(?P<name>" + NAME + r")\s+)?ON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")",
+    re.IGNORECASE,
+)
+DROP_INDEX = re.compile(r"\bDROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
+DROP_TABLES = re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
+SERIAL = frozenset({"serial", "bigserial", "smallserial", "serial2", "serial4", "serial8"})
+IDENTITY = re.compile(r"\bGENERATED\b[^,]*?\bAS\s+IDENTITY\b", re.IGNORECASE)
+LIVING = re.compile(r"\bdeleted_at\s+IS\s+NULL\b", re.IGNORECASE)
+TABLE_CONSTRAINT = re.compile(r"(?:PRIMARY\s+KEY|UNIQUE|CHECK|FOREIGN\s+KEY|EXCLUDE)\b", re.IGNORECASE)
+
+
+@dataclass
+class Where:
+    """Where a migration declared something: the file, the line, and what it declared."""
+
+    rel: str
+    line: int
+    what: str
+
+
+@dataclass
+class SqlColumn:
+    default: Where | None = None
+    """A database default, a serial type included, that the chain leaves on the column."""
+    identity: Where | None = None
+
+
+@dataclass
+class UniqueKey:
+    name: str
+    at: Where
+    living: bool
+    """Whether it is partial on `deleted_at IS NULL`."""
+
+
+@dataclass
+class SqlTable:
+    columns: dict[str, SqlColumn] = field(default_factory=dict)
+    primary: tuple[str, set[str]] | None = None
+    """The primary key's constraint name and its columns."""
+    uniques: dict[str, UniqueKey] = field(default_factory=dict)
+    """Each unique constraint and unique index, by name."""
+
+
+def closing_paren(code: str, start: int) -> int:
+    """The offset of the `)` that closes the `(` at `start`, or the end of the code."""
+    depth = 0
+    for i in range(start, len(code)):
+        if code[i] == "(":
+            depth += 1
+        elif code[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(code)
+
+
+def split_items(code: str, start: int, end: int) -> list[tuple[int, str]]:
+    """The comma-separated items of `code[start:end]` at paren depth zero, each with its offset, stripped."""
+    items: list[tuple[int, str]] = []
+    depth, begin = 0, start
+    for i in range(start, end + 1):
+        c = code[i] if i < end else ","
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "," and depth == 0:
+            text = code[begin:i]
+            stripped = text.lstrip()
+            if stripped.strip():
+                items.append((begin + len(text) - len(stripped), stripped.rstrip()))
+            begin = i + 1
+    return items
+
+
+def paren_names(text: str) -> list[str]:
+    """The names inside the first `(...)` of `text`: `PRIMARY KEY (org_id, id)` gives `org_id`, `id`."""
+    m = re.search(r"\(([^)]*)\)", text)
+    return [ident(n) for n in name_list(m.group(1))] if m else []
+
+
+class SqlTables:
+    """The tables a role's chain leaves: each column's default and identity, the primary key, and every unique
+    constraint and unique index with whether it is partial on the living. A name the chain gives no constraint is
+    the one the database would, `<table>_pkey` and `<table>_<columns>_key`, so a later `DROP CONSTRAINT` finds it.
+    """
+
+    def __init__(self) -> None:
+        self.tables: dict[str, SqlTable] = {}
+
+    def replay(self, rel: str, code: str) -> None:
+        events: list[tuple[int, str, re.Match[str]]] = []
+        for kind, pattern in (
+            ("create", CREATE_TABLE),
+            ("alter", ALTER_TABLE_ANY),
+            ("index", CREATE_INDEX),
+            ("drop_index", DROP_INDEX),
+            ("drop_table", DROP_TABLES),
+        ):
+            events += [(m.start(), kind, m) for m in pattern.finditer(code)]
+        for _, kind, m in sorted(events, key=lambda e: e[0]):
+            if kind == "create":
+                self.create(rel, code, m)
+            elif kind == "alter":
+                table = self.tables.get(ident(m.group("table")))
+                if table is not None:
+                    self.alter(rel, code, table, ident(m.group("table")), m.end())
+            elif kind == "index":
+                self.index(rel, code, m)
+            elif kind == "drop_index":
+                gone = {ident(n).rpartition(".")[2] for n in name_list(statement_tail(code, m.end()))}
+                for t in self.tables.values():
+                    for name in gone & set(t.uniques):
+                        del t.uniques[name]
+            else:
+                for name in name_list(statement_tail(code, m.end())):
+                    self.tables.pop(ident(name), None)
+
+    def create(self, rel: str, code: str, m: re.Match[str]) -> None:
+        name = ident(m.group("table"))
+        table = SqlTable()
+        self.tables[name] = table
+        open_at = m.end() - 1
+        for offset, item in split_items(code, open_at + 1, closing_paren(code, open_at)):
+            self.item(rel, code, table, name, offset, item)
+
+    def item(self, rel: str, code: str, table: SqlTable, name: str, offset: int, item: str) -> None:
+        """One item of a `CREATE TABLE` list or of an `ADD`: a column or a table constraint."""
+        where = Where(rel, line_of(code, offset), "")
+        constraint = None
+        named = re.match(r"CONSTRAINT\s+(" + NAME + r")\s+", item, re.IGNORECASE)
+        if named:
+            constraint = ident(named.group(1))
+            item = item[named.end() :]
+        if TABLE_CONSTRAINT.match(item):
+            self.constraint(table, name, constraint, item, where)
+            return
+        col = re.match(r"(" + NAME + r")\s*(.*)", item, re.DOTALL)
+        if col is None:
+            return
+        column = ident(col.group(1))
+        rest = col.group(2)
+        state = SqlColumn()
+        table.columns[column] = state
+        word = re.match(r"[\w$]+", rest)
+        kind = word.group(0).lower() if word else ""
+        if kind in SERIAL:
+            state.default = Where(where.rel, where.line, f"type {kind}")
+        elif re.search(r"\bDEFAULT\b", rest, re.IGNORECASE):
+            state.default = Where(where.rel, where.line, "a DEFAULT")
+        if IDENTITY.search(rest):
+            state.identity = Where(where.rel, where.line, "an identity")
+        if re.search(r"\bPRIMARY\s+KEY\b", rest, re.IGNORECASE):
+            table.primary = (constraint or f"{short_name(name)}_pkey", {column})
+        if re.search(r"\bUNIQUE\b", rest, re.IGNORECASE):
+            key = constraint or f"{short_name(name)}_{column}_key"
+            table.uniques[key] = UniqueKey(key, where, living=False)
+
+    def constraint(self, table: SqlTable, name: str, constraint: str | None, item: str, where: Where) -> None:
+        cols = paren_names(item)
+        if re.match(r"PRIMARY\s+KEY\b", item, re.IGNORECASE):
+            table.primary = (constraint or f"{short_name(name)}_pkey", set(cols))
+        elif re.match(r"UNIQUE\b", item, re.IGNORECASE):
+            key = constraint or f"{short_name(name)}_{'_'.join(cols)}_key"
+            table.uniques[key] = UniqueKey(key, where, living=False)
+
+    def alter(self, rel: str, code: str, table: SqlTable, name: str, start: int) -> None:
+        end = code.find(";", start)
+        end = len(code) if end < 0 else end
+        for offset, action in split_items(code, start, end):
+            where = Where(rel, line_of(code, offset), "")
+            if m := re.match(r"ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?", action, re.IGNORECASE):
+                # a column or a table constraint, the way a CREATE TABLE list holds them
+                self.item(rel, code, table, name, offset + m.end(), action[m.end() :])
+            elif m := re.match(r"DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?(" + NAME + ")", action, re.IGNORECASE):
+                gone = ident(m.group(1))
+                table.uniques.pop(gone, None)
+                if table.primary and table.primary[0] == gone:
+                    table.primary = None
+            elif m := re.match(r"DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(" + NAME + ")", action, re.IGNORECASE):
+                table.columns.pop(ident(m.group(1)), None)
+            elif m := re.match(r"RENAME\s+(?:COLUMN\s+)?(" + NAME + r")\s+TO\s+(" + NAME + ")", action, re.IGNORECASE):
+                old, new = ident(m.group(1)), ident(m.group(2))
+                if old in table.columns:
+                    table.columns[new] = table.columns.pop(old)
+            elif m := re.match(r"ALTER\s+(?:COLUMN\s+)?(" + NAME + r")\s+(.*)", action, re.IGNORECASE | re.DOTALL):
+                column = table.columns.setdefault(ident(m.group(1)), SqlColumn())
+                change = m.group(2)
+                if re.match(r"SET\s+DEFAULT\b", change, re.IGNORECASE):
+                    column.default = Where(where.rel, where.line, "a DEFAULT")
+                elif re.match(r"DROP\s+DEFAULT\b", change, re.IGNORECASE):
+                    column.default = None
+                elif re.match(r"ADD\s+GENERATED\b", change, re.IGNORECASE):
+                    column.identity = Where(where.rel, where.line, "an identity")
+                elif re.match(r"DROP\s+IDENTITY\b", change, re.IGNORECASE):
+                    column.identity = None
+
+    def index(self, rel: str, code: str, m: re.Match[str]) -> None:
+        table = self.tables.get(ident(m.group("table")))
+        if table is None or not m.group("unique"):
+            return
+        tail = statement_tail(code, m.end())
+        where = re.search(r"\bWHERE\b(.*)", tail, re.IGNORECASE | re.DOTALL)
+        at = Where(rel, line_of(code, m.start()), "")
+        unnamed = f"{short_name(m.group('table'))}_{at.line}_idx"
+        name = ident(m.group("name")).rpartition(".")[2] if m.group("name") else unnamed
+        table.uniques[name] = UniqueKey(name, at, living=bool(where and LIVING.search(where.group(1))))
+
+
+def short_name(name: str) -> str:
+    """A table's name without its schema, as the database folds it."""
+    return ident(name).rpartition(".")[2]
+
+
+def sql_tables(project: Project, sql_dir: str) -> dict[str, SqlTable]:
+    """The tables every role's chain leaves, by their schema-qualified name."""
+    out: dict[str, SqlTable] = {}
+    for chain in up_chain(project, sql_dir).values():
+        state = SqlTables()
+        for f in chain:
+            state.replay(f.rel, sql_code(project.read(f.rel) or ""))
+        out.update(state.tables)
     return out

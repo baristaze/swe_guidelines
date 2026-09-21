@@ -160,6 +160,36 @@ class Index:
         """A class of the base module on the chain that is not the root."""
         return key is not None and key[0] == self.base_module and key not in self.roots and self.on_chain(key)
 
+    def ancestors(self, key: Key, seen: set[Key] | None = None) -> set[Key]:
+        """A class and every project class its bases reach, itself included."""
+        seen = set() if seen is None else seen
+        if key in seen or key not in self.classes:
+            return seen
+        seen.add(key)
+        for _, base in self.bases(self.classes[key]):
+            if base is not None:
+                self.ancestors(base, seen)
+        return seen
+
+    def lineage(self, module: str, node: ast.expr | None) -> set[Key]:
+        """Every chain class an annotation names, quoted parts included, with all of their ancestors."""
+        if node is None:
+            return set()
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            try:
+                node = ast.parse(node.value, mode="eval").body
+            except SyntaxError:
+                return set()
+        out: set[Key] = set()
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name | ast.Attribute):
+                key = self.resolve(module, dotted(sub))
+                if key is not None and self.on_chain(key):
+                    out |= self.ancestors(key)
+            elif isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub is not node:
+                out |= self.lineage(module, sub)
+        return out
+
     def annotation_on_chain(self, module: str, node: ast.expr | None) -> bool:
         """Whether an annotation names a chain class anywhere in it: `Order`, `Order | None`, `"Order"`."""
         if node is None:

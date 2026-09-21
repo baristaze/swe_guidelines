@@ -168,3 +168,12 @@ def test_a_viewer_that_goes_away_is_not_an_error(serve_module, runs, monkeypatch
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_the_tail_ends_when_an_unfinished_run_has_gone_quiet(serve_module, tmp_path):
+    path = tmp_path / "cli.jsonl"
+    path.write_text("one\nlast", encoding="utf-8")
+    serve_module.POLL_S = 0.01
+    lines = serve_module.tail(path, stop_after_s=5, finished=tmp_path / "results.json", idle_s=0.05)
+    assert list(lines) == ["one", "last"]  # ended by the idle cutoff, well before the time limit
+    assert list(serve_module.tail(tmp_path / "never.jsonl", stop_after_s=5, idle_s=0.05)) == []

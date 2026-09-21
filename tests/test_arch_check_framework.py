@@ -328,6 +328,21 @@ def test_an_inline_ignore_of_a_rule_that_reports_nothing_there_is_an_ignore_find
     assert check(tmp_path, "--rule", "CON-10")[0] == 0
 
 
+def test_a_stale_inline_ignore_in_a_dockerfile_is_an_ignore_finding(tmp_path):
+    image = (
+        "# arch-check: ignore[DEL-10] ADR-0001\n"
+        "FROM python:3.14-slim AS build\nRUN uv sync --frozen\n"
+        "FROM python:3.14-slim\nUSER acme\nHEALTHCHECK CMD true\n"
+    )
+    write_project(tmp_path, {"deployment/docker/api.Dockerfile": image})
+    code, report = check_json(tmp_path, "--rule", "DEL-10")
+    assert code == 1
+    assert rules_found(report) == [("IGNORE", "deployment/docker/api.Dockerfile", 1)]
+    assert "ignores DEL-10, which reports nothing here" in report["findings"][0]["message"]
+    # not judged when the rule that reads the file did not run
+    assert check(tmp_path, "--rule", "CON-10")[0] == 0
+
+
 # --- the model and the project helpers
 
 

@@ -82,3 +82,9 @@ def test_every_pinned_tag_in_the_checker_readme_must_match(repo, version, capsys
     repo.edit("checkers/README.md", "@v1.2.3#", "@v1.2.0#")
     assert version.main() == 1
     assert "checkers/README.md:3: pins v1.2.0, plugin.json says 1.2.3" in capsys.readouterr().out
+
+
+def test_every_pinned_tag_in_the_readme_must_match(repo, version, capsys):
+    repo.edit("README.md", "`v1.2.3`", "`v1.2.1`")
+    assert version.main() == 1
+    assert "README.md:3: pins v1.2.1, plugin.json says 1.2.3" in capsys.readouterr().out

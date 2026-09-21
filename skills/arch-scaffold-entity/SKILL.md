@@ -12,12 +12,13 @@ Entities (Identifiers), The Business Layer (Shape of an Operation), The
 Storage Layer (Namespace Shape, Defining ORM Classes, Translation, A
 Storage Impl, Database Roles, The Second Fence, Migrations), The Network Layer (Service
 Interfaces and Impls, Public Types, Realtime at the Edge),
-Cross-Cutting Conventions (Exceptions).
+Documentation as Code (A README at Every Level), Cross-Cutting
+Conventions (Exceptions).
 A section is read with its own introduction.
 
 ## Input
 
-`<namespace> <EntityName> [field:type ...] [--role core|activity|queue|admin] [--no-api]`
+`<namespace> <EntityName> [field:type ...] [--role core|activity|queue|admin] [--scope system|org|identity|both] [--identity-column <col>] [--person-column <col>] [--no-api]`
 
 Example: `inventory Warehouse address:str timezone:str`. The role
 defaults to `core`. Ask in one message for the fields not given and
@@ -26,6 +27,19 @@ for the mixins: `Named`? `Trackable`? `SoftDeletable`? The answer
 otherwise, the `activity` role. A mixin is composed only when a
 manager operation exercises it: `Trackable` needs an update,
 `SoftDeletable` a delete.
+
+The tenancy scope defaults to `org`, as The Storage Layer (The Second
+Fence) names the four. `identity` rows belong to an identity and no
+tenant; the table carries the identity column, `--identity-column`,
+`identity_id` by default, and the policy rests on it. `both` rows
+belong to a tenant and a person in it; the table carries `org_id` and
+the person column, `--person-column`, `user_id` by default, and the
+policy narrows by it. `system` rows belong to the platform: the table
+composes `GlobalIdentifiableMixin`, its migration enables no
+row-level security and creates no policy, and its storage methods take
+no `org_id` and are each listed under
+`[tool.arch-check.options.CTX-12] tenantless` with a docstring saying
+why. `<SCOPE>` is the scope in upper case.
 
 A `core`-role entity has a handoff: every write lands the core row
 and its `OutboxRow`s (from `om/outbox/`, as `arch-scaffold-new`
@@ -70,9 +84,10 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and, for a `core`-role entity, `create_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...]) -> bool` (False when the id is already written; nothing changes then) and `write_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...])`; for an `activity`-role one, `append_<entity>(org_id, <entity>)` |
 | `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, org_id, entity, outbox_rows)`, which inserts the outbox rows in the same commit; the create over the base's `_insert`, which does nothing on an existing id and reports it, the outbox rows landing only when the insert won; the append over the same `_insert` |
 | `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox rows in the outbox memory storage the root wired |
-| `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map `TABLE_ROLES`, and `"<entities>": TenancyScope.<SCOPE>` in the tenancy scope map `TABLE_SCOPES` beside it, naming the column the policy rests on when the scope is `identity` or `both` |
+| `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map `TABLE_ROLES`, and `"<entities>": TenancyScope.<SCOPE>` in the tenancy scope map `TABLE_SCOPES` beside it, naming the column the policy rests on (`--identity-column` for `identity`, `--person-column` for `both`) |
+| `om/src/<root>/om/<ns>/README.md`                       | the noun in the product's language: what it is, what can happen to it (the operations the manager gains below), and which rules hold |
 | `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=PROVENANCE_FIELDS), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with the tuple holding the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, <entity>.model_dump(mode="json"))` builds, carrying the actor, the request id, and the app from the context, and a second row of kind `work.<kind>` when work follows the write, then `relay` per row, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
+| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id and the operation reads the row back and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=set(PROVENANCE_FIELDS)), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row or brings a deleted one back, and validated because it carries a dump; on delete, `deleted_at` and `deleted_by`), write with the tuple holding the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, <entity>.model_dump(mode="json"))` builds, carrying the actor, the request id, and the app from the context, and a second row of kind `work.<kind>` when work follows the write, then `relay` per row, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
 | `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
 | `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>` |
 | `<api>/.../services/<ns>.py` (unless `--no-api`)        | the operations on `<Ns>ServiceInterface`: list, get, create, and, only when the manager has them, update and delete, each taking `ctx` and the request type and returning the view |

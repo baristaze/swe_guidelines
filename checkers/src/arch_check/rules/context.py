@@ -49,6 +49,27 @@ def bases(cls: ast.ClassDef) -> list[str]:
     return [last(b) or b for b in base_names(cls)]
 
 
+def class_index(project: Project) -> dict[str, list[ast.ClassDef]]:
+    """Every class of the source by name; two classes may share one."""
+    out: dict[str, list[ast.ClassDef]] = {}
+    for _, tree in project.trees():
+        for cls in classes(tree):
+            out.setdefault(cls.name, []).append(cls)
+    return out
+
+
+def ancestors(index: dict[str, list[ast.ClassDef]], name: str) -> list[str]:
+    """Every class a class named `name` refines, by name, nearest first; itself left out."""
+    out: list[str] = []
+    todo = [b for cls in index.get(name, []) for b in bases(cls)]
+    while todo:
+        n = todo.pop(0)
+        if n != name and n not in out:
+            out.append(n)
+            todo += [b for cls in index.get(n, []) for b in bases(cls)]
+    return out
+
+
 def scope_names(project: Project) -> set[str]:
     """The scopes: the classes of the stage module whose name ends in `Scope`."""
     return {name for name in stage_classes(project) if name.endswith("Scope")}
@@ -250,14 +271,14 @@ def returns_stage(fn: Function) -> bool:
     summary="No stage above the request stage is copied or assigned; no with_/override helper returns a stage.",
 )
 def context_is_immutable(project: Project) -> Iterator[Violation]:
-    """In a function under `<pkg>.om`, `<pkg>.services`, or
-    `<pkg>.workers`, a name typed with `IdentityContext`, `OpContext`, or
+    """In a function under `<pkg>.om`, `<pkg>.gateway`, `<pkg>.services`,
+    or `<pkg>.workers`, a name typed with `IdentityContext`, `OpContext`, or
     `OperatorContext` is never `.model_copy(...)`-ed and never has an
     attribute assigned. No function named `with_*` or `override*` returns
     a stage outside the stage module. Narrowing passed as an argument is
     judged."""
     module = stage_module(project)
-    prefixes = (project.sub("om"), project.sub("services"), project.sub("workers"))
+    prefixes = (project.sub("om"), project.sub("gateway"), project.sub("services"), project.sub("workers"))
     for file, tree in project.trees(*prefixes):
         for fn, bound in sorted(scoped_functions(tree), key=lambda e: (e[0].lineno, e[0].col_offset)):
             if fn.name.startswith(("with_", "override")) and returns_stage(fn) and file != module:
@@ -371,16 +392,19 @@ def tenant_first(project: Project) -> Iterator[Violation]:
     "CTX-12",
     options=("tenantless",),
     coverage="partial",
-    summary="Every tenant-less storage method is documented on it or its interface, and listed when a list is kept.",
+    summary="Every tenant-less storage method is documented and on the tenantless list the checker holds.",
 )
 def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
     """A `*StorageInterface` method whose first parameter is not `org_id`
-    has a docstring, or its interface class has one, to say why: a
-    global interface documented once on the class is enough. Option
+    has a docstring to say why. A global interface, one whose every
+    method takes no tenant, may say it once in the class docstring
+    instead; on an interface that also has tenant methods, the class
+    docstring excuses none of them. Option
     `[tool.arch-check.options.CTX-12]`: `tenantless`, the `Class.method`
-    names of those methods; when set, a method not on it and an entry
-    that names no such method are findings, so the list is the
-    enumerating test. Whether a sweep returns its tenant is judged."""
+    names of those methods. It is the enumeration, so a method not on
+    it and an entry that names no such method are findings, and with no
+    list at all every tenant-less method is one. Whether a sweep
+    returns its tenant is judged."""
     listed: list[str] = project.option("CTX-12", "tenantless", [], {"tenantless"})
     # the key set is the switch, not its truthiness: `tenantless = []` says no method is tenant-less
     enumerated = "tenantless" in project.config.options.get("CTX-12", {})
@@ -388,16 +412,24 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
     for file, cls in classes_named(project, "StorageInterface"):
         if cls.name == "StorageInterface":
             continue
-        for fn in interface_methods(cls):
-            if [a.arg for a in arguments(fn)][:1] == ["org_id"]:
-                continue
+        methods_ = interface_methods(cls)
+        tenantless = [fn for fn in methods_ if [a.arg for a in arguments(fn)][:1] != ["org_id"]]
+        documented_once = len(tenantless) == len(methods_) and ast.get_docstring(cls) is not None
+        for fn in tenantless:
             key = f"{cls.name}.{fn.name}"
             seen.add(key)
-            if not has_docstring(fn) and ast.get_docstring(cls) is None:
+            if not has_docstring(fn) and not documented_once:
                 yield Violation.at(
-                    file.rel, fn, f"{key} takes no tenant, and neither it nor its interface has a docstring saying why"
+                    file.rel,
+                    fn,
+                    f"{key} takes no tenant and has no docstring saying why"
+                    + ("" if len(tenantless) == len(methods_) else "; its interface also has tenant methods"),
                 )
-            if enumerated and key not in listed:
+            if not enumerated:
+                yield Violation.at(
+                    file.rel, fn, f"{key} takes no tenant and no tenantless list under [tool.arch-check.options.CTX-12] names it"
+                )
+            elif key not in listed:
                 yield Violation.at(file.rel, fn, f"{key} takes no tenant and is not on the tenantless list")
     for key in sorted(set(listed) - seen):
         yield Violation.at(
@@ -440,28 +472,23 @@ def cache_and_buckets_take_the_tenant(project: Project) -> Iterator[Violation]:
     summary="TopicPayload declares org_id and every payload in TOPIC_PAYLOADS extends it.",
 )
 def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
-    """`TopicPayload` under `<pkg>.infra` declares `org_id`, and every
-    value of the `TOPIC_PAYLOADS` mapping is a class that extends it. The
-    tenant comparison in the socket is judged."""
-    parents: dict[str, set[str]] = {}
-    for _, tree in project.trees():
-        for cls in classes(tree):
-            parents.setdefault(cls.name, set()).update(bases(cls))
+    """`TopicPayload` under `<pkg>.infra` declares `org_id`, itself or
+    through a class it extends, and every value of the `TOPIC_PAYLOADS`
+    mapping is a class that extends it. The tenant comparison in the
+    socket is judged."""
+    index = class_index(project)
 
     def extends(name: str, target: str) -> bool:
-        todo, seen = [name], set()
-        while todo:
-            n = todo.pop()
-            if n == target:
-                return True
-            if n not in seen:
-                seen.add(n)
-                todo.extend(parents.get(n, ()))
-        return False
+        return name == target or target in ancestors(index, name)
+
+    def carries_org_id(cls: ast.ClassDef) -> bool:
+        return "org_id" in declared_fields(cls) or any(
+            "org_id" in declared_fields(c) for a in ancestors(index, cls.name) for c in index.get(a, [])
+        )
 
     for file, tree in project.trees(project.sub("infra")):
         for cls in classes(tree):
-            if cls.name == "TopicPayload" and "org_id" not in declared_fields(cls):
+            if cls.name == "TopicPayload" and not carries_org_id(cls):
                 yield Violation.at(file.rel, cls, "TopicPayload declares no org_id; every payload carries the tenant")
         for node in ast.walk(tree):
             target: ast.expr | None = node.target if isinstance(node, ast.AnnAssign) else None
@@ -485,8 +512,8 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
     summary="OperatorContext refines IdentityContext with no org_id; no operation accepts both it and OpContext.",
 )
 def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
-    """`OperatorContext` has `IdentityContext` among its bases, and neither
-    it nor a stage it refines declares `org_id`. No operation (a public
+    """`OperatorContext` has `IdentityContext` among its ancestors, and
+    neither it nor a stage it refines declares `org_id`. No operation (a public
     method of a `*ManagerInterface`, `*ServiceInterface`, or
     `*HandlerInterface`, or of a class implementing one) has a parameter
     typed as a union of `OpContext` and `OperatorContext`. A gateway,
@@ -496,16 +523,12 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
     stages = stage_classes(project)
     operator = stages.get("OperatorContext")
     if file is not None and operator is not None:
-        if "IdentityContext" not in bases(operator):
+        index = class_index(project)
+        lineage = ancestors(index, "OperatorContext")
+        if "IdentityContext" not in lineage:
             yield Violation.at(file.rel, operator, "OperatorContext does not refine IdentityContext")
-        chain, todo = [], ["OperatorContext"]
-        while todo:
-            name = todo.pop()
-            if name in stages and name not in chain:
-                chain.append(name)
-                todo.extend(bases(stages[name]))
-        for name in chain:
-            if "org_id" in declared_fields(stages[name]):
+        for name in ["OperatorContext", *lineage]:
+            if name in stages and "org_id" in declared_fields(stages[name]):
                 yield Violation.at(file.rel, stages[name], f"{name} declares org_id; the operator plane has no tenant")
     for f, tree in project.trees():
         for cls in classes(tree):
@@ -531,6 +554,7 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
     """In the stage module, no stage is a `Protocol`; `IdentityContext` and
     `OpContext` subclass `RequestContext`; `OperatorContext` subclasses
     `IdentityContext`; `OpContext` does not subclass `IdentityContext`.
+    A subclass is a direct or an indirect one.
     A stage the module does not declare is not judged. Re-checking a
     credential inside an operation is judged."""
     file = stage_module(project)
@@ -538,6 +562,7 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
     if file is None:
         return
     expected = {"IdentityContext": REQUEST_STAGE, "OpContext": REQUEST_STAGE, "OperatorContext": "IdentityContext"}
+    index = class_index(project)
     for name in STAGES:
         cls = stages.get(name)
         if cls is None:
@@ -545,9 +570,10 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
         if "Protocol" in bases(cls):
             yield Violation.at(file.rel, cls, f"{name} is a Protocol; a stage is a concrete frozen type")
         parent = expected.get(name)
-        if parent and parent in stages and parent not in bases(cls):
+        lineage = ancestors(index, name)
+        if parent and parent in stages and parent not in lineage:
             yield Violation.at(file.rel, cls, f"{name} does not subclass {parent}")
-        if name == "OpContext" and "IdentityContext" in bases(cls):
+        if name == "OpContext" and "IdentityContext" in lineage:
             yield Violation.at(file.rel, cls, "OpContext subclasses IdentityContext; it does not refine it")
 
 
@@ -654,6 +680,22 @@ def site_matches(entry: str, rel: str, qualname: str) -> bool:
     return glob_match(path, rel) and (not where or qualname == where or qualname.startswith(where + "."))
 
 
+def stage_copies(tree: ast.Module) -> dict[ast.Call, str]:
+    """Every `<name>.model_copy(...)` of a module whose name is bound to a stage above the request stage."""
+    out: dict[ast.Call, str] = {}
+    for fn, bound in scoped_functions(tree):
+        for node in own_nodes(fn):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "model_copy"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in bound
+            ):
+                out[node] = bound[node.func.value.id]
+    return out
+
+
 @rule(
     "CTX-26",
     options=("sites", "stages", "builders"),
@@ -663,7 +705,9 @@ def site_matches(entry: str, rel: str, qualname: str) -> bool:
 def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     """A call that constructs `IdentityContext`, `OpContext`,
     `OperatorContext`, or `SecurityContext` (the class, or its
-    `model_validate`, `model_construct`, or `model_copy`), or calls a
+    `model_validate`, `model_construct`, or `model_copy`), copies a name
+    bound to one of the first three (`ctx.model_copy(...)` where `ctx` is
+    a parameter or an annotated local typed with it), or calls a
     configured builder, is allowed only at a listed site. The checker is
     the enumerating test. Options `[tool.arch-check.options.CTX-26]`:
     `sites`, each a path glob or `glob::Qualname.method` (default the
@@ -681,9 +725,10 @@ def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     used: set[str] = set()
     for file, tree in project.trees():
         scope = enclosing(tree)
+        copies = stage_copies(tree)
         for call in calls(tree):
-            name = constructed(call, names)
-            if name is None:
+            name = constructed(call, names) or copies.get(call)
+            if name is None or name not in names:
                 continue
             where = scope.get(call, "<module>")
             hits = [s for s in sites if site_matches(s, file.rel, where)]

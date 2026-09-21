@@ -1,6 +1,7 @@
 """benchmark/harness/runtime.py: what each runtime executes and where."""
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -71,9 +72,44 @@ def test_the_vm_runs_behind_the_prefix_and_fills_the_sync_paths(tmp_path):
     rt = RT.build("vm", tmp_path, None, config)
     assert isinstance(rt, RT.VmRuntime)
     rt.workspace = tmp_path / "workspace"
-    assert rt.command(["claude", "-p", "hi"], rt.workspace) == ["fake-shell", "station", "--", "claude", "-p", "hi"]
+    command = rt.command(["claude", "-p", "hi"], rt.workspace)
+    assert command[:5] == ["fake-shell", "station", "--", "sh", "-c"]
+    assert command[6:] == ["sh", "/opt/work", "claude", "-p", "hi"]  # the folder is an argument, not script text
     assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/"]
     assert rt.fetch_command() == ["fake-copy", "station:/opt/work/", f"{rt.workspace}/"]
+
+
+def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch):
+    ran: list[list[str]] = []
+    monkeypatch.setattr(RT.subprocess, "run", lambda argv, **kwargs: ran.append(list(argv)))
+    config = {
+        "exec_prefix": ["fake-shell", "--"],
+        "sync": ["fake-copy", "{local}/", "station:{remote}/"],
+        "remote_workspace": "/opt/work/",
+        "fetch": ["fake-copy", "station:{remote}/", "{local}/"],
+    }
+    rt = RT.build("vm", tmp_path, None, config)
+    assert isinstance(rt, RT.VmRuntime)
+    first = rt.prepare_repeat(0)
+    assert ran == [["fake-shell", "--", "mkdir", "-p", "/opt/work/0"], ["fake-copy", f"{first}/", "station:/opt/work/0/"]]
+    assert rt.command(["claude"], first)[-2:] == ["/opt/work/0", "claude"]
+    second = rt.prepare_repeat(1)
+    assert rt.sync_command() == ["fake-copy", f"{second}/", "station:/opt/work/1/"]
+    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/1/", f"{second}/"]
+    assert rt.command(["claude"], second)[-2:] == ["/opt/work/1", "claude"]
+
+
+def test_the_vm_subject_runs_in_the_remote_workspace_not_the_shell_default(tmp_path):
+    # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+    remote = tmp_path / "remote dir"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
+    rt.prepare_repeat(0)
+    script = "import pathlib; pathlib.Path('out.md').write_text('x')"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}, stream)
+    assert status.ok
+    assert (remote / "0" / "out.md").read_text(encoding="utf-8") == "x"
+    assert not (tmp_path / "out.md").exists()
 
 
 def test_the_vm_without_a_prefix_is_refused(tmp_path):
@@ -133,3 +169,47 @@ def test_the_vm_refuses_a_plugin_or_a_target_it_was_not_told_where_to_find(tmp_p
         vm.plugin_path()
     with pytest.raises(ValueError, match="remote_target"):
         vm.target_path()
+
+
+def test_a_relative_run_folder_is_made_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    host = RT.build("host", Path("runs/one"))
+    host.prepare()
+    env = host.environment({})
+    assert env["HOME"] == str(tmp_path.resolve() / "runs" / "one" / "home")
+    assert Path(env["TMPDIR"]).is_absolute()
+    box = RT.build("container", Path("runs/one"), None, {"image": "img:1"})
+    box.prepare()
+    mount = box.command(["claude"], box.workspace)[4]
+    assert mount == f"{tmp_path.resolve() / 'runs' / 'one' / 'workspace'}:/workspace:rw"
+
+
+def test_each_repeat_gets_its_own_workspace_home_and_tmp(tmp_path):
+    rt = RT.build("host", tmp_path)
+    first = rt.prepare_repeat(0)
+    (first / "left-behind.md").write_text("0", encoding="utf-8")
+    home0 = rt.environment({})["HOME"]
+    second = rt.prepare_repeat(1)
+    assert first != second and rt.workspace == second
+    assert list(second.iterdir()) == []
+    env = rt.environment({})
+    assert env["HOME"] != home0 and Path(env["HOME"]).is_dir() and Path(env["TMPDIR"]).is_dir()
+    assert rt.collect(["*.md"]) == []
+
+
+def test_a_binary_that_is_not_there_is_exit_127_with_a_note(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(["no-such-binary-anywhere"], rt.workspace, {"PATH": str(tmp_path)}, stream)
+    assert status.code == 127 and not status.ok
+    lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl")]
+    assert any("could not start" in line for line in lines)
+
+
+def test_collect_leaves_out_a_file_outside_the_workspace(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    (tmp_path / "outside.md").write_text("x", encoding="utf-8")
+    (rt.workspace / "inside.md").write_text("y", encoding="utf-8")
+    assert [p.name for p in rt.collect(["*.md", "../*.md"])] == ["inside.md"]

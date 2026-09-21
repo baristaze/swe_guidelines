@@ -13,14 +13,13 @@ request; the administrator profile goes back in the drawer.
 
 ## Input
 
-`--env local|staging|production [--dry-run]`
+`--env staging|production [--dry-run]`
 
 `--env` is required; ask for it when missing. `--dry-run` runs the
 script in its dry mode, which prints every command it would run and
 runs none, so the whole path is readable before the first resource
-exists. `local` is the compose stack: the skill runs `make up` through
-the script's local branch and the smoke test against it, and needs no
-cloud, so the skill is testable with no account.
+exists. `local` is refused: this skill acts on a cloud environment
+only, and the local stack has no administrator.
 
 ## Role and credential
 
@@ -33,7 +32,8 @@ aws sts get-caller-identity --profile acme-admin
 
 and check that `Arn` is the administrator's own identity in the
 account the environment belongs to (the account id
-`deployment/terraform/environments/<env>/` names): a user or a role
+`deployment/terraform/environments/<dir>/` names, `<dir>` being
+`staging` or `prod`): a user or a role
 with administrator access, never `assumed-role/acme-investigate-*`.
 An investigate profile cannot create a state bucket or a role, and
 the skill stops rather than try. Every `aws` command below carries

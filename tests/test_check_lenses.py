@@ -192,3 +192,41 @@ def test_a_section_cited_by_number_in_lowercase_fails(repo, lenses, capsys):
     repo.edit("lenses/om.md", "Tables holding two entities.", "Tables holding two entities, as in section 4.")
     assert lenses.main() == 1
     assert "om.md:24: refers to a section by number" in capsys.readouterr().out
+
+
+@pytest.fixture
+def labelled(repo):
+    """The Tables subsection gains two bold paragraph labels; Principles has one of its own."""
+    repo.edit(
+        "architecture.md",
+        "One table per entity.\n",
+        "One table per entity.\n\n-   **Keys.** Every table has one key.\n\n#### Detail\n\n**Soft delete.** A row is marked.\n",
+    )
+    repo.edit("architecture.md", "Storage is behind an interface.\n", "Storage is behind an interface.\n\n**Scope.** All.\n")
+
+
+def test_labels_in_parentheses_name_paragraphs_of_the_subsection(repo, lenses, labelled, capsys):
+    repo.edit("lenses/om.md", "The Storage Layer, Tables; Principles.", "The Storage Layer, Tables (Keys, Soft delete).")
+    assert lenses.main() == 0
+    repo.edit("lenses/om.md", "Tables (Keys, Soft delete).", "Tables; Principles (Scope).")
+    assert lenses.main() == 0  # a bare subsection takes labels too
+
+
+def test_a_label_the_subsection_does_not_hold_fails(repo, lenses, labelled, capsys):
+    repo.edit("lenses/om.md", "**Source.** Interfaces, Principles.", "**Source.** Interfaces, Principles (No Such Part).")
+    assert lenses.main() == 1
+    assert "'Interfaces, Principles' has no paragraph labelled '**No Such Part.**'" in capsys.readouterr().out
+
+
+def test_a_label_of_another_subsection_or_in_another_case_fails(repo, lenses, labelled, capsys):
+    repo.edit("lenses/om.md", "The Storage Layer, Tables; Principles.", "The Storage Layer, Tables (Scope, keys).")
+    assert lenses.main() == 1
+    out = capsys.readouterr().out
+    assert "'The Storage Layer, Tables' has no paragraph labelled '**Scope.**'" in out
+    assert "'The Storage Layer, Tables' has no paragraph labelled '**keys.**'" in out
+
+
+def test_labels_on_a_whole_section_are_refused(repo, lenses, labelled, capsys):
+    repo.edit("lenses/om.md", "The Storage Layer, Tables; Principles.", "The Storage Layer (Keys).")
+    assert lenses.main() == 1
+    assert "'The Storage Layer' names no subsection, so it takes no labels" in capsys.readouterr().out

@@ -130,7 +130,10 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
     kept: list[Finding] = []
     meta: list[Finding] = []
     applied: list[Applied] = []
-    scanned = {f.rel for f in project.python_files} | {f.path for f in raw}
+    # a file the rules read may carry an ignore that no longer excuses anything, a Dockerfile as much as a
+    # module; Markdown is left out, where a `#` line is a heading and a quoted marker documents the syntax
+    read = {rel for rel in project.read_paths if not rel.endswith(".md")}
+    scanned = {f.rel for f in project.python_files} | {f.path for f in raw} | read
     markers = read_markers(project, scanned, known, meta)
     used_markers: set[tuple[tuple[str, int], str]] = set()
     used_exceptions: set[int] = set()

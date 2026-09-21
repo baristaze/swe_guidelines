@@ -144,7 +144,10 @@ CHECKERS_PYPROJECT = '[project]\nname = "swe-guidelines-arch-check"\nversion = "
 CHECKERS_README = "# arch-check\n\nPin it: `git+https://example.com/swe_guidelines@v1.2.3#subdirectory=checkers`.\n"
 CHECKERS_INIT = '"""arch-check."""\n\n__version__ = "1.2.3"\n'
 ADOPTING = "# Adopting\n\nAdd the marketplace from a tag: `git#v1.2.3`, pinned at `v1.2.3`.\n"
-README = "# Software Design and Architecture Guidelines\n\nSee [the lenses](lenses/README.md#groups): 2 lenses in one group.\n"
+README = (
+    "# Software Design and Architecture Guidelines\n\n"
+    "See [the lenses](lenses/README.md#groups): 2 lenses in one group. Install from `v1.2.3`.\n"
+)
 
 SCAFFOLD = """\
 ---

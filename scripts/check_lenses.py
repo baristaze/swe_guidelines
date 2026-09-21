@@ -9,6 +9,10 @@ Rules:
 - Source names sections of architecture.md by title, never by number:
   `<Section>` or `<Section>, <Subsection>`, several separated by `;`, where a
   bare `<Subsection>` after a `;` belongs to the section cited before it;
+  a citation of a subsection may end in `(<Label>, <Label>)`, and each
+  label is a bold paragraph label `**<Label>.**` inside that subsection,
+  from its heading to the next heading of the same or a higher level; a
+  citation of a whole section takes no parentheses;
 - Severity is high, medium, or low;
 - a Principle is at most 60 words, and Look for and Violation are at most
   three sentences each, so a lens stays one rule a reviewer can hold;
@@ -55,6 +59,8 @@ LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 NUMBERED = re.compile(r"\bsections? \d+", re.IGNORECASE)
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
+LABELLED = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
+BOLD_LABEL = re.compile(r"\*\*([^*]+?)\.\*\*")
 COUNT = re.compile(r"\b(\d+) lenses\b")
 SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 MAX_PRINCIPLE_WORDS = 60
@@ -87,6 +93,36 @@ def sections() -> dict[str, set[str]]:
     return out
 
 
+def paragraph_labels() -> dict[tuple[str, str], set[str]]:
+    """Map each (section, subsection) to the bold paragraph labels in its text.
+
+    A subsection's text runs from its heading to the next heading of the
+    same or a higher level, so a deeper heading stays inside it. Fenced
+    code holds no label.
+    """
+    out: dict[tuple[str, str], set[str]] = {}
+    section: str | None = None
+    current: tuple[str, str] | None = None
+    in_fence = False
+    for line in GUIDELINE.read_text(encoding="utf-8").splitlines():
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = re.match(r"^(#{1,3}) (.+)$", line)
+        if m:
+            level, title = len(m.group(1)), m.group(2).strip()
+            section = title if level == 2 else section if level == 3 else None
+            current = (section, title) if level == 3 and section is not None else None
+            if current is not None:
+                out.setdefault(current, set())
+            continue
+        if current is not None:
+            out[current].update(BOLD_LABEL.findall(line))
+    return out
+
+
 def listed_groups() -> dict[str, str]:
     groups: dict[str, str] = {}
     for line in (LENSES / "README.md").read_text(encoding="utf-8").splitlines():
@@ -96,12 +132,22 @@ def listed_groups() -> dict[str, str]:
     return groups
 
 
-def check_source(value: str, path: Path, ln: int, known: dict[str, set[str]], errors: list[str]) -> None:
+def check_source(
+    value: str,
+    path: Path,
+    ln: int,
+    known: dict[str, set[str]],
+    errors: list[str],
+    labels: dict[tuple[str, str], set[str]] | None = None,
+) -> None:
     """A source is one or more citations separated by ';'.
 
     Each citation is `<Section>`, `<Section>, <Subsection>`, or, after a
     previous citation, a bare `<Subsection>` of that section. Titles are
-    matched exactly against the headings of architecture.md.
+    matched exactly against the headings of architecture.md. A citation
+    of a subsection may end in `(<Label>, ...)`: each label is matched,
+    case and all, against the `**<Label>.**` paragraph labels of that
+    subsection.
     """
     if NUMBERED.search(value):
         errors.append(f"{path.name}:{ln}: cites a section by number: '{value}'")
@@ -112,22 +158,37 @@ def check_source(value: str, path: Path, ln: int, known: dict[str, set[str]], er
         return
     sec: str | None = None
     for citation in citations:
-        citation = re.sub(r"\s*\([^)]*\)\s*$", "", citation).strip()
+        cited: list[str] | None = None
+        m = LABELLED.match(citation)
+        if m:
+            citation, cited = m.group(1).strip(), [label.strip() for label in m.group(2).split(",")]
+        sub: str | None = None
+        head, _, tail = citation.partition(", ")
         if citation in known:
             sec = citation
-            continue
-        head, _, tail = citation.partition(", ")
-        if head in known and tail.strip() in known[head]:
-            sec = head
-            continue
-        if sec is not None and citation in known[sec]:
-            continue
-        if head in known:
-            errors.append(f"{path.name}:{ln}: '{head}' has no subsection '{tail.strip()}'")
-        elif sec is not None:
-            errors.append(f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'")
+        elif head in known and tail.strip() in known[head]:
+            sec, sub = head, tail.strip()
+        elif sec is not None and citation in known[sec]:
+            sub = citation
         else:
-            errors.append(f"{path.name}:{ln}: '{citation}' is not a section of architecture.md")
+            if head in known:
+                errors.append(f"{path.name}:{ln}: '{head}' has no subsection '{tail.strip()}'")
+            elif sec is not None:
+                errors.append(f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'")
+            else:
+                errors.append(f"{path.name}:{ln}: '{citation}' is not a section of architecture.md")
+            continue
+        if cited is None:
+            continue
+        if sub is None:
+            errors.append(f"{path.name}:{ln}: '{citation}' names no subsection, so it takes no labels in parentheses")
+            continue
+        if labels is None:
+            labels = paragraph_labels()
+        found = labels.get((str(sec), sub), set())
+        for label in cited:
+            if label not in found:
+                errors.append(f"{path.name}:{ln}: '{sec}, {sub}' has no paragraph labelled '**{label}.**'")
 
 
 def registered_rules(errors: list[str]) -> dict[str, tuple[str, str]]:
@@ -159,6 +220,7 @@ def check_file(
     errors: list[str],
     checks: dict[str, tuple[str, int]] | None = None,
     ids: dict[str, str] | None = None,
+    labels: dict[tuple[str, str], set[str]] | None = None,
 ) -> int:
     """Check one lens file; return its lens count.
 
@@ -224,7 +286,7 @@ def check_file(
             if name == "Severity" and value.strip("` ") not in SEVERITIES:
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
             if name == "Source":
-                check_source(value, path, ln, known, errors)
+                check_source(value, path, ln, known, errors, labels)
             if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
                 errors.append(f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}")
             if name == OPTIONAL:
@@ -251,6 +313,7 @@ def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
     known = sections()
+    labels = paragraph_labels()
     groups = listed_groups()
     files = {p.name: p for p in LENSES.glob("*.md") if p.name != "README.md"}
     for group, filename in groups.items():
@@ -268,7 +331,7 @@ def main(argv: Sequence[str] = ()) -> int:
     ids: dict[str, str] = {}
     for name in sorted(files):
         before = set(checks)
-        total += check_file(files[name], known, errors, checks, ids)
+        total += check_file(files[name], known, errors, checks, ids, labels)
         lens_files.update(dict.fromkeys(set(checks) - before, name))
     rules = registered_rules(errors)
     for lens_id, (coverage, ln) in sorted(checks.items()):

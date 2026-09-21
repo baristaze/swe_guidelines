@@ -15,9 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # What "the repository's Markdown" leaves out: tool caches, installed
-# packages, and the benchmark run folders git ignores. A directory name
-# is skipped at any depth; a path is skipped from the root.
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
+# packages, Claude Code's own folder (agent worktrees live under
+# .claude/worktrees/), and the benchmark run folders git ignores. A
+# directory name is skipped at any depth; a path is skipped from the root.
+SKIP_DIRS = {".git", ".claude", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
 SKIP_PATHS = {("benchmark", "runs")}
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -49,18 +50,23 @@ def plain(heading: str) -> str:
     return LINK.sub(r"\1", IMAGE.sub("", heading))
 
 
+# a paired emphasis delimiter: `*x*`, `**x**`, or `_x_` at a word boundary, never a lone `*`
+EMPHASIS = re.compile(r"(\*{1,3}|(?<!\w)_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)")
+
+
 def slug(heading: str) -> str:
     """The anchor GitHub derives from a heading.
 
     This is the rule of github-slugger, applied to the rendered text:
-    links keep their text, inline code and emphasis markers are
-    stripped, the rest is lowercased, and every character that is not
-    a letter, a digit, a space, `-`, or `_` is dropped. Each space then
+    links keep their text, backticks and paired emphasis markers are
+    stripped (a lone `*` is punctuation, dropped after the trim), the
+    rest is lowercased, and every character that is not a letter, a
+    digit, a space, `-`, or `_` is dropped. Each space then
     becomes one hyphen, so a double space is `--`. Underscores stay
     (`EMPTY_UUID` anchors as `empty_uuid`). `anchors` numbers repeats;
     this function does not.
     """
-    text = re.sub(r"[`*]", "", plain(heading)).strip().lower()
+    text = EMPHASIS.sub(r"\2", plain(heading).replace("`", "")).strip().lower()
     text = re.sub(r"[^\w\- ]", "", text)
     return text.replace(" ", "-")
 

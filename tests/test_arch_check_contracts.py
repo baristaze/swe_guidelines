@@ -265,6 +265,19 @@ def test_a_loose_tunable_is_con_07(tmp_path):
     assert len(found) == 2
 
 
+@pytest.mark.parametrize(
+    "header",
+    ["class TasksManagerMemoryImpl:", "class TasksService(TasksManagerInterface):", "class Tasks(base.TasksManagerInterface):"],
+)
+def test_a_manager_impl_by_tech_or_by_interface_is_con_07(tmp_path, header):
+    impl = f"{header}\n    def __init__(self, storage: S, page_size: int) -> None:\n        pass\n"
+    code, found, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl})
+    assert code == 1
+    assert len(found) == 1
+    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl.replace("page_size: int", "options: O")})
+    assert code == 0
+
+
 # --- CON-08
 
 
@@ -696,3 +709,16 @@ def test_a_root_behind_a_shared_base_is_still_a_root_for_con_06_and_con_20(tmp_p
     code, found, messages = run(tmp_path, "CON-20", {f"{INFRA}/impl/local.py": root})
     assert (code, [line for _, _, line in found]) == (1, [10])
     assert "caches on first use" in messages[0]
+
+
+def test_the_breaker_settings_defaults_pass_con_23(tmp_path):
+    src = (
+        "class BreakerSettings(BaseSettings):\n    failure_threshold: int = 5\n\n\n"
+        "class CacheSettings(BaseModel):\n    breaker: BreakerSettings = BreakerSettings(failure_threshold=5, cooldown=30.0)\n"
+        "    other: object = Field(default_factory=lambda: CacheBreakerConfig(failure_threshold=3))\n"
+    )
+    code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/settings.py": src})
+    assert (code, found) == (0, [])
+    src += "\n\ndef build(inner):\n    return CacheBreakerImpl(inner, failure_threshold=5)\n"
+    code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/settings.py": src})
+    assert (code, found) == (1, [("CON-23", f"{INFRA}/settings.py", 11)])

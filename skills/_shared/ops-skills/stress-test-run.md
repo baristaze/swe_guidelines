@@ -40,8 +40,8 @@ repository, gives the generator its provisioner identity
 (`ACME_PROVISIONER_EMAIL`, `ACME_PROVISIONER_PASSWORD` against
 `ACME_API_URL`, the file's one `write` entry, which creates the run's
 own tenants),
-and the signals their URLs and token. Never print the password or the
-token.
+and the signals their URLs and token; `local.env` is the one
+`make seed` writes. Never print the password or the token.
 
 ## Procedure
 
@@ -53,8 +53,9 @@ token.
 2. Say what is about to happen and wait for the person: a real run
    is the platform developer's choice, because it costs money in the
    cloud, writes rows, and can trip the alarms it is meant to test.
-   The CI sanity run is `acme-ops traffic --profile light` for thirty
-   seconds against the local stack, and it is a wiring check, never a
+   The CI sanity run is `make traffic PROFILE=light DURATION=30`,
+   `acme-ops traffic --profile light` for thirty seconds against the
+   local stack in CI's integration job, and it is a wiring check, never a
    stress test. Against `production`, refuse unless the person says
    so in this session. Against `local`, the invoking prompt's word is
    enough, and an unattended run does not wait.

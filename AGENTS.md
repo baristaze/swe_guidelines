@@ -107,6 +107,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
   workspace holds. They stay listed because a scaffold has to run the
   project's own tools through the workspace, and naming them says so
   in the frontmatter instead of hiding it behind a bare `Bash`.
+  `Bash(python3:*)` in the review skills is the same kind of entry: it
+  is there to run `arch-check`, and it could run anything, so a review
+  skill's promise never to edit rests on its text, not its tools.
 - Scaffold skills have the five sections Input, Created, Changed,
   Procedure, Output, in that order (`scripts/check_skills.py` holds
   them to it).

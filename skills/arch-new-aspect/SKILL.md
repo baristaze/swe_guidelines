@@ -87,7 +87,13 @@ for the aspect in one message and stop.
        `checkers/src/arch_check/model.py`. Its skill goes in the group
        list of `skills/arch-review-full/SKILL.md`, and its name in the
        group list of `agents/arch-reviewer.md`. Its lens file goes in
-       the vendor loop of `docs/adopting.md`.
+       the vendor loop of `docs/adopting.md`. Every count of the groups
+       moves with it: the description, the procedure, the `Groups`
+       line, and the By-group table of `arch-review-full`; the
+       description of the agent; `arch-explain`; the id prefixes in
+       `lenses/README.md`; and `README.md`. A group the checker decides
+       in part gets its module under `checkers/src/arch_check/rules/`
+       and its tests in `tests/test_arch_check_<group>.py`.
      - The scaffold skills whose `Created` or `Changed` tables gain a
        file, or whose section lists gain a section.
      - `docs/adopting.md`, when an adopter must do something or gains

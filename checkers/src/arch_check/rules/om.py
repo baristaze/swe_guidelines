@@ -30,6 +30,7 @@ from arch_check.rules._om_util import (
     VALIDATORS,
     ClassInfo,
     Index,
+    Key,
     config_settings,
     constant,
     field_name,
@@ -476,10 +477,15 @@ def frozen_false(idx: Index, info: ClassInfo) -> Iterator[ast.AST]:
             yield node
 
 
-def chain_params(idx: Index, module: str, fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+def chain_params(idx: Index, module: str, fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, set[Key]]:
+    """Each parameter typed with a chain class, and every class of the chain its annotation or their bases reach."""
     a = fn.args
     every = [*a.posonlyargs, *a.args, *a.kwonlyargs]
-    return {p.arg for p in every if p.arg not in ("self", "cls") and idx.annotation_on_chain(module, p.annotation)}
+    return {
+        p.arg: idx.lineage(module, p.annotation)
+        for p in every
+        if p.arg not in ("self", "cls") and idx.annotation_on_chain(module, p.annotation)
+    }
 
 
 def has_dump(node: ast.AST, dumped: set[str]) -> bool:
@@ -502,8 +508,9 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
     storage: no `model_copy(update=...)` whose update holds a
     `model_dump()` call or a name bound to one in the same function, with
     or without an annotation; no
-    `model_validate(x)` where `x` is a parameter typed with a chain class;
-    no assignment to an attribute of such a parameter, and no
+    `model_validate(x)` where `x` is a parameter typed with a chain class
+    and the class called is that class or an ancestor of it (a view
+    built `from_attributes` is a translation); no assignment to an attribute of such a parameter, and no
     `object.__setattr__` on one. An in-place change through a method of a
     nested value is judged."""
     idx = index(project)
@@ -533,7 +540,14 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
                             file.rel, node, "model_copy(update=...) fed a dump; rebuild it with model_validate so it validates"
                         )
                     first = node.args[0] if node.args else None
-                    if attr == "model_validate" and isinstance(first, ast.Name) and first.id in entities:
+                    # `View.model_validate(entity, from_attributes=True)` translates; only the entity's own class
+                    # or an ancestor of it validates the entity again
+                    if (
+                        attr == "model_validate"
+                        and isinstance(first, ast.Name)
+                        and first.id in entities
+                        and idx.resolve(file.module, dotted(node.func.value)) in entities[first.id]
+                    ):
                         yield Violation.at(
                             file.rel, node, f"model_validate({first.id}) on an entity it already is; validate a dict"
                         )
@@ -873,7 +887,11 @@ MUTABLE = frozenset(
         "Set",
         "Mapping",
         "MutableMapping",
+        "Sequence",
         "MutableSequence",
+        "Collection",
+        "Iterable",
+        "AbstractSet",
         "MutableSet",
         "defaultdict",
         "DefaultDict",
@@ -948,7 +966,9 @@ def validated_default(value: ast.expr) -> bool:
 def fields_are_frozen(project: Project) -> Iterator[Violation]:
     """No field of a class on the chain is annotated with `list`, `dict`,
     `set`, a bare `Mapping` or `MutableMapping`, or another mutable
-    container, at any depth of the annotation; a tuple, a frozen model, or
+    container, at any depth of the annotation. An abstract `Sequence`,
+    `Collection`, `Iterable`, or `AbstractSet` counts: pydantic stores
+    the list or set it built, or a one-shot iterator; a tuple, a frozen model, or
     `FrozenMapping` stands in. A `FrozenMapping` field with a default other
     than `None` is `Field(..., validate_default=True)`. Whether the
     validator behind `FrozenMapping` descends is a runtime test."""

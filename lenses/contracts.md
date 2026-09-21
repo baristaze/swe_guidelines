@@ -65,27 +65,26 @@ interface methods; the rest is judged.
 
 ## CON-03 Satisfiable without its technology, which is named last
 
-**Principle.** Every interface can be satisfied without the
-technology behind it, usually as two impls interchangeable at wiring
-time; names put the technology last. A manager over its own storage
-meets it through the memory roots, one fronting an external
-dependency carries a memory impl, a service interface carries the
-in-process impl alone until a split.
+**Principle.** Every interface can be satisfied without the technology
+behind it, usually as two impls interchangeable at wiring time; names
+put the technology last. A manager over its own storage meets it through
+the memory roots, one fronting an external provider through the
+provider's twin, and a service interface carries the in-process impl
+alone until a split.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** Impl class names under `impl/` folders; the set of impls
-behind each storage, infra, and integration interface; whether a
-manager over an external dependency has a memory twin; how a
-single-impl interface is satisfied without its technology; the names
-that appear in interface signatures and in callers.
+behind each storage, infra, and integration interface; whether the
+provider client under a manager over an external dependency has a twin;
+how a single-impl interface is satisfied without its technology; the
+names that appear in interface signatures and in callers.
 
-**Violation.** An interface with one impl and no way to run it
-without its technology, a storage or infra or integration interface
-above all; a manager over an external provider with no memory impl,
-so nothing above that namespace runs without an account; an impl name
-leads with the technology or omits `Impl`; a technology-specific name
-leaks into an interface or a caller.
+**Violation.** An interface with one impl and no way to run it without
+its technology, a storage or infra or integration interface above all; a
+provider client with no twin, so nothing above that namespace runs
+without an account; an impl name leads with the technology or omits
+`Impl`; a technology-specific name leaks into an interface or a caller.
 
 **Severity.** medium
 
@@ -96,22 +95,24 @@ every storage and infra interface; the rest is judged.
 
 **Principle.** The in-memory impl is a full second implementation, not a
 stub: every read, write, filter, and tenancy rule the relational impl
-has, the memory impl has too, and the test suite runs both. Every
-unique key the schema declares has a contract case, so the memory impl
-refuses what the engine refuses.
+has, the memory impl has too, and the test suite runs both. The named
+atomic methods, the compare-and-set, visibility after a write, and
+every unique key the schema declares each have a contract case.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** The memory impl of every storage interface; the test
 fixtures that select an impl; parametrized tests that run against both;
-the unique indexes the table classes declare and the contract case
-behind each one.
+the named atomic methods, the compare-and-set, the reads after a
+write, and the unique indexes the table classes declare, and the
+contract case behind each one.
 
 **Violation.** A memory impl raises `NotImplementedError` or returns
 empty results for an operation the relational impl supports; a filter
 or ordering rule exists only in one impl; the test suite runs storage
-tests against one impl only; a unique key with no contract case, so the
-memory impl accepts a duplicate the engine refuses and the pair is two
+tests against one impl only; an atomic method, a compare-and-set, a
+read after a write, or a unique key with no contract case, so the
+memory impl is lenient where the engine is strict and the pair is two
 impls of two contracts.
 
 **Severity.** medium
@@ -422,15 +423,15 @@ return statement; the call site that constructs the entity handed to
 `create_*`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; on a create, a manager fills in
-`id` or a timestamp the originating caller left unset, resets one the
-caller constructed, or writes the actor the caller sent instead of the
+through the manager's own `get_*`; on a create, a manager fills in `id`
+or a timestamp the originating caller left unset, resets one the caller
+constructed, or writes the actor the caller sent instead of the
 context's; on an update or a delete, `updated_at`, `updated_by`, or
 `deleted_at` is set by the caller or by storage instead of by the
 manager; a mutating method returns `None` or a different snapshot than
 the one written. The work item is the one row the guideline exempts:
-every write after its enqueue signs `updated_by` with `EMPTY_UUID`,
-and the relayed enqueue takes the actor off the outbox row (CTX-16,
+every write after its enqueue signs `updated_by` with `EMPTY_UUID`, and
+the relayed enqueue takes the actor off the outbox row (OM-13, CTX-16,
 ASY-25).
 
 **Severity.** medium
@@ -478,7 +479,7 @@ it excludes, and which call builds it.
 **Violation.** An update copied from the caller's entity, so a sent
 `created_by` or a cleared `deleted_at` is written; an update that
 excludes fewer fields than `PROVENANCE_FIELDS`; a `model_copy` fed the
-caller's dump.
+caller's dump (the copy call itself is OM-10).
 
 **Severity.** medium
 

@@ -39,8 +39,10 @@ imports the portal's, as it imports the portal's design kit):
 | `src/api/client.ts`   | one transport client: the API origin and the request timeout taken from the app's config (no call goes out without the timeout), the bearer read from the session store (held in memory and mirrored to the tab's session storage, never local storage), app header, error envelope parsed into a typed error carrying the request id, 401 clears authentication; the app's one retry lives here: only a failure that can differ on a second attempt (a timeout, a connection refused, an unavailable answer) is retried, bounded in count and spaced by a delay that grows and carries jitter, with the query library's own retry turned off where it is configured, so retries do not stack, as The Network Layer (Direction of Calls) states |
 | `src/api/index.ts`    | re-exports `types` and `client`                                                          |
 
-Python client, under `clients/python/` (created when absent; the CLI
-and a remote service impl import it):
+Python client, under `clients/python/` (created when absent, and
+skipped when present: `arch-scaffold-new` writes it after its first
+`make openapi`, whether or not it builds a portal, because the ops
+package rides it; the CLI and a remote service impl import it):
 
 | File                  | Holds                                                                                   |
 |-----------------------|-----------------------------------------------------------------------------------------|
@@ -81,7 +83,7 @@ CLI, under `apps/<app-name>/`:
 | `.env.example` (browser app)            | the app's local dev server origin added to the API's allowed origins |
 | `pnpm-workspace.yaml` (browser app)     | `apps/*` and `clients/*` listed                                           |
 | `package.json` (root, browser app)      | the workspace scripts for lint, typecheck, and test                       |
-| `Makefile`                              | the `openapi` target writes `apps/<portal>/openapi.json` and runs `generate`, and regenerates `clients/python/`; for a browser app, `check` also runs the workspace lint, typecheck, and test scripts, so CI's `make check` covers the app |
+| `Makefile`                              | the `openapi` target writes `apps/<portal>/openapi.json` and runs `generate`, and regenerates `clients/python/` (already so on a tree `arch-scaffold-new` built); for a browser app, `check` also runs the workspace lint, typecheck, and test scripts, so CI's `make check` covers the app |
 | `deployment/realtime-timeouts.json` (portal, when absent) | the ping interval and load balancer idle timeout; the service scaffold writes it with `--realtime`, and the portal asserts it from the client side, in `timeouts.ts` and its test, the client half of the shared-file rule |
 | `deployment/terraform/modules/static-site/` (browser app, when absent) | a private S3 bucket with public access blocked, a CloudFront distribution reading it through origin access control, `index.html` as the fallback for client routes, `config.json` served uncached, a response headers policy on the distribution declaring `Content-Security-Policy` (the app's own origin, the API, the error tracker's origin when one is configured, and the object store's origin when uploads are presigned, and nothing else) with the other security headers, the alias `<subdomain>.<base_domain>` with its certificate and DNS record |
 | `deployment/terraform/environments/*/` (browser app) | one `static-site` instance for the app in every environment, subdomain `app` (portal) or `admin` (console), its origin added to the API's allowed origins, its bucket and origin as outputs |

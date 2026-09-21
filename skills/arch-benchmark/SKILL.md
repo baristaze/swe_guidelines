@@ -1,18 +1,28 @@
 ---
 name: arch-benchmark
 description: "Run a benchmark scenario from this checkout: a skill of the plugin, a command, or a question-and-answer turn, executed in a declared runtime and scored by frontier models from several providers against the scenario's rubric. Use when a change to a skill, a lens, or the guideline needs a measurement rather than an opinion, or when someone asks how well a skill answers a question."
-allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(docker:*), Bash(ls:*), Bash(cat:*)
+allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(ls:*), Bash(cat:*)
 ---
 
 # arch-benchmark
 
 Measure a subject against a rubric and report what the judges said.
-The harness is at `${CLAUDE_SKILL_DIR}/../../benchmark/`, and it is
-the only thing that runs a benchmark. Do not compose a provider call
-by hand, and do not invent a flag: every flag is in
-`${CLAUDE_SKILL_DIR}/../../benchmark/README.md`, and
-`uv run benchmark/run.py --help` prints them. If the folder is
-missing, stop and say the installation is incomplete.
+The harness is `benchmark/run.py` in a checkout of the guideline
+repository, and it is the only thing that runs a benchmark. Do not
+compose a provider call by hand, and do not invent a flag: every flag
+is in `benchmark/README.md`, and `uv run benchmark/run.py --help`
+prints them.
+
+## Where it runs
+
+The current working directory must be a checkout of the guideline
+repository: `architecture.md`, `.claude-plugin/plugin.json`,
+`benchmark/run.py`, and `benchmark/README.md` all present. Check with
+`ls` before anything else. Otherwise stop and say so: the benchmark
+measures the checkout it runs from, and writes its run folders under
+that checkout's `benchmark/runs/`. The copy under
+`${CLAUDE_SKILL_DIR}/../..` is the installed plugin, not a checkout;
+never run the harness from there.
 
 ## Input
 
@@ -26,9 +36,8 @@ missing, stop and say the installation is incomplete.
 
 ## Procedure
 
-1. Find the checkout root: the harness sits at
-   `${CLAUDE_SKILL_DIR}/../../benchmark/`. Every command below runs
-   from the root, the folder that holds `benchmark/`.
+1. Confirm the working directory is a checkout, as "Where it runs"
+   says. Every command below runs from it.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
    their kind and default judges, and each provider with its flag and
    whether its key is present. Report an absent key as absent; it is a

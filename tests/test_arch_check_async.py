@@ -602,6 +602,37 @@ def test_asy_15_a_task_group_passes(tmp_path):
     assert code == 0
 
 
+def test_asy_15_a_loop_or_an_executor_spawning(tmp_path):
+    files = {
+        f"{API}/routers/export.py": (
+            "import asyncio\nfrom concurrent.futures import ThreadPoolExecutor\n\n\n"
+            "POOL = ThreadPoolExecutor()\n\n\n"
+            "async def f(job):\n"
+            "    asyncio.get_running_loop().create_task(job())\n"
+            "    loop = asyncio.get_event_loop()\n"
+            "    loop.create_task(job())\n"
+            "    await loop.run_in_executor(None, job)\n"
+            "    ThreadPoolExecutor().submit(job)\n"
+            "    POOL.submit(job)\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-15", files)
+    assert code == 1
+    assert len(report["findings"]) == 5
+
+
+def test_asy_15_an_executor_a_with_holds_passes(tmp_path):
+    files = {
+        f"{API}/routers/export.py": (
+            "from concurrent.futures import ThreadPoolExecutor\n\n\n"
+            "def f(job, jobs):\n    with ThreadPoolExecutor() as pool:\n        pool.submit(job)\n        jobs.submit(job)\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-15", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
 def test_asy_16_the_payload_map_elsewhere_and_a_unique_constraint(tmp_path):
     files = edit(WORK, "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n", "")
     files[f"{OM}/work/kinds.py"] = "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n"
@@ -707,3 +738,38 @@ def test_asy_28_a_path_open_or_an_unread_mode_is_a_read(tmp_path, read):
     assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
     code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace("self._file.open()", "self._file.open('w')")})
     assert code == (0 if "open()" in read else 1)
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        "with self._file.open() as h:\n"
+        "            if os.fstat(h.fileno()).st_mode & 0o077:\n"
+        "                raise PermissionError(self._file)\n"
+        "            return h.read()",
+        "fd = os.open(self._file, os.O_RDONLY)\n"
+        "        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:\n"
+        "            raise PermissionError(self._file)\n"
+        "        return os.read(fd, 4096)",
+        "with open(self._file) as h:\n"
+        "            if os.fstat(h.fileno()).st_mode & 0o077:\n"
+        "                raise PermissionError(self._file)\n"
+        "            return json.load(h)",
+    ],
+)
+def test_asy_28_a_mode_check_on_the_open_handle_before_its_first_read(tmp_path, read):
+    source = (
+        "import os\nimport stat\n\n\nclass SecretsLocalImpl(SecretsInterface):\n"
+        "    def describe(self) -> str:\n        return 'secrets=local'\n\n"
+        f"    def _read(self) -> str:\n        {read}\n"
+    )
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source})
+    assert report["findings"] == []
+    assert code == 0
+    # read first, check after: the same lines with the read moved above the check
+    first, *check, last = read.split("\n")
+    indent = last[: len(last) - len(last.lstrip())]
+    late = "\n".join([first, last.replace("return ", "value = "), *check, indent + "return value"])
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace(read, late)})
+    assert code == 1
+    assert messages(report) == ["_read reads a file with no owner-only mode check before it"]

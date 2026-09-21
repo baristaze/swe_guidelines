@@ -437,6 +437,23 @@ def test_model_validate_on_an_entity_is_om_10(tmp_path):
     assert found(report) == [("OM-10", SERVICE)]
 
 
+def test_a_view_built_from_an_entity_is_not_om_10(tmp_path):
+    source = (
+        "from pydantic import BaseModel\n\n"
+        "from acme.om.base import Identifiable\n"
+        "from acme.om.tasks.types import Task\n\n\n"
+        "class TaskView(BaseModel):\n    title: str\n\n\n"
+        "def view(task: Task) -> TaskView:\n"
+        "    return TaskView.model_validate(task, from_attributes=True)\n"
+    )
+    code, _ = run(tmp_path, "OM-10", {SERVICE: source})
+    assert code == 0
+    ancestor = source.replace("TaskView.model_validate(task", "Identifiable.model_validate(task")
+    code, report = run(tmp_path, "OM-10", {SERVICE: ancestor})
+    assert code == 1
+    assert found(report) == [("OM-10", SERVICE)]
+
+
 def test_assigning_to_an_entity_attribute_is_om_10(tmp_path):
     source = (
         "from acme.om.tasks.types import Task\n\n\n"
@@ -624,7 +641,19 @@ def test_no_tenancy_namespace_is_om_16(tmp_path):
 
 @pytest.mark.parametrize(
     "annotation",
-    ["list[str]", "dict[str, int]", "set[int]", "Mapping[str, int]", "tuple[list[int], ...]", "'List[int]'"],
+    [
+        "list[str]",
+        "dict[str, int]",
+        "set[int]",
+        "Mapping[str, int]",
+        "tuple[list[int], ...]",
+        "'List[int]'",
+        "Sequence[str]",
+        "Collection[str]",
+        "Iterable[str]",
+        "AbstractSet[str]",
+        "collections.abc.MutableSequence[str]",
+    ],
 )
 def test_a_mutable_field_is_om_17(tmp_path, annotation):
     source = TASK_SOURCE.replace("    tags: tuple[str, ...] = ()\n", f"    tags: {annotation}\n")

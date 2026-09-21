@@ -78,7 +78,7 @@ is read; this skill touches no application credential.
 4. Cloud only. Plan under the read-only profile:
 
    ```bash
-   cd deployment/terraform/environments/<env>
+   cd deployment/terraform/environments/<dir>   # staging, or prod for production
    AWS_PROFILE=acme-<env>-investigate terraform init -reconfigure
    AWS_PROFILE=acme-<env>-investigate terraform plan -lock=false -out=/dev/null
    ```
@@ -89,8 +89,9 @@ is read; this skill touches no application credential.
 5. Branch, commit, push, and open the pull request with `gh pr
    create`: the change in one sentence, the plan summary (`n to add,
    n to change, n to destroy`) pasted, and the levers it moves named.
-   The pipeline plans again on the pull request; production's apply
-   waits behind the environment's approval.
+   CI formats and validates it on the pull request; staging applies
+   on merge, and production plans on a push to `release` and applies
+   behind the environment's approval.
 
 ## What it never does
 

@@ -19,9 +19,10 @@ platform's own secrets, the ones the secret store holds, to `async`
 
 **Principle.** Every operational task is a skill a person runs with an
 agent. The safety boundary is the credential the skill holds, never
-the prompt. A credential a person or an agent holds reads and never
-writes; one that writes is held by a pipeline, or by a person for one
-named step.
+the prompt. A cloud credential a person or an agent holds reads and
+never writes; one that writes is held by a pipeline, or by the
+administrator for its two named steps, creating and destroying an
+environment.
 
 **Source.** Operations.
 
@@ -32,10 +33,10 @@ under and whether it can write; what stands between an agent and a
 write, a prompt or a credential.
 
 **Violation.** An operational task done by hand from a runbook with no
-skill; a skill an agent runs under a credential that writes; a
-prompt's instruction ("do not apply") as the only thing keeping an
-agent from a write; a writing credential held by a person for more
-than one named step.
+skill; a skill an agent runs under a credential that writes; a prompt's
+instruction ("do not apply") as the only thing keeping an agent from a
+write; a writing cloud credential held by a person for anything but the
+administrator's two steps.
 
 **Severity.** high
 
@@ -219,8 +220,8 @@ configuration. (The platform's own secrets are ASY-13 and ASY-28.)
 **Principle.** The local stack is an environment too. Its file names
 the compose stack and the developer dashboards of the `devx` profile,
 so every skill runs against the developer's machine with no cloud at
-all. Every skill but the administrator's two takes the environment it
-acts on, and `local` is one of them.
+all. Every skill takes the environment it acts on, and `local` is one
+of them for every skill but the administrator's two.
 
 **Source.** Operations, Operator Credentials; Operational Skills.
 
@@ -355,8 +356,9 @@ system with no reading of this one.
 
 **Principle.** A tenant admin's view of their own organization is a
 product screen: a feature served by the app-specific service from the
-activity role. It is never a telemetry query. Telemetry carries no
-tenant id, so nothing there could answer a tenant's question.
+activity role. It is never a telemetry query. A metric carries no
+tenant id, and a log search is an operator's tool, never a tenant's
+screen.
 
 **Source.** Operations, Dashboards and Alarms as Code.
 
@@ -398,7 +400,7 @@ made outside a pull request; a database with a fixed disk.
 ## OPS-18 A budget and an anomaly monitor from the first apply
 
 **Principle.** An account has a budget from its first apply. It names
-a monthly amount and alerts the owner at half of it, at most of it,
+a monthly amount and alerts the owner at half of it, at nine-tenths of it,
 at all of it, and when the forecast crosses it. An anomaly monitor
 watches each service's spend and reports a jump. Every resource
 carries the environment tag through the provider's default tags.
@@ -467,7 +469,8 @@ p50, p95, p99, the error ratio).
 **Violation.** A second load script, or a stress tool that calls a
 manager or a domain service directly; a session that is one request
 repeated; a generator that cannot target `local`; a generator that
-creates tenants through the database instead of the operator plane;
+creates tenants through the database instead of the operator plane,
+or under an identity other than its own;
 a report an operator cannot read against the dashboard.
 
 **Severity.** medium
@@ -500,11 +503,11 @@ proof of capacity.
 
 ## OPS-22 One test reads every signal back by request id
 
-**Principle.** One integration test closes the loop: it starts the
-process, with the trace exporter and the error tracker configured,
-drives one session through the edge, and reads every signal back by
-the request id the response carried: the log line, the counter, the
-trace, the error event. The readers are one interface with two impls,
+**Principle.** One integration test closes the loop. It starts the
+process with the trace exporter and the error tracker configured,
+drives one session through the edge with one call failing on purpose,
+and reads back by the request id the log line, the counter, the trace,
+and the error event. The readers are one interface with two impls,
 local and cloud.
 
 **Source.** Operations, The Telemetry Round Trip.

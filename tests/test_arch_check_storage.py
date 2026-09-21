@@ -996,3 +996,139 @@ def test_sto_03_a_lower_case_lock_in_a_query(tmp_path):
     code, report = run(tmp_path, "STO-03", files)
     assert code == 1
     assert rules_found(report) == [("STO-03", f"{OM}/widgets/impl/manager.py", 1)]
+
+
+def test_sto_05_an_event_trigger_and_an_aggregate_the_chain_leaves(tmp_path):
+    first = "om/migrations/sql/core/202601020000_audit.up.sql"
+    second = "om/migrations/sql/core/202601030000_unaudit.up.sql"
+    files = {
+        first: (
+            "CREATE EVENT TRIGGER audit_ddl ON ddl_command_end EXECUTE FUNCTION core.audit();\n"
+            "CREATE AGGREGATE core.total(numeric) (SFUNC = numeric_add, STYPE = numeric);\n"
+        ),
+    }
+    code, report = run(tmp_path, "STO-05", files)
+    assert code == 1
+    assert messages(report) == [
+        "CREATE EVENT TRIGGER audit_ddl is left in the schema; logic happens in the code",
+        "CREATE AGGREGATE core.total is left in the schema; logic happens in the code",
+    ]
+    files[second] = "DROP EVENT TRIGGER IF EXISTS audit_ddl;\nDROP AGGREGATE core.total(numeric);\n"
+    code, report = run(tmp_path, "STO-05", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_sto_18_a_quoted_schema_of_another_role(tmp_path):
+    files = {
+        "om/migrations/sql/core/202601020000_more.up.sql": 'ALTER TABLE "activity"."events" ADD COLUMN x int;\n',
+        "om/migrations/sql/core/202601020000_more.down.sql": 'ALTER TABLE "core"."widgets" DROP COLUMN x;\n',
+        "om/migrations/versions/core/202601020000_more.py": GOOD[WRAPPER].replace("202601010000_initial", "202601020000_more"),
+    }
+    code, report = run(tmp_path, "STO-18", files)
+    assert code == 1
+    assert messages(report) == ["activity.events is in role activity; this file is core's"]
+
+
+def test_sto_12_an_entity_that_shares_a_tables_plural_name(tmp_path):
+    entity = f"{OM}/widgets/types/widgets.py"
+    files = {
+        entity: "class Widgets(Entity):\n    pass\n",
+        IFACE: GOOD[IFACE]
+        .replace("from abc import", "from acme.om.widgets.types.widgets import Widgets\nfrom abc import")
+        .replace("-> list[Widget]", "-> Widgets"),
+    }
+    code, report = run(tmp_path, "STO-12", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[IFACE] = files[IFACE].replace("acme.om.widgets.types.widgets", "acme.om.widgets.storage.tables.widgets")
+    code, report = run(tmp_path, "STO-12", files)
+    assert code == 1
+    assert messages(report) == ["WidgetsStorageInterface.read_widgets returns Widgets; a row never leaves the impl"]
+
+
+def test_sto_08_and_10_a_root_in_the_storage_package_init(tmp_path):
+    init = f"{OM}/storage/__init__.py"
+    files = {init: GOOD[ROOT]}
+    code, report = run(tmp_path, "STO-10", files, drop=[ROOT])
+    assert report["findings"] == []
+    assert code == 0
+    files[init] = GOOD[ROOT].replace("    @abstractmethod\n    async def close(self) -> None: ...\n", "")
+    code, report = run(tmp_path, "STO-10", files, drop=[ROOT])
+    assert code == 1
+    assert rules_found(report) == [("STO-10", init, 7)]
+    assert messages(report) == ["StorageInterface declares no close()"]
+    files[init] = "from sqlalchemy.ext.asyncio import AsyncEngine\n" + GOOD[ROOT]
+    code, report = run(tmp_path, "STO-08", files, drop=[ROOT])
+    assert code == 1
+    assert rules_found(report) == [("STO-08", init, 1)]
+
+
+def test_sto_06_a_database_minted_key_the_migrations_leave(tmp_path):
+    later = "om/migrations/sql/core/202601020000_keys.up.sql"
+    files = {
+        later: (
+            "ALTER TABLE core.widgets ALTER COLUMN id SET DEFAULT gen_random_uuid();\n"
+            "CREATE TABLE core.parts (id bigserial PRIMARY KEY, n int NOT NULL DEFAULT 0);\n"
+            "CREATE TABLE core.feed (\n"
+            "    org_id uuid NOT NULL,\n"
+            "    seq bigint GENERATED ALWAYS AS IDENTITY,\n"
+            "    CONSTRAINT pk_feed PRIMARY KEY (org_id, seq)\n"
+            ");\n"
+        )
+    }
+    code, report = run(tmp_path, "STO-06", files)
+    assert code == 1
+    assert rules_found(report) == [("STO-06", later, 1), ("STO-06", later, 2), ("STO-06", later, 5)]
+    assert messages(report) == [
+        "core.widgets.id has a DEFAULT in the migrations; an id is minted above storage",
+        "core.parts.id has type bigserial in the migrations; an id is minted above storage",
+        "core.feed.seq has an identity in the migrations; an id is minted above storage",
+    ]
+
+
+def test_sto_06_a_key_default_a_later_migration_drops_is_history(tmp_path):
+    files = {
+        "om/migrations/sql/core/202601020000_keys.up.sql": (
+            "ALTER TABLE core.widgets ALTER COLUMN id SET DEFAULT gen_random_uuid();\n"
+        ),
+        "om/migrations/sql/core/202601030000_unkeys.up.sql": "ALTER TABLE core.widgets ALTER COLUMN id DROP DEFAULT;\n",
+    }
+    code, report = run(tmp_path, "STO-06", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_sto_26_a_full_unique_key_the_migrations_leave_on_a_soft_deletable_table(tmp_path):
+    later = "om/migrations/sql/core/202601020000_uniques.up.sql"
+    files = {
+        later: (
+            "CREATE UNIQUE INDEX uq_widgets_code ON core.widgets (org_id, code);\n"
+            "CREATE UNIQUE INDEX uq_catalog_title ON core.catalog (title);\n"
+            "CREATE TABLE core.parts (id uuid PRIMARY KEY, name text UNIQUE, deleted_at timestamptz NULL);\n"
+            "CREATE UNIQUE INDEX uq_widgets_slug ON core.widgets (org_id, slug) WHERE deleted_at IS NULL;\n"
+        )
+    }
+    code, report = run(tmp_path, "STO-26", files)
+    assert code == 1
+    assert rules_found(report) == [("STO-26", later, 1), ("STO-26", later, 3)]
+    assert messages(report) == [
+        "core.widgets is soft-deletable and uq_widgets_code holds the dead too; add WHERE deleted_at IS NULL",
+        "core.parts is soft-deletable and parts_name_key holds the dead too; add WHERE deleted_at IS NULL",
+    ]
+    files["om/migrations/sql/core/202601030000_living.up.sql"] = (
+        "DROP INDEX core.uq_widgets_code;\n"
+        "CREATE UNIQUE INDEX uq_widgets_code ON core.widgets (org_id, code) WHERE deleted_at IS NULL;\n"
+        "ALTER TABLE core.parts DROP CONSTRAINT parts_name_key;\n"
+    )
+    code, report = run(tmp_path, "STO-26", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_sto_26_a_key_the_table_class_reports_is_reported_once(tmp_path):
+    files = edit(WIDGETS, ', postgresql_where=text("deleted_at IS NULL")', "")
+    files["om/migrations/sql/core/202601020000_slug.up.sql"] = "CREATE UNIQUE INDEX uq_widgets_slug ON core.widgets (slug);\n"
+    code, report = run(tmp_path, "STO-26", files)
+    assert code == 1
+    assert [p for _, p, _ in rules_found(report)] == [WIDGETS]

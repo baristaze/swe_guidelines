@@ -4,21 +4,24 @@
 Rules:
 - every skills/<name>/SKILL.md has YAML frontmatter with `name` equal to the
   folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
-  under 1024 characters;
+  under 1024 characters, written as one double-quoted string;
 - every `${CLAUDE_SKILL_DIR}/...` reference in a skill body resolves to a file
-  or directory that exists in this repository; a reference inside
+  or directory that exists inside this repository; a reference inside
   `skills/_shared/scaffold-conventions.md` is resolved from the folder of
   every skill whose body references that file, since that is the skill
   the reader runs;
 - there is exactly one arch-review-<group> skill per lens group and none for
   a group that does not exist;
 - arch-review-full names every group's review skill;
-- allowed-tools is comma-separated, each entry `Name` or `Name(rule)`; a bare
+- allowed-tools is comma-separated, each entry `Name` or `Name(rule)`, with no
+  space outside the parentheses (a space inside, `Bash(make check)`, is
+  part of the rule); a bare
   `Bash` is refused, as is a rule with a trailing space inside the
   parentheses or the `Bash(cmd *)` spelling; a Bash rule is the
   `Bash(cmd:*)` prefix form, with no other `*`, or an exact
   `Bash(make <target>)`, and anything else (`Bash(*)`, `Bash(curl*)`, an
-  exact command that is not make) is refused;
+  exact command that is not make) is refused; a make entry names a target,
+  so `Bash(make:*)` and `Bash(make -C dir:*)` are refused;
 - allowed-tools names only what the body runs; the checker holds the make
   targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
   `make <target>`, as whole words, appears inside a backticked span of the
@@ -31,7 +34,8 @@ Rules:
 - an unquoted value contains no ": " or " #", and does not start with a
   YAML indicator character, so strict YAML loaders accept it;
 - every arch-scaffold-* skill has the five scaffold sections, `## Input`,
-  `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order.
+  `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
+  a heading inside fenced code is not a section.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -43,7 +47,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments
+from _common import arguments, headings
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
@@ -56,13 +60,15 @@ TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[a-z0-9-]+__[a-z0-9_]+)(\([^()]*\))?$")
 BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 PREFIX_RULE = re.compile(r"^[^*:]+:\*$")  # `cmd:*`: a command, then the one `*`
 EXACT_MAKE = re.compile(r"^make [^*:]+$")  # `make <target>`, arguments allowed, no wildcard
+MAKE_TARGET = re.compile(r"^make [^\s-]")  # a make entry names a target first, not an option
+QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
+PARENS = re.compile(r"\([^()]*\)")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
 SCAFFOLD_SECTIONS = ("Input", "Created", "Changed", "Procedure", "Output")
-SECTION = re.compile(r"^## (.+?)\s*$", re.M)
 INDICATORS = ("'", "[", "{", "&", "*", "!", "|", ">", "%", "@", "`", "#", "-", "?", ",", "]", "}")
 
 
@@ -209,9 +215,12 @@ def main(argv: Sequence[str] = ()) -> int:
             errors.append(f"{rel}: empty description")
         elif len(desc) > 1024:
             errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
+        head = FRONTMATTER.match(text)
+        if desc and head and not QUOTED_DESCRIPTION.search(head.group(1)):
+            errors.append(f"{rel}: description must be one double-quoted string")
         tools = fm.get("allowed-tools", "")
         if tools:
-            if " " in tools and "," not in tools:
+            if any(" " in PARENS.sub("", t.strip()) for t in tools.split(",")):
                 errors.append(f"{rel}: allowed-tools must be comma-separated")
             body = body_of(text)
             runs = code_spans(body)
@@ -236,6 +245,8 @@ def main(argv: Sequence[str] = ()) -> int:
                     errors.append(f"{rel}: allowed-tools entry {tool!r} names no command")
                 elif not (PREFIX_RULE.match(rule.strip()) or EXACT_MAKE.match(rule.strip())):
                     errors.append(f"{rel}: {tool!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)")
+                elif (cmd == "make" or cmd.startswith("make ")) and not MAKE_TARGET.match(cmd):
+                    errors.append(f"{rel}: {tool!r} names no make target; name one, Bash(make <target>)")
                 elif cmd.startswith("make ") and not runs_command(cmd, runs):
                     errors.append(f"{rel}: allowed-tools names Bash({cmd}) but the body never runs {cmd}")
         refs = [(ref, str(rel)) for ref in REF.findall(text)]
@@ -248,10 +259,12 @@ def main(argv: Sequence[str] = ()) -> int:
             if "<" in ref:
                 continue  # a placeholder such as arch-review-<group>
             target = (folder / ref).resolve()
-            if not target.exists():
+            if not target.is_relative_to(ROOT.resolve()):
+                errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} resolves outside the repository")
+            elif not target.exists():
                 errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
         if name.startswith("arch-scaffold-"):
-            found = [h for h in SECTION.findall(text) if h in SCAFFOLD_SECTIONS]
+            found = [t for level, t in headings(body_of(text)) if level == 2 and t in SCAFFOLD_SECTIONS]
             if found != list(SCAFFOLD_SECTIONS):
                 errors.append(f"{rel}: scaffold sections are {found}, expected {list(SCAFFOLD_SECTIONS)} in that order")
         if name.startswith("arch-review-") and name != "arch-review-full":

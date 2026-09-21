@@ -557,6 +557,12 @@ SPAWNS = frozenset(
 """What starts work in the background, as the defining module spells it. A task group is not here: it
 cannot outlive the `async with` that holds it."""
 LOOP_CALLS = frozenset({"call_later", "call_at"})
+LOOPS = frozenset({"asyncio.get_running_loop", "asyncio.get_event_loop", "asyncio.new_event_loop"})
+LOOP_SPAWNS = frozenset({"create_task", "run_in_executor"})
+"""What a loop starts in the background: `loop.create_task` outlives the request as `asyncio.create_task` does."""
+EXECUTORS = frozenset({"concurrent.futures.ThreadPoolExecutor", "concurrent.futures.ProcessPoolExecutor"})
+EXECUTOR_SPAWNS = frozenset({"submit", "map"})
+"""An executor held past a `with` runs what it is given after the request returns; one a `with` holds waits for it."""
 SCHEDULERS = ("apscheduler", "schedule", "rq_scheduler", "aiocron", "crontab")
 """Scheduler libraries. A job queue such as celery or rq is not one."""
 EDGE = ["*.realtime", "*.realtime.*"]
@@ -589,6 +595,41 @@ def resolved(node: ast.AST, bound: dict[str, str]) -> str | None:
     return f"{bound[head]}.{rest}" if rest else bound[head]
 
 
+def held(tree: ast.Module, bound: dict[str, str]) -> tuple[set[str], set[str]]:
+    """The names a module binds by assignment to an event loop and to an executor, in any scope.
+
+    A name a `with` binds is not here: the `with` waits for the executor's work before it returns.
+    """
+    loops: set[str] = set()
+    executors: set[str] = set()
+    for node in ast.walk(tree):
+        value: ast.expr | None = None
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            value, targets = node.value, node.targets
+        elif isinstance(node, ast.AnnAssign):
+            value, targets = node.value, [node.target]
+        if not isinstance(value, ast.Call):
+            continue
+        made = resolved(value.func, bound)
+        names = {t.id for t in targets if isinstance(t, ast.Name)}
+        names |= {t.attr for t in targets if isinstance(t, ast.Attribute)}  # `self._loop = ...`
+        if made in LOOPS:
+            loops |= names
+        elif made in EXECUTORS:
+            executors |= names
+    return loops, executors
+
+
+def receiver(node: ast.expr, bound: dict[str, str], loops: set[str], executors: set[str]) -> str | None:
+    """`loop` or `executor` when a method is called on one: made inline, or a name or attribute bound to one."""
+    if isinstance(node, ast.Call):
+        made = resolved(node.func, bound)
+        return "loop" if made in LOOPS else "executor" if made in EXECUTORS else None
+    name = node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else None
+    return "loop" if name in loops else "executor" if name in executors else None
+
+
 @rule(
     "ASY-15",
     options=("edge",),
@@ -601,6 +642,10 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
 
     The guideline names no module for the socket edge, so the default is a guess: a project whose edge
     lives elsewhere names it here.
+
+    A spawn is `asyncio.create_task` and its kin, a thread or a timer, a background-task parameter,
+    `create_task` or `run_in_executor` on a loop from `get_running_loop()` or `get_event_loop()`, and
+    `submit` or `map` on an executor no `with` holds. A task group's `create_task` is not one.
     """
     edge = project.option("ASY-15", "edge", EDGE, {"edge"})
     for file in project.modules_under(project.sub("services")):
@@ -613,11 +658,17 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
             if any(is_under(imp.module, s) for s in SCHEDULERS):
                 yield Violation.at(file.rel, imp.node, f"a web service imports {imp.module}; recurring work is a worker")
         bound = bindings(tree)
+        loops, executors = held(tree, bound)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = resolved(node.func, bound)
                 attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
-                if name in SPAWNS or attr in LOOP_CALLS:
+                on = receiver(node.func.value, bound, loops, executors) if isinstance(node.func, ast.Attribute) else None
+                if (on == "loop" and attr in LOOP_SPAWNS) or (on == "executor" and attr in EXECUTOR_SPAWNS):
+                    yield Violation.at(
+                        file.rel, node, f"a web service calls {on}.{attr}(); work that outlives a request is a worker"
+                    )
+                elif name in SPAWNS or attr in LOOP_CALLS:
                     what = name or attr
                     yield Violation.at(file.rel, node, f"a web service calls {what}(); work that outlives a request is a worker")
             elif isinstance(node, ast.arg) and node.annotation is not None:
@@ -803,24 +854,85 @@ def checks_mode(nodes: list[ast.AST]) -> bool:
     return stats and mask
 
 
+CONTENT_READS = frozenset({"read", "readline", "readlines", "read_text", "read_bytes"})
+"""A call that reads what a file holds: on a handle, or on a path."""
+NOT_READS = frozenset({"stat", "lstat", "fstat", "fileno", "close", "closing"})
+"""A call that takes a handle and reads none of its content."""
+
+
+def is_open(call: ast.Call, paths: Collection[str]) -> bool:
+    """A call that opens a file for reading and returns a handle, not its content."""
+    return reads_a_file(call, paths) and not (isinstance(call.func, ast.Attribute) and call.func.attr in READS)
+
+
+def handle_names(body: list[ast.AST], call: ast.Call) -> set[str]:
+    """The names an open's handle is bound to: `with open(p) as h`, `h = open(p)`, `fd = os.open(p, ...)`."""
+    out: set[str] = set()
+    for n in body:
+        if isinstance(n, ast.withitem) and n.context_expr is call and isinstance(n.optional_vars, ast.Name):
+            out.add(n.optional_vars.id)
+        elif isinstance(n, ast.Assign) and n.value is call:
+            out |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+    return out
+
+
+def first_read(body: list[ast.AST], paths: Collection[str]) -> int | None:
+    """The line of the first read of a file's content in a function, or None when it reads no file.
+
+    `read_text` and `read_bytes` read at once. An open reads when its handle
+    is read: `.read()`, `os.read(fd, n)`, the handle passed to a call
+    (`json.load(h)`), or iterated. A handle the function never reads, or
+    one it hands on unnamed, is read at the open, since the checker cannot
+    follow it. A `stat` of the open handle is not a read, so the race-free
+    check (`os.fstat(h.fileno())` before `h.read()`) comes before it.
+    """
+    lines: list[int] = []
+    for call in (n for n in body if isinstance(n, ast.Call)):
+        if isinstance(call.func, ast.Attribute) and call.func.attr in READS:
+            lines.append(call.lineno)
+            continue
+        if not is_open(call, paths):
+            continue
+        names = handle_names(body, call)
+        uses: list[int] = []
+        for n in body:
+            if isinstance(n, ast.Call) and n is not call:
+                func = n.func
+                on_handle = isinstance(func, ast.Attribute) and (
+                    func.value is call or (isinstance(func.value, ast.Name) and func.value.id in names)
+                )
+                reads_content = on_handle and isinstance(func, ast.Attribute) and func.attr in CONTENT_READS
+                passed = (last(dotted(func)) or "") not in NOT_READS and any(
+                    isinstance(a, ast.Name) and a.id in names for a in [*n.args, *(k.value for k in n.keywords)]
+                )
+                if reads_content or passed:
+                    uses.append(n.lineno)
+            elif isinstance(n, ast.For | ast.AsyncFor | ast.comprehension):
+                if isinstance(n.iter, ast.Name) and n.iter.id in names:
+                    uses.append(n.iter.lineno)
+        lines.append(min(uses) if uses else call.lineno)
+    return min(lines) if lines else None
+
+
 @rule(
     "ASY-28",
     coverage="partial",
     summary="Every file the secrets package reads is checked owner-only first, in the same function or a helper it calls.",
 )
 def secrets_files_are_private(project: Project) -> Iterator[Violation]:
-    """The check is a `stat` and a mode test (`mode & 0o077`, `S_IRWXG`, or `== 0o600`) before the first read,
-    in the reading function itself or in a function of the same module it calls first."""
+    """The check is a `stat` and a mode test (`mode & 0o077`, `S_IRWXG`, or `== 0o600`) before the first read
+    of the file's content, in the reading function itself or in a function of the same module it calls first.
+    Opening the file is not yet the read: an `fstat` of the open handle before reading it is the check."""
     for file, tree in project.trees(f"{project.sub('infra')}.secrets"):
         fns = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
         helpers = {fn.name for fn in fns if checks_mode([n for s in fn.body for n in ast.walk(s)])}
         for fn in fns:
             body = [n for s in fn.body for n in ast.walk(s)]
             paths = {a.arg for a in [*fn.args.args, *fn.args.kwonlyargs] if last(dotted(a.annotation)) == "Path"}
-            reads = [n for n in body if isinstance(n, ast.Call) and reads_a_file(n, paths)]
-            if not reads:
+            first = first_read(body, paths)
+            if first is None:
                 continue
-            first = min(r.lineno for r in reads)
+            reads = [n for n in body if isinstance(n, ast.Call) and reads_a_file(n, paths)]
             before = [n for n in body if getattr(n, "lineno", first + 1) <= first]
             helped = any(isinstance(n, ast.Call) and last(dotted(n.func)) in helpers and n.lineno <= first for n in body)
             if not (checks_mode(before) or helped):

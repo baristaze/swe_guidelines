@@ -88,11 +88,14 @@ class BaseRuntime:
     name = "base"
 
     def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
-        self.run_dir = Path(run_dir)
+        # Absolute, because the subject's working directory is the workspace:
+        # a relative HOME, TMPDIR, or mount source would be read from there.
+        self.run_dir = Path(run_dir).resolve()
         self.target = Path(target).resolve() if target else None
         self.plugin = Path(plugin).resolve() if plugin else None
         self.config = dict(config or {})
         self.workspace = self.run_dir / "workspace"
+        self.slot: str | None = None
         self.prepared = False
 
     def plugin_path(self) -> str | None:
@@ -110,6 +113,11 @@ class BaseRuntime:
         self.prepared = True
         return self.workspace
 
+    def prepare_repeat(self, index: int) -> Path:
+        """A fresh workspace for one repeat, so no repeat sees another's files."""
+        self.slot = str(index)
+        return self.prepare(self.run_dir / "workspace" / self.slot)
+
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
         return list(argv)
@@ -123,15 +131,21 @@ class BaseRuntime:
         command = self.command(argv, cwd)
         streams.note(f"[{self.name}] {' '.join(command)}")
         started = time.monotonic()
-        proc = subprocess.Popen(
-            command,
-            cwd=str(cwd),
-            env=self.environment(env),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
+        try:
+            proc = subprocess.Popen(
+                command,
+                cwd=str(cwd),
+                env=self.environment(env),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except OSError as exc:
+            # A binary that is not there is a repeat that failed, recorded as
+            # the shell records it, never a run that leaves no results.
+            streams.note(f"[{self.name}] could not start: {type(exc).__name__}: {exc}")
+            return ExitStatus(code=127, duration_s=time.monotonic() - started)
         readers = [
             threading.Thread(target=_pipe, args=(proc.stdout, "out", streams), daemon=True),
             threading.Thread(target=_pipe, args=(proc.stderr, "err", streams), daemon=True),
@@ -157,11 +171,16 @@ class BaseRuntime:
         )
 
     def collect(self, globs: list[str]) -> list[Path]:
-        """Every workspace file one of the globs names, once, in path order."""
+        """Every workspace file one of the globs names, once, in path order.
+
+        A file outside the workspace, reached through `..` or a symlink, is
+        not the subject's output and is left out.
+        """
+        root = self.workspace.resolve()
         found: set[Path] = set()
         for pattern in globs:
             for path in self.workspace.glob(pattern):
-                if path.is_file():
+                if path.is_file() and path.resolve().is_relative_to(root):
                     found.add(path)
         return sorted(found)
 
@@ -184,16 +203,21 @@ class HostRuntime(BaseRuntime):
 
     name = "host"
 
+    def private(self, name: str) -> Path:
+        """The private HOME or TMPDIR, one per repeat once a repeat is prepared."""
+        base = self.run_dir / name
+        return base / self.slot if self.slot is not None else base
+
     def prepare(self, workspace: Path | None = None) -> Path:
         path = super().prepare(workspace)
-        (self.run_dir / "home").mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "tmp").mkdir(parents=True, exist_ok=True)
+        self.private("home").mkdir(parents=True, exist_ok=True)
+        self.private("tmp").mkdir(parents=True, exist_ok=True)
         return path
 
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         out = dict(env)
-        out["HOME"] = str(self.run_dir / "home")
-        out["TMPDIR"] = str(self.run_dir / "tmp")
+        out["HOME"] = str(self.private("home"))
+        out["TMPDIR"] = str(self.private("tmp"))
         return out
 
 
@@ -263,7 +287,11 @@ class VmRuntime(BaseRuntime):
     The prefix is configuration, for example
     `["limactl", "shell", "default", "--"]`. The sync command is
     configuration too; `{local}` and `{remote}` in any of its words are
-    replaced with the two workspace paths. The harness provisions no
+    replaced with the two workspace paths. Each repeat gets its own
+    remote folder under `remote_workspace`, as it gets its own local
+    one, and the subject runs inside it. The prefix has to hand its
+    words on as words (`limactl shell`, `docker exec`); one that joins
+    them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
     machine and starts none, and copies neither the plugin checkout nor
     the target there: `remote_plugin` and `remote_target` say where the
     operator put them, and a run that needs one and is not told is
@@ -298,8 +326,13 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
         return str(self.vm.remote_target)
 
+    def remote(self) -> str:
+        """The workspace on the other machine: one folder per repeat once a repeat is prepared."""
+        base = self.vm.remote_workspace.rstrip("/") or "/"
+        return f"{base}/{self.slot}" if self.slot is not None else base
+
     def _fill(self, words: list[str]) -> list[str]:
-        return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.vm.remote_workspace) for w in words]
+        return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.remote()) for w in words]
 
     def sync_command(self) -> list[str]:
         """The configured sync, with the two workspace paths filled in."""
@@ -314,11 +347,20 @@ class VmRuntime(BaseRuntime):
         if not self.vm.exec_prefix:
             raise ValueError("the vm runtime needs exec_prefix in its runtime config")
         if self.vm.sync:
+            # The repeat's remote folder is new, and a sync may not make its parents.
+            subprocess.run([*self.vm.exec_prefix, "mkdir", "-p", self.remote()], check=False)
             subprocess.run(self.sync_command(), check=False)
         return path
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
-        return list(self.vm.exec_prefix) + list(argv)
+        """The subject runs in the remote workspace, so what it writes is what fetch brings back.
+
+        The folder and the words travel as arguments of `sh -c`, never
+        spliced into its script, so a space or a quote in them stays
+        one word.
+        """
+        script = 'mkdir -p "$1" && cd "$1" && shift && exec "$@"'
+        return [*self.vm.exec_prefix, "sh", "-c", script, "sh", self.remote(), *argv]
 
     def collect(self, globs: list[str]) -> list[Path]:
         if self.vm.fetch:

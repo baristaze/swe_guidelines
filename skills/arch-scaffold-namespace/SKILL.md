@@ -10,11 +10,12 @@ Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Namespaces as
 Swimlanes, Interfaces (Injectability), The Business Layer
 (Cross-Manager Dependencies), The Storage Layer (Namespace Shape,
-Storage Root, Cross-Storage Dependencies, The Second Fence).
+Storage Root, Cross-Storage Dependencies, The Second Fence),
+Documentation as Code (A README at Every Level).
 
 ## Input
 
-`<namespace> [FirstEntity] [field:type ...] [--role core|activity|queue|admin]`
+`<namespace> [FirstEntity] [field:type ...] [--role core|activity|queue|admin] [--scope system|org|identity|both]`
 
 Example: `inventory Warehouse address:str timezone:str`. `<namespace>`
 is required; ask for it when missing. `<Ns>` is the namespace in the
@@ -23,7 +24,7 @@ singular, in CamelCase (`orders` is `Order`, `inventory` is
 getters. `<ns_singular>` is the same singular in snake case (`orders`
 gives `order`), which names the storage root's getter. Ask for the
 singular when it is not a plain one. When a first entity is named,
-the entity arguments and the role are forwarded to the entity skill
+the entity arguments, the role, and the scope are forwarded to the entity skill
 in step 3; otherwise the namespace is created empty and ready.
 
 ## Created
@@ -33,6 +34,7 @@ Under `om/src/<root>/om/<ns>/`:
 | File                       | Holds                                                                   |
 |----------------------------|-------------------------------------------------------------------------|
 | `__init__.py`              | `from .manager import <Ns>ManagerInterface`                             |
+| `README.md`                | the namespace one level below `om/README.md`, in the product's language: what its nouns are, what can happen to them, and which rules hold; no developer or operator instruction; the entity skill adds each noun it creates |
 | `manager.py`               | `<Ns>ManagerInterface`, a docstring naming the swimlane, no methods yet |
 | `types/__init__.py`        | empty; the entity skill adds one module per entity                      |
 | `impl/__init__.py`         | empty                                                                   |
@@ -51,6 +53,7 @@ Under `om/src/<root>/om/<ns>/`:
 | `om/src/<root>/om/storage/impl/postgres.py` | constructs `<Ns>StoragePostgresImpl` and returns it from the getter |
 | `om/src/<root>/om/storage/impl/memory.py`  | constructs `<Ns>StorageMemoryImpl` and returns it from the getter  |
 | `om/src/<root>/om/root.py`                 | constructs `<Ns>ManagerImpl` and adds field `<ns>` to `Managers`    |
+| `om/README.md`                             | a link to the namespace's README, and the namespace's nouns in the relations it names |
 | `om/tests/unit/test_roots.py` (or the existing root test) | asserts the new getter and the new manager field         |
 | `om/src/<root>/om/storage/roles.py`        | nothing yet: the namespace declares no table, and the entity skill adds the role and the tenancy scope of each one it creates |
 
@@ -63,7 +66,7 @@ Under `om/src/<root>/om/<ns>/`:
 3. When a first entity was named, read
    `${CLAUDE_SKILL_DIR}/../arch-scaffold-entity/SKILL.md` and follow
    its Created, Changed, and Procedure with these arguments:
-   `<namespace> <FirstEntity> <field:type ...> --role <role>`.
+   `<namespace> <FirstEntity> <field:type ...> --role <role> --scope <scope>`.
 
 ## Output
 

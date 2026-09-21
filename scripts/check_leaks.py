@@ -12,7 +12,8 @@ could teach it. Those groups apply to Markdown only.
 
 The guideline stands alone: nothing in it may name or lean on the
 reference implementation, whose name is refused in every tracked text
-file except the closing Next section of architecture.md, which links it
+file (a file holding a NUL byte or bytes that are not UTF-8 is binary
+and skipped) except the closing Next section of architecture.md, which links it
 on purpose, and the changelog, which is history.
 Exit status is non-zero on any hit. Standard library only.
 """
@@ -25,7 +26,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments, markdown_files
+from _common import SKIP_DIRS, arguments, markdown_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -66,9 +67,8 @@ REFUSED_TERMS: dict[str, list[str]] = {
     ],
 }
 
-# The reference implementation's name is refused in these files, Markdown
-# or not, everywhere but the two places named below.
-REFERENCE_SUFFIXES = (".md", ".py", ".yml", ".yaml", ".toml", ".json", ".txt", ".sh")
+# The reference implementation's name is refused in every tracked text file,
+# Markdown or not, whatever its suffix, everywhere but the places named below.
 REFERENCE_ALLOWED_FILES = frozenset({"CHANGELOG.md", "scripts/check_leaks.py", "tests/test_check_leaks.py"})
 NEXT_SECTION = "## Next: An End-to-End Reference Implementation"
 
@@ -113,6 +113,16 @@ def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
                 errors.append(f"{path.relative_to(root)}:{ln}: {label} term '{m.group(0)}'")
 
 
+def is_text(path: Path) -> bool:
+    """Whether a file reads as text: UTF-8, with no NUL byte."""
+    try:
+        data = path.read_bytes()
+        data.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return b"\0" not in data
+
+
 def reference_files(root: Path) -> list[Path]:
     """Every text file the reference name is refused in, from git when it can."""
     try:
@@ -124,11 +134,14 @@ def reference_files(root: Path) -> list[Path]:
             check=True,
         ).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError):
-        out = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
+        out = [p.relative_to(root).as_posix() for p in root.rglob("*")]
     return [
         root / rel
         for rel in sorted(set(out))
-        if rel.endswith(REFERENCE_SUFFIXES) and rel not in REFERENCE_ALLOWED_FILES and (root / rel).is_file()
+        if rel not in REFERENCE_ALLOWED_FILES
+        and not any(part in SKIP_DIRS for part in rel.split("/")[:-1])
+        and (root / rel).is_file()
+        and is_text(root / rel)
     ]
 
 
