@@ -1,8 +1,9 @@
 """The judges: one prompt, four providers, one structured verdict each.
 
-Every provider gets the same text: the rubric, the subject, and the
-artifact, truncated at a stated limit so a judge is never guessing
-whether it saw the whole thing. Every provider answers in the same
+Every provider gets the same text: the rubric, the subject, the
+artifact, and the evidence when the scenario gives some, each truncated
+at a stated limit so a judge is never guessing whether it saw the whole
+thing. Every provider answers in the same
 shape, through its own structured-output path, so the scores compare.
 
 A provider without a key is skipped and named in the results. A
@@ -73,7 +74,7 @@ pedant.
 ## Artifact
 
 {artifact}
-
+{evidence}
 ## How to answer
 
 Give `score` as an integer from 0 to 100. Give `verdict` as `pass`
@@ -84,8 +85,21 @@ note one sentence naming what is wrong and where. Give `strengths` as
 a list of one-sentence notes. Give `rationale` as at most four
 sentences saying what decided the score. Judge only what the artifact
 says; an artifact that was cut off is judged on what is there, and the
-cut is a finding.
+cut is a finding.{check}
 """
+
+EVIDENCE = """
+## Evidence
+
+The harness gives you this so you do not have to take the artifact's
+word for anything.
+
+{evidence}
+"""
+
+CHECK = """ Check every claim the artifact makes against the evidence:
+a claim the evidence does not bear out is a finding, and so is an
+expected finding the artifact misses."""
 
 
 @dataclass(frozen=True)
@@ -174,9 +188,15 @@ def truncate(text: str, limit: int = ARTIFACT_LIMIT) -> str:
     return text[:limit] + f"\n\n[... truncated at {limit} characters of {len(text)} ...]"
 
 
-def build_prompt(rubric: str, subject: str, artifact: str, limit: int = ARTIFACT_LIMIT) -> str:
-    """The one prompt every provider gets."""
-    return PROMPT.format(rubric=rubric.strip(), subject=subject.strip(), artifact=truncate(artifact, limit))
+def build_prompt(rubric: str, subject: str, artifact: str, limit: int = ARTIFACT_LIMIT, evidence: str = "") -> str:
+    """The one prompt every provider gets. `evidence` is rendered by `harness.evidence`."""
+    return PROMPT.format(
+        rubric=rubric.strip(),
+        subject=subject.strip(),
+        artifact=truncate(artifact, limit),
+        evidence=EVIDENCE.format(evidence=evidence.strip()) if evidence.strip() else "",
+        check=CHECK if evidence.strip() else "",
+    )
 
 
 def load_matrix(path: str | Path | None) -> dict[str, dict[str, Any]]:

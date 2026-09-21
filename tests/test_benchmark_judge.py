@@ -106,3 +106,12 @@ def test_the_matrix_file_names_every_provider():
 def test_a_missing_matrix_file_falls_back_to_the_built_in_one(tmp_path):
     assert J.load_matrix(tmp_path / "nothing.yaml") == J.DEFAULT_MATRIX
     assert J.load_matrix(None) == J.DEFAULT_MATRIX
+
+
+def test_evidence_goes_in_only_when_there_is_some_and_the_judge_is_told_to_check_it():
+    plain = J.build_prompt("r", "s", "a")
+    assert "## Evidence" not in plain and "against the evidence" not in plain
+    with_evidence = J.build_prompt("r", "s", "a", evidence="the source")
+    assert "## Evidence" in with_evidence and "the source" in with_evidence
+    assert "against the evidence" in with_evidence
+    assert with_evidence.index("## Artifact") < with_evidence.index("## Evidence") < with_evidence.index("## How to answer")

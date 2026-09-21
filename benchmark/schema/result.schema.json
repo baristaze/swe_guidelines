@@ -39,6 +39,7 @@
         "model": { "type": ["string", "null"] },
         "provider": { "type": ["string", "null"] },
         "target": { "type": ["string", "null"] },
+        "plugin": { "type": ["string", "null"] },
         "max_turns": { "type": "integer" },
         "allowed_tools": { "type": "array", "items": { "type": "string" } }
       }
@@ -62,6 +63,17 @@
             }
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "expected": {
+            "description": "Which planted findings the artifact names by lens id and file; present only when the scenario plants some.",
+            "type": "object",
+            "required": ["expected", "named", "missed"],
+            "additionalProperties": false,
+            "properties": {
+              "expected": { "type": "integer", "minimum": 0 },
+              "named": { "type": "array", "items": { "type": "string" } },
+              "missed": { "type": "array", "items": { "type": "string" } }
+            }
+          },
           "judgements": {
             "type": "array",
             "items": {

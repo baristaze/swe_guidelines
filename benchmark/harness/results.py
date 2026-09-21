@@ -38,14 +38,20 @@ class RepeatResult:
     exit_status: dict[str, Any]
     artifact_paths: list[str] = field(default_factory=list)
     judgements: list[Judgement] = field(default_factory=list)
+    # Which planted findings the artifact names, from `harness.evidence.named`;
+    # None when the scenario plants none.
+    expected: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "index": self.index,
             "exit_status": self.exit_status,
             "artifact_paths": list(self.artifact_paths),
             "judgements": [j.as_dict() for j in self.judgements],
         }
+        if self.expected is not None:
+            out["expected"] = dict(self.expected)
+        return out
 
 
 @dataclass
@@ -188,6 +194,20 @@ def report_text(run: RunResult) -> str:
         lines += ["### Not answered", ""]
         lines += [f"- `{s['provider']}`: {s['reason']}" for s in summary["skipped"]]
         lines += [""]
+    checked = [r for r in run.repeats if r.expected is not None]
+    if checked:
+        lines += [
+            "## Expected findings",
+            "",
+            "Which planted findings the artifact names by lens id and file. A",
+            "mechanical cross-check beside the scores, made by no model.",
+            "",
+        ]
+        for r in checked:
+            e = r.expected
+            missed = ", ".join(e["missed"]) or "none"
+            lines.append(f"- repeat {r.index}: named {len(e['named'])} of {e['expected']}; missed: {missed}")
+        lines.append("")
     findings = findings_by_severity(run.repeats)
     lines += ["## Findings", ""]
     if findings:

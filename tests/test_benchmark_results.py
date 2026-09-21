@@ -158,3 +158,20 @@ def test_validation_without_jsonschema_says_so_instead_of_claiming_a_pass(monkey
     monkeypatch.setattr(builtins, "__import__", refuse)
     problems = R.validate(data, SCHEMA)
     assert problems == ["jsonschema is not installed; results.json was written unvalidated"]
+
+
+def test_the_expected_check_is_recorded_per_repeat_and_reported(tmp_path):
+    checked = R.RepeatResult(
+        index=0, exit_status={"code": 0}, judgements=[judgement("anthropic", 80)],
+        expected={"expected": 3, "named": ["F1", "F2"], "missed": ["F3"]},
+    )
+    plain = R.RepeatResult(index=1, exit_status={"code": 0}, judgements=[judgement("anthropic", 70)])
+    run = R.RunResult(run_id="r", scenario="s", runtime="host", started_at="t", subject={"kind": "skill"}, repeats=[checked, plain])
+    data = run.as_dict()
+    assert data["repeats"][0]["expected"]["missed"] == ["F3"]
+    assert "expected" not in data["repeats"][1]
+    assert "- repeat 0: named 2 of 3; missed: F3" in R.report_text(run)
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    assert set(schema["properties"]["repeats"]["items"]["properties"]["expected"]["required"]) == {"expected", "named", "missed"}
+    problems = R.validate(data, SCHEMA)
+    assert problems in ([], ["jsonschema is not installed; results.json was written unvalidated"])
