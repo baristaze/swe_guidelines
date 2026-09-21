@@ -4,6 +4,48 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## Unreleased
+
+### Fixed
+
+- `benchmark/`: a subject is told where its target is. It runs in its
+  own empty workspace, and nothing gave it the target: the prompt did
+  not name it and the checkout was outside what it could read. Now
+  `{target}` in a prompt becomes the path, a prompt without it gets one
+  sentence naming the path, and a skill gets `--add-dir` for it.
+- `benchmark/`: the container runtime mounts the plugin checkout. It
+  passed this machine's path to `--plugin-dir` and never mounted it, so
+  a skill in a container had no plugin. Each runtime now answers where
+  the plugin checkout and the target are as the subject sees them: this
+  machine's paths on the host, `/plugin` and `/target` in the container,
+  and `remote_plugin` and `remote_target` from the config on another
+  machine, refused before the run when missing.
+- `benchmark/`: a relative path in a scenario is read from the scenario
+  file's folder, not from wherever the run started.
+
+### Added
+
+- `benchmark/`: evidence for the judges. A scenario's `evidence.files`
+  sends the target's source with line numbers, and `evidence.expected`
+  sends the findings planted in the scenario's own target, kept outside
+  it so the subject never reads them. A judge that saw only the rubric
+  and the review could grade how the review reads, not whether its
+  findings are real or what it missed; two judges agreeing did not
+  change that. With a planted list, the harness also counts which
+  planted findings the artifact names by lens id and file, a check no
+  model makes, in `results.json` and the report.
+- `benchmark/fixtures/review-om`: a small object model with eight
+  defects planted, one lens each, and ten things done right. The
+  `review-om` scenario runs on it by default and scores recall and
+  precision against it. `--target` still reviews any checkout; the
+  planted list is then dropped and the run says so.
+
+### Changed
+
+- `.github/workflows/benchmark.yml`: no target is passed to every
+  scenario. Each scenario brings its own, and a shared one would have
+  dropped the planted list of `review-om`.
+
 ## 0.21.0 (2026-09-20)
 
 The benchmark comes with the spec. A harness at the root runs a

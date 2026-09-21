@@ -31,7 +31,7 @@ imported inside the functions that call them.
 | `--repeat` | how many times the subject runs; every repeat is judged by every provider |
 | `--runtime` | `host`, `container`, or `vm` |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
-| `--target` | a checkout the subject works on |
+| `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
@@ -71,12 +71,22 @@ measurement.
   not a boundary: it keeps a subject from writing into the operator's
   account by accident, and stops nothing that means to.
 - `container` runs `docker run --rm` from the image
-  `runtime/Dockerfile` builds, with the target mounted read-only and
-  the workspace read-write.
+  `runtime/Dockerfile` builds. The plugin checkout is mounted
+  read-only at `/plugin`, the target read-only at `/target`, and the
+  workspace read-write at `/workspace`.
 - `vm` runs the command on another machine through a configured
   prefix, for example `["limactl", "shell", "default", "--"]`, with a
   configured sync command. The harness provisions no machine and
-  starts none; it composes the prefix and the sync.
+  starts none; it composes the prefix and the sync. It copies neither
+  the plugin checkout nor the target either: `remote_plugin` and
+  `remote_target` in the runtime config say where they are on that
+  machine, and a run that needs one and is not told is refused before
+  it starts.
+
+A path on this machine means nothing in a container or on another
+machine. So the runtime answers where the plugin checkout and the
+target are as the subject sees them, and those are the paths the
+subject is given: in `--plugin-dir`, in `--add-dir`, and in the prompt.
 
 All three write the same streams into the run folder.
 
@@ -87,7 +97,7 @@ A scenario is YAML or JSON. Three ship here:
 | Scenario | Kind | What it measures |
 |----------|------|------------------|
 | `explain-tenancy` | `skill` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
-| `review-om` | `skill` | the `arch-review-om` skill over a target's object model |
+| `review-om` | `skill` | the `arch-review-om` skill over a checkout with eight planted defects |
 | `support-turn` | `qa` | a model answering an on-call question directly, with no skill |
 
 The shape:
@@ -104,6 +114,9 @@ subject:
 artifact:
   stdout: true
   files: []                 # globs collected from the workspace after the run
+evidence:                   # optional; what the judges get besides the artifact
+  files: []                 # globs over the target, shown with line numbers
+  expected: null            # the findings planted in the scenario's own target
 rubric: |
   Score the answer 0 to 100 as a senior architect would...
 judges:
@@ -120,11 +133,48 @@ runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 An unknown key in a scenario file is refused rather than ignored: a
 misspelled key is a scenario that silently measures something else.
 
+A relative path in a scenario is read from the scenario file's folder.
+
+## Target and evidence
+
+The subject runs in its own empty workspace. A target is a checkout it
+reads: the scenario's `subject.target`, or `--target` in its place. The
+subject is told where the target is: `{target}` in the prompt becomes
+the path, a prompt without it gets one sentence naming the path, and a
+skill gets `--add-dir` for it. A `command` subject gets `{target}` and
+`{plugin}` filled in its argv.
+
+A judge that sees only a rubric and a review can grade how the review
+reads. It cannot tell whether a cited defect is in the code, or what
+the review missed, and two judges agreeing does not change that. So a
+scenario can give the judges evidence:
+
+- `evidence.files`: the target's source, with line numbers, so a
+  finding that names a file and a line is checked against that line.
+- `evidence.expected`: the defects planted in the scenario's own
+  target, one per entry with a lens, a file, and a line, and what the
+  target does right. The file lives beside the target, never inside
+  it, so the subject cannot read the answers. On any other target the
+  list would be wrong, so a run with `--target` drops it and says so;
+  the source still goes to the judges.
+
+With a planted list, the harness also counts which planted findings
+the artifact names by lens id and file. That count is made by no model.
+It is a cross-check beside the scores, in `results.json` as `expected`
+on each repeat and in the report, not a score of its own: a review can
+name a finding and be wrong about it, and can find a planted defect
+under another lens. The judges read for both.
+
+`review-om` runs on `fixtures/review-om`, a small object model with
+eight defects planted, one lens each, and ten things done right. Its
+answers are in `fixtures/review-om.expected.yaml`.
+
 ## Judges
 
 Every provider gets the same prompt: the rubric, what produced the
-artifact, and the artifact, truncated at a stated limit so the judge
-knows whether it saw the whole thing. Every provider answers in the
+artifact, the artifact, and the evidence when the scenario gives some,
+each truncated at a stated limit so the judge knows whether it saw the
+whole thing. Every provider answers in the
 same shape through its own structured-output path: `score` from 0 to
 100, `verdict` of `pass`, `weak`, or `fail`, `findings` of
 `{severity, note}`, `strengths`, and a short `rationale`.

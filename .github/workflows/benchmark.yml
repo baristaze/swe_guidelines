@@ -38,11 +38,6 @@ jobs:
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: check out the reference implementation as the target
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: baristaze/tadas
-          path: target
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.21.0"
@@ -55,6 +50,8 @@ jobs:
           python -m pip install uv==0.9.5
           npm install -g @anthropic-ai/claude-code@2.1.276
       - name: run every scenario
+        # Each scenario brings its own target, if it needs one; a target
+        # passed to all of them would drop the planted findings of one.
         run: |
           set -euo pipefail
           if [ "${{ inputs.scenarios }}" = "all" ]; then
@@ -66,7 +63,7 @@ jobs:
             echo "::group::$name"
             uv run benchmark/run.py --scenario "$name" \
               --providers "${{ inputs.providers }}" --effort "${{ inputs.effort }}" \
-              --repeat "${{ inputs.repeat }}" --target target --out benchmark/runs \
+              --repeat "${{ inputs.repeat }}" --out benchmark/runs \
               --claude "$(command -v claude)"
             echo "::endgroup::"
           done
