@@ -17,11 +17,14 @@ leaves the working tree for a person to review.
 
 ## Input
 
-`[<dependency> ...] [--plan]`
+`[<dependency> ...] [--plan] [--reset-local-data]`
 
-Examples: empty (every dependency), `python node postgres`, `--plan`.
-Names limit the upgrade to those dependencies. `--plan` stops after
-the plan table and edits nothing. Nothing else is asked for.
+Examples: empty (every dependency), `python node postgres`, `--plan`,
+`postgres --reset-local-data`. Names limit the upgrade to those
+dependencies. `--plan` stops after the plan table and edits nothing.
+`--reset-local-data` lets the validation remove the local dependency
+volumes when a backing service moves a major; without it the skill
+never removes them. Nothing else is asked for.
 
 ## Procedure
 
@@ -56,10 +59,18 @@ the plan table and edits nothing. Nothing else is asked for.
    confirmed from a source is marked unconfirmed and left unchanged.
 5. Print the plan table (see Output). A backing service in the local
    compose stack that moves a major (Postgres 17 to 18, say) keeps its
-   data files in a volume the new engine cannot open, so its row says
-   `make infra-reset` in the Line column, and the plan prints, under the
-   table, that the validation recreates the local volumes. With
-   `--plan`, stop here.
+   data files in a volume the new engine cannot open, and validating
+   the move means removing that volume. The local data may be worth
+   keeping: `make seed` rebuilds the seeded org, not what a developer
+   made by hand. So with `--reset-local-data` the row says
+   `make infra-reset` in the Line column, and the plan prints, under
+   the table, that the validation removes the local volumes. Without
+   it, the row is held back whole, in every place it is declared: it
+   stays in the plan table with `held back` in its Line column, the
+   report lists it under Held back with "moves a major; rerun with
+   --reset-local-data" in place of a failing check, and step 6 leaves
+   it alone. With `--plan`, stop
+   here.
 6. Edit every declaration of each row to its target, keeping the
    declaration's precision: a file that names a minor line
    (`3.14`) gets the new minor line, one that names an exact release
@@ -80,7 +91,8 @@ the plan table and edits nothing. Nothing else is asked for.
    Then the majors. List the libraries whose range holds them below a
    newer major: `pnpm outdated --recursive` for npm, and
    `uv tree --outdated --depth 1` for Python. Raise them one library
-   at a time, never every range at once. For npm,
+   at a time, never every range at once, in the order the listing
+   prints them. For npm,
    `pnpm update --recursive --latest <name>` rewrites that one range.
    For Python, edit the range in each `pyproject.toml` that declares
    it, then run `uv lock --upgrade-package <name>` and `uv sync`. Run
@@ -95,9 +107,9 @@ the plan table and edits nothing. Nothing else is asked for.
    it under Held back with "no patch behind it" in place of a failing
    check.
 8. Validate: `make check`; then, when Docker is available,
-   `make infra-up` (`make infra-reset` in its place when the plan says
-   a database moved a major, which recreates the dependency volumes and
-   starts nothing else; `make reset` runs `make up`, which also seeds
+   `make infra-up` (`make infra-reset` in its place when a database
+   moved a major in this run, which only `--reset-local-data` allows;
+   it recreates the dependency volumes and starts nothing else; `make reset` runs `make up`, which also seeds
    and starts the application on the host), `make migrate`,
    `make migrate-check`, and
    `make test-integration`, only against the local compose stack:
@@ -129,7 +141,7 @@ A short report, and nothing else:
 
 **Libraries.** <count of Python and npm packages moved, and every major-version move by name, in the order the caps were raised>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none
-**Held back.** <dependency, target, and the failing check, or "no patch behind it">, or none
+**Held back.** <dependency, target, and the failing check, "no patch behind it", or "moves a major; rerun with --reset-local-data">, or none
 **Unconfirmed.** <dependency and why no source confirmed a target>, or none
 **Gates.** `make check` <passed | failed: what>; integration <passed | failed: what | skipped: no Docker>
 ```

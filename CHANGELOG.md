@@ -30,6 +30,13 @@ which number.
   nothing left to isolate. The majors to raise are listed with
   `pnpm outdated --recursive` and `uv tree --outdated --depth 1`; the
   pin-back runs over the workspace (`--recursive`).
+- `arch-upgrade-deps`: the skill never removes the local dependency
+  volumes unless it is run with `--reset-local-data`. A backing service
+  that moves a major needs its volume recreated to be validated, and the
+  skill ran `make infra-reset` on its own after printing a notice. Local
+  data can be worth keeping, since `make seed` rebuilds only the seeded
+  org. Without the option, that row is held back and the report says
+  how to move it.
 
 ### Added
 
