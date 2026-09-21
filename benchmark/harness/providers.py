@@ -39,7 +39,12 @@ KEY_NAMES: dict[Provider, tuple[str, ...]] = {
 
 
 def name(provider: Provider) -> str:
-    """The lowercase name used in files, flags, and results."""
+    """The lowercase name used in files, flags, and results.
+
+    Raises ValueError on a selection that is not exactly one provider.
+    """
+    if provider not in members(ALL) or provider.name is None:
+        raise ValueError(f"{int(provider)} is not a single provider")
     return provider.name.lower()
 
 

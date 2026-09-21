@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import providers as P
+
 KINDS = ("skill", "command", "qa")
 SUFFIXES = (".yaml", ".yml", ".json")
 
@@ -179,6 +181,13 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         raise ScenarioError(f"scenario {name}: kind command needs subject.argv")
     if kind == "qa" and not subject.prompt:
         raise ScenarioError(f"scenario {name}: kind qa needs subject.prompt")
+    if subject.provider is not None:
+        try:
+            one = P.parse(subject.provider)
+        except ValueError as exc:
+            raise ScenarioError(f"scenario {name}: subject.provider: {exc}") from exc
+        if len(P.members(one)) != 1:
+            raise ScenarioError(f"scenario {name}: subject.provider names one provider, got {subject.provider!r}")
 
     raw_artifact = data.get("artifact") or {}
     if not isinstance(raw_artifact, dict):

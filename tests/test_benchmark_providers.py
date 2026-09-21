@@ -47,3 +47,10 @@ def test_gemini_never_reads_the_google_key():
 def test_availability_names_the_keys_it_looked_for():
     rows = P.availability(P.parse("8"), {})
     assert rows == [("xai", False, "XAI_API_KEY or GROK_API_KEY")]
+
+
+def test_a_selection_of_more_than_one_has_no_single_name():
+    with pytest.raises(ValueError, match="not a single provider"):
+        P.name(P.ALL)
+    with pytest.raises(ValueError, match="not a single provider"):
+        P.name(P.parse("3"))
