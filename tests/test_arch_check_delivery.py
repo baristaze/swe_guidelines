@@ -273,21 +273,21 @@ def test_del_23_a_missing_section_and_a_dangling_citation_fail(tmp_path):
 
 def test_del_26_stable_versions_that_agree_pass(tmp_path):
     files = {
-        ".python-version": "3.14\n",
+        ".python-version": "3.11\n",
         ".nvmrc": "24.21.0\n",
-        "deployment/docker/api.Dockerfile": "FROM python:3.14.2-slim AS b\nFROM python:3.14-slim\n",
+        "deployment/docker/api.Dockerfile": "FROM python:3.11.2-slim AS b\nFROM python:3.11-slim\n",
         "deployment/docker/portal.Dockerfile": (
             "FROM node:24.21.0-alpine AS b\nFROM nginxinc/nginx-unprivileged:1.30-alpine-slim\n"
         ),
-        ".github/workflows/ci.yml": "      - uses: actions/setup-python@v6\n        with:\n          python-version: '3.14'\n",
+        ".github/workflows/ci.yml": "      - uses: actions/setup-python@v6\n        with:\n          python-version: '3.11'\n",
     }
     assert found(tmp_path, "DEL-26", files) == (0, [])
 
 
 def test_del_26_a_pre_release_and_a_disagreement_fail(tmp_path):
     files = {
-        ".python-version": "3.14\n",
-        "deployment/docker/api.Dockerfile": "FROM python:3.15.0rc1-slim AS b\nFROM python:3.13-slim\n",
+        ".python-version": "3.11\n",
+        "deployment/docker/api.Dockerfile": "FROM python:3.15.0rc1-slim AS b\nFROM python:3.10-slim\n",
         ".github/workflows/ci.yml": "          node-version: 25.0.0-beta.1\n",
     }
     code, where = found(tmp_path, "DEL-26", files)

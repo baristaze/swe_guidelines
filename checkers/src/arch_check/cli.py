@@ -8,6 +8,7 @@ finding, never a crash.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import traceback
 from collections.abc import Sequence
@@ -41,6 +42,19 @@ def parser() -> argparse.ArgumentParser:
 
 def split(value: str | None) -> list[str]:
     return [v.strip() for v in (value or "").split(",") if v.strip()]
+
+
+def pinned_python(root: Path) -> tuple[int, int] | None:
+    """The `major.minor` the project's `.python-version` pins, or None.
+
+    `ast` parses with the running interpreter's grammar, so a project
+    pinned to a newer Python can hold syntax this one cannot read.
+    """
+    path = root / ".python-version"
+    if not path.is_file():
+        return None
+    m = re.match(r"\s*(\d+)\.(\d+)", path.read_text(encoding="utf-8"))
+    return (int(m.group(1)), int(m.group(2))) if m else None
 
 
 def error(message: str) -> int:
@@ -89,6 +103,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         except ValueError:
             return error(f"{raw} is outside the root {config.root}")
 
+    pinned = pinned_python(config.root)
+    if pinned is not None and pinned > sys.version_info[:2]:
+        return error(
+            f"the project pins Python {pinned[0]}.{pinned[1]} (.python-version) and arch-check runs on "
+            f"{sys.version_info[0]}.{sys.version_info[1]}, whose parser cannot read it; "
+            f"run it with that Python, e.g. uvx --python {pinned[0]}.{pinned[1]} ..."
+        )
     try:
         result = run(Project(config), selected, known, [p for p in paths if p != "."])
     except ConfigError as e:

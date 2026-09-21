@@ -16,8 +16,13 @@ later.
 A project pins it to the guideline release it follows:
 
 ```bash
-uvx --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0#subdirectory=checkers" arch-check
+uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0#subdirectory=checkers" arch-check
 ```
+
+`--python` names the Python the project pins in `.python-version`.
+The checker parses with its own interpreter's grammar, so on an older
+Python than the project pins it refuses to run and exits 2, rather
+than misread newer syntax as a file that does not parse.
 
 From a checkout of this repository, or from the copy inside the
 installed plugin, it runs without installing:

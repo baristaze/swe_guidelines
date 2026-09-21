@@ -529,3 +529,16 @@ def test_options_for_an_unknown_rule_is_a_config_error(tmp_path):
     code, _, err = check(tmp_path)
     assert code == 2
     assert "unknown rule XYZ-01" in err
+
+
+def test_a_project_pinned_to_a_newer_python_exits_2(tmp_path):
+    write_project(tmp_path, {".python-version": "9.99\n"})
+    code, _, err = check(tmp_path)
+    assert code == 2
+    assert "pins Python 9.99" in err
+
+
+def test_a_project_pinned_to_this_python_or_older_runs(tmp_path):
+    write_project(tmp_path, {".python-version": "3.11\n"})
+    code, _, _ = check(tmp_path)
+    assert code == 0

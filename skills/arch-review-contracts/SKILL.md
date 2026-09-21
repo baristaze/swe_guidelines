@@ -48,10 +48,10 @@ of a changed signature.
    whose evidence is the checker, which read every file. A lens covered
    `partial` takes the checker's findings for the part the lens's
    `Check` line or the rule's summary names, and step 4 judges the
-   rest. When the checker cannot run (no Python 3.11, exit
-   code 2, a tree it cannot parse), say so in the report's Scope line
-   and judge every lens in step 4, the ones it would have decided
-   included. The review is the checker's fallback.
+   rest. When the checker cannot run (no Python 3.11, exit code 2,
+   a project pinned to a newer Python than `python3`), say so in the
+   report's Scope line and judge every lens in step 4, the ones it
+   would have decided included. The review is the checker's fallback.
 4. For every lens the checker did not decide, in id order, decide one
    of: **finding** (evidence of a breach, with a file and line),
    **pass** (the lens applies and the code satisfies it), **not

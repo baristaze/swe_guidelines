@@ -67,7 +67,7 @@ gate:
 
 ```make
 arch-check: ## the guideline's static checks
-	uvx --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
+	uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
 ```
 
 and in the root `pyproject.toml`:

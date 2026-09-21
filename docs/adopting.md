@@ -74,7 +74,7 @@ Pin it at the tag of the guideline the project follows, in the
 `Makefile`, and put it in the fast gate:
 
 ```make
-ARCH_CHECK := uvx --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
+ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.22.0\#subdirectory=checkers" arch-check
 
 arch-check: ## the guideline's static checks
 	$(ARCH_CHECK)
@@ -82,7 +82,11 @@ arch-check: ## the guideline's static checks
 check: lint format-check typecheck arch-check test-unit
 ```
 
-CI runs `make check`, so nothing else changes there. Bump the tag in
+`--python` runs the checker on the Python the project pins. The
+checker parses with its own interpreter's grammar, so it refuses to
+run (exit 2) on a Python older than `.python-version`, rather than
+misread newer syntax. CI runs `make check`, so nothing else changes
+there. Bump the tag in
 the same commit that bumps the pin in `specs/architecture.md`: the
 checker and the lenses it decides move together.
 
