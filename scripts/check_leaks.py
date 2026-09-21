@@ -8,13 +8,19 @@ which group applies to which files.
 
 It also refuses changelog phrasing in the guideline, and the one
 spelling of an update copy the guideline forbids, wherever a snippet
-could teach it. Every group applies to Markdown only.
+could teach it. Those groups apply to Markdown only.
+
+The guideline stands alone: nothing in it may name or lean on the
+reference implementation, whose name is refused in every tracked text
+file except the closing Next section of architecture.md, which links it
+on purpose, and the changelog, which is history.
 Exit status is non-zero on any hit. Standard library only.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -55,7 +61,16 @@ REFUSED_TERMS: dict[str, list[str]] = {
     "shape": [
         r"model_copy\(update=\{\*\*",
     ],
+    "reference": [
+        r"\btadas\b",
+    ],
 }
+
+# The reference implementation's name is refused in these files, Markdown
+# or not, everywhere but the two places named below.
+REFERENCE_SUFFIXES = (".md", ".py", ".yml", ".yaml", ".toml", ".json", ".txt", ".sh")
+REFERENCE_ALLOWED_FILES = frozenset({"CHANGELOG.md", "scripts/check_leaks.py", "tests/test_check_leaks.py"})
+NEXT_SECTION = "## Next: An End-to-End Reference Implementation"
 
 # scope -> the term groups refused there. A scope ending in "/" is a
 # directory and covers every Markdown file under it at any depth; any
@@ -72,6 +87,7 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("agents/", ["product", "shape"]),
     ("AGENTS.md", ["product"]),
     ("benchmark/", ["product", "shape"]),
+    ("checkers/", ["product", "shape"]),
 ]
 
 
@@ -81,17 +97,43 @@ def in_scope(rel: str, scope: str) -> bool:
 
 def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
     compiled = [re.compile(p, re.IGNORECASE) for p in REFUSED_TERMS[label]]
+    in_next = False
     for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if label == "reference" and line.startswith("## "):
+            in_next = line.strip() == NEXT_SECTION
+        if in_next:
+            continue
         for pat in compiled:
             m = pat.search(line)
             if m:
                 errors.append(f"{path.relative_to(root)}:{ln}: {label} term '{m.group(0)}'")
 
 
+def reference_files(root: Path) -> list[Path]:
+    """Every text file the reference name is refused in, from git when it can."""
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        out = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
+    return [
+        root / rel
+        for rel in sorted(set(out))
+        if rel.endswith(REFERENCE_SUFFIXES) and rel not in REFERENCE_ALLOWED_FILES and (root / rel).is_file()
+    ]
+
+
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
     labels: dict[Path, list[str]] = {}
+    for path in reference_files(ROOT):
+        labels.setdefault(path, []).append("reference")
     for path in markdown_files(ROOT):
         rel = path.relative_to(ROOT).as_posix()
         for scope, groups in SCOPES:

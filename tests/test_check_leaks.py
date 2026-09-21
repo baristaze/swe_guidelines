@@ -102,3 +102,21 @@ def test_the_word_benchmark_itself_is_not_a_leak(repo, leaks):
     assert leaks.main() == 1  # "benches" is the refused word, "benchmark" is not
     repo.write("benchmark/harness/notes.md", "# Notes\n\nA benchmark run writes benchmark results.\n")
     assert leaks.main() == 0
+
+
+def test_reference_name_fails_outside_the_next_section(repo, leaks, capsys):
+    repo.write("checkers/src/rule.py", "# modeled on Tadas\n")
+    assert leaks.main() == 1
+    assert "checkers/src/rule.py:1: reference term 'Tadas'" in capsys.readouterr().out
+    repo.write("checkers/src/rule.py", "# modeled on acme\n")
+    assert leaks.main() == 0
+
+
+def test_reference_name_is_allowed_in_the_next_section_and_the_changelog(repo, leaks, capsys):
+    text = (repo.root / "architecture.md").read_text(encoding="utf-8")
+    repo.write("architecture.md", text + "\n## Next: An End-to-End Reference Implementation\n\nTadas.\n")
+    repo.write("CHANGELOG.md", "# Changelog\n\nTadas pinned.\n")
+    assert leaks.main() == 0
+    repo.write("architecture.md", text + "\n## Next: An End-to-End Reference Implementation\n\nTadas.\n\n## After\n\nTadas.\n")
+    assert leaks.main() == 1
+    assert "reference term 'Tadas'" in capsys.readouterr().out
