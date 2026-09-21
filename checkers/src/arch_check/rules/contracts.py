@@ -12,6 +12,7 @@ direction (CON-10, CON-12) lives in `imports.py`.
 from __future__ import annotations
 
 import ast
+import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
@@ -299,19 +300,25 @@ def dependencies_are_injected(project: Project) -> Iterator[Violation]:
 # --- CON-07
 
 LOOSE_TUNABLES = frozenset({"int", "float", "timedelta", "Decimal"})
+MANAGER_IMPL = re.compile(r"Manager\w*Impl$")
 
 
 @rule(
     "CON-07",
     coverage="partial",
-    summary="No *ManagerImpl constructor takes a loose number or duration.",
+    summary="No manager impl constructor takes a loose number or duration.",
 )
 def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
-    """No parameter of a `*ManagerImpl` constructor is annotated `int`,
+    """No parameter of a manager impl's constructor is annotated `int`,
     `float`, `timedelta`, or `Decimal`: tunables arrive as one options
-    object. Whether a module constant differs between deployments, and
-    whether the options object is frozen, is judged."""
-    for file, cls in classes_named(project, "ManagerImpl"):
+    object. A manager impl is a class named `<Ns>Manager<Tech>Impl`
+    (`PaymentManagerImpl`, `PaymentManagerMemoryImpl`) or one that
+    subclasses a `*ManagerInterface`. Whether a module constant differs
+    between deployments, and whether the options object is frozen, is
+    judged."""
+    for file, cls in classes_named(project, ""):
+        if not (MANAGER_IMPL.search(cls.name) or any(b.endswith("ManagerInterface") for b in base_names(cls))):
+            continue
         init = init_of(cls)
         for arg in arguments(init) if init else []:
             # the annotation itself or a member of its union: `ids: list[int]` is a list, not a tunable

@@ -557,6 +557,12 @@ SPAWNS = frozenset(
 """What starts work in the background, as the defining module spells it. A task group is not here: it
 cannot outlive the `async with` that holds it."""
 LOOP_CALLS = frozenset({"call_later", "call_at"})
+LOOPS = frozenset({"asyncio.get_running_loop", "asyncio.get_event_loop", "asyncio.new_event_loop"})
+LOOP_SPAWNS = frozenset({"create_task", "run_in_executor"})
+"""What a loop starts in the background: `loop.create_task` outlives the request as `asyncio.create_task` does."""
+EXECUTORS = frozenset({"concurrent.futures.ThreadPoolExecutor", "concurrent.futures.ProcessPoolExecutor"})
+EXECUTOR_SPAWNS = frozenset({"submit", "map"})
+"""An executor held past a `with` runs what it is given after the request returns; one a `with` holds waits for it."""
 SCHEDULERS = ("apscheduler", "schedule", "rq_scheduler", "aiocron", "crontab")
 """Scheduler libraries. A job queue such as celery or rq is not one."""
 EDGE = ["*.realtime", "*.realtime.*"]
@@ -589,6 +595,41 @@ def resolved(node: ast.AST, bound: dict[str, str]) -> str | None:
     return f"{bound[head]}.{rest}" if rest else bound[head]
 
 
+def held(tree: ast.Module, bound: dict[str, str]) -> tuple[set[str], set[str]]:
+    """The names a module binds by assignment to an event loop and to an executor, in any scope.
+
+    A name a `with` binds is not here: the `with` waits for the executor's work before it returns.
+    """
+    loops: set[str] = set()
+    executors: set[str] = set()
+    for node in ast.walk(tree):
+        value: ast.expr | None = None
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            value, targets = node.value, node.targets
+        elif isinstance(node, ast.AnnAssign):
+            value, targets = node.value, [node.target]
+        if not isinstance(value, ast.Call):
+            continue
+        made = resolved(value.func, bound)
+        names = {t.id for t in targets if isinstance(t, ast.Name)}
+        names |= {t.attr for t in targets if isinstance(t, ast.Attribute)}  # `self._loop = ...`
+        if made in LOOPS:
+            loops |= names
+        elif made in EXECUTORS:
+            executors |= names
+    return loops, executors
+
+
+def receiver(node: ast.expr, bound: dict[str, str], loops: set[str], executors: set[str]) -> str | None:
+    """`loop` or `executor` when a method is called on one: made inline, or a name or attribute bound to one."""
+    if isinstance(node, ast.Call):
+        made = resolved(node.func, bound)
+        return "loop" if made in LOOPS else "executor" if made in EXECUTORS else None
+    name = node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else None
+    return "loop" if name in loops else "executor" if name in executors else None
+
+
 @rule(
     "ASY-15",
     options=("edge",),
@@ -601,6 +642,10 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
 
     The guideline names no module for the socket edge, so the default is a guess: a project whose edge
     lives elsewhere names it here.
+
+    A spawn is `asyncio.create_task` and its kin, a thread or a timer, a background-task parameter,
+    `create_task` or `run_in_executor` on a loop from `get_running_loop()` or `get_event_loop()`, and
+    `submit` or `map` on an executor no `with` holds. A task group's `create_task` is not one.
     """
     edge = project.option("ASY-15", "edge", EDGE, {"edge"})
     for file in project.modules_under(project.sub("services")):
@@ -613,11 +658,17 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
             if any(is_under(imp.module, s) for s in SCHEDULERS):
                 yield Violation.at(file.rel, imp.node, f"a web service imports {imp.module}; recurring work is a worker")
         bound = bindings(tree)
+        loops, executors = held(tree, bound)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = resolved(node.func, bound)
                 attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
-                if name in SPAWNS or attr in LOOP_CALLS:
+                on = receiver(node.func.value, bound, loops, executors) if isinstance(node.func, ast.Attribute) else None
+                if (on == "loop" and attr in LOOP_SPAWNS) or (on == "executor" and attr in EXECUTOR_SPAWNS):
+                    yield Violation.at(
+                        file.rel, node, f"a web service calls {on}.{attr}(); work that outlives a request is a worker"
+                    )
+                elif name in SPAWNS or attr in LOOP_CALLS:
                     what = name or attr
                     yield Violation.at(file.rel, node, f"a web service calls {what}(); work that outlives a request is a worker")
             elif isinstance(node, ast.arg) and node.annotation is not None:

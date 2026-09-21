@@ -13,6 +13,7 @@ names, classes and their bases, decorators, and function signatures.
 from __future__ import annotations
 
 import ast
+import contextlib
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from functools import cached_property
@@ -83,6 +84,8 @@ class Project:
         self.parse_errors: dict[str, tuple[int, str]] = {}
         self._trees: dict[str, ast.Module | None] = {}
         self._imports: dict[str, list[Import]] = {}
+        self.read_paths: set[str] = set()
+        """Every file `read` returned, so the runner reads the inline ignores of the files the rules read."""
 
     # --- options
 
@@ -251,9 +254,12 @@ class Project:
         """The text of a file relative to the root, or None when it is missing or not UTF-8."""
         path = self.root / rel
         try:
-            return path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             return None
+        with contextlib.suppress(ValueError):  # a path that climbs out of the root has no ignores to settle
+            self.read_paths.add(self.rel(path))
+        return text
 
     def lines(self, rel: str) -> list[str]:
         text = self.read(rel)

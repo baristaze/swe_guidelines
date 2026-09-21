@@ -30,7 +30,10 @@ def walk(project: Project, start: str = "", *, names: tuple[str, ...] = ("*",)) 
     """Paths relative to the root of every file under `start` whose name matches one of `names`.
 
     Hidden directories, installs, caches, build output, and excluded
-    paths are left out. The order is the path order.
+    paths are left out. A symlinked directory is never entered, as
+    `Project.python_files` never enters one: a link to a parent would
+    never end, and a link to another folder would read its files twice.
+    The order is the path order.
     """
     base = project.root / start if start else project.root
     if not base.is_dir():
@@ -45,7 +48,7 @@ def walk(project: Project, start: str = "", *, names: tuple[str, ...] = ("*",)) 
             continue
         for entry in entries:
             if entry.is_dir():
-                if entry.name in WALK_SKIP or entry.name.startswith("."):
+                if entry.is_symlink() or entry.name in WALK_SKIP or entry.name.startswith("."):
                     continue
                 stack.append(entry)
             elif entry.is_file() and any(fnmatchcase(entry.name, n) for n in names):
@@ -56,14 +59,14 @@ def walk(project: Project, start: str = "", *, names: tuple[str, ...] = ("*",)) 
 
 
 def subdirs(project: Project, rel: str) -> list[str]:
-    """The non-hidden directories directly under `rel`, as paths relative to the root."""
+    """The non-hidden directories directly under `rel`, as paths relative to the root; a symlinked one is left out."""
     base = project.root / rel
     if not base.is_dir():
         return []
     return sorted(
         p.relative_to(project.root).as_posix()
         for p in base.iterdir()
-        if p.is_dir() and not p.name.startswith(".") and p.name not in WALK_SKIP
+        if p.is_dir() and not p.is_symlink() and not p.name.startswith(".") and p.name not in WALK_SKIP
     )
 
 

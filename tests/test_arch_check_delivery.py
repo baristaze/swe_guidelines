@@ -153,6 +153,25 @@ def test_del_10_an_unprivileged_base_is_an_option(tmp_path):
     assert found(tmp_path, "DEL-10", {"deployment/docker/x.Dockerfile": image}, pyproject) == (0, [])
 
 
+def test_del_10_a_lockfile_flag_an_env_of_another_stage_and_an_early_healthcheck_fail(tmp_path):
+    image = (
+        "FROM python:3.14-slim AS build\nENV UV_FROZEN=1\nHEALTHCHECK CMD true\nRUN uv sync --no-dev\n"
+        "FROM python:3.14-slim AS deps\nRUN pnpm install --frozen-lockfile && uv sync --no-dev\n"
+        "FROM python:3.14-slim\nUSER acme\n"
+    )
+    code, where = found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image})
+    assert code == 1
+    assert sorted(line for _, _, line in where) == [1, 6]
+
+
+def test_del_10_a_symlink_to_the_docker_folder_is_not_entered(tmp_path):
+    write_project(tmp_path, {"deployment/docker/api.Dockerfile": GOOD_IMAGE}, pyproject=WORKSPACE)
+    (tmp_path / "services" / "api" / "images").symlink_to(tmp_path / "deployment" / "docker")
+    (tmp_path / "docs" / "loop").symlink_to(tmp_path)
+    code, report = check_json(tmp_path, "--rule", "DEL-10,DEL-23")
+    assert (code, rules_found(report)) == (0, [])
+
+
 def test_del_10_a_user_inherited_from_an_earlier_stage_and_a_frozen_env_pass(tmp_path):
     image = (
         "FROM python:3.14-slim AS base\nUSER acme\n"

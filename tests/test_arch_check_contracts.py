@@ -265,6 +265,19 @@ def test_a_loose_tunable_is_con_07(tmp_path):
     assert len(found) == 2
 
 
+@pytest.mark.parametrize(
+    "header",
+    ["class TasksManagerMemoryImpl:", "class TasksService(TasksManagerInterface):", "class Tasks(base.TasksManagerInterface):"],
+)
+def test_a_manager_impl_by_tech_or_by_interface_is_con_07(tmp_path, header):
+    impl = f"{header}\n    def __init__(self, storage: S, page_size: int) -> None:\n        pass\n"
+    code, found, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl})
+    assert code == 1
+    assert len(found) == 1
+    code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl.replace("page_size: int", "options: O")})
+    assert code == 0
+
+
 # --- CON-08
 
 
