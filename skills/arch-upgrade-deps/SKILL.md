@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-deps
 description: "Upgrade every dependency of the current repository to its latest stable release, the current active LTS line where one exists, as the Software Design and Architecture Guidelines prescribe: runtimes, workspace tools, container images, CI steps, Terraform engine versions, and locked libraries; then run the repository's gates and hold back any upgrade that breaks them. Use periodically, or when a review raises DEL-26."
-allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(uv tree:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(pnpm outdated:*), Bash(git status:*)
 ---
 
 # arch-upgrade-deps
@@ -17,11 +17,14 @@ leaves the working tree for a person to review.
 
 ## Input
 
-`[<dependency> ...] [--plan]`
+`[<dependency> ...] [--plan] [--reset-local-data]`
 
-Examples: empty (every dependency), `python node postgres`, `--plan`.
-Names limit the upgrade to those dependencies. `--plan` stops after
-the plan table and edits nothing. Nothing else is asked for.
+Examples: empty (every dependency), `python node postgres`, `--plan`,
+`postgres --reset-local-data`. Names limit the upgrade to those
+dependencies. `--plan` stops after the plan table and edits nothing.
+`--reset-local-data` lets the validation remove the local dependency
+volumes when a backing service moves a major; without it the skill
+never removes them. Nothing else is asked for.
 
 ## Procedure
 
@@ -56,10 +59,18 @@ the plan table and edits nothing. Nothing else is asked for.
    confirmed from a source is marked unconfirmed and left unchanged.
 5. Print the plan table (see Output). A backing service in the local
    compose stack that moves a major (Postgres 17 to 18, say) keeps its
-   data files in a volume the new engine cannot open, so its row says
-   `make infra-reset` in the Line column, and the plan prints, under the
-   table, that the validation recreates the local volumes. With
-   `--plan`, stop here.
+   data files in a volume the new engine cannot open, and validating
+   the move means removing that volume. The local data may be worth
+   keeping: `make seed` rebuilds the seeded org, not what a developer
+   made by hand. So with `--reset-local-data` the row says
+   `make infra-reset` in the Line column, and the plan prints, under
+   the table, that the validation removes the local volumes. Without
+   it, the row is held back whole, in every place it is declared: it
+   stays in the plan table with `held back` in its Line column, the
+   report lists it under Held back with "moves a major; rerun with
+   --reset-local-data" in place of a failing check, and step 6 leaves
+   it alone. With `--plan`, stop
+   here.
 6. Edit every declaration of each row to its target, keeping the
    declaration's precision: a file that names a minor line
    (`3.14`) gets the new minor line, one that names an exact release
@@ -67,23 +78,38 @@ the plan table and edits nothing. Nothing else is asked for.
    suffix (`-alpine`, `-slim`). A managed-service engine in Terraform
    moves only to a version the provider offers; when that is not
    confirmable, the row is unconfirmed.
-7. Upgrade the libraries. Run `uv lock --upgrade` and `uv sync`, and
-   `pnpm update --recursive --latest` and `pnpm install`, when the
-   repository has those workspaces; that moves every library within
-   its cap. A cap in a `pyproject.toml` or `package.json` that holds a
-   library below a major release is raised one library at a time, each
-   raise followed by step 8 before the next, never every cap at once,
-   so a failing gate names the major that broke it. Then hold each
-   library to the same
-   rule as a runtime: a resolved release with no patch release behind
-   it is pinned back to the release before it in the lock (`uv lock
-   --upgrade-package <name>==<release>`, `pnpm update <name>@<release>`),
-   and the report names it under Held back with "no patch behind it"
-   in place of a failing check.
+7. Upgrade the libraries in two passes, when the repository has those
+   workspaces.
+
+   First, within the ranges: `uv lock --upgrade` and `uv sync`, and
+   `pnpm update --recursive` and `pnpm install`. Both keep to the range
+   each manifest declares, so this pass moves no library across a
+   major. Never run `pnpm update --latest` over the workspace: it
+   ignores the ranges and moves every package past its major at once,
+   which is the move the second pass makes one library at a time.
+
+   Then the majors. List the libraries whose range holds them below a
+   newer major: `pnpm outdated --recursive` for npm, and
+   `uv tree --outdated --depth 1` for Python. Raise them one library
+   at a time, never every range at once, in the order the listing
+   prints them. For npm,
+   `pnpm update --recursive --latest <name>` rewrites that one range.
+   For Python, edit the range in each `pyproject.toml` that declares
+   it, then run `uv lock --upgrade-package <name>` and `uv sync`. Run
+   step 8 after each raise and before the next, so a failing gate
+   names the major that broke it.
+
+   Then hold each library to the same rule as a runtime: a resolved
+   release with no patch release behind it is pinned back to the
+   release before it in the lock
+   (`uv lock --upgrade-package <name>==<release>`,
+   `pnpm update --recursive <name>@<release>`), and the report names
+   it under Held back with "no patch behind it" in place of a failing
+   check.
 8. Validate: `make check`; then, when Docker is available,
-   `make infra-up` (`make infra-reset` in its place when the plan says
-   a database moved a major, which recreates the dependency volumes and
-   starts nothing else; `make reset` runs `make up`, which also seeds
+   `make infra-up` (`make infra-reset` in its place when a database
+   moved a major in this run, which only `--reset-local-data` allows;
+   it recreates the dependency volumes and starts nothing else; `make reset` runs `make up`, which also seeds
    and starts the application on the host), `make migrate`,
    `make migrate-check`, and
    `make test-integration`, only against the local compose stack:
@@ -115,7 +141,7 @@ A short report, and nothing else:
 
 **Libraries.** <count of Python and npm packages moved, and every major-version move by name, in the order the caps were raised>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none
-**Held back.** <dependency, target, and the failing check, or "no patch behind it">, or none
+**Held back.** <dependency, target, and the failing check, "no patch behind it", or "moves a major; rerun with --reset-local-data">, or none
 **Unconfirmed.** <dependency and why no source confirmed a target>, or none
 **Gates.** `make check` <passed | failed: what>; integration <passed | failed: what | skipped: no Docker>
 ```
