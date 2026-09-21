@@ -28,7 +28,9 @@ positional arguments are required; ask for them when missing.
 repository holding nothing but `.git`, `README.md`, `LICENSE`, and
 `.gitignore` (the shape a hosting service creates); refuse otherwise.
 In the fresh-repository case `README.md` and `.gitignore` are replaced,
-`LICENSE` is kept, and step 7 is skipped. Refuse when a `.git`
+`LICENSE` is kept, and the `git init` of step 1 is skipped. Those two
+replacements are the one exception to the collision rule of the
+conventions; any other path that exists is a collision. Refuse when a `.git`
 directory exists in a parent of `<target-dir>` (`git rev-parse
 --show-toplevel` from it names one), because `git init` never runs
 inside an existing repository.
@@ -113,10 +115,13 @@ Infra distribution, under `infra/`:
 
 ## Procedure
 
-1. Write the skeleton, the OM distribution, and the infra distribution,
-   then run `make setup`. The fast gate runs from step 2 on. The nine
-   operational skills are part of the skeleton: copy each template
-   under `${CLAUDE_SKILL_DIR}/../_shared/ops-skills/` to
+1. `git init` in `<target-dir>`, nothing staged (skipped when the
+   target was a fresh repository). It comes first so that every step
+   after it, and every skill this one follows, lists its files from
+   `git status`. Then write the skeleton, the OM distribution, and the
+   infra distribution, and run `make setup`. The fast gate runs from
+   step 2 on. The nine operational skills are part of the skeleton:
+   copy each template under `${CLAUDE_SKILL_DIR}/../_shared/ops-skills/` to
    `.claude/skills/<name>/SKILL.md` with `acme` substituted, as the
    Created table states, and change nothing else in them.
 2. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-service/SKILL.md` and
@@ -142,9 +147,7 @@ Infra distribution, under `infra/`:
    compose stack of step 1: refuse when the effective database URL
    (the environment, `.env`, or the settings default) is not a local
    address.
-7. `git init` in `<target-dir>`, nothing staged (skipped when the
-   target was a fresh repository).
-8. When Docker is available, `make devx-up`, then
+7. When Docker is available, `make devx-up`, then
    `make test-telemetry`: the round trip starts the API as a real
    process, drives one session, and reads the counter, the trace, the
    error event, and the log line back by request id through the
@@ -153,7 +156,7 @@ Infra distribution, under `infra/`:
    client, the generator, and the signals, and never a stress test;
    a stress test has a scenario and a target, and is the platform
    developer's to run.
-9. Before the review, sweep the tree for the four misses a fresh
+8. Before the review, sweep the tree for the four misses a fresh
    scaffold makes most, and fix each: a setting the Terraform root
    does not pass to the service, a mutating manager operation whose
    first line is not `ctx.require(...)`, a socket route mounted
