@@ -117,13 +117,15 @@ Inheritance in the OM never shares code.
 rather than a trait; entity-to-entity inheritance; for every entity
 composing `SoftDeletable`, a manager method that sets `deleted_at`, and
 for every entity composing `Trackable`, a manager method that sets
-`updated_at`.
+`updated_at` and `updated_by`.
 
 **Violation.** A `BaseOrder` with helper methods that `Order` and
 `ReturnOrder` extend; an entity composing `SoftDeletable` while no
 manager method sets `deleted_at`, or composing `Trackable` while no
-method sets `updated_at`; a mixin introduced to avoid repeating two
-fields that mean different things in different entities.
+method sets `updated_at` and `updated_by`; an update that stamps the
+time and leaves `updated_by` as the creator; a mixin introduced to
+avoid repeating two fields that mean different things in different
+entities.
 
 **Severity.** medium
 
