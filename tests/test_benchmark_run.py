@@ -226,3 +226,34 @@ def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tm
     code, _, _ = scenario_step(SCENARIOS="a", PROVIDERS="7", EFFORT="high")
     logged = (tmp_path / "argv.log").read_text(encoding="utf-8").split()
     assert code == 0 and logged[logged.index("--providers") + 1] == "7" and logged[logged.index("--effort") + 1] == "high"
+
+
+def test_the_subject_is_handed_the_anthropic_key_and_no_judge_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"):
+        monkeypatch.setenv(name, "k")
+    script = "import os; print(sorted(k for k in os.environ if k.endswith('_API_KEY')))"
+    scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    path = tmp_path / "keys.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "['ANTHROPIC_API_KEY']\n"
+
+
+def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY"):
+        monkeypatch.setenv(name, "k")
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    argv = ["--scenario", str(path), "--providers", "15", "--runtime", "container", "--dry-run"]
+    assert run.main([*argv, "--out", str(tmp_path / "runs")]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["runtime"]["config"]["keys"] == ["ANTHROPIC_API_KEY"]
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert run.main([*argv, "--out", str(tmp_path / "later")]) == 0
+    (later,) = (tmp_path / "later").iterdir()
+    assert json.loads((later / "run.json").read_text(encoding="utf-8"))["runtime"]["config"]["keys"] == []

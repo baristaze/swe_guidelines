@@ -48,6 +48,10 @@ Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client
 is handed `GEMINI_API_KEY` and the ambient `GOOGLE_API_KEY` is taken
 out of its way, because those two names often hold different accounts.
+The judges' keys stay in the harness process. A subject that runs a
+command, a skill's `claude -p` included, is handed `ANTHROPIC_API_KEY`
+and no other key, in its environment on the host and by `-e` in a
+container.
 
 ## What a run leaves behind
 
@@ -88,7 +92,12 @@ measurement.
   the plugin checkout nor the target either: `remote_plugin` and
   `remote_target` in the runtime config say where they are on that
   machine, and a run that needs one and is not told is refused before
-  it starts.
+  it starts. Each repeat gets its own folder under `remote_workspace`
+  (`{remote}` in the sync and fetch commands names it), and the
+  subject runs inside that folder, so what it writes is what fetch
+  brings back. The prefix has to hand its words on as words, as
+  `limactl shell` and `docker exec` do; `ssh` joins them into one
+  remote shell line and needs a wrapper.
 
 A path on this machine means nothing in a container or on another
 machine. So the runtime answers where the plugin checkout and the

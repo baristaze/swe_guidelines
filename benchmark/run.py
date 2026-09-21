@@ -48,9 +48,16 @@ SCENARIOS = BENCHMARK / "scenarios"
 SCHEMA = BENCHMARK / "schema" / "result.schema.json"
 MODELS = BENCHMARK / "models.yaml"
 DEFAULT_OUT = BENCHMARK / "runs"
-# What a subject inherits beyond its private HOME and TMPDIR. A key is on
-# this list because the subject needs it, not because it happened to be set.
-PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+# What a subject inherits beyond its private HOME and TMPDIR and its keys.
+PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
+# The keys a subject that runs a command is handed: `claude -p` needs the
+# Anthropic key and nothing else. The judges' keys stay in this process.
+SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
+
+
+def subject_keys(scn: S.Scenario) -> list[str]:
+    """The key names the subject's command needs. A `qa` subject runs no command."""
+    return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
 
 
 def git_sha(path: Path) -> str:
@@ -289,8 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
     if args.runtime == "container":
-        wanted = ["ANTHROPIC_API_KEY"] + [n for p in P.members(flags) for n in P.KEY_NAMES[p]]
-        config.setdefault("keys", list(dict.fromkeys(n for n in wanted if os.environ.get(n))))
+        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(n)])
     rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None)
     try:
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude)
@@ -383,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
 
-    env = RT.passthrough_env(PASSTHROUGH)
+    env = RT.passthrough_env(PASSTHROUGH + subject_keys(scn))
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
     try:
         for index in range(max(1, args.repeat)):

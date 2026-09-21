@@ -287,7 +287,11 @@ class VmRuntime(BaseRuntime):
     The prefix is configuration, for example
     `["limactl", "shell", "default", "--"]`. The sync command is
     configuration too; `{local}` and `{remote}` in any of its words are
-    replaced with the two workspace paths. The harness provisions no
+    replaced with the two workspace paths. Each repeat gets its own
+    remote folder under `remote_workspace`, as it gets its own local
+    one, and the subject runs inside it. The prefix has to hand its
+    words on as words (`limactl shell`, `docker exec`); one that joins
+    them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
     machine and starts none, and copies neither the plugin checkout nor
     the target there: `remote_plugin` and `remote_target` say where the
     operator put them, and a run that needs one and is not told is
@@ -322,8 +326,13 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
         return str(self.vm.remote_target)
 
+    def remote(self) -> str:
+        """The workspace on the other machine: one folder per repeat once a repeat is prepared."""
+        base = self.vm.remote_workspace.rstrip("/") or "/"
+        return f"{base}/{self.slot}" if self.slot is not None else base
+
     def _fill(self, words: list[str]) -> list[str]:
-        return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.vm.remote_workspace) for w in words]
+        return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.remote()) for w in words]
 
     def sync_command(self) -> list[str]:
         """The configured sync, with the two workspace paths filled in."""
@@ -338,11 +347,20 @@ class VmRuntime(BaseRuntime):
         if not self.vm.exec_prefix:
             raise ValueError("the vm runtime needs exec_prefix in its runtime config")
         if self.vm.sync:
+            # The repeat's remote folder is new, and a sync may not make its parents.
+            subprocess.run([*self.vm.exec_prefix, "mkdir", "-p", self.remote()], check=False)
             subprocess.run(self.sync_command(), check=False)
         return path
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
-        return list(self.vm.exec_prefix) + list(argv)
+        """The subject runs in the remote workspace, so what it writes is what fetch brings back.
+
+        The folder and the words travel as arguments of `sh -c`, never
+        spliced into its script, so a space or a quote in them stays
+        one word.
+        """
+        script = 'mkdir -p "$1" && cd "$1" && shift && exec "$@"'
+        return [*self.vm.exec_prefix, "sh", "-c", script, "sh", self.remote(), *argv]
 
     def collect(self, globs: list[str]) -> list[Path]:
         if self.vm.fetch:

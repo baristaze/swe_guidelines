@@ -63,6 +63,10 @@ GITHUB_SLUGGER = [
     ("`snake_case` heading", "snake_case-heading"),
     # inline code and emphasis keep their text
     ("`OpContext` and *friends*", "opcontext-and-friends"),
+    ("the _emph_ word", "the-emph-word"),
+    ("**Bold** and __strong__", "bold-and-strong"),
+    ("Glob `*`", "glob-"),
+    ("a_b_c stays", "a_b_c-stays"),
     # punctuation drops out
     ("What's new?", "whats-new"),
     ("Tables (and more)", "tables-and-more"),
