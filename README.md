@@ -91,7 +91,7 @@ are in [`docs/adopting.md`](docs/adopting.md#run-the-checker).
 | `arch-review-storage`     | Storage principles, tables, translation, database roles, migrations          |
 | `arch-review-async`       | Infra capabilities, queues, workers, idempotency, park versus fail           |
 | `arch-review-network`     | Topology, gateway, public types, clients, realtime, push-first               |
-| `arch-review-delivery`    | Apps, deployment, repo layout, client architecture, cross-cutting conventions, substitutions |
+| `arch-review-delivery`    | Apps, deployment, repo layout, client architecture, logs and telemetry, cross-cutting conventions, substitutions |
 | `arch-review-ops`         | Operator roles and credentials, operational skills, dashboards and alarms, scale-out, cost, traffic, READMEs, the knowledge map |
 | `arch-scaffold-new`       | Bootstraps a whole system by sequencing the scaffolds below                  |
 | `arch-scaffold-namespace` | A new object-model swimlane, wired into the roots                            |
@@ -118,7 +118,7 @@ Claude Code 2.1 and later.
 
 ```bash
 make benchmark    # the smoke scenario, judged by three providers (costs money, not part of check)
-make check        # what CI runs: markdownlint, ruff and mypy over the scripts and the benchmark, lens format and citations,
+make check        # what CI runs: markdownlint, ruff and mypy over scripts/, benchmark/, checkers/, and tests/, lens format and citations,
                   # vocabulary leaks, links, table of contents, version copies, generated skills up to date,
                   # skill shape, the reviewer agent against the review template, the checkers' tests,
                   # plugin validation

@@ -10,7 +10,7 @@ Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Namespaces as
 Swimlanes, Interfaces (Injectability), The Business Layer
 (Cross-Manager Dependencies), The Storage Layer (Namespace Shape,
-Storage Root, Cross-Storage Dependencies).
+Storage Root, Cross-Storage Dependencies, The Second Fence).
 
 ## Input
 
@@ -20,9 +20,11 @@ Example: `inventory Warehouse address:str timezone:str`. `<namespace>`
 is required; ask for it when missing. `<Ns>` is the namespace in the
 singular, in CamelCase (`orders` is `Order`, `inventory` is
 `Inventory`), as Namespaces as Swimlanes names interfaces and
-getters; ask for the singular when it is not a plain one. When a first entity is named, the entity arguments and the
-role are forwarded to the entity skill in step 3; otherwise the
-namespace is created empty and ready.
+getters. `<ns_singular>` is the same singular in snake case (`orders`
+gives `order`), which names the storage root's getter. Ask for the
+singular when it is not a plain one. When a first entity is named,
+the entity arguments and the role are forwarded to the entity skill
+in step 3; otherwise the namespace is created empty and ready.
 
 ## Created
 
@@ -45,7 +47,7 @@ Under `om/src/<root>/om/<ns>/`:
 
 | File                                      | Change                                                            |
 |-------------------------------------------|-------------------------------------------------------------------|
-| `om/src/<root>/om/storage/root.py`         | `get_<ns>_storage() -> <Ns>StorageInterface` on `StorageInterface` |
+| `om/src/<root>/om/storage/root.py`         | `get_<ns_singular>_storage() -> <Ns>StorageInterface` on `StorageInterface` |
 | `om/src/<root>/om/storage/impl/postgres.py` | constructs `<Ns>StoragePostgresImpl` and returns it from the getter |
 | `om/src/<root>/om/storage/impl/memory.py`  | constructs `<Ns>StorageMemoryImpl` and returns it from the getter  |
 | `om/src/<root>/om/root.py`                 | constructs `<Ns>ManagerImpl` and adds field `<ns>` to `Managers`    |

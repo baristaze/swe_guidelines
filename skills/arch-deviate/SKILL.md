@@ -41,15 +41,35 @@ has a condition for ending.
    Keep it under one page.
 5. When `specs/architecture.md` exists and has a `## Deviations` table,
    append one row: the ADR number, the rule, and a one-line summary.
+6. When the lens has a `Check` line naming `arch-check`, the ADR alone
+   does not pass the gate: the checker still fails on the code. Give
+   it the entry that names the ADR, in the shape `checkers/README.md`
+   in this plugin shows (`${CLAUDE_SKILL_DIR}/../../checkers/README.md`,
+   Exceptions); the rule id is the lens id. A whole rule turned off
+   is a `[[tool.arch-check.disable]]` entry with `rule`, `adr` (the
+   ADR's path), and `reason`. A rule
+   broken in some files is a `[[tool.arch-check.exception]]` entry
+   with `rule`, `path` (a glob), `adr`, and `reason`. One line is the
+   inline comment `# arch-check: ignore[<LENS-ID>] ADR-NNNN` at the end
+   of that line. Append a table entry to the root `pyproject.toml` when
+   it has a `[tool.arch-check]` table, and print it otherwise. Print
+   the inline comment and never place it: which line it goes on is the
+   person's call.
+7. Whatever the lens, tell the person to cite `ADR-NNNN` in a comment
+   beside the code that deviates. A review treats the code as an
+   exception only when the ADR is cited there.
 
 Do not commit. Do not edit the guideline or the lenses; a deviation
-belongs to the project, not to the rule.
+belongs to the project, not to the rule. Edit nothing but the ADR
+folder, the deviations table, and the `[tool.arch-check]` entry.
 
 ## Output
 
 The path of the new ADR, the row appended to the deviations table (or
-"no deviations table"), and the one-line summary for the reviewer.
-Nothing else.
+"no deviations table"), the `arch-check` entry written or printed (or
+"judged by review only" when the lens has no `Check` line), the
+reminder to cite `ADR-NNNN` beside the code, and the one-line summary
+for the reviewer. Nothing else.
 
 ## ADR template
 

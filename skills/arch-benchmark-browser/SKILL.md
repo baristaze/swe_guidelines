@@ -130,9 +130,10 @@ Facts that decide how the steps below go. Read them before the browser.
    site. Read it back and check every required key of the schema is
    there and no other.
 9. Take one screenshot per site of the finished conversation showing
-   the score line and the chip, with `save_to_disk`, and copy each into
-   the run folder as `<site>.png`: they are the evidence a pull request
-   carries.
+   the score line and the chip, with `save_to_disk`. Copy each into
+   the run folder as `<site>.png` with `python3` (`shutil.copyfile`
+   from the path the screenshot reports): they are the evidence a pull
+   request carries.
 10. Close the tabs you created; leave the ones you reused on the
     conversation pages unless the person asked otherwise.
 

@@ -73,9 +73,13 @@ so no change touches it. The release pull request does four things:
 3. Writes the release section of `CHANGELOG.md`, grouped as Fixed,
    Added, Changed, and Removed, for a reader who adopts the guideline,
    with every reversal named as one.
-4. Moves the version in `.claude-plugin/plugin.json`,
-   `.claude-plugin/marketplace.json`, and `docs/adopting.md`, which
-   `make version` holds together.
+4. Moves the version in `.claude-plugin/plugin.json` and in every
+   copy `make version` holds to it: `.claude-plugin/marketplace.json`,
+   the pinned tags in `README.md`, `docs/adopting.md`, and
+   `checkers/README.md`, the `version` in `checkers/pyproject.toml`,
+   and `__version__` in `checkers/src/arch_check/__init__.py`. The
+   first release heading of `CHANGELOG.md`, written in step 3, is
+   checked the same way.
 
 The tag goes on the squash of that pull request.
 A pushed `v*` tag runs `.github/workflows/release-tag.yml`, which
