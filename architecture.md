@@ -539,7 +539,7 @@ from abc import ABC, abstractmethod
 
 class InventoryManagerInterface(ABC):
     @abstractmethod
-    async def get_warehouses(self, ctx: OpContext) -> list[Warehouse]: ...
+    async def get_warehouses(self, ctx: OpContext, limit: int) -> list[Warehouse]: ...
     @abstractmethod
     async def get_warehouse(self, ctx: OpContext, warehouse_id: UUID) -> Warehouse: ...
 ```
@@ -1349,6 +1349,13 @@ surprises.
     that suite passes, not when it compiles.
 -   No user-defined functions in the DB. Every query is written
     explicitly in its storage class.
+-   Every read that returns a list is bounded in its statement. The
+    method takes a `limit`, and the query carries it. Storage applies
+    the bound it is given and never picks one. The caller picks it: a
+    manager clamps a list that reaches the wire to the page size its
+    options object holds, and a worker or a sweep passes its batch
+    size. A read with no bound is a read whose cost grows with the
+    tenant's data, and nothing notices until the tenant is large.
 -   Tenancy is enforced on every read and checked on every write. A
     query filters by `org_id`. An upsert refuses to overwrite a row
     that belongs to another tenant. The predicate in the query is the
@@ -1390,7 +1397,7 @@ writes has the tenant to filter on:
 ``` python
 class InventoryStorageInterface(ABC):
     @abstractmethod
-    async def read_warehouses(self, org_id: UUID) -> list[Warehouse]: ...
+    async def read_warehouses(self, org_id: UUID, limit: int) -> list[Warehouse]: ...
     @abstractmethod
     async def read_warehouse(self, org_id: UUID, warehouse_id: UUID) -> Warehouse | None: ...
     @abstractmethod
@@ -1692,11 +1699,12 @@ the tenant.
 # acme/om/inventory/storage/impl/postgres.py
 
 class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
-    async def read_warehouses(self, org_id: UUID) -> list[Warehouse]:
+    async def read_warehouses(self, org_id: UUID, limit: int) -> list[Warehouse]:
         stmt = (
             select(Warehouses)
             .where(Warehouses.org_id == org_id, Warehouses.deleted_at.is_(None))
             .order_by(Warehouses.id)
+            .limit(limit)
         )
         async with self._session_for(stmt, org_id) as session:
             result = await session.execute(stmt)
@@ -2182,7 +2190,9 @@ class BucketsInterface(ABC):
     @abstractmethod
     async def exists(self, org_id: UUID, bucket: Buckets, key: str) -> bool: ...
     @abstractmethod
-    async def list(self, org_id: UUID, bucket: Buckets, prefix: str) -> list[str]: ...
+    async def list(
+        self, org_id: UUID, bucket: Buckets, prefix: str, limit: int, after: str | None = None
+    ) -> list[str]: ...
     @abstractmethod
     async def delete(self, org_id: UUID, bucket: Buckets, key: str) -> None: ...
     @abstractmethod
@@ -2190,6 +2200,10 @@ class BucketsInterface(ABC):
     @abstractmethod
     async def presign_put(self, org_id: UUID, bucket: Buckets, key: str, content_type: str, ttl: timedelta) -> str | None: ...
 ```
+
+A listing is bounded like any read that returns a list. Keys come back
+in lexical order, at most `limit` of them, and the next page starts
+after the last key returned.
 
 Keys are plain strings. Nothing stops a manager from laying them out
 as nested paths when that helps:
@@ -2552,7 +2566,7 @@ root:
 ``` python
 class InventoryServiceInterface(ABC):
     @abstractmethod
-    async def get_warehouses(self, ctx: OpContext) -> list[WarehouseView]: ...
+    async def get_warehouses(self, ctx: OpContext, limit: int) -> list[WarehouseView]: ...
     @abstractmethod
     async def get_warehouse(self, ctx: OpContext, warehouse_id: UUID) -> WarehouseView: ...
 
@@ -2879,7 +2893,9 @@ anything accepted. `Issued...View` for the one response that carries a
 freshly minted secret in the clear.
 
 Paging is fixed too. A list returns a bare list with a server-clamped
-`limit`. A list that can outgrow the clamp returns a page envelope
+`limit`: the route takes the limit the client asks for, the manager
+clamps it to its page size, and the storage read carries it in the
+statement (see [Storage Principles](#storage-principles)). A list that can outgrow the clamp returns a page envelope
 (`items` and `next_cursor`) and pages by an opaque cursor over the
 list's own order; that cursor is the id when the order is the creation
 order, since a v7 id sorts by time. An append-only stream pages by a
