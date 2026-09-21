@@ -35,7 +35,8 @@ the order the guideline presents them, never by number.
 3. Read the sections of `architecture.md` the skill names, in full.
 4. Check every path in the skill's `Created` table. A path that exists
    is a collision: stop and say so; never overwrite. A migration stamp
-   that already exists in the role's folder is a collision too.
+   that already exists in the role's folder takes the next minute or
+   a suffix, as Migrations states.
 5. Ask for anything the input lacks in one message, then proceed.
 
 ## Naming

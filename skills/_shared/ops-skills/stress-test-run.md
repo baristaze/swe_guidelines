@@ -12,7 +12,7 @@ skill holds it to it.
 
 ## Input
 
-`<name> --env local|staging|production [--report <path>]`
+`[--scenario] <name> --env local|staging|production [--report <path>]`
 
 `<name>` names `ops/stress/<name>.yaml` and is required; `--env` is
 required; ask for either when missing. `--report` writes the run's

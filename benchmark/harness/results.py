@@ -126,12 +126,16 @@ def findings_by_severity(repeats: list[RepeatResult]) -> list[dict[str, Any]]:
     return out
 
 
+UNVALIDATED = "jsonschema is not installed; results.json was written unvalidated"
+
+
 def validate(data: dict[str, Any], schema_path: str | Path) -> list[str]:
-    """Every way the data misses the schema. Needs `jsonschema`; without it, nothing is claimed."""
+    """Every way the data misses the schema. Needs `jsonschema`; without it the one
+    entry is `UNVALIDATED`, a note and not a mismatch: nothing is claimed either way."""
     try:
         import jsonschema
     except ModuleNotFoundError:
-        return ["jsonschema is not installed; results.json was written unvalidated"]
+        return [UNVALIDATED]
     schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
     validator = jsonschema.Draft202012Validator(schema)
     return [f"{'/'.join(str(p) for p in e.path)}: {e.message}" for e in sorted(validator.iter_errors(data), key=str)]

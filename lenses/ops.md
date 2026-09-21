@@ -78,7 +78,8 @@ infrastructure change and a data change each reach the cloud.
 
 **Violation.** A deployer role a person can assume, or a long-lived key
 for it; one production role that both plans and applies; a change
-applied from a laptop; a data fix run as a statement against the
+applied from a laptop, the administrator's two runs aside (OPS-19); a
+data fix run as a statement against the
 database instead of an operation under a context. (The plan approval
 itself is DEL-38.)
 
@@ -134,7 +135,7 @@ CTX-20.)
 
 **Principle.** Roles are named `<product>-<role>-<environment>`, so the
 name says what it is and where it reaches. A role's permissions stop
-at its environment, and its fences deny the other one by tag.
+at its environment, and its fences deny every other environment by tag.
 
 **Source.** Operations, Operator Roles.
 

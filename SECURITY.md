@@ -1,13 +1,18 @@
 # Security Policy
 
 This repository contains documentation, Markdown lens catalogs, skill
-definitions, and small standard-library Python scripts that run in CI.
-It ships no service and no network listener, and the scripts import
-nothing past the standard library. Three tools are fetched at pinned
-versions to run the gate, none of them shipped: `pytest`, for the
-scripts' own tests; `markdownlint-cli2`, which `make lint` fetches
-through `npx`; and `@anthropic-ai/claude-code`, which CI installs so
-`make plugin` can validate the manifests.
+definitions, a static checker (`checkers/`), a benchmark harness
+(`benchmark/`), and small Python scripts that run in CI. Everything
+imports the standard library alone at import time; the harness imports
+the provider SDKs, `pyyaml`, `jsonschema`, and `websockets` inside the
+functions that use them, and only a benchmark run, which is started by
+hand and never on push, calls a provider. The one network listener is
+`benchmark/serve.py`, a local viewer of run folders bound to the
+loopback address by default. The gate fetches tools at pinned versions
+and ships none of them: `pytest`, `pyyaml`, and `jsonschema` for the
+tests; `ruff` and `mypy` through `uvx`; `markdownlint-cli2` through
+`npx`; and `@anthropic-ai/claude-code`, so `make plugin` can validate
+the manifests.
 
 ## Reporting a vulnerability
 
@@ -25,8 +30,9 @@ assessment within thirty days.
 
 In scope:
 
-- The scripts under `scripts/` and the `Makefile`.
-- The CI workflow under `.github/workflows/`.
+- The scripts under `scripts/`, the checker under `checkers/`, the
+  harness under `benchmark/`, and the `Makefile`.
+- The workflows under `.github/workflows/`.
 - Skill instructions under `skills/` that could lead an assistant to
   run a destructive command, exfiltrate data, or write outside the
   repository it was invoked in.

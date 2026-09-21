@@ -168,16 +168,19 @@ def test_the_edge_minting_the_request_stage_passes_ctx_05(tmp_path):
     assert code == 0
 
 
-def test_a_stage_minted_below_the_edge_is_ctx_05(tmp_path):
+def test_the_request_stage_minted_below_the_edge_is_ctx_05(tmp_path):
     files = {
         f"{OM}/tasks/impl/manager.py": "def f():\n    return RequestContext.model_validate({})\n",
-        f"{API}/routers/tasks.py": "def g():\n    return opcontext.OpContext(security=s)\n",
+        # the OpContext here is CTX-26's finding alone, never a second one under CTX-05
+        f"{API}/routers/tasks.py": (
+            "def g():\n    return opcontext.RequestContext(request_id=x)\n\n"
+            "def h():\n    return opcontext.OpContext(security=s)\n"
+        ),
     }
     code, found, messages = run(tmp_path, "CTX-05", files)
     assert code == 1
     assert [p for _, p, _ in found] == [f"{OM}/tasks/impl/manager.py", f"{API}/routers/tasks.py"]
-    assert "constructs RequestContext" in messages[0]
-    assert "constructs OpContext" in messages[1]
+    assert all("constructs RequestContext" in m for m in messages)
 
 
 # --- CTX-06

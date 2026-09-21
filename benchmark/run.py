@@ -30,6 +30,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 BENCHMARK = Path(__file__).resolve().parent
 ROOT = BENCHMARK.parent
@@ -166,10 +167,12 @@ def context_text(scn: S.Scenario) -> str:
     return out
 
 
-def run_subject_qa(scn: S.Scenario, streams: CliStream, env: dict[str, str]) -> tuple[RT.ExitStatus, str]:
-    """A `qa` subject: one provider model answers the prompt itself."""
+def run_subject_qa(
+    scn: S.Scenario, streams: CliStream, env: dict[str, str], matrix: dict[str, Any], effort: str
+) -> tuple[RT.ExitStatus, str]:
+    """A `qa` subject: one provider model answers the prompt itself, at the effort the run names."""
     provider = P.parse(scn.subject.provider or "anthropic")
-    model = scn.subject.model or J.models_for(J.DEFAULT_MATRIX, P.name(provider))[0]
+    model = scn.subject.model or J.models_for(matrix, P.name(provider))[0]
     key = P.key(provider, env)
     started = time.monotonic()
     if not key:
@@ -178,7 +181,7 @@ def run_subject_qa(scn: S.Scenario, streams: CliStream, env: dict[str, str]) -> 
     prompt = scn.subject.prompt + context_text(scn)
     streams.note(f"[qa] {P.name(provider)} {model}")
     try:
-        text, usage = J.ask(provider, model, prompt, key)
+        text, usage = J.ask(provider, model, prompt, key, J.effort_for(matrix, P.name(provider), effort))
     except Exception as exc:
         streams.note(f"[qa] {type(exc).__name__}: {exc}")
         return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), ""
@@ -397,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
             streams.note(f"[repeat {index}] start")
             rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
             if scn.kind == "qa":
-                status, artifact = run_subject_qa(scn, streams, dict(os.environ))
+                status, artifact = run_subject_qa(scn, streams, dict(os.environ), matrix, effort)
             else:
                 status = rt.run(argv_subject, rt.workspace, env, streams, timeout_s=scn.subject.timeout_s)
                 lines = [r["line"] for r in CliStream.read(run_dir / "streams" / "cli.jsonl")[mark:] if r.get("s") == "out"]
@@ -449,6 +452,9 @@ def main(argv: list[str] | None = None) -> int:
     run.notes = notes
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
+    if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing
+        print(R.UNVALIDATED, file=sys.stderr)
+        problems = []
     if problems:
         print("results.json does not match the schema:", file=sys.stderr)
         for problem in problems:

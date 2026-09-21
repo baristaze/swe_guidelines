@@ -794,8 +794,9 @@ dependency already failing.
 
 **Look for.** The retry wrapper on each remote client and infra impl:
 which failures it retries, its count, its backoff, and where all three
-come from; every other layer of the same call chain, the client app's
-transport and a worker's handler included.
+come from; every other layer of the same call chain, a worker's
+handler included; the client's retry at the edge is outside the count,
+since the marker turns it into a replay (NET-09).
 
 **Violation.** A retry on a failure that cannot differ, so a
 validation failure or a refusal is sent again; a fixed delay with no

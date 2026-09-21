@@ -43,13 +43,17 @@ No env file is read. The script removes the environment's
 
 ## Procedure
 
+The process names below are the ones `deployment/README.md` lists;
+`api` and `maintenance` are a tree the scaffold built with its worker,
+and a worker added since is one more name.
+
 1. Verify the administrator profile as Role and credential states.
 2. Production only, two checks, both before the script runs:
    - `--confirm production` is present and was typed by the person.
      Without it, stop and say what is missing; never suggest the
      flag as a paste.
    - The root's `database_deletion_protection` reads `false` on
-     `main`, set by a merged pull request:
+     `main`, set by a merged pull request and never by this script:
 
      ```bash
      git fetch origin main

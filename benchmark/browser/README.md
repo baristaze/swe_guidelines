@@ -34,6 +34,9 @@ results.json          the run, in the schema: sizes, each session's URL, labels,
 chatgpt.com.md        the answer as the page showed it, under a header with the URL and the labels
 claude.ai.md
 gemini.google.com.md
+chatgpt.com.png       a screenshot of the finished conversation, the score line and the chip in view
+claude.ai.png
+gemini.google.com.png
 ```
 
 The conversation URL is the proof: it carries the session id, and the

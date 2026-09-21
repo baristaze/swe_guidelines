@@ -58,6 +58,10 @@ never print the password or the token.
 
 ## Procedure
 
+The process names below are the ones `deployment/README.md` lists;
+`api` and `maintenance` are a tree the scaffold built with its worker,
+and a worker added since is one more name.
+
 1. Verify the credential as Role and credential states. Read the env
    file. Compute the window: `--since` back from now, as epoch seconds
    for the cloud and as a Prometheus range for local.

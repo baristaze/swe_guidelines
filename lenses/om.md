@@ -120,8 +120,8 @@ the rest is judged.
 
 **Principle.** Each mixin is a promise, composed only where a manager
 operation exercises it: `Trackable` where an update exists,
-`SoftDeletable` where a delete does, `Created` alone on a row the
-platform writes for itself (the outbox row, the marker, the socket
+`SoftDeletable` where a delete does, `Created` and never `Trackable`
+on a row the platform writes for itself (the outbox row, the marker, the socket
 ticket), whose later stamp is a field named for what happened.
 Inheritance in the OM never shares code.
 
@@ -291,7 +291,7 @@ any `uuid4()` or other generator imported by OM or service code.
 without an id on the assumption that storage will assign one; an id
 minted inside a storage impl or assigned by the database. The id a
 creating `POST` mints before its idempotency marker, ahead of the
-entity, is that protocol and not a breach (NET-09). (Ids read back out
+entity, is that protocol and not a breach (NET-24). (Ids read back out
 of the database are STO-06.)
 
 **Severity.** medium

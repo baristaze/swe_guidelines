@@ -147,9 +147,9 @@ stage below exists.
 
 **Severity.** high
 
-**Check.** `arch-check` decides the request stage built in the OM or
-infra, and any stage built in a router or a service; the rest is
-judged.
+**Check.** `arch-check` decides the request stage built in the OM,
+infra, a router, or a service (a stage above it built there is
+CTX-26); the rest is judged.
 
 ## CTX-06 The context is immutable and narrowing is an explicit argument
 
@@ -399,9 +399,11 @@ context at all, and whether the relay runs again from the sweep.
 
 **Violation.** A request-stage method that performs tenant work
 directly instead of returning a stage; a request-stage method the
-enumerating test does not name; a method with no context at all other
-than the relay and its two handoffs; a transition whose return type is
-neither a stage nor a list of stages.
+enumerating test does not name; a method with no context that performs
+a tenant operation, where bookkeeping with no principal (the relay and
+its two handoffs, the expiry of a lease) is declared as such on its
+interface; a transition whose return type is neither a stage nor a list
+of stages.
 
 **Severity.** high
 
@@ -530,7 +532,8 @@ that reads it by name before a sensitive step as a recorded decision
 of that kind of work; a sign-in or exchange route handed an
 `OpContext`; a stage declared as a `Protocol` or satisfied by anything
 other than its transition; `OpContext` subclassing `IdentityContext`;
-a bundle of managers per stage, or a manager reachable from a context.
+a bundle of managers per stage (a manager as a member of a context is
+CON-18).
 
 **Severity.** high
 
@@ -702,7 +705,7 @@ them at boot.
 routes; an identity keyed on an email the provider may reassign; a
 second session or membership model for federated users; a tenant
 manager that branches on the provider; no local twin, so the sign-in
-cannot run without the network.
+cannot run without the network (the twin itself is DEL-05).
 
 **Severity.** high
 

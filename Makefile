@@ -69,4 +69,5 @@ benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
 	uv run benchmark/serve.py --runs benchmark/runs --port 8765
 
 clean:             ## remove tool caches
-	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache scripts/__pycache__ tests/__pycache__ checkers/src/arch_check/__pycache__ checkers/src/arch_check/rules/__pycache__
+	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache .mypy_cache .ruff_cache
+	find . -name __pycache__ -type d -not -path './node_modules/*' -prune -exec rm -rf {} +

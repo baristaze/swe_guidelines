@@ -488,12 +488,17 @@ def chain_params(idx: Index, module: str, fn: ast.FunctionDef | ast.AsyncFunctio
     }
 
 
-def has_dump(node: ast.AST, dumped: set[str]) -> bool:
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and sub.func.attr == "model_dump":
-            return True
-        if isinstance(sub, ast.Name) and sub.id in dumped:
-            return True
+def is_dump(node: ast.AST | None, dumped: set[str]) -> bool:
+    """Whether a value is a dump: `x.model_dump(...)`, a name bound to one, or a dict display or `dict(...)`
+    spreading one. A scalar pulled out of a dump (`x.model_dump()["title"]`) has the field's own type and is not."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "model_dump":
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in dumped
+    if isinstance(node, ast.Dict):
+        return any(k is None and is_dump(v, dumped) for k, v in zip(node.keys, node.values, strict=True))
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        return any(k.arg is None and is_dump(k.value, dumped) for k in node.keywords)
     return False
 
 
@@ -518,24 +523,23 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
         for node in frozen_false(idx, info):
             yield Violation.at(info.file.rel, node, f"{info.node.name} unfreezes itself; an entity is a frozen snapshot")
     for file, tree in project.trees(*above_storage(project)):
+        reported: set[int] = set()
         for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             entities = chain_params(idx, file.module, fn)
             dumped: set[str] = set()
             for node in ast.walk(fn):
-                if isinstance(node, ast.Assign) and has_dump(node.value, set()):
+                if isinstance(node, ast.Assign) and is_dump(node.value, dumped):
                     dumped.update(t.id for t in node.targets if isinstance(t, ast.Name))
-                elif (
-                    isinstance(node, ast.AnnAssign)
-                    and isinstance(node.target, ast.Name)
-                    and node.value is not None
-                    and has_dump(node.value, set())
-                ):
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and is_dump(node.value, dumped):
                     dumped.add(node.target.id)
             for node in ast.walk(fn):
+                if id(node) in reported:
+                    continue  # a nested function is walked as its own function too
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                     attr = node.func.attr
                     update = next((k.value for k in node.keywords if k.arg == "update"), None)
-                    if attr == "model_copy" and update is not None and has_dump(update, dumped):
+                    if attr == "model_copy" and update is not None and is_dump(update, dumped):
+                        reported.add(id(node))
                         yield Violation.at(
                             file.rel, node, "model_copy(update=...) fed a dump; rebuild it with model_validate so it validates"
                         )

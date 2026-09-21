@@ -611,7 +611,8 @@ def test_asy_15_a_loop_or_an_executor_spawning(tmp_path):
             "    asyncio.get_running_loop().create_task(job())\n"
             "    loop = asyncio.get_event_loop()\n"
             "    loop.create_task(job())\n"
-            "    await loop.run_in_executor(None, job)\n"
+            "    await loop.run_in_executor(None, job)\n"  # awaited: done before the response, not a finding
+            "    loop.run_in_executor(None, job)\n"
             "    ThreadPoolExecutor().submit(job)\n"
             "    POOL.submit(job)\n"
         )
@@ -619,6 +620,7 @@ def test_asy_15_a_loop_or_an_executor_spawning(tmp_path):
     code, report = run(tmp_path, "ASY-15", files)
     assert code == 1
     assert len(report["findings"]) == 5
+    assert [f["line"] for f in report["findings"]] == [9, 11, 13, 14, 15]
 
 
 def test_asy_15_an_executor_a_with_holds_passes(tmp_path):

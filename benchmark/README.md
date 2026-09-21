@@ -26,7 +26,7 @@ imported inside the functions that call them.
 | Flag | What it does |
 |------|--------------|
 | `--scenario` | a scenario name from `scenarios/`, or a path to a file |
-| `--providers` | the judges, as a bit flag (`3`, `7`, `15`) or names (`anthropic,openai`) |
+| `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs; every repeat is judged by every provider |
 | `--runtime` | `host`, `container`, or `vm` |
@@ -59,6 +59,7 @@ container.
 runs/<YYYYMMDD-HHMMSS>-<scenario>/
   run.json                 the resolved scenario, runtime, models, and argv
   streams/cli.jsonl        one JSON line per output line, written as it happens
+  streams/build.jsonl      the image build's output, with `--runtime container --build`
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
                            files under workspace/ at their own paths
@@ -215,9 +216,11 @@ runs. Frame folders hold `NNNNNN.jpg` files and an `index.jsonl` of
 DevTools endpoint.
 
 `serve.py` reads those files and nothing else: `GET /runs` lists the
-runs, `/runs/<id>/report.md` and `/results.json` serve the files,
-`/runs/<id>/streams/cli` is an event stream tailing the JSON lines, and
-`/runs/<id>/streams/browser.mjpeg` tails the frame folder. There is no
+runs, `/runs/<id>/report.md`, `/results.json`, and `/run.json` serve
+the files, as does any path under `/runs/<id>/artifacts/`,
+`/judgements/`, or `/streams/`, `/runs/<id>/streams/cli` is an event
+stream tailing the JSON lines, and `/runs/<id>/streams/browser.mjpeg`
+tails the frame folder. There is no
 subscriber to register and no cost to watching: the files are written
 either way, so watching late loses nothing.
 

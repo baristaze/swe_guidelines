@@ -175,6 +175,35 @@ def test_net_09_a_key_as_a_default_or_on_the_router_passes(tmp_path, source):
     assert code == 0
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from http import HTTPStatus\n\n@router.post('', status_code=HTTPStatus.CREATED)\nasync def create(ctx: Ctx): ...\n",
+        "@router.api_route('', methods=['POST'], status_code=201)\nasync def create(ctx: Ctx): ...\n",
+    ],
+)
+def test_net_09_a_creating_post_spelled_another_way_without_the_key_fails(tmp_path, source):
+    code, where, _ = found(tmp_path, "NET-09", {ROUTER: source})
+    assert code == 1
+    assert [p for _, p, _ in where] == [ROUTER]
+
+
+def test_net_09_a_key_on_an_annotated_router_or_a_keyword_mount_passes(tmp_path):
+    app = (
+        "from acme.services.api.gateway.idempotency import key\nfrom acme.services.api.routers import orders\n\n"
+        "app.include_router(router=orders.router, dependencies=[Depends(key)])\n"
+    )
+    source = (
+        "from acme.services.api.gateway.idempotency import key\n\n"
+        "router: APIRouter = APIRouter(dependencies=[Depends(key)])\n\n"
+        "@router.post('', status_code=201)\nasync def create(ctx: Ctx): ...\n"
+    )
+    other = "@router.post('', status_code=201)\nasync def create(ctx: Ctx): ...\n"
+    files = {IDEM: "key = 1\n", f"{SVC}/app.py": app, ROUTER: source, f"{SVC}/routers/carts.py": other}
+    code, where, _ = found(tmp_path, "NET-09", files)
+    assert (code, where) == (1, [("NET-09", f"{SVC}/routers/carts.py", 2)])
+
+
 def test_net_09_a_key_where_the_router_is_mounted_passes(tmp_path):
     app = (
         "from acme.services.api.gateway.idempotency import key\nfrom acme.services.api.routers import orders\n\n"

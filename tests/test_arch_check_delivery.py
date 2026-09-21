@@ -200,6 +200,12 @@ def test_del_11_tooling_at_the_root_passes(tmp_path):
     assert found(tmp_path, "DEL-11", files) == (0, [])
 
 
+def test_del_11_a_root_member_and_an_included_makefile_pass(tmp_path):
+    files = workspace(**{"ruff.toml": "", "Makefile": "include mk/gates.mk\n", "mk/gates.mk": "check: lint test\n\ttrue\n"})
+    root_member = WORKSPACE.replace('members = ["om"', 'members = [".", "om"')
+    assert found(tmp_path, "DEL-11", files, pyproject=root_member) == (0, [])
+
+
 def test_del_11_member_lint_config_and_no_check_target_fail(tmp_path):
     files = workspace(
         **{
@@ -437,6 +443,15 @@ INFRA = (
 
 def test_del_29_the_infra_root_translated_by_fields_passes(tmp_path):
     files = {INFRA_EXC: INFRA, f"{SVC}/gateway/errors.py": "def h(e):\n    return e.http_status\n"}
+    assert found(tmp_path, "DEL-29", files) == (0, [])
+
+
+def test_del_29_a_boundary_catching_the_root_by_name_passes(tmp_path):
+    loop = (
+        "from acme.infra.exceptions import InfraException\n\n"
+        "try:\n    pass\nexcept (Exception, InfraException) as e:\n    print(e.code)\n"
+    )
+    files = {INFRA_EXC: INFRA, "workers/notifier/src/acme/workers/notifier/loop.py": loop}
     assert found(tmp_path, "DEL-29", files) == (0, [])
 
 

@@ -124,9 +124,8 @@ CLI, under `apps/<app-name>/`:
    `pnpm install`, then `make openapi`, so `openapi.json` and the
    generated `schema.d.ts` exist before the first screen is written.
    CLI: add the member to the uv workspace and run `uv sync`.
-7. Browser app: run the app's lint, typecheck, and tests
-   (`pnpm --filter <app-name> run lint`, `typecheck`, and `test`)
-   instead of the Python gate.
+7. Browser app: run `make check`, which the Makefile row made cover
+   the app's lint, typecheck, and tests.
 
 ## Output
 
