@@ -22,6 +22,18 @@ which number.
   machine, refused before the run when missing.
 - `benchmark/`: a relative path in a scenario is read from the scenario
   file's folder, not from wherever the run started.
+- `arch-scaffold-new`: `git init` is the first thing step 1 does, not
+  step 7. Steps 2 to 5 follow the other scaffold skills, and each of
+  them lists its files from `git status`; before step 7 there was no
+  repository to ask. The old step 7 is gone and the last two steps are
+  7 and 8.
+- `skills/_shared/scaffold-conventions.md`: the file list comes from
+  `git status --porcelain --untracked-files=all`. Plain `git status`
+  names an untracked folder, not the files in it, so on a fresh tree it
+  listed `om/` and `services/` and nothing else.
+- `arch-scaffold-new`: replacing `README.md` and `.gitignore` in a fresh
+  repository is named as the one exception to the collision rule of the
+  scaffold conventions. The two texts contradicted each other.
 - Every script under `scripts/` parses its command line and refuses an
   unknown argument with exit status 2. A mistyped `--check` no longer
   makes `gen_toc.py` or `gen_skills.py` rewrite the tree and pass.
@@ -66,6 +78,10 @@ which number.
 - `.github/workflows/benchmark.yml`: no target is passed to every
   scenario. Each scenario brings its own, and a shared one would have
   dropped the planted list of `review-om`.
+- Lens `OM-05` checks `updated_by` beside `updated_at`. The guideline
+  has the manager set both on every update; the lens looked only for
+  the time, so an update that left the creator as the last changer
+  passed.
 - The Python floor is 3.10, declared in `pyproject.toml`. CI runs
   `make check` on 3.10 and on 3.14.
 - CI caches its npm and uv downloads, and a new push to a pull request
