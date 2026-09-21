@@ -156,9 +156,8 @@ every backend it chose.
 
 **Look for.** Boot code and settings validation: checks pairing the
 environment name with the secrets backend, twin selection with the
-origin, a worker's registration with its expected tenant, the
-development seed with a local database; the start-up inventory log
-line.
+origin, the development seed with a local database; the start-up
+inventory log line.
 
 **Violation.** A staging or production environment that can start on
 the file secrets backend; a twin selectable off a loopback origin; a

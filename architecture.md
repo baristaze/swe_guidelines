@@ -773,7 +773,9 @@ class OpContext(RequestContext):
 ```
 
 Permissions are a pure function of role. One table in the tenancy
-namespace declares that function.
+namespace declares that function. The operator plane has a table of
+its own: an allowlist entry's role grants `OperatorPermission.READ`,
+or read and `OperatorPermission.WRITE`.
 
 A credential never carries a role above its issuer's. Above means the
 permission set: a role is at most another when its permissions are a
@@ -790,8 +792,8 @@ owned by a team, and visibility rules consult `ctx.in_team`.
 The context carries ids and facts, never entities. A manager that needs
 the user loads it, so a role change is seen on the next request.
 `opcontext.py` declares the context types, and `Role`, `Permission`,
-`CredentialKind`, and `AppType` beside them. It imports nothing above
-`base.py`.
+`OperatorPermission`, `CredentialKind`, and `AppType` beside them. It
+imports nothing above `base.py`.
 
 `request_id` is ambient state exactly like identity. It is minted or
 accepted at the edge and stamped onto the context once. From there it
@@ -847,6 +849,7 @@ class IdentityContext(RequestContext):
 
 class OperatorContext(IdentityContext):
     """The operator plane. No org_id, on purpose."""
+    permissions: frozenset[OperatorPermission]  # what the allowlist entry grants
 ```
 
 Each stage in that tree is a frozen type that subclasses the stage it
@@ -854,8 +857,10 @@ refines. The subclass relation is the refinement. A function that asks
 for the weaker stage accepts the stronger one. A function that asks for
 the stronger one cannot be handed the weaker.
 
-`OperatorContext` adds no field to `IdentityContext`. What it adds is
-the evidence that the operator allowlist was consulted.
+`OperatorContext` adds one field to `IdentityContext`: what the
+operator's allowlist entry grants. An entry grants read, or read and
+write, so a read operator is refused a write the way a tenant viewer
+is. The type itself is the evidence that the allowlist was consulted.
 
 The chain continues below `OpContext` only when the domain earns it. A
 stage for a role exists when operations rely on that role instead of
@@ -1103,9 +1108,10 @@ Principal](#operations-without-a-principal), which take `RequestContext`
 or a tenant id.
 
 Two things keep the planes apart: the type system at every call site,
-and `arch-check` at the few places a stage is built. An
-operator route cannot act inside a tenant. A tenant route cannot reach
-the operator plane. [The Gateway](#the-gateway) and [The Operator
+and `arch-check` at the few places a stage is built. An operator route
+cannot act inside a tenant. It reads a tenant's rows only by naming the
+tenant as a parameter of the read. A tenant route cannot reach the
+operator plane. [The Gateway](#the-gateway) and [The Operator
 Console](#the-operator-console) describe the plane further.
 
 > **Principle:** Tenant operations take `OpContext`; operator operations
@@ -3489,6 +3495,12 @@ the request that caused it.
 That context names the person who asked for the work, so attribution,
 audit, and causality survive the asynchronous hop.
 
+A worker holds no tenant of its own. The tenant arrives with each item,
+and the claim builds the context from it. Every write after the claim
+reads the row under that context's tenant, so an item of another tenant
+is not found. A context is never carried from one item to the next. An
+item whose tenant is gone is failed, never run under another context.
+
 A sweep that acts on every tenant asks the tenancy manager for one
 service context per live tenant.
 
@@ -4103,7 +4115,6 @@ a checklist. Each of these is refused at boot:
 
 - a staging or production environment on the file secrets backend
 - a twin selected off a loopback origin
-- a worker registered under the wrong tenant
 - the development seed against a database that is not local
 
 Each refusal is a one-line check at boot that exits naming the
@@ -4164,8 +4175,9 @@ The **supporter** is the investigator plus one thing: a read of a
 named tenant's rows through the platform's own operator plane (see
 [The Operator Context](#the-operator-context)). The tenant is a
 parameter of every read. The credential that reads it is an identity
-on the operator allowlist whose entry says read, and nothing in the
-cloud role changes.
+on the operator allowlist whose entry grants read and nothing more
+(see [The Operator Context](#the-operator-context)), and nothing in
+the cloud role changes.
 
 No role a person or an agent holds writes to the cloud, except the
 administrator's two steps. An infrastructure change is a pull request,

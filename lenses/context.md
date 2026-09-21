@@ -417,17 +417,20 @@ as its user id.
 **Source.** Worker Roles, The Work Queue; The Business Layer, Operations
 Without a Principal.
 
-**Look for.** The worker's claim path and how it obtains a context;
+**Look for.** The worker's claim path and how it obtains a context,
+and from which tenant;
 each sweep step that purges or requeues with an audit entry, and the
 context it runs under; what the service context carries as its user
 id.
 
 **Violation.** A worker running every item under one shared machine
 principal so attribution is lost; a worker inventing a context with a
-made-up user; a sweep acting across tenants under one tenant's context
-or with no tenant at all; a service context minted on a member, so a
-tenant whose members have all left is never swept, or costing one read
-per member instead of one per page of tenants.
+made-up user; a worker configured with a tenant of its own, or a context
+carried from one item to the next; an item whose tenant is gone run
+under another context; a sweep acting across tenants under one tenant's
+context or with no tenant at all; a service context minted on a member,
+so a tenant whose members have all left is never swept, or costing one
+read per member instead of one per page of tenants.
 
 **Severity.** high
 
@@ -485,12 +488,14 @@ Console.
 subclasses, the operator admission, every manager signature on the
 operator plane and the tenant plane, and for one that takes a stage
 below, whether it is a tenancy transition or an operation with no
-principal (CTX-21); how the console and its screens decide that a
-person is an operator.
+principal (CTX-21); what the allowlist entry grants and where an
+operator write requires it; how the console and its screens decide
+that a person is an operator.
 
 **Violation.** An operator route gated by a tenant role or a feature
 flag, or operator pages shown in the portal behind a flag or a role
-check; an `OperatorContext` with a tenant field; a manager method that
+check; an `OperatorContext` with a tenant field; an operator write
+that a read-only allowlist entry reaches; a manager method that
 accepts either context type; an operator route that reaches a tenant
 manager; an API key or an invitation-minted session admitted to the
 operator plane, since the identity stage admits only the person's own
