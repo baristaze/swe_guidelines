@@ -1,7 +1,7 @@
 """scripts/_common.py: the heading and anchor rule every script shares."""
 
 import pytest
-from _common import anchors, headings, slug
+from _common import anchors, headings, markdown_files, slug
 
 SCRIPTS = [
     "check_agents",
@@ -55,6 +55,28 @@ def test_closing_hashes_are_not_part_of_the_heading():
     text = "## Tables ##\n\n### Use C# #\n\n## C#\n"
     assert headings(text) == [(2, "Tables"), (3, "Use C#"), (2, "C#")]
     assert [a for _, _, a in anchors(text)] == ["tables", "use-c", "c"]
+
+
+def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
+    for rel in [
+        "docs/sub/deep/x.md",
+        "node_modules/pkg/README.md",
+        "docs/node_modules/pkg/README.md",
+        ".pytest_cache/README.md",
+        ".venv/lib/README.md",
+        ".git/x.md",
+        "benchmark/runs/one/report.md",
+        "benchmark/README.md",
+        "docs/notes.txt",
+    ]:
+        repo.write(rel, "# X\n")
+    found = {p.relative_to(repo.root).as_posix() for p in markdown_files(repo.root)}
+    assert "docs/sub/deep/x.md" in found
+    assert "benchmark/README.md" in found
+    assert not {f for f in found if f.split("/")[0] in {"node_modules", ".pytest_cache", ".venv", ".git"}}
+    assert "docs/node_modules/pkg/README.md" not in found
+    assert "benchmark/runs/one/report.md" not in found
+    assert "docs/notes.txt" not in found
 
 
 def test_headings_skip_fenced_code_and_keep_levels():

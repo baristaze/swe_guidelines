@@ -50,7 +50,10 @@ lenses (`skills/`), and the checkers that keep the three consistent
   of `make check`, because a run calls paid APIs.
 - `scripts/_common.py` holds what the scripts share, the heading
   anchor rule above all: the generator that writes anchors and the
-  checker that resolves them use the same function. `tests/` holds one
+  checker that resolves them use the same function. It also holds the
+  one list of the repository's Markdown (`markdown_files`), which
+  every script that scans Markdown reads, and the argument parser
+  every script uses. `tests/` holds one
   pytest module per script, each on a small fixture tree, with a pass
   and a fail path per rule; `make test` runs them.
 

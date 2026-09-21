@@ -57,6 +57,20 @@ def test_product_term_fails_under_agents(repo, leaks, capsys):
     assert leaks.main() == 0
 
 
+@pytest.mark.parametrize("rel", ["docs/sub/x.md", "skills/a/b/c/d.md", "benchmark/a/b/c.md", "lenses/sub/x.md"])
+def test_a_file_at_any_depth_of_a_scoped_directory_is_scanned(repo, leaks, capsys, rel):
+    repo.write(rel, "# Deep\n\nThe firmware.\n")
+    assert leaks.main() == 1
+    assert f"{rel}:3: product term 'firmware'" in capsys.readouterr().out
+
+
+def test_benchmark_runs_and_files_outside_every_scope_are_not_scanned(repo, leaks):
+    repo.write("benchmark/runs/one/report.md", "# Run\n\nThe firmware.\n")
+    repo.write("CHANGELOG.md", "# Changelog\n\nThe firmware, previously.\n")
+    repo.write("docs/node_modules/pkg/README.md", "# Pkg\n\nThe firmware.\n")
+    assert leaks.main() == 0
+
+
 def test_product_term_fails_in_agents_md(repo, leaks, capsys):
     repo.write("AGENTS.md", "# Working here\n\nNo firmware talk.\n")
     assert leaks.main() == 1

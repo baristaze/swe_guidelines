@@ -70,6 +70,14 @@ def test_link_that_leaves_the_repository_fails(repo, links, capsys, target):
     assert f"docs/extra.md:3: {target} leaves the repository" in capsys.readouterr().out
 
 
+def test_caches_and_benchmark_runs_are_not_scanned(repo, links):
+    repo.write(".pytest_cache/README.md", "# Cache\n\n[x](missing.md)\n")
+    repo.write("benchmark/runs/one/report.md", "# Run\n\n[x](missing.md)\n")
+    assert links.main() == 0
+    repo.write("benchmark/sub/x.md", "# Deep\n\n[x](missing.md)\n")
+    assert links.main() == 1
+
+
 def test_external_links_are_not_fetched(repo, links):
     repo.write("docs/extra.md", "# Extra\n\n[x](https://example.invalid/none) [m](mailto:a@b.c)\n")
     assert links.main() == 0

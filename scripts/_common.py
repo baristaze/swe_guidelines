@@ -14,10 +14,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# What "the repository's Markdown" leaves out: tool caches, installed
+# packages, and the benchmark run folders git ignores. A directory name
+# is skipped at any depth; a path is skipped from the root.
+SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
+SKIP_PATHS = {("benchmark", "runs")}
+
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 CLOSING = re.compile(r"(?:^|\s+)#+$")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+
+def markdown_files(root: Path) -> list[Path]:
+    """Every Markdown file of the repository at `root`, at any depth, in path order.
+
+    This is the one definition every script uses, so a checker cannot
+    miss a file another checker reads.
+    """
+    out = []
+    for path in root.rglob("*.md"):
+        parts = path.relative_to(root).parts
+        if any(part in SKIP_DIRS for part in parts[:-1]):
+            continue
+        if any(parts[: len(skip)] == skip for skip in SKIP_PATHS):
+            continue
+        if path.is_file():
+            out.append(path)
+    return sorted(out)
 
 
 def plain(heading: str) -> str:
