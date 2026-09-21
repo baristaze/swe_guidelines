@@ -14,7 +14,7 @@ artifact:
   stdout: true
   files: []
 evidence:
-  files: ["om/**/*.py"]
+  files: ["om/**/*.py", "om/pyproject.toml"]
   expected: ../fixtures/review-om.expected.yaml
 rubric: |
   Score the review 0 to 100 as the author of the guideline would. The
