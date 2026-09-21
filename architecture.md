@@ -117,6 +117,7 @@ it in the middle.
   - [State and Data](#state-and-data)
   - [Views, View-Models, Models](#views-view-models-models)
   - [API Access](#api-access)
+  - [One Tenant at a Time](#one-tenant-at-a-time)
   - [Realtime: One Channel per App](#realtime-one-channel-per-app)
   - [The Operator Console](#the-operator-console)
   - [The CLI Is Different](#the-cli-is-different)
@@ -901,6 +902,19 @@ takes the identity stage and issues a session. That session comes back
 through `authenticate` as an `OpContext` on the next request. That is
 how a sign-in reaches a tenant without one stage refining the other.
 
+A live session proves its person as well as its tenant. So the
+identity stage is established from the sign-in credential or from a
+live session, as the session's own identity. A revoked or expired
+session is refused. That is what lets a signed-in app list its
+memberships and switch tenants with the one bearer it holds. The
+operator plane is narrower, and admits only the sign-in (see [The
+Gateway](#the-gateway)).
+
+Switching tenants is a second exchange. The app presents its session
+and the new org, and gets a new session. An exchange presented with a
+session ends that session in the same write, so a tab never holds two
+live sessions.
+
 A transition builds a new object from the stage below and the evidence
 it consulted. It never copies the stage below with changed fields, and
 nothing but a transition constructs a stage above the request stage.
@@ -1272,6 +1286,7 @@ see only the interfaces.
 A few operations exist before any principal does, or act across every
 tenant:
 
+-   signing up;
 -   signing in;
 -   claiming the next unit of background work;
 -   starting a sweep over every live tenant;
@@ -1279,8 +1294,8 @@ tenant:
 
 These take the request stage, `RequestContext`, as their first argument
 (see [Stages](#stages)), and they are documented as transitions. Each
-one *produces* a stronger stage rather than consuming one. A sign-in
-returns the identity stage. A claim returns the `OpContext` under which
+one *produces* a stronger stage rather than consuming one. A sign-up
+and a sign-in return the identity stage. A claim returns the `OpContext` under which
 the work runs. A sweep asks for one service context per live tenant.
 
 There are very few of them, and a test names each one (see [Records
@@ -2652,7 +2667,9 @@ The gateway owns a short list of edge concerns, each done once:
     membership-scoped, expiring, and role-capped at its issuer's role.
     A person signs in with a credential that carries no tenant, then
     exchanges it for a tenant-scoped session token. So the same person
-    in two tenants is one identity with two memberships.
+    in two tenants is one identity with two memberships. A switch
+    between them exchanges the live session, and ends it (see
+    [Stages](#stages)).
 -   **Sockets.** A long-lived connection is opened with a single-use,
     short-lived ticket minted by an authenticated request, never with a
     long-lived credential in a URL. Redeeming the ticket re-checks the
@@ -2783,8 +2800,8 @@ the row the retry found.
 
 The operator plane has its own gate. It authenticates the bearer into
 the identity stage, and that stage admits only the person's own sign-in
-(never an API key, never a session minted from an invitation someone
-else issued). It then asks the tenancy manager to admit that identity
+(never an API key, and never a session, whether the person exchanged
+it or an invitation someone else issued minted it). It then asks the tenancy manager to admit that identity
 as an operator, which produces an `OperatorContext` when the identity
 is on the operator allowlist (see [The Operator
 Context](#the-operator-context)).
@@ -2802,9 +2819,33 @@ The tenancy namespace owns the identity model (organizations,
 identities, users, memberships, teams, credentials, sessions,
 invitations) and issues tokens. It is a regular namespace, with its own
 OM types, manager, and storage, and in a split deployment a regular
-domain service. Auth has business logic of its own: signup, invite,
+domain service. Auth has business logic of its own: sign-up, invite,
 role management, key rotation, session refresh. That logic belongs in
 the OM like any other domain's.
+
+Sign-up is the door into a deployed environment. The development seed
+is local only (see [Local: Docker Compose](#local-docker-compose)), so
+without sign-up nobody but an operator gets in.
+
+It creates the identity, its first org, and the owner membership, in
+one transaction. It answers the way a sign-in does: the sign-in
+credential and the memberships, one here. So the client goes on
+through the same choice and the same exchange.
+
+It is an [operation without a
+principal](#operations-without-a-principal), rate-limited like the
+sign-in. An email an identity already holds is refused as a conflict.
+
+It is open by default, because a deployed environment has no other
+door. One setting closes it, and a closed sign-up answers as not
+found, as a route that does not exist.
+
+There is no email verification, and that is a choice. The address is a
+name to sign in with, not proof of a mailbox. A product that sends
+mail to it, or trusts it across tenants, ends the choice.
+
+The memberships of an identity are read under the identity stage,
+bounded like every list. It is the same choice a sign-in answers with.
 
 An external identity provider is one more credential kind. The
 gateway's dependency accepts the provider's token and verifies it
@@ -3890,6 +3931,36 @@ presigned URLs. Nothing else, so a script the app did not ship does not
 run. The header is declared beside the distribution in Terraform, with
 the other security headers.
 
+### One Tenant at a Time
+
+A person can hold several memberships. The portal works in one of them
+at a time.
+
+It signs in once and reads the memberships the answer carries. With
+one, it goes straight in. With several, it shows a picker before the
+first screen. With none, it says so plainly. A sign-up lands the same
+way, with its one membership.
+
+The pick is an exchange for a tenant session (see [Stages](#stages)).
+From there the app holds one session and drops the sign-in credential.
+The backend builds one `OpContext` per request from that session.
+
+The app's chrome shows the current org, as an org chip. With more than
+one membership, the chip opens the list and switches. A switch is a
+second exchange: the app presents its session and the new org, and the
+old session ends in the same write.
+
+Before the new session is used, the app drops every cache and store
+entry of the old tenant, and reopens its realtime socket. The socket
+was bounded by the session that ended anyway.
+
+The bearer rules of [API Access](#api-access) do not change.
+
+> **Principle:** The app works in one tenant at a time. It signs in
+> once, picks a membership, and exchanges it for one session. A switch
+> is a second exchange that drops the old tenant's caches. The app
+> never holds two sessions.
+
 ### Realtime: One Channel per App
 
 The push-first rule from [Push-First Apps](#push-first-apps) holds for
@@ -3910,7 +3981,8 @@ never shares its security context.
 
 It has its own origin (`admin.` under the environment's base domain,
 see [Cloud: AWS](#cloud-aws)), its own bundle, and its own routes under
-`/v1/admin/*`. It holds no realtime socket.
+`/v1/admin/*`. It holds no realtime socket. It has no tenant and no
+memberships, so it has no picker and no org chip.
 
 Its authority comes from the operator allowlist and the
 credential-provenance check of [The Gateway](#the-gateway). Not from a
@@ -3928,6 +4000,9 @@ It talks REST to its backing service with an API key, attaches an
 idempotency key to every creating call, turns the outcome of a followed
 operation into an exit code, and trusts the operating system's
 certificate store.
+
+An API key is scoped to one membership, so the CLI works in one tenant
+by construction. It has no picker and never holds two credentials.
 
 What applies from this section: dumb client, business logic on the
 backend, short commands wait, long-running operations submit and
@@ -4072,6 +4147,11 @@ as `pswd_1234`. Running it again changes nothing.
 The `README.md` lists the command and the seeded sign-in next to the
 local URLs, so a developer goes from a clone to a signed-in session
 without creating an account by hand.
+
+The seed is local only (see [What a Process
+Refuses](#what-a-process-refuses)). A deployed environment is entered
+through sign-up (see [Auth: the Gateway Verifies, the Tenancy Domain
+Owns](#auth-the-gateway-verifies-the-tenancy-domain-owns)).
 
 Four shortcuts cover the whole stack.
 
