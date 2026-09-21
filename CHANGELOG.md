@@ -45,6 +45,10 @@ which number.
 - `.github/workflows/benchmark.yml`: no target is passed to every
   scenario. Each scenario brings its own, and a shared one would have
   dropped the planted list of `review-om`.
+- Lens `OM-05` checks `updated_by` beside `updated_at`. The guideline
+  has the manager set both on every update; the lens looked only for
+  the time, so an update that left the creator as the last changer
+  passed.
 
 ## 0.21.0 (2026-09-20)
 
