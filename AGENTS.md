@@ -36,7 +36,7 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
   version; `scripts/check_version.py` holds the marketplace manifest,
-  the changelog, and `docs/adopting.md` to it.
+  the changelog, `docs/adopting.md`, and the arch-check package to it.
 - `benchmark/` holds the harness that measures a subject against a
   rubric (`.github/workflows/benchmark.yml` runs every scenario on
   demand, never on push): `run.py` with its inline dependencies, the `harness/` modules,
@@ -48,6 +48,16 @@ lenses (`skills/`), and the checkers that keep the three consistent
   which git ignores: the repository is the manual, a run is a
   measurement. `make benchmark` runs the smoke scenario and is not part
   of `make check`, because a run calls paid APIs.
+- `checkers/` holds `arch-check`, the static checker that decides the
+  mechanical lenses. It is its own Python package
+  (`checkers/src/arch_check/`, Python 3.11, standard library only).
+  A rule's id is the id of the lens it decides, and a rule is one
+  module under `rules/`; `checkers/README.md` says how to add one.
+  `checkers/src/arch_check/lenses.py` carries every lens id and
+  severity, and `tests/test_arch_check_framework.py` holds it equal
+  to `lenses/*.md`. The tests are `tests/test_arch_check_*.py`, on
+  trees built with `tests/arch_check_fixtures.py`; they skip on
+  Python 3.10.
 - `scripts/_common.py` holds what the scripts share, the heading
   anchor rule above all: the generator that writes anchors and the
   checker that resolves them use the same function. It also holds the

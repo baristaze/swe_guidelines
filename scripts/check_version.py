@@ -6,8 +6,11 @@ against:
 - `.claude-plugin/marketplace.json`: the `version` of every plugin entry;
 - `CHANGELOG.md`: the first `## MAJOR.MINOR.PATCH` heading, the latest
   release (an `## Unreleased` heading above it is fine);
-- `docs/adopting.md`: every `vMAJOR.MINOR.PATCH` tag it tells a project
-  to pin.
+- `README.md`, `docs/adopting.md`, and `checkers/README.md`: every
+  `vMAJOR.MINOR.PATCH` tag they tell a project to pin;
+- `checkers/pyproject.toml`: the `version` of the arch-check
+  distribution;
+- `checkers/src/arch_check/__init__.py`: its `__version__`.
 
 `--tag <name>` also checks a release tag: it must be `v` followed by
 the version in plugin.json. The release workflow passes the tag it
@@ -28,11 +31,19 @@ from _common import ROOT, parser
 PLUGIN = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 CHANGELOG = ROOT / "CHANGELOG.md"
+README = ROOT / "README.md"
 ADOPTING = ROOT / "docs" / "adopting.md"
+CHECKERS_README = ROOT / "checkers" / "README.md"
+CHECKERS_PYPROJECT = ROOT / "checkers" / "pyproject.toml"
+CHECKERS_INIT = ROOT / "checkers" / "src" / "arch_check" / "__init__.py"
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 RELEASE_HEADING = re.compile(r"^## (\d+\.\d+\.\d+)\b")
 TAG = re.compile(r"\bv(\d+\.\d+\.\d+)\b")
+# The first `version = "..."` line of checkers/pyproject.toml, which is
+# under [project]; the scripts run on Python 3.10, which has no tomllib.
+PROJECT_VERSION = re.compile(r'^version\s*=\s*"([^"]*)"', re.MULTILINE)
+DUNDER_VERSION = re.compile(r'^__version__\s*=\s*"([^"]*)"', re.MULTILINE)
 
 
 def source() -> str:
@@ -52,10 +63,17 @@ def check(version: str, errors: list[str]) -> None:
             break
     else:
         errors.append(f"{CHANGELOG.relative_to(ROOT)}: no release heading")
-    for ln, line in enumerate(ADOPTING.read_text(encoding="utf-8").splitlines(), start=1):
-        for m in TAG.finditer(line):
-            if m.group(1) != version:
-                errors.append(f"{ADOPTING.relative_to(ROOT)}:{ln}: pins v{m.group(1)}, plugin.json says {version}")
+    for doc in (ADOPTING, CHECKERS_README, README):
+        for ln, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), start=1):
+            for m in TAG.finditer(line):
+                if m.group(1) != version:
+                    errors.append(f"{doc.relative_to(ROOT)}:{ln}: pins v{m.group(1)}, plugin.json says {version}")
+    for path, pattern, name in ((CHECKERS_PYPROJECT, PROJECT_VERSION, "version"), (CHECKERS_INIT, DUNDER_VERSION, "__version__")):
+        found_version = pattern.search(path.read_text(encoding="utf-8"))
+        if found_version is None:
+            errors.append(f"{path.relative_to(ROOT)}: no {name}")
+        elif found_version.group(1) != version:
+            errors.append(f"{path.relative_to(ROOT)}: {name} is {found_version.group(1)}, plugin.json says {version}")
 
 
 def main(argv: Sequence[str] = ()) -> int:

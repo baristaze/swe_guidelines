@@ -58,3 +58,27 @@ def test_tag_without_a_value_is_refused(repo, version):
     with pytest.raises(SystemExit) as exit_:
         version.main(["--tag"])
     assert exit_.value.code == 2
+
+
+def test_checker_distribution_version_must_match(repo, version, capsys):
+    repo.edit("checkers/pyproject.toml", 'version = "1.2.3"', 'version = "1.2.4"')
+    assert version.main() == 1
+    assert "checkers/pyproject.toml: version is 1.2.4, plugin.json says 1.2.3" in capsys.readouterr().out
+
+
+def test_checker_package_version_must_match(repo, version, capsys):
+    repo.edit("checkers/src/arch_check/__init__.py", '__version__ = "1.2.3"', '__version__ = "1.2.2"')
+    assert version.main() == 1
+    assert "checkers/src/arch_check/__init__.py: __version__ is 1.2.2, plugin.json says 1.2.3" in capsys.readouterr().out
+
+
+def test_checker_package_without_a_version_fails(repo, version, capsys):
+    repo.write("checkers/src/arch_check/__init__.py", '"""arch-check."""\n')
+    assert version.main() == 1
+    assert "checkers/src/arch_check/__init__.py: no __version__" in capsys.readouterr().out
+
+
+def test_every_pinned_tag_in_the_checker_readme_must_match(repo, version, capsys):
+    repo.edit("checkers/README.md", "@v1.2.3#", "@v1.2.0#")
+    assert version.main() == 1
+    assert "checkers/README.md:3: pins v1.2.0, plugin.json says 1.2.3" in capsys.readouterr().out

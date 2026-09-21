@@ -1,0 +1,23 @@
+# The static checker of the guideline, as its own distribution.
+# Standard library only: nothing under [project] depends on anything.
+# `version` is held equal to .claude-plugin/plugin.json by
+# scripts/check_version.py; change it only in a release.
+
+[project]
+name = "swe-guidelines-arch-check"
+version = "0.22.0"
+description = "Static checks for the lenses of the Software Design and Architecture Guidelines."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+arch-check = "arch_check.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arch_check"]

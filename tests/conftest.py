@@ -24,6 +24,13 @@ BENCHMARK = Path(__file__).resolve().parent.parent / "benchmark"
 if str(BENCHMARK) not in sys.path:
     sys.path.insert(0, str(BENCHMARK))
 
+# The static checker is importable from its source tree, so
+# `test_arch_check_*.py` reads `arch_check` without installing it. It
+# needs Python 3.11 (`tomllib`); those modules skip themselves on 3.10.
+CHECKERS = Path(__file__).resolve().parent.parent / "checkers" / "src"
+if str(CHECKERS) not in sys.path:
+    sys.path.insert(0, str(CHECKERS))
+
 GUIDELINE = """\
 # Software Design and Architecture Guidelines
 
@@ -133,6 +140,9 @@ Run `arch-review-om` on the scope and merge the reports.
 PLUGIN = '{"name": "swe-guidelines", "version": "1.2.3"}\n'
 MARKETPLACE = '{"name": "swe-guidelines", "plugins": [{"name": "swe-guidelines", "version": "1.2.3"}]}\n'
 CHANGELOG = "# Changelog\n\n## Unreleased\n\n## 1.2.3 (2026-01-01)\n\n- First.\n\n## 1.2.2 (2025-12-01)\n\n- Older.\n"
+CHECKERS_PYPROJECT = '[project]\nname = "swe-guidelines-arch-check"\nversion = "1.2.3"\nrequires-python = ">=3.11"\n'
+CHECKERS_README = "# arch-check\n\nPin it: `git+https://example.com/swe_guidelines@v1.2.3#subdirectory=checkers`.\n"
+CHECKERS_INIT = '"""arch-check."""\n\n__version__ = "1.2.3"\n'
 ADOPTING = "# Adopting\n\nAdd the marketplace from a tag: `git#v1.2.3`, pinned at `v1.2.3`.\n"
 README = "# Software Design and Architecture Guidelines\n\nSee [the lenses](lenses/README.md#groups): 2 lenses in one group.\n"
 
@@ -225,4 +235,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
     r.write("skills/arch-scaffold-thing/SKILL.md", SCAFFOLD)
     r.write(".claude-plugin/plugin.json", PLUGIN)
     r.write(".claude-plugin/marketplace.json", MARKETPLACE)
+    r.write("checkers/pyproject.toml", CHECKERS_PYPROJECT)
+    r.write("checkers/README.md", CHECKERS_README)
+    r.write("checkers/src/arch_check/__init__.py", CHECKERS_INIT)
     return r

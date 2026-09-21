@@ -17,11 +17,11 @@ check: lint ruff mypy lenses leaks links toc version gen-skills-check skills age
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
 
-ruff:              ## lint and format check of scripts/, benchmark/, and tests/
+ruff:              ## lint and format check of scripts/, benchmark/, checkers/, and tests/
 	$(RUFF) check
 	$(RUFF) format --check
 
-mypy:              ## type check of scripts/, benchmark/, and tests/
+mypy:              ## type check of scripts/, benchmark/, checkers/src/, and tests/
 	$(MYPY)
 
 lenses:            ## every lens follows the format and cites a real section
@@ -69,4 +69,4 @@ benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
 	uv run benchmark/serve.py --runs benchmark/runs --port 8765
 
 clean:             ## remove tool caches
-	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache scripts/__pycache__ tests/__pycache__
+	rm -rf .markdownlint-cli2-cache node_modules .pytest_cache scripts/__pycache__ tests/__pycache__ checkers/src/arch_check/__pycache__ checkers/src/arch_check/rules/__pycache__
