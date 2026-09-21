@@ -1298,7 +1298,8 @@ one *produces* a stronger stage rather than consuming one. A sign-in
 returns the identity stage. A sign-up returns it too, after it creates
 the identity and the tenant it answers with, so it acts inside no
 tenant that existed before it. A claim returns the `OpContext` under
-which the work runs. A sweep asks for one service context per live tenant.
+which the work runs. A sweep asks for one service context per live
+tenant.
 
 There are very few of them, and a test names each one (see [Records
 of Decisions](#records-of-decisions)). A new operation that takes the
@@ -2803,10 +2804,10 @@ the row the retry found.
 The operator plane has its own gate. It authenticates the bearer into
 the identity stage, and that stage admits only the person's own sign-in
 (never an API key, and never a session, whether the person exchanged
-it or an invitation someone else issued minted it). It then asks the tenancy manager to admit that identity
-as an operator, which produces an `OperatorContext` when the identity
-is on the operator allowlist (see [The Operator
-Context](#the-operator-context)).
+it or an invitation someone else issued minted it). It then asks the
+tenancy manager to admit that identity as an operator, which produces
+an `OperatorContext` when the identity is on the operator allowlist
+(see [The Operator Context](#the-operator-context)).
 
 Operator routes live under `/v1/admin/*` and are served by the same
 process. They cannot reach a tenant manager, because no `OpContext`
@@ -2850,7 +2851,8 @@ name to sign in with, not proof of a mailbox. A product that sends
 mail to it, or trusts it across tenants, ends the choice.
 
 The memberships of an identity are read under the identity stage,
-bounded like every list. It is the same choice a sign-in answers with.
+bounded like every list. The list is the same choice a sign-in answers
+with.
 
 An external identity provider is one more credential kind. The
 gateway's dependency accepts the provider's token and verifies it
