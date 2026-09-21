@@ -4,7 +4,6 @@ import http.client
 import importlib.util
 import json
 import threading
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -14,6 +13,7 @@ SERVE = Path(__file__).resolve().parent.parent / "benchmark" / "serve.py"
 
 def load_serve():
     spec = importlib.util.spec_from_file_location("benchmark_serve", SERVE)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -37,8 +37,7 @@ def runs(tmp_path):
 
 @pytest.fixture
 def client(serve_module, runs):
-    server = ThreadingHTTPServer(("127.0.0.1", 0), serve_module.Handler)
-    server.runs_folder = runs
+    server = serve_module.RunsServer(("127.0.0.1", 0), runs)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)

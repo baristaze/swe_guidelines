@@ -69,6 +69,14 @@ def tail(path: Path, stop_after_s: float | None = None):
         time.sleep(POLL_S)
 
 
+class RunsServer(ThreadingHTTPServer):
+    """The server, holding the runs folder its handlers serve."""
+
+    def __init__(self, address: tuple[str, int], runs: Path) -> None:
+        super().__init__(address, Handler)
+        self.runs_folder = Path(runs)
+
+
 class Handler(BaseHTTPRequestHandler):
     """One request. The runs folder is set on the server."""
 
@@ -76,7 +84,8 @@ class Handler(BaseHTTPRequestHandler):
 
     @property
     def runs(self) -> Path:
-        return self.server.runs_folder  # type: ignore[attr-defined]
+        assert isinstance(self.server, RunsServer)
+        return self.server.runs_folder
 
     def log_message(self, fmt: str, *args) -> None:  # quieter than the default
         print(f"{self.address_string()} {fmt % args}")
@@ -169,8 +178,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(runs: Path, port: int, host: str = "127.0.0.1") -> None:
-    server = ThreadingHTTPServer((host, port), Handler)
-    server.runs_folder = Path(runs)  # type: ignore[attr-defined]
+    server = RunsServer((host, port), runs)
     print(f"serving {runs} at http://{host}:{port}/")
     try:
         server.serve_forever()
