@@ -57,7 +57,9 @@ def test_a_judgement_carries_the_model_the_effort_and_the_usage():
 
 
 def test_a_refused_model_falls_back_and_the_result_names_what_answered():
-    judgement = J.judge_one(P.Provider.ANTHROPIC, "p", "high", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=failing_call)
+    judgement = J.judge_one(
+        P.Provider.ANTHROPIC, "p", "high", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=failing_call
+    )
     assert judgement.status == "ok"
     assert judgement.model == "claude-sonnet-5"
 

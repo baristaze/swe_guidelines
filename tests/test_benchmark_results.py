@@ -95,7 +95,16 @@ def test_findings_come_back_most_severe_first():
 
 
 def test_the_results_file_has_every_required_key(tmp_path):
-    run = a_run([R.RepeatResult(0, {"code": 0, "signal": None, "duration_s": 1.0, "timed_out": False}, ["artifacts/0/answer.md"], [judgement("anthropic", 88)])])
+    run = a_run(
+        [
+            R.RepeatResult(
+                0,
+                {"code": 0, "signal": None, "duration_s": 1.0, "timed_out": False},
+                ["artifacts/0/answer.md"],
+                [judgement("anthropic", 88)],
+            )
+        ]
+    )
     data = R.write_results(run, tmp_path / "results.json")
     written = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
     assert written == data
@@ -162,11 +171,15 @@ def test_validation_without_jsonschema_says_so_instead_of_claiming_a_pass(monkey
 
 def test_the_expected_check_is_recorded_per_repeat_and_reported(tmp_path):
     checked = R.RepeatResult(
-        index=0, exit_status={"code": 0}, judgements=[judgement("anthropic", 80)],
+        index=0,
+        exit_status={"code": 0},
+        judgements=[judgement("anthropic", 80)],
         expected={"expected": 3, "named": ["F1", "F2"], "missed": ["F3"]},
     )
     plain = R.RepeatResult(index=1, exit_status={"code": 0}, judgements=[judgement("anthropic", 70)])
-    run = R.RunResult(run_id="r", scenario="s", runtime="host", started_at="t", subject={"kind": "skill"}, repeats=[checked, plain])
+    run = R.RunResult(
+        run_id="r", scenario="s", runtime="host", started_at="t", subject={"kind": "skill"}, repeats=[checked, plain]
+    )
     data = run.as_dict()
     assert data["repeats"][0]["expected"]["missed"] == ["F3"]
     assert "expected" not in data["repeats"][1]

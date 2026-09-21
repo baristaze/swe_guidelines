@@ -130,12 +130,14 @@ class Handler(BaseHTTPRequestHandler):
     def _index(self) -> None:
         rows = "\n".join(
             f"<li><code>{html.escape(r['id'])}</code> "
-            f"<a href=\"/runs/{html.escape(r['id'])}/report.md\">report</a> "
-            f"<a href=\"/runs/{html.escape(r['id'])}/results.json\">results</a> "
-            f"<a href=\"/runs/{html.escape(r['id'])}/streams/cli\">command line</a></li>"
+            f'<a href="/runs/{html.escape(r["id"])}/report.md">report</a> '
+            f'<a href="/runs/{html.escape(r["id"])}/results.json">results</a> '
+            f'<a href="/runs/{html.escape(r["id"])}/streams/cli">command line</a></li>'
             for r in runs_of(self.runs)
         )
-        body = f"<!doctype html><meta charset=utf-8><title>benchmark runs</title><h1>Runs</h1><ul>{rows or '<li>none yet</li>'}</ul>"
+        body = (
+            f"<!doctype html><meta charset=utf-8><title>benchmark runs</title><h1>Runs</h1><ul>{rows or '<li>none yet</li>'}</ul>"
+        )
         self._send(200, body.encode(), "text/html; charset=utf-8")
 
     def _sse(self, path: Path) -> None:

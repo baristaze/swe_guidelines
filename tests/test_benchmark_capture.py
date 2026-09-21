@@ -26,7 +26,7 @@ def test_a_stream_name_that_is_not_out_or_err_is_refused(tmp_path):
 
 def test_a_torn_last_line_is_left_out(tmp_path):
     path = tmp_path / "cli.jsonl"
-    path.write_text(json.dumps({"t": 1.0, "s": "out", "line": "whole"}) + "\n{\"t\": 2.0, \"s\":", encoding="utf-8")
+    path.write_text(json.dumps({"t": 1.0, "s": "out", "line": "whole"}) + '\n{"t": 2.0, "s":', encoding="utf-8")
     assert [r["line"] for r in CliStream.read(path)] == ["whole"]
 
 

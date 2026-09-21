@@ -128,7 +128,9 @@ class CdpScreencast:
     acknowledged, which is what makes Chrome send the next one.
     """
 
-    def __init__(self, sink: FrameSink, host: str = "127.0.0.1", port: int = 9222, quality: int = 70, max_width: int = 1280) -> None:
+    def __init__(
+        self, sink: FrameSink, host: str = "127.0.0.1", port: int = 9222, quality: int = 70, max_width: int = 1280
+    ) -> None:
         self.sink = sink
         self.host = host
         self.port = port

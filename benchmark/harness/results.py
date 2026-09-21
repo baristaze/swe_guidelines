@@ -216,11 +216,7 @@ def report_text(run: RunResult) -> str:
         lines.append("No judge raised a finding.")
     lines += ["", "## Strengths", ""]
     strengths = [
-        f"- ({j.provider}) {s}"
-        for repeat in run.repeats
-        for j in repeat.judgements
-        if j.verdict
-        for s in j.verdict.strengths
+        f"- ({j.provider}) {s}" for repeat in run.repeats for j in repeat.judgements if j.verdict for s in j.verdict.strengths
     ]
     lines += strengths or ["No judge named a strength."]
     lines += ["", "## Rationales", ""]

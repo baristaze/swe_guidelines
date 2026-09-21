@@ -35,7 +35,9 @@ def test_a_subject_that_runs_too_long_is_killed_and_marked(tmp_path):
     rt = RT.build("host", tmp_path)
     rt.prepare()
     with CliStream(tmp_path / "cli.jsonl") as stream:
-        status = rt.run([sys.executable, "-c", "import time; time.sleep(30)"], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream, timeout_s=1)
+        status = rt.run(
+            [sys.executable, "-c", "import time; time.sleep(30)"], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream, timeout_s=1
+        )
     assert status.timed_out and not status.ok
 
 
@@ -105,7 +107,9 @@ def test_each_runtime_names_the_plugin_and_the_target_as_the_subject_sees_them(t
     assert (host.plugin_path(), host.target_path()) == (str(plugin.resolve()), str(target.resolve()))
     box = RT.build("container", tmp_path, target, {"image": "img:1"}, plugin=plugin)
     assert (box.plugin_path(), box.target_path()) == ("/plugin", "/target")
-    vm = RT.build("vm", tmp_path, target, {"exec_prefix": ["x"], "remote_plugin": "/opt/p", "remote_target": "/opt/t"}, plugin=plugin)
+    vm = RT.build(
+        "vm", tmp_path, target, {"exec_prefix": ["x"], "remote_plugin": "/opt/p", "remote_target": "/opt/t"}, plugin=plugin
+    )
     assert (vm.plugin_path(), vm.target_path()) == ("/opt/p", "/opt/t")
     bare = RT.build("container", tmp_path)
     assert (bare.plugin_path(), bare.target_path()) == (None, None)

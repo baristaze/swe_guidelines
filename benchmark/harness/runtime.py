@@ -87,9 +87,7 @@ class BaseRuntime:
 
     name = "base"
 
-    def __init__(
-        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
-    ) -> None:
+    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
         self.run_dir = Path(run_dir)
         self.target = Path(target).resolve() if target else None
         self.plugin = Path(plugin).resolve() if plugin else None
@@ -204,9 +202,7 @@ class ContainerRuntime(BaseRuntime):
 
     name = "container"
 
-    def __init__(
-        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
-    ) -> None:
+    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
         super().__init__(run_dir, target, config, plugin)
         self.image = self.config.get("image", DEFAULT_IMAGE)
         self.dockerfile = Path(self.config.get("dockerfile", Path(__file__).resolve().parent.parent / "runtime" / "Dockerfile"))
@@ -276,9 +272,7 @@ class VmRuntime(BaseRuntime):
 
     name = "vm"
 
-    def __init__(
-        self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
-    ) -> None:
+    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
         super().__init__(run_dir, target, config, plugin)
         raw = self.config
         self.vm = VmConfig(
