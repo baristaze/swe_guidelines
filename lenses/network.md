@@ -221,7 +221,8 @@ stored without the tenant and the principal in its scope; a
 `5xx` stored and replayed, so a transient failure is the answer for
 good and the client's only exit is a new key and a second row; a
 bespoke replay mechanism for one route that differs from the shared
-primitive. (What a create that issued a secret stores is NET-31.)
+primitive. (What a create that issued a secret stores is NET-31. A
+sign-up has no tenant or principal to hold a marker, and is NET-35.)
 
 **Severity.** high
 
@@ -832,12 +833,12 @@ platform's own is a decision the guideline makes, not a breach.)
 
 ## NET-35 Sign-up opens a deployed environment
 
-**Principle.** Sign-up is a tenancy operation without a principal. It
-creates the identity, its first org, and the owner membership in one
-transaction, and answers as a sign-in does. It is rate-limited and
-refuses a held email as a conflict. It is open by default, and one
-setting closes it, answering as not found. There is no email
-verification, by choice.
+**Principle.** Sign-up takes no principal. It creates the identity,
+its first org, and the owner membership in one transaction, and
+answers as a sign-in does. It is rate-limited, takes no idempotency
+key, and refuses a held email as a conflict. It is open by default;
+one setting closes it to a not found. Email is not verified, by
+choice.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns; The Business Layer, Operations Without a Principal.

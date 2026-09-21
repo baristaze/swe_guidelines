@@ -2837,6 +2837,9 @@ through the same choice and the same exchange.
 It is an [operation without a
 principal](#operations-without-a-principal), rate-limited like the
 sign-in. An email an identity already holds is refused as a conflict.
+It takes no idempotency key, since no tenant or principal exists to
+hold the marker. A retry after a lost answer meets that conflict, and
+the person signs in.
 
 It is open by default, because a deployed environment has no other
 door. One setting closes it, and a closed sign-up answers as not
