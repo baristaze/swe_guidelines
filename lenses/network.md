@@ -147,6 +147,9 @@ passing the gateway's dependencies.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the headers, tokens, and literal origins
+below the gateway; the rest is judged.
+
 ## NET-07 One error handler, one envelope
 
 **Principle.** One handler translates `PlatformException` and
@@ -167,6 +170,10 @@ error response that lacks the request id; more than one mapping from
 domain exceptions to statuses.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides HTTP exceptions and error statuses in
+routers and service code, and the one module that registers handlers;
+the rest is judged.
 
 ## NET-08 Rate limits are a per-route dependency on the shared counter
 
@@ -217,6 +224,9 @@ primitive. (What a create that issued a secret stores is NET-31.)
 
 **Severity.** high
 
+**Check.** `arch-check` decides the idempotency dependency on every POST
+answering 201 or 202; the rest is judged.
+
 ## NET-10 Health, readiness, and metrics live outside the versioned API
 
 **Principle.** `/healthz` answers liveness with the version and no I/O,
@@ -241,6 +251,9 @@ answer matters; operational endpoints under the versioned prefix;
 routers that repeat the version prefix in their own paths.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the version prefix and the operational
+paths in router modules; the rest is judged.
 
 ## NET-11 The gateway verifies; the tenancy domain owns identity
 
@@ -321,6 +334,9 @@ paging anywhere.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the two bases, a bare model in `types/`,
+an OM entity as a response, and an offset parameter; the rest is judged.
+
 ## NET-14 The OpenAPI document is emitted, committed, and diffed
 
 **Principle.** The running app emits the OpenAPI document; it is
@@ -338,6 +354,9 @@ a hand-maintained schema file next to the code; no CI check on the
 document.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the make target and the CI diff; the
+rest is judged.
 
 ## NET-15 One client per language per service
 
@@ -688,6 +707,9 @@ service rather than a role; two services that read one role from two
 databases.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides a table class or a migration under a
+service or a worker; the rest is judged.
 
 ## NET-30 The stream is a stream of hints, whole per tenant
 

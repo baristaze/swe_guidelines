@@ -193,6 +193,10 @@ that holds domain types; application code under `deployment/` or
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the one OM distribution, distributions
+under `deployment/` and `scripts/`, and a worker or service in the
+other's folder; the rest is judged.
+
 ## DEL-08 Src layout, tests as a sibling, a product-specific root package
 
 **Principle.** Every Python distribution uses the `src/<root>/...`
@@ -215,6 +219,8 @@ package names.
 
 **Severity.** low
 
+**Check.** `arch-check` decides it.
+
 ## DEL-09 Workers and services share one project shape
 
 **Principle.** Workers and services share `pyproject.toml`, `src/`,
@@ -235,6 +241,9 @@ console entry point.
 
 **Severity.** low
 
+**Check.** `arch-check` decides the entry point, the `main.py`, and the
+`routers/` and `types/` of each service and worker; the rest is judged.
+
 ## DEL-10 Dockerfiles are central, two-stage, non-root, with a healthcheck
 
 **Principle.** Dockerfiles live together under `deployment/docker/`,
@@ -253,6 +262,9 @@ image carrying build tooling; a process running as root; an image
 without a healthcheck; an install that ignores the lock file.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides where each Dockerfile lives, its stages,
+its user, its healthcheck, and its locked install; the rest is judged.
 
 ## DEL-11 Workspace tooling at the root, `make check` as the fast gate
 
@@ -273,6 +285,9 @@ root's; a `check` target that skips types or format; CI that runs only
 the fast gate and never the integration or migration jobs.
 
 **Severity.** low
+
+**Check.** `arch-check` decides the workspace roots, lint and type
+config below the root, and the `check` target; the rest is judged.
 
 ## DEL-12 React + TypeScript on Vite, rendered in the client; Python for the CLI
 
@@ -298,6 +313,9 @@ a CLI rewritten outside Python.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the dependencies of each browser app and
+the CLI's language; the rest is judged.
+
 ## DEL-13 TanStack Query for server state, Zustand for client state
 
 **Principle.** Server state lives in TanStack Query with one query-key
@@ -316,6 +334,9 @@ that sets component state or calls a component callback; a third state
 library.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides a third state library in a browser app;
+the rest is judged.
 
 ## DEL-14 Views render, view-model hooks decide, model modules compute
 
@@ -421,6 +442,9 @@ unavailable shape.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the root of every exception class and a
+web framework imported by the OM; the rest is judged.
+
 ## DEL-19 Standard logging, configured once, correlated by filter
 
 **Principle.** Every module logs through `logging.getLogger(__name__)`.
@@ -439,6 +463,9 @@ logging library; the request id passed by hand into log calls or
 absent from them.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the logger names, where logging is
+configured, and a second logging library; the rest is judged.
 
 ## DEL-20 OpenTelemetry traces and Prometheus metrics, used directly
 
@@ -463,6 +490,9 @@ exporter is set instead of relying on the no-op tracer; a backend
 swap that touches code beyond the exporter config.
 
 **Severity.** low
+
+**Check.** `arch-check` decides a second metrics system and a wrapper
+interface around telemetry; the rest is judged.
 
 ## DEL-21 One settings object per process; nothing below reads the environment
 
@@ -527,6 +557,9 @@ ADR; code that embodies an ADR's decision without citing its number;
 `docs/architecture.md` left describing a shape the change removed.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the number, date, and sections of each
+ADR and every ADR number code cites; the rest is judged.
 
 ## DEL-24 Checkable rules are checked by tests
 
@@ -603,6 +636,9 @@ that disagree, such as `.nvmrc` and the CI runtime step.
 
 **Severity.** low
 
+**Check.** `arch-check` decides a pre-release in a declared version and
+runtime pins that disagree; the rest is judged.
+
 ## DEL-27 Every process reports errors, off until a DSN is set
 
 **Principle.** Errors are reported through the Sentry SDK, used
@@ -673,6 +709,9 @@ that catches `InfraException` by name instead of translating by its
 status and code.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the fields of `InfraException` and an
+infra exception caught by name; the rest is judged.
 
 ## DEL-30 The bearer lives in session storage; the distribution sends a CSP
 
@@ -814,6 +853,9 @@ a label value; a worker that records metrics nothing can read, or
 whose image has no `/healthz` to check.
 
 **Severity.** low
+
+**Check.** `arch-check` decides an id as a label name; the rest is
+judged.
 
 ## DEL-36 End to end runs in-process; a deployed run is a smoke test
 

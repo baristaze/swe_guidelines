@@ -262,6 +262,9 @@ of read from the product's documents.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides that the nine skills exist; the rest is
+judged.
+
 ## OPS-12 A watch outlives its conversation and is written for a burst
 
 **Principle.** A watch is a loop that outlives the conversation that
@@ -471,6 +474,9 @@ a report an operator cannot read against the dashboard.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides a second load tool among the
+dependencies; the rest is judged.
+
 ## OPS-21 The stress test is the generator with a scenario and a target
 
 **Principle.** The stress test is the same generator with a scenario: a
@@ -564,6 +570,9 @@ runbook or a local-stack tip in a README about nouns.
 
 **Severity.** low
 
+**Check.** `arch-check` decides a README in each level folder; the rest
+is judged.
+
 ## OPS-25 `om/README.md` is written for a reader with no code
 
 **Principle.** `om/README.md` is the one every reader gets. It names
@@ -585,6 +594,9 @@ has the code open; a namespace with no README, so `om/README.md`
 carries every detail itself.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides a README per namespace and a command in
+`om/README.md`; the rest is judged.
 
 ## OPS-26 `llms.txt` names what each audience is served
 
@@ -608,6 +620,9 @@ not a listing; a link with no line, or a section with prose instead of
 links; one document that is a folder's worth of subjects.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the shape of `llms.txt` and that each
+link resolves; the rest is judged.
 
 ## OPS-27 Every document speaks product, technology, or service
 
