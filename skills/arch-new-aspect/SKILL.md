@@ -1,6 +1,6 @@
 ---
 name: arch-new-aspect
-description: "Incorporate a new aspect into the Software Design and Architecture Guidelines and cascade it through the lenses, skills, docs, README, and changelog. Runs in a checkout of the guideline repository."
+description: "Incorporate a new aspect into the Software Design and Architecture Guidelines and cascade it through the lenses, skills, docs, and README, naming the release level. Runs in a checkout of the guideline repository."
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-skills), Bash(make gen-toc), Bash(git diff:*)
 ---
@@ -9,7 +9,7 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-sk
 
 A guideline grows one aspect at a time, and each aspect lands in more
 than one file: the guideline states it, a lens makes it checkable, a
-skill applies it, the docs and the changelog record it. This skill
+skill applies it, the docs record it, and the release names it. This skill
 takes a brief description of an aspect and does the whole landing, in
 the guideline's voice, so the person supplies the idea and reviews the
 result rather than chasing the cascade by hand.
@@ -82,8 +82,9 @@ for the aspect in one message and stop.
      skills whose `Created` or `Changed` tables gain a file, or whose
      section lists gain a section; `docs/adopting.md` when an adopter
      must do something or gains a place to look; `README.md` when a
-     count or a summary changes; `CHANGELOG.md` with the release level
-     (a new or sharpened rule is minor; a removed or reversed rule is
+     count or a summary changes; the release level, which goes in
+     the report and never into `CHANGELOG.md`, since the release pull
+     request writes the changelog (a new or sharpened rule is minor; a removed or reversed rule is
      major, and before 1.0.0 bumps the minor number with the entry
      naming the reversal, as `CONTRIBUTING.md` states; a pointer, a
      rationale, or a wording change that states no new rule is patch); `AGENTS.md` when a new invariant appears.
@@ -98,7 +99,7 @@ for the aspect in one message and stop.
    `make gen-toc` and `make gen-skills`; record under Cascade whether
    any review skill was rewritten (a pointer or a rationale leaves all
    eight unchanged). Then the hand-written skills the aspect affects,
-   the docs, the README, and the changelog.
+   the docs, and the README.
 6. Search the repository for siblings of every change made
    (`git diff --stat` lists the files touched so far): a second
    snippet with the same pattern, a second place that mentions the
@@ -122,7 +123,7 @@ A short report, and nothing else:
 **Mentions.** <existing places that now link to it>
 **Lenses.** <ids added or changed, with their groups>, or none, and why
 **Cascade.** <files changed outside the guideline and the lenses>
-**Changelog.** <the entry added, in the file's own style: a bullet naming the file, the section title in quotes, what cascaded, and ending with the level>, <minor | major | patch>
+**Release note.** <the entry the release will carry, in the changelog's own style: a bullet naming the file, the section title in quotes, what cascaded, and ending with the level>, <minor | major | patch>
 **Vocabulary.** <terms rephrased for the leak checker>, or none
 **Text.** <the first sentence of the guideline text added; the reviewer reads the rest in `git diff`>
 **Check.** `make check` <passed | failed: what>
