@@ -32,3 +32,9 @@ explicit_package_bases = true
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+# The benchmark imports these inside the functions that use them, and
+# make mypy runs without them installed: their types are not checked.
+[[tool.mypy.overrides]]
+module = ["anthropic", "google", "google.*", "jsonschema", "openai", "pydantic", "websockets", "yaml"]
+ignore_missing_imports = true
