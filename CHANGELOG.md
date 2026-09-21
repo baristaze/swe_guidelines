@@ -22,6 +22,15 @@ which number.
   machine, refused before the run when missing.
 - `benchmark/`: a relative path in a scenario is read from the scenario
   file's folder, not from wherever the run started.
+- `arch-scaffold-new`: `git init` is the first thing step 1 does, not
+  step 7. Steps 2 to 5 follow the other scaffold skills, and each of
+  them lists its files from `git status`; before step 7 there was no
+  repository to ask. The old step 7 is gone and the last two steps are
+  7 and 8.
+- `skills/_shared/scaffold-conventions.md`: the file list comes from
+  `git status --porcelain --untracked-files=all`. Plain `git status`
+  names an untracked folder, not the files in it, so on a fresh tree it
+  listed `om/` and `services/` and nothing else.
 
 ### Added
 
