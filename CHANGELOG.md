@@ -34,6 +34,21 @@ which number.
 - `arch-scaffold-new`: replacing `README.md` and `.gitignore` in a fresh
   repository is named as the one exception to the collision rule of the
   scaffold conventions. The two texts contradicted each other.
+- `arch-upgrade-deps`: step 7 upgrades within the ranges first, with
+  `pnpm update --recursive`, and then raises one major at a time. It
+  ran `pnpm update --recursive --latest`, which ignores the ranges and
+  moves every package past its major at once, and it called that
+  staying within the caps. The one-at-a-time rule that followed had
+  nothing left to isolate. The majors to raise are listed with
+  `pnpm outdated --recursive` and `uv tree --outdated --depth 1`; the
+  pin-back runs over the workspace (`--recursive`).
+- `arch-upgrade-deps`: the skill never removes the local dependency
+  volumes unless it is run with `--reset-local-data`. A backing service
+  that moves a major needs its volume recreated to be validated, and the
+  skill ran `make infra-reset` on its own after printing a notice. Local
+  data can be worth keeping, since `make seed` rebuilds only the seeded
+  org. Without the option, that row is held back and the report says
+  how to move it.
 - Every script under `scripts/` parses its command line and refuses an
   unknown argument with exit status 2. A mistyped `--check` no longer
   makes `gen_toc.py` or `gen_skills.py` rewrite the tree and pass.
