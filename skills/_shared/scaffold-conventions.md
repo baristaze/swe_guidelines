@@ -252,8 +252,12 @@ container.
    stop; do not edit unrelated files.
 2. Print the guideline version the skill ran from (release, or
    snapshot), then the list of files created and changed, one per
-   line (`git status` names them in a repository), followed by the
-   commands that were run and their outcome. Nothing else.
+   line, followed by the commands that were run and their outcome.
+   Nothing else. The list comes from
+   `git status --porcelain --untracked-files=all`, which names every
+   new file rather than the folder that holds it. Every scaffold runs
+   in a repository: the others in a project that is one already, and
+   `arch-scaffold-new` initializes one before it writes anything.
 
 Never commit. Scaffolding produces a working tree for a person to
 review.
