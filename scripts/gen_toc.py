@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from _common import ROOT, anchors, arguments
+from _common import ROOT, anchors, arguments, plain
 
 GUIDELINE = ROOT / "architecture.md"
 START, END = "<!-- toc -->", "<!-- /toc -->"
@@ -33,7 +33,7 @@ def render(text: str) -> str:
         if level not in (2, 3) or (level == 2 and title in SKIP):
             continue
         indent = "" if level == 2 else "  "
-        lines.append(f"{indent}- [{title}](#{anchor})")
+        lines.append(f"{indent}- [{plain(title)}](#{anchor})")
     return "\n".join(lines)
 
 

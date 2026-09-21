@@ -15,24 +15,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+CLOSING = re.compile(r"(?:^|\s+)#+$")
+IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+
+def plain(heading: str) -> str:
+    """A heading's text as it renders: a link keeps its text, an image drops out."""
+    return LINK.sub(r"\1", IMAGE.sub("", heading))
 
 
 def slug(heading: str) -> str:
-    """The anchor a Markdown renderer derives from a heading.
+    """The anchor GitHub derives from a heading.
 
-    Inline code and emphasis markers are stripped, the rest is
-    lowercased, punctuation is dropped, and runs of whitespace become
-    one hyphen. Underscores stay, as GitHub keeps them (`EMPTY_UUID`
-    anchors as `empty_uuid`). `anchors` numbers repeats; this function
-    does not.
+    This is the rule of github-slugger, applied to the rendered text:
+    links keep their text, inline code and emphasis markers are
+    stripped, the rest is lowercased, and every character that is not
+    a letter, a digit, a space, `-`, or `_` is dropped. Each space then
+    becomes one hyphen, so a double space is `--`. Underscores stay
+    (`EMPTY_UUID` anchors as `empty_uuid`). `anchors` numbers repeats;
+    this function does not.
     """
-    text = re.sub(r"[`*]", "", heading).strip().lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    return re.sub(r"\s+", "-", text)
+    text = re.sub(r"[`*]", "", plain(heading)).strip().lower()
+    text = re.sub(r"[^\w\- ]", "", text)
+    return text.replace(" ", "-")
 
 
 def headings(text: str) -> list[tuple[int, str]]:
-    """(level, title) for every ATX heading, in order, skipping fenced code."""
+    """(level, title) for every ATX heading, in order, skipping fenced code.
+
+    A closing sequence of `#` is not part of the title, as CommonMark
+    reads it: `## Tables ##` is the heading `Tables`.
+    """
     out: list[tuple[int, str]] = []
     in_fence = False
     for line in text.splitlines():
@@ -43,7 +57,7 @@ def headings(text: str) -> list[tuple[int, str]]:
             continue
         m = HEADING.match(line)
         if m:
-            out.append((len(m.group(1)), m.group(2)))
+            out.append((len(m.group(1)), CLOSING.sub("", m.group(2))))
     return out
 
 

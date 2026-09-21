@@ -34,6 +34,29 @@ def test_slug_keeps_underscores_the_way_github_does():
     assert slug("`snake_case` heading") == "snake_case-heading"
 
 
+@pytest.mark.parametrize(
+    ("heading", "anchor"),
+    [
+        # each pair is the anchor GitHub renders for the heading
+        ("Park  vs fail", "park--vs-fail"),
+        ("`code` - dash", "code---dash"),
+        ("See [the lenses](lenses/README.md#groups)", "see-the-lenses"),
+        ("[Cache](#cache) and friends", "cache-and-friends"),
+        ("What's new?", "whats-new"),
+        ("Tables (and more)", "tables-and-more"),
+        ("EMPTY_UUID and snake_case", "empty_uuid-and-snake_case"),
+    ],
+)
+def test_slug_matches_github_anchors(heading, anchor):
+    assert slug(heading) == anchor
+
+
+def test_closing_hashes_are_not_part_of_the_heading():
+    text = "## Tables ##\n\n### Use C# #\n\n## C#\n"
+    assert headings(text) == [(2, "Tables"), (3, "Use C#"), (2, "C#")]
+    assert [a for _, _, a in anchors(text)] == ["tables", "use-c", "c"]
+
+
 def test_headings_skip_fenced_code_and_keep_levels():
     text = "# One\n\n```\n# not a heading\n```\n\n## Two\n\n### Three  \n"
     assert headings(text) == [(1, "One"), (2, "Two"), (3, "Three")]

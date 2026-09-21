@@ -49,6 +49,14 @@ def test_missing_markers_fail(repo, toc, capsys):
     assert "no <!-- toc -->" in capsys.readouterr().out
 
 
+def test_link_and_closing_hashes_in_a_heading_render_as_github_does(repo, toc):
+    links = repo.script("check_links")
+    repo.edit("architecture.md", "### Tables\n", "### [Tables](#interfaces)  per entity ##\n")
+    toc.main([])
+    assert "  - [Tables  per entity](#tables--per-entity)" in repo.read("architecture.md")
+    assert links.main() == 0
+
+
 @pytest.mark.parametrize("flag", ["--chekc", "--chec", "--check-only", "check"])
 def test_unknown_argument_is_refused_and_writes_nothing(repo, toc, flag):
     before = repo.read("architecture.md").replace("  - [Tables](#tables)\n", "")
