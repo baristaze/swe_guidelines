@@ -158,13 +158,21 @@ def test_storage_importing_types_and_its_own_interface_passes_con_12(tmp_path):
     assert code == 0
 
 
-def test_the_om_naming_a_service_interface_is_con_12(tmp_path):
+def test_the_om_holding_an_integration_named_like_a_service_passes_con_12(tmp_path):
     source = (
-        "class TasksManagerImpl:\n    def __init__(self, notify: 'NotifyServiceInterface') -> None:\n"
-        "        self._n: NotifyServiceInterface = notify\n"
+        "from acme.integrations.tax import TaxServiceInterface\n\n\n"
+        "class OrdersManagerImpl:\n    def __init__(self, tax: TaxServiceInterface) -> None:\n"
+        "        self._tax = tax\n"
     )
-    write_project(tmp_path, {f"{OM}/tasks/impl.py": source})
+    write_project(tmp_path, {f"{OM}/orders/impl.py": source})
+    code, _, _ = check(tmp_path, "--rule", "CON-12")
+    assert code == 0
+
+
+def test_the_om_importing_a_service_interface_is_con_12(tmp_path):
+    source = "from acme.services.api.services import OrdersServiceInterface\n"
+    write_project(tmp_path, {f"{OM}/orders/impl.py": source})
     code, report = check_json(tmp_path, "--rule", "CON-12")
     assert code == 1
-    assert rules_found(report) == [("CON-12", f"{OM}/tasks/impl.py", 2)]
-    assert "names NotifyServiceInterface" in report["findings"][0]["message"]
+    assert rules_found(report) == [("CON-12", f"{OM}/orders/impl.py", 1)]
+    assert "a lower layer never imports a service" in report["findings"][0]["message"]

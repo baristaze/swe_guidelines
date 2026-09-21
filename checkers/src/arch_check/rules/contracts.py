@@ -169,12 +169,13 @@ def impls_are_named_and_paired(project: Project) -> Iterator[Violation]:
 
 
 def is_memory_module(project: Project, file: SourceFile) -> bool:
+    """A memory impl module: `<pkg>.om...storage.impl.memory*` or `<pkg>.infra...memory*`."""
     name = file.module.rpartition(".")[2]
+    if not name.startswith("memory"):
+        return False
     if is_under(file.module, project.sub("om")):
-        return ".storage.impl." in f".{file.module}." and name.startswith("memory")
-    if is_under(file.module, project.sub("infra")):
-        return name.startswith(("memory", "local"))
-    return False
+        return ".storage.impl." in f".{file.module}."
+    return is_under(file.module, project.sub("infra"))
 
 
 def raises_not_implemented(node: ast.Raise) -> bool:
@@ -192,17 +193,35 @@ def returns_empty(fn: Function) -> bool:
     return isinstance(value, ast.Call) and called_name(value) in {"list", "dict", "tuple", "set"} and not value.args
 
 
+def sibling_methods(project: Project) -> dict[str, dict[str, list[Function]]]:
+    """Interface name to the methods, by name, of its impls outside a memory module."""
+    out: dict[str, dict[str, list[Function]]] = {}
+    for file, tree in project.trees(project.sub("om"), project.sub("infra")):
+        if is_memory_module(project, file):
+            continue
+        for cls in classes(tree):
+            for b in bases(cls):
+                if b.endswith("Interface"):
+                    for fn in interface_methods(cls):
+                        out.setdefault(b, {}).setdefault(fn.name, []).append(fn)
+    return out
+
+
 @rule(
     "CON-04",
     coverage="partial",
-    summary="No memory impl raises NotImplementedError or answers a public method with an empty literal.",
+    summary="No memory impl raises NotImplementedError or answers empty where its relational sibling does not.",
 )
 def memory_impls_are_whole(project: Project) -> Iterator[Violation]:
-    """In a memory impl (`<pkg>.om...storage.impl.memory*`, and
-    `<pkg>.infra...memory*` or `local*`), nothing raises
-    `NotImplementedError`, and no public method's whole body is `return`
-    of an empty list, dict, tuple, or set. Parity with the relational impl
-    and a contract case per unique key are judged or run as tests."""
+    """In a memory impl (`<pkg>.om...storage.impl.memory*` and
+    `<pkg>.infra...memory*`), nothing raises `NotImplementedError`, and no
+    public method's whole body is `return` of an empty list, dict, tuple,
+    or set while the same method of a sibling impl of the same interface
+    (the relational one, `acme.om.orders.storage.impl.postgres`) is more
+    than that. A method no sibling declares is not judged. Parity of
+    filters and a contract case per unique key are judged or run as
+    tests."""
+    siblings = sibling_methods(project)
     for file, tree in project.trees(project.sub("om"), project.sub("infra")):
         if not is_memory_module(project, file):
             continue
@@ -211,9 +230,15 @@ def memory_impls_are_whole(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, node, "a memory impl raises NotImplementedError; it is a full implementation")
         for cls in classes(tree):
             for fn in interface_methods(cls):
-                if returns_empty(fn):
+                if not returns_empty(fn):
+                    continue
+                others = [o for b in bases(cls) for o in siblings.get(b, {}).get(fn.name, [])]
+                if others and not all(returns_empty(o) for o in others):
                     yield Violation.at(
-                        file.rel, fn, f"{cls.name}.{fn.name} only returns an empty value; a memory impl is not a stub"
+                        file.rel,
+                        fn,
+                        f"{cls.name}.{fn.name} only returns an empty value where its relational sibling does not; "
+                        "a memory impl is not a stub",
                     )
 
 
@@ -313,20 +338,38 @@ def private_targets(node: ast.AST) -> Iterator[ast.Attribute]:
             yield t
 
 
+WIRING_MODULES = frozenset({"root", "container"})
+"""The modules that wire impls: every `root` module (`acme.om.root` among them) and every `container`."""
+
+
 @rule(
     "CON-08",
     coverage="partial",
-    summary="Nothing assigns another object's private attribute; no two namespaces import each other's impls.",
+    summary="Wiring code assigns no other object's private attribute; no two namespaces import each other's impls.",
 )
 def cycles_are_broken_above(project: Project) -> Iterator[Violation]:
-    """No assignment writes an underscore attribute of anything but `self`
-    or `cls`. No two OM namespaces import each other's `impl` packages.
-    A dependency made optional to dodge a cycle is judged."""
+    """In wiring code, no assignment writes an underscore attribute of
+    anything but `self` or `cls`. Wiring code is a module named `root`
+    or `container` (`acme.om.root`, `acme.services.api.container`) and
+    a root class (one that is or implements a name in `roots`) wherever
+    it lives. No two OM namespaces import each other's `impl` packages.
+    Option `[tool.arch-check.options.CON-08]`: `roots` (default
+    `StorageInterface`, `InfraInterface`, `ServicesInterface`). A private
+    attribute set elsewhere, such as a factory filling a fresh instance,
+    and a dependency made optional to dodge a cycle, are judged."""
+    root_names = roots(project, "CON-08")
     for file, tree in project.trees():
-        for node in ast.walk(tree):
-            for t in private_targets(node):
-                owner = dotted(t.value) or "another object"
-                yield Violation.at(file.rel, t, f"assigns {owner}.{t.attr}; wiring is the constructor, not a private attribute")
+        if file.module.rpartition(".")[2] in WIRING_MODULES:
+            scopes: list[ast.AST] = [tree]
+        else:
+            scopes = [cls for cls in classes(tree) if is_root(cls, root_names)]
+        for scope in scopes:
+            for node in ast.walk(scope):
+                for t in private_targets(node):
+                    owner = dotted(t.value) or "another object"
+                    yield Violation.at(
+                        file.rel, t, f"assigns {owner}.{t.attr}; wiring is the constructor, not a private attribute"
+                    )
     om = project.sub("om")
     edges: dict[tuple[str, str], tuple[SourceFile, ast.AST]] = {}
     for file in project.modules_under(om):
@@ -348,10 +391,17 @@ def cycles_are_broken_above(project: Project) -> Iterator[Violation]:
 MUTABLE_RETURNS = frozenset({"dict", "Dict", "Mapping", "MutableMapping", "list", "List", "Any", "None", "object"})
 
 
-def dataclass_frozen(cls: ast.ClassDef) -> bool | None:
-    """True or False for a `@dataclass`, by its `frozen` keyword; None when it is no dataclass."""
+FROZEN_KEYWORD_DECORATORS = frozenset({"dataclass", "define", "s", "attrs"})
+"""Class decorators frozen only by `frozen=True`: `dataclasses.dataclass`, `attrs.define`, `attr.s`."""
+
+
+def decorated_frozen(cls: ast.ClassDef) -> bool | None:
+    """True or False by a class decorator that decides it (`@dataclass(frozen=True)`, attrs `@frozen`), else None."""
     for d in cls.decorator_list:
-        if last(dotted(d)) != "dataclass":
+        name = last(dotted(d))
+        if name == "frozen":
+            return True
+        if name not in FROZEN_KEYWORD_DECORATORS:
             continue
         if isinstance(d, ast.Call):
             for k in d.keywords:
@@ -367,9 +417,10 @@ def dataclass_frozen(cls: ast.ClassDef) -> bool | None:
     summary="build_managers returns one frozen object of interface fields; root getters return interfaces.",
 )
 def roots_wire_at_boot(project: Project) -> Iterator[Violation]:
-    """`build_managers` in `<pkg>.om.root` returns a class, not a dict or a
-    list; a dataclass there is `frozen=True`, and no field of it is typed
-    with an `*Impl`. Every `get_*` of a root (a class that is or
+    """`build_managers` in `<pkg>.om.root`, when annotated, returns a
+    class, not a dict or a list; a dataclass or attrs class there is
+    frozen (`frozen=True`, or attrs `@frozen`), and no field of it is
+    typed with an `*Impl`. An unannotated `build_managers` is judged. Every `get_*` of a root (a class that is or
     implements a name in `roots`) returns no `*Impl`. Option
     `[tool.arch-check.options.CON-09]`: `roots` (default
     `StorageInterface`, `InfraInterface`, `ServicesInterface`). Where
@@ -382,6 +433,8 @@ def roots_wire_at_boot(project: Project) -> Iterator[Violation]:
         for fn in (n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             if fn.name != "build_managers":
                 continue
+            if fn.returns is None:
+                continue
             name = head_name(fn.returns)
             if name is None or name in MUTABLE_RETURNS:
                 yield Violation.at(
@@ -391,7 +444,8 @@ def roots_wire_at_boot(project: Project) -> Iterator[Violation]:
             cls = local.get(name)
             if cls is None:
                 continue
-            if dataclass_frozen(cls) is False or (dataclass_frozen(cls) is None and not cls.bases):
+            frozen = decorated_frozen(cls)
+            if frozen is False or (frozen is None and not cls.bases and not cls.decorator_list):
                 yield Violation.at(file.rel, cls, f"{cls.name} is mutable; the business root returns a frozen object")
             for node in cls.body:
                 if isinstance(node, ast.AnnAssign) and any(n.endswith("Impl") for n in names_in(node.annotation)):
@@ -420,8 +474,8 @@ VENDORS = [
     "botocore",
     "aiobotocore",
     "httpx",
-    "sentry_sdk",
 ]
+"""Vendor libraries behind an impl. Observability SDKs such as `sentry_sdk` are used directly, so none is here."""
 
 
 def declares_interface(tree: ast.Module) -> bool:
@@ -438,8 +492,9 @@ def no_technology_leaks(project: Project) -> Iterator[Violation]:
     `<pkg>.om.<ns>.impl`, imports nothing from a vendor library. Option
     `[tool.arch-check.options.CON-11]`: `vendors`, the top-level
     packages that count (default sqlalchemy, asyncpg, psycopg, psycopg2,
-    redis, valkey, boto3, botocore, aiobotocore, httpx, sentry_sdk). A
-    caller branching on the configured backend is judged."""
+    redis, valkey, boto3, botocore, aiobotocore, httpx). An observability
+    SDK, used directly by design, is not a vendor here. A caller
+    branching on the configured backend is judged."""
     vendors = set(project.option("CON-11", "vendors", list(VENDORS), {"vendors"}))
     for file, tree in project.trees():
         if not (declares_interface(tree) or in_manager_impl(project, file.module)):
@@ -477,6 +532,10 @@ def every_service_has_its_impl(project: Project) -> Iterator[Violation]:
 # --- CON-15
 
 
+PROBE_PATHS = frozenset({"/healthz", "/readyz", "/metrics"})
+"""The health and metrics routes, which sit outside the versioned API and bind no service."""
+
+
 def route_verb(fn: Function) -> str | None:
     for d in fn.decorator_list:
         target = d.func if isinstance(d, ast.Call) else d
@@ -485,9 +544,21 @@ def route_verb(fn: Function) -> str | None:
     return None
 
 
+def route_paths(fn: Function) -> set[str]:
+    """The literal paths of a function's route decorators: `@router.get("/readyz")` gives `/readyz`."""
+    out: set[str] = set()
+    for d in fn.decorator_list:
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in HTTP_VERBS and d.args:
+            path = d.args[0]
+            if isinstance(path, ast.Constant) and isinstance(path.value, str):
+                out.add(path.value)
+    return out
+
+
 def one_awaited_call(fn: Function) -> bool:
+    """Whether a body is one `return await <x>.<op>(...)` or one bare `await <x>.<op>(...)` (a 204 route)."""
     rest = body_without_docstring(fn.body)
-    if len(rest) != 1 or not isinstance(rest[0], ast.Return):
+    if len(rest) != 1 or not isinstance(rest[0], ast.Return | ast.Expr):
         return False
     value = rest[0].value
     return isinstance(value, ast.Await) and isinstance(value.value, ast.Call) and isinstance(value.value.func, ast.Attribute)
@@ -496,22 +567,26 @@ def one_awaited_call(fn: Function) -> bool:
 @rule(
     "CON-15",
     coverage="partial",
-    summary="A route function is one `return await <service>.<operation>(...)` and takes no manager or storage.",
+    summary="A route function is one awaited `<service>.<operation>(...)` and takes no manager or storage.",
 )
 def routers_bind_only(project: Project) -> Iterator[Violation]:
     """Every function under `<pkg>.services.<process>.routers` decorated
     with an HTTP verb (`@router.get(...)`) has a body of an optional
-    docstring and one `return await <name>.<operation>(...)`, and no
-    parameter typed with a `*ManagerInterface` or `*StorageInterface`.
-    Whether the impl behind it translates correctly is judged."""
+    docstring and one `return await <name>.<operation>(...)`, or one
+    bare `await <name>.<operation>(...)` for a route with no body to
+    return, and no parameter typed with a `*ManagerInterface` or
+    `*StorageInterface`. The probes `/healthz`, `/readyz`, and
+    `/metrics` sit outside the versioned API, and their bodies are not
+    judged here. Whether the impl behind a route translates correctly
+    is judged."""
     for file, tree in project.trees(project.sub("services")):
         if service_part(project, file.module) != "routers":
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or route_verb(node) is None:
                 continue
-            if not one_awaited_call(node):
-                yield Violation.at(file.rel, node, f"route {node.name} does more than `return await` one service call")
+            if not one_awaited_call(node) and not route_paths(node) & PROBE_PATHS:
+                yield Violation.at(file.rel, node, f"route {node.name} does more than await one service call")
             for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]:
                 bad = sorted(n for n in names_in(arg.annotation) if n.endswith(("ManagerInterface", "StorageInterface")))
                 if bad:
@@ -564,7 +639,8 @@ def every_process_has_a_container(project: Project) -> Iterator[Violation]:
 
 # --- CON-18
 
-REQUEST_STATE = frozenset({"request_id", "actor_id", "user_id", "org_id", "tenant_id", "ctx", "context"})
+REQUEST_STATE = frozenset({"request_id", "actor_id", "user_id", "org_id", "tenant_id", "ctx"})
+"""Request state by parameter name. `context` is left out: an impl may take an SSL or a template context."""
 
 
 @rule(
@@ -577,8 +653,8 @@ def constructors_take_structure(project: Project) -> Iterator[Violation]:
     (`<pkg>.om.opcontext`) is typed with an `*Interface`, an `*Impl`, or
     a name holding `Manager`, `Storage`, or `Container`. No `*Impl`
     constructor has a parameter named `request_id`, `actor_id`,
-    `user_id`, `org_id`, `tenant_id`, `ctx`, or `context`. A locator
-    reached from an operation is judged."""
+    `user_id`, `org_id`, `tenant_id`, or `ctx`. A locator reached from
+    an operation is judged."""
     file = stage_module(project)
     for cls in stage_classes(project).values():
         for name, node in declared_fields(cls).items():
@@ -599,7 +675,8 @@ def constructors_take_structure(project: Project) -> Iterator[Violation]:
 
 # --- CON-20
 
-CACHING_DECORATORS = frozenset({"property", "cached_property", "cache", "lru_cache"})
+CACHING_DECORATORS = frozenset({"cached_property", "cache", "lru_cache"})
+"""Decorators that build on first use. A plain `property` over a held member is no cache."""
 
 
 def returns_held(fn: Function) -> bool:
@@ -620,8 +697,8 @@ def returns_held(fn: Function) -> bool:
 )
 def roots_build_once(project: Project) -> Iterator[Violation]:
     """In every class that implements a name in `roots`, each `get_*`
-    method carries no `property`, `cached_property`, `cache`, or
-    `lru_cache` decorator, and its body is `return self._x` (or
+    method carries no `cached_property`, `cache`, or `lru_cache`
+    decorator, and its body is `return self._x` (or
     `self._x[key]`). Option `[tool.arch-check.options.CON-20]`: `roots`
     (default `StorageInterface`, `InfraInterface`, `ServicesInterface`).
     The build-once test is the project's."""
@@ -644,16 +721,29 @@ def roots_build_once(project: Project) -> Iterator[Violation]:
 # --- CON-23
 
 
+BOUND_WORDS = ("threshold", "bound", "failure", "cooldown", "cool_down", "reset")
+"""The keyword words that name a breaker's failure bound or its cool-down."""
+
+
+def is_bound_keyword(name: str | None) -> bool:
+    return name is not None and any(w in name.lower() for w in BOUND_WORDS)
+
+
 @rule(
     "CON-23",
     coverage="partial",
-    summary="The OM holds no breaker; a breaker's bounds are never numeric literals.",
+    summary="The OM holds no breaker; a breaker's failure bound and cool-down are never numeric literals.",
 )
 def breakers_are_infrastructure(project: Project) -> Iterator[Violation]:
     """No module under `<pkg>.om` imports a module named `*breaker*` or
-    calls a name holding `Breaker`. Every call that constructs a
-    `*Breaker*` passes no numeric literal, so its failure bound and
-    cool-down come from settings. What it answers while open is judged."""
+    calls a name holding `Breaker`. Outside the OM, a call that
+    constructs a `*Breaker*` passes no numeric literal to a keyword that
+    names the failure bound or the cool-down (a name holding
+    `threshold`, `bound`, `failure`, `cooldown`, `cool_down`, or
+    `reset`), so both come from settings. A positional argument, the
+    one probe a half-open breaker lets through, and a `*Error` or
+    `*Open` raised while open are not judged here. What a breaker
+    answers while open is judged."""
     om = project.sub("om")
     for file, tree in project.trees():
         in_om = is_under(file.module, om)
@@ -668,8 +758,15 @@ def breakers_are_infrastructure(project: Project) -> Iterator[Violation]:
             if in_om:
                 yield Violation.at(file.rel, call, f"{file.module} builds {name}; a manager never holds a breaker")
                 continue
-            values = [*call.args, *(k.value for k in call.keywords)]
+            if name.endswith(("Error", "Open")):
+                continue
             if any(
-                isinstance(v, ast.Constant) and isinstance(v.value, int | float) and not isinstance(v.value, bool) for v in values
+                is_bound_keyword(k.arg)
+                and isinstance(k.value, ast.Constant)
+                and isinstance(k.value.value, int | float)
+                and not isinstance(k.value.value, bool)
+                for k in call.keywords
             ):
-                yield Violation.at(file.rel, call, f"{name} gets a literal bound; its threshold and cool-down come from settings")
+                yield Violation.at(
+                    file.rel, call, f"{name} gets a literal bound; its failure bound and cool-down come from settings"
+                )

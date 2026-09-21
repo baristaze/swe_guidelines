@@ -118,7 +118,8 @@ def context_comes_first(project: Project) -> Iterator[Violation]:
 )
 def context_carries_ids(project: Project) -> Iterator[Violation]:
     """The stage module imports nothing of the product but
-    `<pkg>.om.base` and `<pkg>.om.exceptions`. No field of a class there
+    `<pkg>.om.base` and `<pkg>.om.exceptions`, spelled either way
+    (`from acme.om.base import X` or `from acme.om import base`). No field of a class there
     is typed with a class defined under `<pkg>.om.<ns>.types`.
     `RequestContext` declares `request_id` and `app`, and a class of the
     module declares `credential_id`. Identity passed beside the context
@@ -128,9 +129,17 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
     if file is None or tree is None:
         return
     allowed = (f"{project.sub('om')}.base", f"{project.sub('om')}.exceptions")
+
+    def below_the_base(name: str) -> bool:
+        return any(is_under(name, a) for a in allowed)
+
     for imp in project.imports(file):
-        if is_under(imp.module, project.package) and not any(is_under(imp.module, a) for a in allowed):
-            yield Violation.at(file.rel, imp.node, f"the stage module imports {imp.module}; it reaches nothing above the base")
+        if not is_under(imp.module, project.package) or below_the_base(imp.module):
+            continue
+        named = [f"{imp.module}.{n}" for n in imp.names if n != "*"]
+        if named and all(below_the_base(n) for n in named):
+            continue
+        yield Violation.at(file.rel, imp.node, f"the stage module imports {imp.module}; it reaches nothing above the base")
     entities: set[str] = set()
     for f, t in project.trees(project.sub("om")):
         if ".types" in f".{f.module}" and "types" in f.module.split(".")[project.sub("om").count(".") + 2 :]:
@@ -241,6 +250,9 @@ def context_is_immutable(project: Project) -> Iterator[Violation]:
 
 # --- CTX-07
 
+LOG_MODULES = ("infra.observability", "gateway.observability")
+"""The log modules, below the package, that may declare the one context variable."""
+
 
 @rule(
     "CTX-07",
@@ -251,9 +263,11 @@ def no_ambient_state(project: Project) -> Iterator[Violation]:
     """`ContextVar(...)` is called only in the log module, and nothing
     calls `threading.local()`. Option `[tool.arch-check.options.CTX-07]`:
     `modules`, the modules below the package allowed to hold a context
-    variable (default `infra.observability`). What a context variable is
-    read for is judged."""
-    allowed = {f"{project.package}.{m}" for m in project.option("CTX-07", "modules", ["infra.observability"], {"modules"})}
+    variable (default `infra.observability` and `gateway.observability`,
+    where the gateway middleware sets the request id for the log
+    filter). What a context variable is read for is judged."""
+    defaults = list(LOG_MODULES)
+    allowed = {f"{project.package}.{m}" for m in project.option("CTX-07", "modules", defaults, {"modules"})}
     for file, tree in project.trees():
         threading_local = any(
             isinstance(n, ast.ImportFrom) and n.module == "threading" and any(a.name == "local" for a in n.names)
@@ -291,32 +305,24 @@ def authorization_in_managers(project: Project) -> Iterator[Violation]:
 # --- CTX-10
 
 
-def required(fn: Function) -> set[str]:
-    """The parameters of a function that have no default."""
-    a = fn.args
-    positional = [*a.posonlyargs, *a.args]
-    out = {p.arg for p in positional[: len(positional) - len(a.defaults)]}
-    return out | {p.arg for p, d in zip(a.kwonlyargs, a.kw_defaults, strict=True) if d is None}
-
-
 @rule(
     "CTX-10",
     coverage="partial",
-    summary="Storage takes org_id first and user_id right after; an OpContext operation takes no org_id.",
+    summary="Storage takes org_id first; an OpContext operation takes no org_id.",
 )
 def tenant_first(project: Project) -> Iterator[Violation]:
     """On a `*StorageInterface` method that takes `org_id`, it is the first
-    parameter, and a required `user_id` beside it comes second. No operation of a
-    `*ManagerInterface` or `*ServiceInterface` that takes `OpContext`
-    first also takes `org_id`. A tenant-less storage method is CTX-12's;
+    parameter. No operation of a `*ManagerInterface` or
+    `*ServiceInterface` that takes `OpContext` first also takes `org_id`.
+    Where `user_id` goes is judged: on a personal scope it follows
+    `org_id`, but on `add_team_member(org_id, team_id, user_id)` it is
+    the target, not the scope. A tenant-less storage method is CTX-12's;
     what counts as a filter is judged."""
     for file, cls in classes_named(project, "StorageInterface"):
         for fn in interface_methods(cls):
             names = [a.arg for a in arguments(fn)]
             if "org_id" in names and names[0] != "org_id":
                 yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} takes org_id in position {names.index('org_id') + 1}")
-            elif names[:1] == ["org_id"] and "user_id" in required(fn) and names[1] != "user_id":
-                yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} takes user_id after a narrower id; it follows org_id")
     for file, cls, fn in operations(project):
         args = arguments(fn)
         if args and stage_of(args[0]) == "OpContext" and "org_id" in [a.arg for a in args]:
@@ -329,11 +335,12 @@ def tenant_first(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-12",
     coverage="partial",
-    summary="Every tenant-less storage method has a docstring, and is on the project's list when it keeps one.",
+    summary="Every tenant-less storage method is documented on it or its interface, and listed when a list is kept.",
 )
 def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
     """A `*StorageInterface` method whose first parameter is not `org_id`
-    carries a docstring that says why. Option
+    has a docstring, or its interface class has one, to say why: a
+    global interface documented once on the class is enough. Option
     `[tool.arch-check.options.CTX-12]`: `tenantless`, the `Class.method`
     names of those methods; when set, a method not on it and an entry
     that names no such method are findings, so the list is the
@@ -348,8 +355,10 @@ def tenantless_is_enumerated(project: Project) -> Iterator[Violation]:
                 continue
             key = f"{cls.name}.{fn.name}"
             seen.add(key)
-            if not has_docstring(fn):
-                yield Violation.at(file.rel, fn, f"{key} takes no tenant and has no docstring saying why")
+            if not has_docstring(fn) and ast.get_docstring(cls) is None:
+                yield Violation.at(
+                    file.rel, fn, f"{key} takes no tenant, and neither it nor its interface has a docstring saying why"
+                )
             if listed and key not in listed:
                 yield Violation.at(file.rel, fn, f"{key} takes no tenant and is not on the tenantless list")
     for key in sorted(set(listed) - seen):
@@ -434,12 +443,15 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-20",
     coverage="partial",
-    summary="OperatorContext refines IdentityContext with no org_id; no parameter accepts both it and OpContext.",
+    summary="OperatorContext refines IdentityContext with no org_id; no operation accepts both it and OpContext.",
 )
 def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
     """`OperatorContext` has `IdentityContext` among its bases, and neither
-    it nor a stage it refines declares `org_id`. No parameter anywhere
-    is typed as a union of `OpContext` and `OperatorContext`. The
+    it nor a stage it refines declares `org_id`. No operation (a public
+    method of a `*ManagerInterface`, `*ServiceInterface`, or
+    `*HandlerInterface`, or of a class implementing one) has a parameter
+    typed as a union of `OpContext` and `OperatorContext`. A gateway,
+    error, or log helper that reads either is not an operation. The
     allowlist gate is judged."""
     file = stage_module(project)
     stages = stage_classes(project)
@@ -457,10 +469,15 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
             if "org_id" in declared_fields(stages[name]):
                 yield Violation.at(file.rel, stages[name], f"{name} declares org_id; the operator plane has no tenant")
     for f, tree in project.trees():
-        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
-            for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
-                if {"OpContext", "OperatorContext"} <= set(union_members(arg.annotation)):
-                    yield Violation.at(f.rel, arg, f"{fn.name} accepts either OpContext or OperatorContext; it takes one")
+        for cls in classes(tree):
+            if not any(n.endswith(OPERATION_INTERFACES) for n in [cls.name, *bases(cls)]):
+                continue
+            for fn in interface_methods(cls):
+                for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
+                    if {"OpContext", "OperatorContext"} <= set(union_members(arg.annotation)):
+                        yield Violation.at(
+                            f.rel, arg, f"{cls.name}.{fn.name} accepts either OpContext or OperatorContext; it takes one"
+                        )
 
 
 # --- CTX-21
@@ -599,8 +616,8 @@ def site_matches(entry: str, rel: str, qualname: str) -> bool:
 
 @rule(
     "CTX-26",
-    coverage="full",
-    summary="Every site that constructs a stage above the request stage is on the allowed list, and every entry is used.",
+    coverage="partial",
+    summary="Every production site that constructs a stage above the request stage is listed, and every entry is used.",
 )
 def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     """A call that constructs `IdentityContext`, `OpContext`,
@@ -612,7 +629,9 @@ def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     tenancy manager's impl and the stage module); `stages`, the names
     that count (default the four above); `builders`, functions that
     assemble a stage (default none). A configured site that constructs
-    nothing is itself a finding."""
+    nothing is itself a finding, as an exception that matches nothing is.
+    The checker reads the source roots only, so a construction site in a
+    test helper is judged."""
     keys = {"sites", "stages", "builders"}
     configured = "sites" in project.config.options.get("CTX-26", {})
     sites = project.option("CTX-26", "sites", list(DEFAULT_SITES), keys)

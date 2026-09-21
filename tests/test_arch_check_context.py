@@ -131,6 +131,24 @@ def test_an_entity_in_the_context_or_an_import_above_the_base_is_ctx_02(tmp_path
     assert "holds the entity User" in messages[1]
 
 
+def test_the_base_imported_as_a_module_passes_ctx_02(tmp_path):
+    stages = OPCONTEXT.replace(
+        "from acme.om.base import Platform\n", "from acme.om import base, exceptions\n\nPlatform = base.Platform\n"
+    )
+    code, _, _ = run(tmp_path, "CTX-02", {STAGES: stages})
+    assert code == 0
+
+
+def test_a_namespace_imported_beside_the_base_is_ctx_02(tmp_path):
+    stages = OPCONTEXT.replace(
+        "from acme.om.base import Platform\n", "from acme.om import base, orders\n\nPlatform = base.Platform\n"
+    )
+    code, found, messages = run(tmp_path, "CTX-02", {STAGES: stages})
+    assert code == 1
+    assert found == [("CTX-02", STAGES, 4)]
+    assert "imports acme.om;" in messages[0]
+
+
 def test_a_request_stage_without_its_ids_is_ctx_02(tmp_path):
     stages = OPCONTEXT.replace("    app: str\n", "").replace("    credential_id: UUID\n", "")
     code, _, messages = run(tmp_path, "CTX-02", {STAGES: stages})
@@ -204,6 +222,13 @@ def test_a_context_variable_or_a_thread_local_elsewhere_is_ctx_07(tmp_path):
     assert [p for _, p, _ in found] == [f"{OM}/tasks/impl.py", f"{API}/gateway/auth.py"]
 
 
+def test_the_gateway_log_module_holds_the_context_variable_under_ctx_07(tmp_path):
+    src = "from contextvars import ContextVar\n\nrequest_id_var = ContextVar('request_id', default=None)\n"
+    files = {"gateway/src/acme/gateway/observability.py": src, "gateway/src/acme/gateway/auth.py": src}
+    code, found, _ = run(tmp_path, "CTX-07", files)
+    assert (code, [p for _, p, _ in found]) == (1, ["gateway/src/acme/gateway/auth.py"])
+
+
 def test_the_log_module_is_an_option_of_ctx_07(tmp_path):
     pyproject = PYPROJECT + '\n[tool.arch-check.options.CTX-07]\nmodules = ["infra.logs"]\n'
     src = "from contextvars import ContextVar\n\nv = ContextVar('v')\n"
@@ -255,19 +280,24 @@ def test_tenant_first_passes_ctx_10(tmp_path):
     assert code == 0
 
 
-def test_a_late_tenant_or_user_and_a_tenant_beside_op_context_are_ctx_10(tmp_path):
-    storage = STORAGE.replace("org_id: UUID, task_id: UUID", "task_id: UUID, org_id: UUID").replace(
-        "after: UUID | None, user_id: UUID | None = None", "team_id: UUID, user_id: UUID"
+def test_a_user_as_the_target_after_a_narrower_id_passes_ctx_10(tmp_path):
+    storage = STORAGE.replace("after: UUID | None, user_id: UUID | None = None", "team_id: UUID, user_id: UUID").replace(
+        "read_keys", "add_team_member"
     )
+    code, _, _ = run(tmp_path, "CTX-10", {f"{OM}/tasks/storage/__init__.py": storage})
+    assert code == 0
+
+
+def test_a_late_tenant_and_a_tenant_beside_op_context_are_ctx_10(tmp_path):
+    storage = STORAGE.replace("org_id: UUID, task_id: UUID", "task_id: UUID, org_id: UUID")
     manager = MANAGER.replace("task_id: UUID) -> Task", "org_id: UUID) -> Task")
     code, found, messages = run(
         tmp_path, "CTX-10", {f"{OM}/tasks/storage/__init__.py": storage, f"{OM}/tasks/manager.py": manager}
     )
     assert code == 1
-    assert [(p.rpartition("/")[2], line) for _, p, line in found] == [("manager.py", 6), ("__init__.py", 6), ("__init__.py", 9)]
+    assert [(p.rpartition("/")[2], line) for _, p, line in found] == [("manager.py", 6), ("__init__.py", 6)]
     assert "org_id beside OpContext" in messages[0]
     assert "org_id in position 2" in messages[1]
-    assert "user_id after a narrower id" in messages[2]
 
 
 # --- CTX-12
@@ -282,6 +312,17 @@ def test_an_undocumented_tenantless_method_is_ctx_12(tmp_path):
     storage = STORAGE.replace('        """Cross-tenant: the platform size."""\n', "")
     code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage})
     assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
+
+
+def test_a_global_interface_documented_on_the_class_passes_ctx_12(tmp_path):
+    storage = (
+        "from abc import ABC, abstractmethod\n\n\nclass CatalogStorageInterface(ABC):\n"
+        '    """Global: the catalog is platform-owned reference data, shared by every tenant."""\n\n'
+        "    @abstractmethod\n    async def read_product(self, sku: str) -> Product | None: ...\n\n"
+        "    @abstractmethod\n    async def list_products(self) -> list[Product]: ...\n"
+    )
+    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/catalog/storage/__init__.py": storage})
+    assert code == 0
 
 
 def test_the_tenantless_list_is_held_both_ways_by_ctx_12(tmp_path):
@@ -363,18 +404,28 @@ def test_a_tenantless_operator_stage_passes_ctx_20(tmp_path):
     assert code == 0
 
 
+def test_a_log_helper_reading_either_stage_passes_ctx_20(tmp_path):
+    helper = "def log_fields(ctx: OpContext | OperatorContext) -> dict[str, str]: ...\n"
+    code, _, _ = run(tmp_path, "CTX-20", {"gateway/src/acme/gateway/observability.py": helper})
+    assert code == 0
+
+
 def test_an_operator_stage_with_a_tenant_or_a_union_is_ctx_20(tmp_path):
     stages = OPCONTEXT.replace(
         "class OperatorContext(IdentityContext):\n", "class OperatorContext(RequestContext):\n    org_id: UUID\n"
     )
-    files = {STAGES: stages, f"{OM}/tenancy/impl.py": "def f(ctx: OpContext | OperatorContext) -> None: ...\n"}
+    impl = (
+        "class OrdersManagerImpl(OrdersManagerInterface):\n"
+        "    async def cancel_order(self, ctx: OpContext | OperatorContext, order_id: UUID) -> None: ...\n"
+    )
+    files = {STAGES: stages, f"{OM}/orders/impl.py": impl}
     code, found, messages = run(tmp_path, "CTX-20", files)
     assert code == 1
-    assert [p for _, p, _ in found] == [STAGES, STAGES, f"{OM}/tenancy/impl.py"]
+    assert [p for _, p, _ in found] == [STAGES, STAGES, f"{OM}/orders/impl.py"]
     assert sorted(m.partition(";")[0] for m in messages) == [
         "OperatorContext declares org_id",
         "OperatorContext does not refine IdentityContext",
-        "f accepts either OpContext or OperatorContext",
+        "OrdersManagerImpl.cancel_order accepts either OpContext or OperatorContext",
     ]
 
 

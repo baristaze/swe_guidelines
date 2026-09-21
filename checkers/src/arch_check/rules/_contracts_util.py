@@ -37,7 +37,7 @@ def in_om_storage(project: Project, module: str) -> bool:
 
 
 def namespace_of(project: Project, module: str) -> str | None:
-    """The OM namespace a module belongs to (`tasks` for `<pkg>.om.tasks.impl.manager`), else None."""
+    """The OM namespace a module belongs to (`orders` for `acme.om.orders.impl.manager`), else None."""
     om = project.sub("om")
     if not is_under(module, om) or module == om:
         return None
@@ -54,7 +54,7 @@ def in_manager_impl(project: Project, module: str) -> bool:
 
 
 def service_part(project: Project, module: str) -> str | None:
-    """The part of a service module below its process: `routers` for `<pkg>.services.api.routers.tasks`."""
+    """The part of a service module below its process: `routers` for `acme.services.api.routers.orders`."""
     services = project.sub("services")
     if not is_under(module, services):
         return None

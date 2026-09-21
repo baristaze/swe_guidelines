@@ -5,9 +5,11 @@ import statement of a file, the ones inside a function or under
 `TYPE_CHECKING` included, and resolve relative imports first.
 
 CON-12 (calls flow downward): nothing under `<pkg>.om` or `<pkg>.infra`
-imports `<pkg>.services` or `<pkg>.workers`; no OM storage module
-imports a manager; the OM never names a `*ServiceInterface`. A
-callback handed down is judged by the review.
+imports `<pkg>.services` or `<pkg>.workers`, which is how a manager
+would reach a `*ServiceInterface`; no OM storage module imports a
+manager. A callback handed down is judged by the review. A bare
+`*ServiceInterface` name is not judged: an integration such as
+`TaxServiceInterface` from `<pkg>.integrations` is a lower dependency.
 
 CON-10 (upper layers depend on lower layers): nothing under
 `<pkg>.infra` imports `<pkg>.om`; a router or a service module imports
@@ -17,7 +19,6 @@ storage impl or table. A session read through an interface is judged.
 
 from __future__ import annotations
 
-import ast
 from collections.abc import Iterator
 
 from arch_check.model import Violation
@@ -34,23 +35,6 @@ def offending(project: Project, file: SourceFile, forbidden: tuple[str, ...]) ->
             yield imp, hit
 
 
-def position(node: ast.AST) -> tuple[int, int]:
-    return getattr(node, "lineno", 0), getattr(node, "col_offset", 0)
-
-
-def spelled(node: ast.AST) -> str | None:
-    """The name a node spells: a bare name, an attribute, an imported name, or a string annotation of one name."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    if isinstance(node, ast.alias):
-        return node.name.rpartition(".")[2]
-    if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.isidentifier():
-        return node.value
-    return None
-
-
 def manager_modules(project: Project, target: str) -> bool:
     """Whether a module name is business code: `<pkg>.om.root`, or a namespace's `manager` or `impl`."""
     om = project.sub("om")
@@ -63,14 +47,14 @@ def manager_modules(project: Project, target: str) -> bool:
 @rule(
     "CON-12",
     coverage="partial",
-    summary="OM and infra import no service or worker; OM storage imports no manager; the OM names no service.",
+    summary="OM and infra import no service or worker; OM storage imports no manager.",
 )
 def calls_flow_downward(project: Project) -> Iterator[Violation]:
     """Nothing under `<pkg>.om` or `<pkg>.infra` imports `<pkg>.services`
     or `<pkg>.workers`. No OM storage module (`<pkg>.om.storage...`,
     `<pkg>.om.<ns>.storage...`) imports `<pkg>.om.root`, a namespace's
     `manager` or `impl` module, or a name ending in `ManagerInterface` or
-    `ManagerImpl`. No OM module names a `*ServiceInterface`."""
+    `ManagerImpl`."""
     upper = (project.sub("services"), project.sub("workers"))
     for file in project.modules_under(project.sub("om"), project.sub("infra")):
         for imp, hit in offending(project, file, upper):
@@ -84,13 +68,6 @@ def calls_flow_downward(project: Project) -> Iterator[Violation]:
                 manager = next((t for t in imp.targets() if manager_modules(project, t)), None) or named
                 if manager is not None:
                     yield Violation.at(file.rel, imp.node, f"{file.module} imports {manager}; storage never calls a manager")
-        tree = project.tree(file)
-        seen: set[str] = set()
-        for node in sorted(ast.walk(tree) if tree else (), key=position):
-            name = spelled(node)
-            if name and name.endswith("ServiceInterface") and name not in seen:
-                seen.add(name)
-                yield Violation.at(file.rel, node, f"{file.module} names {name}; the OM never holds a service")
 
 
 def storage_internals(project: Project, target: str) -> bool:

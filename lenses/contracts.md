@@ -206,8 +206,9 @@ namespaces import each other's impls.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the private attribute set from outside
-and the impl import cycle; the rest is judged.
+**Check.** `arch-check` decides the private attribute a root or a
+container sets from outside, and the impl import cycle; the rest is
+judged.
 
 ## CON-09 Roots wire everything at boot
 

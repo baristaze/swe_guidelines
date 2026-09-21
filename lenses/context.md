@@ -271,7 +271,7 @@ scoping id, or a filter with no default that every caller must spell.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the position of org_id and user_id and
+**Check.** `arch-check` decides the position of org_id in storage and
 the org_id beside OpContext; the rest is judged.
 
 ## CTX-11 Both keys appear in every user-scoped query
@@ -293,11 +293,11 @@ the same tenant.
 ## CTX-12 Exceptions to tenant-first are enumerated and tested
 
 **Principle.** Global tables and cross-tenant sweeps are the exceptions
-to the tenant-first rule: a global method takes no tenant and says why
-in its docstring; a bookkeeping sweep with no principal gets the
-tenant back with each row, as `tuple[UUID, Entity]` or on an entity
-carrying `org_id` itself; a test enumerates them, reading signatures
-and nothing more (CTX-30).
+to the tenant-first rule: a global method takes no tenant and its
+interface docstring says why; a bookkeeping sweep with no principal
+gets the tenant back with each row, as `tuple[UUID, Entity]` or on an
+entity carrying `org_id` itself; a test enumerates them, reading
+signatures and nothing more (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Business Layer,
 Operations Without a Principal.
@@ -307,10 +307,10 @@ lists them; each step of the sweep and whether it is bookkeeping with
 no principal (relaying the outbox, expiring a lease) or a tenant
 operation (CTX-17); what each cross-tenant read returns.
 
-**Violation.** A tenant-less storage method with no docstring
-justifying it; a sweep that returns entities without their tenant; a
-new tenant-less method that the enumerating test does not know about,
-or no such test at all.
+**Violation.** A tenant-less storage method whose interface docstring
+does not justify it; a sweep that returns entities without their
+tenant; a new tenant-less method that the enumerating test does not
+know about, or no such test at all.
 
 **Severity.** medium
 
@@ -497,7 +497,8 @@ sign-in.
 **Severity.** high
 
 **Check.** `arch-check` decides the base and tenant field of the
-operator stage and the union of two stages; the rest is judged.
+operator stage and the union of two stages on an operation; the rest
+is judged.
 
 ## CTX-21 An operation takes the weakest stage that proves what it needs
 
@@ -643,7 +644,8 @@ never scans the code for a new site.
 
 **Severity.** high
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides every construction site in production
+code; the rest is judged.
 
 ## CTX-27 A socket closes at its session's expiry and on the revocation frame
 

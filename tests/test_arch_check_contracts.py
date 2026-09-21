@@ -147,15 +147,49 @@ def test_a_whole_memory_impl_passes_con_04(tmp_path):
     assert code == 0
 
 
+ORDERS_INTERFACE = (
+    "from abc import ABC, abstractmethod\n\n\nclass OrdersStorageInterface(ABC):\n"
+    "    @abstractmethod\n    async def list_orders(self, org_id): ...\n"
+)
+
+
+def orders_impls(memory_body, postgres_body):
+    """The orders storage interface with a memory and a postgres impl of `list_orders`."""
+    impl = "from acme.om.orders.storage import OrdersStorageInterface\n\n\nclass OrdersStorage{}Impl(OrdersStorageInterface):\n"
+    return {
+        f"{OM}/orders/storage/__init__.py": ORDERS_INTERFACE,
+        f"{OM}/orders/storage/impl/__init__.py": "",
+        f"{OM}/orders/storage/impl/memory.py": impl.format("Memory")
+        + f"    async def list_orders(self, org_id):\n        {memory_body}\n",
+        f"{OM}/orders/storage/impl/postgres.py": impl.format("Postgres")
+        + f"    async def list_orders(self, org_id):\n        {postgres_body}\n",
+    }
+
+
 def test_a_stubbed_memory_impl_is_con_04(tmp_path):
-    memory = (
-        "class TasksStorageMemoryImpl:\n"
-        "    async def read_task(self, org_id, task_id):\n        raise NotImplementedError\n\n"
-        '    async def read_tasks(self, org_id):\n        """All."""\n        return []\n'
-    )
-    code, found, _ = run(tmp_path, "CON-04", {f"{OM}/tasks/storage/impl/memory.py": memory})
+    files = orders_impls("return []", "return await self._all(org_id)")
+    files[f"{OM}/orders/storage/impl/memory.py"] += "\n\ndef f():\n    raise NotImplementedError\n"
+    code, found, messages = run(tmp_path, "CON-04", files)
     assert code == 1
-    assert [line for _, _, line in found] == [3, 5]
+    assert [line for _, _, line in found] == [5, 10]
+    assert "where its relational sibling does not" in messages[0]
+
+
+def test_an_empty_answer_the_relational_impl_shares_passes_con_04(tmp_path):
+    code, _, _ = run(tmp_path, "CON-04", orders_impls("return []", "return []"))
+    assert code == 0
+
+
+def test_an_empty_answer_with_no_relational_sibling_passes_con_04(tmp_path):
+    memory = "class OrdersStorageMemoryImpl:\n    async def list_orders(self, org_id):\n        return []\n"
+    code, _, _ = run(tmp_path, "CON-04", {f"{OM}/orders/storage/impl/memory.py": memory})
+    assert code == 0
+
+
+def test_an_infra_local_impl_is_not_con_04(tmp_path):
+    local = "class BucketsLocalImpl:\n    async def presign(self, org_id, key):\n        raise NotImplementedError\n"
+    code, _, _ = run(tmp_path, "CON-04", {f"{INFRA}/buckets/local.py": local})
+    assert code == 0
 
 
 def test_a_relational_impl_is_not_con_04(tmp_path):
@@ -247,6 +281,25 @@ def test_setting_a_peer_private_attribute_is_con_08(tmp_path):
     assert "assigns a._peer" in messages[0]
 
 
+def test_a_factory_filling_a_fresh_instance_passes_con_08(tmp_path):
+    src = (
+        "class Order:\n    @classmethod\n    def restore(cls, row):\n"
+        "        inst = cls.__new__(cls)\n        inst._row = row\n        return inst\n"
+    )
+    code, _, _ = run(tmp_path, "CON-08", {f"{OM}/orders/types/order.py": src})
+    assert code == 0
+
+
+def test_a_root_class_or_a_container_setting_a_peer_private_attribute_is_con_08(tmp_path):
+    root = (
+        "class StorageRootImpl(StorageInterface):\n    def __init__(self, orders, catalog):\n        orders._catalog = catalog\n"
+    )
+    container = "def boot(orders, inventory):\n    orders._inventory = inventory\n"
+    code, found, _ = run(tmp_path, "CON-08", {f"{OM}/storage/impl/postgres.py": root, f"{API}/container.py": container})
+    assert code == 1
+    assert sorted(found) == [("CON-08", f"{OM}/storage/impl/postgres.py", 3), ("CON-08", f"{API}/container.py", 2)]
+
+
 def test_two_namespaces_importing_each_others_impl_are_con_08(tmp_path):
     files = {
         f"{OM}/tasks/impl/__init__.py": "",
@@ -304,6 +357,36 @@ def test_a_mutable_or_concrete_business_root_is_con_09(tmp_path, source, message
     assert message in messages[0]
 
 
+ORDERS_ROOT = """from attrs import frozen
+
+
+@frozen
+class Managers:
+    orders: OrdersManagerInterface
+
+
+def build_managers(storage, infra) -> Managers:
+    return Managers(orders=OrdersManagerImpl(storage.get_orders_storage()))
+"""
+
+
+@pytest.mark.parametrize(
+    "source",
+    [ORDERS_ROOT, ORDERS_ROOT.replace(" -> Managers", "")],
+    ids=["attrs-frozen", "unannotated"],
+)
+def test_an_attrs_frozen_or_unannotated_business_root_passes_con_09(tmp_path, source):
+    code, _, _ = run(tmp_path, "CON-09", {f"{OM}/root.py": source})
+    assert code == 0
+
+
+def test_an_attrs_mutable_business_root_is_con_09(tmp_path):
+    source = ORDERS_ROOT.replace("from attrs import frozen", "from attrs import define").replace("@frozen", "@define")
+    code, _, messages = run(tmp_path, "CON-09", {f"{OM}/root.py": source})
+    assert code == 1
+    assert "Managers is mutable" in messages[0]
+
+
 def test_a_root_getter_returning_an_impl_is_con_09(tmp_path):
     root = (
         "class StorageMemoryImpl(StorageInterface):\n    def get_tasks_storage(self) -> TasksStorageMemoryImpl:\n"
@@ -336,6 +419,15 @@ def test_a_vendor_in_an_interface_module_or_a_manager_impl_is_con_11(tmp_path):
     code, found, _ = run(tmp_path, "CON-11", {**files, f"{OM}/tasks/impl.py": ""})
     assert code == 1
     assert [(p, line) for _, p, line in found] == [(f"{INFRA}/cache/__init__.py", 1), (f"{OM}/tasks/impl/manager.py", 2)]
+
+
+def test_a_manager_impl_reporting_through_the_sentry_sdk_passes_con_11(tmp_path):
+    files = {
+        f"{OM}/orders/impl/__init__.py": "",
+        f"{OM}/orders/impl/manager.py": "import sentry_sdk\n\n\ndef f(exc):\n    sentry_sdk.capture_exception(exc)\n",
+    }
+    code, _, _ = run(tmp_path, "CON-11", files)
+    assert code == 0
 
 
 def test_the_vendor_list_is_an_option_of_con_11(tmp_path):
@@ -391,6 +483,34 @@ def test_a_router_of_one_call_per_route_passes_con_15(tmp_path):
     assert code == 0
 
 
+def test_a_no_content_route_and_the_probes_pass_con_15(tmp_path):
+    router = (
+        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n"
+        '@router.delete("/{order_id}", status_code=204)\n'
+        "async def delete_order(ctx: Ctx, orders: OrdersService, order_id: UUID) -> None:\n"
+        "    await orders.delete_order(ctx, order_id)\n\n\n"
+        '@router.get("/readyz")\n'
+        "async def readyz(storage: Storage) -> dict[str, str]:\n"
+        "    async with asyncio.timeout(2):\n        await storage.healthcheck()\n"
+        '    return {"status": "ok"}\n'
+    )
+    code, _, _ = run(tmp_path, "CON-15", {f"{API}/routers/health.py": router})
+    assert code == 0
+
+
+def test_a_no_content_route_that_does_more_is_con_15(tmp_path):
+    router = (
+        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n"
+        '@router.delete("/{order_id}", status_code=204)\n'
+        "async def delete_order(ctx: Ctx, orders: OrdersService, order_id: UUID) -> None:\n"
+        "    order = await orders.get_order(ctx, order_id)\n"
+        "    await orders.delete_order(ctx, order.id)\n"
+    )
+    code, found, _ = run(tmp_path, "CON-15", {f"{API}/routers/orders.py": router})
+    assert code == 1
+    assert found == [("CON-15", f"{API}/routers/orders.py", 7)]
+
+
 def test_a_router_that_branches_or_takes_a_manager_is_con_15(tmp_path):
     router = ROUTER.replace(
         "    return await tasks.get_task(ctx, task_id)",
@@ -443,6 +563,15 @@ def test_contexts_of_ids_and_structural_constructors_pass_con_18(tmp_path):
     assert code == 0
 
 
+def test_an_ssl_context_in_a_constructor_passes_con_18(tmp_path):
+    impl = (
+        "class CatalogClientImpl(CatalogServiceInterface):\n"
+        "    def __init__(self, context: ssl.SSLContext) -> None:\n        pass\n"
+    )
+    code, _, _ = run(tmp_path, "CON-18", {f"{API}/clients/catalog.py": impl})
+    assert code == 0
+
+
 def test_a_manager_on_a_context_or_a_tenant_in_a_constructor_is_con_18(tmp_path):
     stages = "class OpContext(Platform):\n    tasks: TasksManagerInterface\n"
     impl = (
@@ -463,6 +592,12 @@ def test_getters_returning_members_pass_con_20(tmp_path):
         "    def get_cache(self, scope):\n        return self._caches[scope]\n\n"
         '    def get_topics(self):\n        """The bus."""\n        return self._topics\n'
     )
+    code, _, _ = run(tmp_path, "CON-20", {f"{INFRA}/impl/local.py": root})
+    assert code == 0
+
+
+def test_a_plain_property_over_a_held_member_passes_con_20(tmp_path):
+    root = "class InfraLocalImpl(InfraInterface):\n    @property\n    def get_topics(self):\n        return self._topics\n"
     code, _, _ = run(tmp_path, "CON-20", {f"{INFRA}/impl/local.py": root})
     assert code == 0
 
@@ -498,3 +633,20 @@ def test_a_literal_bound_or_a_breaker_in_the_om_is_con_23(tmp_path):
     code, found, _ = run(tmp_path, "CON-23", files)
     assert code == 1
     assert [(p, line) for _, p, line in found] == [(f"{INFRA}/impl/configured.py", 2), (f"{OM}/tasks/impl.py", 1)]
+
+
+def test_a_literal_probe_count_or_an_open_refusal_passes_con_23(tmp_path):
+    src = (
+        "def build(settings, inner):\n"
+        "    return CatalogBreakerImpl(inner, threshold=settings.threshold, cooldown=settings.cooldown, probes=1)\n\n\n"
+        "def refuse():\n    raise BreakerOpen(retry_after=0)\n"
+    )
+    code, _, _ = run(tmp_path, "CON-23", {f"{INFRA}/impl/configured.py": src})
+    assert code == 0
+
+
+def test_a_literal_failure_threshold_is_con_23(tmp_path):
+    src = "def build(settings, inner):\n    return CatalogBreakerImpl(inner, failure_threshold=5, cooldown=settings.cooldown)\n"
+    code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/impl/configured.py": src})
+    assert code == 1
+    assert found == [("CON-23", f"{INFRA}/impl/configured.py", 2)]
