@@ -1,8 +1,9 @@
 # Async
 
 Group id: `async`. Covers Infrastructure, The Network Layer
-(Idempotency on the Consumer Side, Long-Running Orchestrations), and
-Worker Roles of `architecture.md`.
+(Idempotency on the Consumer Side, Long-Running Orchestrations),
+Worker Roles, and the causing request a work item carries in Telemetry
+(Correlation Across a Handoff) of `architecture.md`.
 
 This group judges everything that happens off the request path: the
 infrastructure capabilities managers lean on, how work is handed off

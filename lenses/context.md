@@ -493,13 +493,12 @@ operator write requires it; how the console and its screens decide
 that a person is an operator.
 
 **Violation.** An operator route gated by a tenant role or a feature
-flag, or operator pages shown in the portal behind a flag or a role
-check; an `OperatorContext` with a tenant field; an operator write
-that a read-only allowlist entry reaches; a manager method that
-accepts either context type; an operator route that reaches a tenant
-manager; an API key or an invitation-minted session admitted to the
-operator plane, since the identity stage admits only the person's own
-sign-in.
+flag (operator screens in the portal's bundle are DEL-16); an
+`OperatorContext` with a tenant field; an operator write that a
+read-only allowlist entry reaches; a manager method that accepts either
+context type; an operator route that reaches a tenant manager; an API
+key or an invitation-minted session admitted to the operator plane,
+since the identity stage admits only the person's own sign-in.
 
 **Severity.** high
 

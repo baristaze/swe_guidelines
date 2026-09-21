@@ -146,7 +146,7 @@ LENSES: dict[str, Severity] = {
     "NET-08": "medium",
     "NET-09": "high",
     "NET-10": "medium",
-    "NET-11": "medium",
+    "NET-11": "high",
     "NET-12": "medium",
     "NET-13": "medium",
     "NET-14": "medium",

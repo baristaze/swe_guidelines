@@ -105,16 +105,18 @@ local URLs; `make down` stops both and keeps the data.
 **Source.** Deployment, Local: Docker Compose.
 
 **Look for.** `deployment/local/docker-compose.yml` and the second
-compose file that runs the application in containers for the case
-that asks for it, and the image tag of each dependency; the start
-script; the `up`, `down`, `reset`, and `urls` targets and what each
-does; CI jobs that reference compose services.
+compose file that runs the application in containers for the case that
+asks for it, and the image tag of each dependency; the start script; the
+`up`, `down`, `reset`, and `urls` targets and what each does; the step
+targets they wrap (`setup`, `infra-up`, `infra-down`, `infra-reset`,
+`migrate`, `seed`); CI jobs that reference compose services.
 
-**Violation.** A dependency the application needs that the compose
-stack does not run; application services baked into the default
-compose file so a code change needs an image rebuild; an `up` that
-starts the application in containers, or that skips the migration or
-the seed; a `reset` that keeps a volume.
+**Violation.** A dependency the application needs that the compose stack
+does not run; application services baked into the default compose file
+so a code change needs an image rebuild; an `up` that starts the
+application in containers, or that skips the migration or the seed; a
+`reset` that keeps a volume; a CI job that runs a shortcut such as `make
+up` instead of its steps, or a shortcut with no step behind it.
 
 **Severity.** medium
 
@@ -432,12 +434,12 @@ defined elsewhere;
 routers.
 
 **Violation.** An exception raised inside the platform and rooted at
-neither `PlatformException` nor, under infra, `InfraException`
-(DEL-29); a manager raising a framework HTTP exception; a router
-mapping exception types to status codes; a raised leaf exception that
-inherits no shape and so surfaces as 500; an open breaker, a refused
-admission, or a backend that is down presented as a 500 instead of the
-unavailable shape.
+neither `PlatformException` nor, under infra, `InfraException` (DEL-29);
+a manager raising a framework HTTP exception; a router mapping exception
+types to status codes (the handler and its envelope are NET-07); a
+raised leaf exception that inherits no shape and so surfaces as 500; an
+open breaker, a refused admission, or a backend that is down presented
+as a 500 instead of the unavailable shape.
 
 **Severity.** medium
 

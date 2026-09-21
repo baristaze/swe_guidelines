@@ -1,7 +1,8 @@
 # Network
 
-Group id: `network`. Covers The Network Layer and Push-First Apps (in
-Apps) of `architecture.md`.
+Group id: `network`. Covers The Network Layer, Push-First Apps (in
+Apps), and Realtime: One Channel per App (in Client App Architecture)
+of `architecture.md`.
 
 This group judges how the system faces its callers: how services are
 cut, what the gateway does once at the edge, what crosses the wire, and
@@ -280,7 +281,7 @@ manager that cannot be tested without the HTTP layer; a password
 hashed with a fast digest or no salt; a key, token, or ticket stored
 in the clear, or looked up by anything but its digest.
 
-**Severity.** medium
+**Severity.** high
 
 ## NET-12 Intra-service traffic needs no TLS, outbound trusts the OS
 
@@ -700,12 +701,11 @@ Storage Layer, Database Roles.
 
 **Look for.** Which database URLs and schemas each service's settings
 name; whether a table's role comes from the OM's role map or is
-implied by the service that writes it. (Where migrations live is
-STO-18.)
+implied by the service that writes it. (The shape of a migration is STO-18.)
 
-**Violation.** A database or a schema per service; a table owned by a
-service rather than a role; two services that read one role from two
-databases.
+**Violation.** A database or a schema per service; a table class or a
+migration under a service or a worker; a table owned by a service rather
+than a role; two services that read one role from two databases.
 
 **Severity.** medium
 

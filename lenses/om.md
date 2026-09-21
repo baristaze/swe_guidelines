@@ -414,10 +414,12 @@ validated too, because pydantic does not validate a default.
 
 **Source.** Naming Entities, Immutability.
 
-**Look for.** `list`, `dict`, or bare `Mapping` fields on the chain;
-the validator behind `FrozenMapping` and whether it descends into
-nested mappings and lists; the default of every mapping field and
-whether `validate_default` is set on it.
+**Look for.** `list`, `dict`, or bare `Mapping` fields on the chain, and
+abstract collections (`Sequence`, `Collection`, `Iterable`,
+`AbstractSet`) that pydantic stores as a list or a set; the validator
+behind `FrozenMapping` and whether it descends into nested mappings and
+lists; the default of every mapping field and whether `validate_default`
+is set on it.
 
 **Violation.** A `list` field appended to through the snapshot; a bare
 `Mapping` field holding the dict pydantic built; a `FrozenMapping`

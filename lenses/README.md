@@ -11,10 +11,10 @@ keeps each review narrow enough to be thorough.
 |-------------|-----------------|-------------------------------------------------------------------------------------------------|
 | `om`        | `om.md`         | The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules |
 | `contracts` | `contracts.md`  | Interfaces, Separation of Layers, The Business Layer, The Network Layer (Service Interfaces and Impls, Direction of Calls), Cross-Cutting Conventions (The App Container): interfaces, injection, wiring |
-| `context`   | `context.md`    | OpContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles: stages, scopes, OperatorContext, authorization, tenancy, provenance |
+| `context`   | `context.md`    | OpContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles, Telemetry (Correlation Across a Handoff), Cross-Cutting Conventions (Tests): stages, scopes, OperatorContext, authorization, tenancy, provenance |
 | `storage`   | `storage.md`    | The Storage Layer and Identifiers: storage principles, tables, translation, roles, migrations |
-| `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations): infra, queues, workers, park vs fail |
-| `network`   | `network.md`    | The Network Layer and Apps (Push-First Apps): topology, gateway, public types, clients, realtime, push-first |
+| `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, park vs fail |
+| `network`   | `network.md`    | The Network Layer, Apps (Push-First Apps), and Client App Architecture (Realtime: One Channel per App): topology, gateway, public types, clients, realtime, push-first |
 | `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions |
 | `ops`       | `ops.md`        | Operations, Documentation as Code: operator roles and credentials, the operational skills, dashboards and alarms as code, scale-out, cost, creating and destroying an environment, traffic and stress, the telemetry round trip, READMEs, the knowledge map |
 
@@ -37,7 +37,7 @@ way:
 ```markdown
 ## OM-01 Title of the lens
 
-**Principle.** The rule, in one or two sentences, in the guideline's voice.
+**Principle.** The rule, in a few short sentences, in the guideline's voice.
 
 **Source.** Naming Entities, Immutability.
 

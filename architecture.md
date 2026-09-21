@@ -309,7 +309,8 @@ apart.
 
 An **entity** has an identity and is stored: `Order`, `Product`,
 `Warehouse`. It composes `Identifiable` and, where an update exists,
-`Trackable`.
+`Trackable`. A system row the platform writes for its own bookkeeping
+composes `Created` instead, as above.
 
 A **value object** is a typed piece of an entity with no identity of its
 own: an `Address`, a `Money` amount, a `ShippingProfile`. It subclasses
@@ -348,7 +349,8 @@ was constructed.
 > `entity.model_copy(update={...})`. When the update carries dumped
 > data, as the caller's fields do, the entity is rebuilt from a dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
-> `model_copy` does not validate, so it would leave a dumped value
+> It takes that dict, never an instance of its own class, which it
+> would hand back unvalidated. `model_copy` does not validate, so it would leave a dumped value
 > object as a plain dict. A manager that updates an entity sets
 > `updated_at` and `updated_by` in the same copy, so the caller gets
 > back the copy that was written.
@@ -568,12 +570,13 @@ get an in-memory impl.
 A manager is the case that is already true without a second class. A
 manager over nothing but its own storage runs without technology as
 soon as it is wired over the memory roots, and that is what lets the
-whole business layer run in a test. The exception is a manager that
-fronts something a caller cannot conjure: a payment processor, a
-carrier, a model provider. That one gets a memory impl of its own,
-`PaymentManagerMemoryImpl`, answering the same interface from an
-in-process dict. Every caller above that namespace then runs with no
-account, no network, and no sandbox.
+whole business layer run in a test. So does a manager that fronts
+something a caller cannot conjure: a payment processor, a carrier, a
+model provider. The provider is an external service, so its client has
+a deterministic twin (see [Twins for External
+Services](#twins-for-external-services)). Wired over that twin, the one
+manager impl runs with no account, no network, and no sandbox, and so
+does every caller above it. It needs no memory impl of its own.
 
 A service interface pairs differently, because both of its impls are
 real. The in-process impl calls the manager the container wired, and it
@@ -582,7 +585,7 @@ remote impl is the typed client, written when a process stops holding
 what the callee needs (see [Direction of
 Calls](#direction-of-calls)). Until that day the interface carries the
 one impl, and the rule is met already: it gets no in-memory impl of its
-own, because the twin under it is the manager's.
+own, because the manager under it already runs without technology.
 
 The in-memory impl is the default for unit tests and the fast local
 gate. It keeps state in an in-process dict and exercises real behavior
@@ -1152,7 +1155,7 @@ class InventoryManagerImpl(InventoryManagerInterface):
         current = await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
         updated = Warehouse.model_validate({  # a copy that carries a dump is validated, never model_copy
             **current.model_dump(),
-            **warehouse.model_dump(exclude=PROVENANCE_FIELDS),  # the caller's fields, never who made or deleted it
+            **warehouse.model_dump(exclude=set(PROVENANCE_FIELDS)),  # the caller's fields, never who made or deleted it
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
         rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json")),)
@@ -1733,15 +1736,20 @@ class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
         await self._upsert(Warehouses, org_id, warehouse, outbox_rows)
 ```
 
-`_upsert` reads the existing row by id. It raises if the row belongs to
-another tenant. Then it applies the entity onto the row or inserts a
-new one, inserts the outbox rows beside it, and commits them together.
+`_upsert` reads the existing row by id under the call's tenant. Then it
+applies the entity onto the row or inserts a new one, inserts the
+outbox rows beside it, and commits them together. A row of another
+tenant is never read, by the predicate and by [The Second
+Fence](#the-second-fence), so its id collides on the insert. That
+collision is refused as `Conflict`, never surfaced as a driver error.
 
 Its sibling `_insert` is the create primitive: an insert that does
 nothing on an existing id and says so. The outbox rows land only when
 the insert won. A retried create therefore neither overwrites the row
 nor announces it twice, and a key collision surfaces as a report, never
-as a driver error.
+as a driver error. An id another tenant holds reports the same way, and
+the manager's read-back under its own tenant finds nothing and refuses
+it as `Conflict`.
 
 Every query filters by `org_id` and every write checks it, so a bug in
 a caller cannot move a row across tenants. Each operation opens its own
@@ -2728,7 +2736,7 @@ class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, an
     key: str
     request_digest: str        # another digest under the same key is refused
     target_id: UUID            # the id the create uses, minted before the marker
-    attempt_id: UUID | None    # the attempt that holds it; cleared by a release
+    attempt_token: UUID | None # the attempt that holds it; cleared by a release
     status: int | None = None  # the outcome, None while the request runs
     body: str | None = None
 ```
