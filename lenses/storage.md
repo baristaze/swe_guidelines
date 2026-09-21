@@ -673,3 +673,30 @@ it; a login that is a superuser or carries `BYPASSRLS`, which no test
 on the live connection would catch.
 
 **Severity.** high
+
+## STO-29 Every read that returns a list is bounded in its statement
+
+**Principle.** A storage read that returns a list takes a `limit`, and
+the query carries it. Storage applies the bound it is given; the
+caller picks it: a manager clamps to the page size in its options, a
+worker or a sweep passes its batch size. A bucket listing is bounded
+the same way.
+
+**Source.** The Storage Layer, Storage Principles; Infrastructure,
+Buckets; The Network Layer, Public Types.
+
+**Look for.** Every storage interface method that returns a list or a
+tuple of rows, and whether it takes a `limit`; the statement in each
+impl, and whether the limit is in it or applied after the rows were
+fetched; the manager that calls a list read, and where the limit it
+passes comes from; a bucket `list` and whether it takes a limit and a
+place to start after. The clamp on the wire is NET-13.
+
+**Violation.** A `read_<entities>(org_id)` with no limit; a limit taken
+by the method and applied in Python after an unbounded fetch; a memory
+impl that honors the limit while the relational impl drops it, or the
+reverse; a storage impl that picks its own bound; a manager that passes
+the client's limit through unclamped; a bucket listing that returns
+every key under a prefix.
+
+**Severity.** medium
