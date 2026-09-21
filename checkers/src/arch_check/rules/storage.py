@@ -33,6 +33,7 @@ from arch_check.rules._storage_util import (
     column_calls_of,
     composed,
     enum_values,
+    has_tablename,
     ident,
     in_storage_impl,
     in_tables,
@@ -57,8 +58,10 @@ from arch_check.rules._storage_util import (
     roles_of,
     sql_code,
     sql_files,
+    sql_tables,
     statement_tail,
     storage_interfaces,
+    storage_root,
     string_args,
     string_constants,
     table_args,
@@ -190,10 +193,14 @@ def locking_stays_in_one_method(project: Project) -> Iterator[Violation]:
 # --- STO-05
 
 DB_OBJECT = re.compile(
-    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?(?P<kind>TRIGGER|FUNCTION|PROCEDURE|RULE)\s+(?P<name>" + NAME + ")",
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?"
+    r"(?P<kind>EVENT\s+TRIGGER|TRIGGER|FUNCTION|PROCEDURE|AGGREGATE|RULE)\s+(?P<name>" + NAME + ")",
     re.IGNORECASE,
 )
-DROP_OBJECT = re.compile(r"\bDROP\s+(?P<kind>TRIGGER|FUNCTION|PROCEDURE|ROUTINE|RULE|TABLE)\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
+DROP_OBJECT = re.compile(
+    r"\bDROP\s+(?P<kind>EVENT\s+TRIGGER|TRIGGER|FUNCTION|PROCEDURE|AGGREGATE|ROUTINE|RULE|TABLE)\s+(?:IF\s+EXISTS\s+)?",
+    re.IGNORECASE,
+)
 ON_TABLE = re.compile(r"\bON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")", re.IGNORECASE)
 TO_TABLE = re.compile(r"\bTO\s+(?P<table>" + NAME + ")", re.IGNORECASE)
 EXECUTES = re.compile(r"\bEXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?P<name>" + NAME + ")", re.IGNORECASE)
@@ -210,12 +217,14 @@ def short(name: str) -> str:
 
 
 class Schema:
-    """The triggers, functions, procedures, and rules a role's chain has created and not dropped.
+    """The triggers, event triggers, functions, procedures, aggregates, and rules a role's chain has created and
+    not dropped.
 
-    A function or a procedure is keyed by its name; a trigger or a rule
-    by its table and its name, since the database scopes those names to
-    a table. Dropping a table drops its triggers and rules; dropping a
-    function with CASCADE drops the triggers that execute it.
+    A function, a procedure, an aggregate, or an event trigger is keyed
+    by its name; a trigger or a rule by its table and its name, since the
+    database scopes those names to a table. Dropping a table drops its
+    triggers and rules; dropping a function with CASCADE drops the
+    triggers and event triggers that execute it.
     """
 
     def __init__(self) -> None:
@@ -226,7 +235,7 @@ class Schema:
         events = [(m.start(), m, True) for m in DB_OBJECT.finditer(code)]
         events += [(m.start(), m, False) for m in DROP_OBJECT.finditer(code)]
         for offset, m, create in sorted(events, key=lambda e: e[0]):
-            kind = m.group("kind").upper()
+            kind = re.sub(r"\s+", " ", m.group("kind").upper())
             tail = statement_tail(code, m.end())
             if create:
                 self.create(rel, line_of(code, offset), kind, m.group("name"), tail)
@@ -238,6 +247,7 @@ class Schema:
         if kind in ("TRIGGER", "RULE"):
             on = (ON_TABLE if kind == "TRIGGER" else TO_TABLE).search(tail)
             table = short(on.group("table")) if on else ""
+        if kind in ("TRIGGER", "EVENT TRIGGER", "RULE"):
             fn = EXECUTES.search(tail)
             executes = short(fn.group("name")) if fn else ""
         self.objects[(kind, table, short(name))] = (rel, line, name, executes)
@@ -253,10 +263,10 @@ class Schema:
         if kind == "TABLE":
             self.forget(lambda key, _: key[0] in ("TRIGGER", "RULE") and key[1] in dropped)
             return
-        kinds = ("FUNCTION", "PROCEDURE") if kind == "ROUTINE" else (kind,)
+        kinds = ("FUNCTION", "PROCEDURE", "AGGREGATE") if kind == "ROUTINE" else (kind,)
         self.forget(lambda key, _: key[0] in kinds and key[2] in dropped)
         if CASCADE.search(tail):
-            self.forget(lambda key, value: key[0] == "TRIGGER" and value[3] in dropped)
+            self.forget(lambda key, value: key[0] in ("TRIGGER", "EVENT TRIGGER") and value[3] in dropped)
 
     def forget(self, gone: Callable[[tuple[str, str, str], tuple[str, int, str, str]], bool]) -> None:
         for key in [k for k, v in self.objects.items() if gone(k, v)]:
@@ -267,7 +277,7 @@ class Schema:
     "STO-05",
     options=("sql_dir",),
     coverage="partial",
-    summary="The migration chain leaves no trigger, function, procedure or rule; no timestamp is set on update by the database.",
+    summary="The chain leaves no trigger, function, procedure, aggregate or rule; no timestamp is set on update by the database.",
 )
 def no_triggers_or_functions(project: Project) -> Iterator[Violation]:
     sql_dir = project.option("STO-05", "sql_dir", SQL_DIR, {"sql_dir"})
@@ -331,10 +341,25 @@ def is_uuid(node: ast.expr) -> bool:
 
 @rule(
     "STO-06",
+    options=("sql_dir",),
     coverage="partial",
-    summary="The id column has no default, sequence or identity; no create or write returns a UUID.",
+    summary="The id and primary key columns have no default, sequence or identity; no create or write returns a UUID.",
 )
 def ids_come_from_above(project: Project) -> Iterator[Violation]:
+    """Reads `sql_dir` under `[tool.arch-check.options.STO-06]`, the SQL folder (`om/migrations/sql`). The table
+    classes are read, and so is what each role's chain of `up` files leaves on the `id` column and the primary
+    key's columns: a `DEFAULT` (`gen_random_uuid()` among them), a serial type, or an identity. A default a later
+    migration drops is history."""
+    sql_dir = project.option("STO-06", "sql_dir", SQL_DIR, {"sql_dir"})
+    for name, table in sorted(sql_tables(project, sql_dir).items()):
+        keys = set(table.primary[1]) if table.primary else set()
+        for col in sorted(keys | ({"id"} & set(table.columns))):
+            state = table.columns.get(col)
+            for at in (state.default, state.identity) if state else ():
+                if at is not None:
+                    yield Violation(
+                        at.rel, at.line, 1, f"{name}.{col} has {at.what} in the migrations; an id is minted above storage"
+                    )
     known = mixins(project)
     targets = [(t.file, t.node) for t in om_tables(project)] + [(m.file, m.node) for m in known.values()]
     for file, cls in targets:
@@ -369,13 +394,17 @@ DRIVERS = ["sqlalchemy", "asyncpg", "psycopg", "psycopg2", "sqlmodel", "alembic"
     summary="Types, storage interfaces, manager interfaces and manager impls import no ORM or database driver.",
 )
 def storage_interfaces_are_technology_free(project: Project) -> Iterator[Violation]:
-    """Reads `packages` under `[tool.arch-check.options.STO-08]`: the ORM and driver packages, a list of names."""
+    """Reads `packages` under `[tool.arch-check.options.STO-08]`: the ORM and driver packages, a list of names.
+    The storage root's interface is judged in the module that declares `StorageInterface`, wherever under
+    `<pkg>.om.storage` that is."""
     packages = project.option("STO-08", "packages", DRIVERS, {"packages"})
     om = project.sub("om")
+    found = storage_root(project)
+    root_module = found[0].module if found else f"{om}.storage.root"
     for file in project.modules_under(om):
         ns = namespace_of(project, file.module)
         root = f"{om}.{ns}" if ns else None
-        judged = file.module == f"{om}.storage.root" or (
+        judged = file.module == root_module or (
             root is not None
             and (
                 file.module in (root, f"{root}.storage", f"{root}.manager")
@@ -441,16 +470,16 @@ STORAGE_ROOT_IMPL = re.compile(r"^Storage[A-Z]\w*Impl$")
     summary="StorageInterface has a getter per namespace storage, healthcheck and close; two Storage<Tech>Impl roots define all.",
 )
 def one_storage_root(project: Project) -> Iterator[Violation]:
-    """A root is a concrete class under `StorageInterface`: one no other class extends. A shared base between
-    the interface and the roots is not a root, and a root may inherit its methods from it."""
-    root = project.module(f"{project.sub('om')}.storage.root")
-    tree = project.tree(root) if root else None
-    if root is None or tree is None:
+    """`StorageInterface` lives under `<pkg>.om.storage`: in `root.py`, the package's `__init__.py`, or any
+    module below it. A root is a concrete class under `StorageInterface`: one no other class extends. A shared
+    base between the interface and the roots is not a root, and a root may inherit its methods from it."""
+    found = storage_root(project)
+    if found is None:
+        conventional = project.module(f"{project.sub('om')}.storage.root")
+        if conventional is not None:
+            yield Violation.at(conventional.rel, None, "the storage root module declares no StorageInterface")
         return
-    iface = next((c for c in classes(tree) if c.name == "StorageInterface"), None)
-    if iface is None:
-        yield Violation.at(root.rel, None, "the storage root module declares no StorageInterface")
-        return
+    root, iface = found
     declared = {m.name: m for m in public_methods(iface)}
     returned = {n for m in declared.values() for n in names_in(m.returns)}
     for file, cls in storage_interfaces(project):
@@ -533,15 +562,21 @@ def table_mixins(project: Project) -> Iterator[Violation]:
     summary="No storage impl method returns a table class, no interface signature names one, and no table class is frozen.",
 )
 def rows_never_leave(project: Project) -> Iterator[Violation]:
+    """A name counts as a table class unless the module binds it to something else: an import from a module
+    outside `storage/tables` (an entity `Settings` beside a table `Settings`), or a class of its own that is no
+    table."""
     found = tables(project, project.sub("om"))
-    names = {t.node.name for t in found}
+    every = {t.node.name for t in found}
     for t in found:
         if is_true(keywords(t.node).get("frozen")):
             yield Violation.at(t.file.rel, t.node, f"table class {t.node.name} is frozen; rows are mutable by design")
-    if not names:
+    if not every:
         return
     for file, tree in project.trees(project.sub("om")):
         impl = in_storage_impl(project, file.module)
+        elsewhere = {n for i in project.imports(file) if not in_tables(project, i.module) for n in i.names}
+        own = {c.name for c in classes(tree) if not has_tablename(c)}
+        names = every - elsewhere - own
         for cls in classes(tree):
             interface = cls.name.endswith("Interface")
             if not (impl or interface):
@@ -793,7 +828,8 @@ def migration_layout(project: Project) -> Iterator[Violation]:
         seen_roles = {rel.split("/")[-2] for rel in project.files(f"{sql_dir}/*/*", f"{versions_dir}/*/*.py")}
         for role in sorted(seen_roles - roles):
             yield Violation(f"{sql_dir}/{role}", 1, 1, f"{role} is not a role of {name}")
-        pattern = re.compile(r"\b(" + "|".join(re.escape(r) for r in sorted(roles)) + r")\s*\.\s*\"?([A-Za-z_]\w*)")
+        # a role's schema, bare or quoted, then a table: `activity.events`, `"activity"."events"`
+        pattern = re.compile(r'(?<![\w$])"?(' + "|".join(re.escape(r) for r in sorted(roles)) + r')"?\s*\.\s*"?([A-Za-z_]\w*)')
         for f in good:
             code = sql_code(project.read(f.rel) or "")
             for ref in pattern.finditer(code):
@@ -953,11 +989,52 @@ def living_only(where: ast.AST | None) -> bool:
 
 @rule(
     "STO-26",
+    options=("sql_dir",),
     coverage="partial",
-    summary="Every unique index on a soft-deletable table is partial on deleted_at IS NULL.",
+    summary="Every unique index on a soft-deletable table, in a table class or the migrations, is partial on deleted_at IS NULL.",
 )
 def unique_among_the_living(project: Project) -> Iterator[Violation]:
+    """Reads `sql_dir` under `[tool.arch-check.options.STO-26]`, the SQL folder (`om/migrations/sql`). A table
+    is soft-deletable when its class composes `deleted_at` or the chain leaves the column on it. The unique keys
+    the chain leaves are judged as the table classes are; a key a table class declares under the same name and
+    that is reported there is reported once, at the class."""
+    sql_dir = project.option("STO-26", "sql_dir", SQL_DIR, {"sql_dir"})
     known = mixins(project)
+    soft = {t.name for t in om_tables(project) if "deleted_at" in set(mixin_columns(t.node, known)) | set(own_columns(t.node))}
+    reported: set[tuple[str, str]] = set()
+    for t in om_tables(project):
+        if "deleted_at" not in mixin_columns(t.node, known):
+            continue
+        for arg in table_args(t.node):
+            if not isinstance(arg, ast.Call):
+                continue
+            name = call_name(arg)
+            unique = name == "UniqueConstraint" or (name == "Index" and is_true(kwarg(arg, "unique")))
+            if unique and not living_only(kwarg(arg, "postgresql_where") or kwarg(arg, "sqlite_where")):
+                named = kwarg(arg, "name")
+                strings = [a.value for a in arg.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+                if name == "Index" and strings:
+                    reported.add((t.name, strings[0]))
+                elif isinstance(named, ast.Constant):
+                    reported.add((t.name, str(named.value)))
+                else:
+                    reported.add((t.name, f"{t.name}_{'_'.join(strings)}_key"))
+        for col, decl in own_columns(t.node).items():
+            call = column_call(decl) if isinstance(decl, ast.stmt) else None
+            if call is not None and is_true(kwarg(call, "unique")):
+                reported.add((t.name, f"{t.name}_{col}_key"))
+    for qualified, table in sorted(sql_tables(project, sql_dir).items()):
+        short = qualified.rpartition(".")[2]
+        if short not in soft and "deleted_at" not in table.columns:
+            continue
+        for key in table.uniques.values():
+            if not key.living and (short, key.name) not in reported:
+                yield Violation(
+                    key.at.rel,
+                    key.at.line,
+                    1,
+                    f"{qualified} is soft-deletable and {key.name} holds the dead too; add WHERE deleted_at IS NULL",
+                )
     for t in om_tables(project):
         if "deleted_at" not in mixin_columns(t.node, known):
             continue

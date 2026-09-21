@@ -303,15 +303,33 @@ def test_a_late_tenant_and_a_tenant_beside_op_context_are_ctx_10(tmp_path):
 # --- CTX-12
 
 
+LISTED = PYPROJECT + '\n[tool.arch-check.options.CTX-12]\ntenantless = ["TasksStorageInterface.count_since"]\n'
+
+
 def test_a_documented_tenantless_method_passes_ctx_12(tmp_path):
-    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE})
+    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=LISTED)
     assert code == 0
 
 
 def test_an_undocumented_tenantless_method_is_ctx_12(tmp_path):
     storage = STORAGE.replace('        """Cross-tenant: the platform size."""\n', "")
-    code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage})
+    code, found, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
     assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
+
+
+def test_a_class_docstring_does_not_excuse_a_tenantless_method_beside_tenant_ones_for_ctx_12(tmp_path):
+    storage = STORAGE.replace('        """Cross-tenant: the platform size."""\n', "").replace(
+        "class TasksStorageInterface(ABC):\n", 'class TasksStorageInterface(ABC):\n    """The tasks of a tenant."""\n\n'
+    )
+    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": storage}, pyproject=LISTED)
+    assert (code, [line for _, _, line in found]) == (1, [14])
+    assert "its interface also has tenant methods" in messages[0]
+
+
+def test_no_tenantless_list_at_all_is_ctx_12(tmp_path):
+    code, found, messages = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE})
+    assert (code, found) == (1, [("CTX-12", f"{OM}/tasks/storage/__init__.py", 12)])
+    assert "no tenantless list under [tool.arch-check.options.CTX-12] names it" in messages[0]
 
 
 def test_a_global_interface_documented_on_the_class_passes_ctx_12(tmp_path):
@@ -321,7 +339,11 @@ def test_a_global_interface_documented_on_the_class_passes_ctx_12(tmp_path):
         "    @abstractmethod\n    async def read_product(self, sku: str) -> Product | None: ...\n\n"
         "    @abstractmethod\n    async def list_products(self) -> list[Product]: ...\n"
     )
-    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/catalog/storage/__init__.py": storage})
+    pyproject = (
+        PYPROJECT + "\n[tool.arch-check.options.CTX-12]\n"
+        'tenantless = ["CatalogStorageInterface.read_product", "CatalogStorageInterface.list_products"]\n'
+    )
+    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/catalog/storage/__init__.py": storage}, pyproject=pyproject)
     assert code == 0
 
 
@@ -332,12 +354,6 @@ def test_the_tenantless_list_is_held_both_ways_by_ctx_12(tmp_path):
     assert [p for _, p, _ in found] == [f"{OM}/tasks/storage/__init__.py", "pyproject.toml"]
     assert "not on the tenantless list" in messages[0]
     assert "count_gone, which is no tenant-less method" in messages[1]
-
-
-def test_a_listed_tenantless_method_passes_ctx_12(tmp_path):
-    pyproject = PYPROJECT + '\n[tool.arch-check.options.CTX-12]\ntenantless = ["TasksStorageInterface.count_since"]\n'
-    code, _, _ = run(tmp_path, "CTX-12", {f"{OM}/tasks/storage/__init__.py": STORAGE}, pyproject=pyproject)
-    assert code == 0
 
 
 # --- CTX-14
@@ -596,3 +612,58 @@ def test_a_closure_inside_a_listed_method_is_part_of_the_site_for_ctx_26(tmp_pat
     renamed = source.replace("async def login", "async def log")
     code, found, _ = run(tmp_path, "CTX-26", {TRANSITIONS: renamed}, pyproject=pyproject)
     assert code == 1
+
+
+def test_a_copy_of_a_bound_stage_is_a_construction_site_for_ctx_26(tmp_path):
+    src = (
+        "def widen(ctx: OpContext):\n    return ctx.model_copy(update={'role': 'owner'})\n\n"
+        "def caused_by(rctx: RequestContext, item):\n    return rctx.model_copy(update={'caused_by_request_id': item.id})\n\n"
+        "def local(raw):\n    ident: IdentityContext | None = load(raw)\n    return ident.model_copy()\n"
+    )
+    code, found, messages = run(tmp_path, "CTX-26", {f"{API}/impl/tasks.py": src})
+    assert (code, [line for _, _, line in found]) == (1, [2, 9])
+    assert messages[0].startswith("widen constructs OpContext;")
+    assert messages[1].startswith("local constructs IdentityContext;")
+
+
+def test_a_copied_context_in_the_gateway_is_ctx_06(tmp_path):
+    src = "def principal(ctx: OpContext):\n    return ctx.model_copy(update={'app': 'x'})\n"
+    code, found, _ = run(tmp_path, "CTX-06", {"gateway/src/acme/gateway/auth.py": src})
+    assert (code, found) == (1, [("CTX-06", "gateway/src/acme/gateway/auth.py", 2)])
+
+
+def test_an_org_id_the_payload_base_inherits_passes_ctx_15(tmp_path):
+    topics = TOPICS.replace("class TopicPayload(BaseModel):\n    org_id: UUID\n", "class TopicPayload(TenantScoped):\n    pass\n")
+    base = "class TenantScoped(BaseModel):\n    org_id: UUID\n"
+    files = {f"{INFRA}/topics/__init__.py": topics, f"{INFRA}/base.py": base}
+    code, found, _ = run(tmp_path, "CTX-15", files)
+    assert (code, found) == (0, [])
+    files[f"{INFRA}/base.py"] = "class TenantScoped(BaseModel):\n    pass\n"
+    code, _, messages = run(tmp_path, "CTX-15", files)
+    assert code == 1
+    assert messages == ["TopicPayload declares no org_id; every payload carries the tenant"]
+
+
+def test_a_stage_that_refines_through_an_intermediate_class_passes_ctx_20_and_ctx_21(tmp_path):
+    stages = OPCONTEXT.replace(
+        "class OperatorContext(IdentityContext):\n",
+        "class SignedIn(IdentityContext):\n    pass\n\n\nclass OperatorContext(SignedIn):\n",
+    ).replace("class OpContext(RequestContext):\n", "class Traced(RequestContext):\n    pass\n\n\nclass OpContext(Traced):\n")
+    for rule in ("CTX-20", "CTX-21"):
+        code, found, _ = run(tmp_path, rule, {STAGES: stages})
+        assert (code, found) == (0, [])
+    wrong = stages.replace("class Traced(RequestContext):", "class Traced(IdentityContext):").replace(
+        "class SignedIn(IdentityContext):", "class SignedIn(RequestContext):\n    org_id: UUID\n"
+    )
+    code, _, messages = run(tmp_path, "CTX-20", {STAGES: wrong})
+    assert code == 1
+    assert sorted(m.partition(";")[0] for m in messages) == [
+        "OperatorContext does not refine IdentityContext",
+        "SignedIn declares org_id",
+    ]
+    code, _, messages = run(tmp_path, "CTX-21", {STAGES: wrong})
+    assert code == 1
+    assert sorted(messages) == [
+        "OpContext subclasses IdentityContext; it does not refine it",
+        "OperatorContext does not subclass IdentityContext",
+    ]

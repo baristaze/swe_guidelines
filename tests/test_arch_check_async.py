@@ -738,3 +738,38 @@ def test_asy_28_a_path_open_or_an_unread_mode_is_a_read(tmp_path, read):
     assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
     code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace("self._file.open()", "self._file.open('w')")})
     assert code == (0 if "open()" in read else 1)
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        "with self._file.open() as h:\n"
+        "            if os.fstat(h.fileno()).st_mode & 0o077:\n"
+        "                raise PermissionError(self._file)\n"
+        "            return h.read()",
+        "fd = os.open(self._file, os.O_RDONLY)\n"
+        "        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:\n"
+        "            raise PermissionError(self._file)\n"
+        "        return os.read(fd, 4096)",
+        "with open(self._file) as h:\n"
+        "            if os.fstat(h.fileno()).st_mode & 0o077:\n"
+        "                raise PermissionError(self._file)\n"
+        "            return json.load(h)",
+    ],
+)
+def test_asy_28_a_mode_check_on_the_open_handle_before_its_first_read(tmp_path, read):
+    source = (
+        "import os\nimport stat\n\n\nclass SecretsLocalImpl(SecretsInterface):\n"
+        "    def describe(self) -> str:\n        return 'secrets=local'\n\n"
+        f"    def _read(self) -> str:\n        {read}\n"
+    )
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source})
+    assert report["findings"] == []
+    assert code == 0
+    # read first, check after: the same lines with the read moved above the check
+    first, *check, last = read.split("\n")
+    indent = last[: len(last) - len(last.lstrip())]
+    late = "\n".join([first, last.replace("return ", "value = "), *check, indent + "return value"])
+    code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace(read, late)})
+    assert code == 1
+    assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
