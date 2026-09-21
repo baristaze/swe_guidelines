@@ -7,7 +7,10 @@ like any other: the file is scanned with newlines read as spaces, so an
 anchor cannot hide behind a line break. Anchors come from
 `scripts/_common.py`, the same rule `gen_toc.py` writes them with, so a
 repeated heading resolves as `#title-1`, `#title-2`, and headings inside
-fenced code do not count. Exit status is non-zero on any broken link.
+fenced code do not count. A link that starts with `/` resolves against
+the repository root, as GitHub resolves it. A link that resolves
+outside the repository is broken, whichever way it gets there.
+Exit status is non-zero on any broken link.
 Standard library only.
 """
 
@@ -33,6 +36,7 @@ def headings(path: Path) -> set[str]:
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
+    root = ROOT.resolve()
     files = [
         p
         for p in ROOT.rglob("*.md")
@@ -52,8 +56,11 @@ def main(argv: Sequence[str] = ()) -> int:
                         errors.append(f"{path.relative_to(ROOT)}:{ln}: missing anchor {target}")
                     continue
                 file_part, _, anchor = target.partition("#")
-                resolved = (path.parent / file_part).resolve()
-                if not resolved.exists():
+                base = root if file_part.startswith("/") else path.parent
+                resolved = (base / file_part.lstrip("/")).resolve()
+                if not resolved.is_relative_to(root):
+                    errors.append(f"{path.relative_to(ROOT)}:{ln}: {file_part} leaves the repository")
+                elif not resolved.exists():
                     errors.append(f"{path.relative_to(ROOT)}:{ln}: missing file {file_part}")
                 elif anchor and resolved.suffix == ".md" and anchor not in headings(resolved):
                     errors.append(f"{path.relative_to(ROOT)}:{ln}: missing anchor #{anchor} in {file_part}")

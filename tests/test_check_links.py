@@ -49,6 +49,27 @@ def test_link_text_wrapped_across_lines_is_still_checked(repo, links, capsys):
     assert "missing file ../nowhere.md" in capsys.readouterr().out
 
 
+def test_leading_slash_resolves_against_the_repository_root(repo, links, capsys):
+    repo.write("docs/sub/extra.md", "# Extra\n\nSee [the guide](/architecture.md#the-storage-layer).\n")
+    assert links.main() == 0
+    repo.write("docs/sub/extra.md", "# Extra\n\nSee [the guide](/docs/architecture.md).\n")
+    assert links.main() == 1
+    assert "docs/sub/extra.md:3: missing file /docs/architecture.md" in capsys.readouterr().out
+
+
+def test_absolute_path_is_not_read_from_the_filesystem_root(repo, links, capsys):
+    repo.write("docs/extra.md", "# Extra\n\nSee [hosts](/etc/hosts).\n")
+    assert links.main() == 1
+    assert "docs/extra.md:3: missing file /etc/hosts" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("target", ["/../etc/hosts", "../../etc/hosts", "../../../../../../../../../etc/hosts"])
+def test_link_that_leaves_the_repository_fails(repo, links, capsys, target):
+    repo.write("docs/extra.md", f"# Extra\n\nSee [a file]({target}).\n")
+    assert links.main() == 1
+    assert f"docs/extra.md:3: {target} leaves the repository" in capsys.readouterr().out
+
+
 def test_external_links_are_not_fetched(repo, links):
     repo.write("docs/extra.md", "# Extra\n\n[x](https://example.invalid/none) [m](mailto:a@b.c)\n")
     assert links.main() == 0
