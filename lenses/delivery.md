@@ -219,7 +219,9 @@ package names.
 
 **Severity.** low
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides the src layout, the `tests/` sibling,
+the root package, and a `conftest.py` that edits `sys.path`; the rest
+is judged.
 
 ## DEL-09 Workers and services share one project shape
 

@@ -7,7 +7,7 @@ pytest.importorskip("tomllib")
 from arch_check_fixtures import check, check_json, rules_found, write_project
 
 SVC = "services/api/src/acme/services/api"
-ROUTER = f"{SVC}/routers/tasks.py"
+ROUTER = f"{SVC}/routers/orders.py"
 TYPES = f"{SVC}/types/common.py"
 
 
@@ -44,11 +44,32 @@ def test_net_06_the_gateway_may_read_headers(tmp_path):
     assert code == 0
 
 
+def test_net_06_an_outbound_credential_and_a_response_header_pass(tmp_path):
+    impl = (
+        "async def call(client, token):\n"
+        '    client.headers["Authorization"] = f"Bearer {token}"\n'
+        '    return await client.get("/x", headers={"Authorization": token})\n'
+    )
+    router = 'async def create(ctx: Ctx, response: Response):\n    response.headers["Location"] = "/orders/1"\n'
+    code, _, _ = found(tmp_path, "NET-06", {f"{SVC}/impl/orders.py": impl, ROUTER: router})
+    assert code == 0
+
+
+def test_net_06_a_request_header_read_in_service_code_fails(tmp_path):
+    impl = "from starlette.requests import Request\n\ndef who(req: Request):\n    return req.headers.get('x-org')\n"
+    code, where, _ = found(tmp_path, "NET-06", {f"{SVC}/impl/orders.py": impl})
+    assert (code, where) == (1, [("NET-06", f"{SVC}/impl/orders.py", 4)])
+
+
 def test_net_06_cors_origins_from_settings_pass_and_a_literal_fails(tmp_path):
     app = f"{SVC}/app.py"
     code, _, _ = found(tmp_path, "NET-06", {app: "app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins)\n"})
     assert code == 0
     code, where, _ = found(tmp_path, "NET-06", {app: 'app.add_middleware(CORSMiddleware, allow_origins=["*"])\n'})
+    assert (code, where) == (1, [("NET-06", app, 1)])
+    code, _, _ = found(tmp_path, "NET-06", {app: "app.add_middleware(CORSMiddleware, allow_origins=[settings.portal])\n"})
+    assert code == 0
+    code, where, _ = found(tmp_path, "NET-06", {app: 'app.add_middleware(CORSMiddleware, allow_origins=["https://a"])\n'})
     assert (code, where) == (1, [("NET-06", app, 1)])
 
 
@@ -74,7 +95,7 @@ def test_net_07_a_router_raising_an_http_exception_fails(tmp_path):
 
 
 def test_net_07_an_error_response_built_in_service_code_fails(tmp_path):
-    rel = f"{SVC}/impl/tasks.py"
+    rel = f"{SVC}/impl/orders.py"
     code, where, _ = found(tmp_path, "NET-07", {rel: "def f():\n    return JSONResponse({}, status_code=409)\n"})
     assert (code, where) == (1, [("NET-07", rel, 2)])
 
@@ -91,6 +112,19 @@ def test_net_07_two_modules_registering_handlers_fail(tmp_path):
     assert code == 1
     assert [p for _, p, _ in where] == [f"{SVC}/gateway/errors.py"]
     assert "and so does" in msgs[0]
+
+
+def test_net_07_one_module_per_service_and_the_gateways_handlers_pass(tmp_path):
+    code, _, _ = found(
+        tmp_path,
+        "NET-07",
+        {
+            f"{SVC}/gateway/errors.py": "@app.exception_handler(E)\nasync def h(r, e): ...\n",
+            f"{SVC}/app.py": "from acme.gateway.errors import platform\n\napp.add_exception_handler(P, platform)\n",
+            "services/admin/src/acme/services/admin/app.py": "app.add_exception_handler(F, g)\n",
+        },
+    )
+    assert code == 0
 
 
 # --- NET-09
@@ -123,18 +157,43 @@ def test_net_09_the_module_is_an_option(tmp_path):
     assert code == 0
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from acme.services.api.gateway.idempotency import key\n\n"
+        "@router.post('', status_code=201)\nasync def create(ctx: Ctx, k: str = Depends(key)): ...\n",
+        "from acme.services.api.gateway.idempotency import key\n\n"
+        "router = APIRouter(dependencies=[Depends(key)])\n\n"
+        "@router.post('', status_code=201)\nasync def create(ctx: Ctx): ...\n",
+    ],
+)
+def test_net_09_a_key_as_a_default_or_on_the_router_passes(tmp_path, source):
+    code, _, _ = found(tmp_path, "NET-09", {IDEM: "key = 1\n", ROUTER: source})
+    assert code == 0
+
+
+def test_net_09_a_key_where_the_router_is_mounted_passes(tmp_path):
+    app = (
+        "from acme.services.api.gateway.idempotency import key\nfrom acme.services.api.routers import orders\n\n"
+        "app.include_router(orders.router, dependencies=[Depends(key)])\n"
+    )
+    source = "@router.post('', status_code=201)\nasync def create(ctx: Ctx): ...\n"
+    code, _, _ = found(tmp_path, "NET-09", {IDEM: "key = 1\n", f"{SVC}/app.py": app, ROUTER: source})
+    assert code == 0
+
+
 # --- NET-10
 
 
 def test_net_10_router_paths_without_the_prefix_pass(tmp_path):
-    source = 'router = APIRouter(prefix="/tasks")\n\n@router.get("/{id}")\nasync def get(): ...\n'
+    source = 'router = APIRouter(prefix="/orders")\n\n@router.get("/{id}")\nasync def get(): ...\n'
     code, _, _ = found(tmp_path, "NET-10", {ROUTER: source})
     assert code == 0
 
 
-@pytest.mark.parametrize("path", ["/v1/tasks", "/healthz", "/metrics"])
+@pytest.mark.parametrize("path", ["/v1/orders", "/healthz", "/metrics"])
 def test_net_10_a_versioned_or_operational_router_path_fails(tmp_path, path):
-    source = f'router = APIRouter(prefix="/tasks")\n\n@router.get("{path}")\nasync def get(): ...\n'
+    source = f'router = APIRouter(prefix="/orders")\n\n@router.get("{path}")\nasync def get(): ...\n'
     code, where, _ = found(tmp_path, "NET-10", {ROUTER: source})
     assert (code, where) == (1, [("NET-10", ROUTER, 3)])
 
@@ -153,9 +212,9 @@ def test_net_13_views_on_the_bases_pass(tmp_path):
         "NET-13",
         {
             TYPES: BASES,
-            f"{SVC}/types/tasks.py": "class TaskView(View):\n    id: int\n",
-            ROUTER: "from acme.services.api.types.tasks import TaskView\n\n"
-            '@router.get("", response_model=list[TaskView])\nasync def f(limit: int = 50): ...\n',
+            f"{SVC}/types/orders.py": "class OrderView(View):\n    id: int\n",
+            ROUTER: "from acme.services.api.types.orders import OrderView\n\n"
+            '@router.get("", response_model=list[OrderView])\nasync def f(limit: int = 50): ...\n',
         },
     )
     assert code == 0
@@ -167,17 +226,17 @@ def test_net_13_a_mutable_view_base_and_a_bare_model_fail(tmp_path):
         "NET-13",
         {
             TYPES: 'class View(BaseModel):\n    pass\n\nclass RequestBody(BaseModel):\n    model_config = {"extra": "forbid"}\n',
-            f"{SVC}/types/tasks.py": "class TaskView(BaseModel):\n    id: int\n",
+            f"{SVC}/types/orders.py": "class OrderView(BaseModel):\n    id: int\n",
         },
     )
     assert code == 1
-    assert where == [("NET-13", TYPES, 1), ("NET-13", f"{SVC}/types/tasks.py", 1)]
+    assert where == [("NET-13", TYPES, 1), ("NET-13", f"{SVC}/types/orders.py", 1)]
 
 
 def test_net_13_an_om_entity_on_the_wire_or_an_offset_fails(tmp_path):
     source = (
-        "from acme.om.tasks.types import Task\n\n"
-        '@router.get("", response_model=list[Task])\nasync def f(): ...\n\n'
+        "from acme.om.orders.types import Order\n\n"
+        '@router.get("", response_model=list[Order])\nasync def f(): ...\n\n'
         '@router.get("/page")\nasync def g(offset: int = 0): ...\n'
     )
     code, where, _ = found(tmp_path, "NET-13", {ROUTER: source})
@@ -208,7 +267,7 @@ def test_net_14_no_diff_in_ci_fails(tmp_path):
         tmp_path, "NET-14", {ROUTER: "", "Makefile": "openapi:\n\techo\n", WORKFLOW: "steps:\n  - run: make check\n"}
     )
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
-    assert "git diff --exit-code" in msgs[0]
+    assert "failing `git diff`" in msgs[0]
 
 
 def test_net_14_a_tree_with_no_router_is_not_judged(tmp_path):
@@ -216,11 +275,25 @@ def test_net_14_a_tree_with_no_router_is_not_judged(tmp_path):
     assert code == 0
 
 
+def test_net_14_a_make_target_that_reaches_the_diff_passes(tmp_path):
+    makefile = (
+        "check: openapi\n\t$(MAKE) lint\n\tgit diff --quiet -- apps/portal/openapi.json\n\nopenapi:\n\techo\n\nlint:\n\ttrue\n"
+    )
+    code, _, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": makefile, WORKFLOW: "steps:\n  - run: make check\n"})
+    assert code == 0
+
+
+def test_net_14_a_diff_that_does_not_fail_fails(tmp_path):
+    workflow = "steps:\n  - run: make openapi && git diff --stat\n"
+    code, where, _ = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": "openapi:\n\techo\n", WORKFLOW: workflow})
+    assert (code, where) == (1, [("NET-14", "Makefile", 1)])
+
+
 # --- NET-29
 
 
 def test_net_29_a_service_without_tables_passes(tmp_path):
-    code, _, _ = found(tmp_path, "NET-29", {f"{SVC}/impl/tasks.py": "class TasksImpl:\n    pass\n"})
+    code, _, _ = found(tmp_path, "NET-29", {f"{SVC}/impl/orders.py": "class OrdersImpl:\n    pass\n"})
     assert code == 0
 
 

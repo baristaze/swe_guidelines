@@ -172,8 +172,8 @@ domain exceptions to statuses.
 **Severity.** medium
 
 **Check.** `arch-check` decides HTTP exceptions and error statuses in
-routers and service code, and the one module that registers handlers;
-the rest is judged.
+routers and service code, and the one module per service that
+registers handlers; the rest is judged.
 
 ## NET-08 Rate limits are a per-route dependency on the shared counter
 

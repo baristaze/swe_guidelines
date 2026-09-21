@@ -25,14 +25,13 @@ def test_ops_11_the_nine_skills_pass(tmp_path):
     assert found(tmp_path, "OPS-11", skills()) == (0, [])
 
 
-def test_ops_11_a_missing_skill_and_one_with_no_frontmatter_fail(tmp_path):
-    files = {".claude/skills/ops-watch/SKILL.md": None, ".claude/skills/stress-test-run/SKILL.md": "# Stress test\n"}
-    code, where = found(tmp_path, "OPS-11", files)
-    assert code == 1
-    assert sorted(p for _, p, _ in where) == [
-        ".claude/skills/ops-watch/SKILL.md",
-        ".claude/skills/stress-test-run/SKILL.md",
-    ]
+def test_ops_11_a_skill_with_no_frontmatter_passes(tmp_path):
+    assert found(tmp_path, "OPS-11", {".claude/skills/stress-test-run/SKILL.md": "# Stress test\n"}) == (0, [])
+
+
+def test_ops_11_a_missing_skill_fails(tmp_path):
+    code, where = found(tmp_path, "OPS-11", {".claude/skills/ops-watch/SKILL.md": None})
+    assert (code, where) == (1, [("OPS-11", ".claude/skills/ops-watch/SKILL.md", 1)])
 
 
 # --- OPS-20
@@ -43,25 +42,32 @@ def test_ops_20_one_generator_passes(tmp_path):
     assert found(tmp_path, "OPS-20", files) == (0, [])
 
 
+def test_ops_20_one_generator_built_on_a_load_tool_passes(tmp_path):
+    files = {"ops/pyproject.toml": '[project]\nname = "acme-ops"\ndependencies = ["locust>=2"]\n'}
+    assert found(tmp_path, "OPS-20", files) == (0, [])
+
+
 def test_ops_20_a_second_load_tool_fails(tmp_path):
     files = {
         "ops/pyproject.toml": '[project]\nname = "acme-ops"\n\n[dependency-groups]\nload = ["Locust>=2"]\n',
         "apps/portal/package.json": '{"devDependencies": {"k6": "0.1"}}',
     }
     code, where = found(tmp_path, "OPS-20", files)
-    assert (code, sorted(p for _, p, _ in where)) == (1, ["apps/portal/package.json", "ops/pyproject.toml"])
+    assert (code, where) == (1, [("OPS-20", "apps/portal/package.json", 1)])
 
 
 # --- OPS-24
 
-READMES = {
-    f"{d}/README.md": "# x\n"
-    for d in ("om", "infra", "services/api", "workers/maintenance", "deployment", "ops", "apps/portal", "clients/python")
-}
+READMES = {f"{d}/README.md": "# x\n" for d in ("om", "services/api", "workers/maintenance", "deployment", "ops", "apps/portal")}
 
 
 def test_ops_24_a_readme_at_every_level_passes(tmp_path):
     assert found(tmp_path, "OPS-24", READMES) == (0, [])
+
+
+def test_ops_24_infra_and_a_client_are_not_levels(tmp_path):
+    files = {**READMES, "infra/README.md": None, "clients/python/pyproject.toml": ""}
+    assert found(tmp_path, "OPS-24", files) == (0, [])
 
 
 def test_ops_24_a_level_without_a_readme_fails(tmp_path):
@@ -78,7 +84,7 @@ def test_ops_25_namespace_readmes_and_a_plain_om_readme_pass(tmp_path):
     files = {
         NS: "# Tasks\n",
         "om/src/acme/om/storage/__init__.py": "",
-        "om/README.md": "# Acme\n\nAn org has members;\nmake a task.\n",
+        "om/README.md": "# Acme\n\nAn org has members;\nplace an order.\n",
     }
     assert found(tmp_path, "OPS-25", files) == (0, [])
 
@@ -89,17 +95,21 @@ def test_ops_25_a_namespace_without_a_readme_and_commands_in_om_readme_fail(tmp_
     assert code == 1
     assert where == [
         ("OPS-25", "om/README.md", 3),
-        ("OPS-25", "om/README.md", 5),
         ("OPS-25", "om/README.md", 7),
         ("OPS-25", NS, 1),
     ]
+
+
+def test_ops_25_a_diagram_of_the_nouns_passes(tmp_path):
+    readme = "# Acme\n\n```mermaid\nerDiagram\n    ORDER ||--|{ ORDER_LINE : holds\n```\n"
+    assert found(tmp_path, "OPS-25", {"om/README.md": readme}) == (0, [])
 
 
 # --- OPS-26
 
 MAP = """# Acme
 
-> A to-do app for teams.
+> A shop for teams.
 
 Each section lists what one audience is served.
 
@@ -114,7 +124,7 @@ Each section lists what one audience is served.
 
 ## Tenant users and admins
 
-- [Nouns](om/README.md): the nouns
+* [Nouns](om/README.md): the nouns
 """
 
 

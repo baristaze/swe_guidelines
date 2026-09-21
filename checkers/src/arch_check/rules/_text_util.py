@@ -226,6 +226,9 @@ def dockerfile(project: Project, rel: str) -> list[Instruction]:
 
 
 def is_dockerfile(name: str) -> bool:
+    """Whether a file name is a Dockerfile: `Dockerfile`, `*.Dockerfile`, or `Dockerfile.*`, never a `*.dockerignore`."""
+    if name.endswith(".dockerignore"):
+        return False
     return name == "Dockerfile" or name.endswith(".Dockerfile") or name.startswith("Dockerfile.")
 
 

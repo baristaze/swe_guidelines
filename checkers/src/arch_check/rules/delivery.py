@@ -19,6 +19,7 @@ from arch_check.model import Violation
 from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last
 from arch_check.registry import rule
 from arch_check.rules._text_util import (
+    Instruction,
     call_name,
     const_str,
     dockerfile,
@@ -90,26 +91,28 @@ def edits_sys_path(tree: ast.AST) -> ast.AST | None:
 
 
 def members(project: Project) -> list[str]:
-    """The Python distributions: the uv workspace members, else the parents of the source roots."""
+    """The Python distributions: the uv workspace members, else the parents of the source roots that hold a `pyproject.toml`."""
     found = workspace_members(project)
     if found is not None:
         return found
-    return sorted({project.rel(p.parent) for p in project.src_roots})
+    return sorted({project.rel(p.parent) for p in project.src_roots if (p.parent / "pyproject.toml").is_file()})
 
 
 @rule(
     "DEL-08",
-    coverage="full",
+    coverage="partial",
     summary="Every distribution has src/<root> and a tests/ sibling; one root package, not a stdlib name; no sys.path edits.",
 )
 def src_layout(project: Project) -> Iterator[Violation]:
     """Every Python distribution uses the src layout with tests beside it, under one product root package.
 
-    For each uv workspace member (else each parent of a source root):
-    `src/` and `tests/` exist; `src/` holds one package, the configured
-    root package; no `tests/` folder, `test_*.py`, or `conftest.py`
-    inside `src/`. The root package is not a standard-library module
-    name. No `conftest.py` in the tree edits `sys.path`.
+    For each uv workspace member (else each parent of a source root
+    that holds a `pyproject.toml`): `src/` and `tests/` exist; `src/`
+    holds one package, the configured root package; no `tests/`
+    folder, `test_*.py`, or `conftest.py` inside `src/`. The root
+    package is not a standard-library module name. No `conftest.py` in
+    the tree edits `sys.path`. Other test imports that resolve to the
+    source tree are judged.
     """
     root = project.package.split(".")[0]
     if root in sys.stdlib_module_names:
@@ -201,6 +204,30 @@ def image_of(args: str) -> str:
     return words[0] if words else ""
 
 
+def stage_alias(args: str) -> str | None:
+    """The name a `FROM ... AS name` gives its stage, lowercased; None when it names none."""
+    words = [w for w in args.split() if not w.startswith("--")]
+    return words[2].lower() if len(words) >= 3 and words[1].upper() == "AS" else None
+
+
+LOCKED_ENV = re.compile(r"\bUV_(FROZEN|LOCKED)(=|\s+)[\"']?(?!0\b|false\b)[^\s\"']")
+
+
+def stage_user(stages: list[list[Instruction]], index: int, listed: list[str]) -> tuple[Instruction | None, bool, str]:
+    """(its last `USER`, base is non-root by name, base image) of a stage, following `FROM <earlier stage>` there."""
+    steps = stages[index]
+    base = image_of(steps[0].args)
+    users = [s for s in steps if s.keyword == "USER"]
+    if users:
+        return users[-1], False, base
+    aliases = {stage_alias(stages[i][0].args): i for i in range(index)}
+    earlier = aliases.get(base.lower())
+    if earlier is not None:
+        return stage_user(stages, earlier, listed)
+    nonroot = bool(UNPRIVILEGED.search(base)) or base.split("@")[0] in listed or base.split(":")[0] in listed
+    return None, nonroot, base
+
+
 @rule(
     "DEL-10",
     coverage="partial",
@@ -211,11 +238,14 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
 
     Every `Dockerfile`, `*.Dockerfile`, or `Dockerfile.*` in the tree
     sits in `deployment/docker/`. Each has at least two `FROM` lines;
-    its final stage runs as a `USER` that is not `root` or `0`, unless
-    its base image is non-root by name (`-unprivileged`, `nonroot`) or
+    its final stage runs as a `USER` that is not `root` or `0`, set in
+    that stage or in the earlier stage it is built `FROM`, unless its
+    base image is non-root by name (`-unprivileged`, `nonroot`) or
     listed; it declares a `HEALTHCHECK`; and every `uv sync` passes
-    `--frozen` or `--locked`, every `pnpm install` `--frozen-lockfile`.
-    What the healthcheck probes and the shared entrypoint are judged.
+    `--frozen` or `--locked`, or runs after `UV_FROZEN` or `UV_LOCKED`
+    is set, and every `pnpm install` passes `--frozen-lockfile`. A
+    `*.dockerignore` file is not a Dockerfile. What the healthcheck
+    probes and the shared entrypoint are judged.
 
     Option `[tool.arch-check.options.DEL-10]`: `unprivileged_bases`
     (default `[]`), image names whose default user is not root.
@@ -231,23 +261,28 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
         if len(froms) < 2:
             yield Violation(rel, froms[0].line if froms else 1, 1, "a single-stage image; an image builds in two stages")
         if froms:
-            final = [s for s in steps if s.line >= froms[-1].line]
-            base = image_of(froms[-1].args)
-            users = [s for s in final if s.keyword == "USER"]
-            nonroot_base = bool(UNPRIVILEGED.search(base)) or base.split("@")[0] in listed or base.split(":")[0] in listed
-            if users:
-                user = users[-1].args.split(":")[0].strip()
-                if user in {"root", "0"}:
-                    yield Violation(rel, users[-1].line, 1, "the final stage runs as root; the process runs non-root")
-            elif not nonroot_base:
+            stages: list[list[Instruction]] = []
+            for s in steps:
+                if s.keyword == "FROM":
+                    stages.append([s])
+                elif stages:
+                    stages[-1].append(s)
+            user, nonroot_base, base = stage_user(stages, len(stages) - 1, listed)
+            if user is not None and user.args.split(":")[0].strip() in {"root", "0"}:
+                yield Violation(rel, user.line, 1, "the final stage runs as root; the process runs non-root")
+            elif user is None and not nonroot_base:
                 yield Violation(rel, froms[-1].line, 1, f"the final stage on {base} sets no USER; the process runs non-root")
         checks = [s for s in steps if s.keyword == "HEALTHCHECK"]
         if not checks or checks[-1].args.strip().upper() == "NONE":
             yield Violation(rel, 1, 1, "no HEALTHCHECK; an image declares one against /healthz")
+        locked_env = False
         for s in steps:
+            if s.keyword in {"ENV", "ARG"} and LOCKED_ENV.search(s.args):
+                locked_env = True
             if s.keyword != "RUN":
                 continue
-            if re.search(r"\buv\s+sync\b", s.args) and not re.search(r"--(frozen|locked)\b", s.args):
+            locked = locked_env or bool(re.search(r"--(frozen|locked)\b", s.args)) or bool(LOCKED_ENV.search(s.args))
+            if re.search(r"\buv\s+sync\b", s.args) and not locked:
                 yield Violation(rel, s.line, 1, "`uv sync` without --frozen or --locked; an image installs from the lock")
             if re.search(r"\bpnpm\s+(install|i)\b", s.args) and "--frozen-lockfile" not in s.args:
                 yield Violation(rel, s.line, 1, "`pnpm install` without --frozen-lockfile; an image installs from the lock")
@@ -273,11 +308,22 @@ def workspace_tooling_at_the_root(project: Project) -> Iterator[Violation]:
     type-check table, and no lint or type-check file sits below the
     root. The `Makefile` has a `check` target. What `check` runs and
     what CI adds are judged.
+
+    Options `[tool.arch-check.options.DEL-11]`: `python_workspace`
+    (default `"uv"`) and `typescript_workspace` (default `"pnpm"`), the
+    workspace tools. A recorded substitution is told to the checker
+    here, not with a `disable`, which is a deviation. With another
+    tool named, the root declaration of that workspace is judged.
     """
-    if workspace_members(project) is None:
+    keys = {"python_workspace", "typescript_workspace"}
+    python_tool = project.option("DEL-11", "python_workspace", "uv", keys)
+    typescript_tool = project.option("DEL-11", "typescript_workspace", "pnpm", keys)
+    if python_tool == "uv" and workspace_members(project) is None:
         yield Violation("pyproject.toml", 1, 1, "the root pyproject.toml declares no [tool.uv.workspace]")
     if project.files("apps/*/package.json"):
         for rel in ("package.json", "pnpm-workspace.yaml"):
+            if rel == "pnpm-workspace.yaml" and typescript_tool != "pnpm":
+                continue
             if not is_file(project, rel):
                 yield Violation(rel, 1, 1, f"no root {rel}; one TypeScript workspace declares the apps")
     for rel in walk(project, names=("pyproject.toml",)):
@@ -296,7 +342,7 @@ def workspace_tooling_at_the_root(project: Project) -> Iterator[Violation]:
 
 # --- DEL-12 and DEL-13
 
-OTHER_FRAMEWORKS = ("next", "nuxt", "vue", "svelte", "solid-js", "webpack", "parcel", "gatsby", "astro", "preact")
+OTHER_FRAMEWORKS = ("next", "nuxt", "vue", "svelte", "solid-js", "webpack", "parcel", "gatsby", "astro")
 OTHER_SCOPES = ("@remix-run/", "@angular/", "@sveltejs/", "@builder.io/qwik")
 OTHER_STATE = (
     "redux",
@@ -323,26 +369,40 @@ def browser_apps(project: Project) -> Iterator[tuple[str, set[str]]]:
 @rule(
     "DEL-12",
     coverage="partial",
-    summary="Every browser app depends on react and vite and on no other framework or bundler; apps/cli is Python.",
+    summary="Every browser app depends on the framework and the bundler (react, vite) and on no other; apps/cli is Python.",
 )
 def react_on_vite(project: Project) -> Iterator[Violation]:
     """Browser apps are React on Vite, and the CLI is Python.
 
-    Each `apps/*/package.json` names `react` and `vite` and none of the
+    Each `apps/*/package.json`, together with the root `package.json`,
+    names the framework and the bundler, and the app names none of the
     other frameworks or bundlers (Next, Nuxt, Remix, Angular, Vue,
     Svelte, Solid, webpack, Parcel, and the like). `apps/cli`, when it
     exists, has a `pyproject.toml` and no `package.json`. Which hosts
     the bundle calls is judged.
+
+    Options `[tool.arch-check.options.DEL-12]`: `framework` (default
+    `"react"`) and `bundler` (default `"vite"`), the npm packages the
+    guideline names. A substitution recorded in an ADR, another view
+    library for React, is told to the checker here, and the checker
+    then treats the substitute as the named technology. A `disable`
+    would record it as a deviation, which it is not.
     """
+    keys = {"framework", "bundler"}
+    framework = project.option("DEL-12", "framework", "react", keys)
+    bundler = project.option("DEL-12", "bundler", "vite", keys)
+    root_deps = npm_dependencies(load_json(project, "package.json"))
     for rel, deps in browser_apps(project):
         if rel == "apps/cli/package.json":
             continue
-        for need in ("react", "vite"):
-            if need not in deps:
-                yield Violation(rel, 1, 1, f"no {need} dependency; a browser app is React on Vite")
+        for need in (framework, bundler):
+            if need not in deps | root_deps:
+                yield Violation(rel, 1, 1, f"no {need} dependency; a browser app is {framework} on {bundler}")
         for dep in sorted(deps):
+            if dep in {framework, bundler}:
+                continue
             if dep in OTHER_FRAMEWORKS or dep.startswith(OTHER_SCOPES):
-                yield Violation(rel, 1, 1, f"depends on {dep}; a browser app is React on Vite and nothing else")
+                yield Violation(rel, 1, 1, f"depends on {dep}; a browser app is {framework} on {bundler} and nothing else")
     cli = "apps/cli"
     if is_dir(project, cli) and (is_file(project, f"{cli}/package.json") or not is_file(project, f"{cli}/pyproject.toml")):
         yield Violation("apps/cli", 1, 1, "apps/cli is not a Python distribution; the CLI is Python")
@@ -357,13 +417,24 @@ def query_and_zustand(project: Project) -> Iterator[Violation]:
     """Server state lives in TanStack Query and client state in Zustand, and nothing else.
 
     No `apps/*/package.json` names another state or data library
-    (Redux, MobX, Jotai, Recoil, Valtio, SWR, Apollo, urql). The key
-    factory, and what a store or a realtime handler holds, are judged.
+    (Redux, MobX, Jotai, Recoil, Valtio, SWR, Apollo, urql) unless it
+    is the one a recorded substitution names. The key factory, and what
+    a store or a realtime handler holds, are judged.
+
+    Options `[tool.arch-check.options.DEL-13]`: `server_state` (default
+    `"@tanstack/react-query"`) and `client_state` (default
+    `"zustand"`), the npm packages the guideline names. A substitution
+    recorded in an ADR is told to the checker here, and the checker
+    then treats the substitute as the named technology. A `disable`
+    would record it as a deviation, which it is not.
     """
+    keys = {"server_state", "client_state"}
+    server = project.option("DEL-13", "server_state", "@tanstack/react-query", keys)
+    client = project.option("DEL-13", "client_state", "zustand", keys)
     for rel, deps in browser_apps(project):
         for dep in sorted(deps):
-            if dep in OTHER_STATE:
-                yield Violation(rel, 1, 1, f"depends on {dep}; server state is TanStack Query, client state Zustand")
+            if dep in OTHER_STATE and dep not in {server, client}:
+                yield Violation(rel, 1, 1, f"depends on {dep}; server state is {server}, client state {client}")
 
 
 # --- DEL-18 and DEL-29
@@ -492,6 +563,41 @@ def boot(project: Project, file: SourceFile, patterns: list[str]) -> bool:
     return any(module_matches(file.module, f"{project.package}.{p}") for p in patterns)
 
 
+BOOT_MODULES = [
+    "infra.observability",
+    "services.*.main",
+    "services.*.app",
+    "services.*.container",
+    "workers.*.main",
+    "workers.*.container",
+    "apps.*.main",
+    "ops.main",
+]
+LOGGING_LIBRARIES = ("structlog", "loguru", "eliot", "logbook")
+
+
+def logging_objects(tree: ast.AST, names: dict[str, str]) -> set[str]:
+    """The names a module binds to something built by `logging`: `log = logging.getLogger(__name__)`."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign | ast.AnnAssign)
+            and isinstance(node.value, ast.Call)
+            and is_under(call_name(node.value, names) or "", "logging")
+        ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            out.update(n for t in targets if (n := dotted(t)))
+    return out
+
+
+def is_logging_receiver(node: ast.expr, names: dict[str, str], bound: set[str]) -> bool:
+    """Whether an expression is a `logging` object: `logging.root`, `logging.getLogger(...)`, or a name bound to one."""
+    if isinstance(node, ast.Call):
+        return is_under(call_name(node, names) or "", "logging")
+    name = dotted(node)
+    return bool(name) and (name in bound or is_under(resolved(name, names) or "", "logging"))
+
+
 @rule(
     "DEL-19",
     coverage="partial",
@@ -501,30 +607,36 @@ def standard_logging(project: Project) -> Iterator[Violation]:
     """Every module logs through `logging.getLogger(__name__)`, and logging is configured once, at boot.
 
     Outside the boot modules: every `logging.getLogger(...)` passes
-    `__name__`, and nothing calls `basicConfig`, `dictConfig`,
-    `fileConfig`, `addHandler`, `setLevel`, or `setFormatter`. Nothing
-    imports `structlog`, `loguru`, `eliot`, or `logbook`. How the
-    request id reaches a line is judged.
+    `__name__`, and nothing calls `basicConfig`, `dictConfig`, or
+    `fileConfig`, or calls `addHandler`, `setLevel`, or `setFormatter`
+    on a `logging` object (`logging.root`, a `logging.getLogger(...)`,
+    or a name the module bound to one). Nothing imports `structlog`,
+    `loguru`, `eliot`, or `logbook`. How the request id reaches a line
+    is judged.
 
-    Option `[tool.arch-check.options.DEL-19]`: `boot_modules` (default
-    `["infra.observability", "services.*.main", "workers.*.main",
+    Options `[tool.arch-check.options.DEL-19]`: `boot_modules` (default
+    `["infra.observability", "services.*.main", "services.*.app",
+    "services.*.container", "workers.*.main", "workers.*.container",
     "apps.*.main", "ops.main"]`), module names below the root package,
-    `*` spanning one segment.
+    `*` spanning one segment, where the app container's boot configures
+    logging; and `library` (default `"logging"`), the logging library.
+    A substitution recorded in an ADR is told to the checker here, and
+    that library is then not a second one. A `disable` would record it
+    as a deviation, which it is not.
     """
-    patterns = project.option(
-        "DEL-19",
-        "boot_modules",
-        ["infra.observability", "services.*.main", "workers.*.main", "apps.*.main", "ops.main"],
-        {"boot_modules"},
-    )
-    configure = {"basicConfig", "dictConfig", "fileConfig", "addHandler", "setLevel", "setFormatter"}
+    keys = {"boot_modules", "library"}
+    patterns = project.option("DEL-19", "boot_modules", BOOT_MODULES, keys)
+    library = project.option("DEL-19", "library", "logging", keys)
+    others = [lib for lib in LOGGING_LIBRARIES if lib != library]
+    configure = {"addHandler", "setLevel", "setFormatter"}
     for file, tree in project.trees():
         for imp in project.imports(file):
-            if any(is_under(imp.module, lib) for lib in ("structlog", "loguru", "eliot", "logbook")):
-                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; Python's logging is the platform logger")
+            if any(is_under(imp.module, lib) for lib in others):
+                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; {library} is the platform logger")
         if boot(project, file, patterns):
             continue
         names = imported_names(project, file)
+        bound = logging_objects(tree, names)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -533,7 +645,11 @@ def standard_logging(project: Project) -> Iterator[Violation]:
                 arg = node.args[0] if node.args else None
                 if not (isinstance(arg, ast.Name) and arg.id == "__name__"):
                     yield Violation.at(file.rel, node, "getLogger without __name__; every module logs under its own name")
-            elif isinstance(node.func, ast.Attribute) and node.func.attr in configure:
+            elif (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in configure
+                and is_logging_receiver(node.func.value, names, bound)
+            ):
                 yield Violation.at(file.rel, node, f"calls {node.func.attr}; logging is configured once, at boot")
             elif full in {"logging.basicConfig", "logging.config.dictConfig", "logging.config.fileConfig"}:
                 yield Violation.at(file.rel, node, f"calls {full}; logging is configured once, at boot")
@@ -554,12 +670,20 @@ def telemetry_used_directly(project: Project) -> Iterator[Violation]:
     named `*TracerInterface`, `*MetricsInterface`,
     `*TelemetryInterface`, `PlatformTracer`, or `PlatformMetrics`. A
     branch on whether tracing is configured is judged.
+
+    Option `[tool.arch-check.options.DEL-20]`: `metrics` (default
+    `"prometheus_client"`), the metrics library's import name. A
+    substitution recorded in an ADR is told to the checker here, and
+    that library is then not a second metrics system. A `disable` would
+    record it as a deviation, which it is not.
     """
+    metrics = project.option("DEL-20", "metrics", "prometheus_client", {"metrics"})
+    others = [lib for lib in ("statsd", "datadog", "newrelic") if not is_under(lib, metrics) and not is_under(metrics, lib)]
     wrapper = re.compile(r"^(\w*(Tracer|Metrics|Telemetry)Interface|Platform(Tracer|Metrics))$")
     for file, tree in project.trees():
         for imp in project.imports(file):
-            if any(is_under(imp.module, lib) for lib in ("statsd", "datadog", "newrelic")):
-                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; metrics are Prometheus, used directly")
+            if any(is_under(imp.module, lib) for lib in others):
+                yield Violation.at(file.rel, imp.node, f"imports {imp.module}; metrics are {metrics}, used directly")
         for cls in classes(tree):
             if wrapper.match(cls.name):
                 yield Violation.at(file.rel, cls, f"{cls.name} wraps the telemetry API; it is used directly")
@@ -571,6 +695,19 @@ ADR_FILE = re.compile(r"^(\d{4})-[^/]+\.md$")
 CITED = re.compile(r"\bADR[- ]?(\d{4})\b")
 DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 SECTIONS = ("context", "decision", "consequences")
+HEADING_NUMBER = re.compile(r"^(\d+(\.\d+)*[.)]?\s+)")
+
+
+def in_order(headings: list[str]) -> bool:
+    """Whether headings starting with Context, Decision, and Consequences appear in that order, others between them."""
+    want = 0
+    for text in headings:
+        words = HEADING_NUMBER.sub("", text).split()
+        if want < len(SECTIONS) and words and words[0].rstrip(":") == SECTIONS[want]:
+            want += 1
+    return want == len(SECTIONS)
+
+
 CODE_FILES = ("*.py", "*.ts", "*.tsx", "*.js", "*.mjs", "*.toml", "*.tf", "*.sh", "Makefile", "*.Dockerfile", "Dockerfile")
 
 
@@ -583,7 +720,9 @@ def adrs_numbered_and_cited(project: Project) -> Iterator[Violation]:
     """Decisions are ADRs under `docs/adr/`, and code cites them by a number that exists.
 
     Every `docs/adr/NNNN-*.md` carries a date (`YYYY-MM-DD`) and
-    headings for Context, Decision, and Consequences in that order, and
+    headings whose first word, after any number, is Context, Decision,
+    and Consequences, in that order (`## Context and Problem
+    Statement` and `## 1. Context` count), and
     no number is used twice. Every `ADR NNNN` or `ADR-NNNN` in code,
     config, and workflows names a file that exists. Whether an
     exception to a rule has its ADR is judged.
@@ -601,7 +740,7 @@ def adrs_numbered_and_cited(project: Project) -> Iterator[Violation]:
         if not any(DATE.search(line) for line in lines):
             yield Violation(rel, 1, 1, "an ADR with no date; a record is dated")
         heads = [line.lstrip("#").strip().lower() for line in lines if line.startswith("#")]
-        if list(dict.fromkeys(h for h in heads if h in SECTIONS)) != list(SECTIONS):
+        if not in_order(heads):
             yield Violation(rel, 1, 1, "an ADR without Context, Decision, and Consequences headings in that order")
     scanned = list(walk(project, names=CODE_FILES)) + project.files(".github/workflows/*.yml", ".github/workflows/*.yaml")
     for rel in scanned:
@@ -673,6 +812,8 @@ def stable_versions_agree(project: Project) -> Iterator[Violation]:
                 declared.append((rel, number, m.group(2)))
     images: list[tuple[str, int, str, str]] = []  # (file, line, repository, tag)
     for rel in walk(project, names=("Dockerfile", "*.Dockerfile", "Dockerfile.*")):
+        if not is_dockerfile(rel.rpartition("/")[2]):
+            continue
         for s in dockerfile(project, rel):
             if s.keyword == "FROM":
                 repo, tag = image_tag(image_of(s.args))
@@ -716,21 +857,21 @@ def stable_versions_agree(project: Project) -> Iterator[Violation]:
 
 # --- DEL-35
 
-ID_LABEL = re.compile(r"^(id|ids|email|\w+_ids?)$")
+ID_LABEL = re.compile(r"^(id|ids|\w+_ids?)$")
 METRICS = {"Counter", "Histogram", "Gauge", "Summary", "Info", "Enum"}
 
 
 @rule(
     "DEL-35",
     coverage="partial",
-    summary="No Prometheus metric declares an id or an email as a label name.",
+    summary="No Prometheus metric declares an id as a label name.",
 )
 def bounded_labels(project: Project) -> Iterator[Violation]:
     """Metric labels are bounded: a template, a status, an outcome, never an id.
 
     A `prometheus_client` metric built with literal label names
-    (`labelnames=` or the third argument) names no label `id`, `email`,
-    or ending in `_id` or `_ids`. The outcome counters and each
+    (`labelnames=` or the third argument) names no label `id`, `ids`,
+    or one ending in `_id` or `_ids`. The outcome counters and each
     worker's `/metrics` port are judged.
     """
     for file, tree in project.trees():

@@ -176,6 +176,12 @@ stack filled in; edit it rather than adding a second one. The
 sees at a glance what differs. A substitution that changes a shape is
 a deviation, and goes under "Record deviations as ADRs" instead.
 
+Tell `arch-check` too. A rule that looks for a named technology reads
+the name from an option that defaults to the guideline's choice. Set
+the option to the substitute, and the rule holds the substitute to the
+same shape. Never `disable` the rule for a substitution: a disable is
+a deviation, and a substitute is not one.
+
 ## Record deviations as ADRs
 
 `/swe-guidelines:arch-deviate STO-02 "the ledger needs one transaction

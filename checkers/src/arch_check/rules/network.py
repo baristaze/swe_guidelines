@@ -17,6 +17,7 @@ from arch_check.model import Violation
 from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last
 from arch_check.registry import rule
 from arch_check.rules._text_util import (
+    Target,
     call_name,
     const_str,
     imported_names,
@@ -83,32 +84,81 @@ def is_fastapi_header(name: str | None) -> bool:
     return bool(name) and is_under(name or "", "fastapi") and last(name) == "Header"
 
 
+REQUEST_TYPES = frozenset({"Request", "HTTPConnection", "WebSocket"})
+
+
+def request_params(tree: ast.AST) -> set[str]:
+    """The parameter names that hold an inbound request: annotated `Request`, `HTTPConnection`, or `WebSocket`,
+    or an unannotated `request`."""
+    out: set[str] = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            continue
+        for a in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
+            annotation = last(dotted(a.annotation)) if a.annotation is not None else None
+            if annotation in REQUEST_TYPES or (a.annotation is None and a.arg == "request"):
+                out.add(a.arg)
+    return out
+
+
+def written(tree: ast.AST) -> set[int]:
+    """The ids of `.headers` nodes a statement writes into: `response.headers["Location"] = ...`."""
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
+            out.add(id(node.value))
+    return out
+
+
+def literal_origins(node: ast.expr | None) -> bool:
+    """Whether `allow_origins` is `"*"`, a string, or a non-empty list whose every element is a string constant."""
+    if const_str(node) is not None:
+        return True
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return bool(node.elts) and all(const_str(e) is not None for e in node.elts)
+    return False
+
+
 @rule(
     "NET-06",
     coverage="partial",
-    summary="Routers, service code, and the OM read no header or token; CORS origins are never a literal.",
+    summary="Routers, service code, and the OM read no inbound header; routers name no token; CORS origins are never literal.",
 )
 def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
     """Nothing below the gateway parses headers, and the allowed origins come from settings.
 
     In `<pkg>.services.<svc>.{routers,services,impl}` and in `<pkg>.om`:
-    no `.headers` read, no FastAPI `Header(...)`, and no string that is
-    `authorization`. Anywhere under `<pkg>.services` and `<pkg>.gateway`,
-    `CORSMiddleware` never gets `allow_origins` as a literal list or
-    `"*"`. A second path to the internet is judged.
+    no read of `.headers` on an inbound request (a parameter annotated
+    `Request`, `HTTPConnection`, or `WebSocket`, or an unannotated
+    `request`), and no FastAPI `Header(...)`. In
+    `<pkg>.services.<svc>.routers`, no string that is `authorization`.
+    An outbound client's headers, and a header written on a response,
+    are not a read. Anywhere under `<pkg>.services` and
+    `<pkg>.gateway`, `CORSMiddleware` never gets `allow_origins` as
+    `"*"`, a string, or a list of string literals. A second path to the
+    internet is judged.
     """
+    routers = {f.rel for f in service_files(project, "routers")}
     below = service_files(project, "routers", "services", "impl") + project.modules_under(project.sub("om"))
     for file in below:
         tree = project.tree(file)
         if tree is None:
             continue
         names = imported_names(project, file)
+        inbound = request_params(tree)
+        stores = written(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == "headers":
-                yield Violation.at(file.rel, node, "reads `.headers`; the gateway parses headers, nothing below it does")
+                if dotted(node.value) in inbound and id(node) not in stores:
+                    yield Violation.at(file.rel, node, "reads `.headers`; the gateway parses headers, nothing below it does")
             elif isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
                 yield Violation.at(file.rel, node, "takes a `Header(...)` parameter; the gateway parses headers")
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.lower() == "authorization":
+            elif (
+                file.rel in routers
+                and isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value.lower() == "authorization"
+            ):
                 yield Violation.at(file.rel, node, "names the Authorization header; only the gateway reads a token")
     for file in project.modules_under(project.sub("services"), project.sub("gateway")):
         tree = project.tree(file)
@@ -118,7 +168,7 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
             if not isinstance(node, ast.Call) or not node.args or last(dotted(node.args[0])) != "CORSMiddleware":
                 continue
             origins = kwarg(node, "allow_origins")
-            if isinstance(origins, ast.List | ast.Tuple | ast.Set) or const_str(origins) is not None:
+            if literal_origins(origins):
                 yield Violation.at(
                     file.rel, origins, "allow_origins is a literal; the browser apps' origins are read from settings"
                 )
@@ -137,17 +187,20 @@ def http_error_status(node: ast.expr | None) -> bool:
 @rule(
     "NET-07",
     coverage="partial",
-    summary="Routers and service code raise no HTTP exception and set no error status; one module registers handlers.",
+    summary="Routers and service code raise no HTTP exception and set no error status; one module per service maps errors.",
 )
 def one_error_handler(project: Project) -> Iterator[Violation]:
     """Routers never set error statuses, and one module maps exceptions to responses.
 
     In `<pkg>.services.<svc>.{routers,services,impl}`: no `raise` of an
     `HTTPException`, and no response built with a 4xx or 5xx
-    `status_code`. Across `<pkg>.services` and `<pkg>.gateway`, at most
-    one module registers exception handlers (`@app.exception_handler`
-    or `add_exception_handler`). The envelope's shape and its request
-    id are the project's tests.
+    `status_code`. Within each service, `<pkg>.services.<svc>`, and
+    within the shared `<pkg>.gateway`, at most one module registers
+    exception handlers of its own (`@app.exception_handler`, or
+    `add_exception_handler` with a handler not imported from a gateway
+    module). A service that registers the gateway's handlers is
+    registering the one mapping, not a second. The envelope's shape and
+    its request id are the project's tests.
     """
     for file in service_files(project, "routers", "services", "impl"):
         tree = project.tree(file)
@@ -162,22 +215,33 @@ def one_error_handler(project: Project) -> Iterator[Violation]:
             elif isinstance(node, ast.Call) and last(dotted(node.func)) in {"JSONResponse", "Response", "PlainTextResponse"}:
                 if http_error_status(kwarg(node, "status_code")):
                     yield Violation.at(file.rel, node, "builds an error response by hand; one handler at the gateway does")
-    registering: list[tuple[SourceFile, ast.AST]] = []
+    registering: dict[str, list[tuple[SourceFile, ast.AST]]] = {}
     for file in project.modules_under(project.sub("services"), project.sub("gateway")):
         tree = project.tree(file)
         if tree is None:
             continue
+        services = project.sub("services") + "."
+        group = file.module[len(services) :].split(".")[0] if file.module.startswith(services) else "gateway"
+        names = imported_names(project, file)
         for node in ast.walk(tree):
-            hit = (isinstance(node, ast.Call) and last(dotted(node.func)) in {"exception_handler", "add_exception_handler"}) and (
-                isinstance(node.func, ast.Attribute)
-            )
-            if hit:
-                registering.append((file, node))
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            if node.func.attr == "add_exception_handler" and from_a_gateway(project, node, names):
+                continue
+            if node.func.attr in {"exception_handler", "add_exception_handler"}:
+                registering.setdefault(group, []).append((file, node))
                 break
-    if len(registering) > 1:
-        first = registering[0][0]
-        for file, node in registering[1:]:
+    for found_in in registering.values():
+        first = found_in[0][0]
+        for file, node in found_in[1:]:
             yield Violation.at(file.rel, node, f"registers exception handlers, and so does {first.rel}; one module maps them")
+
+
+def from_a_gateway(project: Project, call: ast.Call, names: dict[str, str]) -> bool:
+    """Whether `add_exception_handler(E, handler)` registers a handler imported from a gateway module."""
+    handler = call.args[1] if len(call.args) >= 2 else kwarg(call, "handler")
+    full = resolved(dotted(handler), names) if handler is not None else None
+    return bool(full) and (is_under(full or "", project.sub("gateway")) or ".gateway." in f".{full}.")
 
 
 # --- NET-09
@@ -200,30 +264,72 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
     """Every creating `POST` in a router takes the idempotency dependency.
 
     A function in `<pkg>.services.<svc>.routers` decorated
-    `@<router>.post(..., status_code=201 or 202)` has a parameter
-    annotated with, or a `dependencies=` entry naming, something
-    imported from the gateway's idempotency module. Whether a `POST`
-    that answers 200 writes a row, and what the store keeps, are judged.
+    `@<router>.post(..., status_code=201 or 202)` takes something
+    imported from the gateway's idempotency module: in a parameter's
+    annotation or default (`key = Depends(idempotency_key)`), in the
+    route's `dependencies=`, in the `dependencies=` of the
+    `APIRouter(...)` it is declared on, or in the `dependencies=` of an
+    `include_router(...)` in the same service that mounts its module's
+    router. Whether a `POST` that answers 200 writes a row, and what
+    the store keeps, are judged.
 
     Option `[tool.arch-check.options.NET-09]`:
     `module` (default `"gateway.idempotency"`), the dotted tail of the
     module the dependency is imported from.
     """
     tail = project.option("NET-09", "module", "gateway.idempotency", {"module"})
-    for file in service_files(project, "routers"):
-        tree = project.tree(file)
-        if tree is None:
-            continue
-        idem = {
+
+    def idem_names(file: SourceFile) -> set[str]:
+        return {
             local
             for local, full in imported_names(project, file).items()
             if full.rpartition(".")[0] == tail or full.rpartition(".")[0].endswith("." + tail)
         }
+
+    def heads(node: ast.expr | None) -> set[str]:
+        return {n.split(".")[0] for n in names_in(node)}
+
+    mounted: set[str] = set()  # routers modules, and their router names, mounted with the dependency
+    for file in project.modules_under(project.sub("services")):
+        tree = project.tree(file)
+        if tree is None:
+            continue
+        idem, names = idem_names(file), imported_names(project, file)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and last(dotted(node.func)) == "include_router"
+                and node.args
+                and heads(kwarg(node, "dependencies")) & idem
+            ):
+                full = resolved(dotted(node.args[0]), names)
+                if full:
+                    mounted.update({full, full.rpartition(".")[0]})
+    for file in service_files(project, "routers"):
+        tree = project.tree(file)
+        if tree is None:
+            continue
+        idem = idem_names(file)
+        covered = {  # router variables declared with the dependency
+            t.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and last(dotted(node.value.func)) == "APIRouter"
+            and heads(kwarg(node.value, "dependencies")) & idem
+            for t in node.targets
+            if isinstance(t, ast.Name)
+        }
         for fn, call, verb in routes(tree):
             if verb != "post" or not creates(call):
                 continue
-            mentioned = {n.split(".")[0] for a in [*fn.args.args, *fn.args.kwonlyargs] for n in names_in(a.annotation)}
-            mentioned |= {n.split(".")[0] for n in names_in(kwarg(call, "dependencies"))}
+            router = dotted(call.func.value) if isinstance(call.func, ast.Attribute) else None
+            if router in covered or file.module in mounted or f"{file.module}.{router}" in mounted:
+                continue
+            args = fn.args
+            mentioned = {h for a in [*args.posonlyargs, *args.args, *args.kwonlyargs] for h in heads(a.annotation)}
+            mentioned |= {h for d in [*args.defaults, *args.kw_defaults] if d is not None for h in heads(d)}
+            mentioned |= heads(kwarg(call, "dependencies"))
             if not mentioned & idem:
                 yield Violation.at(file.rel, fn, f"{fn.name} answers 201 or 202 and takes no idempotency key from {tail}")
 
@@ -358,9 +464,12 @@ def openapi_is_diffed(project: Project) -> Iterator[Violation]:
     """The OpenAPI document is regenerated by a make target and diffed in CI.
 
     When the tree has a service with routers: the `Makefile` has the
-    target, and some `.github/workflows/*.yml` file runs `make <target>`
-    and `git diff --exit-code`. Whether the document is written by hand
-    anywhere is judged.
+    target, and some `.github/workflows/*.yml` file runs `make` on it,
+    directly or through a target that reaches it (a prerequisite, or a
+    `make` or `$(MAKE)` line in a recipe), and runs `git diff` with
+    `--exit-code` or `--quiet`, in the workflow or in a recipe it
+    reaches. Whether the document is written by hand anywhere is
+    judged.
 
     Option `[tool.arch-check.options.NET-14]`: `target` (default
     `"openapi"`), the make target that writes the document.
@@ -373,14 +482,43 @@ def openapi_is_diffed(project: Project) -> Iterator[Violation]:
         return
     if target not in make_targets(project):
         yield Violation("Makefile", 1, 1, f"no `{target}` target; it regenerates the committed OpenAPI document")
-    run = re.compile(rf"\bmake\b[^\n#]*\b{re.escape(target)}\b")
+    targets = make_targets(project)
     for rel in project.files(".github/workflows/*.yml", ".github/workflows/*.yaml"):
         text = project.read(rel) or ""
-        if run.search(text) and "git diff --exit-code" in text:
+        reached = reachable(targets, made(text))
+        recipes = [line for name in reached for line in targets[name].recipe]
+        if target in reached and any(DIFF.search(line) for line in [*text.splitlines(), *recipes]):
             return
     yield Violation(
-        "Makefile", 1, 1, f"no CI workflow runs `make {target}` and `git diff --exit-code`; the document is diffed in CI"
+        "Makefile", 1, 1, f"no CI workflow runs `make {target}` and a failing `git diff`; the document is diffed in CI"
     )
+
+
+DIFF = re.compile(r"\bgit\s+diff\b[^\n#]*\s--(exit-code|quiet)\b")
+MAKE = re.compile(r"(?:\bmake|\$\(MAKE\)|\$\{MAKE\})((?:\s+[^\s&|;#)]+)+)")
+
+
+def made(text: str) -> set[str]:
+    """The targets a text runs with `make` or `$(MAKE)`, flags and variable assignments left out."""
+    out: set[str] = set()
+    for m in MAKE.finditer(text):
+        out.update(w for w in m.group(1).split() if not w.startswith("-") and "=" not in w)
+    return out
+
+
+def reachable(targets: dict[str, Target], start: set[str]) -> set[str]:
+    """The Makefile targets `start` reaches through prerequisites and `make` lines in recipes, `start` included."""
+    seen: set[str] = set()
+    stack = [t for t in start if t in targets]
+    while stack:
+        name = stack.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        rule_ = targets[name]
+        nxt = set(rule_.prerequisites) | made("\n".join(rule_.recipe))
+        stack.extend(t for t in nxt if t in targets and t not in seen)
+    return seen
 
 
 # --- NET-29
