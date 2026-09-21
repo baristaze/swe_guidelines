@@ -35,21 +35,53 @@ def test_slug_keeps_underscores_the_way_github_does():
     assert slug("`snake_case` heading") == "snake_case-heading"
 
 
-@pytest.mark.parametrize(
-    ("heading", "anchor"),
-    [
-        # each pair is the anchor GitHub renders for the heading
-        ("Park  vs fail", "park--vs-fail"),
-        ("`code` - dash", "code---dash"),
-        ("See [the lenses](lenses/README.md#groups)", "see-the-lenses"),
-        ("[Cache](#cache) and friends", "cache-and-friends"),
-        ("What's new?", "whats-new"),
-        ("Tables (and more)", "tables-and-more"),
-        ("EMPTY_UUID and snake_case", "empty_uuid-and-snake_case"),
-    ],
-)
-def test_slug_matches_github_anchors(heading, anchor):
-    assert slug(heading) == anchor
+# Each heading beside the anchor github-slugger 2.0.0, the package GitHub's
+# anchors follow, gives for the heading's rendered text. The anchors come
+# from running the package, not from reading it:
+#
+#     npm install github-slugger@2.0.0
+#     # run.mjs
+#     import { slug } from "github-slugger";
+#     console.log(slug(process.argv[2]));
+#
+# `node run.mjs "<text>"` takes the rendered text: the link syntax, the
+# backticks, the emphasis markers, and a closing `#` sequence already gone.
+GITHUB_SLUGGER = [
+    # each space is a hyphen, so a run of spaces is a run of hyphens
+    ("Park  vs fail", "park--vs-fail"),
+    ("Two   spaces and a tab\there", "two---spaces-and-a-tabhere"),
+    ("`code` - dash", "code---dash"),
+    # a link keeps its text
+    ("See [the lenses](lenses/README.md#groups)", "see-the-lenses"),
+    ("[Cache](#cache) and friends", "cache-and-friends"),
+    # a closing sequence of `#` is not part of the heading
+    ("Tables ##", "tables"),
+    ("Use C #", "use-c"),
+    ("C++ and C#", "c-and-c"),
+    # underscores stay
+    ("CTX-13 The system scope is EMPTY_UUID", "ctx-13-the-system-scope-is-empty_uuid"),
+    ("`snake_case` heading", "snake_case-heading"),
+    # inline code and emphasis keep their text
+    ("`OpContext` and *friends*", "opcontext-and-friends"),
+    # punctuation drops out
+    ("What's new?", "whats-new"),
+    ("Tables (and more)", "tables-and-more"),
+    ("Local: Docker Compose", "local-docker-compose"),
+    ("Park vs. fail", "park-vs-fail"),
+    ("A/B, C & D!", "ab-c--d"),
+    ("100% done", "100-done"),
+    # letters outside ASCII stay, lowercased
+    ("Émigré café", "émigré-café"),
+    ("Straße und Größe", "straße-und-größe"),
+    ("日本語 見出し", "日本語-見出し"),
+    ("naïve — em dash", "naïve--em-dash"),
+]
+
+
+@pytest.mark.parametrize(("heading", "anchor"), GITHUB_SLUGGER)
+def test_anchor_matches_github_slugger(heading, anchor):
+    [(_level, _title, found)] = anchors(f"## {heading}\n")
+    assert found == anchor
 
 
 def test_closing_hashes_are_not_part_of_the_heading():
