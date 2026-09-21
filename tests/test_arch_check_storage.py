@@ -290,12 +290,19 @@ def test_the_base_tree_passes(tmp_path, rule):
     assert code == 0
 
 
-def test_sto_01_a_relationship_or_a_cascade_in_a_table(tmp_path):
-    files = edit(WIDGETS, 'ForeignKey("core.catalog.id")', 'ForeignKey("core.catalog.id", ondelete="CASCADE")')
-    files[WIDGETS] += "    catalog = relationship('Catalog')\n"
+def test_sto_01_a_relationship_in_a_table(tmp_path):
+    files = {WIDGETS: GOOD[WIDGETS] + "    catalog = relationship('Catalog')\n"}
     code, report = run(tmp_path, "STO-01", files)
     assert code == 1
-    assert sorted(m.split(" ")[0] for m in messages(report)) == ["`ondelete=`", "relationship()"]
+    assert [m.split(" ")[0] for m in messages(report)] == ["relationship()"]
+
+
+@pytest.mark.parametrize("keyword", ['ondelete="RESTRICT"', 'ondelete="CASCADE"'])
+def test_sto_01_an_ondelete_on_a_foreign_key_is_left_to_the_review(tmp_path, keyword):
+    files = edit(WIDGETS, 'ForeignKey("core.catalog.id")', f'ForeignKey("core.catalog.id", {keyword})')
+    code, report = run(tmp_path, "STO-01", files)
+    assert report["findings"] == []
+    assert code == 0
 
 
 def test_sto_01_a_manager_catching_an_integrity_error(tmp_path):
@@ -367,12 +374,24 @@ def test_sto_05_a_function_a_later_migration_drops_is_history(tmp_path):
 def test_sto_05_a_database_set_timestamp(tmp_path):
     files = edit(
         BASE,
-        "created_at: Mapped[datetime] = mapped_column(sort_order=-800)",
-        "created_at: Mapped[datetime] = mapped_column(server_default=func.now(), sort_order=-800)",
+        "updated_at: Mapped[datetime] = mapped_column(sort_order=-799)",
+        "updated_at: Mapped[datetime] = mapped_column(onupdate=func.now(), sort_order=-799)",
     )
     code, report = run(tmp_path, "STO-05", files)
     assert code == 1
-    assert "CreatedMixin.created_at has `server_default=`" in messages(report)[0]
+    assert "TrackableMixin.updated_at has `onupdate=`" in messages(report)[0]
+
+
+def test_sto_05_a_schema_default_and_a_computed_column_are_allowed(tmp_path):
+    files = edit(
+        BASE,
+        "created_at: Mapped[datetime] = mapped_column(sort_order=-800)",
+        "created_at: Mapped[datetime] = mapped_column(server_default=func.now(), sort_order=-800)",
+    )
+    files[CATALOG] = GOOD[CATALOG] + '    search: Mapped[str] = mapped_column(Computed("lower(title)"))\n'
+    code, report = run(tmp_path, "STO-05", files)
+    assert report["findings"] == []
+    assert code == 0
 
 
 @pytest.mark.parametrize(
@@ -456,6 +475,27 @@ def test_sto_10_a_root_missing_a_getter_and_a_misnamed_impl(tmp_path):
     )
 
 
+def test_sto_10_a_shared_base_and_a_string_getter(tmp_path):
+    files = edit(ROOT, "-> WidgetsStorageInterface: ...", '-> "WidgetsStorageInterface": ...')
+    files[f"{OM}/storage/impl/base.py"] = (
+        "class StorageSqlBase(StorageInterface):\n"
+        "    async def healthcheck(self):\n        return True\n\n"
+        "    async def close(self):\n        return None\n"
+    )
+    files[PG] = (
+        GOOD[PG]
+        .replace("class StoragePostgresImpl(StorageInterface):", "class StoragePostgresImpl(StorageSqlBase):")
+        .replace("    async def healthcheck(self):\n        return True\n\n    async def close(self):\n        return None\n", "")
+    )
+    code, report = run(tmp_path, "STO-10", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[PG] = files[PG].replace("    def get_widgets_storage(self):\n        return self._widgets\n\n", "")
+    code, report = run(tmp_path, "STO-10", files)
+    assert code == 1
+    assert messages(report) == ["StoragePostgresImpl does not define get_widgets_storage()"]
+
+
 def test_sto_10_no_memory_root(tmp_path):
     code, report = run(tmp_path, "STO-10", drop=[MEMORY])
     assert code == 1
@@ -516,6 +556,27 @@ def test_sto_13_a_mixin_column_without_a_band_and_bands_out_of_order(tmp_path):
             "TrackableMixin.updated_at sorts at -799, before NamedMixin.name at -650; bands follow the house order",
             "TrackableMixin.updated_by sorts at -797, before NamedMixin.name at -650; bands follow the house order",
         ],
+    )
+
+
+def test_sto_13_a_band_read_through_a_module_constant(tmp_path):
+    files = edit(
+        BASE,
+        "class NamedMixin:\n    name: Mapped[str] = mapped_column(sort_order=-900)",
+        "NAME_ORDER = -900\n\n\nclass NamedMixin:\n    name: Mapped[str] = mapped_column(sort_order=NAME_ORDER)",
+    )
+    files[f"{OM}/storage/tables/extra.py"] = (
+        "from acme.om.storage.tables.orders import HEADER\n\n\n"
+        "class NotedMixin:\n    note: Mapped[str] = mapped_column(sort_order=HEADER)\n"
+    )
+    code, report = run(tmp_path, "STO-13", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[BASE] = files[BASE].replace("NAME_ORDER = -900", "NAME_ORDER = -650")
+    code, report = run(tmp_path, "STO-13", files)
+    assert code == 1
+    assert "CreatedMixin.created_at sorts at -800, before NamedMixin.name at -650; bands follow the house order" in messages(
+        report
     )
 
 
@@ -612,6 +673,40 @@ def test_sto_18_a_lone_file_a_bad_name_a_fat_wrapper_and_a_foreign_table(tmp_pat
     )
 
 
+def test_sto_18_a_gitkeep_keyword_arguments_and_a_path(tmp_path):
+    files = {
+        "om/migrations/sql/core/.gitkeep": "",
+        "om/migrations/sql/core/README.md": "# core\n",
+        WRAPPER: GOOD[WRAPPER]
+        .replace(
+            'run_sql(DatabaseRole.CORE, "202601010000_initial.up.sql")',
+            'run_sql(role=DatabaseRole.CORE, path="core/202601010000_initial.up.sql")',
+        )
+        .replace(
+            'run_sql(DatabaseRole.CORE, "202601010000_initial.down.sql")',
+            'run_sql(DatabaseRole.CORE, name="202601010000_initial.down.sql")',
+        ),
+    }
+    code, report = run(tmp_path, "STO-18", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[WRAPPER] = files[WRAPPER].replace('name="202601010000_initial.down.sql"', 'name="202601010000_other.down.sql"')
+    code, report = run(tmp_path, "STO-18", files)
+    assert code == 1
+    assert messages(report) == ["downgrade() runs '202601010000_other.down.sql'; it runs 202601010000_initial.down.sql"]
+
+
+def test_sto_20_the_outbox_storage_takes_one_row(tmp_path):
+    files = {
+        f"{OM}/outbox/storage/__init__.py": (
+            "class OutboxStorageInterface(ABC):\n    async def mark_done(self, row: OutboxRow) -> None: ...\n"
+        )
+    }
+    code, report = run(tmp_path, "STO-20", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
 def test_sto_20_a_single_outbox_row(tmp_path):
     code, report = run(tmp_path, "STO-20", edit(IFACE, "outbox_rows: tuple[OutboxRow, ...]", "outbox_row: OutboxRow | None"))
     assert code == 1
@@ -630,10 +725,24 @@ def test_sto_23_a_stamp_mismatch_and_two_heads(tmp_path):
     assert_messages(
         report,
         [
-            "202601030000 and 202601020000 both follow '202601010000'; the chain has two heads",
+            "role core ends in 2 heads (202601020000, 202601030000); merge them",
             "revision is '202601049999'; it is the file's stamp '202601040000'",
         ],
     )
+
+
+def test_sto_23_a_merge_revision_closes_the_fork(tmp_path):
+    body = 'revision = "{rev}"\ndown_revision = {down}\n'
+    files = {
+        "om/migrations/versions/core/202601020000_a.py": body.format(rev="202601020000", down='"202601010000"'),
+        "om/migrations/versions/core/202601030000_b.py": body.format(rev="202601030000", down='"202601010000"'),
+        "om/migrations/versions/core/202601040000_merge.py": body.format(
+            rev="202601040000", down='("202601020000", "202601030000")'
+        ),
+    }
+    code, report = run(tmp_path, "STO-23", files)
+    assert report["findings"] == []
+    assert code == 0
 
 
 def test_sto_26_a_full_unique_key_on_a_soft_deletable_table(tmp_path):
@@ -711,3 +820,17 @@ def test_sto_29_a_list_read_without_a_limit(tmp_path):
             "WidgetsStorageInterface.read_widgets returns a list and takes no limit",
         ],
     )
+
+
+def test_sto_29_a_bucket_listing_under_another_name(tmp_path):
+    files = {
+        "infra/src/acme/infra/buckets/__init__.py": (
+            "class BucketsInterface(ABC):\n"
+            "    async def keys(self, org_id, bucket, prefix) -> list[str]: ...\n\n"
+            "    async def list(self, org_id, bucket, prefix, limit: int) -> list[str]: ...\n\n"
+            "    async def get(self, org_id, bucket, key) -> bytes: ...\n"
+        )
+    }
+    code, report = run(tmp_path, "STO-29", files)
+    assert code == 1
+    assert messages(report) == ["BucketsInterface.keys returns a list and takes no limit"]

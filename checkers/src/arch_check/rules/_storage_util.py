@@ -50,7 +50,7 @@ WRAPPER_FILE = re.compile(r"^(?P<stamp>\d{12}[a-z]?)_(?P<slug>[a-z0-9_]+)\.py$")
 
 
 def namespace_of(project: Project, module: str) -> str | None:
-    """The OM namespace a module sits in: `acme.om.tasks.impl` gives `tasks`; the shared `storage` package gives None."""
+    """The OM namespace a module sits in: `acme.om.orders.impl` gives `orders`; the shared `storage` package gives None."""
     om = project.sub("om")
     if not is_under(module, om) or module == om:
         return None
@@ -479,11 +479,14 @@ class SqlFile:
 
 
 def sql_files(project: Project, sql_dir: str) -> tuple[list[SqlFile], list[str]]:
-    """The migration SQL files named `<stamp>_<slug>.<up|down>.sql` under `<sql_dir>/<role>/`, and every other file there."""
+    """The migration SQL files named `<stamp>_<slug>.<up|down>.sql` under `<sql_dir>/<role>/`, and every other
+    `.sql` file there. A dotfile (`.gitkeep`) or a file of another kind is neither."""
     good: list[SqlFile] = []
     bad: list[str] = []
     for rel in project.files(f"{sql_dir}/*/*"):
         role, name = rel.split("/")[-2:]
+        if name.startswith(".") or not name.endswith(".sql"):
+            continue
         m = SQL_FILE.match(name)
         if m:
             good.append(SqlFile(rel, role, m.group("stamp"), m.group("slug"), m.group("dir")))

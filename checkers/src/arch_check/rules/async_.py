@@ -1,9 +1,12 @@
 """The async rules: infra capabilities, topics, the work queue, workers, and secrets.
 
 Each rule decides the mechanical part of one lens of `lenses/async.md`.
-The infra root is `InfraInterface` in `<pkg>.infra.root`; a capability
-is a package `<pkg>.infra.<cap>` whose `__init__.py` declares its
-`*Interface`, the way Infrastructure lays them out. A rule whose
+The infra root is the class `InfraInterface`, wherever under
+`<pkg>.infra` it lives; a capability is a package `<pkg>.infra.<cap>`
+that declares an `*Interface`, the way Infrastructure lays them out. A
+capability's names (`CacheScope`, `Buckets`, `Topics`) are read from its
+`__init__.py` and what that re-exports, then from any module of the
+package. A rule whose
 capability or namespace the project does not have reports nothing.
 """
 
@@ -15,11 +18,13 @@ import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last, methods, parameters
+from arch_check.project import Import, Project, SourceFile, base_names, classes, dotted, is_under, last, methods, parameters
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
+    call_name,
     class_value,
     column_call,
+    has_tablename,
     in_storage,
     index_calls,
     is_true,
@@ -29,17 +34,80 @@ from arch_check.rules._storage_util import (
     names_in,
     own_columns,
     string_args,
+    table_args,
     tables,
 )
 
+Declaration = tuple[SourceFile, ast.ClassDef | ast.expr]
+"""Where a name is declared: its file, and the class or the value a top-level assignment gives it."""
 
-def package_classes(project: Project, module: str) -> tuple[SourceFile | None, list[ast.ClassDef]]:
-    """A module's file and its top-level classes; (None, []) when the project has no such module."""
+
+def own_declarations(file: SourceFile, tree: ast.Module) -> dict[str, Declaration]:
+    """The top-level classes and assigned names a module defines itself."""
+    out: dict[str, Declaration] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            out.setdefault(node.name, (file, node))
+        elif isinstance(node, ast.Assign) and node.value is not None:
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    out.setdefault(t.id, (file, node.value))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            out.setdefault(node.target.id, (file, node.value))
+    return out
+
+
+def exported(project: Project, module: str, seen: frozenset[str] = frozenset()) -> dict[str, Declaration]:
+    """What a module declares or re-exports: its own names, then each `from x import y` of the project, followed."""
     file = project.module(module)
     tree = project.tree(file) if file else None
-    if file is None or tree is None:
-        return None, []
-    return file, [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    if file is None or tree is None or module in seen:
+        return {}
+    out = own_declarations(file, tree)
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        source = project.resolve(file, node.level, node.module) if node.level else node.module or ""
+        if project.module(source) is None:
+            continue
+        found = exported(project, source, seen | {module})
+        for a in node.names:
+            if a.name == "*":
+                for name, decl in found.items():
+                    out.setdefault(name, decl)
+            elif a.name in found:
+                out.setdefault(a.asname or a.name, found[a.name])
+    return out
+
+
+def package_declarations(project: Project, package: str) -> tuple[SourceFile | None, dict[str, Declaration]]:
+    """A package's `__init__` file and every name it declares, wherever in the package the definition lives.
+
+    The guideline never says which file of a capability declares its
+    enum or its interface. So the package's own names and re-exports
+    come first, then every top-level definition of its other modules.
+    (None, {}) when the project has no such package.
+    """
+    file = project.module(package)
+    if file is None or project.tree(file) is None:
+        return None, {}
+    out = exported(project, package)
+    for f, tree in project.trees(package):
+        if f.module != package:
+            for name, decl in own_declarations(f, tree).items():
+                out.setdefault(name, decl)
+    return file, out
+
+
+def declared_class(decls: dict[str, Declaration], name: str) -> tuple[SourceFile, ast.ClassDef] | None:
+    found = decls.get(name)
+    if found is not None and isinstance(found[1], ast.ClassDef):
+        return found[0], found[1]
+    return None
+
+
+def declared_interfaces(decls: dict[str, Declaration]) -> list[tuple[SourceFile, ast.ClassDef]]:
+    return [(f, n) for f, n in decls.values() if isinstance(n, ast.ClassDef) and n.name.endswith("Interface")]
 
 
 def class_index(project: Project, *prefixes: str) -> dict[str, list[tuple[SourceFile, ast.ClassDef]]]:
@@ -69,15 +137,15 @@ def is_enum(cls: ast.ClassDef) -> bool:
     return any((last(b) or "").endswith("Enum") for b in base_names(cls))
 
 
-def capabilities(project: Project) -> list[tuple[SourceFile, str, list[ast.ClassDef]]]:
-    """Each capability package of infra: its file, its name, and the `*Interface` classes it declares."""
+def capabilities(project: Project) -> list[tuple[SourceFile, str, list[tuple[SourceFile, ast.ClassDef]]]]:
+    """Each capability package of infra: its `__init__` file, its name, and the `*Interface` classes it declares."""
     infra = project.sub("infra")
     out = []
     for f in project.modules_under(infra):
         parts = f.module[len(infra) + 1 :].split(".") if f.module != infra else []
         if f.is_package and len(parts) == 1 and parts[0] != "impl":
-            _, found = package_classes(project, f.module)
-            interfaces = [c for c in found if c.name.endswith("Interface")]
+            _, decls = package_declarations(project, f.module)
+            interfaces = declared_interfaces(decls)
             if interfaces:
                 out.append((f, parts[0], interfaces))
     return out
@@ -105,10 +173,8 @@ CLIENTS = [
     "valkey.asyncio.Valkey",
     "Valkey",
     "Valkey.from_url",
-    "httpx.AsyncClient",
-    "httpx.Client",
-    "aiohttp.ClientSession",
 ]
+"""The constructors of cache, bucket, topic, queue, and secret clients. An HTTP client is none of them."""
 
 
 @rule(
@@ -117,9 +183,15 @@ CLIENTS = [
     summary="No module-level infra client or impl, and no manager constructs an infra impl.",
 )
 def no_ambient_infra(project: Project) -> Iterator[Violation]:
-    """Reads `clients` under `[tool.arch-check.options.ASY-01]`: the dotted constructors of infra clients, as called."""
+    """Reads `clients` under `[tool.arch-check.options.ASY-01]`: the dotted constructors of infra clients, as called.
+
+    A module-level `*Impl()` counts only when the name comes from `<pkg>.infra`: `CacheMemoryImpl()` imported
+    from `acme.infra.cache.memory` is an infra handle, an `OrdersManagerImpl()` is not.
+    """
     clients = project.option("ASY-01", "clients", CLIENTS, {"clients"})
+    infra = project.sub("infra")
     for file, tree in project.trees():
+        from_infra = {n for imp in project.imports(file) if is_under(imp.module, infra) for n in imp.names}
         for node in tree.body:
             value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
             if isinstance(value, ast.Await):
@@ -127,7 +199,8 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
             if not isinstance(value, ast.Call):
                 continue
             called = dotted(value.func) or ""
-            if called in clients or (last(called) or "").endswith("Impl"):
+            built = (last(called) or "").endswith("Impl") and (called.split(".")[0] in from_infra or is_under(called, infra))
+            if called in clients or built:
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
     infra = project.sub("infra")
     for file in manager_impl_files(project):
@@ -147,6 +220,13 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
 BOOT = ["*.container", "*.settings", "*.main"]
 
 
+def impl_classes(project: Project) -> set[str]:
+    """The names of the infra classes that implement a capability interface: subclasses of one, not interfaces."""
+    index = class_index(project, project.sub("infra"))
+    names = {i.name for _, _, interfaces in capabilities(project) for _, i in interfaces}
+    return {n for n in index if not n.endswith("Interface") and ancestors(n, index) & names}
+
+
 @rule(
     "ASY-02",
     coverage="partial",
@@ -154,38 +234,55 @@ BOOT = ["*.container", "*.settings", "*.main"]
 )
 def one_infra_root(project: Project) -> Iterator[Violation]:
     """Reads `boot` under `[tool.arch-check.options.ASY-02]`: module globs allowed to import an infra impl
-    (`*.container`, `*.settings`, `*.main`)."""
+    (`*.container`, `*.settings`, `*.main`).
+
+    An infra impl is a module under `<pkg>.infra.impl`, or a class that subclasses a capability interface (and
+    a module that defines one). `InfraInterface` is found wherever under `<pkg>.infra` it is declared.
+    """
     boot = project.option("ASY-02", "boot", BOOT, {"boot"})
     infra = project.sub("infra")
-    root, found = package_classes(project, f"{infra}.root")
-    iface = next((c for c in found if c.name == "InfraInterface"), None)
+    caps = capabilities(project)
+    root = next(iter(class_index(project, infra).get("InfraInterface", [])), None)
     if root is not None:
-        if iface is None:
-            yield Violation.at(root.rel, None, f"{infra}.root declares no InfraInterface")
-        else:
-            declared = {m.name: m for m in methods(iface)}
-            returned = {r for m in declared.values() for r in names_in(m.returns)}
-            for _, cap, interfaces in capabilities(project):
-                for i in interfaces:
-                    if i.name not in returned:
-                        yield Violation.at(root.rel, iface, f"InfraInterface has no getter returning {i.name} ({cap})")
-            for name in ("start", "close"):
-                if name not in declared:
-                    yield Violation.at(root.rel, iface, f"InfraInterface declares no {name}()")
-    caps = {cap for _, cap, _ in capabilities(project)}
+        file, iface = root
+        declared = {m.name: m for m in methods(iface)}
+        returned = {r for m in declared.values() for r in names_in(m.returns)}
+        for _, cap, interfaces in caps:
+            for _, i in interfaces:
+                if i.name not in returned:
+                    yield Violation.at(file.rel, iface, f"InfraInterface has no getter returning {i.name} ({cap})")
+        for name in ("start", "close"):
+            if name not in declared:
+                yield Violation.at(file.rel, iface, f"InfraInterface declares no {name}()")
+    impls = impl_classes(project)
+    impl_root = f"{infra}.impl"
+
+    def defines_impl(module: str) -> bool:
+        target = project.module(module)
+        tree = project.tree(target) if target else None
+        return tree is not None and any(isinstance(n, ast.ClassDef) and n.name in impls for n in tree.body)
+
+    def picks_impl(imp: Import) -> str | None:
+        if not is_under(imp.module, infra):
+            return None
+        if is_under(imp.module, impl_root) or (not imp.names and defines_impl(imp.module)):
+            return imp.module
+        for n in imp.names:
+            sub = f"{imp.module}.{n}"
+            if project.module(sub) is not None:
+                if is_under(sub, impl_root) or defines_impl(sub):
+                    return sub
+            elif n in impls:
+                return imp.module
+        return None
+
     for file in project.python_files:
         if is_under(file.module, infra) or module_globs(file.module, boot):
             continue
         for imp in project.imports(file):
-            for t in imp.targets():
-                target = project.module(t)
-                if target is None or not is_under(t, infra):
-                    continue
-                parts = t[len(infra) + 1 :].split(".")
-                impl = parts[0] == "impl" or (parts[0] in caps and len(parts) > 1)
-                if impl:
-                    yield Violation.at(file.rel, imp.node, f"{file.module} imports {t}; only boot modules pick an infra impl")
-                    break
+            t = picks_impl(imp)
+            if t is not None:
+                yield Violation.at(file.rel, imp.node, f"{file.module} imports {t}; only boot modules pick an infra impl")
 
 
 # --- ASY-03
@@ -194,18 +291,12 @@ def one_infra_root(project: Project) -> Iterator[Violation]:
 @rule(
     "ASY-03",
     coverage="partial",
-    summary="Every capability interface declares describe() abstract, and every infra impl defines or inherits one.",
+    summary="Every infra impl defines or inherits describe().",
 )
 def impls_describe_themselves(project: Project) -> Iterator[Violation]:
     infra = project.sub("infra")
     index = class_index(project, infra)
-    iface_names: set[str] = set()
-    for file, _, interfaces in capabilities(project):
-        for i in interfaces:
-            iface_names.add(i.name)
-            describe = next((m for m in methods(i) if m.name == "describe"), None)
-            if describe is None or "abstractmethod" not in {last(dotted(d)) for d in describe.decorator_list}:
-                yield Violation.at(file.rel, i, f"{i.name} declares no abstract describe()")
+    iface_names = {i.name for _, _, interfaces in capabilities(project) for _, i in interfaces}
 
     def defines(name: str, seen: set[str]) -> bool:
         for _, cls in index.get(name, []):
@@ -235,18 +326,17 @@ def impls_describe_themselves(project: Project) -> Iterator[Violation]:
 @rule(
     "ASY-04",
     coverage="partial",
-    summary="CacheScope is an enum; every get_cache call outside infra passes a CacheScope member, and no manager calls it.",
+    summary="CacheScope is an enum; no get_cache call outside infra passes a free string, and no manager calls it.",
 )
 def caches_are_scoped(project: Project) -> Iterator[Violation]:
     infra = project.sub("infra")
-    file, found = package_classes(project, f"{infra}.cache")
-    scope = next((c for c in found if c.name == "CacheScope"), None)
-    if not any(c.name.endswith("Interface") for c in found):
-        file = None
-    if file is not None and scope is None:
-        yield Violation.at(file.rel, None, f"{infra}.cache declares no CacheScope")
-    elif file is not None and scope is not None and not is_enum(scope):
-        yield Violation.at(file.rel, scope, "CacheScope is not an Enum; a scope is a fixed member")
+    file, decls = package_declarations(project, f"{infra}.cache")
+    if file is not None and declared_interfaces(decls):
+        scope = declared_class(decls, "CacheScope")
+        if scope is None:
+            yield Violation.at(file.rel, None, f"{infra}.cache declares no CacheScope")
+        elif not is_enum(scope[1]):
+            yield Violation.at(scope[0].rel, scope[1], "CacheScope is not an Enum; a scope is a fixed member")
     managers = {f.rel for f in manager_impl_files(project)}
     for f, tree in project.trees():
         if is_under(f.module, infra):
@@ -258,8 +348,8 @@ def caches_are_scoped(project: Project) -> Iterator[Violation]:
                 yield Violation.at(f.rel, node, "a manager calls get_cache; it receives its cache already scoped")
                 continue
             arg = node.args[0] if node.args else kwarg(node, "scope")
-            if not (isinstance(arg, ast.Attribute) and last(dotted(arg.value)) == "CacheScope"):
-                yield Violation.at(f.rel, node, "get_cache takes a CacheScope member, never a string or a variable")
+            if (isinstance(arg, ast.Constant) and isinstance(arg.value, str)) or isinstance(arg, ast.JoinedStr):
+                yield Violation.at(f.rel, node, "get_cache takes a CacheScope member, never a free string")
 
 
 # --- ASY-07
@@ -314,6 +404,10 @@ def storage_never_caches(project: Project) -> Iterator[Violation]:
 
 # --- ASY-08
 
+CLOUD_SDKS = ("boto3", "aioboto3", "botocore", "aiobotocore", "google.cloud", "azure", "minio")
+"""The SDKs of a cloud object store: an impl whose module imports one is not the local impl."""
+CLOUD_NAMES = ("S3", "Gcs", "GCS", "Azure", "Aws", "AWS", "Cloud", "Minio")
+
 
 @rule(
     "ASY-08",
@@ -321,25 +415,36 @@ def storage_never_caches(project: Project) -> Iterator[Violation]:
     summary="Buckets is an enum, every bucket parameter is typed with it, none is a string literal, and a local impl exists.",
 )
 def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
+    """A local impl is any subclass of the bucket interface that neither imports a cloud SDK nor names a cloud
+    store: `BucketsLocalImpl` and `BucketsFilesystemImpl` both count, `BucketsS3Impl` does not."""
     infra = project.sub("infra")
-    file, found = package_classes(project, f"{infra}.buckets")
+    file, decls = package_declarations(project, f"{infra}.buckets")
     if file is None:
         return
-    enum = next((c for c in found if c.name == "Buckets"), None)
-    if enum is None or not is_enum(enum):
-        yield Violation.at(file.rel, enum, "Buckets is not an Enum in the buckets package; a bucket is a fixed member")
-    interfaces = [c for c in found if c.name.endswith("Interface")]
-    for i in interfaces:
+    enum = declared_class(decls, "Buckets")
+    if enum is None or not is_enum(enum[1]):
+        where, bad = enum if enum is not None else (file, None)
+        yield Violation.at(where.rel, bad, "Buckets is not an Enum in the buckets package; a bucket is a fixed member")
+    interfaces = declared_interfaces(decls)
+    for where, i in interfaces:
         for fn in methods(i):
             for p in parameters(fn):
                 if p.name == "bucket" and last(p.annotation) != "Buckets":
-                    yield Violation.at(file.rel, fn, f"{i.name}.{fn.name} takes bucket as {p.annotation}; it takes Buckets")
+                    yield Violation.at(where.rel, fn, f"{i.name}.{fn.name} takes bucket as {p.annotation}; it takes Buckets")
     index = class_index(project, infra)
-    names = {i.name for i in interfaces}
-    local = [n for n in index if (ancestors(n, index) & names) and ("Local" in n or "Memory" in n)]
-    if interfaces and not local:
-        yield Violation.at(file.rel, interfaces[0], f"no local impl subclasses {interfaces[0].name}; tests run without the cloud")
+    names = {i.name for _, i in interfaces}
+
+    def local(name: str) -> bool:
+        if name.endswith("Interface") or any(c in name for c in CLOUD_NAMES):
+            return False
+        return any(not any(is_under(imp.module, sdk) for imp in project.imports(f) for sdk in CLOUD_SDKS) for f, _ in index[name])
+
+    if interfaces and not any(ancestors(n, index) & names and local(n) for n in index):
+        where, first = interfaces[0]
+        yield Violation.at(where.rel, first, f"no local impl subclasses {first.name}; tests run without the cloud")
     for f, tree in project.trees():
+        if is_under(f.module, infra):
+            continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 value = kwarg(node, "bucket")
@@ -352,65 +457,65 @@ def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
 
 @rule(
     "ASY-09",
-    coverage="full",
+    coverage="partial",
     summary="Topics is an enum mapped to TopicPayload subclasses; the payload base, publish and subscribe have the fixed shapes.",
 )
 def topics_are_fixed(project: Project) -> Iterator[Violation]:
     infra = project.sub("infra")
-    file, found = package_classes(project, f"{infra}.topics")
+    file, decls = package_declarations(project, f"{infra}.topics")
     if file is None:
         return
-    tree = project.tree(file)
-    assert tree is not None
-    by_name = {c.name: c for c in found}
-    topics = by_name.get("Topics")
-    if topics is None or not is_enum(topics):
-        yield Violation.at(file.rel, topics, "Topics is not an Enum; a topic is a fixed member")
-    base = by_name.get("TopicPayload")
-    if base is None:
+    topics = declared_class(decls, "Topics")
+    if topics is None or not is_enum(topics[1]):
+        where, bad = topics if topics is not None else (file, None)
+        yield Violation.at(where.rel, bad, "Topics is not an Enum; a topic is a fixed member")
+    found = declared_class(decls, "TopicPayload")
+    if found is None:
         yield Violation.at(file.rel, None, "the topics package declares no TopicPayload")
     else:
+        where, base = found
         if [last(b) for b in base_names(base)] != ["BaseModel"]:
-            yield Violation.at(file.rel, base, "TopicPayload extends pydantic's BaseModel directly, never the OM root")
+            yield Violation.at(where.rel, base, "TopicPayload extends pydantic's BaseModel directly, never the OM root")
         config = class_value(base, "model_config")
         settings = {k.arg: k.value for k in config.keywords if k.arg} if isinstance(config, ast.Call) else {}
         if not is_true(settings.get("frozen")):
-            yield Violation.at(file.rel, base, "TopicPayload is not frozen=True")
+            yield Violation.at(where.rel, base, "TopicPayload is not frozen=True")
         extra = settings.get("extra")
         if not (isinstance(extra, ast.Constant) and extra.value == "ignore"):
             yield Violation.at(
-                file.rel, base, 'TopicPayload does not set extra="ignore"; an old consumer must read a new payload'
+                where.rel, base, 'TopicPayload does not set extra="ignore"; an old consumer must read a new payload'
             )
         fields = own_columns(base)
         for name in ("idempotency_key", "produced_at"):
             if name not in fields:
-                yield Violation.at(file.rel, base, f"TopicPayload declares no {name}")
-    payloads = module_value(tree, "TOPIC_PAYLOADS")
+                yield Violation.at(where.rel, base, f"TopicPayload declares no {name}")
+    where, payloads = decls.get("TOPIC_PAYLOADS", (file, None))
     index = class_index(project)
     if not isinstance(payloads, ast.Dict):
-        yield Violation.at(file.rel, payloads, "TOPIC_PAYLOADS is not a dict literal in the topics package")
+        yield Violation.at(where.rel, payloads, "TOPIC_PAYLOADS is not a dict literal in the topics package")
     else:
         for k, v in zip(payloads.keys, payloads.values, strict=True):
             if not (isinstance(k, ast.Attribute) and last(dotted(k.value)) == "Topics"):
-                yield Violation.at(file.rel, k, "a TOPIC_PAYLOADS key is not a Topics member")
+                yield Violation.at(where.rel, k, "a TOPIC_PAYLOADS key is not a Topics member")
             name = last(dotted(v)) or ""
             if name != "TopicPayload" and "TopicPayload" not in ancestors(name, index):
-                yield Violation.at(file.rel, v, f"{name} does not extend TopicPayload")
-    iface = next(
-        (c for c in found if c.name.endswith("Interface") and {"publish", "subscribe"} & {m.name for m in methods(c)}), None
-    )
+                yield Violation.at(where.rel, v, f"{name} does not extend TopicPayload")
+    iface = next(((f, c) for f, c in declared_interfaces(decls) if {"publish", "subscribe"} & {m.name for m in methods(c)}), None)
     if iface is not None:
-        by_method = {m.name: m for m in methods(iface)}
+        where, cls = iface
+        by_method = {m.name: m for m in methods(cls)}
         publish = by_method.get("publish")
         if publish is not None and not (isinstance(publish.returns, ast.Constant) and publish.returns.value is None):
-            yield Violation.at(file.rel, publish, "publish returns something; it returns None")
+            yield Violation.at(where.rel, publish, "publish returns something; it returns None")
         subscribe = by_method.get("subscribe")
         if subscribe is not None:
             if "consumer" not in {p.name for p in parameters(subscribe)}:
-                yield Violation.at(file.rel, subscribe, "subscribe takes no consumer name")
+                yield Violation.at(where.rel, subscribe, "subscribe takes no consumer name")
             if "Callable" not in names_in(subscribe.returns):
-                yield Violation.at(file.rel, subscribe, "subscribe returns no unsubscribe callable")
+                yield Violation.at(where.rel, subscribe, "subscribe returns no unsubscribe callable")
     for f, t in project.trees():
+        if is_under(f.module, infra):
+            continue
         for node in ast.walk(t):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "publish":
                 topic = node.args[0] if node.args else kwarg(node, "topic")
@@ -424,8 +529,6 @@ SPAWNS = frozenset(
     {
         "asyncio.create_task",
         "asyncio.ensure_future",
-        "asyncio.TaskGroup",
-        "anyio.create_task_group",
         "threading.Thread",
         "threading.Timer",
         "fastapi.BackgroundTasks",
@@ -433,9 +536,11 @@ SPAWNS = frozenset(
         "starlette.background.BackgroundTask",
     }
 )
-"""What starts work in the background, as the defining module spells it."""
+"""What starts work in the background, as the defining module spells it. A task group is not here: it
+cannot outlive the `async with` that holds it."""
 LOOP_CALLS = frozenset({"call_later", "call_at"})
-SCHEDULERS = ("apscheduler", "schedule", "celery", "rq", "rq_scheduler", "aiocron", "crontab")
+SCHEDULERS = ("apscheduler", "schedule", "rq_scheduler", "aiocron", "crontab")
+"""Scheduler libraries. A job queue such as celery or rq is not one."""
 EDGE = ["*.realtime", "*.realtime.*"]
 
 
@@ -473,7 +578,11 @@ def resolved(node: ast.AST, bound: dict[str, str]) -> str | None:
 )
 def services_spawn_nothing(project: Project) -> Iterator[Violation]:
     """Reads `edge` under `[tool.arch-check.options.ASY-15]`: module globs of the socket edge, where a
-    task that forwards to a held socket may run (`*.realtime`, `*.realtime.*`)."""
+    task that forwards to a held socket may run (`*.realtime`, `*.realtime.*`).
+
+    The guideline names no module for the socket edge, so the default is a guess: a project whose edge
+    lives elsewhere names it here.
+    """
     edge = project.option("ASY-15", "edge", EDGE, {"edge"})
     for file in project.modules_under(project.sub("services")):
         if module_globs(file.module, edge):
@@ -528,31 +637,36 @@ def work_item_shape(project: Project) -> Iterator[Violation]:
     root = f"{project.sub('om')}.{ns}"
     if not project.modules_under(root):
         return
-    types = f"{root}.types"
     found = False
     payloads = False
-    for file, tree in project.trees(types):
+    for file, tree in project.trees(root):
         payloads = payloads or isinstance(module_value(tree, "WORK_PAYLOADS"), ast.Dict)
         for cls in classes(tree):
-            if cls.name != item:
+            if cls.name != item or has_tablename(cls):
                 continue
             found = True
             fields = own_columns(cls)
             for name in WORK_FIELDS:
                 if name not in fields:
                     yield Violation.at(file.rel, cls, f"{item} declares no {name}")
-    first = next(iter(project.modules_under(types)), None) or project.modules_under(root)[0]
+    first = project.modules_under(root)[0]
     if not found:
-        yield Violation.at(first.rel, None, f"{types} declares no {item}")
+        yield Violation.at(first.rel, None, f"{root} declares no {item}")
     if not payloads:
-        yield Violation.at(first.rel, None, f"{types} declares no WORK_PAYLOADS dict literal")
+        yield Violation.at(first.rel, None, f"{root} declares no WORK_PAYLOADS dict literal")
     for t in tables(project, f"{root}.storage.tables"):
         if "idempotency_key" not in own_columns(t.node):
             continue
         unique = any(string_args(i) == ["idempotency_key"] and is_true(kwarg(i, "unique")) for i in index_calls(t.node))
+        constraint = any(
+            isinstance(a, ast.Call)
+            and call_name(a) == "UniqueConstraint"
+            and [x.value for x in a.args if isinstance(x, ast.Constant)] == ["idempotency_key"]
+            for a in table_args(t.node)
+        )
         decl = own_columns(t.node)["idempotency_key"]
         call = column_call(decl) if isinstance(decl, ast.stmt) else None
-        if not unique and not (call is not None and is_true(kwarg(call, "unique"))):
+        if not (unique or constraint or (call is not None and is_true(kwarg(call, "unique")))):
             yield Violation.at(t.file.rel, t.node, f"{t.node.name} has no unique index on idempotency_key")
 
 
@@ -592,38 +706,63 @@ def no_scheduler(project: Project) -> Iterator[Violation]:
 
 READS = frozenset({"read_text", "read_bytes"})
 PRIVATE = frozenset({"S_IRWXG", "S_IRWXO", "S_IRGRP", "S_IROTH"})
+OWNER_ONLY = frozenset({0o600, 0o400})
+"""The modes an owner-only secrets file has, compared for equality."""
+WRITE_FLAGS = frozenset({"O_WRONLY", "O_RDWR", "O_CREAT", "O_APPEND", "O_TRUNC"})
+
+
+def reads_a_file(call: ast.Call) -> bool:
+    """A call that opens a file to read it: `read_text`, `read_bytes`, or an `open` in a read mode."""
+    if isinstance(call.func, ast.Attribute) and call.func.attr in READS:
+        return True
+    name = dotted(call.func) or ""
+    if name in ("open", "io.open"):
+        mode = call.args[1] if len(call.args) > 1 else kwarg(call, "mode")
+        if mode is None:
+            return True
+        return isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not set("wax+") & set(mode.value)
+    if name == "os.open":
+        flags = call.args[1] if len(call.args) > 1 else kwarg(call, "flags")
+        return flags is None or not WRITE_FLAGS & {last(dotted(n)) for n in ast.walk(flags)}
+    return False
+
+
+def checks_mode(nodes: list[ast.AST]) -> bool:
+    """Whether nodes stat a file and test its mode against a group-or-other mask or an owner-only mode."""
+    stats = any(isinstance(n, ast.Call) and (last(dotted(n.func)) or "") in ("stat", "lstat", "fstat") for n in nodes)
+
+    def number(n: ast.AST, values: frozenset[int]) -> bool:
+        return isinstance(n, ast.Constant) and isinstance(n.value, int) and not isinstance(n.value, bool) and n.value in values
+
+    mask = any(
+        number(n, frozenset({0o077}))
+        or (isinstance(n, ast.Name | ast.Attribute) and (last(dotted(n)) or "") in PRIVATE)
+        or (isinstance(n, ast.Compare) and any(number(c, OWNER_ONLY) for c in [n.left, *n.comparators]))
+        for n in nodes
+    )
+    return stats and mask
 
 
 @rule(
     "ASY-28",
     coverage="partial",
-    summary="Every file the secrets package reads is checked owner-only (mode & 0o077) first, in the same function.",
+    summary="Every file the secrets package reads is checked owner-only first, in the same function or a helper it calls.",
 )
 def secrets_files_are_private(project: Project) -> Iterator[Violation]:
+    """The check is a `stat` and a mode test (`mode & 0o077`, `S_IRWXG`, or `== 0o600`) before the first read,
+    in the reading function itself or in a function of the same module it calls first."""
     for file, tree in project.trees(f"{project.sub('infra')}.secrets"):
-        for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+        fns = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+        helpers = {fn.name for fn in fns if checks_mode([n for s in fn.body for n in ast.walk(s)])}
+        for fn in fns:
             body = [n for s in fn.body for n in ast.walk(s)]
-            reads = [
-                n
-                for n in body
-                if isinstance(n, ast.Call)
-                and (
-                    (isinstance(n.func, ast.Attribute) and n.func.attr in READS)
-                    or (dotted(n.func) or "") in ("open", "io.open", "os.open")
-                )
-            ]
+            reads = [n for n in body if isinstance(n, ast.Call) and reads_a_file(n)]
             if not reads:
                 continue
-            stats = [
-                n.lineno for n in body if isinstance(n, ast.Call) and (last(dotted(n.func)) or "") in ("stat", "lstat", "fstat")
-            ]
-            mask = any(
-                (isinstance(n, ast.Constant) and n.value == 0o077 and not isinstance(n.value, bool))
-                or (isinstance(n, ast.Name | ast.Attribute) and (last(dotted(n)) or "") in PRIVATE)
-                for n in body
-            )
             first = min(r.lineno for r in reads)
-            if not (mask and stats and min(stats) <= first):
+            before = [n for n in body if getattr(n, "lineno", first + 1) <= first]
+            helped = any(isinstance(n, ast.Call) and last(dotted(n.func)) in helpers and n.lineno <= first for n in body)
+            if not (checks_mode(before) or helped):
                 yield Violation.at(file.rel, reads[0], f"{fn.name} reads a file with no owner-only mode check before it")
 
 

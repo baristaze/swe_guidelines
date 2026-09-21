@@ -26,7 +26,7 @@ CONTAINER = f"{API}/container.py"
 WORK = f"{OM}/work/types/work_item.py"
 WORK_TABLE = f"{OM}/work/storage/tables/work_items.py"
 OUTBOX = f"{OM}/outbox/types/row.py"
-MANAGER = f"{OM}/tasks/impl.py"
+MANAGER = f"{OM}/orders/impl.py"
 
 GOOD: dict[str, str] = {
     ROOT: """\
@@ -198,9 +198,9 @@ async def serve(ws, loop):
     loop.call_later(5, ws.close)
     return drainer
 """,
-    f"{API}/routers/tasks.py": """\
-async def create_task(ctx, tasks, body):
-    return await tasks.create_task(ctx, body)
+    f"{API}/routers/orders.py": """\
+async def create_order(ctx, orders, body):
+    return await orders.create_order(ctx, body)
 """,
     WORK: """\
 from enum import Enum
@@ -299,12 +299,15 @@ def test_the_base_tree_passes(tmp_path, rule):
 
 def test_asy_01_a_module_level_client_and_a_manager_building_an_impl(tmp_path):
     files = {
-        f"{API}/clients.py": "import boto3\n\nS3 = boto3.client('s3')\nCACHE = CacheMemoryImpl()\n",
+        f"{API}/clients.py": (
+            "import boto3\nfrom acme.infra.cache.memory import CacheMemoryImpl\n\n"
+            "S3 = boto3.client('s3')\nCACHE = CacheMemoryImpl()\n"
+        ),
         MANAGER: "from acme.infra.cache.memory import CacheMemoryImpl\n\n\ndef f():\n    return CacheMemoryImpl()\n",
     }
     code, report = run(tmp_path, "ASY-01", files)
     assert code == 1
-    assert [(p, line) for _, p, line in rules_found(report)] == [(MANAGER, 5), (f"{API}/clients.py", 3), (f"{API}/clients.py", 4)]
+    assert [(p, line) for _, p, line in rules_found(report)] == [(MANAGER, 5), (f"{API}/clients.py", 4), (f"{API}/clients.py", 5)]
 
 
 def test_asy_02_a_missing_getter_and_an_impl_imported_outside_boot(tmp_path):
@@ -332,10 +335,7 @@ def test_asy_03_an_impl_without_describe(tmp_path):
     files.update(edit(f"{INFRA}/secrets/__init__.py", "    @abstractmethod\n    def describe(self) -> str: ...\n", ""))
     code, report = run(tmp_path, "ASY-03", files)
     assert code == 1
-    assert messages(report) == [
-        "SecretsInterface declares no abstract describe()",
-        "TopicsMemoryImpl has no describe(); the boot inventory line reads it",
-    ]
+    assert messages(report) == ["TopicsMemoryImpl has no describe(); the boot inventory line reads it"]
 
 
 def test_asy_04_a_string_scope_and_a_manager_asking_for_a_cache(tmp_path):
@@ -345,7 +345,7 @@ def test_asy_04_a_string_scope_and_a_manager_asking_for_a_cache(tmp_path):
     assert code == 1
     assert messages(report) == [
         "a manager calls get_cache; it receives its cache already scoped",
-        "get_cache takes a CacheScope member, never a string or a variable",
+        "get_cache takes a CacheScope member, never a free string",
     ]
 
 
@@ -357,9 +357,9 @@ def test_asy_04_a_scope_that_is_not_an_enum(tmp_path):
 
 def test_asy_07_storage_reaching_a_cache(tmp_path):
     files = {
-        f"{OM}/tasks/storage/impl/postgres.py": "from acme.infra.cache import CacheInterface\n",
-        f"{OM}/tasks/caching.py": (
-            "class CachedTasks(TasksStorageInterface):\n"
+        f"{OM}/orders/storage/impl/postgres.py": "from acme.infra.cache import CacheInterface\n",
+        f"{OM}/orders/caching.py": (
+            "class CachedOrders(OrdersStorageInterface):\n"
             "    def __init__(self, cache: CacheInterface):\n"
             "        self._cache = cache\n"
         ),
@@ -382,6 +382,7 @@ def test_asy_08_a_string_bucket_and_an_untyped_parameter(tmp_path):
 
 def test_asy_08_no_local_impl(tmp_path):
     files = edit(f"{INFRA}/buckets/local.py", "BucketsLocalImpl", "BucketsS3Impl")
+    files[f"{INFRA}/buckets/local.py"] = "import boto3\n\n\n" + files[f"{INFRA}/buckets/local.py"]
     code, report = run(tmp_path, "ASY-08", files)
     assert code == 1
     assert messages(report) == ["no local impl subclasses BucketsInterface; tests run without the cloud"]
@@ -449,7 +450,7 @@ def test_asy_16_a_work_item_without_a_lease_and_a_table_without_the_unique_key(t
     assert messages(report) == [
         "WorkItem declares no lease_expires_at",
         "WorkItems has no unique index on idempotency_key",
-        "acme.om.work.types declares no WORK_PAYLOADS dict literal",
+        "acme.om.work declares no WORK_PAYLOADS dict literal",
     ]
 
 
@@ -459,7 +460,7 @@ def test_asy_19_a_scheduled_rule_and_a_scheduler_library(tmp_path):
             'resource "aws_cloudwatch_event_rule" "sweep" {\n  schedule_expression = "rate(5 minutes)"\n}\n'
         ),
         "deployment/terraform/cron.tf": 'resource "aws_scheduler_schedule" "nightly" {\n  name = "x"\n}\n',
-        f"{OM}/tasks/sweep.py": "import celery\n",
+        f"{OM}/orders/sweep.py": "import rq_scheduler\n",
     }
     code, report = run(tmp_path, "ASY-19", files)
     assert code == 1
@@ -486,3 +487,169 @@ def test_asy_29_a_trace_id_and_a_missing_traceparent(tmp_path):
     code, report = run(tmp_path, "ASY-29", files)
     assert code == 1
     assert messages(report) == ["OutboxRow carries trace_id; it carries the traceparent", "OutboxRow declares no traceparent"]
+
+
+def test_asy_01_an_http_client_and_an_impl_from_outside_infra_pass(tmp_path):
+    files = {
+        f"{API}/clients.py": (
+            "import httpx\nfrom acme.services.api.impl.orders import OrdersServiceImpl\n\n"
+            "HTTP = httpx.AsyncClient()\nORDERS = OrdersServiceImpl()\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-01", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_02_the_root_in_infra_impl_and_a_helper_module(tmp_path):
+    files = {ROOT: None, f"{INFRA}/impl/root.py": GOOD[ROOT]}
+    files[f"{INFRA}/topics/dispatch.py"] = "class LocalSubscribers:\n    pass\n"
+    files[f"{API}/routers/wake.py"] = "from acme.infra.topics.dispatch import LocalSubscribers\n"
+    code, report = run(tmp_path, "ASY-02", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[f"{INFRA}/impl/root.py"] = GOOD[ROOT].replace("    @abstractmethod\n    async def start(self) -> None: ...\n\n", "")
+    code, report = run(tmp_path, "ASY-02", files)
+    assert code == 1
+    assert messages(report) == ["InfraInterface declares no start()"]
+
+
+def test_asy_03_an_interface_without_describe_passes(tmp_path):
+    files = edit(f"{INFRA}/secrets/__init__.py", "    @abstractmethod\n    def describe(self) -> str: ...\n", "")
+    code, report = run(tmp_path, "ASY-03", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_04_a_scope_from_a_loop_passes_and_an_f_string_fails(tmp_path):
+    files = edit(
+        CONTAINER,
+        "    return infra.get_cache(CacheScope.RATE_LIMIT)\n",
+        "    return [infra.get_cache(s) for s in CacheScope]\n",
+    )
+    code, report = run(tmp_path, "ASY-04", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[CONTAINER] = files[CONTAINER].replace("infra.get_cache(s)", 'infra.get_cache(f"{s}")')
+    code, report = run(tmp_path, "ASY-04", files)
+    assert code == 1
+    assert messages(report) == ["get_cache takes a CacheScope member, never a free string"]
+
+
+def test_asy_04_a_scope_declared_in_a_submodule_and_re_exported(tmp_path):
+    scope = 'from enum import Enum\n\n\nclass CacheScope(str, Enum):\n    RATE_LIMIT = "rate_limit"\n'
+    init = GOOD[CACHE].replace('class CacheScope(str, Enum):\n    RATE_LIMIT = "rate_limit"\n\n\n', "")
+    files = {CACHE: "from .scopes import CacheScope\n" + init, f"{INFRA}/cache/scopes.py": scope}
+    code, report = run(tmp_path, "ASY-04", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[f"{INFRA}/cache/scopes.py"] = scope.replace("(str, Enum)", "")
+    code, report = run(tmp_path, "ASY-04", files)
+    assert code == 1
+    assert rules_found(report) == [("ASY-04", f"{INFRA}/cache/scopes.py", 4)]
+
+
+def test_asy_08_a_filesystem_impl_and_a_string_bucket_inside_infra_pass(tmp_path):
+    files = edit(f"{INFRA}/buckets/local.py", "BucketsLocalImpl", "FilesystemBucketsImpl")
+    files[f"{INFRA}/buckets/s3.py"] = (
+        "import boto3\n\n\nclass BucketsS3Impl(BucketsInterface):\n"
+        '    def describe(self) -> str:\n        return self._client.head(bucket="exports")\n'
+    )
+    code, report = run(tmp_path, "ASY-08", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_08_the_enum_declared_in_a_submodule(tmp_path):
+    enum = 'from enum import Enum\n\n\nclass Buckets(str, Enum):\n    EXPORTS = "exports"\n'
+    init = GOOD[BUCKETS].replace('class Buckets(str, Enum):\n    EXPORTS = "exports"\n\n\n', "")
+    files = {BUCKETS: "from acme.infra.buckets.names import Buckets\n" + init, f"{INFRA}/buckets/names.py": enum}
+    code, report = run(tmp_path, "ASY-08", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[f"{INFRA}/buckets/names.py"] = enum.replace("(str, Enum)", "")
+    code, report = run(tmp_path, "ASY-08", files)
+    assert code == 1
+    assert messages(report) == ["Buckets is not an Enum in the buckets package; a bucket is a fixed member"]
+
+
+def test_asy_09_the_payloads_in_a_submodule_and_a_string_publish_inside_infra(tmp_path):
+    head, _, tail = GOOD[TOPICS].partition("class TopicsInterface(ABC):")
+    files = {
+        f"{INFRA}/topics/payloads.py": head,
+        TOPICS: "from abc import ABC, abstractmethod\nfrom collections.abc import Callable\n\nfrom .payloads import *\n\n\n"
+        "class TopicsInterface(ABC):" + tail,
+        f"{INFRA}/topics/valkey.py": 'async def relay(bus, p):\n    await bus.publish("work_available", p)\n',
+    }
+    code, report = run(tmp_path, "ASY-09", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[f"{INFRA}/topics/payloads.py"] = head.replace("    produced_at: datetime\n", "")
+    code, report = run(tmp_path, "ASY-09", files)
+    assert code == 1
+    assert rules_found(report) == [("ASY-09", f"{INFRA}/topics/payloads.py", 8)]
+
+
+def test_asy_15_a_task_group_passes(tmp_path):
+    files = {
+        f"{API}/routers/export.py": (
+            "import asyncio\n\n\nasync def f(a, b):\n    async with asyncio.TaskGroup() as g:\n"
+            "        g.create_task(a())\n        g.create_task(b())\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-15", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_16_the_payload_map_elsewhere_and_a_unique_constraint(tmp_path):
+    files = edit(WORK, "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n", "")
+    files[f"{OM}/work/kinds.py"] = "WORK_PAYLOADS = {WorkKind.NOOP: NoopPayload}\n"
+    files.update(
+        edit(
+            WORK_TABLE,
+            'Index("uq_work_items_idempotency_key", "idempotency_key", unique=True)',
+            'UniqueConstraint("idempotency_key")',
+        )
+    )
+    code, report = run(tmp_path, "ASY-16", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_19_a_job_queue_is_not_a_scheduler(tmp_path):
+    code, report = run(tmp_path, "ASY-19", {f"{OM}/orders/jobs.py": "import celery\nimport rq\n"})
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_asy_28_a_helper_an_equality_and_a_write(tmp_path):
+    files = {
+        SECRETS_LOCAL: """\
+import stat
+
+
+class SecretsLocalImpl(SecretsInterface):
+    def describe(self) -> str:
+        return "secrets=local"
+
+    def _assert_owner_only(self) -> None:
+        if stat.S_IMODE(self._file.stat().st_mode) != 0o600:
+            raise PermissionError(self._file)
+
+    def _read(self) -> str:
+        self._assert_owner_only()
+        return self._file.read_text()
+
+    def put(self, text: str) -> None:
+        with open(self._file, "w") as f:
+            f.write(text)
+"""
+    }
+    code, report = run(tmp_path, "ASY-28", files)
+    assert report["findings"] == []
+    assert code == 0
+    files[SECRETS_LOCAL] = files[SECRETS_LOCAL].replace("        self._assert_owner_only()\n", "")
+    code, report = run(tmp_path, "ASY-28", files)
+    assert code == 1
+    assert messages(report) == ["_read reads a file with no owner-only mode check before it"]

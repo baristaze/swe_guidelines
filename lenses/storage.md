@@ -40,9 +40,9 @@ related entity it never asked for by id, loaded for it by the schema.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides a relationship, cascade, or `ondelete`
-in a table module, and an integrity error caught in a manager; the rest
-is judged.
+**Check.** `arch-check` decides a `relationship()` or `backref()` in a
+table module, and an integrity error caught in a manager; the rest is
+judged.
 
 ## STO-02 No transaction outlives a storage call; one operation commits itself
 
@@ -141,7 +141,7 @@ manager's copy. A query calls a user-defined function.
 **Severity.** medium
 
 **Check.** `arch-check` decides the functions and triggers the migration
-chain leaves, computed columns, and database-set timestamps; the rest is
+chain leaves, and timestamps set on update by the database; the rest is
 judged.
 
 ## STO-06 IDs are passed top-down, never read back
@@ -165,8 +165,8 @@ for it.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides database defaults on the `id` column and
-writes that return a `UUID`; the rest is judged.
+**Check.** `arch-check` decides defaults, sequences and identities on the
+`id` column and writes that return a `UUID`; the rest is judged.
 
 ## STO-07 Defaults live in the object model
 
@@ -526,8 +526,8 @@ idempotent, so relaying a row twice duplicates an event.
 
 **Severity.** high
 
-**Check.** `arch-check` decides storage signatures that take a single
-outbox row; the rest is judged.
+**Check.** `arch-check` decides storage signatures outside the outbox's
+own storage that take a single outbox row; the rest is judged.
 
 ## STO-21 Analytics reads a mirror; roles are backed up and retained
 
@@ -599,8 +599,9 @@ with two heads merged by editing an existing wrapper's
 
 **Severity.** medium
 
-**Check.** `arch-check` decides each stamp against its revision and one
-linear chain per role; the rest is judged.
+**Check.** `arch-check` decides each stamp against its revision, a
+unique revision, and one first migration and one head per role; the
+rest is judged.
 
 ## STO-24 An applied migration is never edited; expand, then contract
 

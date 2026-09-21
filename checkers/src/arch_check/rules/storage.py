@@ -74,9 +74,11 @@ INTEGRITY_ERRORS = frozenset(
 @rule(
     "STO-01",
     coverage="partial",
-    summary="No relationship, backref, cascade or ondelete in a table module; no manager catches an integrity error.",
+    summary="No relationship() or backref() in a table module; no manager catches an integrity error.",
 )
 def no_database_relationships(project: Project) -> Iterator[Violation]:
+    """A foreign key's `ondelete=` or `cascade=` is left to the review: the guideline allows the key, and only
+    code that counts on the cascade breaks the rule."""
     for file, tree in project.trees(project.sub("om")):
         if not in_tables(project, file.module):
             continue
@@ -86,11 +88,6 @@ def no_database_relationships(project: Project) -> Iterator[Violation]:
             name = call_name(node)
             if name in ("relationship", "backref"):
                 yield Violation.at(file.rel, node, f"{name}() in a table module; the code reads related rows by id itself")
-            for k in node.keywords:
-                if k.arg in ("cascade", "ondelete"):
-                    yield Violation.at(
-                        file.rel, k.value, f"`{k.arg}=` in a table module; no code relies on the database to cascade"
-                    )
     for file in manager_impl_files(project):
         impl = project.tree(file)
         if impl is None:
@@ -194,13 +191,15 @@ DROP_OBJECT = re.compile(
     re.IGNORECASE,
 )
 DB_TIMESTAMPS = frozenset({"created_at", "updated_at", "deleted_at"})
-DB_SET = ("server_default", "onupdate", "server_onupdate")
+DB_SET = ("onupdate", "server_onupdate")
+"""What makes the database or the ORM set a timestamp on update. A `server_default` is allowed: a schema-level
+default is a convenience for hand-written SQL."""
 
 
 @rule(
     "STO-05",
     coverage="partial",
-    summary="The migration chain leaves no trigger, function, procedure or rule; no computed column or database-set timestamp.",
+    summary="The migration chain leaves no trigger, function, procedure or rule; no timestamp is set on update by the database.",
 )
 def no_triggers_or_functions(project: Project) -> Iterator[Violation]:
     sql_dir = project.option("STO-05", "sql_dir", SQL_DIR, {"sql_dir"})
@@ -221,9 +220,6 @@ def no_triggers_or_functions(project: Project) -> Iterator[Violation]:
     known = mixins(project)
     targets = [(t.file, t.node) for t in om_tables(project)] + [(m.file, m.node) for m in known.values()]
     for file, cls in targets:
-        for node in ast.walk(cls):
-            if isinstance(node, ast.Call) and call_name(node) == "Computed":
-                yield Violation.at(file.rel, node, f"{cls.name} declares a computed column; the code computes the value")
         for name, decl in own_columns(cls).items():
             if name not in DB_TIMESTAMPS:
                 continue
@@ -243,7 +239,7 @@ ID_DEFAULTS = ("server_default", "default", "server_onupdate")
 @rule(
     "STO-06",
     coverage="partial",
-    summary="The id column has no database default, sequence or identity; no create or write returns a UUID.",
+    summary="The id column has no default, sequence or identity; no create or write returns a UUID.",
 )
 def ids_come_from_above(project: Project) -> Iterator[Violation]:
     known = mixins(project)
@@ -353,6 +349,8 @@ STORAGE_ROOT_IMPL = re.compile(r"^Storage[A-Z]\w*Impl$")
     summary="StorageInterface has a getter per namespace storage, healthcheck and close; two Storage<Tech>Impl roots define all.",
 )
 def one_storage_root(project: Project) -> Iterator[Violation]:
+    """A root is a concrete class under `StorageInterface`: one no other class extends. A shared base between
+    the interface and the roots is not a root, and a root may inherit its methods from it."""
     root = project.module(f"{project.sub('om')}.storage.root")
     tree = project.tree(root) if root else None
     if root is None or tree is None:
@@ -362,20 +360,38 @@ def one_storage_root(project: Project) -> Iterator[Violation]:
         yield Violation.at(root.rel, None, "the storage root module declares no StorageInterface")
         return
     declared = {m.name: m for m in public_methods(iface)}
-    returned = {last(dotted(m.returns)) for m in declared.values()}
+    returned = {n for m in declared.values() for n in names_in(m.returns)}
     for file, cls in storage_interfaces(project):
         if namespace_of(project, file.module) and file.module.endswith(".storage") and cls.name not in returned:
             yield Violation.at(root.rel, iface, f"StorageInterface has no getter returning {cls.name}")
     for name in ("healthcheck", "close"):
         if name not in declared:
             yield Violation.at(root.rel, iface, f"StorageInterface declares no {name}()")
-    impls: list[tuple[SourceFile, ast.ClassDef]] = []
+    index: dict[str, tuple[SourceFile, ast.ClassDef]] = {}
     for file, t in project.trees(project.sub("om")):
-        impls += [(file, c) for c in classes(t) if "StorageInterface" in {last(b) for b in base_names(c)}]
+        for c in classes(t):
+            index.setdefault(c.name, (file, c))
+
+    def chain(name: str) -> list[str]:
+        """A class and every base of it the OM defines, the class first."""
+        out, todo = [], [name]
+        while todo:
+            n = todo.pop(0)
+            if n in index and n not in out:
+                out.append(n)
+                todo += [last(b) or "" for b in base_names(index[n][1])]
+        return out
+
+    def extends_root(n: str) -> bool:
+        return any("StorageInterface" in {last(b) for b in base_names(index[c][1])} for c in chain(n))
+
+    below = {n for n in index if n != "StorageInterface" and extends_root(n)}
+    bases = {last(b) or "" for n in below for b in base_names(index[n][1])}
+    impls = sorted((index[n] for n in below if n not in bases), key=lambda e: (e[0].rel, e[1].lineno))
     for file, cls in impls:
         if not STORAGE_ROOT_IMPL.match(cls.name):
             yield Violation.at(file.rel, cls, f"storage root {cls.name} is not named Storage<Tech>Impl")
-        own = {m.name for m in public_methods(cls)}
+        own = {m.name for n in chain(cls.name) if n != "StorageInterface" for m in public_methods(index[n][1])}
         for name in sorted(set(declared) - own):
             yield Violation.at(file.rel, cls, f"{cls.name} does not define {name}()")
     if impls and (len(impls) < 2 or "StorageMemoryImpl" not in {c.name for _, c in impls}):
@@ -455,6 +471,26 @@ def rows_never_leave(project: Project) -> Iterator[Violation]:
 # --- STO-13
 
 
+def sort_order(call: ast.Call, tree: ast.Module | None) -> tuple[bool, int | None]:
+    """A column's `sort_order`: whether it can be read, and its value when it is negative.
+
+    A literal is read as it stands, and a name through the module constant it names. Anything else (an
+    imported constant, an expression) cannot be read, and the rule skips it.
+    """
+    value = kwarg(call, "sort_order")
+    if value is None:
+        return True, None
+    if isinstance(value, ast.Name) and tree is not None:
+        value = module_value(tree, value.id)
+        if value is None:
+            return False, None
+    if negative_int(value) is not None:
+        return True, negative_int(value)
+    if isinstance(value, ast.Constant):
+        return True, None
+    return False, None
+
+
 @rule(
     "STO-13",
     coverage="partial",
@@ -464,10 +500,12 @@ def column_order(project: Project) -> Iterator[Violation]:
     known = mixins(project)
     bands: dict[int, list[tuple[int, str, SourceFile, ast.AST]]] = {}
     for m in known.values():
+        tree = project.tree(m.file)
         for name, decl in m.own.items():
-            calls = column_calls_of(decl)
-            orders = [negative_int(kwarg(c, "sort_order")) for c in calls]
-            order = next((o for o in orders if o is not None), None)
+            read = [sort_order(c, tree) for c in column_calls_of(decl)]
+            if any(not ok for ok, _ in read):
+                continue
+            order = next((o for _, o in read if o is not None), None)
             if order is None:
                 yield Violation.at(m.file.rel, decl, f"{m.name}.{name} has no negative sort_order; mixin columns lead the table")
             elif m.name in MIXIN_RANK:
@@ -481,11 +519,12 @@ def column_order(project: Project) -> Iterator[Violation]:
                     file.rel, decl, f"{where} sorts at {order}, before {top[1]} at {top[0]}; bands follow the house order"
                 )
     for t in om_tables(project):
+        tree = project.tree(t.file)
         for node in ast.walk(t.node):
             if (
                 isinstance(node, ast.Call)
                 and call_name(node) in ("mapped_column", "Column")
-                and negative_int(kwarg(node, "sort_order")) is not None
+                and sort_order(node, tree)[1] is not None
             ):
                 yield Violation.at(t.file.rel, node, f"{t.node.name} sets a negative sort_order; only mixin columns lead")
 
@@ -616,7 +655,11 @@ def wrapper_call(fn: ast.FunctionDef) -> ast.Call | None:
 def migration_layout(project: Project) -> Iterator[Violation]:
     """Reads `[tool.arch-check.options.STO-18]`: `sql_dir` and `versions_dir`, the two migration folders
     (`om/migrations/sql` and `om/migrations/versions`); `runner`, the function a wrapper calls (`run_sql`);
-    and `map`, the table-to-role map (`TABLE_ROLES`)."""
+    and `map`, the table-to-role map (`TABLE_ROLES`).
+
+    A wrapper passes the role and the SQL file, by position or by keyword. A file named by a string is its own
+    `<stem>.<up|down>.sql`, alone or at the end of a path; a file built by an expression is left to the review.
+    """
     keys = {"sql_dir", "versions_dir", "runner", "map"}
     sql_dir = project.option("STO-18", "sql_dir", SQL_DIR, keys)
     versions_dir = project.option("STO-18", "versions_dir", VERSIONS_DIR, keys)
@@ -680,15 +723,17 @@ def migration_layout(project: Project) -> Iterator[Violation]:
                 yield Violation.at(rel, fn, f"{fn_name}() is not one {runner}() call; the SQL file holds the migration")
                 continue
             want = f"{stem}.{direction}.sql"
-            if len(call.args) != 2:
+            role_arg = call.args[0] if call.args else kwarg(call, "role")
+            file_arg = call.args[1] if len(call.args) > 1 else next((k.value for k in call.keywords if k.arg != "role"), None)
+            if role_arg is None or file_arg is None:
                 yield Violation.at(rel, call, f"{runner}() takes the role and {want}")
                 continue
-            named = role_value(call.args[0], enums)
+            named = role_value(role_arg, enums)
             if named is not None and named != role:
                 yield Violation.at(rel, call, f"{fn_name}() runs role {named}; the wrapper is in {role}/")
-            arg = call.args[1]
-            if not (isinstance(arg, ast.Constant) and arg.value == want):
-                yield Violation.at(rel, call, f"{fn_name}() runs {ast.unparse(arg)}; it runs {want}")
+            text = file_arg.value if isinstance(file_arg, ast.Constant) and isinstance(file_arg.value, str) else None
+            if text is not None and text != want and not text.endswith(f"/{want}"):
+                yield Violation.at(rel, call, f"{fn_name}() runs {ast.unparse(file_arg)}; it runs {want}")
 
 
 # --- STO-20
@@ -714,10 +759,15 @@ def single_row(node: ast.AST | None) -> bool:
 @rule(
     "STO-20",
     coverage="partial",
-    summary="No storage interface parameter takes a single OutboxRow; outbox rows travel as a tuple.",
+    summary="No storage interface outside the outbox's own takes a single OutboxRow; outbox rows travel as a tuple.",
 )
 def outbox_rows_are_a_tuple(project: Project) -> Iterator[Violation]:
+    """Reads `namespace` under `[tool.arch-check.options.STO-20]`: the OM namespace of the outbox (`outbox`).
+    Its own storage reads and marks outbox rows one at a time, so it is not judged."""
+    outbox = project.option("STO-20", "namespace", "outbox", {"namespace"})
     for file, cls in storage_interfaces(project):
+        if namespace_of(project, file.module) == outbox:
+            continue
         for fn in public_methods(cls):
             for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
                 if single_row(arg.annotation):
@@ -732,12 +782,16 @@ def outbox_rows_are_a_tuple(project: Project) -> Iterator[Violation]:
 @rule(
     "STO-23",
     coverage="partial",
-    summary="Each wrapper's revision is its file's stamp, unique in its role, and each role is one linear chain.",
+    summary="Each wrapper's revision is its file's stamp, unique in its role; each role has one first migration and one head.",
 )
 def one_chain_per_role(project: Project) -> Iterator[Violation]:
-    """Reads `versions_dir` under `[tool.arch-check.options.STO-23]`: the wrappers' folder, `om/migrations/versions`."""
+    """Reads `versions_dir` under `[tool.arch-check.options.STO-23]`: the wrappers' folder, `om/migrations/versions`.
+
+    A merge revision names two parents, and that is how two heads are resolved. So a fork is reported only
+    while it is open: when a role's chain ends in more than one head.
+    """
     versions_dir = project.option("STO-23", "versions_dir", VERSIONS_DIR, {"versions_dir"})
-    chains: dict[str, dict[str, tuple[str, object, ast.AST | None]]] = {}
+    chains: dict[str, dict[str, tuple[str, tuple[object, ...], ast.AST | None]]] = {}
     for rel in project.files(f"{versions_dir}/*/*.py"):
         role, fname = rel.split("/")[-2:]
         m = WRAPPER_FILE.match(fname)
@@ -753,27 +807,29 @@ def one_chain_per_role(project: Project) -> Iterator[Violation]:
         if revision is None or revision != m.group("stamp"):
             yield Violation.at(rel, rev_node, f"revision is {revision!r}; it is the file's stamp {m.group('stamp')!r}")
             continue
-        down: object = down_node.value if isinstance(down_node, ast.Constant) else ast.unparse(down_node) if down_node else None
-        if isinstance(down_node, ast.Tuple | ast.List):
-            yield Violation.at(rel, down_node, "down_revision names two parents; each role is one linear chain")
+        elements = down_node.elts if isinstance(down_node, ast.Tuple | ast.List) else [down_node] if down_node else []
+        downs: tuple[object, ...] = tuple(
+            e.value if isinstance(e, ast.Constant) else ast.unparse(e) for e in elements if e is not None
+        )
+        downs = tuple(d for d in downs if d is not None)
         chain = chains.setdefault(role, {})
         if revision in chain:
             yield Violation(rel, 1, 1, f"revision {revision} is already {chain[revision][0]}")
             continue
-        chain[revision] = (rel, down, down_node)
+        chain[revision] = (rel, downs, down_node)
     for role, chain in sorted(chains.items()):
-        parents: dict[object, str] = {}
-        for revision, (rel, down, node) in sorted(chain.items()):
-            if down is not None and down not in chain:
-                yield Violation.at(rel, node, f"down_revision {down!r} is no revision of role {role}")
-            if down in parents:
-                yield Violation.at(rel, node, f"{revision} and {parents[down]} both follow {down!r}; the chain has two heads")
-            else:
-                parents[down] = revision
-        roots = [r for r, (_, d, _) in chain.items() if d is None]
+        for rel, downs, node in sorted(chain.values(), key=lambda e: e[0]):
+            for down in downs:
+                if down not in chain:
+                    yield Violation.at(rel, node, f"down_revision {down!r} is no revision of role {role}")
+        roots = sorted(r for r, (_, d, _) in chain.items() if not d)
         if len(roots) > 1:
-            rel = chain[sorted(roots)[1]][0]
-            yield Violation(rel, 1, 1, f"role {role} has {len(roots)} first migrations; it has one chain")
+            yield Violation(chain[roots[1]][0], 1, 1, f"role {role} has {len(roots)} first migrations; it has one chain")
+        parents = {p for _, downs, _ in chain.values() for p in downs}
+        heads = sorted(r for r in chain if r not in parents)
+        if len(heads) > 1:
+            rel = chain[heads[-1]][0]
+            yield Violation(rel, 1, 1, f"role {role} ends in {len(heads)} heads ({', '.join(heads)}); merge them")
 
 
 # --- STO-26
@@ -972,14 +1028,14 @@ def returns_many(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 @rule(
     "STO-29",
     coverage="partial",
-    summary="Every storage interface method and bucket listing that returns a list takes a limit.",
+    summary="Every storage interface method and bucket interface method that returns a list takes a limit.",
 )
 def list_reads_take_a_limit(project: Project) -> Iterator[Violation]:
+    """A bucket method that returns a list is a listing, whatever its name: `list`, `keys`, `list_prefix`."""
     found = list(storage_interfaces(project))
     for file, tree in project.trees(project.sub("infra.buckets")):
         found += [(file, c) for c in classes(tree) if c.name.endswith("Interface")]
     for file, cls in found:
         for fn in public_methods(cls):
-            judged = cls.name.endswith("StorageInterface") or fn.name == "list"
-            if judged and returns_many(fn) and "limit" not in {p.name for p in parameters(fn)}:
+            if returns_many(fn) and "limit" not in {p.name for p in parameters(fn)}:
                 yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} returns a list and takes no limit")

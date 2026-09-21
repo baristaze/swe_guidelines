@@ -78,8 +78,8 @@ cannot say whether the process is on the local or the cloud impl.
 
 **Severity.** low
 
-**Check.** `arch-check` decides the `describe()` of every capability
-interface and impl; the rest is judged.
+**Check.** `arch-check` decides that every infra impl defines or
+inherits `describe()`; the rest is judged.
 
 ## ASY-04 Caches are scoped and injected already scoped
 
@@ -98,8 +98,8 @@ scope added as a free string instead of an enum member.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the `CacheScope` enum and every
-`get_cache` call; the rest is judged.
+**Check.** `arch-check` decides the `CacheScope` enum, a free string
+passed to `get_cache`, and a manager calling it; the rest is judged.
 
 ## ASY-05 A read cache is a projection with a generation
 
@@ -204,7 +204,8 @@ consumer name missing from `subscribe`.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides the enum, the payload map, the payload
+base, and the `publish` and `subscribe` signatures; the rest is judged.
 
 ## ASY-10 Durable work never rides a topic
 
