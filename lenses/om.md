@@ -28,6 +28,9 @@ service.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the OM's own distribution and the
+dependency of every distribution that imports it; the rest is judged.
+
 ## OM-02 Wire and table shapes are projections
 
 **Principle.** The OM is the source of truth for entities; the wire
@@ -53,6 +56,9 @@ of which holds a context; an entity a reader without one takes, such
 as an `OutboxRow` or an `Event`, declared without it.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides which OM types declare `org_id`; the
+rest is judged.
 
 ## OM-03 The mixins declare exactly their fields
 
@@ -86,6 +92,10 @@ so the relay has no provenance to stamp on the event, or with a
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the fields of the root, the mixins, and
+`OutboxRow`, a redeclared mixin field, where the base helpers and
+`PROVENANCE_FIELDS` live, and a local clock; the rest is judged.
+
 ## OM-04 Declaration order reads as a description
 
 **Principle.** Mixins are composed in a fixed order: identity first,
@@ -101,6 +111,8 @@ class signature reads as what the entity promises to be.
 ordering that departs from identity, label, lifecycle, cross-cutting.
 
 **Severity.** low
+
+**Check.** `arch-check` decides it.
 
 ## OM-05 A mixin is a promise, composed only where an operation exercises it
 
@@ -128,6 +140,9 @@ avoid repeating two fields that mean different things in different
 entities.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides methods on the root and the mixins and
+entity-to-entity inheritance; the rest is judged.
 
 ## OM-06 Append-only records carry identity only
 
@@ -160,6 +175,8 @@ that overrides it to allow or ignore extras.
 or context type that relaxes the setting so a caller's typo passes.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides it.
 
 ## OM-08 Entities, value objects, and read models are distinct
 
@@ -203,6 +220,9 @@ manager and the storage.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides `**kwargs` and loose filter parameters
+on the manager and storage interfaces; the rest is judged.
+
 ## OM-10 Entities are immutable; updates copy and write
 
 **Principle.** OM entities are frozen snapshots: an update produces a
@@ -227,6 +247,10 @@ already is.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides an unfrozen class, a `model_copy` fed a
+dump, a `model_validate` of an entity, and an assignment to an entity;
+the rest is judged.
+
 ## OM-11 Everything on the base chain is frozen, rows excepted
 
 **Principle.** Immutability applies to every object built on the OM
@@ -245,6 +269,9 @@ setting.
 mutable; an entity constructed by wrapping a live row.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the frozen setting of the root and of
+every class on the chain; the rest is judged.
 
 ## OM-12 Every id is uuid v7, minted above storage
 
@@ -266,6 +293,9 @@ entity, is that protocol and not a breach (NET-09). (Ids read back out
 of the database are STO-06.)
 
 **Severity.** medium
+
+**Check.** `arch-check` decides every id factory but `new_id()` above
+storage; the rest is judged.
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 
@@ -294,6 +324,9 @@ filled with `EMPTY_UUID` instead of `None`.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the one `EMPTY_UUID`, a second all-zero
+UUID, and an optional reference defaulting to it; the rest is judged.
+
 ## OM-14 Namespaces mirror product swimlanes with one shape
 
 **Principle.** The OM is split into namespaces that mirror the
@@ -321,6 +354,10 @@ namespace that has only one.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the folder shape of each namespace, the
+re-export of its interface, and an entity next to the impl; the rest is
+judged.
+
 ## OM-15 Business rules are pure functions in one module
 
 **Principle.** The pure part of a namespace's logic (pricing, window
@@ -342,6 +379,9 @@ pricing rule duplicated in a manager and a report builder.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the imports, the calls, and the async
+functions of a rules module; the rest is judged.
+
 ## OM-16 Cross-cutting namespaces are ordinary namespaces
 
 **Principle.** Tenancy (organizations, users, memberships,
@@ -361,6 +401,9 @@ interface; credential handling spread across services with no owning
 namespace.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the tenancy namespace and identity
+classes in the base or a utils module; the rest is judged.
 
 ## OM-17 Entity fields are tuples, frozen models, and FrozenMapping
 
@@ -384,6 +427,9 @@ is still mutated through the snapshot; a `FrozenMapping`
 whose default is a plain dict for want of `validate_default`.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the field annotations on the chain and
+the `FrozenMapping` default; the rest is judged.
 
 ## OM-18 A rule spelled in a statement is named and held to the function
 
