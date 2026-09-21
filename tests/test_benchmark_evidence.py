@@ -69,7 +69,7 @@ def test_every_planted_finding_of_review_om_points_at_a_line_that_exists():
     assert len(entries) == 8
     lenses = {lens for _, lens, _, _ in entries}
     assert len(lenses) == 8, "one lens per planted finding"
-    for fid, lens, file, line in entries:
+    for fid, _lens, file, line in entries:
         path = fixtures / "review-om" / file
         assert path.is_file(), f"{fid}: {file}"
         assert 1 <= int(line) <= len(path.read_text(encoding="utf-8").splitlines()), f"{fid}: line {line}"

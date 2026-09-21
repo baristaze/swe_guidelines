@@ -44,11 +44,11 @@ def test_an_unknown_key_is_refused(tmp_path):
 
 
 def test_each_kind_needs_its_own_field(tmp_path):
-    with pytest.raises(S.ScenarioError, match="needs subject.skill"):
+    with pytest.raises(S.ScenarioError, match=r"needs subject\.skill"):
         S.from_data(dict(MINIMAL, subject={"prompt": "x"}))
-    with pytest.raises(S.ScenarioError, match="needs subject.argv"):
+    with pytest.raises(S.ScenarioError, match=r"needs subject\.argv"):
         S.from_data(dict(MINIMAL, kind="command", subject={}))
-    with pytest.raises(S.ScenarioError, match="needs subject.prompt"):
+    with pytest.raises(S.ScenarioError, match=r"needs subject\.prompt"):
         S.from_data(dict(MINIMAL, kind="qa", subject={}))
 
 

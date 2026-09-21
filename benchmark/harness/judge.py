@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import providers as P
 
@@ -131,14 +132,14 @@ class Verdict:
         }
 
     @staticmethod
-    def from_data(data: dict[str, Any]) -> "Verdict":
+    def from_data(data: dict[str, Any]) -> Verdict:
         findings = []
         for raw in data.get("findings") or []:
             if isinstance(raw, dict):
                 findings.append(Finding(severity=str(raw.get("severity", "low")), note=str(raw.get("note", ""))))
             else:
                 findings.append(Finding(severity="low", note=str(raw)))
-        score = int(round(float(data.get("score", 0))))
+        score = round(float(data.get("score", 0)))
         return Verdict(
             score=max(0, min(100, score)),
             verdict=str(data.get("verdict", "weak")),

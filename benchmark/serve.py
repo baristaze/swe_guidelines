@@ -95,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self.runs / name
 
-    def do_GET(self) -> None:  # noqa: N802 - the base class names it
+    def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
         parts = [p for p in path.split("/") if p]
         try:

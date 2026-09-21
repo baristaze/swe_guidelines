@@ -8,4 +8,4 @@ root can import the harness with nothing installed.
 
 from __future__ import annotations
 
-__all__ = ["providers", "scenario", "runtime", "capture", "judge", "results"]
+__all__ = ["capture", "judge", "providers", "results", "runtime", "scenario"]

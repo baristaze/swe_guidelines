@@ -2,9 +2,9 @@
 
 import json
 
-from harness.capture import CdpScreencast, CliStream, FrameSink
-
 import pytest
+
+from harness.capture import CdpScreencast, CliStream, FrameSink
 
 
 def test_every_line_is_one_json_record(tmp_path):
@@ -19,9 +19,8 @@ def test_every_line_is_one_json_record(tmp_path):
 
 
 def test_a_stream_name_that_is_not_out_or_err_is_refused(tmp_path):
-    with CliStream(tmp_path / "cli.jsonl") as stream:
-        with pytest.raises(ValueError, match="'out' or 'err'"):
-            stream.write("log", "x")
+    with CliStream(tmp_path / "cli.jsonl") as stream, pytest.raises(ValueError, match="'out' or 'err'"):
+        stream.write("log", "x")
 
 
 def test_a_torn_last_line_is_left_out(tmp_path):
