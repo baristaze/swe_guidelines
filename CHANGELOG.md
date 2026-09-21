@@ -4,6 +4,94 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.24.0 (2026-09-21)
+
+The guideline agrees with itself. A full review found rules stated two
+ways, one gap in a protocol that claimed to be whole, and text that
+still named tests for what `arch-check` now decides. Each is resolved
+in the guideline's voice, and the lenses, the skills, and the checker
+follow. Minor: rules are sharpened and none is removed or reversed.
+
+### Fixed
+
+- `architecture.md`: the mechanical checks name `arch-check`, not a
+  unit test, in Stages, Namespace Shape, Database Roles, and Tests.
+  Lenses `CTX-12`, `CTX-26`, `CTX-31`, `CTX-32`, `DEL-23`, and
+  `DEL-24` follow, and `docs/adopting.md` no longer calls the role map
+  and the migration heads tests.
+- `architecture.md`, Operations: a writing credential is held by the
+  pipeline, or by the administrator for creating and destroying an
+  environment. Every statement of the rule says so. The two
+  administrator skills act on a cloud only; every other skill runs
+  against `local`.
+- `architecture.md`, The Gateway: the idempotency table gains the row
+  it lacked. A retry that arrives while the first attempt holds a live
+  lease is refused as `Conflict`.
+- `architecture.md`, The Second Fence: the `identity` policy has no
+  system-scope bypass, and the text says so. The funnel takes an
+  `identity_id`. `org_id = NULL` is NULL, which a policy refuses.
+- `architecture.md`: the file secrets backend is refused for staging
+  as well as production; release and deferral are defined for the
+  work queue; the replay after a sequence gap starts after the last
+  contiguous number; the sweep returns a bounded
+  `list[tuple[UUID, Entity]]`; retries inside the platform are owned
+  by one layer, and the edge retry is a replay or a rerun under its
+  key; `PaymentManagerMemoryImpl` is singular; a snippet that did not
+  parse parses.
+- Lenses: `NET-34` no longer flags the one-key default the guideline
+  chooses; `STO-28` exempts `system` tables; `OPS-13` no longer
+  contradicts `OPS-15`; `CON-21` hands its secret clauses to `NET-25`
+  and `NET-31`; `DEL-07` lists `ops/`; `CTX-01` matches The Operator
+  Context.
+- `arch-check`: false positives on a multi-action `ALTER TABLE`, quoted
+  policy names, same-named triggers on two tables, dollar-quoted SQL,
+  a BOM, import aliases, and a flat layout; crashes on a symlink out of
+  the root, deep nesting, and a malformed `pyproject.toml`, which now
+  exit 2 as configuration errors. A missing `TABLE_ROLES` or
+  `TABLE_SCOPES` map is reported instead of passing. An option key no
+  rule declares exits 2, as the README said. Overlapping exceptions
+  both count as used, and an ignore marker inside a string is not one.
+- Scaffolds name the maps `arch-check` reads, use the singular storage
+  getter, write the deploy roles and the identity federation, and give
+  the ops CLI the flags the templates call. The ops skills hold the
+  profiles the guideline's Role column names.
+- `CONTRIBUTING.md` and `AGENTS.md` list every copy of the version
+  `make version` checks.
+
+### Added
+
+- `architecture.md`: `RequestContext` and `RequestScope` carry the
+  `traceparent`, so an outbox row and a work item take their trace
+  context from the context, never from ambient state.
+- `architecture.md`, The Work Queue: a worker holds no tenant of its
+  own. The tenant arrives with each claimed item; every write after
+  the claim reads the row under it; a context is never carried to the
+  next item; an item whose tenant is gone is failed. This replaces the
+  boot refusal of "a worker registered under the wrong tenant", which
+  named nothing the guideline defines. `CTX-17` judges it.
+- `arch-deviate` writes the `arch-check` exception entry for a lens the
+  checker decides. `arch-new-aspect` cascades a new lens to
+  `lenses.py` and a new group to every list that names the groups.
+
+### Changed
+
+- `architecture.md`, The Operator Context: `OperatorContext` carries
+  the `permissions` its allowlist entry grants, read or read and write,
+  from a table of its own. A read operator is refused a write the way a
+  tenant viewer is, and the supporter's read-only entry is a shape the
+  guideline defines. An operator reads a tenant's rows only by naming
+  the tenant. `CTX-20` judges it.
+- `ASY-13` and `ASY-28` are high, like `OPS-09`: a secret value, or a
+  secrets file others can read, is a secret reaching where it is not
+  held.
+- `make skills` refuses a Bash rule outside the two allowed forms and
+  matches make targets as whole words; `make lenses` holds lens ids
+  unique across files; `make leaks` scans the `.github/` templates.
+- `benchmark/`: `serve.py` serves only inside a run's folder; the
+  workflow passes its inputs through the environment and runs every
+  scenario before it fails; a malformed judge answer is an error
+  judgement, never a crash after the paid calls.
+
 ## 0.23.0 (2026-09-21)
 
 The lenses a program can decide are decided by a program. The
