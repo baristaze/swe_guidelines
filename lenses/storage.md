@@ -40,6 +40,10 @@ related entity it never asked for by id, loaded for it by the schema.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides a relationship, cascade, or `ondelete`
+in a table module, and an integrity error caught in a manager; the rest
+is judged.
+
 ## STO-02 No transaction outlives a storage call; one operation commits itself
 
 **Principle.** A storage operation is one statement or one short,
@@ -63,6 +67,9 @@ shared by every method, or otherwise outlives the storage method that
 opened it.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides a bare `commit`, `rollback`, or `begin`
+above the storage impls; the rest is judged.
 
 ## STO-03 Atomicity is a single named interface method
 
@@ -90,6 +97,9 @@ storage calls. An interface signature that exposes a lock, a session,
 or a transaction handle.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides lock clauses outside the storage impls
+and driver types in storage signatures; the rest is judged.
 
 ## STO-04 Joins stay inside the impl
 
@@ -130,6 +140,10 @@ manager's copy. A query calls a user-defined function.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the functions and triggers the migration
+chain leaves, computed columns, and database-set timestamps; the rest is
+judged.
+
 ## STO-06 IDs are passed top-down, never read back
 
 **Principle.** Every ID is passed top-down. We do not create an object
@@ -150,6 +164,9 @@ already hold; an insert returns the id and the business layer waits
 for it.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides database defaults on the `id` column and
+writes that return a `UUID`; the rest is judged.
 
 ## STO-07 Defaults live in the object model
 
@@ -191,6 +208,9 @@ editing the interface or a type in `types/`.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the ORM and driver imports of types,
+interfaces, and managers; the rest is judged.
+
 ## STO-09 Storage namespace shape
 
 **Principle.** Storage follows the same namespace pattern as the rest
@@ -210,6 +230,8 @@ classes defined next to entity types. (Who may import a table class is
 table class lives outside `storage/tables/`.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides it.
 
 ## STO-10 One storage root, two impls, every dependency wired there
 
@@ -239,6 +261,9 @@ rather than as an impl (`Storage`, `PostgresStorage`), so the
 technology is not last.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the root's getters, `healthcheck`,
+`close`, and its two named impls; the rest is judged.
 
 ## STO-11 Table mixins mirror the OM mixins
 
@@ -270,6 +295,9 @@ table instead of on the identity mixin, or a global table carries
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the mixin order, redeclared mixin
+columns, and `org_id` on a global table; the rest is judged.
+
 ## STO-12 Rows are mutable and never leave the impl
 
 **Principle.** Table classes are mutable by design, so the session can
@@ -291,6 +319,9 @@ place.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides table classes in storage signatures and
+frozen table classes; the rest is judged.
+
 ## STO-13 Column order is part of the model
 
 **Principle.** Every table opens with the columns of the mixins it
@@ -310,6 +341,9 @@ while the migration appends it to the table. Mixin columns render after
 the domain columns in the initial schema.
 
 **Severity.** low
+
+**Check.** `arch-check` decides the mixins' negative `sort_order` bands
+and concrete tables setting none; the rest is judged.
 
 ## STO-14 The first three index rules
 
@@ -337,6 +371,9 @@ on one table. An index was added for a filter that happens in Python
 after the read.
 
 **Severity.** low
+
+**Check.** `arch-check` decides an `org_id` index beside a compound one
+it leads and a descending index on `id`; the rest is judged.
 
 ## STO-15 Translation is module-level and mechanical
 
@@ -411,6 +448,9 @@ tests are absent.
 
 **Severity.** high
 
+**Check.** `arch-check` decides the role map against the table classes,
+declared schemas, and cross-role foreign keys; the rest is judged.
+
 ## STO-18 Migrations are SQL pairs, one chain per role
 
 **Principle.** Migrations live with the OM. A migration is a pair of
@@ -435,6 +475,9 @@ table of another role and the runner accepts it. A runner that
 migrates one role and stays silent when the caller meant all.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the file names, the pairs, the wrappers,
+and the roles each file names; the rest is judged.
 
 ## STO-19 One URL per role, one engine per URL, and a move that changes no code
 
@@ -482,6 +525,9 @@ put the second. A relay that is not
 idempotent, so relaying a row twice duplicates an event.
 
 **Severity.** high
+
+**Check.** `arch-check` decides storage signatures that take a single
+outbox row; the rest is judged.
 
 ## STO-21 Analytics reads a mirror; roles are backed up and retained
 
@@ -552,6 +598,9 @@ with two heads merged by editing an existing wrapper's
 `down_revision`; a counter or a hand-picked id in place of the stamp.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides each stamp against its revision and one
+linear chain per role; the rest is judged.
 
 ## STO-24 An applied migration is never edited; expand, then contract
 
@@ -626,6 +675,9 @@ no contract case for the re-creation.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the `WHERE` of every unique key on a
+soft-deletable table; the rest is judged.
+
 ## STO-27 A role's pool declares its size and its checkout bound
 
 **Principle.** Each database role's pool declares its size and the
@@ -648,6 +700,9 @@ a size hard-coded in the root; a worker whose capacity is set with no
 regard for the pool behind it.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the pool size and checkout bound of
+every engine a storage impl builds; the rest is judged.
 
 ## STO-28 Every table declares its tenancy scope and the policy matches
 
@@ -673,6 +728,9 @@ it; a login that is a superuser or carries `BYPASSRLS`, which no test
 on the live connection would catch.
 
 **Severity.** high
+
+**Check.** `arch-check` decides the scope map against the role map and
+the row-level security the chain leaves; the rest is judged.
 
 ## STO-29 Every read that returns a list is bounded in its statement
 
@@ -700,3 +758,6 @@ the client's limit through unclamped; a bucket listing that returns
 every key under a prefix.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the `limit` of every list read and
+bucket listing; the rest is judged.

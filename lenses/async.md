@@ -35,6 +35,9 @@ handler; an infra handle is read off `ctx`.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides module-level clients and infra impls
+built in a manager; the rest is judged.
+
 ## ASY-02 One infra root with a lifecycle
 
 **Principle.** Infrastructure is fronted by a single root with one
@@ -55,6 +58,9 @@ object.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides the root's getters, `start`, `close`,
+and which modules import an impl; the rest is judged.
+
 ## ASY-03 Every impl describes itself
 
 **Principle.** Every infra impl can `describe()` itself in one line
@@ -72,6 +78,9 @@ cannot say whether the process is on the local or the cloud impl.
 
 **Severity.** low
 
+**Check.** `arch-check` decides the `describe()` of every capability
+interface and impl; the rest is judged.
+
 ## ASY-04 Caches are scoped and injected already scoped
 
 **Principle.** A cache is scoped by a fixed `CacheScope` enum so
@@ -88,6 +97,9 @@ call time; two consumers share one scope and collide on key names; a
 scope added as a free string instead of an enum member.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the `CacheScope` enum and every
+`get_cache` call; the rest is judged.
 
 ## ASY-05 A read cache is a projection with a generation
 
@@ -143,6 +155,9 @@ impl adds caching.
 
 **Severity.** medium
 
+**Check.** `arch-check` decides cache imports, names, and parameters in
+the storage layer; the rest is judged.
+
 ## ASY-08 Buckets carry blobs, keyed by a fixed enum, moved by presigned URLs
 
 **Principle.** Large blobs live in buckets named by an enum, laid out
@@ -163,6 +178,9 @@ instead of handing out a presigned URL; a local setup that needs the
 cloud object store to run tests.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the `Buckets` enum, the bucket
+parameters, and the local impl; the rest is judged.
 
 ## ASY-09 Topics are a fixed enum with a typed payload map
 
@@ -185,6 +203,8 @@ broker-assigned id; a subscription with no way to unsubscribe; a
 consumer name missing from `subscribe`.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides it.
 
 ## ASY-10 Durable work never rides a topic
 
@@ -314,6 +334,9 @@ that writes to storage or retries deliveries.
 
 **Severity.** high
 
+**Check.** `arch-check` decides tasks, threads, timers, and schedulers
+in service code off the socket edge; the rest is judged.
+
 ## ASY-16 Durable work is a row with the queue's shape
 
 **Principle.** A work item names its kind and target, carries a unique
@@ -334,6 +357,9 @@ the idempotency key; a second table or topic invented for routing when
 the `lane` string would do.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the work item's fields, `WORK_PAYLOADS`,
+and the unique key; the rest is judged.
 
 ## ASY-17 A worker claims within capacity and renews its leases
 
@@ -399,6 +425,9 @@ or with no purge, so done rows outlive their retention; every parked
 record resumed in the same instant.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides scheduler libraries and scheduled
+Terraform resources; the rest is judged.
 
 ## ASY-20 A long-running record is advanced by stateless workers
 
@@ -605,6 +634,9 @@ reading a file.
 
 **Severity.** low
 
+**Check.** `arch-check` decides the owner-only mode check before every
+secrets file read; the rest is judged.
+
 ## ASY-29 The work item carries the request that caused it
 
 **Principle.** A work item carries the request that caused it and that
@@ -629,6 +661,9 @@ a run whose span starts an unlinked trace, or one that runs as a child
 of the causing span, stretching one trace across the queue.
 
 **Severity.** medium
+
+**Check.** `arch-check` decides the two fields on the work item and the
+outbox row; the rest is judged.
 
 ## ASY-30 A degraded answer is declared at the read, never silent
 
