@@ -391,12 +391,13 @@ and routes under `/v1/admin/*`, and holds no realtime socket.
 **Source.** Client App Architecture, The Operator Console.
 
 **Look for.** `apps/admin/`: its origin configuration, route prefix,
-and absence of a socket provider; operator screens inside the portal's
-bundle.
+and the absence of a socket provider, a membership picker, and an org
+chip; operator screens inside the portal's bundle.
 
 **Violation.** Operator screens built into the portal's bundle; the
 console opening the realtime channel; the console served from the
-portal's origin; a design kit forked instead of shared.
+portal's origin; a design kit forked instead of shared; a picker or an
+org chip in the console, which has no tenant.
 
 **Severity.** high
 
@@ -953,3 +954,26 @@ the gateway's lines and absent from the worker's. (The filter that
 attaches them is DEL-19.)
 
 **Severity.** medium
+
+## DEL-40 The app works in one tenant at a time
+
+**Principle.** The portal signs in once and reads the memberships:
+one goes straight in, several get a picker first, none get a plain
+message. The pick is an exchange for one session. An org chip switches
+by a second exchange; the app then drops the old tenant's caches and
+reopens its socket. It never holds two sessions.
+
+**Source.** Client App Architecture, One Tenant at a Time.
+
+**Look for.** The sign-in and sign-up screens and what follows each
+answer; the org chip and its switch; what the switch clears in the
+query cache and the stores, and when the socket reopens; every place
+the app keeps a bearer.
+
+**Violation.** A dashboard rendered before a tenant is chosen; a
+switch that keeps the old tenant's query cache or store entries, so
+one tenant's rows show under another; a socket left open across a
+switch; two sessions held at once, or the sign-in credential kept
+after the exchange. (A picker in the console is DEL-16.)
+
+**Severity.** high

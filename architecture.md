@@ -1294,9 +1294,11 @@ tenant:
 
 These take the request stage, `RequestContext`, as their first argument
 (see [Stages](#stages)), and they are documented as transitions. Each
-one *produces* a stronger stage rather than consuming one. A sign-up
-and a sign-in return the identity stage. A claim returns the `OpContext` under which
-the work runs. A sweep asks for one service context per live tenant.
+one *produces* a stronger stage rather than consuming one. A sign-in
+returns the identity stage. A sign-up returns it too, after it creates
+the identity and the tenant it answers with, so it acts inside no
+tenant that existed before it. A claim returns the `OpContext` under
+which the work runs. A sweep asks for one service context per live tenant.
 
 There are very few of them, and a test names each one (see [Records
 of Decisions](#records-of-decisions)). A new operation that takes the
