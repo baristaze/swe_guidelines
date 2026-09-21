@@ -41,7 +41,9 @@ never removes them. Nothing else is asked for.
    of every compose file; runtime versions and action references in
    every CI workflow; engine and runtime versions in Terraform. One
    dependency declared in several places is one row with every place
-   listed.
+   listed. The `arch-check` tag in the `Makefile` is not a row: it
+   moves with the guideline pin in `specs/architecture.md`, when the
+   project adopts a newer guideline, never here.
 4. Resolve the target of each row from the maintainers' own release
    data, fetched now, never from memory: the Node release index
    (`https://nodejs.org/dist/index.json`, the newest entry whose `lts`

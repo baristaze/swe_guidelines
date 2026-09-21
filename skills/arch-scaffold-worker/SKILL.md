@@ -77,7 +77,7 @@ Worker, under `workers/<worker-name>/`:
 | `om/src/<root>/om/root.py` (new namespace only) | `WorkManagerImpl` constructed and added to `Managers`, before the outbox relay impl, which now takes it        |
 | `om/src/<root>/om/outbox/impl/` (new namespace only) | the relay's second branch: a row whose `kind` is `work.<kind>` calls `WorkManagerInterface.enqueue_relayed(org_id, row)` and publishes `WORK_AVAILABLE`, beside the entity-change branch `arch-scaffold-new` wrote; the relay takes the work manager by interface, so `enqueue_relayed` has its caller from this step on |
 | `om/tests/unit/test_outbox_relay.py` (new namespace only) | a `work.<kind>` row relayed twice leaves one work item, and the item carries the row's actor, request id, and traceparent |
-| `om/tests/unit/` the tenant-first exceptions test (new namespace only) | `claim_next`, `read_stale`, and `read_item` added to the enumerated exceptions, and `claim` and `maintenance_contexts` to the methods that take the request stage |
+| root `pyproject.toml` and `om/tests/unit/` the request-stage test (new namespace only) | `WorkStorageInterface.claim_next`, `read_stale`, and `read_item` added to `[tool.arch-check.options.CTX-12] tenantless`, and `claim` and `maintenance_contexts` to the request-stage test |
 | `infra/src/<root>/infra/topics/__init__.py` (when absent) | `Topics.WORK_AVAILABLE` and its payload            |
 | `infra/src/<root>/infra/cache/__init__.py` (when absent) | `WORKER_LIVENESS = "worker_liveness"` on the `CacheScope` enum, the scope the liveness key lives under |
 | `pyproject.toml` (root)                     | the member added to `[tool.uv.workspace] members`                |
@@ -94,9 +94,9 @@ Worker, under `workers/<worker-name>/`:
 3. Shutdown: cancel every task, return each item to the queue with a
    note, stop the heartbeat, then mark the worker offline.
 4. The worker's tenant-less storage methods (`claim_next`,
-   `read_stale`, `read_item`) get a docstring and a line in the
-   repository's tenant-first exceptions test before the fast gate
-   runs; the test fails otherwise, as it should.
+   `read_stale`, `read_item`) get a docstring and an entry in
+   `[tool.arch-check.options.CTX-12] tenantless` before the fast gate
+   runs; `arch-check` fails otherwise, as it should.
 5. Add `workers/<worker-name>` to the root's `[tool.uv.workspace]
    members` and run `uv sync` before the fast gate, so the workspace
    resolves the new distribution.

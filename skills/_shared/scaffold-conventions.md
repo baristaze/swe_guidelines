@@ -94,10 +94,12 @@ the order the guideline presents them, never by number.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps), each documented in its docstring and listed in the
-  repository's exceptions test, which also names every method that
-  takes the request stage. That test reads signatures; what says the
-  tenant is used is the cross-tenant case beside each method, below.
+  sweeps), each documented in its docstring and listed under
+  `[tool.arch-check.options.CTX-12] tenantless` in the root
+  `pyproject.toml`, which `arch-check` holds both ways. The manager
+  methods that take the request stage are listed in the repository's
+  request-stage test. Both read signatures; what says the tenant is
+  used is the cross-tenant case beside each method, below.
 - The predicate in the query is the fence, and the database policy is
   the second fence, taken by default. Every table declares its tenancy
   scope (`system`, `org`, `identity`, `both`) in one map beside the
@@ -108,7 +110,7 @@ the order the guideline presents them, never by number.
   `app.identity_id` with `set_config(..., true)`, so the settings die
   with the transaction. `EMPTY_UUID` as the `org_id` is the system
   scope, passed explicitly and never a default, by the methods the
-  exceptions test enumerates. Nothing in a manager or an impl assumes
+  `tenantless` list enumerates. Nothing in a manager or an impl assumes
   the policy is there. The login the application connects with is
   never a superuser and never carries `BYPASSRLS`, and an integration
   test asserts that on the live connection, beside the one that reads
@@ -140,9 +142,10 @@ the order the guideline presents them, never by number.
   exactly one wins, the same case over memory and over Postgres), one
   refusal per authorization rule a manager states, one test per
   rate-limited route, one per exit code of a command, one per
-  capability of the infra root over its local impl, one
-  construction-site test enumerating every site that builds a stage
-  above the request stage, and one build-once test per root. A test
+  capability of the infra root over its local impl, and one
+  build-once test per root. Every site that builds a stage above the
+  request stage is listed under `[tool.arch-check.options.CTX-26]
+  sites`, and `arch-check` fails on a site the list does not name. A test
   file with one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update starts from
   the stored row: the caller's entity supplies the fields a caller may
