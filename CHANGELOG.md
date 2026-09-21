@@ -4,6 +4,131 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.25.0 (2026-09-21)
+
+The tooling agrees with the guideline. Each lens says what its section
+says, and a lens that shares a rule names the lens that owns it. The
+scaffolds build what the guideline draws. `arch-check` decides what
+its lens states and no more, and a missing root is a finding instead
+of a clean pass. Minor, with one rule reversed: a manager that fronts
+a provider has no memory impl of its own.
+
+### Fixed
+
+- `arch-check`: it no longer follows directory symlinks, which hung
+  `DEL-23` on a loop. A workspace member of `.` no longer crashes
+  `DEL-08` and `DEL-11`. A selection of only disabled rules exits 2.
+  The `.python-version` pin is read past a comment.
+- `arch-check` rules decide what their lens states and no more:
+  `ASY-08`, `ASY-09`, `ASY-15`, `CON-07`, `CON-12`, `CON-23`,
+  `CTX-05`, `CTX-06`, `CTX-08`, `CTX-15`, `CTX-20`, `CTX-21`, `CTX-26`,
+  `CTX-29`, `DEL-10`, `NET-06`, `NET-09`, `NET-13`, `OM-01`, `OM-10`,
+  `OM-17`, `STO-05`, `STO-08`, `STO-12`, `STO-18`, and `STO-29`. Each fix has a fail-path test.
+- `arch-deviate` handles an ADR outside `docs/adr/`. `arch-new-aspect`
+  lists every place a new group's count moves. `arch-scaffold-app`
+  runs `make check` for a browser app.
+- `SECURITY.md` names the checker, the harness, the viewer, and every
+  fetched tool. `make clean` and `.gitignore` cover every cache.
+
+### Added
+
+- `architecture.md`, Operations: a cloud credential that a person or an
+  agent holds reads and never writes; the administrator's two runs are
+  the exception. On the platform, the only writing identity an agent
+  runs under is the traffic generator's. It creates only its own
+  tenants, named for the run.
+- `architecture.md`, Stages: the request-stage operations are signing
+  in, claiming work, starting a sweep over every live tenant, and
+  resolving a webhook token. Expiring a lease is bookkeeping. A test
+  names each one, and Records of Decisions lists that test.
+- `architecture.md`, The Second Fence: the system scope passes the
+  lookups by credential digest that sign a person in. The `identity`
+  table is not among them, since its policy has no bypass.
+- `NET-24` gains the marker's two refusals the guideline's table
+  already states.
+- `arch-scaffold-service` creates the operator-plane routes:
+  `/v1/admin/me`, `/size`, the org, member, and event reads, the entity
+  reads, and provisioning for a `write` entry. Every read is logged
+  with the tenant and the operator.
+- `arch-scaffold-new` generates `clients/python/` after the first
+  `make openapi` and writes `ops/` after it. `make seed` creates a
+  local read operator and a local provisioner and writes `local.env`.
+  CI runs the light traffic check. The tenant-isolation negative
+  control runs and both runs are recorded. Every namespace gets a
+  README.
+- `arch-scaffold-entity` takes `--scope`, and its storage signatures
+  carry the scope's keys: `org_id` and `user_id` for `both`,
+  `identity_id` for `identity`.
+- `arch-check`: `OM-07` reports an OM with no `base` module, or one
+  whose classes never extend `BaseModel`. `STO-10` reports namespace
+  storages with no `StorageInterface` under `<pkg>.om.storage`. Before,
+  such a tree passed clean. `CTX-12` reports a missing enumeration.
+- The review skills and `agents/arch-reviewer.md` report
+  `arch-check`'s `PARSE` and `IGNORE` findings, one bullet per rule.
+
+### Changed
+
+- `architecture.md`, A Storage Impl: `_upsert` reads the row under the
+  call's own tenant. A cross-tenant id is refused as `Conflict`.
+- `architecture.md`, Namespace Shape: the core row and its outbox rows
+  land in one transaction, not one statement. The methods that pass
+  `EMPTY_UUID` are the ones `arch-check` enumerates.
+- `architecture.md`: an entity composes `Trackable` where an update
+  exists, as Naming Entities says, and a system row composes `Created`.
+  `model_validate` takes a dict, never an instance of its own class.
+  The marker field in The Gateway is `attempt_token`, as the prose
+  says. Snippets follow the rules they sit beside.
+- `architecture.md`: a socket holds the context its ticket produced;
+  envelopes route into the query cache or the client store; an open
+  breaker is `Unavailable` only over an interface whose failure is an
+  exception; "twins" means only external-service stand-ins.
+- `NET-11` is high: a stored credential is a credential reaching where
+  it is not held.
+- Lenses that share a rule name each other: `CTX-20` and `DEL-16`,
+  `DEL-18` and `NET-07`, `CON-19` and `OM-10`, `CON-17` and `OM-13`,
+  `NET-29` and `STO-18`. `CON-03`, `CTX-21`, `CTX-28`, `OM-12`, and
+  `OPS-03` point at the lens that owns the rule they touch.
+- Lenses match their sections: `OPS-01`, `OPS-06`, `OPS-10`, `OPS-16`,
+  `OPS-18`, `OPS-22`, `OM-05`, `DEL-13`, `CTX-01`, `CTX-22`, `CON-04`,
+  and `ASY-21`. `CTX-16` no longer flags bookkeeping with no principal
+  beyond the relay. `NET-33` keeps the edge retry out of the stacking
+  count. `DEL-24` names the request-stage list and hands the build-once
+  test to `CON-20`. `DEL-29` flags an infra subclass caught by name,
+  never the root a boundary catches.
+- The ops templates: the create and nuke skills refuse `local`; the
+  Terraform folder is `prod`; the database's deletion protection is a
+  variable of its own, so a `destroyable` apply never lifts it; the
+  budget alerts at 90 percent. The templates read the process list
+  from `deployment/README.md` and name no product entity.
+- `arch-scaffold-worker` drops `read_stale`, publishes
+  `WORK_AVAILABLE` once per enqueue, stops claiming first on shutdown,
+  and requeues per tenant. Its `read_item` is tenant-scoped.
+- `arch-check`: `Project.read` replaces a byte that is not UTF-8
+  instead of reading the file as empty. The Dockerfile parser reads a
+  heredoc, a tab after the keyword, and a blank line inside a
+  continuation, and skips `Dockerfile.md` and its siblings.
+  `STO-06` and `STO-26` replay the SQL migration chain.
+- `make leaks` scans every tracked text file. `make skills` refuses
+  `Bash(make:*)` and an unquoted description. `make lenses` checks
+  each label in a Source's parentheses against the subsection.
+- `benchmark/`: a missing `jsonschema` is a note, never a failed run,
+  so `make test` passes with pytest alone. Each repeat gets its own
+  workspace. A subject receives only the API key it uses.
+  `make benchmark` uses two judges.
+
+### Removed
+
+- `architecture.md`, Interfaces, Multiple impls per interface:
+  `PaymentManagerMemoryImpl` is withdrawn. This is a reversal. A
+  manager that fronts a payment processor, a carrier, or a model
+  provider runs over the provider's twin (see Twins for External
+  Services), and it has no memory impl of its own. `CON-03` and
+  `skills/_shared/scaffold-conventions.md` follow.
+- Lens clauses with no sentence in the guideline behind them: `NET-03`
+  "raises a domain exception", `NET-12` "certificate rotation logic",
+  the `OM-14` unused-entity clause, and the `STO-17` "role tests". No
+  guideline rule goes with them.
+
 ## 0.24.0 (2026-09-21)
 
 The guideline agrees with itself. A full review found rules stated two

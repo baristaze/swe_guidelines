@@ -5,7 +5,7 @@
 
 [project]
 name = "swe-guidelines-arch-check"
-version = "0.24.0"
+version = "0.25.0"
 description = "Static checks for the lenses of the Software Design and Architecture Guidelines."
 readme = "README.md"
 license = "MIT"
