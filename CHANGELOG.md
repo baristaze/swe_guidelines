@@ -4,6 +4,54 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.26.0 (2026-09-21)
+
+Sign-up opens a deployed environment, and an app works in one tenant
+at a time. A deployed environment has no seed, so sign-up is its door.
+A person who holds several memberships picks one after signing in,
+holds one session, and switches through an org chip. Minor: rules are
+added and sharpened, and none is removed or reversed.
+
+### Added
+
+- `architecture.md`, "Auth: the Gateway Verifies, the Tenancy Domain
+  Owns": sign-up is the door into a deployed environment. It creates
+  the identity, its first org, and the owner membership in one
+  transaction, and answers as a sign-in does. It is rate-limited like
+  the sign-in and takes no idempotency key. A held email is refused as
+  a conflict. It is open by default, and one setting closes it to a
+  not found. Email verification is left out, as a choice. The
+  memberships of an identity are read under the identity stage.
+  "Operations Without a Principal" lists signing up. New lens
+  `NET-35`.
+- `architecture.md`, "One Tenant at a Time", a new subsection of
+  Client App Architecture: the app picks one membership, holds one
+  session, and switches through an org chip. A switch is a second
+  exchange that drops the old tenant's caches and reopens the socket.
+  The operator console has no picker and no chip. The CLI's API key
+  keeps it in one tenant. New lens `DEL-40`. 234 lenses.
+- `arch-scaffold-service` and `arch-scaffold-new` write
+  `POST /v1/auth/signup`, `GET /v1/auth/memberships`, and the
+  `signup_enabled` setting. `arch-scaffold-app` writes the sign-up
+  screen, the picker, and `src/features/org_chip/`.
+
+### Changed
+
+- `architecture.md`, "Stages": a live session proves its identity as
+  well as its tenant. A switch is a second exchange, and it ends the
+  session it was presented with in the same write, so a tab never
+  holds two live sessions. Lenses `CTX-05`, `CTX-16`, `CTX-18`, and
+  `CTX-20` follow. The scaffolded `Identity` dependency accepts a
+  session.
+- `architecture.md`, "The Gateway": the operator plane admits only
+  the person's own sign-in, never a session of any kind and never an
+  API key. The scaffolded operator gate refuses a session.
+- `architecture.md`, "Local: Docker Compose": the seed is local only,
+  and a deployed environment is entered through sign-up.
+- Lenses: `NET-09` hands sign-up's missing idempotency key to
+  `NET-35`. `NET-11` looks for sign-up. `DEL-16` flags a picker or an
+  org chip in the console.
+
 ## 0.25.0 (2026-09-21)
 
 The tooling agrees with the guideline. Each lens says what its section
