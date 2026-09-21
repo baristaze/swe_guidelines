@@ -2,27 +2,42 @@ name: review-om
 kind: skill
 subject:
   skill: arch-review-om
-  prompt: "Review om/ against the object model lenses and report findings by lens id."
+  prompt: "Review {target}/om against the object model lenses and report findings by lens id."
   max_turns: 30
   allowed_tools: [Read, Grep, Glob]
-  # Pass a checkout to review with --target; the subject works in the
-  # workspace and reads the target read-only.
-  target: null
+  # A checkout with eight defects planted, one lens each. `--target`
+  # reviews another checkout instead; the judges still get its source,
+  # and the expected findings are dropped because they describe this one.
+  target: ../fixtures/review-om
   timeout_s: 1800
 artifact:
   stdout: true
   files: []
+evidence:
+  files: ["om/**/*.py"]
+  expected: ../fixtures/review-om.expected.yaml
 rubric: |
-  Score the review 0 to 100 as the author of the guideline would.
+  Score the review 0 to 100 as the author of the guideline would. The
+  evidence holds the source the review read, with line numbers, and,
+  on the scenario's own target, the planted findings and what the
+  checkout does right. Score against the evidence, not against how
+  sure the review sounds.
 
-  A good review names each finding by its lens id, points at a file and
-  a line, quotes the rule it rests on, and says what to change. It
+  Most of the score is recall and precision. Each planted finding the
+  review reports, at the right file and near the right line, earns its
+  share; a planted defect reported under another lens earns part of it.
+  Each finding the source does not bear out, and each flag on something
+  the evidence lists as correct, takes points off. A true finding that
+  is not on the list is neither credit nor penalty. With no planted
+  list, verify each finding against the source and score precision.
+
+  The rest is form. A good finding names its lens id, points at a file
+  and a line, quotes the rule it rests on, and says what to change. It
   separates what the guideline requires from what the reviewer prefers.
-  It reports nothing it did not read.
 
-  Take points off for a finding with no lens id, for a lens id that
-  does not exist, for advice the guideline does not support, and for a
-  review that edits or stages anything instead of reporting.
+  Take points off for a lens id that does not exist, for advice the
+  guideline does not support, and for a review that edits or stages
+  anything instead of reporting.
 judges:
   providers: 3
   effort: high

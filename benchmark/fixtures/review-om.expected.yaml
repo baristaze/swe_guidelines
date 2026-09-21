@@ -1,0 +1,59 @@
+# The defects planted in fixtures/review-om, one lens each, and what that
+# checkout does right. The file sits beside the checkout and not in it:
+# the subject reads the checkout, and must never read the answers.
+#
+# A path is relative to the checkout. A line is where the defect shows.
+findings:
+  - id: F1
+    lens: OM-04
+    file: om/src/acme/om/inventory/types/warehouse.py
+    line: 4
+    what: "Warehouse composes Trackable before Identifiable and Named; identity comes first, then the label, then lifecycle."
+  - id: F2
+    lens: OM-17
+    file: om/src/acme/om/inventory/types/warehouse.py
+    line: 6
+    what: "tags is a list, and its default a mutable list; an entity field is a tuple."
+  - id: F3
+    lens: OM-03
+    file: om/src/acme/om/inventory/types/bin.py
+    line: 12
+    what: "Bin redeclares created_at, which Trackable already declares through Created."
+  - id: F4
+    lens: OM-13
+    file: om/src/acme/om/inventory/types/bin.py
+    line: 6
+    what: "NO_BIN is a second sentinel for the empty uuid, and it fills an optional reference; parent_bin_id is UUID | None = None."
+  - id: F5
+    lens: OM-06
+    file: om/src/acme/om/inventory/types/stock_movement.py
+    line: 6
+    what: "StockMovement is a ledger line only ever created (record_movement), yet it composes Trackable; it is Identifiable alone."
+  - id: F6
+    lens: OM-12
+    file: om/src/acme/om/inventory/impl/manager.py
+    line: 37
+    what: "create_bin mints the id with uuid4(); every id is uuid v7 from new_id()."
+  - id: F7
+    lens: OM-10
+    file: om/src/acme/om/inventory/impl/manager.py
+    line: 21
+    what: "update_warehouse feeds a model_dump into model_copy(update=...), which does not validate; the copy is rebuilt with model_validate."
+  - id: F8
+    lens: OM-15
+    file: om/src/acme/om/inventory/rules.py
+    line: 11
+    what: "is_stale consults the clock through utcnow(); a rule takes the time as an argument."
+
+# Correct on purpose. A review that flags one of these is wrong.
+clean:
+  - "base.py: the root is frozen and forbids unknown fields (OM-07, OM-11)."
+  - "base.py: Trackable declares created_at, updated_at, created_by, and updated_by; EMPTY_UUID, PROVENANCE_FIELDS, new_id, and utcnow are declared once (OM-03)."
+  - "Warehouse composes SoftDeletable, and delete_warehouse sets deleted_at and deleted_by (OM-05)."
+  - "Bin composes Trackable, and move_bin sets updated_at and updated_by (OM-05)."
+  - "Bin lists Identifiable, Named, Trackable in the house order (OM-04)."
+  - "move_bin and delete_warehouse rebuild the copy with model_validate (OM-10)."
+  - "record_movement mints its id with new_id() (OM-12)."
+  - "free_capacity in rules.py is a pure function (OM-15)."
+  - "The inventory package re-exports InventoryManagerInterface, and the namespace has manager.py, types/, impl/, storage/, and rules.py (OM-14)."
+  - "No entity carries org_id; tenancy is passed to storage (OM-02)."
