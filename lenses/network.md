@@ -73,12 +73,12 @@ aggregation and session shaping live; whether app-aware branches read
 the app type from the context or guess from headers or paths; which
 service the app's client is pointed at.
 
-**Violation.** An app-specific service method that raises a domain
-exception or writes an entity itself rather than calling a domain
-service or manager; a domain service with branches keyed on which
-app is calling; an app-specific service used by a second app; an app
-whose client calls a domain service directly; app-specific behavior
-decided from anything other than the context's app type.
+**Violation.** An app-specific service method that writes an entity
+itself rather than calling a domain service or manager; a domain service
+with branches keyed on which app is calling; an app-specific service
+used by a second app; an app whose client calls a domain service
+directly; app-specific behavior decided from anything other than the
+context's app type.
 
 **Severity.** medium
 
@@ -302,10 +302,9 @@ system's.
 
 **Violation.** A service or worker with a public address, which is an
 exposure and not a convention slip, or a security group open past the
-platform's own processes; certificate rotation logic inside a service;
-an HTTP client pinned to a bundled CA set so a corporate proxy or
-private CA fails; TLS configured per component instead of once at
-boot.
+platform's own processes; an HTTP client pinned to a bundled CA set so a
+corporate proxy or private CA fails; TLS configured per component
+instead of once at boot.
 
 **Severity.** medium
 
@@ -586,7 +585,9 @@ a `finish` or a release that matches on the key alone; a release that
 deletes the marker or clears its digest or id, so the retry after a
 failure creates a second row; a rerun that mints a new id instead of
 using the marker's; a losing attempt that is not refused like a worker
-whose lease has passed.
+whose lease has passed; a key presented with another digest that is
+replayed or rerun instead of refused; a retry's `begin` under a live
+lease that reruns the request instead of answering `Conflict`.
 
 **Severity.** high
 
@@ -789,8 +790,7 @@ jitter, from settings. Retries do not stack: one layer of the chain
 owns them, because a retry under a retry multiplies the load on a
 dependency already failing.
 
-**Source.** The Network Layer, Direction of Calls; Clients Live in One
-Place.
+**Source.** The Network Layer, Direction of Calls.
 
 **Look for.** The retry wrapper on each remote client and infra impl:
 which failures it retries, its count, its backoff, and where all three

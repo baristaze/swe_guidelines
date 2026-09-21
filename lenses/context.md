@@ -24,13 +24,13 @@ types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context as its first argument: `OpContext` for a tenant
-operation, `OperatorContext` for an operator one (CTX-20), or a lower
-stage only where CTX-16 allows it. A helper below the
-managers that needs less takes a scope (CTX-22); no manager operation
-takes one.
+takes a context first: `OpContext` for a tenant operation,
+`OperatorContext` for an operator one (CTX-20). A weaker stage is
+taken only by a tenancy transition, the sign-in exchange, and an
+operation with no principal (CTX-16). A helper that needs less takes a
+scope (CTX-22); no manager operation does.
 
-**Source.** OpContext; The Business Layer.
+**Source.** OpContext, The Operator Context; The Business Layer.
 
 **Look for.** Manager interfaces, service interfaces, worker handlers:
 the first parameter of every async method, and the docstring of any
@@ -488,7 +488,7 @@ Console.
 subclasses, the operator admission, every manager signature on the
 operator plane and the tenant plane, and for one that takes a stage
 below, whether it is a tenancy transition or an operation with no
-principal (CTX-21); what the allowlist entry grants and where an
+principal (CTX-16); what the allowlist entry grants and where an
 operator write requires it; how the console and its screens decide
 that a person is an operator.
 
@@ -543,8 +543,8 @@ a bundle of managers per stage, or a manager reachable from a context.
 a scope: a small `Protocol` of read-only properties naming the
 capability it needs. A stage satisfies a scope structurally, with no
 projection object built per call. A scope exists when a consumer
-declares it or another scope builds on it. A manager operation takes
-`OpContext`, which is its scope.
+declares it or another scope builds on it. A tenant manager operation
+takes `OpContext`, which is its scope.
 
 **Source.** OpContext, Scopes.
 
@@ -594,7 +594,7 @@ operator write is stamped by the operator managers from the identity
 id and the request id their stage carries, through a helper of the
 operator plane, never through `outbox_row`.
 
-**Source.** OpContext, Scopes; The Operator Context.
+**Source.** OpContext, Scopes.
 
 **Look for.** The write paths of the operator managers and the helper
 that stamps them; every call of `outbox_row` and the type of the

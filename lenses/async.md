@@ -465,7 +465,8 @@ does on a transient outage, a raised limit, or a missing input; the
 fields that carry a park reason and a resume time; the wake paths.
 
 **Violation.** A transient outage recorded as a failure that discards
-progress; a limit breach that ends the record instead of parking it; a
+progress; a breach of a limit an operator can raise that ends the record
+instead of parking it; a
 parked record with no reason or no way to be woken; a safety check that
 marks failure rather than parking.
 

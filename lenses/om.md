@@ -301,12 +301,12 @@ storage; the rest is judged.
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 
-**Principle.** `EMPTY_UUID` is the platform's reference: the
-system scope on infra calls and the value of a required reference no
-tenant and no person owns (`updated_by` on an item the platform
-claimed), which keeps the column `NOT NULL` and the index simple. A reference
-that is optional is `None`, never `EMPTY_UUID`. Its use as the system
-scope is judged by `context`.
+**Principle.** `EMPTY_UUID` is the platform's reference: the system
+scope on infra calls and the value of a required reference no tenant and
+no person owns (`updated_by` on an item the platform claimed), which
+keeps the column `NOT NULL` and the index simple. A reference that is
+optional is `None`, never `EMPTY_UUID`. Its use as the system scope is
+judged by `context`.
 
 **Source.** Naming Entities, Identifiers; Worker Roles, The Work
 Queue.
@@ -346,13 +346,10 @@ the manager and storage interfaces (the namespace in the singular,
 (the entity, `write_warehouse`).
 
 **Violation.** A namespace whose interface can only be imported from a
-deep path; entity classes next to the manager impl; an entity in
-`types/` that no manager accepts or returns (a value object or a read
-model is exempt, since it travels inside an entity or is returned by a
-manager); a product swimlane living as a sub-folder of another
-namespace's `types/`; a manager interface named after an entity rather
-than the namespace; a storage interface named after an aggregate in a
-namespace that has only one.
+deep path; entity classes next to the manager impl; a product swimlane
+living as a sub-folder of another namespace's `types/`; a manager
+interface named after an entity rather than the namespace; a storage
+interface named after an aggregate in a namespace that has only one.
 
 **Severity.** medium
 

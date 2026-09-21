@@ -308,7 +308,7 @@ Three kinds of class live on the OM base chain. The mixins tell them
 apart.
 
 An **entity** has an identity and is stored: `Order`, `Product`,
-`Warehouse`. It composes `Identifiable` and, unless it is append-only,
+`Warehouse`. It composes `Identifiable` and, where an update exists,
 `Trackable`.
 
 A **value object** is a typed piece of an entity with no identity of its
@@ -346,8 +346,7 @@ was constructed.
 > carries decides which. When every updated value already has the
 > field's type (a timestamp, an id, a status), the copy is
 > `entity.model_copy(update={...})`. When the update carries dumped
-> data, the caller's fields above all, the entity is rebuilt from a
-> dict:
+> data, as the caller's fields do, the entity is rebuilt from a dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
 > `model_copy` does not validate, so it would leave a dumped value
 > object as a plain dict. A manager that updates an entity sets
@@ -1098,14 +1097,12 @@ A manager operation that acts for a principal takes exactly one of the
 two, and never a choice between them. An operator operation takes
 `OperatorContext`. A tenant operation takes `OpContext`.
 
-A stage below either one is a parameter in three places only: where
-the stage is what the operation establishes, where the identity stage
-is the principal, and where the operation has no principal at all.
-Those are the transitions of the tenancy manager, the exchange of a
-sign-in for a tenant session (see [Stages](#stages)), and the
-operations of [Operations Without a
-Principal](#operations-without-a-principal), which take `RequestContext`
-or a tenant id.
+Three kinds of operation take a weaker stage, and no other. A
+transition of the tenancy manager takes the stage it refines. The
+exchange of a sign-in for a tenant session takes the identity stage
+(see [Stages](#stages)). An operation of [Operations Without a
+Principal](#operations-without-a-principal) takes `RequestContext`, or
+a tenant id and no stage at all.
 
 Two things keep the planes apart: the type system at every call site,
 and `arch-check` at the few places a stage is built. An operator route
@@ -1167,9 +1164,9 @@ class InventoryManagerImpl(InventoryManagerInterface):
 
 The caller that originates an entity constructs it whole and hands it
 to `create_*`, with `id=new_id()`, `created_at`, `updated_at`,
-`created_by`, and `updated_by` set. The manager's copy on create sets
-what is the manager's to decide, the actor from the context, the
-initial status, a position, and leaves the id and the timestamps as
+`created_by`, and `updated_by` set. On create, the manager's copy sets
+what is the manager's to decide: the actor from the context, the
+initial status, a position. It leaves the id and the timestamps as
 constructed.
 
 A create whose id is already written returns the row as stored. Ids are
@@ -1274,7 +1271,7 @@ tenant:
 
 -   signing in;
 -   claiming the next unit of background work;
--   sweeping expired leases;
+-   starting a sweep over every live tenant;
 -   finding the integration that owns an inbound webhook token.
 
 These take the request stage, `RequestContext`, as their first argument
@@ -1283,18 +1280,20 @@ one *produces* a stronger stage rather than consuming one. A sign-in
 returns the identity stage. A claim returns the `OpContext` under which
 the work runs. A sweep asks for one service context per live tenant.
 
-There are very few of them, and a test names each one. A new operation
-that takes the request stage is a decision, not a slip.
+There are very few of them, and a test names each one (see [Records
+of Decisions](#records-of-decisions)). A new operation that takes the
+request stage is a decision, not a slip.
 
 A sweep has two shapes, and who acts decides which.
 
-A sweep that performs a tenant operation, a purge, a requeue that
-audits, holds one service context per live tenant and calls the manager
-as any caller would.
+Some sweeps perform a tenant operation, such as a purge or a requeue
+that audits. Such a sweep holds one service context per live tenant
+and calls the manager as any caller would.
 
-Bookkeeping with no principal, relaying the outbox, expiring a lease,
-reads across tenants in one statement and gets the tenant back with
-each row (see [Namespace Shape](#namespace-shape)).
+Other sweeps are bookkeeping with no principal, such as relaying the
+outbox or expiring a lease. Such a sweep reads across tenants in one
+statement and gets the tenant back with each row (see [Namespace
+Shape](#namespace-shape)).
 
 A service context is minted for the tenant, not for a member. It
 carries the tenant, the role reserved for services, and the system user
@@ -1310,9 +1309,10 @@ enqueue of a work item. The row carries its tenant, its actor, and its
 request id from the write that made it, and the relay runs again from
 the sweep, where no principal exists.
 
-All three kinds, the operations on the request stage, the bookkeeping
-with no principal, and the handoffs by tenant id, are declared on their
-interfaces as such, and they are the only operations of their kinds.
+There are three such kinds: operations on the request stage,
+bookkeeping with no principal, and handoffs by tenant id. Each is
+declared as such on its interface, and nothing else is of those
+kinds.
 
 ## The Storage Layer
 
@@ -1424,8 +1424,8 @@ class InventoryStorageInterface(ABC):
 ```
 
 A write on a `core`-role entity takes the outbox rows that announce it.
-They land in one statement with it, so no manager has to remember a
-second one (see [Database Roles](#database-roles)).
+They land in one transaction with it, so no manager has to remember a
+second write (see [Database Roles](#database-roles)).
 
 An entity change is one row. A write that also starts work passes a
 second row of kind `work.<kind>` in the same tuple, because the queue
@@ -1440,7 +1440,7 @@ The outbox row is a system row (see [Naming
 Entities](#naming-entities)), declared once in the `outbox` namespace:
 
 ``` python
-class OutboxRow(Identifiable, Created):  # written with the core row, in the same statement
+class OutboxRow(Identifiable, Created):  # written with the core row, in the same transaction
     org_id: UUID              # carried on the entity: the relay runs with no context
     kind: str                 # "<namespace>.<entity>.<created|updated|deleted>", or "work.<kind>"
     target_id: UUID
@@ -1941,8 +1941,8 @@ because `SET LOCAL` takes no bind parameters.
 
 `EMPTY_UUID` as the `org_id` is the **system scope**: the transaction
 reads across tenants. The system scope is never a default. It is passed
-explicitly, and the methods that pass it are the ones the exceptions
-test already enumerates (see [Records of
+explicitly, and the methods that pass it are the ones `arch-check`
+already enumerates (see [Records of
 Decisions](#records-of-decisions)): the cross-tenant sweeps, and the
 lookups by identity that sign a person in.
 
@@ -3059,7 +3059,7 @@ class OrderServiceImpl(OrderServiceInterface):
         self, ctx: OpContext, order_id: UUID, req: PlaceOrderRequest
     ) -> OrderView:
         reservation = await self._inventory_service.reserve(ctx, order_id, req.lines)
-        order = await self._order_manager.place_order(ctx, order_id, req.customer_id, reservation)
+        order = await self._order_manager.place_order(ctx, req.customer_id, order_id, reservation)
         return OrderView.model_validate(order)
 ```
 
@@ -3072,11 +3072,12 @@ has no knowledge that a service was called to produce it.
 `order_id` is the id the gateway minted before the idempotency marker
 (see [The Gateway](#the-gateway)). It travels into the reservation as
 its idempotency key, and inventory dedupes on it. So the retry that
-follows a lost response finds the reservation it already made instead
-of making a second one. So does the retry that follows a crash before
-the order row exists, with no order row to find the reservation by. A
-reservation is a record with an expiry, so a failed second step leaks
-nothing past it. The order carries the reservation id.
+follows a lost response finds the reservation it already made instead of
+making a second one. A retry after a crash that came before the order
+row was written finds it too: with no order row to look in, inventory
+finds the reservation by the key. A reservation is a record with an
+expiry, so a failed second step leaks nothing past it. The order carries
+the reservation id.
 
 The retry is owned at the edge. The client retries under the same
 `Idempotency-Key`. The marker reruns the request with the same
@@ -3296,7 +3297,7 @@ sequenceDiagram
     Svc-->>Portal: 202 (record id)
     Note over Portal: returns to event loop
     Wrk->>Wrk: do work (minutes)
-    Wrk->>Svc: publish on the topic bus (catalog_imported)
+    Wrk->>Svc: record done, its outbox row relayed as entity_changed
     Svc-->>Portal: push envelope
     Note over Portal: reconciles against durable state
 ```
@@ -3424,7 +3425,7 @@ that made the write. The queue is a database role of its own, so no
 statement reaches both rows.
 
 Instead the work item rides a second outbox row of that write, of kind
-`work.<kind>`, landed by the same statement. The relay enqueues it (see
+`work.<kind>`, landed in the same transaction. The relay enqueues it (see
 [Database Roles](#database-roles)). That enqueue takes `(org_id, row)`
 and no context, beside the event append the relay already performs, and
 it stamps the actor from the row (see [Operations Without a
@@ -3550,7 +3551,7 @@ class NotifyShipmentHandlerImpl(WorkHandlerInterface):  # handles WorkKind.NOTIF
     async def handle(self, ctx: OpContext, item: WorkItem) -> None:
         # the unique index on idempotency_key deduped the enqueue; the claim is exclusive by lease
         summary = await self._order_manager.get_shipment_summary(ctx, item.target_id)
-        await self._topics.publish(Topics.SHIPMENT_UPDATED, summary.to_payload(item.idempotency_key))
+        await self._topics.publish(Topics.SHIPMENT_UPDATED, summary.to_payload(ctx.org_id, item.idempotency_key))
 ```
 
 The worker container runs the loop. The handler reads like a
@@ -3629,7 +3630,8 @@ the worker stops claiming new work, and it finishes what it holds.
 
 ### Shutdown
 
-On a stop signal the worker drains first and goes offline last.
+On a stop signal the worker hands its work back first and goes
+offline last. It stops claiming.
 
 Every in-flight task is cancelled, and each releases its work item back
 to the queue with a note. Then the heartbeat stops. Then the worker
@@ -3720,9 +3722,10 @@ Another message type on an existing channel costs nothing. A second
 transport is a whole new operational surface.
 
 A realtime channel makes the backing service lightly stateful, and that
-is accepted deliberately. The service holds the open socket, its
-subscriptions, and a bounded buffer (see [Realtime at the
-Edge](#realtime-at-the-edge)). Nothing else.
+is accepted deliberately. The service holds the open socket, the
+context its ticket produced, its subscriptions, and a bounded buffer
+(see [Stateless vs Stateful
+Services](#stateless-vs-stateful-services)). Nothing else.
 
 One channel per app, not per feature. It is tempting to open a
 dedicated socket for order events, another for notifications, another
@@ -3884,7 +3887,7 @@ the portal.
 
 One provider component owns the socket for the whole app. Envelopes are
 parsed by a discriminated union on their `type` and routed into the
-query cache, never into components.
+query cache or the client store, never into components.
 
 > **Principle:** One realtime channel per app. A new kind of push is an
 > envelope type, not a separate channel.
@@ -4133,19 +4136,22 @@ at an environment. The person chooses what to do. The agent does it.
 
 The safety boundary is the credential the skill holds, never the
 prompt. A credential that can only read cannot break anything, so an
-agent holding one may look at everything it reaches. A credential that
-writes is held by a pipeline, or by the administrator for its two
-named steps, creating an environment and destroying one, and by
-nothing else.
+agent holding one may look at everything it reaches. A cloud
+credential that writes is held by a pipeline, or by the administrator
+for its two named steps, creating an environment and destroying one,
+and by nothing else. On the platform, the one writing identity an
+agent runs under is the traffic generator's (see [Traffic and
+Stress](#traffic-and-stress)).
 
 That is the whole posture. The loop has a person in it at every write.
 The shapes below let the person step back one step at a time, without
 a redesign, when an agent has earned it.
 
 > **Principle:** Every operational task is a skill a person runs with
-> an agent. The boundary is the credential. A credential a person or
-> an agent holds reads and never writes, except the administrator's,
-> which creates and destroys an environment and does nothing else.
+> an agent. The boundary is the credential. A cloud credential a
+> person or an agent holds reads and never writes, except the
+> administrator's, which creates and destroys an environment and does
+> nothing else.
 
 ### Operator Roles
 
@@ -4187,7 +4193,7 @@ decides it.
 
 Roles are named `<product>-<role>-<environment>`, so the name says
 what it is and where it reaches. A role's permissions stop at its
-environment, and its fences deny the other one by tag.
+environment, and its fences deny every other environment by tag.
 
 The principal an agent holds is one user whose only permission is to
 assume the read-only roles. Its profiles chain from that user, one per
@@ -4308,9 +4314,9 @@ rule of [Traces and Metrics](#traces-and-metrics), and a log search is
 an operator's tool, never a tenant's screen.
 
 > **Principle:** One operator dashboard per environment, declared as
-> code in both twins with the same panels. A default alarm set to one
-> topic. A tenant's view is a product feature, never a telemetry
-> query.
+> code in both the local stack and the cloud with the same panels. A
+> default alarm set to one topic. A tenant's view is a product
+> feature, never a telemetry query.
 
 ### Scale-Out as a Lever
 
@@ -4402,7 +4408,10 @@ and stress.
 
 It runs against any environment, the local stack included, through
 the operator plane for the tenants it needs and through the public
-routes for everything else. It reports what an operator reads:
+routes for everything else. It creates those tenants under an operator
+identity of its own, whose allowlist entry writes. Only the generator
+uses that identity, and the tenants it creates are named for the run,
+so no real tenant is touched. It reports what an operator reads:
 requests by route and status, the p50, p95, and p99, and the error
 ratio.
 
@@ -4428,18 +4437,18 @@ An endpoint nothing reads is not observability, and a signal no test
 reads is a claim.
 
 One integration test closes the loop. It starts the process for real,
-with the trace exporter and the error tracker configured, drives one
-session through the edge, one call of which fails on purpose, and then
-reads every signal back through
-its own API by the request id the response carried: the log line that
-names it, the counter that moved, the trace that exists, the error
-event that carries it.
+with the trace exporter and the error tracker configured. It drives
+one session through the edge, and one call in it fails on purpose.
+Then it reads every signal back through that signal's own API, by the
+request id the response carried: the log line that names it, the
+counter that moved, the trace that exists, the error event that
+carries it.
 
 The readers are one interface with two impls. The local impl reads the
 `devx` profile's stores. The cloud impl reads the cloud's. The test is
 the same, and run against a deployed environment it is the smoke test
-of [Tests](#tests), which is how the two twins are held to the same
-shape: not by a checklist, but by one test that reads both.
+of [Tests](#tests), which is how the local stack and the cloud are
+held to the same shape: not by a checklist, but by one test that reads both.
 
 > **Principle:** One test drives real traffic and reads every signal
 > back by request id, through one reader interface with a local and a
@@ -4589,7 +4598,7 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 │   └── tests/                          # the telemetry round trip
 │
 ├── deployment/
-│   ├── README.md                       # what runs where, in both twins
+│   ├── README.md                       # what runs where, locally and in the cloud
 │   ├── terraform/
 │   │   ├── modules/
 │   │   └── environments/
@@ -4911,7 +4920,8 @@ class OrderAlreadyShipped(OrdersException, Conflict): ...
 ```
 
 `Unavailable` is the shape of a dependency that cannot be reached
-right now. A breaker that is open (see [Composition by
+right now. A breaker that is open over an interface whose failure is an
+exception (see [Composition by
 decoration](#composition-by-decoration)). A request refused past the
 process's admission bound (see [The Gateway](#the-gateway)). A backend
 that is down.
@@ -5032,6 +5042,8 @@ migrated database:
     match it. This one reads a migrated database, so it runs in the
     integration job.
 -   Every root is built whole at boot. This one is a unit test.
+-   Every manager method that takes the request stage is on one list,
+    and no other takes it. This one is a unit test.
 
 The scaffold wires the checker into a new tree's gate and writes the
 tests. An existing tree adds the checker to its gate and writes the
@@ -5244,13 +5256,15 @@ change.
 The rules that make it so:
 
 -   [Domain services are stateless](#stateless-vs-stateful-services)
-    and an app-specific service holds only its open sockets, so any
+    and an app-specific service holds only its open sockets and what
+    each one carries, so any
     replica serves any request and any replica can be killed.
 -   [Web services are the scalability
     units](#web-services-as-scalability-units), one per namespace, so
     each scales, rolls out, and deploys on its own.
--   Every storage method takes `org_id` first ([Storage
-    Principles](#storage-principles)), so every query is tenant-scoped.
+-   Every storage method takes `org_id` first, except the enumerated
+    exceptions ([Storage Principles](#storage-principles)), so every
+    tenant query is tenant-scoped.
     A later partition by tenant needs exactly that, and nothing else
     supplies it.
 -   [Database roles](#database-roles) give each load profile its own

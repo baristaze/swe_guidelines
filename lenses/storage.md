@@ -439,12 +439,10 @@ statement by the table it names and refuses one that spans roles.
 **Look for.** The table-to-role map: every table present, `schema`
 derived from it rather than declared on the class. Statements that
 name tables from two roles and the base class refusing them, and
-foreign keys whose target is in another role. Unit tests asserting the
-map is complete and that no key or statement crosses a role.
+foreign keys whose target is in another role.
 
 **Violation.** A table declares its own `schema` or is missing from the
-map. A join, foreign key, or transaction spans two roles. The role
-tests are absent.
+map. A join, foreign key, or transaction spans two roles.
 
 **Severity.** high
 

@@ -61,7 +61,8 @@ bends a shape the guideline relies on; `low` is a convention.
 `Look for` and `Violation` are prose, one to three sentences each, wrapped
 at about 72 columns like the rest of the file, and no line is wider than
 80 columns. `make lenses` holds every lens to the word count and the
-column limit; the wrap and the sentence counts are read by a person.
+column limit, and `Look for` and `Violation` to three sentences; the
+wrap is read by a person.
 
 `Source` names the section and, after a comma, the subsection when the
 rule rests in one, both by title exactly as `architecture.md` spells
@@ -77,9 +78,10 @@ skills take its result without judging the code again. "`arch-check`
 decides `<the part>`; the rest is judged." means the checker decides a
 named mechanical part, and the review judges what remains. A lens with
 no `Check` line is judged by the review alone. The checker's rule id is
-the lens id, and `make lenses` holds the two together both ways: every
-lens with a `Check` line has a rule of that id with the same coverage
-and severity, and every rule has a lens that says so. A rule ships only
+the lens id, and the two are held together both ways: every lens with
+a `Check` line has a rule of that id with the same coverage (`make
+lenses`) and severity (`make test`), and every rule has a lens that
+says so. A rule ships only
 when it is deterministic and rarely wrong on a tree shaped the way the
 guideline prescribes; a rule that would guess stays with the review.
 

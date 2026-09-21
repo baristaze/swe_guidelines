@@ -96,22 +96,24 @@ every storage and infra interface; the rest is judged.
 
 **Principle.** The in-memory impl is a full second implementation, not a
 stub: every read, write, filter, and tenancy rule the relational impl
-has, the memory impl has too, and the test suite runs both. Every
-unique key the schema declares has a contract case, so the memory impl
-refuses what the engine refuses.
+has, the memory impl has too, and the test suite runs both. The named
+atomic methods, the compare-and-set, visibility after a write, and
+every unique key the schema declares each have a contract case.
 
 **Source.** Interfaces, Multiple impls per interface.
 
 **Look for.** The memory impl of every storage interface; the test
 fixtures that select an impl; parametrized tests that run against both;
-the unique indexes the table classes declare and the contract case
-behind each one.
+the named atomic methods, the compare-and-set, the reads after a
+write, and the unique indexes the table classes declare, and the
+contract case behind each one.
 
 **Violation.** A memory impl raises `NotImplementedError` or returns
 empty results for an operation the relational impl supports; a filter
 or ordering rule exists only in one impl; the test suite runs storage
-tests against one impl only; a unique key with no contract case, so the
-memory impl accepts a duplicate the engine refuses and the pair is two
+tests against one impl only; an atomic method, a compare-and-set, a
+read after a write, or a unique key with no contract case, so the
+memory impl is lenient where the engine is strict and the pair is two
 impls of two contracts.
 
 **Severity.** medium
