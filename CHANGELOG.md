@@ -4,24 +4,83 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
-## Unreleased
+## 0.22.0 (2026-09-21)
+
+Every list is bounded, down to the statement. The main list example
+takes a limit, Storage Principles says who picks the bound, and lens
+`STO-29` judges the read under the wire, where `NET-13` judged only the
+wire. The skills and the checkers get sharper around it: the scaffold
+initializes its repository first, the upgrade moves one major at a time
+and keeps local data unless told otherwise, and every checker refuses
+an argument it does not know. Minor: one rule added, none reversed.
+
+### Added
+
+- Lens `STO-29` Every read that returns a list is bounded in its
+  statement. The only lens that named the clamp was `NET-13`, which
+  judges the wire; nothing judged the read under it. 232 lenses.
+- `benchmark/`: evidence for the judges. A scenario's `evidence.files`
+  sends the target's source with line numbers, and `evidence.expected`
+  sends the findings planted in the scenario's own target, kept outside
+  it so the subject never reads them. A judge that saw only the rubric
+  and the review could grade how the review reads, not whether its
+  findings are real or what it missed; two judges agreeing did not
+  change that. With a planted list, the harness also counts which
+  planted findings the artifact names by lens id and file, a check no
+  model makes, in `results.json` and the report.
+- `benchmark/fixtures/review-om`: a small object model with eight
+  defects planted, one lens each, and ten things done right. The
+  `review-om` scenario runs on it by default and scores recall and
+  precision against it. `--target` still reviews any checkout; the
+  planted list is then dropped and the run says so.
+- `make ruff` and `make mypy` lint, format-check, and type-check
+  `scripts/` and `tests/` at pinned versions, as part of `make check`.
+- `check_version.py --tag <name>`, and a workflow that fails a pushed
+  `v*` tag that differs from the version in `plugin.json`.
+- Dependabot proposes the updates to the pinned actions, weekly, in one
+  pull request.
+
+### Changed
+
+- Lens `OM-05` checks `updated_by` beside `updated_at`. The guideline
+  has the manager set both on every update; the lens looked only for
+  the time, so an update that left the creator as the last changer
+  passed.
+- `architecture.md`: the main list example is bounded. `get_warehouses`
+  on the manager and the service, and `read_warehouses` on storage,
+  take a `limit`, and the Postgres statement carries it. The paging
+  rule asked for a server-clamped limit while the example that teaches
+  the shape read every row.
+- `architecture.md`, "Storage Principles": every read that returns a
+  list is bounded in its statement. Storage applies the bound it is
+  given; the caller picks it, the manager from the page size in its
+  options, a worker or a sweep from its batch size. "Public Types"
+  says where the clamp happens: the route takes the limit, the manager
+  clamps it, the storage read carries it.
+- `architecture.md`, "Buckets": `list` takes a `limit` and a key to
+  start after, and returns keys in lexical order.
+- `arch-new-aspect` reports a Release note, the entry the release will
+  carry and its level, and no longer writes to the changelog.
+- The scaffold conventions and `docs/adopting.md`: a scaffold names its
+  version as the release in `plugin.json`, "or a later snapshot of
+  main", and pins that release. An `Unreleased` section no longer marks
+  a snapshot, since there is none between releases.
+- `.github/workflows/benchmark.yml`: no target is passed to every
+  scenario. Each scenario brings its own, and a shared one would have
+  dropped the planted list of `review-om`.
+- The Python floor is 3.10, declared in `pyproject.toml`. CI runs
+  `make check` on 3.10 and on 3.14.
+- CI caches its npm and uv downloads, and a new push to a pull request
+  cancels the run it replaces. A benchmark run is never cancelled.
+- `AGENTS.md`, `CONTRIBUTING.md`, the pull request template: the
+  changelog is written once per release, in the release pull request,
+  from the squash commits since the last tag. A change never edits it;
+  its description names the level and a reversal as one.
+  `CONTRIBUTING.md` lists the four steps of a release.
+- The issue templates carry no preset label or assignee.
 
 ### Fixed
 
-- `benchmark/`: a subject is told where its target is. It runs in its
-  own empty workspace, and nothing gave it the target: the prompt did
-  not name it and the checkout was outside what it could read. Now
-  `{target}` in a prompt becomes the path, a prompt without it gets one
-  sentence naming the path, and a skill gets `--add-dir` for it.
-- `benchmark/`: the container runtime mounts the plugin checkout. It
-  passed this machine's path to `--plugin-dir` and never mounted it, so
-  a skill in a container had no plugin. Each runtime now answers where
-  the plugin checkout and the target are as the subject sees them: this
-  machine's paths on the host, `/plugin` and `/target` in the container,
-  and `remote_plugin` and `remote_target` from the config on another
-  machine, refused before the run when missing.
-- `benchmark/`: a relative path in a scenario is read from the scenario
-  file's folder, not from wherever the run started.
 - `arch-scaffold-new`: `git init` is the first thing step 1 does, not
   step 7. Steps 2 to 5 follow the other scaffold skills, and each of
   them lists its files from `git status`; before step 7 there was no
@@ -49,6 +108,20 @@ which number.
   data can be worth keeping, since `make seed` rebuilds only the seeded
   org. Without the option, that row is held back and the report says
   how to move it.
+- `benchmark/`: a subject is told where its target is. It runs in its
+  own empty workspace, and nothing gave it the target: the prompt did
+  not name it and the checkout was outside what it could read. Now
+  `{target}` in a prompt becomes the path, a prompt without it gets one
+  sentence naming the path, and a skill gets `--add-dir` for it.
+- `benchmark/`: the container runtime mounts the plugin checkout. It
+  passed this machine's path to `--plugin-dir` and never mounted it, so
+  a skill in a container had no plugin. Each runtime now answers where
+  the plugin checkout and the target are as the subject sees them: this
+  machine's paths on the host, `/plugin` and `/target` in the container,
+  and `remote_plugin` and `remote_target` from the config on another
+  machine, refused before the run when missing.
+- `benchmark/`: a relative path in a scenario is read from the scenario
+  file's folder, not from wherever the run started.
 - Every script under `scripts/` parses its command line and refuses an
   unknown argument with exit status 2. A mistyped `--check` no longer
   makes `gen_toc.py` or `gen_skills.py` rewrite the tree and pass.
@@ -64,59 +137,6 @@ which number.
 - `check_leaks.py` and `check_links.py` read one list of the
   repository's Markdown, at any depth. A file in `docs/sub/` is
   scanned, and a tool cache is not.
-
-### Added
-
-- `benchmark/`: evidence for the judges. A scenario's `evidence.files`
-  sends the target's source with line numbers, and `evidence.expected`
-  sends the findings planted in the scenario's own target, kept outside
-  it so the subject never reads them. A judge that saw only the rubric
-  and the review could grade how the review reads, not whether its
-  findings are real or what it missed; two judges agreeing did not
-  change that. With a planted list, the harness also counts which
-  planted findings the artifact names by lens id and file, a check no
-  model makes, in `results.json` and the report.
-- `benchmark/fixtures/review-om`: a small object model with eight
-  defects planted, one lens each, and ten things done right. The
-  `review-om` scenario runs on it by default and scores recall and
-  precision against it. `--target` still reviews any checkout; the
-  planted list is then dropped and the run says so.
-- `make ruff` and `make mypy` lint, format-check, and type-check
-  `scripts/` and `tests/` at pinned versions, as part of `make check`.
-- `check_version.py --tag <name>`, and a workflow that fails a pushed
-  `v*` tag that differs from the version in `plugin.json`.
-- Dependabot proposes the updates to the pinned actions, weekly, in one
-  pull request.
-- Lens `STO-29` Every read that returns a list is bounded in its
-  statement. The only lens that named the clamp was `NET-13`, which
-  judges the wire; nothing judged the read under it. 232 lenses.
-
-### Changed
-
-- `.github/workflows/benchmark.yml`: no target is passed to every
-  scenario. Each scenario brings its own, and a shared one would have
-  dropped the planted list of `review-om`.
-- Lens `OM-05` checks `updated_by` beside `updated_at`. The guideline
-  has the manager set both on every update; the lens looked only for
-  the time, so an update that left the creator as the last changer
-  passed.
-- The Python floor is 3.10, declared in `pyproject.toml`. CI runs
-  `make check` on 3.10 and on 3.14.
-- CI caches its npm and uv downloads, and a new push to a pull request
-  cancels the run it replaces. A benchmark run is never cancelled.
-- `architecture.md`: the main list example is bounded. `get_warehouses`
-  on the manager and the service, and `read_warehouses` on storage,
-  take a `limit`, and the Postgres statement carries it. The paging
-  rule asked for a server-clamped limit while the example that teaches
-  the shape read every row.
-- `architecture.md`, "Storage Principles": every read that returns a
-  list is bounded in its statement. Storage applies the bound it is
-  given; the caller picks it, the manager from the page size in its
-  options, a worker or a sweep from its batch size. "Public Types"
-  says where the clamp happens: the route takes the limit, the manager
-  clamps it, the storage read carries it.
-- `architecture.md`, "Buckets": `list` takes a `limit` and a key to
-  start after, and returns keys in lexical order.
 
 ## 0.21.0 (2026-09-20)
 
