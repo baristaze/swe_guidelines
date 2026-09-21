@@ -103,9 +103,7 @@ def anchors(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
-def arguments(
-    doc: str | None, argv: Sequence[str], check: str | None = None
-) -> argparse.Namespace:
+def arguments(doc: str | None, argv: Sequence[str], check: str | None = None) -> argparse.Namespace:
     """Parse a script's command line; an unknown argument exits 2.
 
     Every script parses its arguments here, so a typo such as
@@ -113,9 +111,7 @@ def arguments(
     action. `check` is the help text of a `--check` flag, for the
     generators that have one.
     """
-    parser = argparse.ArgumentParser(
-        description=(doc or "").split("\n", 1)[0], allow_abbrev=False
-    )
+    parser = argparse.ArgumentParser(description=(doc or "").split("\n", 1)[0], allow_abbrev=False)
     if check is not None:
         parser.add_argument("--check", action="store_true", help=check)
     return parser.parse_args(list(argv))

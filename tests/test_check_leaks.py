@@ -83,7 +83,9 @@ def test_a_copy_built_from_a_dump_with_model_copy_fails_in_every_snippet(repo, l
     repo.edit("lenses/om.md", "One table per entity.", "`current.model_copy(update={**caller.model_dump()})`")
     assert leaks.main() == 1
     assert "shape term 'model_copy(update={**'" in capsys.readouterr().out
-    repo.edit("lenses/om.md", "`current.model_copy(update={**caller.model_dump()})`", "`current.model_copy(update={\"status\": s})`")
+    repo.edit(
+        "lenses/om.md", "`current.model_copy(update={**caller.model_dump()})`", '`current.model_copy(update={"status": s})`'
+    )
     assert leaks.main() == 0
 
 

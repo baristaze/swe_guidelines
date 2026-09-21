@@ -48,11 +48,7 @@ def title_of(lens_file: Path) -> str:
 
 def render(group: str, title: str, covers: str) -> str:
     text = TEMPLATE.read_text(encoding="utf-8")
-    return (
-        text.replace("{group}", group)
-        .replace("{title}", title)
-        .replace("{covers}", covers)
-    )
+    return text.replace("{group}", group).replace("{title}", title).replace("{covers}", covers)
 
 
 def main(argv: Sequence[str] = ()) -> int:

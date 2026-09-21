@@ -84,9 +84,7 @@ def listed_groups() -> dict[str, str]:
     return groups
 
 
-def check_source(
-    value: str, path: Path, ln: int, known: dict[str, set[str]], errors: list[str]
-) -> None:
+def check_source(value: str, path: Path, ln: int, known: dict[str, set[str]], errors: list[str]) -> None:
     """A source is one or more citations separated by ';'.
 
     Each citation is `<Section>`, `<Section>, <Subsection>`, or, after a
@@ -115,9 +113,7 @@ def check_source(
         if head in known:
             errors.append(f"{path.name}:{ln}: '{head}' has no subsection '{tail.strip()}'")
         elif sec is not None:
-            errors.append(
-                f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'"
-            )
+            errors.append(f"{path.name}:{ln}: '{citation}' is neither a section nor a subsection of '{sec}'")
         else:
             errors.append(f"{path.name}:{ln}: '{citation}' is not a section of architecture.md")
 
@@ -179,9 +175,7 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
             if name == "Source":
                 check_source(value, path, ln, known, errors)
             if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
-                errors.append(
-                    f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}"
-                )
+                errors.append(f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}")
             if name in ("Look for", "Violation"):
                 n = len(SENTENCE_END.findall(value))
                 if n > MAX_SENTENCES:
@@ -216,9 +210,7 @@ def main(argv: Sequence[str] = ()) -> int:
         for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for m in COUNT.finditer(line):
                 if int(m.group(1)) != total:
-                    errors.append(
-                        f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}"
-                    )
+                    errors.append(f"{path.relative_to(ROOT)}:{ln}: says {m.group(1)} lenses, the catalog has {total}")
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(files)} lens file(s)")

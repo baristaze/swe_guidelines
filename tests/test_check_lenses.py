@@ -51,8 +51,10 @@ def test_ids_out_of_order_fail(repo, lenses, capsys):
 
 def test_fields_out_of_order_fail(repo, lenses, capsys):
     text = repo.read("lenses/om.md")
-    text = text.replace("**Look for.** Tables holding two entities.\n\n**Violation.** A table with a discriminator column.",
-                        "**Violation.** A table with a discriminator column.\n\n**Look for.** Tables holding two entities.")
+    text = text.replace(
+        "**Look for.** Tables holding two entities.\n\n**Violation.** A table with a discriminator column.",
+        "**Violation.** A table with a discriminator column.\n\n**Look for.** Tables holding two entities.",
+    )
     repo.write("lenses/om.md", text)
     assert lenses.main() == 1
     assert "fields are" in capsys.readouterr().out
@@ -84,12 +86,10 @@ def test_principle_over_sixty_words_fails(repo, lenses, capsys):
 
 
 def test_four_sentences_in_look_for_or_violation_fail(repo, lenses, capsys):
-    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.",
-              "**Violation.** One. Two. Three. Four.")
+    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.", "**Violation.** One. Two. Three. Four.")
     assert lenses.main() == 1
     assert "Violation is 4 sentences, limit 3" in capsys.readouterr().out
-    repo.edit("lenses/om.md", "**Violation.** One. Two. Three. Four.",
-              "**Violation.** One; two; three; four `x.y`. Five.")
+    repo.edit("lenses/om.md", "**Violation.** One. Two. Three. Four.", "**Violation.** One; two; three; four `x.y`. Five.")
     assert lenses.main() == 0
 
 
