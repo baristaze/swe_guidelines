@@ -10,12 +10,14 @@ review.
 from __future__ import annotations
 
 import ast
+import contextlib
 import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last
+from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, last
 from arch_check.registry import rule
+from arch_check.rules._storage_util import config_value, is_true
 from arch_check.rules._text_util import (
     Target,
     call_name,
@@ -64,8 +66,9 @@ def routes(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFuncti
                     yield node, d, d.func.attr
 
 
-def names_in(node: ast.AST | None) -> list[str]:
-    """The dotted names an expression mentions, outermost first."""
+def dotted_names_in(node: ast.AST | None) -> list[str]:
+    """The dotted names an expression mentions, outermost first, a string annotation parsed like any other.
+    (`_storage_util.names_in` reduces a dotted name to its last part; this one keeps it whole.)"""
     if node is None:
         return []
     out: list[str] = []
@@ -74,6 +77,9 @@ def names_in(node: ast.AST | None) -> list[str]:
             name = dotted(n)
             if name:
                 out.append(name)
+        elif isinstance(n, ast.Constant) and isinstance(n.value, str):
+            with contextlib.suppress(SyntaxError):
+                out += dotted_names_in(ast.parse(n.value, mode="eval"))
     return out
 
 
@@ -85,20 +91,25 @@ def is_fastapi_header(name: str | None) -> bool:
 
 
 REQUEST_TYPES = frozenset({"Request", "HTTPConnection", "WebSocket"})
+CLIENT_LIBRARIES = ("httpx", "requests", "aiohttp", "urllib3")
+"""Outbound clients whose `Request` is what this process sends, never what it received."""
 
 
-def request_params(fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> set[str]:
+def request_params(fn: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, names: dict[str, str]) -> set[str]:
     """The parameters of one function that hold an inbound request: annotated `Request`, `HTTPConnection`, or
-    `WebSocket`, or an unannotated `request`."""
+    `WebSocket` (not an outbound client's `Request`, read through the module's imports), or an unannotated
+    `request`."""
     out: set[str] = set()
     for a in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
-        annotation = last(dotted(a.annotation)) if a.annotation is not None else None
-        if annotation in REQUEST_TYPES or (a.annotation is None and a.arg == "request"):
+        written = dotted(a.annotation) if a.annotation is not None else None
+        full = resolved(written, names) or written or ""
+        outbound = any(is_under(full, lib) for lib in CLIENT_LIBRARIES)
+        if (last(written) in REQUEST_TYPES and not outbound) or (a.annotation is None and a.arg == "request"):
             out.add(a.arg)
     return out
 
 
-def header_reads(tree: ast.AST) -> Iterator[ast.Attribute]:
+def header_reads(tree: ast.AST, names: dict[str, str]) -> Iterator[ast.Attribute]:
     """Every `.headers` read on a request parameter, judged in the function that has the parameter.
 
     A name is a request only where a function takes it (a closure inside
@@ -110,7 +121,7 @@ def header_reads(tree: ast.AST) -> Iterator[ast.Attribute]:
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
             continue
-        inbound = request_params(fn)
+        inbound = request_params(fn, names)
         if not inbound:
             continue
         for node in ast.walk(fn):
@@ -169,7 +180,7 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
         if tree is None:
             continue
         names = imported_names(project, file)
-        for read in header_reads(tree):
+        for read in header_reads(tree, imported_names(project, file)):
             yield Violation.at(file.rel, read, "reads `.headers`; the gateway parses headers, nothing below it does")
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
@@ -336,7 +347,7 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         }
 
     def heads(node: ast.expr | None) -> set[str]:
-        return {n.split(".")[0] for n in names_in(node)}
+        return {n.split(".")[0] for n in dotted_names_in(node)}
 
     mounted: set[str] = set()  # routers modules, and their router names, mounted with the dependency
     for file in project.modules_under(project.sub("services")):
@@ -423,35 +434,6 @@ def operational_endpoints_outside_the_prefix(project: Project) -> Iterator[Viola
 # --- NET-13
 
 
-def config_value(cls: ast.ClassDef, key: str) -> ast.expr | None:
-    """A model config key set on a class: `model_config = ConfigDict(key=...)`, a dict literal, or a class keyword."""
-    kw = keywords(cls).get(key)
-    if kw is not None:
-        return kw
-    for stmt in cls.body:
-        target: ast.expr | None = None
-        value: ast.expr | None = None
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
-            target, value = stmt.targets[0], stmt.value
-        elif isinstance(stmt, ast.AnnAssign):
-            target, value = stmt.target, stmt.value
-        if not (isinstance(target, ast.Name) and target.id == "model_config") or value is None:
-            continue
-        if isinstance(value, ast.Call):
-            found = kwarg(value, key)
-            if found is not None:
-                return found
-        elif isinstance(value, ast.Dict):
-            for k, v in zip(value.keys, value.values, strict=True):
-                if const_str(k) == key:
-                    return v
-    return None
-
-
-def is_true(node: ast.expr | None) -> bool:
-    return isinstance(node, ast.Constant) and node.value is True
-
-
 @rule(
     "NET-13",
     coverage="partial",
@@ -490,7 +472,7 @@ def wire_types_are_curated(project: Project) -> Iterator[Violation]:
             continue
         names = imported_names(project, file)
         for fn, call, _ in routes(tree):
-            shown = names_in(kwarg(call, "response_model")) + names_in(fn.returns)
+            shown = dotted_names_in(kwarg(call, "response_model")) + dotted_names_in(fn.returns)
             for name in shown:
                 full = resolved(name, names)
                 if full and is_under(full, om):

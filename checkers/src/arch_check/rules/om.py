@@ -19,8 +19,6 @@ import contextlib
 import re
 from collections.abc import Iterator
 
-import tomllib
-
 from arch_check.model import Violation
 from arch_check.project import Project, SourceFile, decorator_names, dotted, is_under, last, methods, parameters
 from arch_check.registry import rule
@@ -38,6 +36,7 @@ from arch_check.rules._om_util import (
     index,
     namespaces,
 )
+from arch_check.rules._text_util import load_toml
 
 
 def above_storage(project: Project) -> tuple[str, ...]:
@@ -111,25 +110,20 @@ def requirement_names(data: dict[str, object]) -> set[str]:
 
 def pyproject(project: Project, directory: str) -> tuple[str, dict[str, object] | None]:
     rel = f"{directory}/pyproject.toml" if directory else "pyproject.toml"
-    text = project.read(rel)
-    if text is None:
-        return rel, None
-    try:
-        return rel, tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
-        return rel, None
+    return rel, load_toml(project, rel)
 
 
 @rule(
     "OM-01",
     coverage="partial",
-    summary="The OM ships as its own distribution, and every distribution that imports it depends on it.",
+    summary="The OM's pyproject names a distribution, and every distribution that imports the OM depends on it.",
 )
 def one_object_model(project: Project) -> Iterator[Violation]:
-    """The OM package is a distribution of its own, with a `pyproject.toml`
-    naming it. A distribution whose code imports `<pkg>.om` lists it in its
+    """The `pyproject.toml` nearest the OM package names a `[project]`. A
+    distribution whose code imports `<pkg>.om` lists that name in its
     dependencies, so the OM is never importable only by installing a service.
-    A copy of an entity declared outside the OM is judged."""
+    Whether that manifest ships the OM alone, with no service code beside
+    it, and a copy of an entity declared outside the OM, are judged."""
     om = project.sub("om")
     om_files = project.modules_under(om)
     if not om_files:
@@ -419,8 +413,19 @@ def mixins_carry_no_behavior(project: Project) -> Iterator[Violation]:
 def root_forbids_extras(project: Project) -> Iterator[Violation]:
     """The root's model config sets `extra="forbid"`, and no class on the
     chain sets `extra` to anything else, in `model_config` or as a class
-    keyword."""
+    keyword. An OM with no root at all, no `base` module or none of its
+    classes on `BaseModel`, is one finding: the rest of the chain rules
+    read nothing then."""
     idx = index(project)
+    om = project.sub("om")
+    if not idx.roots and project.modules_under(om):
+        base = project.module(f"{om}.base")
+        if base is None:
+            where = project.module(om) or project.modules_under(om)[0]
+            yield Violation.at(where.rel, None, f"{om} has no base module; the root and the mixins live in {om}.base")
+        else:
+            yield Violation.at(base.rel, None, f"no class in {om}.base extends BaseModel; the OM root does")
+        return
     for key in sorted(idx.roots):
         info = idx.classes[key]
         if not any(k == "extra" and constant(v) == "forbid" for _, k, v in config_settings(info.node)):
@@ -471,7 +476,7 @@ def filters_are_typed(project: Project) -> Iterator[Violation]:
 # --- OM-10 and OM-11
 
 
-def frozen_false(idx: Index, info: ClassInfo) -> Iterator[ast.AST]:
+def frozen_false(info: ClassInfo) -> Iterator[ast.AST]:
     for node, k, v in config_settings(info.node):
         if k == "frozen" and constant(v) is not True:
             yield node
@@ -520,7 +525,7 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
     nested value is judged."""
     idx = index(project)
     for info in idx.chain():
-        for node in frozen_false(idx, info):
+        for node in frozen_false(info):
             yield Violation.at(info.file.rel, node, f"{info.node.name} unfreezes itself; an entity is a frozen snapshot")
     for file, tree in project.trees(*above_storage(project)):
         reported: set[int] = set()
@@ -584,7 +589,7 @@ def chain_is_frozen(project: Project) -> Iterator[Violation]:
         if not any(k == "frozen" and constant(v) is True for _, k, v in config_settings(info.node)):
             yield Violation.at(info.file.rel, info.node, f"the root {info.node.name} does not set frozen=True")
     for info in idx.chain():
-        for node in frozen_false(idx, info):
+        for node in frozen_false(info):
             yield Violation.at(info.file.rel, node, f"{info.node.name} is declared mutable; the whole chain is frozen")
 
 

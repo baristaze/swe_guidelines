@@ -475,9 +475,13 @@ def one_storage_root(project: Project) -> Iterator[Violation]:
     base between the interface and the roots is not a root, and a root may inherit its methods from it."""
     found = storage_root(project)
     if found is None:
-        conventional = project.module(f"{project.sub('om')}.storage.root")
+        om = project.sub("om")
+        conventional = project.module(f"{om}.storage.root")
         if conventional is not None:
             yield Violation.at(conventional.rel, None, "the storage root module declares no StorageInterface")
+        elif namespaces := [f for f, _ in storage_interfaces(project) if f.module.endswith(".storage")]:
+            where = project.module(om) or namespaces[0]
+            yield Violation.at(where.rel, None, f"{om} has namespace storages and no StorageInterface under {om}.storage")
         return
     root, iface = found
     declared = {m.name: m for m in public_methods(iface)}
@@ -866,8 +870,9 @@ def migration_layout(project: Project) -> Iterator[Violation]:
                 yield Violation.at(rel, fn, f"{fn_name}() is not one {runner}() call; the SQL file holds the migration")
                 continue
             want = f"{stem}.{direction}.sql"
-            role_arg = call.args[0] if call.args else kwarg(call, "role")
-            file_arg = call.args[1] if len(call.args) > 1 else next((k.value for k in call.keywords if k.arg != "role"), None)
+            positional = list(call.args)
+            role_arg = kwarg(call, "role") or (positional.pop(0) if positional else None)
+            file_arg = positional[0] if positional else next((k.value for k in call.keywords if k.arg != "role"), None)
             if role_arg is None or file_arg is None:
                 yield Violation.at(rel, call, f"{runner}() takes the role and {want}")
                 continue

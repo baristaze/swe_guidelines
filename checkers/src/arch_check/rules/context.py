@@ -348,13 +348,19 @@ def no_ambient_state(project: Project) -> Iterator[Violation]:
 def authorization_in_managers(project: Project) -> Iterator[Violation]:
     """No OM storage module and no module under
     `<pkg>.services.<process>.routers` reads a member of a `*Permission`
-    enum (`Permission.WRITE`). That every mutating manager operation
+    enum (`Permission.WRITE`, an upper-case member; a lower-case attribute
+    such as `RolePermission.role_id` is a column). That every mutating manager operation
     starts with its permission check is judged."""
     for file, tree in project.trees():
         if not (in_om_storage(project, file.module) or service_part(project, file.module) == "routers"):
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and (last(dotted(node.value)) or "").endswith("Permission"):
+            # `Permission.WRITE` is a read; `RolePermission.role_id` is a column of a row that shares the suffix
+            if (
+                isinstance(node, ast.Attribute)
+                and (last(dotted(node.value)) or "").endswith("Permission")
+                and node.attr.isupper()
+            ):
                 yield Violation.at(file.rel, node, f"{file.module} reads {dotted(node)}; authorization is the manager's decision")
 
 

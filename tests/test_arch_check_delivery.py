@@ -135,6 +135,32 @@ def test_del_10_a_central_two_stage_non_root_image_passes(tmp_path):
     assert found(tmp_path, "DEL-10", files) == (0, [])
 
 
+def test_del_10_a_latin_1_comment_does_not_empty_the_file(tmp_path):
+    write_project(tmp_path, {"deployment/docker/api.Dockerfile": GOOD_IMAGE})
+    path = tmp_path / "deployment/docker/api.Dockerfile"
+    path.write_bytes(b"# caf\xe9\n" + path.read_bytes())
+    code, _ = check_json(tmp_path, "--rule", "DEL-10")
+    assert code == 0
+
+
+def test_del_10_a_tab_a_blank_continuation_and_a_documented_dockerfile_pass(tmp_path):
+    image = GOOD_IMAGE.replace("FROM python:3.14-slim AS build", "FROM\tpython:3.14-slim AS build", 1).replace(
+        "--no-dev \\\n", "--no-dev \\\n\n", 1
+    )
+    assert image.count("\t") == 1 and "\\\n\n" in image
+    files = {"deployment/docker/api.Dockerfile": image, "docs/Dockerfile.md": "# Not an image\n\nFROM nowhere\n"}
+    assert found(tmp_path, "DEL-10", files) == (0, [])
+
+
+def test_del_10_an_unlocked_install_inside_a_heredoc_fails(tmp_path):
+    image = GOOD_IMAGE.replace(
+        "RUN uv sync --frozen --no-dev \\\n    --package acme-api", "RUN <<EOF\nuv sync --no-dev --package acme-api\nEOF", 1
+    )
+    assert "<<EOF" in image
+    code, where = found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image})
+    assert (code, [p for _, p, _ in where]) == (1, ["deployment/docker/api.Dockerfile"])
+
+
 def test_del_10_a_dockerfile_in_a_service_folder_fails(tmp_path):
     code, where = found(tmp_path, "DEL-10", {"services/api/Dockerfile": GOOD_IMAGE})
     assert (code, where) == (1, [("DEL-10", "services/api/Dockerfile", 1)])

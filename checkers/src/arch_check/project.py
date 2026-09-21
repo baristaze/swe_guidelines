@@ -251,11 +251,16 @@ class Project:
         return sorted(found)
 
     def read(self, rel: str) -> str | None:
-        """The text of a file relative to the root, or None when it is missing or not UTF-8."""
+        """The text of a file relative to the root, or None when it is missing.
+
+        A byte that is not UTF-8 is replaced, never a reason to read the file
+        as empty: every token a rule looks for is ASCII, and a Dockerfile with a
+        Latin-1 comment is still a Dockerfile.
+        """
         path = self.root / rel
         try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
             return None
         with contextlib.suppress(ValueError):  # a path that climbs out of the root has no ignores to settle
             self.read_paths.add(self.rel(path))

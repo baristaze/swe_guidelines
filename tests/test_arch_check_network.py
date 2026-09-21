@@ -58,6 +58,12 @@ def test_net_06_an_outbound_credential_and_a_response_header_pass(tmp_path):
     assert code == 0
 
 
+def test_net_06_an_outbound_clients_request_hook_passes(tmp_path):
+    impl = "import httpx\n\nasync def log(request: httpx.Request):\n    return request.headers.get('x-request-id')\n"
+    code, _, _ = found(tmp_path, "NET-06", {f"{SVC}/impl/orders.py": impl})
+    assert code == 0
+
+
 def test_net_06_a_request_header_read_in_service_code_fails(tmp_path):
     impl = "from starlette.requests import Request\n\ndef who(req: Request):\n    return req.headers.get('x-org')\n"
     code, where, _ = found(tmp_path, "NET-06", {f"{SVC}/impl/orders.py": impl})

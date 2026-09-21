@@ -35,9 +35,9 @@ def distribution(name: str, *, deps: tuple[str, ...] = (), script: str | None = 
     return text
 
 
-def storage_impl(tech: str) -> str:
-    """One impl of the tasks storage interface; every storage interface has two."""
-    return f"from .. import TasksStorageInterface\n\n\nclass TasksStorage{tech}Impl(TasksStorageInterface):\n    pass\n"
+def storage_impl(tech: str, ns: str = "Tasks") -> str:
+    """One impl of a namespace storage interface; every storage interface has two."""
+    return f"from .. import {ns}StorageInterface\n\n\nclass {ns}Storage{tech}Impl({ns}StorageInterface):\n    pass\n"
 
 
 CONTAINER = (
@@ -50,6 +50,14 @@ BASE: dict[str, str] = {
     "om/README.md": "# Object model\n\nThe nouns of acme. Each namespace has its own page.\n",
     "om/tests/__init__.py": "",
     "om/src/acme/om/__init__.py": "",
+    "om/src/acme/om/base.py": (
+        "from datetime import UTC, datetime\nfrom uuid import UUID, uuid7\n\nfrom pydantic import BaseModel, ConfigDict\n\n\n"
+        "def new_id() -> UUID:\n    return uuid7()\n\n\n"
+        "def utcnow() -> datetime:\n    return datetime.now(UTC)\n\n\n"
+        'class Platform(BaseModel):\n    model_config = ConfigDict(frozen=True, extra="forbid")\n\n\n'
+        'PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "deleted_by"})\n'
+        "EMPTY_UUID = UUID(int=0)\n"
+    ),
     "om/src/acme/om/root.py": "from acme.infra import InfraRoot\n",
     "om/src/acme/om/tasks/README.md": "# Tasks\n\nA task is one unit of work.\n",
     "om/src/acme/om/tasks/__init__.py": "from .manager import TasksManagerInterface\n",
@@ -62,6 +70,45 @@ BASE: dict[str, str] = {
     "om/src/acme/om/tasks/storage/impl/memory.py": storage_impl("Memory"),
     "om/src/acme/om/tasks/storage/impl/postgres.py": storage_impl("Postgres"),
     "om/src/acme/om/tasks/storage/tables/__init__.py": "",
+    # tenancy: the swimlane every OM has
+    "om/src/acme/om/tenancy/README.md": "# Tenancy\n\nAn org and the people in it.\n",
+    "om/src/acme/om/tenancy/__init__.py": "from .manager import TenancyManagerInterface\n",
+    "om/src/acme/om/tenancy/manager.py": "from abc import ABC\n\n\nclass TenancyManagerInterface(ABC):\n    pass\n",
+    "om/src/acme/om/tenancy/impl/__init__.py": "",
+    "om/src/acme/om/tenancy/types/__init__.py": "",
+    "om/src/acme/om/tenancy/storage/__init__.py": "from abc import ABC\n\n\nclass TenancyStorageInterface(ABC):\n    pass\n",
+    "om/src/acme/om/tenancy/storage/impl/__init__.py": "",
+    "om/src/acme/om/tenancy/storage/impl/memory.py": storage_impl("Memory", "Tenancy"),
+    "om/src/acme/om/tenancy/storage/impl/postgres.py": storage_impl("Postgres", "Tenancy"),
+    "om/src/acme/om/tenancy/storage/tables/__init__.py": "",
+    # the storage root: two impls, every member built in the constructor
+    "om/src/acme/om/storage/__init__.py": (
+        "from abc import ABC, abstractmethod\n\nfrom acme.om.tasks.storage import TasksStorageInterface\n"
+        "from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl\n"
+        "from acme.om.tasks.storage.impl.postgres import TasksStoragePostgresImpl\n"
+        "from acme.om.tenancy.storage import TenancyStorageInterface\n"
+        "from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl\n"
+        "from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl\n\n\n"
+        "class StorageInterface(ABC):\n"
+        "    @abstractmethod\n    def get_tasks_storage(self) -> TasksStorageInterface: ...\n\n"
+        "    @abstractmethod\n    def get_tenancy_storage(self) -> TenancyStorageInterface: ...\n\n"
+        "    @abstractmethod\n    async def healthcheck(self) -> bool: ...\n\n"
+        "    @abstractmethod\n    async def close(self) -> None: ...\n\n\n"
+        "class StoragePostgresImpl(StorageInterface):\n"
+        "    def __init__(self) -> None:\n        self._tasks = TasksStoragePostgresImpl()\n"
+        "        self._tenancy = TenancyStoragePostgresImpl()\n\n"
+        "    def get_tasks_storage(self) -> TasksStorageInterface:\n        return self._tasks\n\n"
+        "    def get_tenancy_storage(self) -> TenancyStorageInterface:\n        return self._tenancy\n\n"
+        "    async def healthcheck(self) -> bool:\n        return True\n\n"
+        "    async def close(self) -> None:\n        pass\n\n\n"
+        "class StorageMemoryImpl(StorageInterface):\n"
+        "    def __init__(self) -> None:\n        self._tasks = TasksStorageMemoryImpl()\n"
+        "        self._tenancy = TenancyStorageMemoryImpl()\n\n"
+        "    def get_tasks_storage(self) -> TasksStorageInterface:\n        return self._tasks\n\n"
+        "    def get_tenancy_storage(self) -> TenancyStorageInterface:\n        return self._tenancy\n\n"
+        "    async def healthcheck(self) -> bool:\n        return True\n\n"
+        "    async def close(self) -> None:\n        pass\n"
+    ),
     # infra: its own exception root
     "infra/pyproject.toml": distribution("acme-infra"),
     "infra/README.md": "# Infra\n\nThe clients of the platform services.\n",

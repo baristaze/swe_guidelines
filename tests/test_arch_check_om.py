@@ -408,6 +408,15 @@ def test_an_ordering_as_a_string_is_not_om_09(tmp_path):
 # --- OM-10
 
 
+def test_an_om_with_no_root_is_om_07(tmp_path):
+    code, report = run(tmp_path, "OM-07", {BASE: "class Platform:\n    pass\n"})
+    assert code == 1
+    assert messages(report) == ["no class in acme.om.base extends BaseModel; the OM root does"]
+    code, report = run(tmp_path, "OM-07", {BASE: None})
+    assert code == 1
+    assert messages(report) == ["acme.om has no base module; the root and the mixins live in acme.om.base"]
+
+
 def test_model_copy_fed_a_dump_is_om_10(tmp_path):
     source = IMPL_SOURCE + (
         "\n\ndef bad(current: Task, other: Task) -> Task:\n"

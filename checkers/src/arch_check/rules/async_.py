@@ -22,8 +22,8 @@ from arch_check.project import Import, Project, SourceFile, base_names, classes,
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
     call_name,
-    class_value,
     column_call,
+    config_value,
     has_tablename,
     in_storage,
     index_calls,
@@ -408,8 +408,7 @@ def storage_never_caches(project: Project) -> Iterator[Violation]:
                     or (isinstance(n, ast.Attribute) and n.attr == hit)
                     or (isinstance(n, ast.Constant) and n.value == hit)
                 )
-                if not isinstance(node, ast.alias):
-                    yield Violation.at(file.rel, node, f"{file.module} names {hit}; storage talks to its database only")
+                yield Violation.at(file.rel, node, f"{file.module} names {hit}; storage talks to its database only")
             continue
         for cls in classes(tree):
             if any((last(b) or "").endswith("StorageInterface") for b in base_names(cls)):
@@ -437,8 +436,8 @@ def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
     store: `BucketsLocalImpl` and `BucketsFilesystemImpl` both count, `BucketsS3Impl` does not."""
     infra = project.sub("infra")
     file, decls = package_declarations(project, f"{infra}.buckets")
-    if file is None:
-        return
+    if file is None or not declared_interfaces(decls):
+        return  # a package that declares no interface yet is judged, as ASY-04 leaves an empty cache package
     enum = declared_class(decls, "Buckets")
     if enum is None or not is_enum(enum[1]):
         where, bad = enum if enum is not None else (file, None)
@@ -481,8 +480,8 @@ def buckets_are_an_enum(project: Project) -> Iterator[Violation]:
 def topics_are_fixed(project: Project) -> Iterator[Violation]:
     infra = project.sub("infra")
     file, decls = package_declarations(project, f"{infra}.topics")
-    if file is None:
-        return
+    if file is None or not declared_interfaces(decls):
+        return  # a package that declares no interface yet is judged, as ASY-04 leaves an empty cache package
     topics = declared_class(decls, "Topics")
     if topics is None or not is_enum(topics[1]):
         where, bad = topics if topics is not None else (file, None)
@@ -494,11 +493,9 @@ def topics_are_fixed(project: Project) -> Iterator[Violation]:
         where, base = found
         if [last(b) for b in base_names(base)] != ["BaseModel"]:
             yield Violation.at(where.rel, base, "TopicPayload extends pydantic's BaseModel directly, never the OM root")
-        config = class_value(base, "model_config")
-        settings = {k.arg: k.value for k in config.keywords if k.arg} if isinstance(config, ast.Call) else {}
-        if not is_true(settings.get("frozen")):
+        if not is_true(config_value(base, "frozen")):
             yield Violation.at(where.rel, base, "TopicPayload is not frozen=True")
-        extra = settings.get("extra")
+        extra = config_value(base, "extra")
         if not (isinstance(extra, ast.Constant) and extra.value == "ignore"):
             yield Violation.at(
                 where.rel, base, 'TopicPayload does not set extra="ignore"; an old consumer must read a new payload'
@@ -513,6 +510,8 @@ def topics_are_fixed(project: Project) -> Iterator[Violation]:
         yield Violation.at(where.rel, payloads, "TOPIC_PAYLOADS is not a dict literal in the topics package")
     else:
         for k, v in zip(payloads.keys, payloads.values, strict=True):
+            if k is None:
+                continue  # a `**spread` of another map carries no key to judge
             if not (isinstance(k, ast.Attribute) and last(dotted(k.value)) == "Topics"):
                 yield Violation.at(where.rel, k, "a TOPIC_PAYLOADS key is not a Topics member")
             name = last(dotted(v)) or ""
@@ -524,7 +523,7 @@ def topics_are_fixed(project: Project) -> Iterator[Violation]:
         by_method = {m.name: m for m in methods(cls)}
         publish = by_method.get("publish")
         if publish is not None and not (isinstance(publish.returns, ast.Constant) and publish.returns.value is None):
-            yield Violation.at(where.rel, publish, "publish returns something; it returns None")
+            yield Violation.at(where.rel, publish, "publish is not annotated `-> None`; it returns None")
         subscribe = by_method.get("subscribe")
         if subscribe is not None:
             if "consumer" not in {p.name for p in parameters(subscribe)}:
