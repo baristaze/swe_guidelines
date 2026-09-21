@@ -137,3 +137,25 @@ def test_the_github_templates_are_scanned_for_product_terms(repo, leaks, capsys,
     repo.write(rel, "# Report\n\nWhich robot were you on?\n")
     assert leaks.main() == 1
     assert f"{rel}:3: product term 'robot'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("rel", ["Makefile", "benchmark/runtime/Dockerfile", ".markdownlint-cli2.jsonc", "LICENSE"])
+def test_reference_name_fails_in_a_text_file_of_any_suffix(repo, leaks, capsys, rel):
+    repo.write(rel, "# built like the reference\n")
+    assert leaks.main() == 0
+    repo.write(rel, "# built like Tadas\n")
+    assert leaks.main() == 1
+    assert f"{rel}:1: reference term 'Tadas'" in capsys.readouterr().out
+
+
+def test_a_binary_file_is_not_scanned_for_the_reference_name(repo, leaks):
+    (repo.root / "docs").mkdir(exist_ok=True)
+    (repo.root / "docs/logo.png").write_bytes(b"\x89PNG\x00Tadas")
+    (repo.root / "docs/blob.bin").write_bytes(b"Tadas \xff\xfe")
+    assert leaks.main() == 0
+
+
+def test_claude_code_worktrees_are_not_scanned(repo, leaks):
+    repo.write(".claude/worktrees/agent-1/docs/notes.md", "# Notes\n\nThe firmware of Tadas.\n")
+    repo.write(".claude/worktrees/agent-1/Makefile", "# Tadas\n")
+    assert leaks.main() == 0

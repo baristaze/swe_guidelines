@@ -218,3 +218,45 @@ def test_a_reference_in_the_scaffold_conventions_resolves_from_each_including_sk
     ) in capsys.readouterr().out
     repo.write("missing.json", "{}\n")
     assert skills.main() == 0
+
+
+@pytest.mark.parametrize("rule", ["Bash(make:*)", "Bash(make -C sub:*)", "Bash(make -k check)"])
+def test_a_make_entry_without_a_target_fails(repo, skills, capsys, rule):
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", f"Bash(make check), {rule}")
+    assert skills.main() == 1
+    assert f"{rule!r} names no make target" in capsys.readouterr().out
+
+
+def test_an_unquoted_description_fails(repo, skills, capsys):
+    set_description(repo, "Full review of every group")
+    assert skills.main() == 1
+    assert "skills/arch-review-full/SKILL.md: description must be one double-quoted string" in capsys.readouterr().out
+    set_description(repo, '"Full review of every group"')
+    assert skills.main() == 0
+
+
+def test_skill_dir_reference_must_resolve_inside_the_repository(repo, skills, capsys):
+    (repo.root.parent / "outside.md").write_text("# Outside\n", encoding="utf-8")
+    repo.edit("skills/arch-review-om/SKILL.md", "lenses/om.md", "lenses/om.md` and `${CLAUDE_SKILL_DIR}/../../../outside.md")
+    assert skills.main() == 1
+    assert "${CLAUDE_SKILL_DIR}/../../../outside.md resolves outside the repository" in capsys.readouterr().out
+    repo.edit("skills/arch-review-om/SKILL.md", "/../../../outside.md", "/../../lenses/om.md")
+    assert skills.main() == 0
+
+
+def test_a_scaffold_section_inside_fenced_code_is_not_a_section(repo, skills, capsys):
+    text = repo.read("skills/arch-scaffold-thing/SKILL.md")
+    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Output\n\nOne line.\n", "```text\n## Output\n```\n"))
+    assert skills.main() == 1
+    assert "scaffold sections are ['Input', 'Created', 'Changed', 'Procedure']" in capsys.readouterr().out
+    repo.write("skills/arch-scaffold-thing/SKILL.md", text.replace("## Output\n", "```text\n## Output\n```\n\n## Output\n"))
+    assert skills.main() == 0
+
+
+def test_a_single_allowed_tools_entry_with_a_space_in_its_rule_passes(repo, skills, capsys):
+    path = "skills/arch-scaffold-thing/SKILL.md"
+    repo.edit(path, "allowed-tools: Read, Write, Bash(make check)", "allowed-tools: Bash(make check)")
+    assert skills.main() == 0
+    repo.edit(path, "allowed-tools: Bash(make check)", "allowed-tools: Read Bash(make check)")
+    assert skills.main() == 1
+    assert "allowed-tools must be comma-separated" in capsys.readouterr().out

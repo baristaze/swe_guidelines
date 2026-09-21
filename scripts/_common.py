@@ -15,9 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # What "the repository's Markdown" leaves out: tool caches, installed
-# packages, and the benchmark run folders git ignores. A directory name
-# is skipped at any depth; a path is skipped from the root.
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
+# packages, Claude Code's own folder (agent worktrees live under
+# .claude/worktrees/), and the benchmark run folders git ignores. A
+# directory name is skipped at any depth; a path is skipped from the root.
+SKIP_DIRS = {".git", ".claude", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
 SKIP_PATHS = {("benchmark", "runs")}
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")

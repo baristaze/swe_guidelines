@@ -23,5 +23,5 @@
     "MD010": { "code_blocks": false }
   },
   // The same files scripts/_common.py leaves out of the repository's Markdown.
-  "ignores": ["**/node_modules/**", ".git/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/**"]
+  "ignores": ["**/node_modules/**", ".git/**", "**/.claude/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/**"]
 }
