@@ -3,7 +3,8 @@
 
 Rules:
 - every group listed in lenses/README.md has a file, and every file is listed;
-- lens headings are `## <PREFIX>-NN Title`, ids unique and numbered 01.. in order;
+- lens headings are `## <PREFIX>-NN Title`, ids numbered 01.. in order and
+  unique across every lens file, not only within one;
 - every lens has Principle, Source, Look for, Violation, Severity, in that order;
 - Source names sections of architecture.md by title, never by number:
   `<Section>` or `<Section>, <Subsection>`, several separated by `;`, where a
@@ -51,7 +52,7 @@ FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Check)\.
 CHECK_FULL = "`arch-check` decides it."
 CHECK_PARTIAL = re.compile(r"^`arch-check` decides (.+); the rest is judged\.$")
 LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
-NUMBERED = re.compile(r"\bSections? \d+")
+NUMBERED = re.compile(r"\bsections? \d+", re.IGNORECASE)
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
 COUNT = re.compile(r"\b(\d+) lenses\b")
@@ -153,8 +154,17 @@ def registered_rules(errors: list[str]) -> dict[str, tuple[str, str]]:
 
 
 def check_file(
-    path: Path, known: dict[str, set[str]], errors: list[str], checks: dict[str, tuple[str, int]] | None = None
+    path: Path,
+    known: dict[str, set[str]],
+    errors: list[str],
+    checks: dict[str, tuple[str, int]] | None = None,
+    ids: dict[str, str] | None = None,
 ) -> int:
+    """Check one lens file; return its lens count.
+
+    `ids` maps every lens id seen so far to the file that holds it, so a
+    second file reusing a prefix and number is caught.
+    """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     prefix: str | None = None
@@ -190,6 +200,10 @@ def check_file(
         if num != expected:
             errors.append(f"{where}: expected id {prefix}-{expected:02d}, found {pre}-{num:02d}")
         expected = num + 1
+        if ids is not None:
+            if lens_id in ids and ids[lens_id] != path.name:
+                errors.append(f"{where}: id {lens_id} is already used in {ids[lens_id]}")
+            ids.setdefault(lens_id, path.name)
         # collect fields until next heading
         fields: list[tuple[str, str, int]] = []
         j = i + 1
@@ -251,9 +265,10 @@ def main(argv: Sequence[str] = ()) -> int:
     total = 0
     checks: dict[str, tuple[str, int]] = {}
     lens_files: dict[str, str] = {}
+    ids: dict[str, str] = {}
     for name in sorted(files):
         before = set(checks)
-        total += check_file(files[name], known, errors, checks)
+        total += check_file(files[name], known, errors, checks, ids)
         lens_files.update(dict.fromkeys(set(checks) - before, name))
     rules = registered_rules(errors)
     for lens_id, (coverage, ln) in sorted(checks.items()):

@@ -120,3 +120,48 @@ def test_evidence_goes_in_only_when_there_is_some_and_the_judge_is_told_to_check
     assert "## Evidence" in with_evidence and "the source" in with_evidence
     assert "against the evidence" in with_evidence
     assert with_evidence.index("## Artifact") < with_evidence.index("## Evidence") < with_evidence.index("## How to answer")
+
+
+def test_the_verdict_word_is_read_in_any_case():
+    assert J.Verdict.from_data({"score": 70, "verdict": " PASS "}).verdict == "pass"
+    assert J.Verdict.from_data({"score": "55", "verdict": "Weak"}).score == 55
+
+
+@pytest.mark.parametrize(
+    "data, problem",
+    [
+        (["not", "a", "mapping"], "a verdict is a mapping"),
+        ({"score": 80, "verdict": "great"}, "verdict is one of pass, weak, fail"),
+        ({"score": 80}, "verdict is one of pass, weak, fail"),
+        ({"score": "high", "verdict": "pass"}, "score is a number"),
+        ({"score": None, "verdict": "pass"}, "score is a number"),
+        ({"score": True, "verdict": "pass"}, "score is a number"),
+        ({"score": float("nan"), "verdict": "pass"}, "score is a number"),
+    ],
+)
+def test_an_answer_in_another_shape_is_refused(data, problem):
+    with pytest.raises(ValueError, match=problem):
+        J.Verdict.from_data(data)
+
+
+def test_a_malformed_answer_is_an_error_judgement_never_an_exception():
+    def malformed(*_args):
+        return {"score": 90, "verdict": "excellent"}, "{}", {}
+
+    judgement = J.judge_one(P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=malformed)
+    assert judgement.status == "error"
+    assert judgement.verdict is None
+    assert judgement.error is not None and "malformed verdict" in judgement.error
+
+
+def test_a_malformed_answer_falls_back_to_the_next_model():
+    def first_malformed(model, effort, prompt, key):
+        if model == "claude-opus-5":
+            return {"score": "n/a", "verdict": "pass"}, "{}", {}
+        return fake_call()
+
+    judgement = J.judge_one(
+        P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=first_malformed
+    )
+    assert judgement.status == "ok"
+    assert judgement.model == "claude-sonnet-5"

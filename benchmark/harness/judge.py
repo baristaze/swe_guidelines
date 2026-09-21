@@ -14,6 +14,7 @@ invented for a provider that did not answer.
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from typing import Any
 from . import providers as P
 
 EFFORTS = ("low", "medium", "high")
+VERDICTS = ("pass", "weak", "fail")
 ARTIFACT_LIMIT = 60_000
 MAX_OUTPUT_TOKENS = 16_000
 # A model under load answers 503 and means "ask again"; a model out of quota
@@ -132,17 +134,38 @@ class Verdict:
         }
 
     @staticmethod
-    def from_data(data: dict[str, Any]) -> Verdict:
+    def from_data(data: Any) -> Verdict:
+        """A verdict from a provider's parsed answer.
+
+        Raises ValueError on an answer that is not the shape the prompt
+        asks for: not a mapping, a verdict word other than pass, weak, or
+        fail, or a score that is not a number. A score outside 0 to 100 is
+        pulled back in; case and spaces around the verdict word are not
+        held against the judge.
+        """
+        if not isinstance(data, dict):
+            raise ValueError(f"a verdict is a mapping, got {type(data).__name__}")
+        word = str(data.get("verdict", "")).strip().lower()
+        if word not in VERDICTS:
+            raise ValueError(f"verdict is one of {', '.join(VERDICTS)}, got {data.get('verdict')!r}")
+        raw_score = data.get("score")
+        if isinstance(raw_score, bool) or not isinstance(raw_score, (int, float, str)):
+            raise ValueError(f"score is a number from 0 to 100, got {raw_score!r}")
+        try:
+            number = float(raw_score)
+        except ValueError:
+            raise ValueError(f"score is a number from 0 to 100, got {raw_score!r}") from None
+        if not math.isfinite(number):
+            raise ValueError(f"score is a number from 0 to 100, got {raw_score!r}")
         findings = []
         for raw in data.get("findings") or []:
             if isinstance(raw, dict):
                 findings.append(Finding(severity=str(raw.get("severity", "low")), note=str(raw.get("note", ""))))
             else:
                 findings.append(Finding(severity="low", note=str(raw)))
-        score = round(float(data.get("score", 0)))
         return Verdict(
-            score=max(0, min(100, score)),
-            verdict=str(data.get("verdict", "weak")),
+            score=max(0, min(100, round(number))),
+            verdict=word,
             findings=findings,
             strengths=[str(s) for s in (data.get("strengths") or [])],
             rationale=str(data.get("rationale", "")),
@@ -401,6 +424,11 @@ def judge_one(
         if not data:
             errors.append(f"{model}: no parsed verdict")
             continue
+        try:
+            verdict = Verdict.from_data(data)
+        except ValueError as exc:
+            errors.append(f"{model}: malformed verdict: {str(exc)[:400]}")
+            continue
         return Judgement(
             provider=name,
             model=model,
@@ -409,7 +437,7 @@ def judge_one(
             latency_s=latency,
             usage=usage,
             raw=raw,
-            verdict=Verdict.from_data(data),
+            verdict=verdict,
         )
     return Judgement(
         provider=name,

@@ -6,19 +6,24 @@ Rules:
   folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
   under 1024 characters;
 - every `${CLAUDE_SKILL_DIR}/...` reference in a skill body resolves to a file
-  or directory that exists in this repository;
+  or directory that exists in this repository; a reference inside
+  `skills/_shared/scaffold-conventions.md` is resolved from the folder of
+  every skill whose body references that file, since that is the skill
+  the reader runs;
 - there is exactly one arch-review-<group> skill per lens group and none for
   a group that does not exist;
 - arch-review-full names every group's review skill;
 - allowed-tools is comma-separated, each entry `Name` or `Name(rule)`; a bare
   `Bash` is refused, as is a rule with a trailing space inside the
   parentheses or the `Bash(cmd *)` spelling; a Bash rule is the
-  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`;
+  `Bash(cmd:*)` prefix form, with no other `*`, or an exact
+  `Bash(make <target>)`, and anything else (`Bash(*)`, `Bash(curl*)`, an
+  exact command that is not make) is refused;
 - allowed-tools names only what the body runs; the checker holds the make
   targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
-  `make <target>` appears inside a backticked span of the skill body, or of
-  `skills/_shared/scaffold-conventions.md` when the body references that
-  file. Git, uv, and pnpm entries are checked by hand;
+  `make <target>`, as whole words, appears inside a backticked span of the
+  skill body, or of `skills/_shared/scaffold-conventions.md` when the body
+  references that file. Git, uv, and pnpm entries are checked by hand;
 - frontmatter is flat `key: value` lines, one per key, no key repeated;
 - a double-quoted value is one complete YAML double-quoted scalar: it
   closes, its inner quotes are escaped, its escapes are ones YAML defines,
@@ -49,6 +54,8 @@ REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
 TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[a-z0-9-]+__[a-z0-9_]+)(\([^()]*\))?$")
 BASH_RULE = re.compile(r"^Bash\((.*)\)$")
+PREFIX_RULE = re.compile(r"^[^*:]+:\*$")  # `cmd:*`: a command, then the one `*`
+EXACT_MAKE = re.compile(r"^make [^*:]+$")  # `make <target>`, arguments allowed, no wildcard
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
@@ -160,6 +167,12 @@ def bash_command(tool: str) -> str | None:
     return m.group(1).removesuffix(":*").strip()
 
 
+def runs_command(cmd: str, spans: list[str]) -> bool:
+    """Whether a span runs `cmd` as whole words: `make test` is not `make test-e2e`."""
+    word = re.compile(rf"(?<![\w-]){re.escape(cmd)}(?![\w-])")
+    return any(word.search(span) for span in spans)
+
+
 def lens_groups() -> set[str]:
     groups = set()
     for line in (LENSES / "README.md").read_text(encoding="utf-8").splitlines():
@@ -219,16 +232,24 @@ def main(argv: Sequence[str] = ()) -> int:
                     errors.append(f"{rel}: trailing space inside the parentheses of {tool!r}")
                 if " *" in rule:
                     errors.append(f"{rel}: use the Bash(cmd:*) prefix form, not {tool!r}")
-                if not cmd:
+                elif not cmd:
                     errors.append(f"{rel}: allowed-tools entry {tool!r} names no command")
-                elif cmd.startswith("make ") and not any(cmd in span for span in runs):
+                elif not (PREFIX_RULE.match(rule.strip()) or EXACT_MAKE.match(rule.strip())):
+                    errors.append(f"{rel}: {tool!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)")
+                elif cmd.startswith("make ") and not runs_command(cmd, runs):
                     errors.append(f"{rel}: allowed-tools names Bash({cmd}) but the body never runs {cmd}")
-        for ref in REF.findall(text):
+        refs = [(ref, str(rel)) for ref in REF.findall(text)]
+        conventions = SKILLS / CONVENTIONS
+        if CONVENTIONS in body_of(text) and conventions.exists():
+            # the conventions file is read on this skill's behalf, from this skill's folder
+            shared = conventions.read_text(encoding="utf-8")
+            refs += [(ref, f"{rel} (via skills/{CONVENTIONS})") for ref in REF.findall(shared)]
+        for ref, where in refs:
             if "<" in ref:
                 continue  # a placeholder such as arch-review-<group>
             target = (folder / ref).resolve()
             if not target.exists():
-                errors.append(f"{rel}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
+                errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
         if name.startswith("arch-scaffold-"):
             found = [h for h in SECTION.findall(text) if h in SCAFFOLD_SECTIONS]
             if found != list(SCAFFOLD_SECTIONS):

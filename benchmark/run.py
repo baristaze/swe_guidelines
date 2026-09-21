@@ -143,6 +143,22 @@ def stdout_of(stream_path: Path) -> str:
     return "\n".join(r["line"] for r in CliStream.read(stream_path) if r.get("s") == "out")
 
 
+def context_text(scn: S.Scenario) -> str:
+    """The context files of a `qa` subject, each under its own heading.
+
+    A path is read from the scenario file's folder, as every path of a
+    scenario is. A file that is not there is a ScenarioError: a subject
+    that silently lost its context answers a different question.
+    """
+    out = ""
+    for value in scn.subject.context:
+        file = scn.resolve(value)
+        if file is None or not file.is_file():
+            raise S.ScenarioError(f"scenario {scn.name}: subject.context {value!r} is not a file ({file})")
+        out += f"\n\n## Context: {file.name}\n\n{file.read_text(encoding='utf-8')}"
+    return out
+
+
 def run_subject_qa(scn: S.Scenario, streams: CliStream, env: dict[str, str]) -> tuple[RT.ExitStatus, str]:
     """A `qa` subject: one provider model answers the prompt itself."""
     provider = P.parse(scn.subject.provider or "anthropic")
@@ -152,11 +168,7 @@ def run_subject_qa(scn: S.Scenario, streams: CliStream, env: dict[str, str]) -> 
     if not key:
         streams.note(f"[qa] no key for {P.name(provider)}")
         return RT.ExitStatus(code=2, duration_s=time.monotonic() - started), ""
-    prompt = scn.subject.prompt
-    for path in scn.subject.context:
-        file = Path(path)
-        if file.exists():
-            prompt += f"\n\n## Context: {file.name}\n\n{file.read_text(encoding='utf-8')}"
+    prompt = scn.subject.prompt + context_text(scn)
     streams.note(f"[qa] {P.name(provider)} {model}")
     try:
         text, usage = J.ask(provider, model, prompt, key)
@@ -231,8 +243,14 @@ def main(argv: list[str] | None = None) -> int:
         print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
         return 2
 
-    scn = S.load(S.find(args.scenario, SCENARIOS))
-    flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
+    try:
+        scn = S.load(S.find(args.scenario, SCENARIOS))
+        flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
+        if scn.kind == "qa":
+            context_text(scn)  # a missing context file stops the run before anything is spent
+    except (S.ScenarioError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
     own_target = scn.resolve(scn.subject.target)

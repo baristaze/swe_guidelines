@@ -92,3 +92,79 @@ def test_the_tail_yields_whole_lines_and_gives_up_when_told(serve_module, tmp_pa
 def test_the_tail_waits_for_a_file_that_is_not_there_yet(serve_module, tmp_path):
     serve_module.POLL_S = 0.01
     assert list(serve_module.tail(tmp_path / "later.jsonl", stop_after_s=0.02)) == []
+
+
+def test_a_file_inside_the_run_is_served(client):
+    status, _, body = get(client, "/runs/20260101-000000-one/streams/cli.jsonl")
+    assert status == 200 and b'"hello"' in body
+
+
+def test_a_path_that_leaves_the_run_is_a_404(client, runs):
+    # a sibling whose name starts with the runs folder's name passed a string prefix check
+    private = runs.parent / "runs-private"
+    private.mkdir()
+    (private / "secret.txt").write_text("secret\n", encoding="utf-8")
+    other = runs / "20260101-000000-two"
+    other.mkdir()
+    (other / "report.md").write_text("# Another run\n", encoding="utf-8")
+    run = "/runs/20260101-000000-one"
+    assert get(client, f"{run}/streams/%2e%2e/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
+    assert get(client, f"{run}/artifacts/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
+    assert get(client, f"{run}/judgements/%2e%2e/%2e%2e/20260101-000000-two/report.md")[0] == 404
+    assert get(client, f"{run}/streams/..%2f..%2f..%2fruns-private%2fsecret.txt")[0] == 404
+
+
+def test_the_tail_decodes_a_character_only_once_it_is_whole(serve_module, tmp_path):
+    path = tmp_path / "cli.jsonl"
+    whole = "é\n".encode()
+    path.write_bytes(b"one\n" + whole[:1])
+    serve_module.POLL_S = 0.01
+    lines = serve_module.tail(path, stop_after_s=5)
+    assert next(lines) == "one"
+    with path.open("ab") as fh:
+        fh.write(whole[1:])
+    assert next(lines) == "é"
+
+
+def test_the_tail_ends_once_the_run_has_finished_and_the_file_stopped_growing(serve_module, tmp_path):
+    path = tmp_path / "cli.jsonl"
+    path.write_text("one\ntwo\nlast", encoding="utf-8")
+    finished = tmp_path / "results.json"
+    serve_module.POLL_S = 0.01
+    finished.write_text("{}", encoding="utf-8")
+    assert list(serve_module.tail(path, finished=finished)) == ["one", "two", "last"]
+
+
+def test_the_tail_keeps_waiting_while_the_run_is_unfinished(serve_module, tmp_path):
+    path = tmp_path / "cli.jsonl"
+    path.write_text("one\n", encoding="utf-8")
+    serve_module.POLL_S = 0.01
+    lines = serve_module.tail(path, stop_after_s=0.05, finished=tmp_path / "results.json")
+    assert list(lines) == ["one"]  # ended by the time limit, not by the finish
+
+
+def test_a_viewer_that_goes_away_is_not_an_error(serve_module, runs, monkeypatch):
+    server = serve_module.RunsServer(("127.0.0.1", 0), runs)
+
+    def reset(self, *_args):
+        raise ConnectionResetError("the viewer went away")
+
+    monkeypatch.setattr(serve_module.Handler, "_index", reset)
+    unhandled: list[object] = []
+    monkeypatch.setattr(server, "handle_error", lambda request, address: unhandled.append(address))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        connection.request("GET", "/")
+        with pytest.raises((http.client.RemoteDisconnected, ConnectionError)):
+            connection.getresponse()
+        connection.close()
+        assert unhandled == []  # the handler caught it; the server never saw an error
+        # the server still answers the next viewer
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        assert get(connection, "/runs")[0] == 200
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()

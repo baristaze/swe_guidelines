@@ -48,22 +48,36 @@ def runs_of(folder: Path) -> list[dict]:
     return out
 
 
-def tail(path: Path, stop_after_s: float | None = None):
-    """Yield whole lines of a file as they arrive, waiting for the file to appear."""
+def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = None):
+    """Yield whole lines of a file as they arrive, waiting for the file to appear.
+
+    The file is read as bytes and a line is decoded only once it is whole,
+    so a character the writer has half written never breaks the read. The
+    tail ends when `finished` exists and the file has stopped growing: the
+    run has written its results, so nothing more is coming.
+    """
     started = time.monotonic()
     position = 0
-    pending = ""
+    pending = b""
     while True:
+        done = finished is not None and finished.exists()
+        chunk = b""
         if path.exists():
-            with path.open("r", encoding="utf-8") as fh:
+            with path.open("rb") as fh:
                 fh.seek(position)
                 chunk = fh.read()
                 position = fh.tell()
             pending += chunk
-            while "\n" in pending:
-                line, pending = pending.split("\n", 1)
+            while b"\n" in pending:
+                raw, pending = pending.split(b"\n", 1)
+                line = raw.decode("utf-8", errors="replace")
                 if line.strip():
                     yield line
+        if done and not chunk:
+            last = pending.decode("utf-8", errors="replace")
+            if last.strip():
+                yield last
+            return
         if stop_after_s is not None and time.monotonic() - started > stop_after_s:
             return
         time.sleep(POLL_S)
@@ -118,20 +132,26 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(404, b"no such run\n", "text/plain; charset=utf-8")
                 rest = parts[2:]
                 if rest[0] in FILES and len(rest) == 1:
-                    return self._file(run_dir / rest[0], FILES[rest[0]])
+                    return self._file(run_dir, run_dir / rest[0], FILES[rest[0]])
                 if rest == ["streams", "cli"]:
-                    return self._sse(run_dir / "streams" / "cli.jsonl")
+                    return self._sse(run_dir / "streams" / "cli.jsonl", run_dir / "results.json")
                 if len(rest) == 2 and rest[0] == "streams" and rest[1].endswith(".mjpeg"):
-                    return self._mjpeg(run_dir / "streams" / rest[1][: -len(".mjpeg")])
+                    folder = run_dir / "streams" / rest[1][: -len(".mjpeg")]
+                    return self._mjpeg(folder, run_dir / "results.json")
                 if rest[0] in ("streams", "artifacts", "judgements"):
-                    return self._file(run_dir.joinpath(*rest), None)
+                    return self._file(run_dir, run_dir.joinpath(*rest), None)
             self._send(404, b"not found\n", "text/plain; charset=utf-8")
-        except BrokenPipeError:
+        except ConnectionError:  # the viewer went away; a broken pipe is one of these
             return
 
-    def _file(self, path: Path, content_type: str | None) -> None:
+    def _file(self, run_dir: Path, path: Path, content_type: str | None) -> None:
+        """A file inside the run's own folder, compared as resolved paths.
+
+        A string prefix would let `runs-private/` pass for `runs/`, and a
+        `..` segment or a symlink would leave the run; both are a 404.
+        """
         path = path.resolve()
-        if not str(path).startswith(str(self.runs.resolve())) or not path.is_file():
+        if not path.is_relative_to(run_dir.resolve()) or not path.is_file():
             return self._send(404, b"not found\n", "text/plain; charset=utf-8")
         guessed = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         self._send(200, path.read_bytes(), guessed)
@@ -149,21 +169,21 @@ class Handler(BaseHTTPRequestHandler):
         )
         self._send(200, body.encode(), "text/html; charset=utf-8")
 
-    def _sse(self, path: Path) -> None:
+    def _sse(self, path: Path, finished: Path) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        for line in tail(path):
+        for line in tail(path, finished=finished):
             self.wfile.write(f"data: {line}\n\n".encode())
             self.wfile.flush()
 
-    def _mjpeg(self, folder: Path) -> None:
+    def _mjpeg(self, folder: Path, finished: Path) -> None:
         self.send_response(200)
         self.send_header("Content-Type", f"multipart/x-mixed-replace; boundary={BOUNDARY}")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        for line in tail(folder / "index.jsonl"):
+        for line in tail(folder / "index.jsonl", finished=finished):
             try:
                 frame = json.loads(line)["frame"]
             except (json.JSONDecodeError, KeyError):

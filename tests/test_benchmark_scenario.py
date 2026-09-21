@@ -114,3 +114,14 @@ def test_a_qa_subject_answers_with_exactly_one_provider():
             S.from_data(dict(qa, subject={"prompt": "why?", "provider": many}))
     with pytest.raises(S.ScenarioError, match="unknown provider"):
         S.from_data(dict(qa, subject={"prompt": "why?", "provider": "acme"}))
+
+
+def test_the_judges_are_checked_when_the_scenario_loads():
+    scn = S.from_data(dict(MINIMAL, judges={"providers": "anthropic,xai", "effort": "high"}))
+    assert scn.judges.providers == "anthropic,xai" and scn.judges.effort == "high"
+    with pytest.raises(S.ScenarioError, match=r"judges\.effort is one of low, medium, high, got 'maximum'"):
+        S.from_data(dict(MINIMAL, judges={"effort": "maximum"}))
+    with pytest.raises(S.ScenarioError, match=r"judges\.providers: unknown provider 'claude'"):
+        S.from_data(dict(MINIMAL, judges={"providers": "claude"}))
+    with pytest.raises(S.ScenarioError, match=r"judges\.providers: provider selection 99 sets a bit"):
+        S.from_data(dict(MINIMAL, judges={"providers": 99}))

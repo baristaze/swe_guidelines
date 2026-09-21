@@ -120,3 +120,20 @@ def test_reference_name_is_allowed_in_the_next_section_and_the_changelog(repo, l
     repo.write("architecture.md", text + "\n## Next: An End-to-End Reference Implementation\n\nTadas.\n\n## After\n\nTadas.\n")
     assert leaks.main() == 1
     assert "reference term 'Tadas'" in capsys.readouterr().out
+
+
+def test_the_next_section_exempts_the_reference_in_the_guideline_only(repo, leaks, capsys):
+    repo.write("docs/notes.md", "# Notes\n\n## Next: An End-to-End Reference Implementation\n\nTadas.\n")
+    assert leaks.main() == 1
+    assert "docs/notes.md:5: reference term 'Tadas'" in capsys.readouterr().out
+    repo.write("docs/notes.md", "# Notes\n\n## Next: An End-to-End Reference Implementation\n\nThe reference.\n")
+    assert leaks.main() == 0
+
+
+@pytest.mark.parametrize("rel", [".github/PULL_REQUEST_TEMPLATE.md", ".github/ISSUE_TEMPLATE/bug-report.md"])
+def test_the_github_templates_are_scanned_for_product_terms(repo, leaks, capsys, rel):
+    repo.write(rel, "# Report\n\nWhat did the lens miss?\n")
+    assert leaks.main() == 0
+    repo.write(rel, "# Report\n\nWhich robot were you on?\n")
+    assert leaks.main() == 1
+    assert f"{rel}:3: product term 'robot'" in capsys.readouterr().out
