@@ -59,6 +59,11 @@ def ancestors(idx: Index, info: ClassInfo) -> list[ClassInfo]:
     return out
 
 
+def is_entity(idx: Index, info: ClassInfo) -> bool:
+    """A chain class that composes `Identifiable`: `Order`, not the value objects it carries."""
+    return any(a.key == (idx.base_module, "Identifiable") for a in ancestors(idx, info))
+
+
 def all_fields(idx: Index, info: ClassInfo) -> set[str]:
     """The field names a class declares or inherits from project classes."""
     names = {field_name(f) for f in fields(info.node)}
@@ -156,15 +161,21 @@ def one_object_model(project: Project) -> Iterator[Violation]:
 def org_id_only_where_no_tenant(project: Project) -> Iterator[Violation]:
     """A class on the chain under a namespace's `types/` declares `org_id`
     only when a reader with no tenant takes it, and each such class carries
-    it. Whether a field exists only for a response or a column is judged.
+    it. The tenancy namespace is left out of the first half: a membership,
+    a session, or an API key is resolved before any tenant is held, so its
+    `org_id` is the answer. Whether a field exists only for a response or a
+    column is judged.
 
     Option `[tool.arch-check.options.OM-02]`: `tenantless`, the class names
     of those entities (default `["OutboxRow", "Event"]`, the guideline's).
+    The tenancy namespace is OM-16's `namespace` option (default `"tenancy"`).
     """
     tenantless = set(project.option("OM-02", "tenantless", ["OutboxRow", "Event"], {"tenantless"}))
+    tenancy = project.sub(f"om.{project.option('OM-16', 'namespace', 'tenancy', {'namespace'})}")
     idx = index(project)
     for info in idx.chain(project.sub("om")):
         in_types = "types" in info.file.module.removeprefix(project.sub("om")).split(".")
+        in_types = in_types and not is_under(info.file.module, tenancy)
         declared = next((f for f in fields(info.node) if field_name(f) == "org_id"), None)
         if info.node.name in tenantless:
             if "org_id" not in all_fields(idx, info):
@@ -313,17 +324,21 @@ def mixins_declare_exactly_their_fields(project: Project) -> Iterator[Violation]
 
 @rule(
     "OM-04",
-    coverage="full",
-    summary="Mixins are composed in the order identity, label, lifecycle, cross-cutting.",
+    coverage="partial",
+    summary="The guideline's mixins are composed in the order identity, label, lifecycle, cross-cutting.",
 )
 def mixin_order(project: Project) -> Iterator[Violation]:
-    """In every base list on the chain, the mixins of the base module come
-    in this order: `Identifiable`, `Named`, `Created` or `Trackable`,
-    `SoftDeletable`, then any other mixin (a cross-cutting trait). Bases
-    that are not mixins are not ordered."""
+    """In every base list on the chain, the guideline's mixins come in this
+    order: `Identifiable`, `Named`, `Created` or `Trackable`,
+    `SoftDeletable`. Bases that are not among them are not ordered: where a
+    new trait's mixin goes is judged."""
     idx = index(project)
     for info in idx.chain():
-        placed = [(MIXIN_ORDER.get(key[1], 4), key[1]) for _, key in idx.bases(info) if key is not None and idx.is_mixin(key)]
+        placed = [
+            (MIXIN_ORDER[key[1]], key[1])
+            for _, key in idx.bases(info)
+            if key is not None and key[1] in MIXIN_ORDER and idx.is_mixin(key)
+        ]
         if [p for p, _ in placed] != sorted(p for p, _ in placed):
             names = ", ".join(n for _, n in placed)
             yield Violation.at(
@@ -339,14 +354,16 @@ def mixin_order(project: Project) -> Iterator[Violation]:
 @rule(
     "OM-05",
     coverage="partial",
-    summary="The root and the mixins carry no methods, and no entity inherits from another OM class.",
+    summary="The root and the mixins carry no methods, and no entity inherits from another entity.",
 )
 def mixins_carry_no_behavior(project: Project) -> Iterator[Violation]:
     """The root and every mixin of the base module define no method other
     than a pydantic validator or serializer. No class on the chain under a
-    namespace's `types/` has a base that is a chain class outside the base
-    module: an entity never inherits from an entity. Whether an operation
-    exercises each mixin an entity composes is judged."""
+    namespace's `types/` has a base outside the base module that is an
+    entity (a chain class that composes `Identifiable`): `Order` never
+    extends another entity. A value object extending an abstract value
+    object is abstraction and passes. Whether an operation exercises each
+    mixin an entity composes is judged."""
     idx = index(project)
     for info in idx.chain(idx.base_module):
         for fn in methods(info.node):
@@ -357,7 +374,7 @@ def mixins_carry_no_behavior(project: Project) -> Iterator[Violation]:
         if "types" not in info.file.module.removeprefix(om).split("."):
             continue
         for node, key in idx.bases(info):
-            if key is not None and key[0] != idx.base_module and idx.on_chain(key):
+            if key is not None and key[0] != idx.base_module and idx.on_chain(key) and is_entity(idx, idx.classes[key]):
                 yield Violation.at(
                     info.file.rel, node, f"{info.node.name} inherits from {key[1]}; inheritance in the OM never shares code"
                 )
@@ -390,7 +407,7 @@ def root_forbids_extras(project: Project) -> Iterator[Violation]:
 
 # --- OM-09
 
-FILTER_NAMES = frozenset({"filter", "filters", "where", "order_by", "group_by", "sql", "criteria"})
+FILTER_NAMES = frozenset({"filter", "filters", "where", "group_by", "sql", "criteria"})
 LOOSE = frozenset({"dict", "Dict", "Mapping", "MutableMapping", "Any", "str", "object"})
 
 
@@ -402,10 +419,11 @@ LOOSE = frozenset({"dict", "Dict", "Mapping", "MutableMapping", "Any", "str", "o
 def filters_are_typed(project: Project) -> Iterator[Violation]:
     """On every method of a `*ManagerInterface` or `*StorageInterface` class
     under `<pkg>.om`: no `**kwargs`, and no parameter named `filter`,
-    `filters`, `where`, `order_by`, `group_by`, `sql`, or `criteria` that is
+    `filters`, `where`, `group_by`, `sql`, or `criteria` that is
     unannotated or annotated with a dict, a `Mapping`, `Any`, `object`, or
-    `str`. Whether one filter type travels through both interfaces is
-    judged."""
+    `str`. The guideline types filters and groupings, not an ordering, so
+    an `order_by` is not read. Whether one filter type travels through both
+    interfaces is judged."""
     for file, tree in project.trees(project.sub("om")):
         for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
             if not cls.name.endswith(("ManagerInterface", "StorageInterface")):
@@ -455,7 +473,8 @@ def has_dump(node: ast.AST, dumped: set[str]) -> bool:
 def entities_are_immutable(project: Project) -> Iterator[Violation]:
     """No class on the chain sets `frozen` to anything but `True`. Above
     storage: no `model_copy(update=...)` whose update holds a
-    `model_dump()` call or a name bound to one in the same function; no
+    `model_dump()` call or a name bound to one in the same function, with
+    or without an annotation; no
     `model_validate(x)` where `x` is a parameter typed with a chain class;
     no assignment to an attribute of such a parameter, and no
     `object.__setattr__` on one. An in-place change through a method of a
@@ -471,6 +490,13 @@ def entities_are_immutable(project: Project) -> Iterator[Violation]:
             for node in ast.walk(fn):
                 if isinstance(node, ast.Assign) and has_dump(node.value, set()):
                     dumped.update(t.id for t in node.targets if isinstance(t, ast.Name))
+                elif (
+                    isinstance(node, ast.AnnAssign)
+                    and isinstance(node.target, ast.Name)
+                    and node.value is not None
+                    and has_dump(node.value, set())
+                ):
+                    dumped.add(node.target.id)
             for node in ast.walk(fn):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                     attr = node.func.attr
@@ -661,23 +687,27 @@ def namespace_shape(project: Project) -> Iterator[Violation]:
     composes `Identifiable`) is defined under its `impl/`. The names of the
     interfaces and whether a manager takes each entity are judged.
 
+    The outbox namespace may name its entry module `relay.py` instead:
+    the guideline calls it "the relay" and never names the file.
+
     Options `[tool.arch-check.options.OM-14]`: `entry`, a table of
     namespace to entry module for a namespace whose interface is not a
-    manager, over the default `{outbox = "relay"}` (the guideline's
-    relay);
+    manager (over `outbox`'s default, `manager` or `relay`);
     `not_namespaces`, the subpackages of the OM that are not namespaces
     (default `["storage"]`, the storage root).
     """
     keys = {"entry", "not_namespaces"}
-    entry = {"outbox": "relay", **project.option("OM-14", "entry", {}, keys)}
+    entry: dict[str, object] = {"outbox": ["manager", "relay"], **project.option("OM-14", "entry", {}, keys)}
     skip = project.option("OM-14", "not_namespaces", ["storage"], keys)
     idx = index(project)
     om = project.sub("om")
     for name, directory in namespaces(project, skip):
         ns = f"{om}.{name}"
-        module = entry.get(name, "manager")
-        if not isinstance(module, str):
+        wanted = entry.get(name, "manager")
+        candidates = [wanted] if isinstance(wanted, str) else wanted if isinstance(wanted, list) else []
+        if not candidates or not all(isinstance(c, str) for c in candidates):
             continue
+        module = next((c for c in candidates if project.module(f"{ns}.{c}") is not None), candidates[0])
         init = project.module(ns)
         for part, is_pkg in ((module, False), ("types", True), ("impl", True), ("storage", True)):
             if project.module(f"{ns}.{part}") is None:
@@ -695,7 +725,7 @@ def namespace_shape(project: Project) -> Iterator[Violation]:
                     init.rel, 1, 1, f"{ns} does not re-export its interface from .{module}; consumers import it by a short path"
                 )
         for info in idx.chain(f"{ns}.impl"):
-            if any(a.key == (idx.base_module, "Identifiable") for a in ancestors(idx, info)):
+            if is_entity(idx, info):
                 yield Violation.at(info.file.rel, info.node, f"entity {info.node.name} lives in impl/; entities live in types/")
 
 
@@ -717,17 +747,17 @@ CLOCK_CALLS_IN_RULES = (
 @rule(
     "OM-15",
     coverage="partial",
-    summary="A namespace's rules module reads no storage, infra, settings, clock, or environment, and awaits nothing.",
+    summary="A namespace's rules module reads no storage, settings, clock, or environment, and awaits nothing.",
 )
 def rules_are_pure(project: Project) -> Iterator[Violation]:
     """Every `<pkg>.om.<ns>.rules` module imports nothing from a storage
-    package of the OM, from `<pkg>.infra`, from a settings module, or from
-    `os` or `time`, and not `utcnow`; calls no `utcnow()`, `now()`,
-    `today()`, or `time()`; reads no `os.environ`; and defines no `async
-    def`. It may import `datetime` for its types. Duplicated arithmetic
-    in impls is judged."""
+    package of the OM, from a module named `settings`, or from `os` or
+    `time`, and not `utcnow`; calls no `utcnow()`, `now()`, `today()`, or
+    `time()`; reads no `os.environ`; and defines no `async def`. It may
+    import `datetime` for its types, and a type such as
+    `acme.om.orders.types.notification_settings`. Duplicated arithmetic in
+    impls is judged."""
     om = project.sub("om")
-    infra = project.sub("infra")
     for file in project.modules_under(om):
         parts = file.module.split(".")
         if parts[-1] != "rules" or file.module.rpartition(".")[0].rpartition(".")[0] != om:
@@ -740,8 +770,7 @@ def rules_are_pure(project: Project) -> Iterator[Violation]:
                 segs = target.split(".")
                 bad = (
                     (is_under(target, om) and "storage" in segs)
-                    or is_under(target, infra)
-                    or any("settings" in s for s in segs)
+                    or "settings" in segs
                     or segs[0] in ("os", "time")
                     or (target.endswith(".utcnow"))
                 )
@@ -822,14 +851,22 @@ MUTABLE = frozenset(
 
 
 def mutable_names(node: ast.expr) -> list[str]:
-    """The mutable container names an annotation spells, quoted parts included."""
+    """The mutable container names an annotation spells, quoted parts included; a `Literal[...]` holds values, not types."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
         except SyntaxError:
             return []
+    literals = {
+        id(inner)
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Subscript) and last(dotted(sub.value)) == "Literal"
+        for inner in ast.walk(sub.slice)
+    }
     found = []
     for sub in ast.walk(node):
+        if id(sub) in literals:
+            continue
         if isinstance(sub, ast.Name | ast.Attribute):
             name = last(dotted(sub))
             if name in MUTABLE:

@@ -5,7 +5,7 @@ subclasses pydantic's `BaseModel` directly (`Platform` in the
 guideline). A class is on the chain when one of its bases resolves to
 the root or to a class on the chain. A base name resolves the way
 Python binds it: a class of the same module, or a name an import binds,
-followed through re-exports (`from .task import Task` in a package
+followed through re-exports (`from .order import Order` in a package
 `__init__`) to the module that defines it. A base that resolves to
 nothing in the project (pydantic, the standard library) is not on the
 chain.
@@ -97,14 +97,14 @@ class Index:
         return self.lookup_dotted(target, depth + 1)
 
     def lookup_dotted(self, full: str, depth: int = 0) -> Key | None:
-        """The class an absolute dotted name means (`acme.om.tasks.Task`), or None."""
+        """The class an absolute dotted name means (`acme.om.orders.Order`), or None."""
         mod, _, name = full.rpartition(".")
         if not mod or self.project.module(mod) is None:
             return None
         return self.lookup(mod, name, depth)
 
     def resolve(self, module: str, name: str | None) -> Key | None:
-        """The class a dotted name written in `module` means: `Task`, `types.Task`, `acme.om.base.Platform`."""
+        """The class a dotted name written in `module` means: `Order`, `types.Order`, `acme.om.base.Platform`."""
         if not name:
             return None
         head, _, rest = name.partition(".")
@@ -146,7 +146,7 @@ class Index:
         return key is not None and key[0] == self.base_module and key not in self.roots and self.on_chain(key)
 
     def annotation_on_chain(self, module: str, node: ast.expr | None) -> bool:
-        """Whether an annotation names a chain class anywhere in it: `Task`, `Task | None`, `"Task"`."""
+        """Whether an annotation names a chain class anywhere in it: `Order`, `Order | None`, `"Order"`."""
         if node is None:
             return False
         if isinstance(node, ast.Constant) and isinstance(node.value, str):

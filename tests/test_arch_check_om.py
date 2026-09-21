@@ -220,6 +220,19 @@ def test_the_tenantless_list_is_an_option(tmp_path):
     assert code == 0
 
 
+def test_org_id_on_a_tenancy_type_is_not_om_02(tmp_path):
+    membership = (
+        "from uuid import UUID\n\nfrom acme.om.base import Identifiable\n\n\n"
+        "class Membership(Identifiable):\n    org_id: UUID\n    user_id: UUID\n"
+    )
+    code, _ = run(tmp_path, "OM-02", {f"{OM}/tenancy/types/membership.py": membership})
+    assert code == 0
+    pyproject = '[tool.arch-check]\npackage = "acme"\n\n[tool.arch-check.options.OM-16]\nnamespace = "identity"\n'
+    code, report = run(tmp_path, "OM-02", {f"{OM}/tenancy/types/membership.py": membership}, pyproject)
+    assert code == 1
+    assert "Membership.org_id" in messages(report)[0]
+
+
 # --- OM-03
 
 
@@ -290,6 +303,18 @@ def test_mixins_reached_through_a_re_export_are_ordered_too(tmp_path):
     assert found(report) == [("OM-04", TASK)]
 
 
+def test_a_new_trait_is_not_ordered_by_om_04(tmp_path):
+    base = BASE_SOURCE + "\n\nclass Pinnable(Platform):\n    pinned: bool = False\n"
+    task = TASK_SOURCE.replace(
+        "Task(Identifiable, Named, Trackable, SoftDeletable)", "Task(Pinnable, Identifiable, Named, Trackable)"
+    ).replace("import FrozenMapping,", "import FrozenMapping, Pinnable,")
+    code, _ = run(tmp_path, "OM-04", {BASE: base, TASK: task})
+    assert code == 0
+    code, report = run(tmp_path, "OM-04", {BASE: base, TASK: task.replace("Named, Trackable)", "Trackable, Named)")})
+    assert code == 1
+    assert found(report) == [("OM-04", TASK)]
+
+
 # --- OM-05
 
 
@@ -316,6 +341,12 @@ def test_an_entity_inheriting_from_an_entity_is_om_05(tmp_path):
     code, report = run(tmp_path, "OM-05", {TASK: TASK_SOURCE + "\n\nclass SubTask(Task):\n    step: int\n"})
     assert code == 1
     assert "SubTask inherits from Task" in messages(report)[0]
+
+
+def test_a_value_object_extending_a_value_object_is_not_om_05(tmp_path):
+    source = TASK_SOURCE + "\n\nclass UrgentPriority(Priority):\n    reason: str\n"
+    code, _ = run(tmp_path, "OM-05", {TASK: source})
+    assert code == 0
 
 
 # --- OM-07
@@ -368,6 +399,14 @@ def test_an_interface_taking_kwargs_or_a_dict_filter_is_om_09(tmp_path):
     assert any("where is dict[str, Any]" in m for m in messages(report))
 
 
+def test_an_ordering_as_a_string_is_not_om_09(tmp_path):
+    source = "class TaskStorageInterface:\n    async def read_tasks(self, org_id, order_by: str): ...\n"
+    code, _ = run(tmp_path, "OM-09", {f"{OM}/tasks/storage/__init__.py": source})
+    assert code == 0
+    code, _ = run(tmp_path, "OM-09", {f"{OM}/tasks/storage/__init__.py": source.replace("order_by", "group_by")})
+    assert code == 1
+
+
 # --- OM-10
 
 
@@ -376,6 +415,17 @@ def test_model_copy_fed_a_dump_is_om_10(tmp_path):
         "\n\ndef bad(current: Task, other: Task) -> Task:\n"
         "    changes = other.model_dump()\n"
         "    return current.model_copy(update=changes)\n"
+    )
+    code, report = run(tmp_path, "OM-10", {TASK_IMPL: source})
+    assert code == 1
+    assert "model_copy(update=...) fed a dump" in messages(report)[0]
+
+
+def test_model_copy_fed_an_annotated_dump_is_om_10(tmp_path):
+    source = IMPL_SOURCE + (
+        "\n\ndef bad(current: Task, other: Task) -> Task:\n"
+        "    update: dict = {**other.model_dump()}\n"
+        "    return current.model_copy(update=update)\n"
     )
     code, report = run(tmp_path, "OM-10", {TASK_IMPL: source})
     assert code == 1
@@ -510,6 +560,19 @@ def test_the_entry_module_of_a_namespace_is_an_option(tmp_path):
     assert code == 0
 
 
+def test_the_outbox_entry_module_is_manager_or_relay(tmp_path):
+    files = {
+        f"{OM}/outbox/__init__.py": "from .manager import OutboxManagerInterface\n",
+        f"{OM}/outbox/manager.py": "class OutboxManagerInterface:\n    pass\n",
+        f"{OM}/outbox/relay.py": None,
+    }
+    code, _ = run(tmp_path, "OM-14", files)
+    assert code == 0
+    code, report = run(tmp_path, "OM-14", {**files, f"{OM}/outbox/manager.py": None})
+    assert code == 1
+    assert "namespace outbox has no manager.py" in messages(report)[0]
+
+
 # --- OM-15
 
 
@@ -517,7 +580,7 @@ def test_the_entry_module_of_a_namespace_is_an_option(tmp_path):
     "source",
     [
         "from acme.om.tasks.storage import TaskStorageInterface\n",
-        "from acme.infra import InfraRoot\n",
+        "from acme.infra.settings import Settings\n",
         "import os\n",
         "from acme.om.base import utcnow\n",
         "from datetime import datetime\n\n\ndef late(due):\n    return due < datetime.now()\n",
@@ -528,6 +591,18 @@ def test_an_impure_rules_module_is_om_15(tmp_path, source):
     code, report = run(tmp_path, "OM-15", {RULES: source})
     assert code == 1
     assert {p for _, p in found(report)} == {RULES}
+
+
+def test_a_settings_named_type_or_an_infra_import_is_not_om_15(tmp_path):
+    source = (
+        "from acme.infra import InfraRoot\n"
+        "from acme.om.tasks.types.notification_settings import NotificationSettings\n\n\n"
+        "def quiet(s: NotificationSettings) -> bool:\n    return s.muted\n"
+    )
+    code, _ = run(tmp_path, "OM-15", {RULES: source})
+    assert code == 0
+    code, _ = run(tmp_path, "OM-15", {RULES: "from acme.om.tasks.settings import Settings\n"})
+    assert code == 1
 
 
 # --- OM-16
@@ -558,6 +633,15 @@ def test_a_mutable_field_is_om_17(tmp_path, annotation):
     code, report = run(tmp_path, "OM-17", {TASK: source})
     assert code == 1
     assert found(report) == [("OM-17", TASK)]
+
+
+def test_a_literal_naming_a_container_is_not_om_17(tmp_path):
+    source = TASK_SOURCE.replace("    tags: tuple[str, ...] = ()\n", '    kind: Literal["list", "dict"] = "list"\n')
+    source = "from typing import Literal\n" + source
+    code, _ = run(tmp_path, "OM-17", {TASK: source})
+    assert code == 0
+    code, _ = run(tmp_path, "OM-17", {TASK: source.replace('Literal["list", "dict"] = "list"', 'Literal["a"] | list[int]')})
+    assert code == 1
 
 
 def test_a_frozen_mapping_default_without_validation_is_om_17(tmp_path):

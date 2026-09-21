@@ -112,7 +112,8 @@ ordering that departs from identity, label, lifecycle, cross-cutting.
 
 **Severity.** low
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides the order of the guideline's mixins;
+the rest is judged.
 
 ## OM-05 A mixin is a promise, composed only where an operation exercises it
 
@@ -402,8 +403,8 @@ namespace.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the tenancy namespace and identity
-classes in the base or a utils module; the rest is judged.
+**Check.** `arch-check` decides the tenancy namespace, and identity
+and audit classes in the base or a utils module; the rest is judged.
 
 ## OM-17 Entity fields are tuples, frozen models, and FrozenMapping
 
