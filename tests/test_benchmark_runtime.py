@@ -57,6 +57,7 @@ def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
 
 def test_the_container_build_command_names_the_dockerfile(tmp_path):
     rt = RT.build("container", tmp_path, None, {"image": "img:1", "dockerfile": tmp_path / "runtime" / "Dockerfile"})
+    assert isinstance(rt, RT.ContainerRuntime)
     assert rt.build_command()[:5] == ["docker", "build", "-t", "img:1", "-f"]
 
 
@@ -68,6 +69,7 @@ def test_the_vm_runs_behind_the_prefix_and_fills_the_sync_paths(tmp_path):
         "fetch": ["fake-copy", "station:{remote}/", "{local}/"],
     }
     rt = RT.build("vm", tmp_path, None, config)
+    assert isinstance(rt, RT.VmRuntime)
     rt.workspace = tmp_path / "workspace"
     assert rt.command(["claude", "-p", "hi"], rt.workspace) == ["fake-shell", "station", "--", "claude", "-p", "hi"]
     assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/"]

@@ -383,7 +383,8 @@ def judge_one(
     errors: list[str] = []
     for model in models:
         data: dict = {}
-        raw, usage, latency = "", {}, 0.0
+        usage: dict[str, int] = {}
+        raw, latency = "", 0.0
         for attempt in range(RETRIES):
             started = time.monotonic()
             try:

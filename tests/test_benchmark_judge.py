@@ -42,6 +42,7 @@ def test_a_long_artifact_is_cut_and_says_so():
 def test_a_provider_without_a_key_is_skipped_not_failed():
     judgement = J.judge_one(P.Provider.OPENAI, "p", "medium", J.DEFAULT_MATRIX, env={}, call=fake_call)
     assert judgement.status == "skipped"
+    assert judgement.error is not None
     assert "OPENAI_API_KEY" in judgement.error
     assert judgement.verdict is None
 
@@ -52,6 +53,7 @@ def test_a_judgement_carries_the_model_the_effort_and_the_usage():
     assert judgement.model == "claude-opus-5"
     assert judgement.effort == "medium"
     assert judgement.usage == {"input_tokens": 10, "output_tokens": 20}
+    assert judgement.verdict is not None
     assert judgement.verdict.score == 82
     assert judgement.verdict.findings[0].severity == "medium"
 
@@ -70,6 +72,7 @@ def test_every_model_failing_is_an_error_that_keeps_what_each_said():
 
     judgement = J.judge_one(P.Provider.XAI, "p", "low", J.DEFAULT_MATRIX, env={"GROK_API_KEY": "k"}, call=always_fails)
     assert judgement.status == "error"
+    assert judgement.error is not None
     assert "grok-4 said no" in judgement.error
     assert judgement.verdict is None
 

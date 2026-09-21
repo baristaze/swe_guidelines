@@ -46,7 +46,9 @@ def test_a_planted_finding_is_named_by_its_lens_and_its_file_together():
 
 
 def test_a_file_named_before_the_lens_on_the_same_line_counts():
-    assert E.named(EXPECTED, "- `manager.py:37`: OM-12, uuid4 for an id")["named"] == ["F2"]
+    result = E.named(EXPECTED, "- `manager.py:37`: OM-12, uuid4 for an id")
+    assert result is not None
+    assert result["named"] == ["F2"]
 
 
 def test_no_planted_list_means_no_check():

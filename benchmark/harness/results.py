@@ -194,7 +194,7 @@ def report_text(run: RunResult) -> str:
         lines += ["### Not answered", ""]
         lines += [f"- `{s['provider']}`: {s['reason']}" for s in summary["skipped"]]
         lines += [""]
-    checked = [r for r in run.repeats if r.expected is not None]
+    checked = [(r.index, r.expected) for r in run.repeats if r.expected is not None]
     if checked:
         lines += [
             "## Expected findings",
@@ -203,10 +203,9 @@ def report_text(run: RunResult) -> str:
             "mechanical cross-check beside the scores, made by no model.",
             "",
         ]
-        for r in checked:
-            e = r.expected
+        for index, e in checked:
             missed = ", ".join(e["missed"]) or "none"
-            lines.append(f"- repeat {r.index}: named {len(e['named'])} of {e['expected']}; missed: {missed}")
+            lines.append(f"- repeat {index}: named {len(e['named'])} of {e['expected']}; missed: {missed}")
         lines.append("")
     findings = findings_by_severity(run.repeats)
     lines += ["## Findings", ""]

@@ -268,8 +268,11 @@ def main(argv: list[str] | None = None) -> int:
     if expected_path and target != own_target:
         expected_note = f"expected findings dropped: they describe {own_target}, and the run is on {target}"
         expected_path = None
-    expected_text = expected_path.read_text(encoding="utf-8") if expected_path else None
-    expected_data = S.parse_text(expected_text, expected_path.suffix) if expected_path else None
+    expected_text: str | None = None
+    expected_data = None
+    if expected_path:
+        expected_text = expected_path.read_text(encoding="utf-8")
+        expected_data = S.parse_text(expected_text, expected_path.suffix)
     evidence_text = E.render(expected_text, source_text)
     resolved = {
         "run_id": run_id,
@@ -305,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"strict: no key for {', '.join(missing)}", file=sys.stderr)
         return 3
 
-    if args.runtime == "container" and args.build:
+    if isinstance(rt, RT.ContainerRuntime) and args.build:
         with CliStream(run_dir / "streams" / "build.jsonl") as build_stream:
             status = rt.build(build_stream)
         if status.code != 0:

@@ -9,6 +9,7 @@ from harness import scenario as S
 
 RUN = Path(__file__).resolve().parent.parent / "benchmark" / "run.py"
 spec = importlib.util.spec_from_file_location("benchmark_run", RUN)
+assert spec is not None and spec.loader is not None
 run = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run)
 
@@ -48,5 +49,6 @@ def test_the_shipped_review_runs_on_its_planted_checkout_with_the_answers_outsid
     scn = S.load(RUN.parent / "scenarios" / "review-om.yaml")
     target = scn.resolve(scn.subject.target)
     expected = scn.resolve(scn.evidence.expected)
+    assert target is not None and expected is not None
     assert (target / "om").is_dir() and expected.is_file()
     assert target not in expected.parents

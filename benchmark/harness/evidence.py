@@ -85,7 +85,8 @@ def named(expected: dict[str, Any] | None, artifact: str) -> dict[str, Any] | No
     findings = planted(expected)
     if not findings:
         return None
-    hit, miss = [], []
+    hit: list[str] = []
+    miss: list[str] = []
     for f in findings:
         basename = Path(str(f["file"])).name
         (hit if _names(artifact, str(f["lens"]), basename) else miss).append(str(f["id"]))
