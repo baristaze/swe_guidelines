@@ -17,9 +17,10 @@ from __future__ import annotations
 import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from _common import ROOT
+from _common import ROOT, arguments
 
 PLUGIN = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
@@ -54,7 +55,8 @@ def check(version: str, errors: list[str]) -> None:
                 errors.append(f"{ADOPTING.relative_to(ROOT)}:{ln}: pins v{m.group(1)}, plugin.json says {version}")
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     version = source()
     if not SEMVER.match(version):
@@ -70,4 +72,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

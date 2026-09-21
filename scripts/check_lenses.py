@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
@@ -176,7 +179,8 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
     return count
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     known = sections()
     groups = listed_groups()
@@ -211,4 +215,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

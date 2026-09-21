@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
-from _common import ROOT, anchors
+from _common import ROOT, anchors, arguments
 
 LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
@@ -29,7 +30,8 @@ def headings(path: Path) -> set[str]:
     return {anchor for _, _, anchor in anchors(path.read_text(encoding="utf-8"))}
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     files = [
         p
@@ -64,4 +66,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

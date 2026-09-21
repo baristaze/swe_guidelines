@@ -7,7 +7,9 @@ without packaging. Standard library only.
 
 from __future__ import annotations
 
+import argparse
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -61,3 +63,21 @@ def anchors(text: str) -> list[tuple[int, str, str]]:
         seen[base] = n + 1
         out.append((level, title, base if n == 0 else f"{base}-{n}"))
     return out
+
+
+def arguments(
+    doc: str | None, argv: Sequence[str], check: str | None = None
+) -> argparse.Namespace:
+    """Parse a script's command line; an unknown argument exits 2.
+
+    Every script parses its arguments here, so a typo such as
+    `--chekc` stops the run instead of falling through to the default
+    action. `check` is the help text of a `--check` flag, for the
+    generators that have one.
+    """
+    parser = argparse.ArgumentParser(
+        description=(doc or "").split("\n", 1)[0], allow_abbrev=False
+    )
+    if check is not None:
+        parser.add_argument("--check", action="store_true", help=check)
+    return parser.parse_args(list(argv))

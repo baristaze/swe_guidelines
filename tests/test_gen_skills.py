@@ -34,3 +34,12 @@ def test_lens_file_without_a_title_stops_generation(repo, gen):
     repo.write("lenses/om.md", "Group id: `om`.\n")
     with pytest.raises(SystemExit):
         gen.main(["--check"])
+
+
+def test_unknown_argument_is_refused_and_writes_nothing(repo, gen):
+    repo.edit("skills/_template/review.SKILL.md", "Never edit", "Never ever edit")
+    before = repo.read("skills/arch-review-om/SKILL.md")
+    with pytest.raises(SystemExit) as exit_:
+        gen.main(["--chekc"])
+    assert exit_.value.code == 2
+    assert repo.read("skills/arch-review-om/SKILL.md") == before

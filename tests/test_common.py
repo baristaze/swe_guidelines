@@ -1,6 +1,25 @@
 """scripts/_common.py: the heading and anchor rule every script shares."""
 
+import pytest
 from _common import anchors, headings, slug
+
+SCRIPTS = [
+    "check_agents",
+    "check_leaks",
+    "check_lenses",
+    "check_links",
+    "check_skills",
+    "check_version",
+    "gen_skills",
+    "gen_toc",
+]
+
+
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_every_script_refuses_an_unknown_argument(repo, name):
+    with pytest.raises(SystemExit) as exit_:
+        repo.script(name).main(["--chekc"])
+    assert exit_.value.code == 2
 
 
 def test_slug_lowercases_drops_punctuation_and_hyphenates():

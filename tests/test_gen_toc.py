@@ -47,3 +47,13 @@ def test_missing_markers_fail(repo, toc, capsys):
     repo.edit("architecture.md", "<!-- toc -->", "")
     assert toc.main(["--check"]) == 1
     assert "no <!-- toc -->" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flag", ["--chekc", "--chec", "--check-only", "check"])
+def test_unknown_argument_is_refused_and_writes_nothing(repo, toc, flag):
+    before = repo.read("architecture.md").replace("  - [Tables](#tables)\n", "")
+    repo.write("architecture.md", before)
+    with pytest.raises(SystemExit) as exit_:
+        toc.main([flag])
+    assert exit_.value.code == 2
+    assert repo.read("architecture.md") == before

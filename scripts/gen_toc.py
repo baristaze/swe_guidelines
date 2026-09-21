@@ -9,18 +9,22 @@ the same rule `check_links.py` resolves them with, so every link the
 table emits is one that checker accepts, a repeated heading included.
 
 `--check` exits non-zero when the table on disk differs from what the
-headings produce. Standard library only.
+headings produce, and never writes. Any other argument is refused with
+exit status 2, so a mistyped flag cannot fall through to a write.
+Standard library only.
 """
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 
-from _common import ROOT, anchors
+from _common import ROOT, anchors, arguments
 
 GUIDELINE = ROOT / "architecture.md"
 START, END = "<!-- toc -->", "<!-- /toc -->"
 SKIP = {"Contents"}
+CHECK_HELP = "exit 1 when the table on disk is stale; never write"
 
 
 def render(text: str) -> str:
@@ -33,7 +37,8 @@ def render(text: str) -> str:
     return "\n".join(lines)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    args = arguments(__doc__, argv, check=CHECK_HELP)
     text = GUIDELINE.read_text(encoding="utf-8")
     if START not in text or END not in text:
         print(f"architecture.md: no {START} ... {END} block")
@@ -44,7 +49,7 @@ def main(argv: list[str]) -> int:
     if new == text:
         print("toc ok")
         return 0
-    if "--check" in argv:
+    if args.check:
         print("architecture.md: table of contents is stale (run `make gen-toc`)")
         return 1
     GUIDELINE.write_text(new, encoding="utf-8")

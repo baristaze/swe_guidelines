@@ -7,19 +7,25 @@ Source of truth:
 - lenses/<group>.md                  the H1 title of each group
 
 `--check` exits non-zero when any generated file differs from what the
-template would produce. Standard library only.
+template would produce, and never writes. Any other argument is refused
+with exit status 2, so a mistyped flag cannot fall through to a write.
+Standard library only.
 """
 
 from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "skills" / "_template" / "review.SKILL.md"
 LENSES = ROOT / "lenses"
 SKILLS = ROOT / "skills"
+CHECK_HELP = "exit 1 when a generated skill is stale; never write"
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|\s*(.+?)\s*\|\s*$")
 
 
@@ -49,8 +55,8 @@ def render(group: str, title: str, covers: str) -> str:
     )
 
 
-def main(argv: list[str]) -> int:
-    check = "--check" in argv
+def main(argv: Sequence[str] = ()) -> int:
+    check = arguments(__doc__, argv, check=CHECK_HELP).check
     stale: list[str] = []
     written = 0
     for group, filename, covers in groups():

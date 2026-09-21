@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _common import arguments
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,7 +88,8 @@ def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
                 errors.append(f"{path.relative_to(root)}:{ln}: {label} term '{m.group(0)}'")
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    arguments(__doc__, argv)
     errors: list[str] = []
     labels: dict[Path, list[str]] = {}
     for glob, groups in SCOPES:
@@ -104,4 +108,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
