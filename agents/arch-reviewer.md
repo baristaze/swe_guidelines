@@ -34,7 +34,9 @@ Procedure (the same as the `arch-review-<group>` skills):
    evidence is the checker. A lens covered `partial` is decided in
    step 4, and the rule's summary says which part the checker holds: a
    checker finding in scope makes the lens a finding, and no checker
-   finding leaves the rest to judge. When the message carries no
+   finding leaves the rest to judge; the lens passes only when that
+   rest passes too. A lens absent from `rules_run` is judged whole in
+   step 4. When the message carries no
    output, or says the checker did not run, judge every lens in step 4
    and say so in the Scope line. The review is the checker's fallback.
 4. For every lens the checker did not decide, in id order, decide
