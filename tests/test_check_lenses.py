@@ -120,3 +120,56 @@ def test_lens_syntax_inside_fenced_code_is_an_example(repo, lenses, capsys):
     )
     assert lenses.main() == 0
     assert "lenses ok: 2 lenses" in capsys.readouterr().out
+
+
+RULE = """from arch_check.registry import rule
+
+
+@rule("OM-01", coverage="{coverage}", summary="s")
+def one(project):
+    return iter(())
+"""
+
+
+def test_a_check_line_and_its_rule_agree(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Severity.** high", "**Severity.** high\n\n**Check.** `arch-check` decides it.")
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
+    assert lenses.main() == 0
+
+
+def test_a_partial_check_line_needs_a_partial_rule(repo, lenses, capsys):
+    repo.edit(
+        "lenses/om.md",
+        "**Severity.** high",
+        "**Severity.** high\n\n**Check.** `arch-check` decides the import direction; the rest is judged.",
+    )
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
+    assert lenses.main() == 1
+    assert "OM-01 Check line says partial, its rule registers full" in capsys.readouterr().out
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="partial"))
+    assert lenses.main() == 0
+
+
+def test_a_check_line_without_a_rule_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Severity.** high", "**Severity.** high\n\n**Check.** `arch-check` decides it.")
+    assert lenses.main() == 1
+    assert "OM-01 says arch-check decides it, and no rule of that id is registered" in capsys.readouterr().out
+
+
+def test_a_rule_without_a_check_line_fails(repo, lenses, capsys):
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
+    assert lenses.main() == 1
+    assert "rule OM-01 is registered, and lens OM-01 has no Check line" in capsys.readouterr().out
+
+
+def test_a_check_line_in_another_wording_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Severity.** high", "**Severity.** high\n\n**Check.** a script decides it.")
+    assert lenses.main() == 1
+    assert "Check reads 'a script decides it.'" in capsys.readouterr().out
+
+
+def test_check_comes_after_severity(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Severity.** high", "**Check.** `arch-check` decides it.\n\n**Severity.** high")
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
+    assert lenses.main() == 1
+    assert "optionally followed by Check" in capsys.readouterr().out

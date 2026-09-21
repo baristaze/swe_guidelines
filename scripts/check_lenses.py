@@ -16,13 +16,20 @@ Rules:
   so a lens file can show lens syntax in an example;
 - no line of a lens file is wider than 80 columns;
 - a lens count stated in README.md or lenses/README.md ("N lenses") equals
-  the size of the catalog.
+  the size of the catalog;
+- an optional Check field, after Severity, reads "`arch-check` decides it."
+  or "`arch-check` decides <part>; the rest is judged.", and agrees both
+  ways with the rules `checkers/src/arch_check/rules/` registers: a lens
+  with a Check line has a rule of its id with the same coverage (`full`
+  for the first sentence, `partial` for the second), and every rule has
+  a lens that says so. The rules are read with `ast`, never imported.
 
 Exit status is non-zero when any rule fails. Standard library only.
 """
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from collections.abc import Sequence
@@ -34,11 +41,15 @@ ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
 LENSES = ROOT / "lenses"
 README = ROOT / "README.md"
+RULES = ROOT / "checkers" / "src" / "arch_check" / "rules"
 
 FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
 HEADING = re.compile(r"^## ([A-Z]{2,3})-(\d{2}) (.+)$")
-FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity)\.\*\*\s*(.*)$")
+OPTIONAL = "Check"
+FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Check)\.\*\*\s*(.*)$")
+CHECK_FULL = "`arch-check` decides it."
+CHECK_PARTIAL = re.compile(r"^`arch-check` decides (.+); the rest is judged\.$")
 LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 NUMBERED = re.compile(r"\bSections? \d+")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
@@ -118,7 +129,32 @@ def check_source(value: str, path: Path, ln: int, known: dict[str, set[str]], er
             errors.append(f"{path.name}:{ln}: '{citation}' is not a section of architecture.md")
 
 
-def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int:
+def registered_rules(errors: list[str]) -> dict[str, tuple[str, str]]:
+    """Every `@rule("<ID>", coverage=...)` under the rules package: id -> (coverage, file)."""
+    out: dict[str, tuple[str, str]] = {}
+    if not RULES.is_dir():
+        return out
+    for path in sorted(RULES.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "rule"):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                continue
+            coverage = next(
+                (k.value.value for k in node.keywords if k.arg == "coverage" and isinstance(k.value, ast.Constant)), None
+            )
+            rid = node.args[0].value
+            rel = path.relative_to(ROOT).as_posix()
+            if rid in out:
+                errors.append(f"{rel}:{node.lineno}: rule {rid} is registered twice")
+            out[rid] = (str(coverage), rel)
+    return out
+
+
+def check_file(
+    path: Path, known: dict[str, set[str]], errors: list[str], checks: dict[str, tuple[str, int]] | None = None
+) -> int:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     prefix: str | None = None
@@ -145,6 +181,7 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
             continue
         count += 1
         pre, num, _title = m.group(1), int(m.group(2)), m.group(3)
+        lens_id = f"{pre}-{num:02d}"
         where = f"{path.name}:{i + 1}"
         if prefix is None:
             prefix = pre
@@ -167,8 +204,8 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
                 fields[-1] = (name, f"{value} {line}".strip(), ln)
             j += 1
         names = [f[0] for f in fields]
-        if names != list(FIELDS):
-            errors.append(f"{where}: fields are {names}, expected {list(FIELDS)}")
+        if names not in (list(FIELDS), [*FIELDS, OPTIONAL]):
+            errors.append(f"{where}: fields are {names}, expected {list(FIELDS)}, optionally followed by {OPTIONAL}")
         for name, value, ln in fields:
             if name == "Severity" and value.strip("` ") not in SEVERITIES:
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
@@ -176,6 +213,16 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
                 check_source(value, path, ln, known, errors)
             if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
                 errors.append(f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}")
+            if name == OPTIONAL:
+                if value == CHECK_FULL:
+                    coverage = "full"
+                elif CHECK_PARTIAL.match(value):
+                    coverage = "partial"
+                else:
+                    errors.append(f"{path.name}:{ln}: Check reads '{value}'; see lenses/README.md for its two sentences")
+                    continue
+                if checks is not None:
+                    checks[lens_id] = (coverage, ln)
             if name in ("Look for", "Violation"):
                 n = len(SENTENCE_END.findall(value))
                 if n > MAX_SENTENCES:
@@ -202,8 +249,22 @@ def main(argv: Sequence[str] = ()) -> int:
         if NUMBERED.search(line):
             errors.append(f"README.md:{ln}: refers to a section by number")
     total = 0
+    checks: dict[str, tuple[str, int]] = {}
+    lens_files: dict[str, str] = {}
     for name in sorted(files):
-        total += check_file(files[name], known, errors)
+        before = set(checks)
+        total += check_file(files[name], known, errors, checks)
+        lens_files.update(dict.fromkeys(set(checks) - before, name))
+    rules = registered_rules(errors)
+    for lens_id, (coverage, ln) in sorted(checks.items()):
+        where = f"{lens_files[lens_id]}:{ln}"
+        if lens_id not in rules:
+            errors.append(f"{where}: {lens_id} says arch-check decides it, and no rule of that id is registered")
+        elif rules[lens_id][0] != coverage:
+            errors.append(f"{where}: {lens_id} Check line says {coverage}, its rule registers {rules[lens_id][0]}")
+    for rid, (_coverage, rel) in sorted(rules.items()):
+        if rid not in checks:
+            errors.append(f"{rel}: rule {rid} is registered, and lens {rid} has no Check line")
     for path in (README, LENSES / "README.md"):
         if not path.exists():
             continue

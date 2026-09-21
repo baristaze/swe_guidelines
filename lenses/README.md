@@ -46,6 +46,8 @@ way:
 **Violation.** What evidence of a breach looks like, concretely.
 
 **Severity.** high | medium | low
+
+**Check.** `arch-check` decides it.
 ```
 
 Ids are the group prefix plus a two-digit number: `OM`, `CON`, `CTX`,
@@ -67,6 +69,19 @@ them, never by number: sections are inserted and removed, and a number
 would move under a lens. A rule stated in a section's own introduction
 cites the section alone. Several citations are separated by `;`; a
 bare subsection after a `;` belongs to the section cited before it.
+
+`Check` is optional. It says that `arch-check`, the static checker in
+`checkers/`, decides the lens, in one of two sentences. "`arch-check`
+decides it." means the checker decides the whole lens, and the review
+skills take its result without judging the code again. "`arch-check`
+decides `<the part>`; the rest is judged." means the checker decides a
+named mechanical part, and the review judges what remains. A lens with
+no `Check` line is judged by the review alone. The checker's rule id is
+the lens id, and `make lenses` holds the two together both ways: every
+lens with a `Check` line has a rule of that id with the same coverage
+and severity, and every rule has a lens that says so. A rule ships only
+when it is deterministic and rarely wrong on a tree shaped the way the
+guideline prescribes; a rule that would guess stays with the review.
 
 A lens restates the guideline; it never adds a rule the guideline does
 not state. When the guideline changes, the lens changes with it, and
