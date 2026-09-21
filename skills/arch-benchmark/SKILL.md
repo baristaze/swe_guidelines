@@ -1,7 +1,7 @@
 ---
 name: arch-benchmark
 description: "Run a benchmark scenario from this checkout: a skill of the plugin, a command, or a question-and-answer turn, executed in a declared runtime and scored by frontier models from several providers against the scenario's rubric. Use when a change to a skill, a lens, or the guideline needs a measurement rather than an opinion, or when someone asks how well a skill answers a question."
-allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(docker:*), Bash(ls:*), Bash(cat:*)
+allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(ls:*), Bash(cat:*)
 ---
 
 # arch-benchmark

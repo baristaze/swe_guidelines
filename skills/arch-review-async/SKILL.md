@@ -43,7 +43,12 @@ of a changed signature.
    Exit 0 means no findings and exit 1 means findings; both are a
    run. Its findings on files outside the scope are dropped, and so is
    anything under `exceptions_applied`: a deviation the project
-   recorded with an ADR, which is not a finding. The output's
+   recorded with an ADR, which is not a finding. A finding whose
+   `group` is `framework` is about the checker's own input: `PARSE`, a
+   file no rule could read, or `IGNORE`, an inline ignore that does not
+   resolve. One in scope is a finding under its own id, at `high`, and
+   no lens passes on the checker's evidence for a file that does not
+   parse. The output's
    `rules_run` says which lenses it covered, the rules this guideline
    ships and the project's own alike, each with a coverage and a
    summary. A lens covered `full` is decided here: each of its

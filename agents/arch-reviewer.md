@@ -27,7 +27,11 @@ Procedure (the same as the `arch-review-<group>` skills):
 3. Apply the checker's output when the task message carries it. Drop
    its findings on files outside the scope, and anything under
    `exceptions_applied`: a deviation recorded with an ADR, which is
-   not a finding. Its `rules_run` says which lenses it covered, the
+   not a finding. A finding whose `group` is `framework` is about the
+   checker's own input: `PARSE`, a file no rule could read, or
+   `IGNORE`, an inline ignore that does not resolve. One in scope is a
+   finding under its own id, at `high`, and no lens passes on the
+   checker's evidence for a file that does not parse. Its `rules_run` says which lenses it covered, the
    guideline's rules and the project's own alike, each with a coverage
    and a summary. A lens covered `full` is decided by that output: each
    finding in scope is a finding, and no finding is a pass whose

@@ -54,7 +54,10 @@ has a condition for ending.
    of that line. Append a table entry to the root `pyproject.toml` when
    it has a `[tool.arch-check]` table, and print it otherwise. Print
    the inline comment and never place it: which line it goes on is the
-   person's call.
+   person's call. The checker resolves an inline comment only to
+   `docs/adr/NNNN-*.md` with a four-digit number. When the ADR lives
+   elsewhere or is numbered otherwise, give only the table entry,
+   whose `adr` takes any path, and say why.
 7. Whatever the lens, tell the person to cite `ADR-NNNN` in a comment
    beside the code that deviates. A review treats the code as an
    exception only when the ADR is cited there.

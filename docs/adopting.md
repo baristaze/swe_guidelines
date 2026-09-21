@@ -166,7 +166,7 @@ A project without a `specs/` folder puts the same file wherever its
 specifications live and names that place in its `README.md`.
 
 Bump the pinned tag when the project adopts a newer guideline, in a
-commit that also re-runs `arch-review-full` on the main branch.
+commit that also re-runs `arch-review-full all` on the main branch.
 
 ## Record technology substitutions in one ADR
 

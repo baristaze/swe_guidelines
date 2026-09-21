@@ -1,6 +1,6 @@
 ---
 name: ops-cloud-deployment-nuke
-description: "Destroy one cloud environment of the platform as the administrator: empty the buckets, destroy the environment root, and report what remains (the zone, the state prefix, the shared resources). Runs scripts/cloud_nuke.sh after checking the administrator profile. Refuses production unless --confirm production is typed and a merged change on main sets the database's deletion protection off. Supports --dry-run. The one skill besides create that needs a credential that writes."
+description: "Destroy one cloud environment of the platform as the administrator: empty the buckets, destroy the environment root, and report what remains (the zone, the state prefix, the images, the shared resources). Runs scripts/cloud_nuke.sh after checking the administrator profile. Refuses production unless --confirm production is typed and a merged change on main sets the database's deletion protection off. Supports --dry-run. The one skill besides create that needs a credential that writes."
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
 ---
 
@@ -14,15 +14,14 @@ runs, and by the name typed into the command.
 
 ## Input
 
-`--env local|staging|production [--confirm <env>] [--dry-run]`
+`--env staging|production [--confirm <env>] [--dry-run]`
 
 `--env` is required; ask for it when missing. `--confirm production`
 is required for production and must be typed by the person, never
 filled in by the skill. `--dry-run` runs the script in its dry mode,
-which prints every command it would run and runs none. `local` is the
-compose stack: the script's local branch stops every container and
-removes the volumes, and needs no cloud, so the skill is testable
-with no account.
+which prints every command it would run and runs none. `local` is
+refused: this skill acts on a cloud environment only, and the local
+stack has no administrator.
 
 ## Role and credential
 
@@ -54,7 +53,7 @@ No env file is read. The script removes the environment's
 
      ```bash
      git fetch origin main
-     git show origin/main:deployment/terraform/environments/production/terraform.tfvars
+     git show origin/main:deployment/terraform/environments/prod/terraform.tfvars
      gh pr list --state merged --search "deletion protection" --limit 5
      ```
 
@@ -87,7 +86,7 @@ No env file is read. The script removes the environment's
    removed; the local profile and env file removed.
 5. Read what remains and write the report. The zone stays, because
    the registrar delegates to it. The state prefix stays, empty, so
-   a recreate finds its backend. `shared` stays: the roles, the
+   a recreate finds its backend. The images stay. `shared` stays: the roles, the
    budget, the operators user serve the other environment. A resource
    the destroy could not remove is listed with the reason the script
    printed.
@@ -126,6 +125,7 @@ No env file is read. The script removes the environment's
 
 - Zone <name> (delegated at the registrar)
 - State prefix environments/<env>/ in <bucket>, empty
+- Images: <repositories>
 - shared: <role>, <user>, budget
 - <resource the destroy could not remove>: <reason>
 ```

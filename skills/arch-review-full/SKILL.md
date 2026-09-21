@@ -35,7 +35,10 @@ cheaper question whenever the change is narrower than the tree.
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --format json`.
    Keep its output. Each reviewer gets the part of it that belongs to
    its group (the rules run and the findings whose `group` is its
-   own), so no reviewer runs it again. When the checker cannot run,
+   own), so no reviewer runs it again. The findings whose `group` is
+   `framework` (`PARSE`, `IGNORE`) go to every reviewer, because a file
+   that does not parse was read by no rule of any group; the merge
+   keeps one copy of each. When the checker cannot run,
    note why; every reviewer then judges every lens of its group.
 4. Launch eight reviewers at once, one per group, each with the scope
    line, the group name, the absolute path of its lens file, the

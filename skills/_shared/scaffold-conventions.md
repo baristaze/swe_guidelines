@@ -89,6 +89,7 @@ the order the guideline presents them, never by number.
   OpContext` for a tenant operation, `rctx: RequestContext` for the
   transitions that produce a stronger stage (sign-in, claim, sweep),
   `ictx: IdentityContext` for the exchange and the operator admission,
+  `OperatorContext` for an operation on the operator plane,
   a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
   `CredentialScope`) for a helper or an edge concern that needs less.
   Every storage call takes `org_id: UUID` first. The exceptions are the
@@ -225,7 +226,8 @@ the order the guideline presents them, never by number.
   the cloud runs. The nine project-local skills under
   `.claude/skills/` are copied from
   `skills/_shared/ops-skills/` with `acme` replaced by `<root>`.
-  Every one takes `--env local|staging|production`. Each holds the
+  Every one takes `--env staging|production`, and every one but
+  create and nuke also takes `local`. Each holds the
   credential of the role Operations (Operational Skills) gives it.
   The investigator and supporter skills hold the read-only
   investigate profile of their environment and read the owner-only
