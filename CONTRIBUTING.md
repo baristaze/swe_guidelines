@@ -41,7 +41,9 @@ its own voice.
    ruff and mypy by `uvx` on first run, and the plugin validation runs
    when `claude` is installed.
 4. Open a pull request. Describe the rule that changes and why, in the
-   same voice as the guideline. Link the issue.
+   same voice as the guideline, and say whether it is a major, minor,
+   or patch change. Link the issue. Leave `CHANGELOG.md` alone: the
+   release writes it.
 
 ## What a good change looks like
 
@@ -60,6 +62,22 @@ rule is a minor release. Everything else is a patch. Before 1.0.0 a
 removed or reversed rule bumps the minor number, as semver reads
 0.x, and the changelog entry names the reversal; 1.0.0 is for the
 text that has stopped moving. `CHANGELOG.md` lists every release.
+
+The changelog is written once per release, never per change. Every
+pull request that edits one file conflicts with every other open one,
+so no change touches it. The release pull request does four things:
+
+1. Reads the squash commits since the last tag
+   (`git log --oneline v<last>..main`) and their pull requests.
+2. Picks the level: the highest level of any change in it.
+3. Writes the release section of `CHANGELOG.md`, grouped as Fixed,
+   Added, Changed, and Removed, for a reader who adopts the guideline,
+   with every reversal named as one.
+4. Moves the version in `.claude-plugin/plugin.json`,
+   `.claude-plugin/marketplace.json`, and `docs/adopting.md`, which
+   `make version` holds together.
+
+The tag goes on the squash of that pull request.
 A pushed `v*` tag runs `.github/workflows/release-tag.yml`, which
 fails when the tag names a version other than the one in
 `.claude-plugin/plugin.json`.

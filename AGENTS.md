@@ -26,7 +26,7 @@ lenses (`skills/`), and the checkers that keep the three consistent
   does not read them). `skills/arch-new-aspect`
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,
-  skills, docs, and changelog.
+  skills, and docs, and names the release level.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
   to. Its procedure and report shape mirror the review template, and
   `scripts/check_agents.py` holds the two together: the four decision
@@ -135,4 +135,10 @@ claude plugin validate . --strict   # manifests, skills, agents (when claude is 
   that adds or sharpens a rule is a minor release; before 1.0.0 a
   removed or reversed rule bumps the minor number, as semver reads
   0.x, and the changelog entry names the reversal (`CONTRIBUTING.md`,
-  Versioning). Record it in `CHANGELOG.md`.
+  Versioning).
+- A change never edits `CHANGELOG.md`. The changelog is written once
+  per release, in the release pull request, from the squash commits
+  since the last tag. A pull request that edited it put every other
+  open pull request in conflict. So the pull request description
+  carries what the release section needs: what changed, in the
+  guideline's voice, the level, and a reversal named as one.

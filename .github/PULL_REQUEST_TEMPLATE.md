@@ -8,6 +8,8 @@ skill that changes and why.
 - [ ] `make check` passes locally.
 - [ ] A rule change updates `architecture.md`, its lens, and (via
       `make gen-skills`) the generated skills together.
-- [ ] `CHANGELOG.md` has an entry under Unreleased.
+- [ ] The description names the level (major, minor, or patch) and a
+      reversal as one. `CHANGELOG.md` is not edited; the release pull
+      request writes it.
 - [ ] No product or hardware vocabulary entered the guideline or the
       lenses.
