@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -120,7 +121,7 @@ def scenario_step(tmp_path):
     (bin_dir / "claude").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     # the stub records each scenario and fails the one named `broken`
     (bin_dir / "uv").write_text(
-        '#!/bin/sh\nshift 2\necho "$2" >> "$UV_LOG"\n[ "$2" != broken ]\n',
+        '#!/bin/sh\necho "$@" > "$ARGV_LOG"\nshift 2\necho "$2" >> "$UV_LOG"\n[ "$2" != broken ]\n',
         encoding="utf-8",
     )
     for stub in bin_dir.iterdir():
@@ -136,6 +137,7 @@ def scenario_step(tmp_path):
         env = {
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "UV_LOG": str(tmp_path / "uv.log"),
+            "ARGV_LOG": str(tmp_path / "argv.log"),
             **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", **inputs},
         }
         (tmp_path / "uv.log").unlink(missing_ok=True)
@@ -157,7 +159,14 @@ def test_the_workflow_runs_every_cataloged_scenario_and_fails_at_the_end(scenari
 
 @pytest.mark.parametrize(
     "inputs",
-    [{"PROVIDERS": "3; touch pwned"}, {"PROVIDERS": "$(id)"}, {"REPEAT": "0"}, {"REPEAT": "1 --dry-run"}],
+    [
+        {"PROVIDERS": "3; touch pwned"},
+        {"PROVIDERS": "$(id)"},
+        {"EFFORT": "maximum"},
+        {"EFFORT": "high --dry-run"},
+        {"REPEAT": "0"},
+        {"REPEAT": "1 --dry-run"},
+    ],
 )
 def test_the_workflow_refuses_inputs_outside_their_pattern(scenario_step, tmp_path, inputs):
     code, ran, _ = scenario_step(**inputs)
@@ -169,3 +178,51 @@ def test_a_scenario_name_is_never_spliced_into_the_script(scenario_step, tmp_pat
     _code, ran, _ = scenario_step(SCENARIOS='a"; touch pwned; echo "')
     assert not (tmp_path / "pwned").exists()
     assert "pwned;" in ran  # the words reach run.py as arguments, not as shell
+
+
+def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    # the subject counts what it finds, then writes two files of one name and one named like the answer
+    script = (
+        "import os, pathlib; n = len(os.listdir('.')); print(n); "
+        "[pathlib.Path(d).mkdir(exist_ok=True) for d in ('a', 'b')]; "
+        "[pathlib.Path(p).write_text(p) for p in ('a/notes.md', 'b/notes.md', 'answer.md')]"
+    )
+    scenario = {
+        "name": "files",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "artifact": {"stdout": True, "files": ["**/*.md", "*.md"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "files.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert run.main(["--scenario", str(path), "--out", "runs", "--repeat", "2"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    for index in (0, 1):
+        art = run_dir / "artifacts" / str(index)
+        assert (art / "answer.md").read_text(encoding="utf-8") == "0\n"  # an empty workspace, both times
+        assert (art / "workspace" / "a" / "notes.md").read_text(encoding="utf-8") == "a/notes.md"
+        assert (art / "workspace" / "b" / "notes.md").read_text(encoding="utf-8") == "b/notes.md"
+        assert (art / "workspace" / "answer.md").read_text(encoding="utf-8") == "answer.md"
+        assert results["repeats"][index]["artifact_paths"] == [
+            f"artifacts/{index}/answer.md",
+            f"artifacts/{index}/workspace/a/notes.md",
+            f"artifacts/{index}/workspace/answer.md",
+            f"artifacts/{index}/workspace/b/notes.md",
+        ]
+    assert (run_dir / "home" / "1").is_dir() and (run_dir / "workspace" / "1").is_dir()
+
+
+def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tmp_path):
+    code, ran, _ = scenario_step(SCENARIOS="a", PROVIDERS="", EFFORT="")
+    assert code == 0 and ran == ["a"]
+    assert "--providers" not in (tmp_path / "argv.log").read_text(encoding="utf-8")
+    assert "--effort" not in (tmp_path / "argv.log").read_text(encoding="utf-8")
+    code, _, _ = scenario_step(SCENARIOS="a", PROVIDERS="7", EFFORT="high")
+    logged = (tmp_path / "argv.log").read_text(encoding="utf-8").split()
+    assert code == 0 and logged[logged.index("--providers") + 1] == "7" and logged[logged.index("--effort") + 1] == "high"

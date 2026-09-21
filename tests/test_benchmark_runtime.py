@@ -1,6 +1,7 @@
 """benchmark/harness/runtime.py: what each runtime executes and where."""
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -133,3 +134,47 @@ def test_the_vm_refuses_a_plugin_or_a_target_it_was_not_told_where_to_find(tmp_p
         vm.plugin_path()
     with pytest.raises(ValueError, match="remote_target"):
         vm.target_path()
+
+
+def test_a_relative_run_folder_is_made_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    host = RT.build("host", Path("runs/one"))
+    host.prepare()
+    env = host.environment({})
+    assert env["HOME"] == str(tmp_path.resolve() / "runs" / "one" / "home")
+    assert Path(env["TMPDIR"]).is_absolute()
+    box = RT.build("container", Path("runs/one"), None, {"image": "img:1"})
+    box.prepare()
+    mount = box.command(["claude"], box.workspace)[4]
+    assert mount == f"{tmp_path.resolve() / 'runs' / 'one' / 'workspace'}:/workspace:rw"
+
+
+def test_each_repeat_gets_its_own_workspace_home_and_tmp(tmp_path):
+    rt = RT.build("host", tmp_path)
+    first = rt.prepare_repeat(0)
+    (first / "left-behind.md").write_text("0", encoding="utf-8")
+    home0 = rt.environment({})["HOME"]
+    second = rt.prepare_repeat(1)
+    assert first != second and rt.workspace == second
+    assert list(second.iterdir()) == []
+    env = rt.environment({})
+    assert env["HOME"] != home0 and Path(env["HOME"]).is_dir() and Path(env["TMPDIR"]).is_dir()
+    assert rt.collect(["*.md"]) == []
+
+
+def test_a_binary_that_is_not_there_is_exit_127_with_a_note(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(["no-such-binary-anywhere"], rt.workspace, {"PATH": str(tmp_path)}, stream)
+    assert status.code == 127 and not status.ok
+    lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl")]
+    assert any("could not start" in line for line in lines)
+
+
+def test_collect_leaves_out_a_file_outside_the_workspace(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    (tmp_path / "outside.md").write_text("x", encoding="utf-8")
+    (rt.workspace / "inside.md").write_text("y", encoding="utf-8")
+    assert [p.name for p in rt.collect(["*.md", "../*.md"])] == ["inside.md"]

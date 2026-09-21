@@ -33,10 +33,12 @@ imported inside the functions that call them.
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
+| `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
+| `--screencast-seconds` | how long to capture frames; 10 by default |
 
 A provider whose key is absent is skipped, named in the results, and
 does not fail the run. That is a choice: a run with three judges is
@@ -54,12 +56,17 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>/
   run.json                 the resolved scenario, runtime, models, and argv
   streams/cli.jsonl        one JSON line per output line, written as it happens
   streams/browser/         frames and index.jsonl, when something captured them
-  artifacts/<repeat>/      the answer, the collected files, the judge prompt
+  artifacts/<repeat>/      the answer, the judge prompt, and the collected
+                           files under workspace/ at their own paths
   judgements/<repeat>-<provider>.json
   results.json             the record, in schema/result.schema.json
   report.md                the same run for a person
-  workspace/, home/, tmp/  what the subject worked in
+  workspace/<repeat>/      what the subject worked in, empty at the start
+  home/<repeat>/, tmp/<repeat>/  the host runtime's private HOME and TMPDIR
 ```
+
+Every repeat starts in an empty workspace of its own, so no repeat
+sees what an earlier one wrote.
 
 Nothing there is checked in. The manual is the repository; a run is a
 measurement.
@@ -221,6 +228,6 @@ so `make test` and CI cover it with no key and no network.
 
 ```bash
 make test
-make benchmark          # the smoke scenario, three judges, one repeat
+make benchmark          # the smoke scenario, two judges (--providers 3), one repeat
 make benchmark-serve    # serve benchmark/runs at port 8765
 ```

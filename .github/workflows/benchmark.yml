@@ -9,14 +9,13 @@ on:
         default: "all"
         type: string
       providers:
-        description: "judges as a bit flag (1 Anthropic, 2 OpenAI, 4 Gemini, 8 xAI) or names"
-        default: "3"
+        description: "judges as a bit flag (1 Anthropic, 2 OpenAI, 4 Gemini, 8 xAI) or names; empty keeps each scenario's own"
+        default: ""
         type: string
       effort:
-        description: "judge effort"
-        default: "medium"
-        type: choice
-        options: [low, medium, high]
+        description: "judge effort (low, medium, high); empty keeps each scenario's own"
+        default: ""
+        type: string
       repeat:
         description: "how many times each subject runs"
         default: "1"
@@ -69,10 +68,18 @@ jobs:
         run: |
           set -uo pipefail
           set -f  # a scenario name is never a glob
-          if ! [[ "$PROVIDERS" =~ ^[0-9]+$|^[a-z]+(,[a-z]+)*$ ]]; then
-            echo "::error::providers is a number or comma-separated names, got '$PROVIDERS'"
+          if ! [[ "$PROVIDERS" =~ ^$|^[0-9]+$|^[a-z]+(,[a-z]+)*$ ]]; then
+            echo "::error::providers is empty, a number, or comma-separated names, got '$PROVIDERS'"
             exit 2
           fi
+          if ! [[ "$EFFORT" =~ ^(low|medium|high)?$ ]]; then
+            echo "::error::effort is empty, low, medium, or high, got '$EFFORT'"
+            exit 2
+          fi
+          # An empty input passes no flag, so the scenario's own judges and effort hold.
+          judges=()
+          [ -n "$PROVIDERS" ] && judges+=(--providers "$PROVIDERS")
+          [ -n "$EFFORT" ] && judges+=(--effort "$EFFORT")
           if ! [[ "$REPEAT" =~ ^[1-9][0-9]?$ ]]; then
             echo "::error::repeat is a whole number from 1 to 99, got '$REPEAT'"
             exit 2
@@ -88,7 +95,7 @@ jobs:
           for name in $names; do
             echo "::group::$name"
             if ! uv run benchmark/run.py --scenario "$name" \
-              --providers "$PROVIDERS" --effort "$EFFORT" \
+              ${judges[@]+"${judges[@]}"} \
               --repeat "$REPEAT" --out benchmark/runs \
               --claude "$(command -v claude)"; then
               failed+=("$name")

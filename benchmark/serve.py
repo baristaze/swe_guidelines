@@ -30,6 +30,11 @@ from urllib.parse import unquote, urlparse
 
 FILES = {"report.md": "text/markdown; charset=utf-8", "results.json": "application/json", "run.json": "application/json"}
 POLL_S = 0.5
+# A run that never writes results.json (a dry run, a crash) would keep a
+# viewer waiting forever; a stream that has not grown for this long ends.
+# It is longer than a subject's default timeout, because `claude -p` with
+# JSON output writes nothing until it answers.
+IDLE_S = 1800.0
 BOUNDARY = "benchmarkframe"
 
 
@@ -48,15 +53,20 @@ def runs_of(folder: Path) -> list[dict]:
     return out
 
 
-def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = None):
+def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = None, idle_s: float | None = None):
     """Yield whole lines of a file as they arrive, waiting for the file to appear.
 
     The file is read as bytes and a line is decoded only once it is whole,
     so a character the writer has half written never breaks the read. The
     tail ends when `finished` exists and the file has stopped growing: the
-    run has written its results, so nothing more is coming.
+    run has written its results, so nothing more is coming. It also ends
+    when the file has not grown for `idle_s` seconds (`IDLE_S` by default)
+    and the run has written no results: a run that stopped without them is
+    not coming back.
     """
+    idle_s = IDLE_S if idle_s is None else idle_s
     started = time.monotonic()
+    grew = started
     position = 0
     pending = b""
     while True:
@@ -67,13 +77,15 @@ def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = 
                 fh.seek(position)
                 chunk = fh.read()
                 position = fh.tell()
+            if chunk:
+                grew = time.monotonic()
             pending += chunk
             while b"\n" in pending:
                 raw, pending = pending.split(b"\n", 1)
                 line = raw.decode("utf-8", errors="replace")
                 if line.strip():
                     yield line
-        if done and not chunk:
+        if (done and not chunk) or (not chunk and time.monotonic() - grew > idle_s):
             last = pending.decode("utf-8", errors="replace")
             if last.strip():
                 yield last

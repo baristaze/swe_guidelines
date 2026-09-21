@@ -88,11 +88,14 @@ class BaseRuntime:
     name = "base"
 
     def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
-        self.run_dir = Path(run_dir)
+        # Absolute, because the subject's working directory is the workspace:
+        # a relative HOME, TMPDIR, or mount source would be read from there.
+        self.run_dir = Path(run_dir).resolve()
         self.target = Path(target).resolve() if target else None
         self.plugin = Path(plugin).resolve() if plugin else None
         self.config = dict(config or {})
         self.workspace = self.run_dir / "workspace"
+        self.slot: str | None = None
         self.prepared = False
 
     def plugin_path(self) -> str | None:
@@ -110,6 +113,11 @@ class BaseRuntime:
         self.prepared = True
         return self.workspace
 
+    def prepare_repeat(self, index: int) -> Path:
+        """A fresh workspace for one repeat, so no repeat sees another's files."""
+        self.slot = str(index)
+        return self.prepare(self.run_dir / "workspace" / self.slot)
+
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
         return list(argv)
@@ -123,15 +131,21 @@ class BaseRuntime:
         command = self.command(argv, cwd)
         streams.note(f"[{self.name}] {' '.join(command)}")
         started = time.monotonic()
-        proc = subprocess.Popen(
-            command,
-            cwd=str(cwd),
-            env=self.environment(env),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
+        try:
+            proc = subprocess.Popen(
+                command,
+                cwd=str(cwd),
+                env=self.environment(env),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except OSError as exc:
+            # A binary that is not there is a repeat that failed, recorded as
+            # the shell records it, never a run that leaves no results.
+            streams.note(f"[{self.name}] could not start: {type(exc).__name__}: {exc}")
+            return ExitStatus(code=127, duration_s=time.monotonic() - started)
         readers = [
             threading.Thread(target=_pipe, args=(proc.stdout, "out", streams), daemon=True),
             threading.Thread(target=_pipe, args=(proc.stderr, "err", streams), daemon=True),
@@ -157,11 +171,16 @@ class BaseRuntime:
         )
 
     def collect(self, globs: list[str]) -> list[Path]:
-        """Every workspace file one of the globs names, once, in path order."""
+        """Every workspace file one of the globs names, once, in path order.
+
+        A file outside the workspace, reached through `..` or a symlink, is
+        not the subject's output and is left out.
+        """
+        root = self.workspace.resolve()
         found: set[Path] = set()
         for pattern in globs:
             for path in self.workspace.glob(pattern):
-                if path.is_file():
+                if path.is_file() and path.resolve().is_relative_to(root):
                     found.add(path)
         return sorted(found)
 
@@ -184,16 +203,21 @@ class HostRuntime(BaseRuntime):
 
     name = "host"
 
+    def private(self, name: str) -> Path:
+        """The private HOME or TMPDIR, one per repeat once a repeat is prepared."""
+        base = self.run_dir / name
+        return base / self.slot if self.slot is not None else base
+
     def prepare(self, workspace: Path | None = None) -> Path:
         path = super().prepare(workspace)
-        (self.run_dir / "home").mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "tmp").mkdir(parents=True, exist_ok=True)
+        self.private("home").mkdir(parents=True, exist_ok=True)
+        self.private("tmp").mkdir(parents=True, exist_ok=True)
         return path
 
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         out = dict(env)
-        out["HOME"] = str(self.run_dir / "home")
-        out["TMPDIR"] = str(self.run_dir / "tmp")
+        out["HOME"] = str(self.private("home"))
+        out["TMPDIR"] = str(self.private("tmp"))
         return out
 
 
