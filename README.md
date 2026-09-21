@@ -102,9 +102,10 @@ make gen-skills   # regenerate the eight group review skills from the template
 make gen-toc      # regenerate the table of contents of architecture.md
 ```
 
-Requirements: Python 3.14 and Node 24, the latest stable and LTS
-releases. The scripts need nothing past the standard library; `make
-check` also needs `pytest`, for the scripts' own tests; `npx`, for
+Requirements: Python 3.10 or newer, and Node 24, the current LTS.
+CI runs the checks on Python 3.10, the floor `pyproject.toml`
+declares, and on 3.14, the latest stable release. The scripts need
+nothing past the standard library; `make check` also needs `pytest`, for the scripts' own tests; `npx`, for
 markdownlint (`make lint` fetches `markdownlint-cli2` through `npx` at
 a pinned version); and `uv`, for ruff and mypy (`make ruff` and `make
 mypy` fetch them through `uvx` at pinned versions). The pins follow
