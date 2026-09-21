@@ -39,12 +39,28 @@ which number.
   `review-om` scenario runs on it by default and scores recall and
   precision against it. `--target` still reviews any checkout; the
   planted list is then dropped and the run says so.
+- Lens `STO-29` Every read that returns a list is bounded in its
+  statement. The only lens that named the clamp was `NET-13`, which
+  judges the wire; nothing judged the read under it. 232 lenses.
 
 ### Changed
 
 - `.github/workflows/benchmark.yml`: no target is passed to every
   scenario. Each scenario brings its own, and a shared one would have
   dropped the planted list of `review-om`.
+- `architecture.md`: the main list example is bounded. `get_warehouses`
+  on the manager and the service, and `read_warehouses` on storage,
+  take a `limit`, and the Postgres statement carries it. The paging
+  rule asked for a server-clamped limit while the example that teaches
+  the shape read every row.
+- `architecture.md`, "Storage Principles": every read that returns a
+  list is bounded in its statement. Storage applies the bound it is
+  given; the caller picks it, the manager from the page size in its
+  options, a worker or a sweep from its batch size. "Public Types"
+  says where the clamp happens: the route takes the limit, the manager
+  clamps it, the storage read carries it.
+- `architecture.md`, "Buckets": `list` takes a `limit` and a key to
+  start after, and returns keys in lexical order.
 
 ## 0.21.0 (2026-09-20)
 
