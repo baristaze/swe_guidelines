@@ -11,6 +11,9 @@ Rules:
 - Severity is high, medium, or low;
 - a Principle is at most 60 words, and Look for and Violation are at most
   three sentences each, so a lens stays one rule a reviewer can hold;
+- a field value runs to the next field or lens heading, wrapped lines
+  and list items included; fenced code is neither a lens nor a field,
+  so a lens file can show lens syntax in an example;
 - no line of a lens file is wider than 80 columns;
 - a lens count stated in README.md or lenses/README.md ("N lenses") equals
   the size of the catalog.
@@ -36,6 +39,7 @@ FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
 HEADING = re.compile(r"^## ([A-Z]{2,3})-(\d{2}) (.+)$")
 FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity)\.\*\*\s*(.*)$")
+LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 NUMBERED = re.compile(r"\bSections? \d+")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
@@ -130,8 +134,16 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
             errors.append(f"{path.name}:{ln}: refers to a section by number")
         if len(line) > MAX_COLUMNS:
             errors.append(f"{path.name}:{ln}: {len(line)} columns, limit {MAX_COLUMNS}")
+    fenced: set[int] = set()
+    in_fence = False
+    for n, line in enumerate(lines):
+        if line.startswith("```"):
+            in_fence = not in_fence
+            fenced.add(n)
+        elif in_fence:
+            fenced.add(n)
     while i < len(lines):
-        m = HEADING.match(lines[i])
+        m = None if i in fenced else HEADING.match(lines[i])
         if not m:
             i += 1
             continue
@@ -148,14 +160,15 @@ def check_file(path: Path, known: dict[str, set[str]], errors: list[str]) -> int
         # collect fields until next heading
         fields: list[tuple[str, str, int]] = []
         j = i + 1
-        while j < len(lines) and not HEADING.match(lines[j]):
-            fm = FIELD.match(lines[j])
+        while j < len(lines) and (j in fenced or not HEADING.match(lines[j])):
+            fm = None if j in fenced else FIELD.match(lines[j])
             if fm:
                 fields.append((fm.group(1), fm.group(2).strip(), j + 1))
-            elif fields and lines[j].strip() and not lines[j].startswith(("**", "-", "*")):
-                # continuation of a wrapped field value
+            elif fields and j not in fenced and lines[j].strip():
+                # a wrapped line or a list item continues the field before it
                 name, value, ln = fields[-1]
-                fields[-1] = (name, f"{value} {lines[j].strip()}".strip(), ln)
+                line = LIST_MARKER.sub("", lines[j].strip())
+                fields[-1] = (name, f"{value} {line}".strip(), ln)
             j += 1
         names = [f[0] for f in fields]
         if names != list(FIELDS):
