@@ -62,6 +62,15 @@ the order the guideline presents them, never by number.
 - Wire types read `<Entity>View`, `Add<Entity>Request`, and, only when
   the manager has `update_<entity>`, `Update<Entity>Request`, on the
   `View` and `RequestBody` bases.
+- Where the root package names a cloud resource whose name takes no
+  underscore (an S3 bucket, an IAM role or policy, a DNS label), it
+  is `<root-slug>`, the root in kebab case: `acme_corp` gives
+  `acme-corp`. Every resource name the Terraform and the scripts
+  derive from the root uses the slug (`<root-slug>-state-<account
+  id>`, `<root-slug>-investigate-<env>`, `<root-slug>-<env>-alarms`),
+  so one spelling holds in every account; a Python name, a database
+  login, and an environment variable keep `<root>` and its upper
+  case.
 - The one handler interface for background work is
   `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`, `<Kind>` the
   work kind in CamelCase (`NOTIFY_SHIPMENT` gives
@@ -75,7 +84,9 @@ the order the guideline presents them, never by number.
   manager operation exercises; an append-only record is `Identifiable`
   alone; a row the platform writes for itself (the outbox row, the
   marker, the socket ticket) is `Created`, its later stamp a field
-  named for what happened. Ids come from `new_id()`, timestamps from
+  named for what happened. A table scoped to an identity composes
+  `IdentityScopedMixin`, which carries `id` and `identity_id` and no
+  `org_id`. Ids come from `new_id()`, timestamps from
   `utcnow()`. Entity fields are tuples and frozen models, never `list`
   or `dict`; a mapping field is the base module's `FrozenMapping`,
   whose validator descends, wrapping a nested mapping and turning a
@@ -100,7 +111,7 @@ the order the guideline presents them, never by number.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps, the four lookups that run before an identity is known, and
+  sweeps, the five lookups that run before an identity is known, and
   the operator plane's size read),
   each documented in its docstring and listed as `Class.method` under
   `[tool.arch-check.options.CTX-12] tenantless` in the root
@@ -129,8 +140,9 @@ the order the guideline presents them, never by number.
   system-scope methods of The Storage Layer (The Second Fence), and by
   nothing else. They are the cross-tenant sweeps, the purges of ended
   sessions and of redeemed or expired socket tickets among them; the
-  four lookups that run before an identity is known,
-  `read_identity_by_email_digest`, `read_api_key_by_digest`,
+  five lookups that run before an identity is known,
+  `read_identity_by_email_digest`, `read_identity_by_issuer_subject`
+  (the external provider's find-or-create), `read_api_key_by_digest`,
   `read_session_by_digest`, and `redeem_socket_ticket`; and the
   operator plane's marker calls and its size read. Everything after such a lookup runs
   under the scope it found. Nothing in a manager or an impl assumes the
@@ -151,6 +163,31 @@ the order the guideline presents them, never by number.
   login owns no table and reads nothing when it names the system
   scope, beside the test that reads `pg_class` and `pg_policies` for
   every table in the scope map.
+- A data migration (a backfill, a rewrite of rows) runs as the
+  migration login, which owns the tables, and `FORCE ROW LEVEL
+  SECURITY` binds the owner too, so its `UPDATE` would touch nothing.
+  Its SQL file lifts the force for the one table and puts it back in
+  the same transaction, and it counts: the rows it touched must equal
+  the rows it meant to touch, or the migration fails.
+
+  ``` sql
+  ALTER TABLE <role>.<table> NO FORCE ROW LEVEL SECURITY;
+  DO $$
+  DECLARE expected bigint; touched bigint;
+  BEGIN
+    SELECT count(*) INTO expected FROM <role>.<table> WHERE <predicate>;
+    UPDATE <role>.<table> SET <column> = <value> WHERE <predicate>;
+    GET DIAGNOSTICS touched = ROW_COUNT;
+    IF touched <> expected THEN
+      RAISE EXCEPTION 'backfill touched % rows, expected %', touched, expected;
+    END IF;
+  END $$;
+  ALTER TABLE <role>.<table> FORCE ROW LEVEL SECURITY;
+  ```
+
+  Its integration test seeds rows of two tenants, runs the migration,
+  and asserts that every row of both tenants was touched, so a
+  backfill the policy silently narrowed to nothing fails.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
@@ -185,10 +222,20 @@ the order the guideline presents them, never by number.
   file with one round trip is a placeholder.
 - Every write follows authorize, verify, copy (an update starts from
   the stored row: the caller's entity supplies the fields a caller may
-  change, `model_dump(exclude=set(PROVENANCE_FIELDS))`, the copy is
-  `model_validate` over the two dumps and sets
-  `updated_at` and `updated_by`, so no caller rewrites who made a row
-  or brings a deleted one back; a create sets what the manager
+  change, `model_dump(exclude=set(PROVENANCE_FIELDS) |
+  set(<Entity>.MANAGER_OWNED_FIELDS))`, the copy is `model_validate`
+  over the two dumps and sets `updated_at` and `updated_by`, so no
+  caller rewrites who made a row, brings a deleted one back, or sets
+  a field the manager owns; every entity declares
+  `MANAGER_OWNED_FIELDS`, a tuple, empty when the manager owns
+  nothing, naming the fields the manager sets and a caller never
+  writes (a `credential_ref`, a status its transitions own, a
+  position); an entity whose concurrent edits matter carries a
+  `version`, the expected version comes from the caller (an
+  `If-Match` header on the `PATCH`, or an `expected_version` field)
+  and is never re-read inside the update, the write is a
+  compare-and-set against it, and a mismatch is `412`; a create sets
+  what the manager
   decides, the actor from the context and the initial state, and
   leaves the id and the timestamps as constructed), write, and
   returns the copy it wrote. Authorize is
@@ -287,7 +334,11 @@ the order the guideline presents them, never by number.
   cloud's own APIs, so a run against `local` proves the same path
   the cloud runs. The nine project-local skills under
   `.claude/skills/` are copied from
-  `skills/_shared/ops-skills/` with `acme` replaced by `<root>`.
+  `skills/_shared/ops-skills/` with the product's name substituted:
+  `acme-ops`, the binary, becomes `<root>-ops`; every other `acme`
+  in a hyphenated name (`acme-<env>-investigate`, `acme-api`) becomes
+  `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
+  case, and `Acme` its CamelCase form.
   Every one takes `--env staging|production`, and every one but
   create and nuke also takes `local`. Each holds the
   credential of the role Operations (Operational Skills) gives it.
@@ -295,16 +346,28 @@ the order the guideline presents them, never by number.
   investigate profile of their environment and read the owner-only
   env file `~/.config/<root>/ops/<env>.env`, except
   `ops-infra-as-code`, which plans against the cloud and reads no env
-  file. `make seed` writes `local.env`. Every sign-in of an operator
-  identity from the env file sends its password and a TOTP code. The
-  code is derived by `<root>-ops totp` from that identity's TOTP
-  secret, which the enrolment answered once and `<root>-ops enrol`
-  wrote into the same owner-only file; no template and no repository
-  file holds a secret's value. Create and nuke hold the
+  file. `make seed` writes `local.env`. An agent or a pipeline never
+  signs in with a password. The env file holds operator tokens and
+  never a password or a TOTP secret: `<ROOT>_OPERATOR_TOKEN`, a
+  `read` token for the investigator and the supporter, and
+  `<ROOT>_PROVISIONER_TOKEN`, the provisioner's `write` token for
+  the traffic generator. An operator token is minted by an operator
+  signed in with the second factor (`<root>-ops token`, which the
+  person runs in their own terminal and which asks there for the
+  password and the code), or by the grant job for the provisioner
+  and the smoke identity. It carries one operator permission,
+  expires within one hour, is stored as its digest, and is shown
+  once. `admit_operator` admits it as the one named exception to "a
+  password alone never admits". A person still signs in with a
+  password and a TOTP code. No template and no repository file holds
+  a secret's value, and no skill reads the env file into its
+  context: a command that needs a value from it sources the file and
+  makes the call in the same command, since shell state does not
+  persist between calls. Create and nuke hold the
   environment's administrator profile alone, the one
   `deployment/cloud/environments.json` names beside its account id. The traffic and stress skills have no
   role: `ops-simulate-traffic` and `stress-test-run` read the env
-  file for the provisioner identity, and hold the investigate profile
+  file for the provisioner's token, and hold the investigate profile
   only to read the signals back from a cloud environment;
   `stress-test-create-or-update` writes a file and holds no profile
   and no env file.
