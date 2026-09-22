@@ -1553,12 +1553,14 @@ referenced in the interface. A consumer of
 `InventoryStorageInterface` must not be able to tell whether it is
 talking to SQLAlchemy, Postgres, or a columnar store.
 
-A small number of tables hold no tenant's rows. Platform-owned
-reference data and a health row per external provider are global. The
-identities behind tenant users are scoped to the identity, and their
-methods take `identity_id` in place of `org_id` (see [The Second
-Fence](#the-second-fence)). Neither kind takes `org_id`, and the
-interface docstring says why.
+A small number of tables hold no tenant's rows, and they are of two
+kinds. Platform-owned reference data and a health row per external
+provider are global. An identity, and the rows that belong to it
+across tenants, are scoped to the identity: their tables compose
+`IdentityScopedMixin` (see [Defining ORM
+Classes](#defining-orm-classes)), and their methods take `identity_id`
+in place of `org_id` (see [The Second Fence](#the-second-fence)).
+Neither kind takes `org_id`, and the interface docstring says why.
 
 Cross-tenant sweeps are the other exception. A sweep that expires the
 leases past due, in every tenant, up to its batch size, returns
@@ -1569,14 +1571,15 @@ Edge](#realtime-at-the-edge) do. Such a row already names its tenant and
 is returned alone.
 
 The lookups that run before an identity is known are the third
-exception. Sign-in presents an email, and every other credential is
-looked up by its digest. Neither names a tenant or an identity. They are
-`read_identity_by_email_digest`, `read_api_key_by_digest`,
-`read_session_by_digest`, and `redeem_socket_ticket`, and they run in
-the system scope (see [The Second Fence](#the-second-fence)).
+exception. Sign-in presents an email. An external provider's sign-in
+presents an issuer and a subject. Every other credential is looked up
+by its digest. None of them names a tenant or an identity. The five
+lookups run in the system scope, and [The Second
+Fence](#the-second-fence) lists them.
 
-These are the documented exceptions to the `org_id`-first rule, and
-`arch-check` enumerates them (see [Records of
+These are the documented exceptions to the `org_id`-first rule. [The
+Second Fence](#the-second-fence) lists every one of them by name, and
+`arch-check` holds the code to that list (see [Records of
 Decisions](#records-of-decisions)).
 
 The enumeration reads signatures. It says which methods take the
@@ -1632,8 +1635,10 @@ what is specific to the entity.
 
 The common mixins live at `acme.om.storage.tables`, with one
 storage-only addition. `org_id` rides on `IdentifiableMixin`, because
-every tenant table is tenant-scoped. A global table composes
-`GlobalIdentifiableMixin`, which carries `id` alone.
+every tenant table is tenant-scoped. A table scoped to an identity
+composes `IdentityScopedMixin`, which carries `id` and `identity_id`
+and no `org_id`. A global table composes `GlobalIdentifiableMixin`,
+which carries `id` alone.
 
 ``` python
 # acme/om/storage/tables/base.py
@@ -1650,6 +1655,10 @@ class IdentifiableMixin:
 class FeedIdentifiableMixin:  # a feed table: (org_id, id) is declared compound, so no single index
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
     org_id: Mapped[UUID] = mapped_column(sort_order=-999)
+
+class IdentityScopedMixin:  # an identity-scoped table: no org_id
+    id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
+    identity_id: Mapped[UUID] = mapped_column(index=True, sort_order=-999)
 
 class GlobalIdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
@@ -2024,8 +2033,10 @@ map](#database-roles), and it has four values:
 | `both`     | a tenant, and a person in it | on `org_id`, narrowed by the declared person column |
 
 A `system` table is a global one, composing `GlobalIdentifiableMixin`
-(see [Defining ORM Classes](#defining-orm-classes)). The other three
-carry the column their policy rests on, and the map names it.
+(see [Defining ORM Classes](#defining-orm-classes)). An `identity`
+table composes `IdentityScopedMixin`, so its column is `identity_id`.
+The other three carry the column their policy rests on, and the map
+names it.
 
 A storage impl opens a session in one place, the base class's session
 helper. That funnel is the one place every statement already passes, so
@@ -2049,14 +2060,28 @@ because `SET LOCAL` takes no bind parameters.
 reads across tenants. The system scope is never a default. It is passed
 explicitly, and it runs on a connection of the system login (below).
 
-The methods that pass it are enumerated, and they are of three kinds.
-The first is the cross-tenant sweeps, with the queue's claim and
-`fail_orphaned` beside them. Among the sweeps are the purge of
-ended sessions and the purge of redeemed or expired socket tickets,
-which reach `identity` tables. The second is the lookups that run
-before an identity is known:
+The methods that pass it are listed here, by name, and no other method
+passes it. They are of three kinds.
+
+The first is the cross-tenant sweeps and the queue's own bookkeeping:
+
+-   the queue's `claim_next`, `fail_orphaned`, and `read_gauges`;
+-   the outbox's `read_pending`, `read_oldest_pending`, and
+    `purge_done`;
+-   `purge_items`, which purges done and failed work items;
+-   `purge_markers`, which purges idempotency markers past retention;
+-   `purge_socket_tickets` and `purge_sessions`, which purge redeemed
+    or expired socket tickets and ended sessions, and reach `identity`
+    tables.
+
+A namespace that adds a sweep across tenants, one that expires the
+leases its records hold, say, adds it to this list by name.
+
+The second is the five lookups that run before an identity is known:
 
 -   `read_identity_by_email_digest`, the sign-in lookup;
+-   `read_identity_by_issuer_subject`, the lookup behind the external
+    provider's find-or-create;
 -   `read_api_key_by_digest`;
 -   `read_session_by_digest`;
 -   `redeem_socket_ticket`, which finds the ticket by its digest.
@@ -2065,19 +2090,19 @@ Each of these reads rows before any tenant or identity is known, so it
 cannot name one. Everything after the lookup runs under the identity
 it found, or under the tenant and the principal the credential names.
 
-The sweeps and the lookups take no tenant, so `arch-check` lists them
-with the other tenant-less methods (see [Namespace
-Shape](#namespace-shape) and [Records of
+The sweeps and the lookups take no tenant. They are the tenant-less
+methods of [Namespace Shape](#namespace-shape), and `arch-check` holds
+the code to this list (see [Records of
 Decisions](#records-of-decisions)).
 
-The third kind is the operator plane's idempotency-marker methods:
-`begin`, `finish`, the release, and the take-over. The operator plane
-has no tenant, so its marker is keyed under `EMPTY_UUID` as the
-`org_id`, with the operator's identity id as the user id (see [The
-Gateway](#the-gateway)). These methods take `org_id` like any other.
-The operator gate is the one caller that hands them `EMPTY_UUID`. The
-operator plane's size read, which counts users and rows across
-tenants, is of this kind too.
+The third kind is the operator plane's idempotency-marker methods,
+`begin`, `finish`, the release, and the take-over, and its size read,
+which counts users and rows across tenants. The operator plane has no
+tenant, so its marker is keyed under `EMPTY_UUID` as the `org_id`,
+with the operator's identity id as the user id (see [The
+Gateway](#the-gateway)). The marker methods take `org_id` like any
+other. The operator gate is the one caller that hands them
+`EMPTY_UUID`.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
@@ -2129,9 +2154,8 @@ request cannot read across tenants or identities by naming the system
 scope.
 
 An `identity` table is read under the identity its rows belong to. The
-exceptions are the enumerated system-scope methods that reach one: the
-four lookups, and the purges of ended sessions and of redeemed or
-expired socket tickets. They run on the system login. Nothing else
+exceptions are the listed system-scope methods that reach one: the
+five lookups, `purge_socket_tickets`, and `purge_sessions`. They run on the system login. Nothing else
 bypasses its policy.
 
 Three logins reach the database, and none is a superuser or carries
@@ -2148,9 +2172,9 @@ is a drawing.
     `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
     off, or alter a table, whatever statement reaches it.
 -   The **system login** is the runtime login's twin for the system
-    scope. The enumerated system-scope methods run under it, on a pool
-    of their own. The `org` and
-    `identity` policies admit the system scope to it alone.
+    scope. The listed system-scope methods run under it, on a pool of
+    their own. The `org` and `identity` policies admit the system scope
+    to it alone.
 
 A test asserts on each live connection that `current_user` is neither
 superuser nor `BYPASSRLS`, that the runtime login owns no table, and
@@ -2909,10 +2933,11 @@ The gateway owns a short list of edge concerns, each done once:
     tenant and principal, under the key. The operator plane has no
     tenant, so its marker is keyed under the system scope, `EMPTY_UUID`
     as the `org_id`, with the operator's identity id as the user id.
-    Those marker calls run on the system login, among the enumerated
+    Those marker calls run on the system login, among the listed
     system-scope methods (see [The Second
-    Fence](#the-second-fence)). The marker carries a digest of the request, the id the create will use,
-    minted before the marker, and an attempt token. `finish` stores the
+    Fence](#the-second-fence)). The marker carries a digest of the
+    request, the id the create will use, minted before the marker, and
+    an attempt token. `finish` stores the
     outcome on the marker. A retry replays that stored outcome. All of
     it uses the same storage primitive the queue handlers use.
 
@@ -3074,7 +3099,9 @@ gateway's dependency accepts the provider's token and verifies it
 against the provider's published keys. It hands the tenancy manager the
 issuer and the subject. The manager's transition finds or creates the
 identity keyed on that pair and produces the same `IdentityContext` a
-sign-in does. From there the exchange into a tenant session, the
+sign-in does. The lookup by the pair is
+`read_identity_by_issuer_subject`, a system-scope method like the
+other lookups below. From there the exchange into a tenant session, the
 memberships, and the sessions are the ones every person has.
 
 The provider is an integration: an interface with a real client and a
@@ -3098,8 +3125,10 @@ tenancy namespace's own tables in the `core` role, under the
 a system table. So sign-up writes one role, in one transaction.
 
 Sign-in cannot name the identity it is looking for, because finding it
-is the point. So the lookup by email digest, and each lookup by a
-credential's digest, is a system-scope method on the system login.
+is the point. So the lookup by email digest, the lookup by issuer and
+subject, and each lookup by a credential's digest are system-scope
+methods on the system login (see [The Second
+Fence](#the-second-fence)).
 Everything after the lookup runs under the scope it found: the
 identity, or the tenant and the principal a credential names.
 
