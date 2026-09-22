@@ -2887,11 +2887,13 @@ The gateway owns a short list of edge concerns, each done once:
     that never saw the answer retries both alike.
 
     The protocol runs in order. `begin` writes the marker pending, per
-    tenant and principal, under the key. The marker carries a digest of
-    the request, the id the create will use, minted before the marker,
-    and an attempt token. `finish` stores the outcome on the marker. A
-    retry replays that stored outcome. All of it uses the same storage
-    primitive the queue handlers use.
+    tenant and principal, under the key. The operator plane has no
+    tenant, so its marker is keyed under the system scope, `EMPTY_UUID`
+    as the `org_id`, with the operator's identity id as the user id. The
+    marker carries a digest of the request, the id the create will use,
+    minted before the marker, and an attempt token. `finish` stores the
+    outcome on the marker. A retry replays that stored outcome. All of
+    it uses the same storage primitive the queue handlers use.
 
     Two rules bound what the marker will do. A key presented with
     another digest is refused. And only an outcome the client cannot
@@ -2980,6 +2982,11 @@ identity. The gate checks it here, before admission, and refuses a
 sign-in that did not present one. A tenant's sign-in does not require
 a second factor. The operator plane reads across tenants, so a
 password alone never admits to it.
+
+An operator enrols a TOTP secret once. The secret is stored encrypted,
+under a key from the secret store (see [Secrets](#secrets)). Until
+then, enrolment is the one route an operator's sign-in reaches. A code that was already used is refused, even inside its time
+step.
 
 The gate then asks the tenancy manager to admit that identity as an
 operator. That produces an `OperatorContext` when the identity is on
@@ -3439,9 +3446,10 @@ changes.
 Per socket, the process keeps one bounded send buffer in memory and a
 drainer task that writes it to the wire. The buffer has two lanes. A
 frame that reports the state of the socket itself is a control frame:
-the first frame, a pong with the head `seq` (the tenant's latest
-sequence number, below), a subscription confirmed or ended, an error. An
-event hint is a stream frame.
+the hello frame the socket opens with, a pong, a subscription confirmed
+or ended, an error. The hello frame and every pong carry the head `seq`,
+the tenant's latest sequence number (below). An event hint is a stream
+frame.
 
 The drainer sends control frames first. When the buffer is full, the
 oldest stream frame is dropped and the drop is logged. A control frame
@@ -3503,7 +3511,7 @@ same role, `UPDATE cursors SET head = head + 1 WHERE org_id = ...
 RETURNING head`, inside the append's own transaction. Two appends to
 one tenant queue on that row's lock, and each leaves with the next
 number. A rollback returns the number with it. The cursor is also the
-tenant's head `seq`, the number the first frame and every pong carry
+tenant's head `seq`, the number the hello frame and every pong carry
 (below), read from one row. The append never computes `MAX(seq) + 1`
 under a unique index and retries on the collision. On a busy tenant
 that loop is a `Conflict` generator in the request path.
@@ -3551,7 +3559,7 @@ flowchart LR
 ```
 
 Inbound traffic on the socket is small by design: subscribe,
-unsubscribe, ping. The first frame and every pong carry the tenant's
+unsubscribe, ping. The hello frame and every pong carry the tenant's
 head `seq`. So a client whose last push was the one dropped learns of
 the gap on the next keepalive rather than on the next event, and a
 socket that stays quiet cannot hide a loss. That is why the pong is a
