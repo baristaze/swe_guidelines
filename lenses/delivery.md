@@ -750,7 +750,8 @@ distribution.
 **Principle.** Production does not rebuild: it promotes the copies of
 what staging deployed, replicated into its own account, images by digest
 and bundles by commit, and never reads staging's. Tags are immutable,
-the bundle prefix refuses overwrites, and a copy that differs from the
+and a locked bundle prefix keeps every version; production reads the
+version whose hash matches the record. A copy that differs from the
 digest record kept outside staging's account is refused. A bundle reads
 what differs from a `config.json`.
 
@@ -763,9 +764,10 @@ and the approval between the plan and the apply. The replication of
 the registry and of the kept bundles into production's artifacts
 bucket, and the one write production grants each; the `config.json`
 each deploy writes next to the bundle; the tag mutability of every
-repository, the overwrite refusal on production's bundle prefix, and
-the record the staging deploy writes on the repository host that
-production compares with the copy.
+repository, the versioning and object lock on production's bundle
+prefix, how production picks the version by its hash, and the record
+the staging deploy writes on the repository host that production
+compares with the copy.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
@@ -773,12 +775,13 @@ with no digest from staging that is deployed instead of refused; a
 production job or task that reads staging's registry or bucket, or a
 replication that may create a repository; a bundle kept in a state
 bucket, or replicated into one; a lookup that refuses at once while the
-copy is still in flight; a repository with mutable tags, or a bundle
-prefix a second write can replace; a production lookup that accepts a
-copy with no record to compare against, or accepts a commit staging
-built and failed to deploy; an API origin or DSN compiled into a
-bundle (the approval on the plan is DEL-38, the credential a build
-step holds is DEL-51).
+copy is still in flight; a repository with mutable tags; a bundle
+prefix with no versioning or no lock, or a bundle read by its key
+alone instead of by the version whose hash matches the record; a
+production lookup that accepts a copy with no record to compare
+against, or accepts a commit staging built and failed to deploy; an
+API origin or DSN compiled into a bundle (the approval on the plan is
+DEL-38, the credential a build step holds is DEL-51).
 
 **Severity.** medium
 
