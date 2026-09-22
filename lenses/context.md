@@ -299,7 +299,7 @@ the same tenant.
 **Principle.** Global tables, cross-tenant sweeps, and the lookups that
 run before an identity is known are the exceptions to the tenant-first
 rule. A global method takes no tenant and its docstring says why; a
-bookkeeping sweep gets the tenant back with each row; the four lookups
+bookkeeping sweep gets the tenant back with each row; the five lookups
 run in the system scope. `arch-check` enumerates them (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Second Fence; The
@@ -307,12 +307,14 @@ Business Layer, Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the list the
 checker holds; each step of the sweep and whether it is bookkeeping with
-no principal (relaying the outbox, expiring a lease, purging ended
-sessions and redeemed or expired socket tickets) or a tenant operation
-(CTX-17); what each cross-tenant read returns, as `tuple[UUID, Entity]`
-or an entity carrying `org_id`; the four lookups by name,
-`read_identity_by_email_digest`, `read_api_key_by_digest`,
-`read_session_by_digest`, and `redeem_socket_ticket`; every call that
+no principal (relaying the outbox, expiring a lease, `purge_items`
+purging done and failed work items, purging ended sessions and
+redeemed or expired socket tickets) or a tenant operation (CTX-17);
+what each cross-tenant read returns, as `tuple[UUID, Entity]` or an
+entity carrying `org_id`; the five lookups by name,
+`read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
+`read_api_key_by_digest`, `read_session_by_digest`, and
+`redeem_socket_ticket`; every call that
 passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
 calls are the one caller that takes `org_id` and is handed
 `EMPTY_UUID`, by the operator gate alone.
