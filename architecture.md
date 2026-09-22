@@ -1109,16 +1109,18 @@ That is a different plane, with a different context type:
 refined by one more transition. `admit_operator` takes an
 `IdentityContext` and returns an `OperatorContext` when the identity is
 on the operator allowlist, and refuses otherwise (see
-[Stages](#stages)).
+[Stages](#stages)). The operator gate checks the operator's second
+factor before it asks for admission (see [The Gateway](#the-gateway)).
 
 `OperatorContext` has no `org_id`, on purpose.
 
-A manager operation that acts for a principal takes exactly one of the
-two, and never a choice between them. An operator operation takes
-`OperatorContext`. A tenant operation takes `OpContext`.
+A manager operation that acts inside a tenant or on the operator plane
+takes exactly one of the two, and never a choice between them. An
+operator operation takes `OperatorContext`. A tenant operation takes
+`OpContext`.
 
-Three kinds of operation take a weaker stage, and no other. A
-transition of the tenancy manager takes the stage it refines. An
+Three kinds of operation take a weaker stage instead, and no other
+does. A transition of the tenancy manager takes the stage it refines. An
 operation of an identity before any tenant takes the identity stage
 (see [Stages](#stages)): the exchange of a sign-in for a tenant
 session, the list of its memberships, and ending its own sign-in. An
@@ -1131,7 +1133,8 @@ and `arch-check` at the few places a stage is built. An operator route
 cannot act inside a tenant. It reads a tenant's rows only by naming the
 tenant as a parameter of the read, and every such read is recorded
 with the tenant and the operator, so support access leaves a trail. A
-tenant route cannot reach the operator plane. [The Gateway](#the-gateway) and [The Operator
+tenant route cannot reach the operator plane. [The
+Gateway](#the-gateway) and [The Operator
 Console](#the-operator-console) describe the plane further.
 
 > **Principle:** Tenant operations take `OpContext`; operator operations
@@ -2914,12 +2917,21 @@ the row the retry found.
 
 The operator plane has its own gate. It authenticates the bearer into
 the identity stage, and that stage admits only the person's own
-sign-in. It never admits an API key. It never admits a session either,
-whether the person exchanged it or an invitation someone else issued
-minted it. It then asks the
-tenancy manager to admit that identity as an operator, which produces
-an `OperatorContext` when the identity is on the operator allowlist
-(see [The Operator Context](#the-operator-context)).
+sign-in. It never admits an API key. It never admits a session either.
+That holds whether the person exchanged the session or an invitation
+someone else issued minted it.
+
+An operator's sign-in is admitted only with a second factor: a TOTP
+code (RFC 6238) from an authenticator enrolled for that operator
+identity. The gate checks it here, before admission, and refuses a
+sign-in that did not present one. A tenant's sign-in does not require
+a second factor. The operator plane reads across tenants, so a
+password alone never admits to it.
+
+The gate then asks the tenancy manager to admit that identity as an
+operator. That produces an `OperatorContext` when the identity is on
+the operator allowlist (see [The Operator
+Context](#the-operator-context)).
 
 Operator routes live under `/v1/admin/*` and are served by the same
 process. They cannot reach a tenant manager, because no `OpContext`
@@ -3012,7 +3024,8 @@ counts failed sign-ins per identity in its own storage and answers a
 run of them with a growing delay before the next attempt is checked.
 Every session has an idle lifetime and an absolute one, both settings,
 and every API key an expiry. The operator plane admits only with a
-second factor (see [Operator Roles](#operator-roles)).
+second factor, checked at the operator gate (see [The
+Gateway](#the-gateway)).
 
 ### Intra-Service Communication
 
@@ -4656,8 +4669,9 @@ by a named choice.
     environment declares, and leaves a final snapshot on delete. A
     restore is rehearsed (see [Database Roles](#database-roles)).
 -   **Sign-in.** People sign in to the identity center with a second
-    factor, and so does an operator of the plane (see [Operator
-    Roles](#operator-roles)).
+    factor, and so does an operator of the plane, at the operator gate
+    (see [The Gateway](#the-gateway)). A tenant's sign-in does not
+    require one.
 -   **The branch that deploys.** `main` is protected: a merge needs a
     review and every required check, and the files under `deployment/`
     and `.github/` carry code owners, since a merge to `main` is a
@@ -4667,8 +4681,8 @@ by a named choice.
 > **Principle:** Private subnets with a named egress, encryption at
 > rest and TLS to every store, a trail per account, a stated position
 > on the web firewall, a production database that survives a zone and
-> restores to a point in time, a second factor at every sign-in, a
-> protected `main`, and a scan on every push.
+> restores to a point in time, a second factor at every operator and
+> cloud sign-in, a protected `main`, and a scan on every push.
 
 ## Operations
 
@@ -4811,11 +4825,11 @@ A chained session lasts an hour at most. A skill that runs longer, a
 watch above all, reads its profile again on each interval and stops,
 saying so, when the person's session behind it has ended.
 
-A person signs in to the identity center with a second factor, and an
-operator of the plane does too (see [The Operator
-Context](#the-operator-context)): the operator plane reads across
-tenants, so a password alone never admits to it. An operator's token
-is short-lived, and every tenant it reads is recorded.
+A person signs in to the identity center with a second factor. An
+operator of the plane does too, checked at the operator gate (see [The
+Gateway](#the-gateway)). The operator plane reads across tenants, so a
+password alone never admits to it. An operator's token is short-lived,
+and every tenant it reads is recorded.
 
 > **Principle:** Administrator, deployer, investigator, supporter.
 > A person or an agent holds a read-only role; the pipeline holds the
