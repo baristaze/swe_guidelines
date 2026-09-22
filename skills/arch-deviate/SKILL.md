@@ -55,9 +55,10 @@ has a condition for ending.
    it has a `[tool.arch-check]` table, and print it otherwise. Print
    the inline comment and never place it: which line it goes on is the
    person's call. The checker resolves an inline comment only to
-   `docs/adr/NNNN-*.md` with a four-digit number. When the ADR lives
-   elsewhere or is numbered otherwise, give only the table entry,
-   whose `adr` takes any path, and say why.
+   `docs/adr/NNNN-*.md` with a four-digit number. When the folder's
+   records are numbered otherwise, give only the table entry, and say
+   why. Its `adr` still names a Markdown file under `docs/adr/`: the
+   checker refuses any other path.
 7. Whatever the lens, tell the person to cite `ADR-NNNN` in a comment
    beside the code that deviates. A review treats the code as an
    exception only when the ADR is cited there.
