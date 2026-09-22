@@ -545,25 +545,31 @@ writes to.
 
 **Severity.** medium
 
-## STO-22 Concurrent edits that matter carry a version
+## STO-22 Concurrent edits that matter carry a version, and the caller names it
 
 **Principle.** Last writer wins by default. An entity whose concurrent
 edits matter carries a `version`, the copy increments it, and the
 write is a compare-and-set that raises `Conflict` when the row moved
-(optimistic concurrency).
+(optimistic concurrency). The expected version comes from the caller,
+an `If-Match` header on a PATCH or an `expected_version` field, and is
+never re-read inside the update. The compare runs against the caller's
+version, and a mismatch answers 412.
 
 **Source.** The Business Layer, Shape of an Operation; The Storage
 Layer, A Storage Impl.
 
 **Look for.** Entities that carry `version`, the copy that increments
 it, the write behind each, and the `WHERE` that compares the stored
-value; entities that carry none and whether a concurrent edit on them
-matters.
+value; where that value comes from, the request's `If-Match` or
+`expected_version` or a read inside the update; entities that carry
+none and whether a concurrent edit on them matters.
 
 **Violation.** An entity with a `version` whose write overwrites
 without comparing it, or whose copy never increments it; a
-compare-and-set that returns quietly instead of raising `Conflict`; a
-`version` added to every table by default.
+compare-and-set that returns quietly instead of raising `Conflict`, or
+a mismatch answered with a status other than 412; an update that reads
+the row and compares against the version it just read, so two stale
+editors both win; a `version` added to every table by default.
 
 **Severity.** medium
 
