@@ -24,13 +24,22 @@ exists. `local` is refused: this skill acts on a cloud environment
 only, and the local stack has no administrator.
 
 The script also needs `OWNER_EMAIL` and `ALARM_EMAIL` (as environment
-variables or as `--owner-email` and `--alarm-email`), and the token
+variables or as `--owner-email` and `--alarm-email`), the id of the
+repository host's app that `release.yml` pushes with (`--app-id`),
+and the token
 that writes the delegation at the domain's DNS host, as an environment
 variable only, so it never lands in shell history. That token is the
 run's one credential outside the account: scoped to the domain's zone,
 short-lived where the host allows it, and held only for the run. It refuses without
 them; ask for any that is missing, and never for the token's value in
 the conversation.
+
+The app is the one piece a person makes by hand, before the first
+run: the repository host has no command that creates it. The person
+makes it with contents write on the repository, installs it there,
+and stores its private key in the `release` environment. The script
+lists those steps as manual, and the report names them until they
+are done.
 
 ## Order
 
@@ -73,7 +82,10 @@ No env file is read. The script writes one: `~/.config/acme/ops/<env>.env`,
 owner-only, with the API's URL and the lines `ACME_OPERATOR_TOKEN`,
 `ACME_PROVISIONER_TOKEN`, and the tracker's left empty: no operator
 exists until the pipeline's first-operator job has run and the
-operator has enrolled a second factor. The file never holds a
+operator has enrolled a second factor. The script prints the two
+tracker lines, `ACME_ERROR_TRACKER_URL` and `ACME_ERROR_TRACKER_TOKEN`,
+as the one part of the env file a person fills by hand, once they
+have made the environment's project in the error tracker. The file never holds a
 password or a TOTP secret, since an agent never signs in with a
 password. It writes the investigate profile into
 `~/.aws/config`. The skill prints the names of what was written and
@@ -115,8 +127,9 @@ never a value.
      repository host's app `release.yml` pushes with).
    - The GitHub environments (staging's `staging`; production's
      `production-plan` with no reviewer and `production` with the
-     required reviewer), each with its deployment-branch policy
-     (staging's `main`, production's `release`), and each one's
+     required reviewer; and `release`, for `release.yml`), each with
+     its deployment-branch policy (staging's `main`, production's
+     `release`, and `release`'s own `main` alone), and each one's
      variables from the root's outputs, under the same names in each.
    - The first deploy, through the pipeline: the script pushes nothing
      and applies no environment root itself. For staging it dispatches
@@ -182,5 +195,6 @@ never a value.
 
 - <the next run of Order, or nothing>
 - Dispatch `grant-operator.yml` for the first operator, who enrols the second factor at the console's first sign-in and runs `uv run acme-ops token --env <env> --identity operator` in their own terminal; grant the smoke identity and set `SMOKE_EMAIL`, so the next deploy runs the smoke test
+- Manual steps left: <the app, its installation, its key in the `release` environment, the tracker's lines in the env file, or none>
 - Put <admin_profile> away; every later skill runs under acme-<env>-investigate.
 ```

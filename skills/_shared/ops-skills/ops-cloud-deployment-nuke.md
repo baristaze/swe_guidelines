@@ -161,7 +161,7 @@ leave `maintenance` out of every command below.
 
 - Final snapshot <name> and the automated backups (production)
 - Bootstrap root: zones <names> (delegated at the domain's DNS host), roles <names>, budget
-- State prefix environments/<env>/ in <bucket>, empty
+- State prefix environments/<staging|prod>/ in <bucket>, empty
 - Images: <repositories>
 - <resource the destroy could not remove>: <reason>
 ```

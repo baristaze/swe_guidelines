@@ -71,6 +71,13 @@ the order the guideline presents them, never by number.
   so one spelling holds in every account; a Python name, a database
   login, and an environment variable keep `<root>` and its upper
   case.
+- The production environment is named `production`, and `<env>`
+  reads `production` in every name a process, a role, a profile, a
+  resource, the environments' file, or the repository host reads:
+  `<root-slug>-production-alarms`, `<root-slug>-production-investigate`.
+  Its folders alone are `prod/`: `bootstrap/prod/` and
+  `environments/prod/` under `deployment/terraform/`, and the state
+  key under `environments/prod/` that mirrors the folder.
 - The one handler interface for background work is
   `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`, `<Kind>` the
   work kind in CamelCase (`NOTIFY_SHIPMENT` gives
@@ -345,8 +352,8 @@ the order the guideline presents them, never by number.
   `.claude/skills/` are copied from
   `skills/_shared/ops-skills/` with the product's name substituted:
   `acme-ops`, the binary, becomes `<root>-ops`; every other `acme`
-  in a hyphenated name (`acme-<env>-investigate`, `acme-api`) becomes
-  `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
+  in a hyphenated name (`acme-<env>-investigate`, `acme-api`) or a
+  log group (`/acme/<env>/api`) becomes `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
   case, and `Acme` its CamelCase form.
   Every one takes `--env staging|production`, and every one but
   create and nuke also takes `local`. Each holds the
