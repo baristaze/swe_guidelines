@@ -1475,6 +1475,18 @@ A create and an update are two methods, because they are two
 primitives: an insert that reports an existing id without touching it,
 and an upsert.
 
+A create whose row has only one key, its id, returns a `bool`, as
+`create_warehouse` does. A create whose row can collide on more than
+one key reports which one, because the caller reads the existing row
+back by that key. It returns an `InsertOutcome` in place of the `bool`:
+
+``` python
+class InsertOutcome(StrEnum):
+    INSERTED = "inserted"
+    ID_EXISTS = "id_exists"    # the id is already written; nothing changes
+    KEY_EXISTS = "key_exists"  # another unique key is held, under another id
+```
+
 The outbox row is a system row (see [Naming
 Entities](#naming-entities)), declared once in the `outbox` namespace:
 
@@ -1782,14 +1794,14 @@ class InventoryStoragePostgresImpl(PgStorageBase, InventoryStorageInterface):
             .order_by(Warehouses.id)
             .limit(limit)
         )
-        async with self._session_for(stmt, org_id) as session:
+        async with self._session_for(stmt, org_id=org_id) as session:
             result = await session.execute(stmt)
             return [to_model(row, Warehouse) for row in result.scalars()]
 
     async def write_warehouse(
         self, org_id: UUID, warehouse: Warehouse, outbox_rows: tuple[OutboxRow, ...]
     ) -> None:
-        await self._upsert(Warehouses, org_id, warehouse, outbox_rows)
+        await self._upsert(Warehouses, warehouse, outbox_rows, org_id=org_id)
 ```
 
 `_upsert` reads the existing row by id under the call's tenant. Then it
@@ -1800,7 +1812,7 @@ Fence](#the-second-fence), so its id collides on the insert. That
 collision is refused as `Conflict`, never surfaced as a driver error.
 
 Its sibling `_insert` is the create primitive: an insert that does
-nothing on an existing id and says so. The outbox rows land only when
+nothing on an existing id or unique key and says which one collided. The outbox rows land only when
 the insert won. A retried create therefore neither overwrites the row
 nor announces it twice, and a key collision surfaces as a report, never
 as a driver error. An id another tenant holds reports the same way, and
@@ -1811,9 +1823,15 @@ Every query filters by `org_id` and every write checks it, so a bug in
 a caller cannot move a row across tenants. Each operation opens its own
 short session and commits it. No session outlives the call.
 
-`_session_for` is the funnel. It routes the statement to its role, and
-it takes the scope of the call and sets it on the transaction, which is
-what the database policies of [The Second
+`_session_for` is the funnel:
+`_session_for(stmt, *, org_id=None, user_id=None, identity_id=None)`.
+The scope arguments are keyword-only, so a call names the scope it
+passes. `_upsert` and `_insert` take the same keyword-only arguments.
+
+The funnel routes the statement to its role. It picks the system
+login's engine when the scope is the system scope, and the runtime
+login's engine otherwise. It sets the scope on the transaction, which
+is what the database policies of [The Second
 Fence](#the-second-fence) read.
 
 Every statement carries a deadline from settings. The database is a
@@ -3635,9 +3653,14 @@ without touching it, so a retried enqueue never resets a claim. A
 duplicate `idempotency_key` is reported the same way and never raised
 as a driver error (see [A Storage Impl](#a-storage-impl)). The manager
 then reads the enqueued row back and returns it, as every create does.
-It reads back by the key that collided: by id when the id existed, by
-`idempotency_key` when the key did, since the row that holds the key
-carries another id.
+
+It reads back by the key that collided, so `create_item` returns an
+`InsertOutcome` (see [Namespace Shape](#namespace-shape)). On
+`ID_EXISTS` it reads by id. On `KEY_EXISTS` it reads by key, through
+`read_item_by_key(org_id, idempotency_key)`, since the row that holds
+the key carries another id. A contract case enqueues the same key
+under a different id and asserts both: the outcome is `KEY_EXISTS`,
+and the read-back returns the first row.
 
 The manager's copy stamps the actor, the status, and the attempts. It
 clears every claim field. It leaves the id and the timestamps as
@@ -3665,8 +3688,9 @@ a context, which stamps the actor from that context. A CLI, a sweep, or
 an app enqueues that way.
 
 The two paths differ in one field. The relayed enqueue presents the
-outbox row's id as the item's `idempotency_key`, which is the same on
-every run of the relay. The direct create presents its caller's. Either
+outbox row's id as the item's `idempotency_key`, and as the item's id
+too. Both are the same on every run of the relay, and it never mints a
+fresh id. The direct create presents its caller's. Either
 way the enqueue is one insert in storage under one key, so a relay that
 runs twice and a caller that retries both meet the row already there.
 
