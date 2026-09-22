@@ -1008,11 +1008,10 @@ def secrets_files_are_private(project: Project) -> Iterator[Violation]:
 )
 def work_carries_its_request(project: Project) -> Iterator[Violation]:
     """Reads `classes` under `[tool.arch-check.options.ASY-29]`: the class names that carry the request
-    (`WorkItem`, `OutboxRow`)."""
+    (`WorkItem`, `OutboxRow`). A class of that name is read wherever the OM declares it, not only under a
+    `types` package."""
     names = project.option("ASY-29", "classes", ["WorkItem", "OutboxRow"], {"classes"})
     for file, tree in project.trees(project.sub("om")):
-        if ".types" not in file.module:
-            continue
         for cls in classes(tree):
             if cls.name not in names:
                 continue

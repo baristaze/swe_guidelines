@@ -851,3 +851,12 @@ def test_asy_15_the_gateway_is_part_of_every_web_service(tmp_path):
         "gateway/src/acme/gateway/ratelimit.py",
         f"{API}/gateway/audit.py",
     ]
+
+
+def test_asy_29_an_outbox_row_outside_a_types_package_is_read(tmp_path):
+    row = GOOD[OUTBOX].replace("    traceparent: str | None = None\n", "")
+    assert row != GOOD[OUTBOX]
+    files = {OUTBOX: None, "om/src/acme/om/outbox/rows.py": row}
+    code, report = run(tmp_path, "ASY-29", files)
+    assert code == 1
+    assert messages(report) == ["OutboxRow declares no traceparent"]
