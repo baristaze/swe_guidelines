@@ -30,13 +30,19 @@ LENS_ID = re.compile(r"\b[A-Z]{2,4}-\d{2}\b")
 def source(target: Path, globs: list[str], limit: int = SOURCE_LIMIT) -> str:
     """Every target file the globs name, once, in path order, with line numbers.
 
-    Cut at `limit` characters and said so, as the artifact is.
+    Cut at `limit` characters and said so, as the artifact is. A path that
+    leaves the target, through `..` in a glob or a symlink, is left out:
+    what the judges read is the target's own source and nothing beside it.
     """
+    root = target.resolve()
     found: set[Path] = set()
     for pattern in globs:
         for path in target.glob(pattern):
-            if path.is_file():
-                found.add(path)
+            if path.is_symlink() or not path.is_file():
+                continue
+            if not path.resolve().is_relative_to(root):
+                continue
+            found.add(path)
     parts: list[str] = []
     for path in sorted(found):
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()

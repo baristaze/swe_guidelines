@@ -193,3 +193,21 @@ def test_a_request_for_another_host_name_is_refused(client):
     response = client.getresponse()
     response.read()
     assert response.status == 421
+
+
+def test_the_frame_stream_serves_only_frames_inside_its_folder(client, runs, tmp_path):
+    # The index names one frame of its own, one file outside the folder, and
+    # one that is not a JPEG; only the first is served.
+    run = runs / "20260101-000000-one"
+    frames = run / "streams" / "browser"
+    frames.mkdir(parents=True)
+    (frames / "0001.jpg").write_bytes(b"FRAME-INSIDE")
+    (tmp_path / "secret.jpg").write_bytes(b"SECRET-OUTSIDE")
+    (frames / "notes.txt").write_text("NOT-A-FRAME", encoding="utf-8")
+    index = [{"frame": "0001.jpg"}, {"frame": "../../../../secret.jpg"}, {"frame": "notes.txt"}]
+    (frames / "index.jsonl").write_text("".join(json.dumps(i) + "\n" for i in index), encoding="utf-8")
+    (run / "results.json").touch()  # finished, so the stream ends
+    status, _, body = get(client, "/runs/20260101-000000-one/streams/browser.mjpeg")
+    assert status == 200
+    assert b"FRAME-INSIDE" in body
+    assert b"SECRET-OUTSIDE" not in body and b"NOT-A-FRAME" not in body

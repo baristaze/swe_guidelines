@@ -91,3 +91,14 @@ def test_two_planted_files_of_one_base_name_are_told_apart_by_their_path():
     result = E.named(expected, "- OM-07 in om/tasks/__init__.py: the root relaxes extra")
     assert result == {"expected": 2, "named": ["A"], "missed": ["B"]}
     assert E.shortest_name("om/types/warehouse.py", {"om/types/warehouse.py", "om/rules.py"}) == "warehouse.py"
+
+
+def test_the_source_never_leaves_the_target(tmp_path):
+    target = tmp_path / "target"
+    (target / "om").mkdir(parents=True)
+    (target / "om" / "a.py").write_text("inside\n", encoding="utf-8")
+    (tmp_path / "answers.py").write_text("OUTSIDE\n", encoding="utf-8")
+    (target / "om" / "link.py").symlink_to(tmp_path / "answers.py")
+    text = E.source(target, ["om/*.py", "../*.py"])
+    assert "inside" in text
+    assert "OUTSIDE" not in text
