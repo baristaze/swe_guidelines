@@ -708,29 +708,33 @@ every engine a storage impl builds; the rest is judged.
 ## STO-28 Every table declares its tenancy scope and the policy matches
 
 **Principle.** Every table declares its tenancy scope in one map, and
-the database carries the policy it implies, row-level security enabled
-and forced. Three logins, none superuser or `BYPASSRLS`: the migration
-login owns the schema, the runtime login holds DML only, and only the
-system login is admitted to the system scope.
+the database carries the policy that scope implies. A `system` table
+has no policy and no row-level security; every other table has one,
+enabled and forced. Three logins, none superuser or `BYPASSRLS`; only
+the system login is admitted to the system scope, by the `org` and
+`identity` policies alike.
 
 **Source.** The Storage Layer, The Second Fence; Database Roles;
 Migrations.
 
 **Look for.** The scope map beside the role map, and a scope for every
-table; the policy in each table's migration, its expression, and the
-`ENABLE` and `FORCE` statements; the test that reads `pg_class` and
-`pg_policies` against the map, and the ones that assert on each live
-connection that `current_user` is neither superuser nor `BYPASSRLS`,
-that the runtime login owns no table, and that the runtime login
-naming the system scope reads nothing.
+table; the policy in each table's migration, its expression against
+the one its scope names, and the `ENABLE` and `FORCE` statements; the
+test that reads `pg_class` and `pg_policies` against the map, and the
+ones that assert on each live connection that `current_user` is
+neither superuser nor `BYPASSRLS`, that the runtime login owns no
+table, and that the runtime login naming the system scope reads
+nothing.
 
 **Violation.** A table missing from the scope map, or a migrated policy
-that does not match the scope declared; a policy without `FORCE ROW
-LEVEL SECURITY`, so the owner the application connects as walks past
-it; a login that is a superuser or carries `BYPASSRLS`, which no test
-on the live connection would catch; a runtime login that owns a table,
-so an injected statement can drop a policy or turn `FORCE` off; a
-system-scope clause any login's setting can satisfy.
+that does not match the scope declared: a `system` table with
+row-level security, or an `org`, `identity`, or `both` table without
+it or without `FORCE ROW LEVEL SECURITY`, so the owner walks past it;
+an `identity` policy with no system-login clause, so the sign-in
+lookups by email or credential digest find nothing, or a system-scope
+clause any login's setting can satisfy; a login that is a superuser or
+carries `BYPASSRLS`; a runtime login that owns a table, so an injected
+statement can drop a policy or turn `FORCE` off.
 
 **Severity.** high
 
