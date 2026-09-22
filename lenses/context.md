@@ -678,16 +678,17 @@ code; the rest is judged.
 **Principle.** A stage lives no longer than its request. A socket holds
 the `OpContext` its ticket produced, so the session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
-a membership's end travels on the topic bus, and every process holding
-a socket for that session or user closes it on the frame.
+a membership's end travels on the topic bus as `SESSION_REVOKED`, and
+every process holding a socket for that session closes it on the
+message.
 
 **Source.** OpContext, Stages.
 
 **Look for.** The socket handler and what bounds its life: the deadline
 it sets from the session's expiry when the ticket is redeemed, and the
 subscription on the topic bus that every process with sockets holds
-for the revocation and membership-end frames; what a process does with
-a frame naming a session or a user it holds a socket for; what the
+for `SESSION_REVOKED`; what a process does with a message naming a
+session it holds a socket for; what the
 socket carries meanwhile, hints only.
 
 **Violation.** A socket that outlives its session's expiry because the

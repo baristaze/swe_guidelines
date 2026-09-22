@@ -968,9 +968,10 @@ socket is closed when the evidence goes.
 
 So the socket is bounded by the session's expiry. The process closes it
 at that instant, whatever the client does. A revocation or a
-membership's end travels on the topic bus like any other change (see
-[Realtime at the Edge](#realtime-at-the-edge)). Every process that
-holds a socket for that session or that user closes it on the frame.
+membership's end travels on the topic bus like any other change, as
+the control message `SESSION_REVOKED` (see [Realtime at the
+Edge](#realtime-at-the-edge)). Every process that holds a socket for
+that session closes it on the message.
 The expiry covers a frame that was missed.
 
 What a socket carries in the meantime is hints, never a field of an
@@ -2448,7 +2449,7 @@ class Topics(StrEnum):
     SHIPMENT_UPDATED = "shipment_updated"
     CATALOG_IMPORTED = "catalog_imported"
     WORK_AVAILABLE = "work_available"
-    ENTITY_CHANGED = "entity_changed"  # kind, target_id, seq: the realtime producer
+    ENTITY_CHANGED = "entity_changed"  # org_id, kind, target_id, seq, actor_id: the realtime producer
 
 TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {
     Topics.ORDER_PLACED: OrderPlacedPayload,
@@ -3500,6 +3501,19 @@ replayed record carry the identity of the change (`seq`, `kind`,
 entity through the authorized read, which applies the visibility rules
 of [OpContext](#opcontext). A user learns that some id changed, who
 changed it, and when, and nothing else.
+
+On the bus, `ENTITY_CHANGED` carries the tenant's `org_id` and the
+`actor_id` beside the hint's `kind`, `target_id`, and `seq`. A process
+routes it by `org_id` to the sockets of that tenant. The frame it sends
+carries `seq`, `kind`, `target_id`, and `actor_id`.
+
+A session's revocation rides the same topic as a control message of its
+own kind, `SESSION_REVOKED`. Its `target_id` is the session id, its
+`actor_id` is the identity id, and it carries no `seq`. A process never
+forwards it as a frame. It closes every socket that session opened (see
+[Stages](#stages)). Signing out and revoking a session publish it. A
+membership's end revokes the member's sessions in that tenant and
+publishes it for each.
 
 That is a decision, and it is named. The hint is metadata every member
 of the tenant may see: that a record exists, who touched it, and when.
