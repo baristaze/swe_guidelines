@@ -35,7 +35,9 @@ from arch_check.rules._contracts_util import (
     names_in,
     service_part,
     stage_classes,
+    stage_files,
     stage_module,
+    stage_rel,
     union_members,
 )
 from arch_check.rules._text_util import imported_names, resolved
@@ -165,35 +167,40 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
     tree = project.tree(file) if file else None
     if file is None or tree is None:
         return
-    allowed = (f"{project.sub('om')}.base", f"{project.sub('om')}.exceptions")
+    # A stage package may import its own modules; nothing else changes.
+    allowed = (f"{project.sub('om')}.base", f"{project.sub('om')}.exceptions", file.module)
 
     def below_the_base(name: str) -> bool:
         return any(is_under(name, a) for a in allowed)
 
-    for imp in project.imports(file):
-        if not is_under(imp.module, project.package) or below_the_base(imp.module):
-            continue
-        named = [f"{imp.module}.{n}" for n in imp.names if n != "*"]
-        if named and all(below_the_base(n) for n in named):
-            continue
-        yield Violation.at(file.rel, imp.node, f"the stage module imports {imp.module}; it reaches nothing above the base")
+    files = stage_files(project)
+    for each in files:
+        for imp in project.imports(each):
+            if not is_under(imp.module, project.package) or below_the_base(imp.module):
+                continue
+            named = [f"{imp.module}.{n}" for n in imp.names if n != "*"]
+            if named and all(below_the_base(n) for n in named):
+                continue
+            yield Violation.at(each.rel, imp.node, f"the stage module imports {imp.module}; it reaches nothing above the base")
     entities: set[str] = set()
     for f, t in project.trees(project.sub("om")):
         if ".types" in f".{f.module}" and "types" in f.module.split(".")[project.sub("om").count(".") + 2 :]:
             entities.update(c.name for c in classes(t))
-    entities -= {c.name for c in classes(tree)}  # a name the stage module defines means its own class
     stages = stage_classes(project)
+    entities -= set(stages)  # a name the stage module defines means its own class
     for cls in stages.values():
         for name, node in declared_fields(cls).items():
             annotation = node.annotation if isinstance(node, ast.AnnAssign) else getattr(node, "returns", None)
             hit = sorted(names_in(annotation) & entities)
             if hit:
-                yield Violation.at(file.rel, node, f"{cls.name}.{name} holds the entity {hit[0]}; a context carries ids")
+                yield Violation.at(
+                    stage_rel(project, node, file), node, f"{cls.name}.{name} holds the entity {hit[0]}; a context carries ids"
+                )
     request = stages.get(REQUEST_STAGE)
     if request is not None:
         missing = [f for f in ("request_id", "app") if f not in declared_fields(request)]
         if missing:
-            yield Violation.at(file.rel, request, f"{REQUEST_STAGE} declares no {' or '.join(missing)}")
+            yield Violation.at(stage_rel(project, request, file), request, f"{REQUEST_STAGE} declares no {' or '.join(missing)}")
     if stages and not any("credential_id" in declared_fields(c) for c in stages.values()):
         yield Violation.at(file.rel, None, "no context class declares credential_id")
 
@@ -519,7 +526,9 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
             value = getattr(node, "value", None) if target is not None else None
             if not (isinstance(target, ast.Name) and target.id == "TOPIC_PAYLOADS" and isinstance(value, ast.Dict)):
                 continue
-            for v in value.values:
+            for k, v in zip(value.keys, value.values, strict=True):
+                if k is None:
+                    continue  # `**OTHER`: a spread mapping, not a payload class
                 name = last(dotted(v))
                 if name and not extends(name, "TopicPayload"):
                     yield Violation.at(file.rel, v, f"{name} does not extend TopicPayload, so it carries no tenant")
@@ -548,10 +557,14 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
         index = class_index(project)
         lineage = ancestors(index, "OperatorContext")
         if "IdentityContext" not in lineage:
-            yield Violation.at(file.rel, operator, "OperatorContext does not refine IdentityContext")
+            yield Violation.at(stage_rel(project, operator, file), operator, "OperatorContext does not refine IdentityContext")
         for name in ["OperatorContext", *lineage]:
             if name in stages and "org_id" in declared_fields(stages[name]):
-                yield Violation.at(file.rel, stages[name], f"{name} declares org_id; the operator plane has no tenant")
+                yield Violation.at(
+                    stage_rel(project, stages[name], file),
+                    stages[name],
+                    f"{name} declares org_id; the operator plane has no tenant",
+                )
     for f, tree in project.trees():
         for cls in classes(tree):
             if not any(n.endswith(OPERATION_INTERFACES) for n in [cls.name, *bases(cls)]):
@@ -590,13 +603,13 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
         if cls is None:
             continue
         if "Protocol" in bases(cls):
-            yield Violation.at(file.rel, cls, f"{name} is a Protocol; a stage is a concrete frozen type")
+            yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is a Protocol; a stage is a concrete frozen type")
         parent = expected.get(name)
         lineage = ancestors(index, name)
         if parent and parent in stages and parent not in lineage:
-            yield Violation.at(file.rel, cls, f"{name} does not subclass {parent}")
+            yield Violation.at(stage_rel(project, cls, file), cls, f"{name} does not subclass {parent}")
         if name == "OpContext" and "IdentityContext" in lineage:
-            yield Violation.at(file.rel, cls, "OpContext subclasses IdentityContext; it does not refine it")
+            yield Violation.at(stage_rel(project, cls, file), cls, "OpContext subclasses IdentityContext; it does not refine it")
 
 
 # --- CTX-22
@@ -655,12 +668,12 @@ def scopes_are_protocols(project: Project) -> Iterator[Violation]:
             used |= annotation_names(tree)
     for name, cls in scopes.items():
         if "Protocol" not in bases(cls):
-            yield Violation.at(file.rel, cls, f"{name} is not a Protocol; a scope is satisfied structurally")
+            yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is not a Protocol; a scope is satisfied structurally")
         extra = [n for n in body_without_docstring(cls.body) if not is_property_member(n)]
         if extra:
             yield Violation.at(file.rel, extra[0], f"{name} holds more than read-only properties")
         if name not in used:
-            yield Violation.at(file.rel, cls, f"{name} is declared by no consumer and built on by no scope")
+            yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is declared by no consumer and built on by no scope")
 
 
 # --- CTX-24
@@ -785,7 +798,7 @@ def handoff_names_its_cause(project: Project) -> Iterator[Violation]:
     request = stage_classes(project).get(REQUEST_STAGE)
     # request_id itself is CTX-02
     if file is not None and request is not None and "caused_by_request_id" not in declared_fields(request):
-        yield Violation.at(file.rel, request, f"{REQUEST_STAGE} declares no caused_by_request_id")
+        yield Violation.at(stage_rel(project, request, file), request, f"{REQUEST_STAGE} declares no caused_by_request_id")
     for f, tree in project.trees(project.sub("workers")):
         aliases = imported_names(project, f)
         for call in calls(tree):

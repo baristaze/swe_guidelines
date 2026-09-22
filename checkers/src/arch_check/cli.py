@@ -122,8 +122,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{sys.version_info[0]}.{sys.version_info[1]}, whose parser cannot read it; "
             f"run it with that Python, e.g. uvx --python {pinned[0]}.{pinned[1]} ..."
         )
+    project = Project(config)
+    # A misspelled package reads as a clean project: every rule looks under
+    # a package no file is in, and finds nothing. That is an error, not a pass.
+    if project.python_files and not project.modules_under(config.package):
+        found = sorted({f.module.split(".")[0] for f in project.python_files})
+        return error(f"no module is under the package {config.package!r}; the source roots hold {', '.join(found)}")
     try:
-        result = run(Project(config), selected, known, [p for p in paths if p != "."])
+        result = run(project, selected, known, [p for p in paths if p != "."])
     except ConfigError as e:
         return error(str(e))
     except Exception:

@@ -213,6 +213,7 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
         return (last(called) or "").endswith("Impl") and (head in infra_names(project, file) or is_under(called, infra))
 
     for file, tree in project.trees():
+        bound = bindings(tree)
         for node in tree.body:
             value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
             if isinstance(value, ast.Await):
@@ -220,7 +221,9 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
             if not isinstance(value, ast.Call):
                 continue
             called = dotted(value.func) or ""
-            if called in clients or infra_impl(file, called):
+            # `import boto3 as b3; b3.client(...)` is `boto3.client(...)`, read through the import
+            through = resolved(value.func, bound)
+            if called in clients or through in clients or infra_impl(file, called):
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
     for file in manager_impl_files(project):
         impl = project.tree(file)

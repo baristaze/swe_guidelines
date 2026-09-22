@@ -310,6 +310,15 @@ def test_asy_01_a_module_level_client_and_a_manager_building_an_impl(tmp_path):
     assert [(p, line) for _, p, line in rules_found(report)] == [(MANAGER, 5), (f"{API}/clients.py", 4), (f"{API}/clients.py", 5)]
 
 
+def test_asy_01_an_aliased_client_at_module_level(tmp_path):
+    files = {
+        f"{API}/clients.py": "import boto3 as b3\nfrom boto3 import client as make\n\nS3 = b3.client('s3')\nSQS = make('sqs')\n"
+    }
+    code, report = run(tmp_path, "ASY-01", files)
+    assert code == 1
+    assert [line for _, _, line in rules_found(report)] == [4, 5]
+
+
 def test_asy_02_a_missing_getter_and_an_impl_imported_outside_boot(tmp_path):
     files = edit(ROOT, "    @abstractmethod\n    def get_topics(self) -> TopicsInterface: ...\n\n", "")
     files[f"{API}/routers/files.py"] = (

@@ -166,11 +166,39 @@ def stage_module(project: Project) -> SourceFile | None:
     return project.module(f"{project.package}.{STAGE_MODULE}")
 
 
-def stage_classes(project: Project) -> dict[str, ast.ClassDef]:
-    """The classes of the stage module, by name."""
+def stage_files(project: Project) -> list[SourceFile]:
+    """The stage module, and when it is a package, every module under it."""
     file = stage_module(project)
-    tree = project.tree(file) if file else None
-    return {c.name: c for c in tree.body if isinstance(c, ast.ClassDef)} if tree else {}
+    if file is None:
+        return []
+    return [file, *(f for f in project.modules_under(file.module) if f.module != file.module)]
+
+
+def stage_classes(project: Project) -> dict[str, ast.ClassDef]:
+    """The classes of the stage module, by name; a package's are read from every module in it."""
+    out: dict[str, ast.ClassDef] = {}
+    for file in stage_files(project):
+        tree = project.tree(file)
+        if tree is not None:
+            for c in tree.body:
+                if isinstance(c, ast.ClassDef):
+                    out.setdefault(c.name, c)
+    return out
+
+
+def stage_file_of(project: Project, node: ast.AST) -> SourceFile | None:
+    """The file of the stage package whose tree holds a node: a class, or a field inside one."""
+    for file in stage_files(project):
+        tree = project.tree(file)
+        if tree is not None and any(n is node for n in ast.walk(tree)):
+            return file
+    return None
+
+
+def stage_rel(project: Project, node: ast.AST | None, default: SourceFile) -> str:
+    """Where a finding on a stage class goes: the module of the package that defines it."""
+    found = stage_file_of(project, node) if node is not None else None
+    return (found or default).rel
 
 
 def declared_fields(cls: ast.ClassDef) -> dict[str, ast.AST]:

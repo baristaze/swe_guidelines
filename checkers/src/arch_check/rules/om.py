@@ -621,11 +621,13 @@ def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
                     if name in OTHER_FACTORIES or (name == "uuid7" and not in_base):
                         yield Violation.at(file.rel, imp.node, f"{file.module} imports uuid.{name}; every id comes from new_id()")
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                # a bare `uuid4()` is reported at its import; `u.uuid4()` after `import uuid as u` is read through it
-                called = idx.qualified(file.module, dotted(node.func))
-                if called in {f"uuid.{f}" for f in OTHER_FACTORIES} or (called == "uuid.uuid7" and not in_base):
-                    yield Violation.at(file.rel, node, f"{dotted(node.func)}() mints an id; every id comes from new_id()")
+            # A call and a reference alike: `uuid.uuid4()`, and `Field(default_factory=uuid.uuid4)`,
+            # which mints the same id later. A bare `uuid4` is reported at its import;
+            # `u.uuid4` after `import uuid as u` is read through it.
+            if isinstance(node, ast.Attribute):
+                named = idx.qualified(file.module, dotted(node))
+                if named in {f"uuid.{f}" for f in OTHER_FACTORIES} or (named == "uuid.uuid7" and not in_base):
+                    yield Violation.at(file.rel, node, f"{dotted(node)} mints an id; every id comes from new_id()")
 
 
 # --- OM-13

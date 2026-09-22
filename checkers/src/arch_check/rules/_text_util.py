@@ -238,7 +238,10 @@ class Instruction:
     line: int
 
 
-HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?")
+# A heredoc opens only in the instructions Docker lets carry one, and its
+# word starts like a name: `$((1<<20))` is a shift, `<<<` a here-string.
+HEREDOC = re.compile(r"(?<![<\w)])<<-?\s*(['\"]?)([A-Za-z_]\w*)\1(?!\w)")
+HEREDOC_INSTRUCTIONS = frozenset({"RUN", "COPY", "ADD"})
 
 
 def instruction(buffer: str, line: int) -> Instruction:
@@ -272,8 +275,8 @@ def dockerfile(project: Project, rel: str) -> list[Instruction]:
             continue
         buffer += text
         opened = HEREDOC.search(buffer)
-        if opened is not None:
-            terminator = opened.group(1)
+        if opened is not None and instruction(buffer, start).keyword in HEREDOC_INSTRUCTIONS:
+            terminator = opened.group(2)
             continue
         out.append(instruction(buffer, start))
         buffer = ""

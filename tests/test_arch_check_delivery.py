@@ -161,6 +161,18 @@ def test_del_10_an_unlocked_install_inside_a_heredoc_fails(tmp_path):
     assert (code, [p for _, p, _ in where]) == (1, ["deployment/docker/api.Dockerfile"])
 
 
+def test_del_10_a_shift_or_a_here_string_is_not_a_heredoc(tmp_path):
+    shift = GOOD_IMAGE.replace(
+        "FROM python:3.14-slim\nUSER acme", 'FROM python:3.14-slim\nENV LIMIT=$((1<<20))\nRUN cat <<< "hi"\nUSER acme', 1
+    )
+    assert "1<<20" in shift
+    assert found(tmp_path / "clean", "DEL-10", {"deployment/docker/api.Dockerfile": shift}) == (0, [])
+    # the shift hides nothing that comes after it: a root final stage still fails
+    rooted = shift.replace("USER acme\n", "")
+    code, where = found(tmp_path / "rooted", "DEL-10", {"deployment/docker/api.Dockerfile": rooted})
+    assert code == 1 and where
+
+
 def test_del_10_a_dockerfile_in_a_service_folder_fails(tmp_path):
     code, where = found(tmp_path, "DEL-10", {"services/api/Dockerfile": GOOD_IMAGE})
     assert (code, where) == (1, [("DEL-10", "services/api/Dockerfile", 1)])

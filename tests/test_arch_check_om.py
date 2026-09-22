@@ -541,6 +541,7 @@ def test_a_root_that_is_not_frozen_is_om_11(tmp_path):
     [
         (SERVICE, "from uuid import uuid4\n"),
         (SERVICE, "import uuid\n\nx = uuid.uuid4()\n"),
+        (SERVICE, "import uuid\nfrom pydantic import BaseModel, Field\n\nclass B(BaseModel):\n    id: str = Field(default_factory=uuid.uuid4)\n"),
         (TASK_IMPL, "from uuid import uuid7\n"),
         ("workers/maintenance/src/acme/workers/maintenance/__init__.py", "import ulid\n"),
     ],

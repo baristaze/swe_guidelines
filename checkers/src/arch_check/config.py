@@ -196,6 +196,10 @@ def text(entry: dict[str, Any], key: str, where: str) -> str:
     return value
 
 
+ADR_FOLDER = "docs/adr"
+"""Where the guideline keeps a project's decision records."""
+
+
 def deviations(root: Path, value: Any, name: str, keys: set[str]) -> tuple[Deviation, ...]:
     """The entries of `disable` or `exception`, each with an ADR file that exists."""
     if not isinstance(value, list):
@@ -214,7 +218,12 @@ def deviations(root: Path, value: Any, name: str, keys: set[str]) -> tuple[Devia
         adr = text(entry, "adr", where)
         reason = text(entry, "reason", where)
         path = text(entry, "path", where) if "path" in keys else None
-        if not (root / adr).is_file():
+        # A decision record lives in the repository's ADR folder; any other
+        # file that happens to exist (pyproject.toml, /etc/hosts) is not one.
+        target = (root / adr).resolve()
+        if not target.is_relative_to((root / ADR_FOLDER).resolve()) or target.suffix != ".md":
+            raise ConfigError(f"{where} ({rule}): {adr} is not a Markdown file under {ADR_FOLDER}/")
+        if not target.is_file():
             raise ConfigError(f"{where} ({rule}): ADR file {adr} does not exist")
         out.append(Deviation(rule=rule, adr=adr, reason=reason, path=path))
     return tuple(out)
