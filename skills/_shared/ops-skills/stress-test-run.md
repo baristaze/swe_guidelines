@@ -116,8 +116,9 @@ states. Never print the password, the secret, a code, or the token.
 
 - No run without the person's word, and none against production
   without it in this session.
-- No write outside the generator's own tenants; no scaling, no apply,
-  no change to the scenario.
+- No write outside the generator's own tenants, and none left behind:
+  the generator removes them when the run ends, and the report names
+  any it could not; no scaling, no apply, no change to the scenario.
 - No secret value printed.
 - No verdict from the generator's numbers alone: the platform's own
   signals decide.

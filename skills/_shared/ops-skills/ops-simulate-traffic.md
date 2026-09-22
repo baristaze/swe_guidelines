@@ -67,7 +67,10 @@ does either, and says which dispatch is due.
 1. Verify the credential as Role and credential states. Read the env
    file. Against `production`, ask before running anything above
    `light`; the generator's tenants are real rows in the real
-   database, and the choice is the platform developer's.
+   database, and the choice is the platform developer's. Against
+   `production` with `--orgs` above `0`, a generator whose
+   provisioner the operator plane refuses stops before its first
+   session; the skill then names the dispatch that enables it.
 2. Run the generator:
 
    ```bash
@@ -95,12 +98,19 @@ does either, and says which dispatch is due.
    the log leg needs the file the API was started with, and the trace
    leg needs `ACME_OTEL_ENDPOINT` set on that process; report either as
    not read otherwise.
-5. Write the report.
+5. Check that the run removed its tenants: the generator deletes
+   each through `DELETE /v1/admin/orgs/{org_id}` when it ends, and
+   names any it could not remove, which the report lists. Against
+   `production`, name the dispatch that disables the provisioner
+   again.
+6. Write the report.
 
 ## What it never does
 
-- No write outside the generator's own tenants; it never signs in as
-  a real user.
+- No write outside the generator's own tenants, and no tenant of its
+  own left behind; it never signs in as a real user.
+- No provisioner left enabled in production after a run: the report
+  names the dispatch that disables it.
 - No write to the cloud's resources, no scaling, no apply.
 - No secret value printed.
 - No run above `light` against production without the person saying
@@ -123,6 +133,8 @@ does either, and says which dispatch is due.
 | <route> | <status> | <n> | <ms> | <ms> | <ms> |
 
 **Total.** <n> requests, error ratio <ratio>
+**Run tenants.** <n> created, <n> removed, <ids left behind, or none>
+**Provisioner.** <local | staging | production: disable dispatch due>
 
 ## Signal
 

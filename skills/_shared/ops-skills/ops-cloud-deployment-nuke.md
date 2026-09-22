@@ -89,7 +89,9 @@ and a worker added since is one more name.
      --profile <admin_profile>
    ```
 
-4. Run the script, dry first:
+4. Run the script dry, show the person what it printed, and wait for
+   the person's word before the real run, in staging as in
+   production; an unattended session stops after the dry run:
 
    ```bash
    scripts/cloud_nuke.sh <env> --dry-run
@@ -115,8 +117,9 @@ and a worker added since is one more name.
 
 ## What it never does
 
-- No destroy without the preconditions: the profile, the typed
-  confirmation, the released change.
+- No destroy without the preconditions: the profile, the person's
+  word after the dry run, and in production the typed confirmation
+  and the released change.
 - No production database destroyed without its final snapshot, and
   no automated backup deleted with it.
 - No touch of the bootstrap root, the state bucket, or the zones.
@@ -133,7 +136,7 @@ and a worker added since is one more name.
 # Environment destroyed: <env>
 
 **Credential.** <admin_profile>, <Arn>, account <id> (expected <id>)
-**Confirmation.** <typed | not needed (staging)>
+**Confirmation.** <the person's word after the dry run; typed --confirm production (production)>
 **Deletion protection on release.** <false, PR <url>, applied | not needed (staging)>
 **Applied from.** <origin/release | origin/main> at <sha>, a clean worktree
 
