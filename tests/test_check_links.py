@@ -114,3 +114,11 @@ def test_a_section_by_number_fails_outside_the_lenses_too(repo, links, capsys, l
 def test_a_release_heading_in_the_changelog_is_a_version_not_a_section(repo, links):
     repo.write("CHANGELOG.md", "# Changelog\n\n## 0.27.0 (2026-09-21)\n")
     assert links.main() == 0
+
+
+def test_a_link_inside_fenced_code_is_not_checked(repo, links, capsys):
+    repo.write(
+        "docs/extra.md",
+        "# Extra\n\n```markdown\nSee [the guide](../missing.md).\n```\n\n~~~\n[x](#nowhere)\n~~~\n",
+    )
+    assert links.main() == 0, capsys.readouterr().out

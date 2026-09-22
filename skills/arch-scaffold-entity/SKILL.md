@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-entity
-description: "Add one entity to an existing object-model namespace the way the Software Design and Architecture Guidelines prescribe: the frozen Pydantic type, the table class and migration, storage interface methods with Postgres and memory impls, manager operations, wire types and router, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
+description: "Add one entity to an object-model namespace: the frozen type, the table and migration, storage in Postgres and memory, manager operations, wire types, router, and tests. Python."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*)
 ---
 

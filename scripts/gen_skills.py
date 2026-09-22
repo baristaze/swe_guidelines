@@ -46,9 +46,19 @@ def title_of(lens_file: Path) -> str:
     raise SystemExit(f"{lens_file}: no H1 title")
 
 
+def keywords_of(covers: str) -> str:
+    """The short list after the covers text's last colon: what the description says."""
+    return covers.rpartition(": ")[2] if ": " in covers else covers
+
+
 def render(group: str, title: str, covers: str) -> str:
     text = TEMPLATE.read_text(encoding="utf-8")
-    return text.replace("{group}", group).replace("{title}", title).replace("{covers}", covers)
+    return (
+        text.replace("{group}", group)
+        .replace("{title}", title)
+        .replace("{keywords}", keywords_of(covers))
+        .replace("{covers}", covers)
+    )
 
 
 def main(argv: Sequence[str] = ()) -> int:

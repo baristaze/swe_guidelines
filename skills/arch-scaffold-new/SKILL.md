@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-new
-description: "Bootstrap a whole new system in the shape the Software Design and Architecture Guidelines prescribe, into an empty target directory, by building the monorepo skeleton (uv workspace, om, infra, the first API process, a worker, a portal, deployment folders, Makefile, CI) and then following the other scaffold skills for the first namespace and entity. Stack: TypeScript (React, Vite) or Python."
+description: "Bootstrap a whole new system in the guideline's shape into an empty folder: the monorepo skeleton, the first API, a worker, a portal, deployment, CI, then the first namespace and entity."
 allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 

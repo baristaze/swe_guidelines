@@ -71,6 +71,33 @@ def slug(heading: str) -> str:
     return text.replace(" ", "-")
 
 
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+
+
+def unfenced(text: str) -> str:
+    """The text with every line of fenced code, fences included, blanked to spaces.
+
+    A fence opens with three or more backticks or tildes, indented at most
+    three spaces, and closes with a run of the same character at least as
+    long, as CommonMark reads it. Blanked, not dropped, so offsets and line
+    numbers still map back to the file.
+    """
+    out: list[str] = []
+    opener: str | None = None
+    for line in text.split("\n"):
+        m = FENCE.match(line)
+        if opener is None and m:
+            opener = m.group(1)
+            out.append(" " * len(line))
+        elif opener is not None:
+            if m and m.group(1)[0] == opener[0] and len(m.group(1)) >= len(opener) and not line.strip().strip(opener[0]):
+                opener = None
+            out.append(" " * len(line))
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def headings(text: str) -> list[tuple[int, str]]:
     """(level, title) for every ATX heading, in order, skipping fenced code.
 
@@ -78,13 +105,7 @@ def headings(text: str) -> list[tuple[int, str]]:
     reads it: `## Tables ##` is the heading `Tables`.
     """
     out: list[tuple[int, str]] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for line in unfenced(text).splitlines():
         m = HEADING.match(line)
         if m:
             out.append((len(m.group(1)), CLOSING.sub("", m.group(2))))

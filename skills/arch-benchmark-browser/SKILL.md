@@ -1,6 +1,6 @@
 ---
 name: arch-benchmark-browser
-description: "Run the benchmark prompt through chatgpt.com, claude.ai, and gemini.google.com in a browser the person has signed in to: pick the model and the effort from two t-shirt sizes, check the picker before sending, send the prompt and its contract, wait for the answer, and save it with its conversation URL as proof. Use when a release needs scores from the products a reader would use rather than from the API."
+description: "Run the benchmark prompt in the chatgpt.com, claude.ai, and gemini.google.com products, signed in, and save each answer with its conversation URL as proof."
 allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
 ---
 

@@ -26,7 +26,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import ROOT, anchors, arguments, markdown_files
+from _common import ROOT, anchors, arguments, markdown_files, unfenced
 
 # The text may hold one level of brackets (`[see [the note]](x.md)`), the
 # destination may be wrapped in `<...>`, and the title may be quoted either
@@ -89,7 +89,8 @@ def main(argv: Sequence[str] = ()) -> int:
         own = headings(path)
         text = path.read_text(encoding="utf-8")
         errors += numbered(path, text)
-        flat = text.replace("\n", " ")  # same length, so offsets map back to lines
+        # fenced code blanked, same length, so offsets map back to lines
+        flat = unfenced(text).replace("\n", " ")
         found = [
             (text.count("\n", 0, m.start()) + 1, m.group(1) if m.group(1) is not None else m.group(2))
             for m in LINK.finditer(flat)

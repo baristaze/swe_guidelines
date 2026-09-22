@@ -1,6 +1,6 @@
 ---
 name: arch-benchmark
-description: "Run a benchmark scenario from this checkout: a skill of the plugin, a command, or a question-and-answer turn, executed in a declared runtime and scored by frontier models from several providers against the scenario's rubric. Use when a change to a skill, a lens, or the guideline needs a measurement rather than an opinion, or when someone asks how well a skill answers a question."
+description: "Run a benchmark scenario (a skill, a command, or a question) in a declared runtime and have frontier models score it against the rubric. Use to measure a change to a skill or the text."
 allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(ls:*)
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: arch-review-om
-description: "Review code or a change through the Object Model lenses of the Software Design and Architecture Guidelines. Covers The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules. Use for a change that touches this area, or as one leg of arch-review-full."
+description: "Architecture review through the Object Model lenses: source of truth, mixins, immutability, identifiers, namespaces, pure rules. For a change in this area, or as one leg of arch-review-full."
 allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
@@ -13,6 +13,8 @@ a lens in this file does not name. The guideline itself is at
 `${CLAUDE_SKILL_DIR}/../../architecture.md` when a lens needs its
 source read in full. If either file is missing, stop and say the
 installation is incomplete.
+
+This pass covers The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules.
 
 ## Input
 

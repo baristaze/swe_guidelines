@@ -1,6 +1,9 @@
 # Software Design and Architecture Guidelines: checks and generators
 SHELL := /bin/bash
 PYTHON := python3
+# The tests need pytest, pyyaml, and jsonschema, which a system python3 may
+# not carry; uv brings them at pinned versions, locally and in CI alike.
+PYTEST := uv run --no-project --with pytest==9.1.1 --with pyyaml==6.0.3 --with jsonschema==4.26.0 python -m pytest
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
 # ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
@@ -45,12 +48,13 @@ skills:            ## every skill has valid frontmatter and references files tha
 agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count)
 	$(PYTHON) scripts/check_agents.py
 
-test:              ## the checkers and generators pass their own tests (needs pytest)
-	$(PYTHON) -m pytest tests -q
+test:              ## the checkers and generators pass their own tests (pytest through uv, pinned)
+	$(PYTEST) tests -q
 
 plugin:            ## validate the plugin, marketplace, skills, and agents with Claude Code (skipped when claude is not installed)
 	@if command -v claude >/dev/null 2>&1; then \
-	  claude plugin validate . --strict && claude plugin validate skills --strict && claude plugin validate agents --strict; \
+	  claude plugin validate . --strict && claude plugin validate skills --strict && claude plugin validate agents --strict \
+	  && python3 scripts/check_plugin.py; \
 	else echo "plugin: claude not installed, skipped"; fi
 
 gen-skills:        ## regenerate the review skills from the template and the lens files
