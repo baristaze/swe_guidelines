@@ -352,9 +352,9 @@ a provider has no memory impl of its own.
 
 ## 0.24.0 (2026-09-21)
 
-The guideline agrees with itself. A full review found rules stated two
-ways, one gap in a protocol that claimed to be whole, and text that
-still named tests for what `arch-check` now decides. Each is resolved
+The guideline agrees with itself. Rules stated two ways, one gap in a
+protocol that claimed to be whole, and text that still named tests for
+what `arch-check` now decides are each resolved
 in the guideline's voice, and the lenses, the skills, and the checker
 follow. Minor: rules are sharpened and none is removed or reversed.
 
@@ -1087,10 +1087,9 @@ deliberate breach.
 
 ## 0.16.0 (2026-09-20)
 
-A second reading of 0.14.0, triaged against 0.15.0, for the places
-where the guideline states a rule in one section and states it
-differently in another, and for the lenses and scaffolds that carried
-the older spelling forward. Minor: two absolutes are softened to what
+The places where the guideline states a rule in one section and states
+it differently in another, and the lenses and scaffolds that carried the
+older spelling forward, now say one thing. Minor: two absolutes are softened to what
 the guideline already does elsewhere, one interface loses a return
 value, and the derivations are brought back onto the sentences they
 restate.
@@ -1207,8 +1206,8 @@ restate.
 
 ## 0.15.0 (2026-09-20)
 
-A reading of 0.14.0 by a second reviewer, for the places where a rule
-holds only until two attempts, two releases, or two rows meet. Minor:
+The rules that held only until two attempts, two releases, or two rows
+met now hold when they do. Minor:
 each rule is sharpened where its own safety argument stopped short.
 
 ### Changed
@@ -1269,8 +1268,8 @@ each rule is sharpened where its own safety argument stopped short.
 
 ## 0.14.0 (2026-09-19)
 
-A reading of 0.13.0 by a second reviewer, for the places where the
-guideline states one rule and a lens or a scaffold states another.
+Where the guideline stated one rule and a lens or a scaffold stated
+another, they now state the same one.
 Minor: two absolutes lose the exceptions the guideline had already
 granted them, and the work queue's enqueue is settled the way
 "Database Roles" had always described it.
@@ -1373,8 +1372,8 @@ granted them, and the work queue's enqueue is settled the way
 
 ## 0.13.0 (2026-09-19)
 
-A reading of 0.12.0 by a second reviewer, plus two changes asked for
-on top of it. Minor: the manager exception 0.12.0 added is reversed,
+Rules stated twice, in two places that had drifted, now say one thing,
+and two design changes land beside them. Minor: the manager exception 0.12.0 added is reversed,
 and the changelog names the reversal; a queue parameter is removed;
 the rest is where a rule was stated twice, in two places that had
 drifted, or read as a forward reference a first reader cannot follow.
@@ -1471,9 +1470,8 @@ drifted, or read as a forward reference a first reader cannot follow.
 
 ## 0.12.0 (2026-09-19)
 
-Two readings of 0.11.0 against itself, one in this repository and one
-by a second reviewer, for the places where one file names a shape
-another file cannot hold. Minor: one rule is narrowed where it never
+The places where one file names a shape another file cannot hold now
+agree. Minor: one rule is narrowed where it never
 applied and one is widened, and the changelog names both; the rest is
 where a rule was stated twice and the two statements had drifted.
 
@@ -1566,11 +1564,9 @@ where a rule was stated twice and the two statements had drifted.
 
 ## 0.11.0 (2026-09-19)
 
-An outside review of 0.10.0 read the guideline, the lenses, the skills,
-and the repository's own docs against each other and found the places
-where they say different things. Every check passed and the text still
-contradicted itself, so this release is the pass that makes the four
-agree. Minor: rules are sharpened and shapes gain the fields the prose
+The guideline, the lenses, the skills, and the repository's own docs
+said different things in places, although every check passed. This
+release makes the four agree. Minor: rules are sharpened and shapes gain the fields the prose
 already assumed; the sentence that had the router translate is
 reversed, the service impl translates and the router binds, and the
 changelog names it.
@@ -1659,8 +1655,8 @@ changelog names it.
 
 ## 0.10.0 (2026-09-19)
 
-The text closes the gaps an outside review of 0.8.0 found between what
-it promised and what its reference implementation could follow: the
+The text closes the gaps between what it promised and what an
+implementation could follow: the
 update copy said two things, the system rows had no declared shape,
 the sequence had a requirement and no mechanism, the split implied a
 wire hop it never argued for, and four rules were missing. Minor:
@@ -1802,7 +1798,6 @@ is added and two are sharpened; none is reversed.
 
 ## 0.8.0 (2026-09-19)
 
-An outside review of 0.7.0, read against the reference implementation.
 This release closes the protocols the text prescribed in detail and
 left open at one step each: the idempotency marker gains an attempt
 token, a refused lease renewal cancels at once, a create that issues a
@@ -1894,8 +1889,8 @@ and sharpened; none is reversed.
 
 ## 0.7.1 (2026-09-19)
 
-An outside review of 0.7.0. This release takes the findings where the
-text claimed more than its mechanisms held (a retry, a rollout order,
+This release closes the places where the text claimed more than its
+mechanisms held (a retry, a rollout order,
 a restore), where a rule was stated for a request and left open for a
 socket and a worker, and where a scaffold or a lens had drifted from
 the guideline.
@@ -2073,10 +2068,9 @@ less than `OpContext` declares less.
 
 ## 0.6.0 (2026-09-19)
 
-Two outside reviews of 0.5.1. The cheap drift is running out; this
-release takes the one design flaw both repositories shared, the
-contracts the reviews showed to be looser than the prose, and the
-decisions the prose had made without naming them.
+This release fixes the one design flaw the guideline and its reference
+shared, tightens the contracts that were looser than the prose, and
+names the decisions the prose had made without naming them.
 
 ### Added
 
@@ -2138,9 +2132,9 @@ decisions the prose had made without naming them.
 
 ## 0.5.1 (2026-09-19)
 
-Two outside reviews of 0.5.0. This release takes the findings that
-name a real conflict between two rules, a crash window a scaffold left
-open, or a drift between the guideline and its scaffolds.
+This release resolves a conflict between two rules, closes a crash
+window a scaffold left open, and removes the drift between the
+guideline and its scaffolds.
 
 ### Changed
 
@@ -2182,10 +2176,8 @@ open, or a drift between the guideline and its scaffolds.
 
 ## 0.5.0 (2026-09-19)
 
-Two outside reviews of 0.4.4 read the guideline end to end and ran its
-gates. This release takes the findings that sharpen a rule or repair a
-claim the mechanism did not earn, each verified against the reference
-implementation.
+This release sharpens rules and repairs the claims a mechanism did not
+earn, each verified against the reference implementation.
 
 ### Added
 
@@ -2276,8 +2268,7 @@ implementation.
   and the event append it performs (`(org_id, row)`), which "Database
   Roles" and the scaffold already prescribe; lens `CTX-16` says the
   same. Lens `OM-03` lists `updated_by` among the `Trackable` fields,
-  as "Naming Entities" does. Both from the second review of the
-  reference implementation's sibling. Patch.
+  as "Naming Entities" does. Patch.
 
 ## 0.4.2 (2026-09-19)
 
@@ -2351,8 +2342,7 @@ implementation.
   `tests/test_settings.py` (every settings field in `.env.example`,
   every field without a local default set or wired in each Terraform
   environment); `docs/adopting.md` says to update the plugin before a
-  scaffold or a review. From the second one-shot run of
-  `arch-scaffold-new`. Patch.
+  scaffold or a review. Patch.
 
 ### Added
 
