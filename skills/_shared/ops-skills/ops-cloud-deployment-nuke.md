@@ -1,7 +1,8 @@
 ---
 name: ops-cloud-deployment-nuke
 description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root, the state prefix, the images, and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the profile and the account against deployment/cloud/environments.json. Refuses production unless --confirm production is typed and a released change on release, applied, sets the database's deletion protection off; applies from the environment's exact origin commit in a clean worktree. Supports --dry-run. The one skill besides create that needs a credential that writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
+disable-model-invocation: true
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*)
 ---
 
 # ops-cloud-deployment-nuke
@@ -89,9 +90,12 @@ and a worker added since is one more name.
      --profile <admin_profile>
    ```
 
-4. Run the script dry, show the person what it printed, and wait for
-   the person's word before the real run, in staging as in
-   production; an unattended session stops after the dry run:
+4. Run the script dry, show the person what it printed, and stop.
+   The real run waits for an explicit go the person types in this
+   session after reading the dry run, in staging as in production;
+   an unattended session ends at the dry run. The script is not
+   among this skill's tools, so each run also asks the person before
+   it starts:
 
    ```bash
    scripts/cloud_nuke.sh <env> --dry-run

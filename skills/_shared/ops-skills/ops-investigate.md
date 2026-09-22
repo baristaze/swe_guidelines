@@ -47,18 +47,31 @@ the boundary gone. Every `aws` command below carries
 substitute.
 
 The env file `~/.config/acme/ops/<env>.env` is owner-only and outside
-the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
-`ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
-`ACME_PROVISIONER_EMAIL` with `ACME_PROVISIONER_PASSWORD`, belongs to
-the traffic generator alone), `ACME_ERROR_TRACKER_URL`, and
-`ACME_ERROR_TRACKER_TOKEN`. `local.env`, which `make seed` writes,
-points at the compose stack
-and adds the twins, `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on
-the ports `.env` names. The operator signs in with its password and a TOTP code, which
-`acme-ops` derives from `ACME_OPERATOR_TOTP_SECRET`, the secret
-`acme-ops enrol` wrote into the same file when the operator enrolled.
-Read the file, use its values in commands, and never print the
-password, the secret, a code, or the token.
+the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_TOKEN` (a
+`read` operator token; the file's `ACME_PROVISIONER_TOKEN`, a `write`
+token, belongs to the traffic generator alone), `ACME_ERROR_TRACKER_URL`,
+and `ACME_ERROR_TRACKER_TOKEN`. `local.env`, which `make seed` writes,
+points at the compose stack and adds the twins, `ACME_PROMETHEUS_URL`
+and `ACME_JAEGER_URL`, on the ports `.env` names. It holds no password
+and no TOTP secret: an agent never signs in with a password.
+
+Never read the env file, with `Read`, `cat`, or anything else: its
+values stay out of this conversation. A command that needs one sources
+the file and makes the call in the same command, because shell state
+does not persist between calls. Every block below that names an
+`ACME_` variable starts with that line and runs as one command:
+
+```bash
+set -a; . ~/.config/acme/ops/<env>.env; set +a
+curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/me"
+```
+
+`acme-ops` reads the file itself from `--env`. Never print a token.
+The operator token carries one permission and expires within the
+hour. When a call answers `401`, stop and ask the person to run
+`uv run acme-ops token --env <env> --identity operator` in their own
+terminal, which asks there for the password and the TOTP code; never
+ask for either in the conversation.
 
 ## Procedure
 
@@ -66,8 +79,8 @@ The process names below are the ones `deployment/README.md` lists;
 `api` and `maintenance` are a tree the scaffold built with its worker,
 and a worker added since is one more name.
 
-1. Verify the credential as Role and credential states. Read the env
-   file. Compute the window: `--since` back from now, as epoch seconds
+1. Verify the credential as Role and credential states. Compute the
+   window: `--since` back from now, as epoch seconds
    for the cloud and as a Prometheus range for local.
 2. Read the platform's size first:
 
@@ -78,7 +91,7 @@ and a worker added since is one more name.
    It prints tenants, users, and the entities written in the last day
    (one count per entity the product exposes on the operator plane,
    and the events), through `GET /v1/admin/size` with the env file's
-   operator identity. Every finding below is read against this number
+   operator token. Every finding below is read against this number
    and against whose traffic it was.
 3. Alarms. Cloud:
 
@@ -89,7 +102,8 @@ and a worker added since is one more name.
 
    Local has no alarm topic: run the alarm conditions as Prometheus
    queries against `$ACME_PROMETHEUS_URL/api/v1/query`, over the
-   window `[<since>]`:
+   window `[<since>]`, each `curl` sourcing the env file in the same
+   command:
 
    - 5xx ratio: `sum(rate(acme_http_requests_total{status=~"5.."}[<since>])) / sum(rate(acme_http_requests_total[<since>]))`, alarm above 0.01
    - targets up: `up{job!="prometheus"}`, alarm on any 0 (a host process
@@ -119,6 +133,7 @@ and a worker added since is one more name.
    Local:
 
    ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
      --data-urlencode 'query=sum by (route, status) (rate(acme_http_requests_total[5m]))'
    curl -sG "$ACME_PROMETHEUS_URL/api/v1/query" \
@@ -149,6 +164,7 @@ and a worker added since is one more name.
    GlitchTip:
 
    ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" \
      "$ACME_ERROR_TRACKER_URL/api/0/organizations/<org>/issues/?statsPeriod=<since>"
    ```
@@ -157,6 +173,7 @@ and a worker added since is one more name.
    `acme`):
 
    ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" "$ACME_ERROR_TRACKER_URL/api/0/organizations/"
    ```
 
@@ -192,6 +209,7 @@ and a worker added since is one more name.
    the request id is the span attribute `acme.request_id`):
 
    ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -sG "$ACME_JAEGER_URL/api/v3/traces" \
      --data-urlencode query.service_name=api \
      --data-urlencode "query.start_time_min=<start, RFC 3339>" \
@@ -232,9 +250,10 @@ and a worker added since is one more name.
 
 - No write to the cloud: no `aws` verb that is not `get`, `describe`,
   `list`, `start-query`, `get-query-results`, or `tail`.
-- No secret value printed: the password and the token stay in the env
-  file, `aws secretsmanager get-secret-value` is denied to the role
-  and never attempted.
+- No secret value read or printed: the tokens stay in the env file,
+  which is sourced and never read, and
+  `aws secretsmanager get-secret-value` is denied to the role and
+  never attempted.
 - No tenant data: the signals carry no tenant id, and this skill reads
   no tenant's rows. That is `ops-root-cause`, for one named tenant.
 - No `terraform apply`, no console clicks, no scaling by hand.
