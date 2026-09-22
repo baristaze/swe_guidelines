@@ -195,7 +195,15 @@ the order the guideline presents them, never by number.
   `ctx.require(<permission>)` as the first line of every mutating
   manager operation, before any read, the ones a worker calls
   included (complete, fail, defer, release, extend the lease), as The
-  Business Layer (Shape of an Operation) states. A `core`-role write
+  Business Layer (Shape of an Operation) states. An operator operation
+  opens with `octx.require(...)` the same way. The one exemption is an
+  operation whose stage carries no permissions: one on the request
+  stage (`sign_up`, `grant_operator`, `disable_operator`, `seed_totp`,
+  the sweep's purges), one on the identity stage (the exchange, the
+  sign-out), and the outbox handoff that takes `(org_id, row)`
+  (`enqueue_relayed`). Its authority is the stage it takes, and the
+  request-stage test names each one on the request stage, so it opens
+  with no `require`. A `core`-role write
   lands the core row and its `OutboxRow`s in one storage method,
   `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
   once. A relay in the request path never raises: the write has

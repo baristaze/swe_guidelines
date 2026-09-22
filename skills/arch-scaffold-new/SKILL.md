@@ -257,7 +257,9 @@ Infra distribution, under `infra/`:
 10. Before the review, sweep the tree for the four misses a fresh
     scaffold makes most, and fix each: a setting the Terraform root
     does not pass to the service, a mutating manager operation whose
-    first line is not `ctx.require(...)`, a socket route mounted
+    first line is not `ctx.require(...)` or `octx.require(...)`,
+    leaving out the operations the conventions exempt (the request
+    stage, the identity stage, and the outbox handoff), a socket route mounted
     outside the gateway, a route that writes a durable row (201 or 202)
     without the `Idempotency-Key` dependency. Then read
     `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
