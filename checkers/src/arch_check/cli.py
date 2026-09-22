@@ -1,8 +1,9 @@
 """The `arch-check` command line.
 
 Exit status: 0 when clean, 1 when there are findings, 2 on a
-configuration or usage error. A file that does not parse is a `PARSE`
-finding, never a crash.
+configuration or usage error or when a rule raised. A file that does
+not parse is a `PARSE` finding, never a crash; a rule that raises is an
+`ERROR` finding, and the other rules still run.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from arch_check import __version__, registry, report
 from arch_check.config import ConfigError, find_root, load
 from arch_check.model import GROUPS, Rule
 from arch_check.project import Project
+from arch_check.runner import ERROR as RULE_ERROR
 from arch_check.runner import run
 
 CLEAN, FINDINGS, ERROR = 0, 1, 2
@@ -141,6 +143,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return error(str(e))
     except Exception:
         traceback.print_exc()
-        return error("a rule failed; this is a bug in the rule, not in the project")
+        return error("arch-check failed outside any rule; this is a bug in arch-check, not in the project")
     print(report.json(result) if args.format == "json" else report.text(result))
+    failed = [f for f in result.findings if f.rule == RULE_ERROR]
+    if failed:
+        return error(f"{len(failed)} rule(s) raised; this is a bug in the rule, not in the project")
     return FINDINGS if result.findings else CLEAN

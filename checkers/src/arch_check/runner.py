@@ -7,23 +7,33 @@ finding is either accepted by an exception (config or inline) or kept.
 An exception that names a missing ADR, a rule that did not run, or a
 line with nothing to accept is itself an `IGNORE` finding, so an
 exception cannot outlive the code it excused.
+
+Each rule runs on its own. A rule that raises is an `ERROR` finding
+that names it, what it found before it raised is dropped, and the
+other rules still run; the command exits 2, because a rule that did
+not finish has not cleared the project.
 """
 
 from __future__ import annotations
 
 import io
 import re
+import sys
 import tokenize
+import traceback
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
 from arch_check import __version__
-from arch_check.config import PYPROJECT, adr_by_number, glob_match
+from arch_check.config import PYPROJECT, ConfigError, adr_by_number, glob_match
 from arch_check.model import FRAMEWORK, Applied, Finding, Rule
-from arch_check.project import Project
+from arch_check.project import MAX_DEPTH, Project
 
 PARSE = "PARSE"
 IGNORE = "IGNORE"
+ERROR = "ERROR"
+RECURSION = 12 * MAX_DEPTH
+"""The recursion limit the rules run under: enough frames for a recursive walk of the deepest tree a rule is given."""
 MARKER = re.compile(r"#\s*arch-check:\s*ignore\[(?P<rules>[^\]]*)\](?P<rest>.*)$")
 ADR = re.compile(r"^\s*ADR-(\d{4})\b")
 
@@ -119,14 +129,32 @@ def read_markers(project: Project, paths: set[str], known: set[str], findings: l
 def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequence[str] = ()) -> Result:
     """Run `rules`; `known` is every registered id; `paths` limits what is reported, never what is read."""
     raw: list[Finding] = []
-    for r in rules:
-        for v in r.check(project):
-            raw.append(Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin))
-    project.parse_all()
+    errors: list[Finding] = []
+    failed: set[str] = set()
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(limit, RECURSION))
+    try:
+        for r in rules:
+            try:
+                found = [Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin) for v in r.check(project)]
+            except ConfigError:
+                raise
+            except Exception as e:  # MemoryError and RecursionError included: one rule never stops the others
+                traceback.print_exc(file=sys.stderr)
+                failed.add(r.id)
+                detail = f": {e}" if str(e) else ""
+                errors.append(
+                    framework(ERROR, PYPROJECT, 1, 1, f"{r.id} raised {type(e).__name__}{detail}; its findings are missing")
+                )
+            else:
+                raw.extend(found)
+        project.parse_all()
+    finally:
+        sys.setrecursionlimit(limit)
     for rel, (line, message) in sorted(project.parse_errors.items()):
         raw.append(framework(PARSE, rel, line, 1, f"does not parse: {message}"))
 
-    ran = {r.id for r in rules}
+    ran = {r.id for r in rules} - failed
     kept: list[Finding] = []
     meta: list[Finding] = []
     applied: list[Applied] = []
@@ -172,6 +200,7 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
     findings = kept + meta
     if paths:
         findings = [f for f in findings if any(f.path == p or f.path.startswith(p.rstrip("/") + "/") for p in paths)]
+    findings += errors
     findings.sort(key=lambda f: (f.path, f.line, f.col, f.rule, f.message))
     applied.sort(key=lambda a: (a.path, a.line, a.rule))
     return Result(

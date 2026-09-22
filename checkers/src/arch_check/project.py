@@ -31,6 +31,12 @@ SKIP_DIRS = frozenset(
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 
+MAX_DEPTH = 2500
+"""The deepest syntax tree the rules walk. A rule walks a tree by
+recursion (`ast.unparse`, a `NodeVisitor`), and the runner raises the
+recursion limit to cover this depth; a file that nests deeper is a
+`PARSE` finding, never a rule that fails on it."""
+
 
 @dataclass(frozen=True)
 class SourceFile:
@@ -183,9 +189,15 @@ class Project:
             except SyntaxError as e:
                 self._trees[file.rel] = None
                 self.parse_errors[file.rel] = (e.lineno or 1, e.msg)
-            except (OSError, ValueError, RecursionError) as e:
+            except (OSError, ValueError, RecursionError, MemoryError) as e:
+                # a source that exhausts the parser's stack is this file's defect, not a crash of the run
                 self._trees[file.rel] = None
-                self.parse_errors[file.rel] = (1, str(e))
+                self.parse_errors[file.rel] = (1, str(e) or type(e).__name__)
+            else:
+                tree = self._trees[file.rel]
+                if tree is not None and depth(tree) > MAX_DEPTH:
+                    self._trees[file.rel] = None
+                    self.parse_errors[file.rel] = (1, f"nests deeper than the {MAX_DEPTH} levels arch-check walks")
         return self._trees[file.rel]
 
     def trees(self, *prefixes: str) -> Iterator[tuple[SourceFile, ast.Module]]:
@@ -272,6 +284,17 @@ class Project:
 
 
 # --- ast helpers
+
+
+def depth(tree: ast.AST) -> int:
+    """How deep a syntax tree nests, counted with a stack so a deep tree cannot exhaust it."""
+    deepest = 0
+    stack = [(tree, 1)]
+    while stack:
+        node, level = stack.pop()
+        deepest = max(deepest, level)
+        stack.extend((child, level + 1) for child in ast.iter_child_nodes(node))
+    return deepest
 
 
 def is_under(name: str, prefix: str) -> bool:
