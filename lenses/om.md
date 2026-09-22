@@ -53,9 +53,9 @@ cross-tenant sweep may instead get the tenant back beside each row
 
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying an attribute that exists only for a
-column's sake; `org_id` on an entity every reader
-of which holds a context; an entity a reader without one takes, such
-as an `OutboxRow` or an `Event`, declared without it.
+column's sake; `org_id` on an entity every reader of which holds a
+context, an audit entry among them; an entity a reader without one
+takes, such as an `OutboxRow` or an `Event`, declared without it.
 
 **Severity.** medium
 

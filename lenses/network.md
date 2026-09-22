@@ -519,17 +519,18 @@ retry. A manager records one event per write through the outbox.
 
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, `actor_id`, a typed payload) and its table's
-role; the audit entry, the same shape plus the request id and the app;
-the append method, the cursor row it locks, and where the head `seq`
+role; the audit entry, the same fields plus the request id and the
+app, whose `org_id` is a storage column and not a model field; the
+append method, the cursor row it locks, and where the head `seq`
 the pong carries is read from; the `after_seq` read. (Whether the
 event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; `MAX(seq) + 1` computed in the append and retried on the
 collision; an event table in the `core` role; an event with no
-`actor_id`, or an audit entry that is not the event's shape plus the
-request id and the app; code that reads `seq` as the order of core
-writes.
+`actor_id`; an audit entry that lacks the request id, the app, or a
+field of the event other than `org_id`, or one that declares `org_id`
+as a model field; code that reads `seq` as the order of core writes.
 
 **Severity.** medium
 
