@@ -117,7 +117,10 @@ def head_name(node: ast.AST | None) -> str | None:
 
 
 def union_members(node: ast.AST | None) -> list[str]:
-    """The names a top-level annotation is: `A | None` and `Optional[A]` give `A` and `None`."""
+    """The names a top-level annotation is: `A | None` and `Optional[A]` give `A` and `None`.
+
+    `Annotated[A, ...]` is `A`: the metadata after it changes no type.
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
@@ -125,6 +128,9 @@ def union_members(node: ast.AST | None) -> list[str]:
             return []
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return [*union_members(node.left), *union_members(node.right)]
+    if isinstance(node, ast.Subscript) and last(dotted(node.value)) == "Annotated":
+        first = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) and node.slice.elts else node.slice
+        return union_members(first)
     if isinstance(node, ast.Subscript) and last(dotted(node.value)) in {"Optional", "Union"}:
         inner = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         return [m for e in inner for m in union_members(e)]

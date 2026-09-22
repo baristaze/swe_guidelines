@@ -29,6 +29,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The tool versions live in .github/pins/, where dependabot updates them.
+      - name: read the tool pins
+        id: pins
+        run: |
+          echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+          echo "claude=$(sed -n 's|^ *"@anthropic-ai/claude-code": *"\([^"]*\)".*|\1|p' .github/pins/package.json)" >> "$GITHUB_OUTPUT"
       # Both setup actions cache their downloads between runs. The npm cache
       # holds Claude Code and markdownlint; the uv cache holds Python, pytest,
       # pyyaml, jsonschema, ruff, and mypy. Each key is the file that pins the versions.
@@ -36,18 +42,49 @@ jobs:
         with:
           node-version: "24.21.0"
           cache: npm
-          cache-dependency-path: .github/workflows/ci.yml
+          cache-dependency-path: .github/pins/package.json
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
-          version: "0.12.17"
+          version: ${{ steps.pins.outputs.uv }}
           python-version: ${{ matrix.python }}
           enable-cache: true
           cache-python: true
           cache-dependency-glob: |
-            .github/workflows/ci.yml
+            .github/pins/requirements.txt
             Makefile
       - name: install Claude Code
         # `claude plugin validate` needs no account, so `make plugin` runs here too.
-        run: npm install -g @anthropic-ai/claude-code@2.1.276
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pins.outputs.claude }}
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
       - name: make check
         run: make check
+
+  arch-check:
+    # arch-check needs Python 3.11 (tomllib), a newer floor than the
+    # scripts'. Its tests skip on 3.10, so they run here on the floor
+    # itself, and the wheel is built and its entry point run.
+    name: arch-check on Python 3.11, from its built wheel
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: read the tool pins
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          python-version: "3.11"
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: |
+            .github/pins/requirements.txt
+            checkers/pyproject.toml
+            Makefile
+      - name: the tests, the arch-check ones included, on its floor
+        run: make test
+      - name: build the wheel and run the arch-check entry point from it
+        run: make checkers-dist

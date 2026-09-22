@@ -34,6 +34,7 @@ MIXIN_RANK: dict[str, int] = {
     "IdentifiableMixin": 0,
     "GlobalIdentifiableMixin": 0,
     "FeedIdentifiableMixin": 0,
+    "IdentityScopedMixin": 0,
     "NamedMixin": 1,
     "CreatedMixin": 2,
     "TrackableMixin": 2,
@@ -492,7 +493,9 @@ def blank(text: str) -> str:
 def sql_code(text: str) -> str:
     """SQL with comments and string literals blanked out, line breaks kept so offsets keep their lines.
 
-    A `'...'` string is blanked, `''` inside it included; an `E'...'`
+    A double-quoted identifier (`"it's"`, `"a--b"`) is kept as written,
+    `""` inside it included, so a quote or a dash in a name opens no
+    string and no comment. A `'...'` string is blanked, `''` inside it included; an `E'...'`
     string also skips a backslash and the character after it. A
     dollar-quoted body (`$$...$$`, `$tag$...$tag$`) is a function or
     `DO` body: its own strings and comments are blanked the same way,
@@ -503,7 +506,14 @@ def sql_code(text: str) -> str:
     while i < n:
         c = text[i]
         word_before = i > 0 and (text[i - 1].isalnum() or text[i - 1] in "_$")
-        if text.startswith("--", i):
+        if c == '"':
+            j = i + 1
+            while j < n and (text[j] != '"' or text.startswith('""', j)):
+                j += 2 if text.startswith('""', j) else 1
+            j = min(j + 1, n)
+            out.append(text[i:j])
+            i = j
+        elif text.startswith("--", i):
             j = text.find("\n", i)
             j = n if j < 0 else j
             out.append(" " * (j - i))
@@ -640,11 +650,15 @@ CREATE_INDEX = re.compile(
     r"(?:(?P<name>" + NAME + r")\s+)?ON\s+(?:ONLY\s+)?(?P<table>" + NAME + ")",
     re.IGNORECASE,
 )
+RENAME_TABLE = re.compile(r"\s*RENAME\s+TO\s+(?P<new>" + NAME + r")\s*$", re.IGNORECASE)
+"""The action of `ALTER TABLE <old> RENAME TO <new>`, read on the rest of the statement."""
+ALTER_INDEX_RENAME = re.compile(
+    r"\bALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?(?P<old>" + NAME + r")\s+RENAME\s+TO\s+(?P<new>" + NAME + ")", re.IGNORECASE
+)
 DROP_INDEX = re.compile(r"\bDROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
 DROP_TABLES = re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
 SERIAL = frozenset({"serial", "bigserial", "smallserial", "serial2", "serial4", "serial8"})
 IDENTITY = re.compile(r"\bGENERATED\b[^,]*?\bAS\s+IDENTITY\b", re.IGNORECASE)
-LIVING = re.compile(r"\bdeleted_at\s+IS\s+NULL\b", re.IGNORECASE)
 TABLE_CONSTRAINT = re.compile(r"(?:PRIMARY\s+KEY|UNIQUE|CHECK|FOREIGN\s+KEY|EXCLUDE)\b", re.IGNORECASE)
 
 
@@ -721,8 +735,9 @@ def paren_names(text: str) -> list[str]:
 
 class SqlTables:
     """The tables a role's chain leaves: each column's default and identity, the primary key, and every unique
-    constraint and unique index with whether it is partial on the living. A name the chain gives no constraint is
-    the one the database would, `<table>_pkey` and `<table>_<columns>_key`, so a later `DROP CONSTRAINT` finds it.
+    constraint and unique index with whether it is partial on the living. A name the chain gives no constraint or
+    index is the one the database would, `<table>_pkey`, `<table>_<columns>_key`, and `<table>_<columns>_idx`, so a
+    later `DROP` finds it. A table, an index, or a constraint renamed keeps what the chain knows of it.
     """
 
     def __init__(self) -> None:
@@ -734,6 +749,7 @@ class SqlTables:
             ("create", CREATE_TABLE),
             ("alter", ALTER_TABLE_ANY),
             ("index", CREATE_INDEX),
+            ("rename_index", ALTER_INDEX_RENAME),
             ("drop_index", DROP_INDEX),
             ("drop_table", DROP_TABLES),
         ):
@@ -742,9 +758,21 @@ class SqlTables:
             if kind == "create":
                 self.create(rel, code, m)
             elif kind == "alter":
-                table = self.tables.get(ident(m.group("table")))
-                if table is not None:
-                    self.alter(rel, code, table, ident(m.group("table")), m.end())
+                name = ident(m.group("table"))
+                table = self.tables.get(name)
+                if table is None:
+                    continue
+                new = renamed(name, statement_tail(code, m.end()))
+                if new is not None:
+                    self.tables[new] = self.tables.pop(name)
+                else:
+                    self.alter(rel, code, table, name, m.end())
+            elif kind == "rename_index":
+                old, new = (ident(m.group(g)).rpartition(".")[2] for g in ("old", "new"))
+                for t in self.tables.values():
+                    if old in t.uniques:
+                        key = t.uniques.pop(old)
+                        t.uniques[new] = UniqueKey(new, key.at, key.living)
             elif kind == "index":
                 self.index(rel, code, m)
             elif kind == "drop_index":
@@ -819,6 +847,13 @@ class SqlTables:
                     table.primary = None
             elif m := re.match(r"DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(" + NAME + ")", action, re.IGNORECASE):
                 table.columns.pop(ident(m.group(1)), None)
+            elif m := re.match(r"RENAME\s+CONSTRAINT\s+(" + NAME + r")\s+TO\s+(" + NAME + ")", action, re.IGNORECASE):
+                old, new = ident(m.group(1)), ident(m.group(2))
+                if old in table.uniques:
+                    key = table.uniques.pop(old)
+                    table.uniques[new] = UniqueKey(new, key.at, key.living)
+                if table.primary and table.primary[0] == old:
+                    table.primary = (new, table.primary[1])
             elif m := re.match(r"RENAME\s+(?:COLUMN\s+)?(" + NAME + r")\s+TO\s+(" + NAME + ")", action, re.IGNORECASE):
                 old, new = ident(m.group(1)), ident(m.group(2))
                 if old in table.columns:
@@ -842,9 +877,73 @@ class SqlTables:
         tail = statement_tail(code, m.end())
         where = re.search(r"\bWHERE\b(.*)", tail, re.IGNORECASE | re.DOTALL)
         at = Where(rel, line_of(code, m.start()), "")
-        unnamed = f"{short_name(m.group('table'))}_{at.line}_idx"
-        name = ident(m.group("name")).rpartition(".")[2] if m.group("name") else unnamed
-        table.uniques[name] = UniqueKey(name, at, living=bool(where and LIVING.search(where.group(1))))
+        if m.group("name"):
+            name = ident(m.group("name")).rpartition(".")[2]
+        else:
+            name = "_".join([short_name(m.group("table")), *index_columns(tail), "idx"])
+        table.uniques[name] = UniqueKey(name, at, living=bool(where and living(where.group(1))))
+
+
+def renamed(table: str, tail: str) -> str | None:
+    """The name `ALTER TABLE <table> RENAME TO <new>` leaves: the new name in the table's own schema, else None."""
+    m = RENAME_TABLE.match(tail)
+    if m is None:
+        return None
+    schema, _, _ = table.rpartition(".")
+    new = ident(m.group("new")).rpartition(".")[2]
+    return f"{schema}.{new}" if schema else new
+
+
+def index_columns(tail: str) -> list[str]:
+    """The column part of the name Postgres gives an unnamed index, one word per key.
+
+    A column is its name, a function call is the function's name
+    (`lower(email)` gives `lower`), and any other expression is `expr`,
+    so `ON t (org_id, lower(email))` is named `t_org_id_lower_idx`.
+    """
+    open_at = tail.find("(")
+    if open_at < 0:
+        return []
+    out: list[str] = []
+    for _, item in split_items(tail, open_at + 1, closing_paren(tail, open_at)):
+        while item.startswith("(") and closing_paren(item, 0) == len(item) - 1:
+            item = item[1:-1].strip()
+        m = re.match(NAME, item)
+        out.append(ident(m.group(0)).rpartition(".")[2] if m else "expr")
+    return out
+
+
+def living(predicate: str) -> bool:
+    """Whether an index predicate holds only rows with `deleted_at IS NULL`.
+
+    It does when the predicate is that test, or an `AND` of terms one of
+    which is. An `OR` at the top, or a `NOT` before the test, lets a dead
+    row in.
+    """
+    text = predicate.strip()
+    while text.startswith("(") and closing_paren(text, 0) == len(text) - 1:
+        text = text[1:-1].strip()
+    if re.fullmatch(r"(?:" + NAME + r"\s*\.\s*)?deleted_at\s+IS\s+NULL", text, re.IGNORECASE):
+        return True
+    if len(top_level(text, "OR")) > 1:
+        return False
+    terms = top_level(text, "AND")
+    return len(terms) > 1 and any(living(t) for t in terms)
+
+
+def top_level(text: str, word: str) -> list[str]:
+    """`text` split on `word` (`AND`, `OR`) where it stands outside every parenthesis; one item when it never does."""
+    parts: list[str] = []
+    depth, begin = 0, 0
+    for m in re.finditer(r"[()]|\b" + word + r"\b", text, re.IGNORECASE):
+        if m.group(0) == "(":
+            depth += 1
+        elif m.group(0) == ")":
+            depth -= 1
+        elif depth == 0:
+            parts.append(text[begin : m.start()])
+            begin = m.end()
+    return [*parts, text[begin:]] if parts else [text]
 
 
 def short_name(name: str) -> str:

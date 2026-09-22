@@ -35,6 +35,8 @@ Rules:
   operator (`;`, `&`, `|`, a redirect, a substitution, a quote) that would
   chain a second command; a make entry names a target, so `Bash(make:*)`
   and `Bash(make -C dir:*)` are refused;
+- every skill and every ops-skill template has a non-empty allowed-tools:
+  a skill without one runs with every tool the session has;
 - allowed-tools names only what the body runs; the checker holds the make
   targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
   `make <target>`, as whole words, appears inside a backticked span of the
@@ -210,6 +212,9 @@ def lens_groups() -> set[str]:
     return groups
 
 
+NO_TOOLS = "no allowed-tools; a skill names the tools it runs"
+"""A skill with no allowed-tools runs with every tool the session has, so the key is required."""
+
 OPS_TEMPLATES = SKILLS / "_shared" / "ops-skills"
 """The operational skills a scaffold copies into a new tree, where their frontmatter becomes a real skill's."""
 
@@ -234,6 +239,8 @@ def check_template(path: Path, errors: list[str]) -> None:
     elif head and not QUOTED_DESCRIPTION.search(head.group(1)):
         errors.append(f"{rel}: description must be one double-quoted string")
     tools = fm.get("allowed-tools", "")
+    if not tools.strip().strip('"').strip():
+        errors.append(f"{rel}: {NO_TOOLS}")
     if any(" " in PARENS.sub("", t.strip()) for t in tools.split(",")):
         errors.append(f"{rel}: allowed-tools must be comma-separated")
     for tool in (t.strip() for t in tools.split(",") if t.strip()):
@@ -282,7 +289,9 @@ def main(argv: Sequence[str] = ()) -> int:
         if desc and head and not QUOTED_DESCRIPTION.search(head.group(1)):
             errors.append(f"{rel}: description must be one double-quoted string")
         tools = fm.get("allowed-tools", "")
-        if tools:
+        if not tools.strip().strip('"').strip():
+            errors.append(f"{rel}: {NO_TOOLS}")
+        else:
             if any(" " in PARENS.sub("", t.strip()) for t in tools.split(",")):
                 errors.append(f"{rel}: allowed-tools must be comma-separated")
             body = body_of(text)

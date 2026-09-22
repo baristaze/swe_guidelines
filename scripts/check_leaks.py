@@ -15,18 +15,24 @@ reference implementation, whose name is refused in every tracked text
 file (a file holding a NUL byte or bytes that are not UTF-8 is binary
 and skipped) except the closing Next section of architecture.md, which links it
 on purpose, and the changelog, which is history.
+The product vocabulary is also refused in the published text that is
+not Markdown: the workflows and templates under `.github/`, the plugin
+manifests, the YAML and JSON of the skills, the agents, and the
+benchmark, and the docstrings of the Python under `scripts/`,
+`checkers/`, and `benchmark/`.
 Exit status is non-zero on any hit. Standard library only.
 """
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import SKIP_DIRS, arguments, markdown_files
+from _common import SKIP_DIRS, SKIP_PATHS, arguments, markdown_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -94,17 +100,53 @@ SCOPES: list[tuple[str, list[str]]] = [
 ]
 
 
+# The published text that is not Markdown: (directory, suffixes, groups).
+# The manifests, the workflows, and the YAML a skill or a benchmark
+# scenario carries are read whole.
+TEXT_SCOPES: list[tuple[str, tuple[str, ...], list[str]]] = [
+    (".github/", (".yml", ".yaml"), ["product"]),
+    (".claude-plugin/", (".json",), ["product"]),
+    ("skills/", (".yml", ".yaml", ".json"), ["product"]),
+    ("agents/", (".yml", ".yaml", ".json"), ["product"]),
+    ("benchmark/", (".yml", ".yaml", ".json"), ["product"]),
+]
+
+# The Python whose docstrings are published prose: the scripts, the
+# checker, and the benchmark harness. Code and comments are not read, so
+# this file can hold the terms it refuses; the tests are not read either.
+DOCSTRING_SCOPES = ("scripts/", "checkers/", "benchmark/")
+
+
 def in_scope(rel: str, scope: str) -> bool:
     return rel.startswith(scope) if scope.endswith("/") else rel == scope
 
 
-def scan(root: Path, path: Path, label: str, errors: list[str]) -> None:
+def docstring_lines(path: Path) -> set[int]:
+    """The line numbers the docstrings of a Python file span; none when it does not parse."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, ValueError):
+        return set()
+    out: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        first = node.body[0] if node.body else None
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            out.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return out
+
+
+def scan(root: Path, path: Path, label: str, errors: list[str], only: set[int] | None = None) -> None:
+    """Report every refused term of `label` in a file; `only` limits the scan to those line numbers."""
     compiled = [re.compile(p, re.IGNORECASE) for p in REFUSED_TERMS[label]]
     # The Next section links the reference on purpose, in the guideline only;
     # the same heading pasted anywhere else exempts nothing.
     exempt = label == "reference" and path.relative_to(root).as_posix() == "architecture.md"
     in_next = False
     for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if only is not None and ln not in only:
+            continue
         if exempt and line.startswith("## "):
             in_next = line.strip() == NEXT_SECTION
         if in_next:
@@ -125,8 +167,8 @@ def is_text(path: Path) -> bool:
     return b"\0" not in data
 
 
-def reference_files(root: Path) -> list[Path]:
-    """Every text file the reference name is refused in, from git when it can."""
+def text_files(root: Path) -> list[Path]:
+    """Every text file of the repository, from git when it can, the skipped directories left out."""
     try:
         out = subprocess.run(
             ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
@@ -140,11 +182,16 @@ def reference_files(root: Path) -> list[Path]:
     return [
         root / rel
         for rel in sorted(set(out))
-        if rel not in REFERENCE_ALLOWED_FILES
-        and not any(part in SKIP_DIRS for part in rel.split("/")[:-1])
+        if not any(part in SKIP_DIRS for part in rel.split("/")[:-1])
+        and not any(tuple(rel.split("/")[: len(skip)]) == skip for skip in SKIP_PATHS)
         and (root / rel).is_file()
         and is_text(root / rel)
     ]
+
+
+def reference_files(root: Path) -> list[Path]:
+    """Every text file the reference name is refused in."""
+    return [p for p in text_files(root) if p.relative_to(root).as_posix() not in REFERENCE_ALLOWED_FILES]
 
 
 def main(argv: Sequence[str] = ()) -> int:
@@ -159,14 +206,28 @@ def main(argv: Sequence[str] = ()) -> int:
             if in_scope(rel, scope):
                 mine = labels.setdefault(path, [])
                 mine.extend(g for g in groups if g not in mine)
+    docstrings: dict[Path, list[str]] = {}
+    for path in text_files(ROOT):
+        rel = path.relative_to(ROOT).as_posix()
+        for scope, suffixes, groups in TEXT_SCOPES:
+            if in_scope(rel, scope) and rel.endswith(suffixes):
+                mine = labels.setdefault(path, [])
+                mine.extend(g for g in groups if g not in mine)
+        if rel.endswith(".py") and rel.startswith(DOCSTRING_SCOPES):
+            docstrings[path] = ["product"]
     for path in sorted(labels):
         for label in labels[path]:
             scan(ROOT, path, label, errors)
+    for path in sorted(docstrings):
+        lines = docstring_lines(path)
+        for label in docstrings[path]:
+            if label not in labels.get(path, []):
+                scan(ROOT, path, label, errors, only=lines)
     if errors:
         print("\n".join(errors))
         print(f"\n{len(errors)} leak(s)")
         return 1
-    print(f"leaks ok: {len(labels)} file(s) scanned")
+    print(f"leaks ok: {len(set(labels) | set(docstrings))} file(s) scanned")
     return 0
 
 

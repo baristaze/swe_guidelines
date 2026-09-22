@@ -187,6 +187,13 @@ def test_a_distribution_importing_the_om_without_depending_on_it_is_om_01(tmp_pa
     assert "does not depend on acme-om" in messages(report)[0]
 
 
+def test_an_unparseable_om_pyproject_is_reported_as_one_for_om_01(tmp_path):
+    code, report = run(tmp_path, "OM-01", {"om/pyproject.toml": "[project\nname = 1\n"})
+    assert code == 1
+    assert found(report) == [("OM-01", "om/pyproject.toml")]
+    assert report["findings"][0]["message"].startswith("om/pyproject.toml does not parse (")
+
+
 def test_an_om_with_no_distribution_of_its_own_is_om_01(tmp_path):
     code, report = run(tmp_path, "OM-01", {"om/pyproject.toml": None})
     assert code == 1
@@ -311,6 +318,23 @@ def test_a_new_trait_is_not_ordered_by_om_04(tmp_path):
     code, report = run(tmp_path, "OM-04", {BASE: base, TASK: task.replace("Named, Trackable)", "Trackable, Named)")})
     assert code == 1
     assert found(report) == [("OM-04", TASK)]
+
+
+def test_a_class_nested_or_under_a_block_is_on_the_chain(tmp_path):
+    source = TASK_SOURCE + (
+        "\n\nclass Views:\n    class Base(Trackable, Identifiable):\n        pass\n\n"
+        "    class Summary(Base):\n        title: str\n\n\n"
+        "try:\n    class Legacy(Trackable, Identifiable):\n        title: str\nexcept ImportError:\n    pass\n"
+    )
+    code, report = run(tmp_path, "OM-04", {TASK: source})
+    assert code == 1
+    assert messages(report) == [
+        "Base(Trackable, Identifiable): mixins go identity, label, lifecycle, then cross-cutting traits",
+        "Legacy(Trackable, Identifiable): mixins go identity, label, lifecycle, then cross-cutting traits",
+    ]
+    code, report = run(tmp_path, "OM-03", {TASK: source.replace("        title: str\n\n\ntry", "        id: UUID\n\n\ntry")})
+    assert code == 1
+    assert [m for m in messages(report) if "Summary" in m] == ["Summary redeclares id, which Identifiable already declares"]
 
 
 # --- OM-05

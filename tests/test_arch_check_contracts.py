@@ -246,6 +246,37 @@ def test_a_root_may_construct_impls_under_con_06(tmp_path):
     assert code == 0
 
 
+def test_a_dataclass_impl_field_typed_by_an_impl_or_any_is_con_06(tmp_path):
+    impl = (
+        "from dataclasses import dataclass, field\nfrom typing import Any, ClassVar\n\n\n"
+        "@dataclass(frozen=True)\nclass TasksManagerImpl(TasksManagerInterface):\n"
+        "    storage: TasksStoragePostgresImpl\n    cache: Any\n    events: EventsManagerInterface\n"
+        "    LIMIT: ClassVar[int] = 10\n"
+    )
+    code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl})
+    assert (code, [line for _, _, line in found]) == (1, [7, 8])
+    assert "types `storage` as TasksStoragePostgresImpl" in messages[0]
+    assert "types `cache` as Any" in messages[1]
+
+
+def test_a_classmethod_constructor_is_judged_as_one_under_con_06(tmp_path):
+    impl = (
+        "class TasksManagerImpl(TasksManagerInterface):\n"
+        "    def __init__(self, storage: TasksStorageInterface) -> None:\n        self._storage = storage\n\n"
+        "    @classmethod\n    def create(cls, pool: PoolImpl) -> 'TasksManagerImpl':\n"
+        "        return cls(TasksStoragePostgresImpl.connect(pool))\n"
+    )
+    storage = (
+        "class TasksStoragePostgresImpl(TasksStorageInterface):\n"
+        "    @classmethod\n    def connect(cls, pool: Pool) -> 'TasksStoragePostgresImpl':\n        return cls()\n"
+    )
+    files = {f"{OM}/tasks/impl/manager.py": impl, f"{OM}/tasks/storage/impl/postgres.py": storage}
+    code, found, messages = run(tmp_path, "CON-06", files)
+    assert (code, [line for _, _, line in found]) == (1, [6, 7])
+    assert "TasksManagerImpl.create types `pool` as PoolImpl" in messages[0]
+    assert "constructs TasksStoragePostgresImpl" in messages[1]
+
+
 # --- CON-07
 
 
@@ -276,6 +307,15 @@ def test_a_manager_impl_by_tech_or_by_interface_is_con_07(tmp_path, header):
     assert len(found) == 1
     code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl.replace("page_size: int", "options: O")})
     assert code == 0
+
+
+def test_an_infra_impl_named_for_a_secrets_manager_is_not_con_07(tmp_path):
+    impl = (
+        "class SecretsAwsSecretsManagerImpl(SecretsInterface):\n"
+        "    def __init__(self, client: SecretsClient, ttl_seconds: int) -> None:\n        pass\n"
+    )
+    code, found, _ = run(tmp_path, "CON-07", {f"{INFRA}/secrets/aws.py": impl})
+    assert (code, found) == (0, [])
 
 
 # --- CON-08
@@ -536,6 +576,15 @@ def test_a_router_that_branches_or_takes_a_manager_is_con_15(tmp_path):
     assert "takes a TasksManagerInterface" in messages[1]
 
 
+def test_a_route_reaching_through_an_attribute_chain_is_con_15(tmp_path):
+    router = ROUTER.replace(
+        "    return await tasks.get_task(ctx, task_id)", "    return await request.app.state.tasks.get_task(ctx, task_id)"
+    )
+    code, found, messages = run(tmp_path, "CON-15", {f"{API}/routers/tasks.py": router})
+    assert (code, [line for _, _, line in found]) == (1, [7])
+    assert "does more than await one service call" in messages[0]
+
+
 # --- CON-16
 
 CONTAINER = "class AppContainer:\n    async def start(self):\n        pass\n\n    async def close(self):\n        pass\n"
@@ -732,3 +781,28 @@ def test_the_breaker_settings_defaults_pass_con_23(tmp_path):
     src += "\n\ndef build(inner):\n    return CacheBreakerImpl(inner, failure_threshold=5)\n"
     code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/settings.py": src})
     assert (code, found) == (1, [("CON-23", f"{INFRA}/settings.py", 11)])
+
+
+ALIASED_ROOT = (
+    "from functools import cached_property\n\n"
+    "from acme.infra import InfraInterface as Root\n"
+    "from acme.infra.cache import CacheInterface as Cache\n\n\n"
+    "class InfraLocalImpl(Root):\n"
+    "    def __init__(self) -> None:\n        self._cache = CacheMemoryImpl()\n\n"
+    "    @cached_property\n    def get_topics(self):\n        return self._topics\n\n\n"
+    "class CacheMemoryImpl(Cache):\n    pass\n\n\n"
+    "class CacheRedisImpl(Cache):\n    pass\n"
+)
+
+
+def test_a_base_imported_under_an_alias_is_the_class_it_names(tmp_path):
+    files = {
+        f"{INFRA}/cache/__init__.py": "from abc import ABC\n\n\nclass CacheInterface(ABC):\n    pass\n",
+        f"{INFRA}/impl/local.py": ALIASED_ROOT,
+    }
+    for rule_id in ("CON-01", "CON-03", "CON-06"):
+        code, found, _ = run(tmp_path, rule_id, files)
+        assert (rule_id, code, found) == (rule_id, 0, [])
+    code, found, messages = run(tmp_path, "CON-20", files)
+    assert (code, [line for _, _, line in found]) == (1, [12])
+    assert "caches on first use" in messages[0]

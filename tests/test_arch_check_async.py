@@ -319,6 +319,39 @@ def test_asy_01_an_aliased_client_at_module_level(tmp_path):
     assert [line for _, _, line in rules_found(report)] == [4, 5]
 
 
+def test_asy_01_a_client_built_through_a_classmethod_or_a_submodule(tmp_path):
+    files = {
+        f"{API}/clients.py": (
+            "import boto3\nimport redis\n\nCACHE = redis.Redis.from_url('redis://x')\nSESSION = boto3.session.Session()\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-01", files)
+    assert (code, [line for _, _, line in rules_found(report)]) == (1, [4, 5])
+
+
+def test_asy_01_a_client_built_under_a_module_level_try_or_if(tmp_path):
+    files = {
+        f"{API}/clients.py": (
+            "import boto3\n\ntry:\n    S3 = boto3.client('s3')\nexcept ImportError:\n    S3 = None\n\n"
+            "if DEBUG:\n    SQS = boto3.client('sqs')\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-01", files)
+    assert (code, [line for _, _, line in rules_found(report)]) == (1, [4, 9])
+
+
+def test_asy_01_a_client_built_in_a_default(tmp_path):
+    files = {
+        f"{API}/clients.py": (
+            "import boto3\n\n\ndef upload(key, s3=boto3.client('s3')):\n    pass\n\n\n"
+            "class Store:\n    def put(self, *, sqs=boto3.client('sqs')):\n        pass\n\n\n"
+            "def fine(s3=None):\n    s3 = s3 or boto3.client('s3')\n"
+        )
+    }
+    code, report = run(tmp_path, "ASY-01", files)
+    assert (code, [line for _, _, line in rules_found(report)]) == (1, [4, 9])
+
+
 def test_asy_02_a_missing_getter_and_an_impl_imported_outside_boot(tmp_path):
     files = edit(ROOT, "    @abstractmethod\n    def get_topics(self) -> TopicsInterface: ...\n\n", "")
     files[f"{API}/routers/files.py"] = (

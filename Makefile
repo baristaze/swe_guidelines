@@ -3,16 +3,22 @@ SHELL := /bin/bash
 # The scripts run through uv, so they run on the Python uv selects: the
 # one UV_PYTHON names (CI sets it per leg), else the one on PATH.
 PYTHON := uv run --no-project python
+# Every tool runs at the version .github/pins/ names, one file per
+# ecosystem, so dependabot can propose the next release of each.
+PINS := .github/pins
+pin = $(shell sed -n 's|^$(1)==||p' $(PINS)/requirements.txt)
+npm_pin = $(shell sed -n 's|^ *"$(1)": *"\([^"]*\)".*|\1|p' $(PINS)/package.json)
 # The tests need pytest, pyyaml, and jsonschema, which a system python3 may
 # not carry; uv brings them at pinned versions, locally and in CI alike.
-PYTEST := uv run --no-project --with pytest==9.1.1 --with pyyaml==6.0.3 --with jsonschema==4.26.0 python -m pytest
+PYTEST := uv run --no-project --with pytest==$(call pin,pytest) --with pyyaml==$(call pin,pyyaml) \
+  --with jsonschema==$(call pin,jsonschema) python -m pytest
 NPX := npx --yes
-MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
+MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 # ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
-RUFF := uvx ruff@0.16.8
-MYPY := uvx --with pytest==9.1.1 mypy@2.3.1
+RUFF := uvx ruff@$(call pin,ruff)
+MYPY := uvx --with pytest==$(call pin,pytest) mypy@$(call pin,mypy)
 
-.PHONY: help check lint ruff mypy lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
+.PHONY: help check lint ruff mypy lenses leaks links toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -58,6 +64,16 @@ plugin:            ## validate the plugin, marketplace, skills, and agents with 
 	  claude plugin validate . --strict && claude plugin validate skills --strict && claude plugin validate agents --strict \
 	  && $(PYTHON) scripts/check_plugin.py; \
 	else echo "plugin: claude not installed, skipped"; fi
+
+# Not part of check: arch-check needs Python 3.11, and check runs on the
+# scripts' 3.10 floor too. CI runs this on arch-check's own floor.
+checkers-dist:     ## build the arch-check wheel and run the arch-check entry point from it
+	@dist=$$(mktemp -d) && trap 'rm -rf "$$dist"' EXIT \
+	  && uv build --quiet checkers --wheel --out-dir "$$dist" \
+	  && wheel=$$(ls "$$dist"/*.whl) \
+	  && uvx --isolated --from "$$wheel" arch-check --version \
+	  && uvx --isolated --from "$$wheel" arch-check --list > /dev/null \
+	  && echo "checkers-dist ok: $$(basename "$$wheel")"
 
 gen-skills:        ## regenerate the review skills from the template and the lens files
 	$(PYTHON) scripts/gen_skills.py

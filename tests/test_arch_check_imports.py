@@ -60,10 +60,20 @@ def test_a_name_that_only_starts_like_services_is_not_a_service(tmp_path):
     assert code == 0
 
 
-def test_a_service_importing_the_om_is_the_right_direction(tmp_path):
-    write_project(tmp_path, {"services/api/src/acme/services/api/routes.py": "from acme.om.tasks import impl\n"})
+def test_a_service_importing_an_om_interface_is_the_right_direction(tmp_path):
+    write_project(tmp_path, {"services/api/src/acme/services/api/routes.py": "from acme.om.tasks import TasksManagerInterface\n"})
     code, _, _ = check(tmp_path, "--group", "contracts")
     assert code == 0
+
+
+def test_a_route_module_importing_a_manager_impl_is_con_10(tmp_path):
+    rel = "services/api/src/acme/services/api/routes.py"
+    write_project(tmp_path, {rel: "from acme.om.tasks import impl\n"})
+    code, report = check_json(tmp_path, "--rule", "CON-10")
+    assert (code, rules_found(report)) == (1, [("CON-10", rel, 1)])
+    assert report["findings"][0]["message"] == (
+        "acme.services.api.routes imports acme.om.tasks.impl; the layers above the OM depend on interfaces only"
+    )
 
 
 def test_infra_importing_the_om_is_con_10(tmp_path):

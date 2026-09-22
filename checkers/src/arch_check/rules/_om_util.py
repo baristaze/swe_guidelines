@@ -41,6 +41,23 @@ VALIDATORS = frozenset({"field_validator", "model_validator", "field_serializer"
 """Pydantic decorators that shape a field rather than share code."""
 
 
+def nested_classes(tree: ast.Module) -> Iterator[tuple[str, ast.ClassDef]]:
+    """Every class of a module with its qualified name: a class under a top-level `if` or `try` is named alone,
+    one in a class body or a function after it (`Views.Summary`, `build.Row`)."""
+    todo: list[tuple[ast.AST, str]] = [(tree, "")]
+    while todo:
+        node, scope = todo.pop()
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                qualname = f"{scope}.{child.name}" if scope else child.name
+                yield qualname, child
+                todo.append((child, qualname))
+            elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                todo.append((child, f"{scope}.{child.name}" if scope else child.name))
+            else:
+                todo.append((child, scope))
+
+
 @dataclass(frozen=True)
 class ClassInfo:
     key: Key
@@ -49,7 +66,7 @@ class ClassInfo:
 
 
 class Index:
-    """Every top-level class of the project, how each module binds names, and the OM chain."""
+    """Every class of the project by its qualified name, how each module binds names, and the OM chain."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -75,10 +92,9 @@ class Index:
                         elif base:
                             self.stars.setdefault(file.module, []).append(base)
             self.bindings[file.module] = names
-            for cls in tree.body:
-                if isinstance(cls, ast.ClassDef):
-                    key = (file.module, cls.name)
-                    self.classes.setdefault(key, ClassInfo(key, file, cls))
+            for qualname, cls in sorted(nested_classes(tree), key=lambda e: (e[1].lineno, e[1].col_offset)):
+                key = (file.module, qualname)
+                self.classes.setdefault(key, ClassInfo(key, file, cls))
         self.base_module = project.sub("om.base")
         self.roots: set[Key] = {
             info.key
@@ -143,7 +159,18 @@ class Index:
         return self.lookup_dotted(f"{bound}.{rest}")
 
     def bases(self, info: ClassInfo) -> list[tuple[ast.expr, Key | None]]:
-        return [(b, self.resolve(info.file.module, dotted(b))) for b in info.node.bases]
+        """Each base with the class it means: a sibling in the enclosing class body first, then the module's."""
+        return [(b, self.resolve_in(info, dotted(b))) for b in info.node.bases]
+
+    def resolve_in(self, info: ClassInfo, name: str | None) -> Key | None:
+        """The class a base name means in the body a class is defined in: `class Outer: class A; class B(A)`."""
+        module, qualname = info.key
+        scope = qualname.rpartition(".")[0]
+        while name and scope:
+            if (module, f"{scope}.{name}") in self.classes:
+                return (module, f"{scope}.{name}")
+            scope = scope.rpartition(".")[0]
+        return self.resolve(module, name)
 
     # --- the chain
 

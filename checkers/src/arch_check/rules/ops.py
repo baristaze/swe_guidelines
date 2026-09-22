@@ -22,6 +22,7 @@ from arch_check.rules._text_util import (
     npm_dependencies,
     python_dependencies,
     subdirs,
+    unparseable,
     walk,
 )
 
@@ -76,6 +77,10 @@ def one_traffic_generator(project: Project) -> Iterator[Violation]:
     the profiles, are judged.
     """
     found: list[tuple[str, str]] = []
+    for rel in walk(project, names=("pyproject.toml", "package.json")):
+        broken = unparseable(project, rel)
+        if broken is not None:
+            yield broken
     for rel in walk(project, names=("pyproject.toml",)):
         found.extend((rel, dep) for dep in sorted(python_dependencies(load_toml(project, rel) or {}) & LOAD_TOOLS_PY))
     for rel in walk(project, names=("package.json",)):
@@ -126,8 +131,8 @@ SHELL_FENCE = re.compile(r"^\s*(```|~~~)\s*(bash|sh|shell|console|zsh|fish|power
 def om_readme_for_a_reader_with_no_code(project: Project) -> Iterator[Violation]:
     """`om/README.md` names nouns for a reader with no code, and points down to a README per namespace.
 
-    Every package directly under `om/src/<root>/om/` except the storage
-    root has a `README.md`. `om/README.md` has no shell command: no
+    Every package directly under the OM package (`<pkg>.om`, wherever
+    its source root puts it) except the storage root has a `README.md`. `om/README.md` has no shell command: no
     fenced block opened as a shell (`bash`, `sh`, `console`, and the
     like), no line starting `$ `, and no inline code that runs a tool
     (`make`, `uv`, `pnpm`, `docker`, and the like). Any other block, a
@@ -139,8 +144,9 @@ def om_readme_for_a_reader_with_no_code(project: Project) -> Iterator[Violation]
     namespaces.
     """
     skip = project.option("OPS-25", "not_namespaces", ["storage"], {"not_namespaces"})
-    base = f"om/src/{project.package.replace('.', '/')}/om"
-    for folder in subdirs(project, base):
+    om = project.module(project.sub("om"))
+    base = project.rel(om.path.parent) if om is not None and om.is_package else None
+    for folder in subdirs(project, base) if base else []:
         name = folder.rpartition("/")[2]
         if name in skip or not is_file(project, f"{folder}/__init__.py"):
             continue

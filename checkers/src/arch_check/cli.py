@@ -124,7 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{sys.version_info[0]}.{sys.version_info[1]}, whose parser cannot read it; "
             f"run it with that Python, e.g. uvx --python {pinned[0]}.{pinned[1]} ..."
         )
-    project = Project(config)
+    project = Project(config, {r.id: options_of(r.id, everything) for r in everything})
     # Source globs that match nothing read as a clean project too: every
     # Python rule runs over no file and finds nothing.
     if not project.python_files:

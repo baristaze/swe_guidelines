@@ -339,3 +339,17 @@ def test_a_make_target_named_only_inside_a_tilde_fence_is_never_run(repo, skills
     repo.edit("skills/arch-scaffold-thing/SKILL.md", "One line.\n", "One line.\n\n~~~text\nthen `make deploy`\n~~~\n")
     assert skills.main() == 1
     assert "names Bash(make deploy) but the body never runs make deploy" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("line", ["", "allowed-tools: \n", 'allowed-tools: ""\n'])
+def test_a_skill_without_allowed_tools_fails(repo, skills, capsys, line):
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", line)
+    assert skills.main() == 1
+    assert "skills/arch-review-full/SKILL.md: no allowed-tools; a skill names the tools it runs" in capsys.readouterr().out
+
+
+def test_an_ops_skill_template_without_allowed_tools_fails(repo, skills, capsys):
+    template = '---\nname: ops-watch\ndescription: "Watch an environment."\n---\n\n# ops-watch\n'
+    repo.write("skills/_shared/ops-skills/ops-watch.md", template)
+    assert skills.main() == 1
+    assert "skills/_shared/ops-skills/ops-watch.md: no allowed-tools" in capsys.readouterr().out

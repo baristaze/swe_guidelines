@@ -36,7 +36,7 @@ from arch_check.rules._om_util import (
     index,
     namespaces,
 )
-from arch_check.rules._text_util import load_toml
+from arch_check.rules._text_util import load_toml, unparseable
 
 
 def above_storage(project: Project) -> tuple[str, ...]:
@@ -130,6 +130,10 @@ def one_object_model(project: Project) -> Iterator[Violation]:
         return
     om_dir = distribution_dir(project, om_files[0])
     rel, data = pyproject(project, om_dir)
+    broken = unparseable(project, rel)
+    if broken is not None:
+        yield broken
+        return
     project_table = data.get("project") if data else None
     om_name = project_table.get("name") if isinstance(project_table, dict) else None
     if not isinstance(om_name, str):
@@ -148,6 +152,10 @@ def one_object_model(project: Project) -> Iterator[Violation]:
         if uses is None:
             continue
         rel, data = pyproject(project, directory)
+        broken = unparseable(project, rel)
+        if broken is not None:
+            yield broken
+            continue
         if data is None or normalized(om_name) in requirement_names(data):
             continue
         yield Violation(rel, 1, 1, f"code under {directory}/ imports {om}, and {rel} does not depend on {om_name}")

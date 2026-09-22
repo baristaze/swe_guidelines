@@ -172,20 +172,42 @@ def infra_names(project: Project, file: SourceFile) -> set[str]:
     return out
 
 
+def import_time(body: list[ast.stmt]) -> Iterator[ast.stmt]:
+    """The statements a module runs at import: its top level and the blocks of a top-level `if`, `try`, `with`,
+    or loop, never a function or a class body."""
+    for node in body:
+        yield node
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        for block in ("body", "orelse", "finalbody"):
+            inner = getattr(node, block, None)
+            if isinstance(inner, list):
+                yield from import_time([n for n in inner if isinstance(n, ast.stmt)])
+        for handler in getattr(node, "handlers", []) or []:
+            if isinstance(handler, ast.ExceptHandler):
+                yield from import_time(handler.body)
+
+
 CLIENTS = [
     "boto3.client",
     "boto3.resource",
     "boto3.Session",
+    "boto3.session.Session",
     "aioboto3.Session",
+    "aioboto3.session.Session",
     "redis.Redis",
+    "redis.Redis.from_url",
     "redis.from_url",
     "redis.asyncio.Redis",
+    "redis.asyncio.Redis.from_url",
     "redis.asyncio.from_url",
     "Redis",
     "Redis.from_url",
     "valkey.Valkey",
+    "valkey.Valkey.from_url",
     "valkey.from_url",
     "valkey.asyncio.Valkey",
+    "valkey.asyncio.Valkey.from_url",
     "Valkey",
     "Valkey.from_url",
 ]
@@ -201,8 +223,10 @@ CLIENTS = [
 def no_ambient_infra(project: Project) -> Iterator[Violation]:
     """Reads `clients` under `[tool.arch-check.options.ASY-01]`: the dotted constructors of infra clients, as called.
 
-    A module-level `*Impl()` counts only when the name comes from `<pkg>.infra`: `CacheMemoryImpl()` imported
-    from `acme.infra.cache.memory` is an infra handle, an `OrdersManagerImpl()` is not.
+    Module level is what runs at import: the top level, the blocks of a top-level `if`, `try`, `with`, or loop,
+    and every function default. A module-level `*Impl()` counts only when the name comes from `<pkg>.infra`:
+    `CacheMemoryImpl()` imported from `acme.infra.cache.memory` is an infra handle, an `OrdersManagerImpl()` is
+    not.
     """
     clients = project.option("ASY-01", "clients", CLIENTS, {"clients"})
     infra = project.sub("infra")
@@ -214,17 +238,33 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
 
     for file, tree in project.trees():
         bound = bindings(tree)
-        for node in tree.body:
-            value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
+
+        def builds(value: ast.AST | None, file: SourceFile = file, bound: dict[str, str] = bound) -> str | None:
+            """The constructor a value calls when it builds an infra client or impl, else None."""
             if isinstance(value, ast.Await):
                 value = value.value
             if not isinstance(value, ast.Call):
-                continue
+                return None
             called = dotted(value.func) or ""
             # `import boto3 as b3; b3.client(...)` is `boto3.client(...)`, read through the import
             through = resolved(value.func, bound)
-            if called in clients or through in clients or infra_impl(file, called):
+            return called if called in clients or through in clients or infra_impl(file, called) else None
+
+        for node in import_time(tree.body):
+            called = builds(node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None)
+            if called:
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+                continue
+            for default in [*fn.args.defaults, *fn.args.kw_defaults]:
+                called = builds(default)
+                if called and default is not None:
+                    yield Violation.at(
+                        file.rel,
+                        default,
+                        f"a default of {called}() is built at import; an infra handle arrives through a constructor",
+                    )
     for file in manager_impl_files(project):
         impl = project.tree(file)
         if impl is None:

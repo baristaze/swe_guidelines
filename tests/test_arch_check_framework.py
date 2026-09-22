@@ -557,6 +557,27 @@ def test_local_rules_do_not_leak_into_the_next_run(tmp_path):
     assert FREE not in registry.RULES
 
 
+SHARED_RULE = """\
+from arch_check.model import Violation
+from arch_check.registry import rule
+
+
+@rule("CTX-26", coverage="partial", summary="no stage is built in a legacy module", options=("legacy",))
+def no_legacy_stage(project):
+    for name in project.option("CTX-26", "legacy", [], {"legacy"}):
+        yield Violation("pyproject.toml", 1, 1, f"{name} is legacy")
+"""
+
+
+def test_a_local_rule_and_the_shipped_rule_of_one_id_each_read_their_options(tmp_path):
+    pyproject = LOCAL + '\n[tool.arch-check.options.CTX-26]\nbuilders = ["assemble"]\nlegacy = ["old"]\n'
+    write_project(tmp_path, {"tools/arch_check/shared.py": SHARED_RULE}, pyproject=pyproject)
+    code, report = check_json(tmp_path, "--rule", "CTX-26")
+    assert code == 1
+    assert [(r["id"], r["origin"]) for r in report["rules_run"]] == [("CTX-26", "guideline"), ("CTX-26", "local")]
+    assert [(f["origin"], f["message"]) for f in report["findings"]] == [("local", "old is legacy")]
+
+
 def test_rule_options_are_read_and_checked(tmp_path):
     write_project(tmp_path, pyproject=PYPROJECT + '\n[tool.arch-check.options.CTX-26]\nsites = ["a.py"]\n')
     project = Project(load(tmp_path))

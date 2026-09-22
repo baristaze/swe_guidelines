@@ -21,6 +21,7 @@ from typing import Any
 import tomllib
 
 from arch_check.config import relative_glob
+from arch_check.model import Violation
 from arch_check.project import SKIP_DIRS, Project, dotted
 
 WALK_SKIP = SKIP_DIRS | {".terraform", ".venv"}
@@ -97,6 +98,38 @@ def load_toml(project: Project, rel: str) -> dict[str, Any] | None:
         return tomllib.loads(text.removeprefix("\ufeff"))
     except tomllib.TOMLDecodeError:
         return None
+
+
+TOML_WHERE = re.compile(r"\s*\(at line (\d+), column (\d+)\)\s*$")
+"""Where `tomllib` puts the position of a parse error: at the end of its message."""
+
+
+def unparseable(project: Project, rel: str) -> Violation | None:
+    """A finding for a manifest that exists and does not parse, else None.
+
+    `load_toml` and `load_json` read such a file as None, the way they
+    read a missing one. A rule that reads a manifest reports this, so a
+    broken file never passes as an empty or a missing one and never
+    hides what it declares.
+    """
+    text = project.read(rel)
+    if text is None:
+        return None
+    text = text.removeprefix("\ufeff")
+    try:
+        if rel.endswith(".json"):
+            json.loads(text)
+        else:
+            tomllib.loads(text)
+    except json.JSONDecodeError as e:
+        line, col, message = e.lineno, e.colno, e.msg
+    except tomllib.TOMLDecodeError as e:
+        where = TOML_WHERE.search(str(e))
+        line, col = (int(where.group(1)), int(where.group(2))) if where else (1, 1)
+        message = TOML_WHERE.sub("", str(e))
+    else:
+        return None
+    return Violation(rel, line, col, f"{rel} does not parse ({message}); arch-check cannot read what it declares")
 
 
 def subtable(data: Any, *keys: str) -> dict[str, Any]:
@@ -327,26 +360,8 @@ def module_matches(module: str, pattern: str) -> bool:
 
 
 def imported_names(project: Project, file: Any) -> dict[str, str]:
-    """Local name to the absolute dotted name it binds, for every import of a file.
-
-    `from a.b import C as D` gives `D -> a.b.C`; `import a.b` gives
-    `a -> a`; `import a.b as c` gives `c -> a.b`.
-    """
-    out: dict[str, str] = {}
-    for imp in project.imports(file):
-        node = imp.node
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.name != "*":
-                    out[alias.asname or alias.name] = f"{imp.module}.{alias.name}"
-        else:
-            for alias in node.names:
-                if alias.asname:
-                    out[alias.asname] = alias.name
-                else:
-                    head = alias.name.split(".")[0]
-                    out[head] = head
-    return out
+    """Local name to the absolute dotted name it binds, for every import of a file (`Project.bound_names`)."""
+    return project.bound_names(file)
 
 
 def resolved(name: str | None, names: dict[str, str]) -> str | None:
