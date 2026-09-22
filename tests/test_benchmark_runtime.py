@@ -137,6 +137,14 @@ def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
     assert command[command.index("img:1") + 1] == "claude"
 
 
+def test_the_container_user_can_write_the_workspace_whatever_its_uid(tmp_path):
+    # A bind mount keeps this machine's owner, and the image's user is not
+    # this machine's user on a Linux runner, so the workspace is opened to it.
+    rt = RT.build("container", tmp_path / "run", sandbox=tmp_path / "sandbox")
+    workspace = rt.prepare_repeat(0)
+    assert workspace.stat().st_mode & 0o777 == 0o777
+
+
 def test_the_container_build_command_names_the_dockerfile(tmp_path):
     rt = RT.build("container", tmp_path, None, {"image": "img:1", "dockerfile": tmp_path / "runtime" / "Dockerfile"})
     assert isinstance(rt, RT.ContainerRuntime)

@@ -29,7 +29,7 @@ imported inside the functions that call them.
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs; every repeat is judged by every provider |
-| `--runtime` | `host`, `container`, or `vm` |
+| `--runtime` | `host` (the default), `container`, or `vm` |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
@@ -94,7 +94,10 @@ outside the checkout, a fresh temporary folder per run:
 ```
 
 So no answer key, no earlier repeat's judge prompt, and no
-`CLAUDE.md` of the checkout is in the subject's reach. What a scenario
+`CLAUDE.md` of the checkout is on a path the subject is given, or
+under a folder it starts in. In the container runtime none of them is
+in its reach at all; on the host a subject that looks for them finds
+them (see Runtimes). What a scenario
 collects from the workspace is copied into `artifacts/`, and the
 sandbox is removed when the run ends, however it ends. Every repeat
 starts in an empty workspace of its own, so no repeat sees what an
@@ -108,13 +111,25 @@ measurement.
 - `host` runs the subject on this machine with a private `HOME` and a
   private `TMPDIR` in the sandbox. The isolation is a convention, not a
   boundary: it keeps a subject from writing into the operator's account
-  by accident, and stops nothing that means to. The subject runs in a
-  process group of its own, and the group is killed when the subject
-  ends, on a timeout, a clean exit that left children, or an interrupt.
+  by accident, and stops nothing that means to. The subject runs as the
+  harness's own user, so it can read what that user reads. That
+  includes the harness's environment with the judges' keys in it (on
+  Linux, through `/proc/<pid>/environ` of the harness), and the answer
+  files at their fixed paths in the checkout. The sandbox keeps them out
+  of the paths the subject is given, not out of its reach. Use `host`
+  for a quick run on your own machine, never where that matters. The
+  subject runs in a process group of its own, and the group is killed
+  when the subject ends, on a timeout, a clean exit that left children,
+  or an interrupt.
 - `container` runs `docker run --rm` from the image
   `runtime/Dockerfile` builds. The staged plugin is mounted read-only
   at `/plugin`, the staged target read-only at `/target`, and the
-  workspace read-write at `/workspace`.
+  workspace read-write at `/workspace`. Nothing else of this machine is
+  in the container, so the judges' keys and the answer files are out of
+  the subject's reach. The image's user is not this machine's user on a
+  Linux runner, so the workspace is opened to every user; the sandbox
+  around it stays private. The benchmark workflow runs every scenario
+  here, with the image built in a step that holds no key.
 - `vm` runs the command on another machine through a configured
   prefix, for example `["limactl", "shell", "default", "--"]`, with a
   configured sync command. The harness provisions no machine and
@@ -204,9 +219,11 @@ scenario can give the judges evidence:
   target, one per entry with a lens, a file, and a line, and what the
   target does right. The file lives beside the target, never inside
   it, and the subject gets a copy of the target alone and a copy of
-  the plugin that holds no fixture, so it cannot read the answers. On any other target the
-  list would be wrong, so a run with `--target` drops it and says so;
-  the source still goes to the judges.
+  the plugin that holds no fixture. So the answers are on no path the
+  subject is given, and in the container they are out of its reach.
+  On any other target the list would be wrong, so a run with
+  `--target` drops it and says so; the source still goes to the
+  judges.
 
 With a planted list, the harness also counts which planted findings
 the artifact names by lens id and file. That count is made by no model.

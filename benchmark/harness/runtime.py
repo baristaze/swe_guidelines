@@ -17,21 +17,29 @@ sandbox is removed when the run ends.
 Isolation is a choice, and the choice is named:
 
 - `host` isolates by convention only. A private `HOME` and a private
-  `TMPDIR` under the run folder keep a subject from writing into the
+  `TMPDIR` in the sandbox keep a subject from writing into the
   operator's account by accident. Nothing stops a subject that means to.
+  The subject runs as the harness's own user, so it can read what that
+  user reads: the harness's environment, the judges' keys in it (on
+  Linux, through `/proc/<pid>/environ` of the harness), and the answer
+  files at their fixed paths in the checkout. The sandbox keeps those out
+  of the paths the subject is given, not out of its reach. A run whose
+  subject must not reach them uses `container`.
 - `container` isolates with Docker: the plugin checkout and the target
   read-only, the workspace read-write, the keys passed one by one, every
   capability dropped, and memory, processor, and process count bounded.
+  Nothing of the harness's machine is in the container but the three
+  mounts, so the judges' keys and the answer files are out of reach.
+- `vm` runs the command on another machine through a configured prefix.
+  The harness provisions nothing; it composes the prefix and the sync
+  command, and the tests cover that composition with a fake prefix.
 
 A subject is stopped whole, however it ends: past its timeout, on a clean
 exit that left children behind, or when the harness itself is
 interrupted. The host runtime starts it in a process group of its own and
-kills the group every time. The
-container runtime names its container and kills the container, because
-killing the `docker run` client leaves the container running and paying.
-- `vm` runs the command on another machine through a configured prefix.
-  The harness provisions nothing; it composes the prefix and the sync
-  command, and the tests cover that composition with a fake prefix.
+kills the group every time. The container runtime names its container
+and kills the container, because killing the `docker run` client leaves
+the container running and paying.
 
 A path on this machine means nothing inside a container or on another
 machine. So a runtime also answers where the plugin checkout and the
@@ -308,7 +316,13 @@ def _pipe(handle, stream: str, streams: CliStream) -> None:
 
 
 class HostRuntime(BaseRuntime):
-    """This machine, with a private HOME and TMPDIR under the run folder."""
+    """This machine, with a private HOME and TMPDIR in the sandbox.
+
+    No boundary: the subject runs as the harness's user and can read what
+    that user reads, the harness's environment with the judges' keys and
+    the answer files in the checkout among it. `container` is the runtime
+    that keeps them out of reach.
+    """
 
     name = "host"
 
@@ -373,6 +387,18 @@ class ContainerRuntime(BaseRuntime):
             for line in (proc.stdout + proc.stderr).splitlines():
                 streams.write("err", line)
         return ExitStatus(code=proc.returncode, duration_s=time.monotonic() - started)
+
+    def prepare(self, workspace: Path | None = None) -> Path:
+        """The workspace, open to the image's user.
+
+        A bind mount keeps this machine's owner and mode, and the image's
+        user is not this machine's user on a Linux runner. The workspace
+        is the one folder the subject writes, so it is opened to every
+        user; the sandbox around it stays private to this one.
+        """
+        path = super().prepare(workspace)
+        path.chmod(0o777)
+        return path
 
     def plugin_path(self) -> str | None:
         return CONTAINER_PLUGIN if self.plugin else None

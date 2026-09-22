@@ -412,3 +412,14 @@ def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
     assert "### Source: tests/test_a.py" in prompts[0] and "### Source: src/a.py" in prompts[0]
     (staged,) = read_from
     assert staged != target and staged.name == "target"  # the staged copy, not the original
+
+
+def test_the_workflow_runs_the_subject_in_the_container_built_before_the_keys():
+    # On the host the subject could read the harness's environment and the
+    # answer files; in the container it reaches its mounts and its one key.
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "--runtime container" in workflow_step("run every scenario")
+    build = workflow.index("      - name: build the subject's image")
+    run_step = workflow.index("      - name: run every scenario")
+    assert build < run_step and "docker build -t swe-guidelines-benchmark:latest" in workflow[build:run_step]
+    assert "_API_KEY" not in workflow[:run_step]  # no key is in reach while anything is installed
