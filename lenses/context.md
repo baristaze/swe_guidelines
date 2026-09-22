@@ -911,3 +911,51 @@ cache instead of the tenancy manager's storage; a session with no idle
 or no absolute lifetime; an API key with no expiry.
 
 **Severity.** high
+
+## CTX-37 A key's role is the lower of its own and its issuer's, at every use
+
+**Principle.** A key's effective role is the lower of the role it was
+issued with and its issuer's current role. It is checked at every use,
+never only at issue, so a demoted issuer's key loses what the issuer
+lost. Removing the issuer's membership revokes the issuer's keys.
+
+**Source.** OpContext; The Network Layer, The Gateway.
+
+**Look for.** Where an API key is admitted: whether the admission
+reads the issuer's current membership and role beside the key's own,
+and which of the two it grants; what removing a membership does to
+the keys its holder issued.
+
+**Violation.** A key admitted at the role stored on it while its issuer
+now holds a lower one; a key that outlives its issuer's membership; a
+role comparison made once, when the key is minted, and never again.
+(The cap at issue is CTX-03.)
+
+**Severity.** high
+
+## CTX-38 An agent reaches the operator plane with an operator token
+
+**Principle.** Agents and pipelines never sign in with a password. The
+traffic generator, the deployed smoke test, and a supporter agent use
+an operator token. An operator signed in with the second factor mints
+it, or the grant job does for the provisioner and the smoke identity.
+It carries one operator permission, expires within one hour, and is
+stored as its digest and shown once. `admit_operator` admits it as the
+one named exception to "a password alone never admits". The ops env
+file holds `<ROOT>_OPERATOR_TOKEN`, never a password or a TOTP secret.
+
+**Source.** OpContext, The Operator Context; The Network Layer, The
+Gateway; Operations, Operator Credentials.
+
+**Look for.** How the traffic generator, the smoke test, and each
+agent skill authenticate to the operator plane; where an operator
+token is minted, its permission, its expiry, and how it is stored;
+what `admit_operator` accepts; the keys in each ops env file.
+
+**Violation.** An agent or a pipeline that signs in with a password or
+holds a TOTP secret; an operator token with more than one permission,
+an expiry past one hour, or a value stored in the clear; a token
+minted by a sign-in with no second factor, or a gate that admits some
+other credential without one.
+
+**Severity.** high

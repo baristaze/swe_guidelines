@@ -79,6 +79,8 @@ LENSES: dict[str, Severity] = {
     "CTX-34": "high",
     "CTX-35": "high",
     "CTX-36": "high",
+    "CTX-37": "high",
+    "CTX-38": "high",
     "CON-01": "medium",
     "CON-02": "medium",
     "CON-03": "medium",

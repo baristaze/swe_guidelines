@@ -15,7 +15,7 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 254 lenses in eight groups. Each
+- **[`lenses/`](lenses/README.md)**: 256 lenses in eight groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Eight group reviews, one
