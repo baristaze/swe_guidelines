@@ -77,7 +77,9 @@ ask for either in the conversation.
 
 The process names below are the ones `deployment/README.md` lists;
 `api` and `maintenance` are a tree the scaffold built with its worker,
-and a worker added since is one more name.
+and a worker added since is one more name. A tree built with
+`--no-worker` has `api` alone: the API process runs the sweep, so
+leave `maintenance` out of every command below.
 
 1. Verify the credential as Role and credential states. Read
    `GET /v1/admin/me` with the operator token, sourcing the env file

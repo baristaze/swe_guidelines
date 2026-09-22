@@ -55,7 +55,9 @@ No env file is read. The script removes the environment's
 
 The process names below are the ones `deployment/README.md` lists;
 `api` and `maintenance` are a tree the scaffold built with its worker,
-and a worker added since is one more name.
+and a worker added since is one more name. A tree built with
+`--no-worker` has `api` alone: the API process runs the sweep, so
+leave `maintenance` out of every command below.
 
 1. Verify the administrator profile as Role and credential states.
 2. Production only, two checks, both before the script runs:

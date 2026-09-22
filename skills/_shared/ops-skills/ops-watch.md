@@ -108,7 +108,8 @@ ask for either in the conversation.
 
    The read, cloud, one query per process `deployment/README.md`
    lists (`api` and `maintenance` on a tree the scaffold built with
-   its worker), bounded by the batch's start and end in epoch
+   its worker; `api` alone on one built with `--no-worker`, whose API
+   process runs the sweep), bounded by the batch's start and end in epoch
    milliseconds, never `--follow`:
 
    ```bash
