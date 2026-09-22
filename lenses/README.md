@@ -16,7 +16,7 @@ keeps each review narrow enough to be thorough.
 | `async`     | `async.md`      | Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, park vs fail |
 | `network`   | `network.md`    | The Network Layer, Apps (Push-First Apps), and Client App Architecture (Realtime: One Channel per App): topology, gateway, public types, clients, realtime, push-first |
 | `delivery`  | `delivery.md`   | Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions |
-| `ops`       | `ops.md`        | Operations, Documentation as Code: operator roles and credentials, the operational skills, dashboards and alarms as code, scale-out, cost, creating and destroying an environment, traffic and stress, the telemetry round trip, READMEs, the knowledge map |
+| `ops`       | `ops.md`        | Operations, Documentation as Code: roles, credentials, ops skills, alarms, scale-out, cost, environments, traffic, READMEs |
 
 A rule belongs to exactly one group, and to exactly one lens inside it.
 The `Covers` column names each group's home sections; where two groups

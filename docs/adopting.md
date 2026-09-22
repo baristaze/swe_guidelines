@@ -220,9 +220,10 @@ token) comes from one owner-only env file per environment,
 `~/.config/<root>/ops/<env>.env`, outside the repository; a skill
 reads it and never prints a secret from it.
 
-Every skill takes `--env local|staging|production`, and `local` runs
-against the compose stack's `devx` twins with no cloud and no
-account, so a skill is tested on the developer's machine before it
+Every skill but `ops-cloud-deployment-create` and
+`ops-cloud-deployment-nuke`, which act on a cloud only, takes
+`--env local|staging|production`, and `local` runs against the compose
+stack's `devx` twins with no cloud and no account, so a skill is tested on the developer's machine before it
 is trusted with an environment.
 
 An existing tree copies the templates from

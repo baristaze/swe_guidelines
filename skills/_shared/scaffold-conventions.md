@@ -168,9 +168,14 @@ the order the guideline presents them, never by number.
   Business Layer (Shape of an Operation) states. A `core`-role write
   lands the core row and its `OutboxRow`s in one storage method,
   `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
-  once; a row comes from `outbox_row(ctx, kind,
+  once; a tenant write's row comes from `outbox_row(ctx, kind,
   target_id, payload)`, so it carries the actor, the request id, the
-  trace context, and the app of the write. The caller constructs the entity whole and hands it to
+  trace context, and the app of the write. An operator write's row
+  never does: the operator managers stamp it from the identity id and
+  the request id their stage carries, through a helper of the operator
+  plane, as Stages and Scopes states, and an operator route's
+  idempotency marker is keyed on the operator's identity with no
+  tenant, since `OperatorContext` carries no `org_id`. The caller constructs the entity whole and hands it to
   `create_<entity>`; the one exception is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
