@@ -2980,9 +2980,11 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Origins.** Cross-origin requests are accepted only from the
     browser apps' origins, a list read from settings. Every other
     origin is refused.
--   **Request id.** The gateway accepts an inbound `x-request-id` or
-    mints one. It stamps it on the context, echoes it in the response
-    header, and attaches it to the log context and the trace span.
+-   **Request id.** The gateway accepts an inbound `x-request-id` only
+    when it parses as a UUID. Otherwise it mints one, so a caller
+    cannot write an arbitrary string into every log line. It stamps the
+    id on the context, echoes it in the response header, and attaches
+    it to the log context and the trace span.
 -   **Error envelope.** One handler translates `PlatformException` and
     `InfraException` (see [Exceptions](#exceptions)) into `{"error":
     {"code", "message", "request_id"}}`, with the status and the code
