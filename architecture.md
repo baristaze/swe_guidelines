@@ -3360,8 +3360,10 @@ Outbound TLS verification uses the operating system's trust store, in
 every process, so a corporate proxy or a private certificate authority
 works without per-component configuration.
 
-The trust store goes in before anything else is imported: it is the
-first statement of each process's entry point. Injecting it replaces
+The trust store goes in before anything else is imported. Each console
+script starts at a small entry module that installs it and only then
+imports the process; it is never a side effect of importing a module,
+which a test would import halfway through its own session. Injecting it replaces
 `ssl.SSLContext`, and a library that bound the old class first (urllib3,
 and the cloud SDK through it) builds a context whose settings recurse
 until the process dies. The twins never open a cloud client, so only the
