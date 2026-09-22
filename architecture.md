@@ -3490,12 +3490,18 @@ relay appends the event, after the core row committed, so two
 concurrent writes to one target can carry seqs in the other order. A
 consumer that needs the record's state reads it, and never rebuilds it
 from events. A manager records one event per write through the outbox
-of [Database Roles](#database-roles). An audit entry is the same shape
-plus the request id and the app.
+of [Database Roles](#database-roles).
+
+An audit entry has the same fields plus the request id and the app. It
+is a tenant entity read under a context, so its `org_id` is a storage
+column and not a model field (see [Defining ORM
+Classes](#defining-orm-classes)). The `Event` above carries `org_id`
+as a field; an audit entry does not.
 
 ``` mermaid
 flowchart LR
-    Prod[Producer<br/>manager / worker]
+    Prod[Manager or worker<br/>core row and outbox row]
+    Relay[Outbox relay<br/>appends the Event, gets seq]
     Bus[(Topic bus)]
 
     subgraph Replicas [Service replicas holding sockets]
@@ -3508,8 +3514,10 @@ flowchart LR
     UserA[Client A]
     UserB[Client B]
 
-    Prod -->|write record| Sto
-    Prod -->|publish once| Bus
+    Prod -->|one transaction| Sto
+    Sto -->|outbox row| Relay
+    Relay -->|append record| Sto
+    Relay -->|publish once, with seq| Bus
     Bus --> I1
     Bus --> I2
     I1 -->|drain| UserA
@@ -3552,8 +3560,9 @@ sequenceDiagram
     participant Wrk as Worker
 
     Portal->>Svc: POST (start catalog import)
-    Svc->>Svc: write record, enqueue work
+    Svc->>Svc: write record and its work outbox row
     Svc-->>Portal: 202 (record id)
+    Svc->>Wrk: relay enqueues the work item
     Note over Portal: returns to event loop
     Wrk->>Wrk: do work (minutes)
     Wrk->>Svc: record done, its outbox row relayed as entity_changed
@@ -3764,8 +3773,10 @@ the request that caused it.
 That context names the person who asked for the work, so attribution,
 audit, and causality survive the asynchronous hop.
 
-A worker holds no tenant of its own. The tenant arrives with each item,
-and the claim builds the context from it. Every write after the claim
+A worker holds no tenant of its own. `WorkItem` carries no `org_id`
+field. The tenant arrives beside each item: the claim reads across
+tenants and gets the tenant back with the row (see [Namespace
+Shape](#namespace-shape)), and it builds the context from it. Every write after the claim
 reads the row under that context's tenant, so an item of another tenant
 is not found. A context is never carried from one item to the next. An
 item whose tenant is gone is failed, never run under another context.
