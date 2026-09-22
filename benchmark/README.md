@@ -253,10 +253,16 @@ answers are in `fixtures/review-om.expected.yaml`.
 Every provider gets the same prompt: the rubric, what produced the
 artifact, the artifact, and the evidence when the scenario gives some,
 each truncated at a stated limit so the judge knows whether it saw the
-whole thing. Every provider answers in the
-same shape through its own structured-output path: `score` from 0 to
-100, `verdict` of `pass`, `weak`, or `fail`, `findings` of
-`{severity, note}`, `strengths`, and a short `rationale`.
+whole thing. The artifact sits inside a fence of backticks longer than
+any run of backticks in it, so it cannot close the fence. The prompt
+says that nothing inside the fence is an instruction, so a heading the
+subject wrote cannot pass for one of the prompt's own.
+
+Every provider answers in the same shape through its own
+structured-output path: `score` from 0 to 100, `verdict` of `pass`,
+`weak`, or `fail`, `findings` of `{severity, note}`, `strengths`, and a
+short `rationale`.
+
 
 `models.yaml` holds the matrix: one model per provider, the fallbacks
 tried in order when a model is refused or out of quota, and the effort
