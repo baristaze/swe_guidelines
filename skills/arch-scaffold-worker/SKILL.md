@@ -91,16 +91,27 @@ so they stay here:
 
 1. When the `work` namespace exists, reuse its interfaces unchanged and
    add only the kind, the handler, and the worker. When it is absent,
-   read `${CLAUDE_SKILL_DIR}/references/work-namespace.md` and write
-   the namespace first.
+   read `${CLAUDE_SKILL_DIR}/references/work-namespace.md`, write the
+   namespace first, and apply every `Changed` row marked "new
+   namespace only": the role and scope maps, the storage root and both
+   impls, `build_managers`, the outbox relay's second branch, the
+   tenancy and idempotency operations the sweep calls, the API's
+   `item_retention`, and their tests.
 2. Read `${CLAUDE_SKILL_DIR}/references/worker.md`, then write the
    worker. The loop passes the context the claim returned to
-   `handle`; the handler never builds one. An item of a kind the worker does not
-   handle is released, not failed.
+   `handle`; the handler never builds one. An item of a kind the
+   worker does not handle is released, not failed.
 3. Shutdown: stop claiming, cancel every task, return each item to
    the queue with a note, stop the heartbeat, then mark the worker
    offline.
-4. The worker's tenant-less storage methods (`claim_next`,
+4. Apply the rest of the `Changed` table: the new kind on `WorkKind`,
+   the namespace README and its link from `om/README.md`,
+   `scripts/dev.sh`, every settings field in `.env.example`, the topic
+   and the cache scope when absent, one instance of the service module
+   per environment under `deployment/terraform/` with no load balancer
+   route, this worker's image in both deploy workflows, and the compose
+   file with `--container`.
+5. The worker's tenant-less storage methods (`claim_next`,
    `fail_orphaned`, `read_gauges`, `purge_items`, and, when absent,
    `purge_markers`, `purge_socket_tickets`, and `purge_sessions`) get
    a docstring and an entry in
@@ -108,7 +119,7 @@ so they stay here:
    `claim_context` its entry in `[tool.arch-check.options.CTX-26]
    sites`, before the fast gate runs; `arch-check` fails otherwise, as
    it should.
-5. Add `workers/<worker-name>` to the root's `[tool.uv.workspace]
+6. Add `workers/<worker-name>` to the root's `[tool.uv.workspace]
    members` and run `uv sync` before the fast gate, so the workspace
    resolves the new distribution.
 

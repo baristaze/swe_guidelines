@@ -97,11 +97,17 @@ so they stay here:
 
 ## Procedure
 
-1. Read `${CLAUDE_SKILL_DIR}/references/process.md` and
-   `${CLAUDE_SKILL_DIR}/references/gateway.md`. Then write
+1. Read `${CLAUDE_SKILL_DIR}/references/process.md`. Then write
    `pyproject.toml`, add the member to the workspace, and run
    `uv sync`; then the container before the app, the app before the
-   routers, and the gateway before the routers that depend on it.
+   routers. Write the gateway before the routers that depend on it,
+   and only when this is the first service: when one already exists,
+   the `Changed` table's `gateway/` move is what happens instead, this
+   service imports the root `gateway/` distribution, and
+   `${CLAUDE_SKILL_DIR}/references/gateway.md` is skipped. With
+   `--realtime`, write `deployment/realtime-timeouts.json` from the
+   `Changed` table in this step, since the app reads its ping interval
+   and the tests of step 2 assert against it.
 2. Read `${CLAUDE_SKILL_DIR}/references/routes.md`, and, with
    `--realtime`, `${CLAUDE_SKILL_DIR}/references/realtime.md`.
    A router function declares the route (path, verb, status, and the
@@ -125,7 +131,13 @@ so they stay here:
 3. An app-specific service composes managers or sibling domain service
    clients for one app only and never calls another app-specific
    service.
-4. Emit the OpenAPI document with `make openapi` so the consuming apps
+4. Apply the rest of the `Changed` table: the workspace member, the
+   `Makefile`'s `openapi` target, `scripts/dev.sh`, the README's
+   `Local URLs` row, every settings field in `.env.example`, the
+   compose file with `--container`, one instance of the service module
+   per environment under `deployment/terraform/`, and this service's
+   image in both deploy workflows.
+5. Emit the OpenAPI document with `make openapi` so the consuming apps
    regenerate their types.
 
 ## Output

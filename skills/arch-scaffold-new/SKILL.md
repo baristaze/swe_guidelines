@@ -8,15 +8,21 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make
 
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
-Entities, OpContext (Stages, Scopes, The Operator Context), The Storage
+Entities, Namespaces as Swimlanes, OpContext (Stages, Scopes, The
+Operator Context), The Business Layer (Operations Without a Principal,
+Shape of an Operation), The Storage
 Layer (Namespace Shape, Storage Root, Defining ORM Classes,
 Translation, A Storage Impl, Database Roles, The Second Fence,
-Migrations), Infrastructure (InfraInterface Root), The Network Layer
+Migrations), Infrastructure (InfraInterface Root, Cache, Buckets,
+Topics, Queues, Secrets, Idempotency), The Network Layer
 (The Gateway; Auth: the Gateway Verifies, the Tenancy Domain Owns;
 Realtime at the Edge), Deployment (Cloud: AWS, Infrastructure as Code,
 Local: Docker Compose, Twins for External Services, What a Process
-Refuses), Operations, Monorepo Folder Structure (Layout Conventions),
-Documentation as Code, Telemetry, Cross-Cutting Conventions
+Refuses), Operations (Operator Credentials, Operational Skills,
+Dashboards and Alarms as Code, Traffic and Stress, The Telemetry Round
+Trip), Monorepo Folder Structure (Layout Conventions),
+Documentation as Code (A README at Every Level), Telemetry,
+Cross-Cutting Conventions
 (Exceptions, Configuration, Records of Decisions, Tests), Technology
 Choices and How to Override Them (Versions, Overriding a Choice).
 
@@ -55,6 +61,7 @@ step that names it, when that step runs and not before.
 | `${CLAUDE_SKILL_DIR}/references/object-model.md`   | the OM distribution under `om/`: the base module, the context stages and scopes, the exceptions, the storage layer with its roles, tables, translation, impls, and migrations, and the `tenancy`, `events`, `audit`, `outbox`, and `idempotency` namespaces with their tests | step 1  |
 | `${CLAUDE_SKILL_DIR}/references/infrastructure.md` | the infra distribution under `infra/`: the cache, buckets, topics, queues, and secrets capabilities, observability and the trust store, and the configured and local roots                                                   | step 1  |
 | `${CLAUDE_SKILL_DIR}/references/ops-package.md`    | `clients/python/`, the Python client generated from the API's document, and `ops/`, the `<root>-ops` member with the traffic generator, the stress runner, the signals interface, and the telemetry round trip              | step 3  |
+| `${CLAUDE_SKILL_DIR}/references/api-sweep.md`      | the API process's own sweep, `services/api/.../sweep.py`, the loop of `arch-scaffold-worker` without the queue, written only when the tree has no worker                                                                    | step 4, with `--no-worker` |
 
 A reference file is detail. These are the lines a run must never miss,
 so they stay here:
@@ -123,24 +130,15 @@ so they stay here:
    it with `maintenance NOOP --container`: a worker whose only work is
    the maintenance sweep, ready for real kinds. With `--no-worker`,
    the sweep moves into the API process's lifespan, so outbox rows a
-   crash left behind are still relayed: write
-   `services/api/src/<root>/services/api/sweep.py`, the sweep of
-   `arch-scaffold-worker`'s loop without the queue (the relay's
-   `relay_pending(rctx, limit)` and `purge_done(rctx)`; the purges of
-   idempotency markers, socket tickets, and sessions, through the
-   idempotency manager's `purge_markers(rctx)` and the tenancy
-   manager's `purge_socket_tickets(rctx)` and `purge_sessions(rctx)`,
-   which step 1 wrote; the purge of soft-deleted rows, once an entity
-   composes the mixin, per service context, each context built by
-   the tenancy manager's `service_contexts(rctx)`; and the outbox lag
-   gauge, which the outbox-lag alarm reads here as it reads the
-   worker's), on a timer at
-   `sweep_interval`, which this step adds to the API's settings and
-   to `.env.example`, started in the lifespan
-   after `start()` and cancelled before `close()`, every step
-   idempotent and wrapped. Every API replica runs it, which is safe
-   because every step is idempotent and each purge is bounded by a
-   batch size.
+   crash left behind are still relayed: read
+   `${CLAUDE_SKILL_DIR}/references/api-sweep.md` and write
+   `services/api/src/<root>/services/api/sweep.py` from it. Whichever
+   path ran, the sweep sets the gauge under the one name the
+   outbox-lag alarm and the copied `ops-investigate` skill read,
+   `<root>_outbox_lag_seconds`, so a tree with no worker is watched
+   like a tree with one. Every API replica runs the sweep, which is
+   safe because every step is idempotent and each purge is bounded by
+   a batch size.
 5. Unless `--no-portal`, read
    `${CLAUDE_SKILL_DIR}/../arch-scaffold-app/SKILL.md` and follow it
    with `portal --kind portal`, including its Terraform and deploy

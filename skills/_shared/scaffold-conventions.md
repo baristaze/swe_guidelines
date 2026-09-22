@@ -44,7 +44,10 @@ list is short keeps it inline, as a table with the columns `File` and
    docstring habits. The guideline decides the shape; the repository
    decides the spelling. When bootstrapping there is nothing to open;
    the guideline's snippets are the house style.
-3. Read the sections of `architecture.md` the skill names, in full.
+3. Read the sections of `architecture.md` the skill names, in full. A
+   reference file cites sections of its own; those are read at the step
+   that reads the file, and the skill names them among its sections
+   too, so the list at the top is the whole of what a run reads.
 4. Check every path in the skill's `Created` table. A path that exists
    is a collision: stop and say so; never overwrite. A migration stamp
    that already exists in the role's folder takes the next minute or
@@ -368,7 +371,8 @@ list is short keeps it inline, as a table with the columns `File` and
   log group (`/acme/<env>/api`) becomes `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
   case, and `Acme` its CamelCase form.
   Every one takes `--env staging|production`, and every one but
-  create and nuke also takes `local`. Each holds the
+  create and nuke also takes `local`, reading the `devx` stand-ins.
+  Each holds the
   credential of the role Operations (Operational Skills) gives it.
   The investigator and supporter skills hold the read-only
   investigate profile of their environment and read the owner-only
