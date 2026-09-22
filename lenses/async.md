@@ -270,24 +270,27 @@ handler that does the whole job inline.
 
 ## ASY-13 Secrets are references in the model, values at the point of use
 
-**Principle.** A secret store holds values; the object model holds only
-references. A value is resolved for exactly one operation and
-discarded. It never enters an entity, a log line, an audit payload, an
-error message, or a subprocess environment. An error names the secret
-and the store it was looked up in, never a value.
+**Principle.** The object model holds only references to secrets. A
+tenant's secret is resolved at the point of use, for one operation,
+and discarded. The process's own credentials come from the runtime's
+injection and never pass through the tenant capability. No value
+enters an entity, a log line, an audit payload, an error message, or a
+subprocess environment.
 
 **Source.** Infrastructure, Secrets.
 
 **Look for.** Entity fields that hold credentials; where `get(name)` is
-called and how long the value lives; log and audit calls near secret
-resolution; the text of the not-found error; subprocess environment
-construction.
+called and how long a tenant's value lives; how the database URL and
+the internal signing key reach the process; log and audit calls near
+secret resolution, the text of the not-found error, and subprocess
+environment construction.
 
-**Violation.** An entity with a token or password field; a secret
-resolved at boot and kept on an object; a value in a log line, an
-error string, or an audit payload; a not-found error that omits the
-secret name or the store; a subprocess inheriting the parent's full
-environment.
+**Violation.** An entity with a token or password field; a tenant's
+secret resolved at boot and kept on an object; a process credential
+read through the tenant capability, or under a tenant's name; a value
+in a log line, an error string, or an audit payload; a not-found error
+that omits the secret name or the store; a subprocess inheriting the
+parent's full environment.
 
 **Severity.** high
 
