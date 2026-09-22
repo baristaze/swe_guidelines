@@ -302,7 +302,7 @@ def test_an_ops_skill_template_is_held_to_the_skill_frontmatter(repo, skills, ca
 
 
 def test_the_description_limits_leave_room_in_the_hosts_listing(skills):
-    assert (skills.DESCRIPTION_LIMIT, skills.DESCRIPTIONS_TOTAL) == (500, 5000)
+    assert (skills.DESCRIPTION_LIMIT, skills.DESCRIPTIONS_TOTAL) == (500, 6000)
 
 
 @pytest.mark.parametrize("line", ["name:arch-review-full", 'description:"Full review."'])

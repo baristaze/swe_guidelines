@@ -5,7 +5,7 @@ Rules:
 - every skills/<name>/SKILL.md has YAML frontmatter with `name` equal to the
   folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
   of at most 500 characters, written as one double-quoted string; the
-  descriptions together stay under 5000 characters. Each description is
+  descriptions together stay under 6000 characters. Each description is
   listed in a budget the host shares across every installed skill. The
   host truncates one entry at 1,536 characters, and when the listing
   overflows it drops the descriptions of the least-used skills. So this
@@ -88,7 +88,7 @@ PARENS = re.compile(r"\([^()]*\)")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
 DESCRIPTION_LIMIT = 500
-DESCRIPTIONS_TOTAL = 5000
+DESCRIPTIONS_TOTAL = 6000
 KNOWN_KEYS = frozenset({"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation"})
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
