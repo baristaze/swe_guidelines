@@ -179,7 +179,8 @@ or context type that relaxes the setting so a caller's typo passes.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides the model config spelled in the class;
+the rest is judged.
 
 ## OM-08 Entities, value objects, and read models are distinct
 

@@ -123,6 +123,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"run it with that Python, e.g. uvx --python {pinned[0]}.{pinned[1]} ..."
         )
     project = Project(config)
+    # Source globs that match nothing read as a clean project too: every
+    # Python rule runs over no file and finds nothing.
+    if not project.python_files:
+        return error(
+            f"the source globs {', '.join(config.src)} match no Python file under {config.root}; "
+            "check `src` under [tool.arch-check]"
+        )
     # A misspelled package reads as a clean project: every rule looks under
     # a package no file is in, and finds nothing. That is an error, not a pass.
     if project.python_files and not project.modules_under(config.package):

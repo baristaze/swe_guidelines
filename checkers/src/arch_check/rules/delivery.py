@@ -265,7 +265,10 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
     in the earlier stage it is built `FROM`; and every `uv sync` passes
     `--frozen` or `--locked`, or runs after `UV_FROZEN` or `UV_LOCKED`
     is set in its stage or the earlier stage it is built `FROM`, and
-    every `pnpm install` passes `--frozen-lockfile`. A
+    every `pnpm install` passes `--frozen-lockfile`. An `npm install` of
+    the project (`npm ci` instead), a `yarn` without `--frozen-lockfile`
+    or `--immutable`, and a `pip install` that neither requires hashes
+    nor pins each package with `==` are unlocked too. A
     `*.dockerignore` file is not a Dockerfile. What the healthcheck
     probes and the shared entrypoint are judged.
 
@@ -314,7 +317,43 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
                     yield Violation(rel, s.line, 1, "`uv sync` without --frozen or --locked; an image installs from the lock")
                 if re.search(r"\bpnpm\s+(install|i)\b", s.args) and "--frozen-lockfile" not in s.args:
                     yield Violation(rel, s.line, 1, "`pnpm install` without --frozen-lockfile; an image installs from the lock")
+                for message in unlocked_installs(s.args):
+                    yield Violation(rel, s.line, 1, message)
             locked_at_end.append(locked_env)
+
+
+NPM_INSTALL = re.compile(r"\bnpm\s+(install|i)\b(?P<rest>[^&|;]*)")
+YARN_INSTALL = re.compile(r"\byarn(\s+install)?\s*(?=$|&|\||;)|\byarn\s+install\b[^&|;]*")
+PIP_INSTALL = re.compile(r"\b(?:uv\s+)?pip3?\s+install\b(?P<rest>[^&|;]*)")
+
+
+def unlocked_installs(args: str) -> list[str]:
+    """The installs of one RUN line that read no lock: `npm install` of the
+    project (not `npm ci`), `yarn` without --frozen-lockfile or --immutable,
+    and a `pip install` that neither requires hashes nor pins each package
+    it names with `==`."""
+    out: list[str] = []
+    for m in NPM_INSTALL.finditer(args):
+        rest = m.group("rest")
+        packages = [w for w in rest.split() if not w.startswith("-")]
+        # `npm install -g tool@1.2.3` installs one pinned tool, not the project
+        if not packages or any("@" not in w.lstrip("@") for w in packages):
+            out.append("`npm install` without a lock; an image runs `npm ci`, or installs a tool at a pinned version")
+    for m in YARN_INSTALL.finditer(args):
+        if "--frozen-lockfile" not in m.group(0) and "--immutable" not in m.group(0):
+            out.append("`yarn` without --frozen-lockfile or --immutable; an image installs from the lock")
+    for m in PIP_INSTALL.finditer(args):
+        rest = m.group("rest")
+        if "--require-hashes" in rest:
+            continue
+        words = rest.split()
+        if "-r" in words or "--requirement" in words or any(w.startswith("--requirement=") for w in words):
+            out.append("`pip install -r` without --require-hashes; an image installs from a locked, hashed list")
+            continue
+        packages = [w for w in words if not w.startswith("-")]
+        if any("==" not in w for w in packages):
+            out.append("`pip install` of an unpinned package; an image pins each one with == or requires hashes")
+    return out
 
 
 # --- DEL-11

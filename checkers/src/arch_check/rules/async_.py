@@ -555,6 +555,7 @@ SPAWNS = frozenset(
         "multiprocessing.context.Process",
         "os.fork",
         "fastapi.BackgroundTasks",
+        "fastapi.background.BackgroundTasks",
         "starlette.background.BackgroundTasks",
         "starlette.background.BackgroundTask",
     }
@@ -644,6 +645,29 @@ def unannotated(node: ast.expr, bound: dict[str, str]) -> ast.expr:
     return node
 
 
+def annotated_types(node: ast.expr, bound: dict[str, str]) -> Iterator[ast.expr]:
+    """Every type an annotation may carry: through `Annotated[...]`, a union (`X | None`,
+    `Optional[X]`, `Union[X, Y]`), and a string annotation, which is parsed."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            parsed = ast.parse(node.value, mode="eval").body
+        except SyntaxError:
+            return
+        yield from annotated_types(parsed, bound)
+        return
+    node = unannotated(node, bound)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        yield from annotated_types(node.left, bound)
+        yield from annotated_types(node.right, bound)
+        return
+    if isinstance(node, ast.Subscript) and last(resolved(node.value, bound) or "") in ("Optional", "Union"):
+        inner = node.slice
+        for element in inner.elts if isinstance(inner, ast.Tuple) else [inner]:
+            yield from annotated_types(element, bound)
+        return
+    yield node
+
+
 def receiver(node: ast.expr, bound: dict[str, str], loops: set[str], executors: set[str]) -> str | None:
     """`loop` or `executor` when a method is called on one: made inline, or a name or attribute bound to one."""
     if isinstance(node, ast.Call):
@@ -698,9 +722,13 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
                     what = name or attr
                     yield Violation.at(file.rel, node, f"a web service calls {what}(); work that outlives a request is a worker")
             elif isinstance(node, ast.arg) and node.annotation is not None:
-                name = resolved(unannotated(node.annotation, bound), bound)
-                if name in SPAWNS:
-                    yield Violation.at(file.rel, node, f"a web service takes {name}; work that outlives a request is a worker")
+                for kind in annotated_types(node.annotation, bound):
+                    name = resolved(kind, bound)
+                    if name in SPAWNS:
+                        yield Violation.at(
+                            file.rel, node, f"a web service takes {name}; work that outlives a request is a worker"
+                        )
+                        break
 
 
 # --- ASY-16

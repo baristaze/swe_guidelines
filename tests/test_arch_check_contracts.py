@@ -596,6 +596,16 @@ def test_a_manager_on_a_context_or_a_tenant_in_a_constructor_is_con_18(tmp_path)
     assert found == [("CON-18", STAGE_MODULE, 2), ("CON-18", f"{OM}/tasks/impl/manager.py", 2)]
 
 
+def test_con_18_reports_a_stage_packages_class_in_its_own_module(tmp_path):
+    package = f"{OM}/opcontext"
+    files = {
+        f"{package}/__init__.py": "from acme.om.opcontext.stages import *  # noqa: F403\n",
+        f"{package}/stages.py": "class OpContext(Platform):\n    tasks: TasksManagerInterface\n",
+    }
+    code, found, _ = run(tmp_path, "CON-18", files)
+    assert (code, found) == (1, [("CON-18", f"{package}/stages.py", 2)])
+
+
 # --- CON-20
 
 

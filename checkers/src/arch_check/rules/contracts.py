@@ -36,6 +36,7 @@ from arch_check.rules._contracts_util import (
     service_part,
     stage_classes,
     stage_module,
+    stage_rel,
     union_members,
 )
 
@@ -684,7 +685,9 @@ def constructors_take_structure(project: Project) -> Iterator[Violation]:
                 if n.endswith(("Interface", "Impl")) or any(w in n for w in ("Manager", "Storage", "Container"))
             )
             if bad and file is not None:
-                yield Violation.at(file.rel, node, f"{cls.name}.{name} is a {bad[0]}; a context carries state, not services")
+                yield Violation.at(
+                    stage_rel(project, cls, file), node, f"{cls.name}.{name} is a {bad[0]}; a context carries state, not services"
+                )
     for f, cls in classes_named(project, "Impl"):
         init = init_of(cls)
         for arg in arguments(init) if init else []:

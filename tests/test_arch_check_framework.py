@@ -268,6 +268,13 @@ def test_a_misspelled_package_exits_2_instead_of_passing(tmp_path):
     assert "no module is under the package 'acmee'" in err
 
 
+def test_source_globs_that_match_no_file_exit_2_instead_of_passing(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[tool.arch-check]\npackage = "acme"\nsrc = ["nothing/*/src"]\n', encoding="utf-8")
+    code, _, err = check(tmp_path, "--group", "om")
+    assert code == 2
+    assert "match no Python file" in err
+
+
 def test_a_disable_of_an_unknown_rule_exits_2(tmp_path):
     bad_project(tmp_path, pyproject=PYPROJECT + DISABLE.format(adr=ADR).replace("CON-12", "CON-99"))
     code, _, err = check(tmp_path)

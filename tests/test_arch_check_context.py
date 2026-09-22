@@ -539,6 +539,18 @@ def test_an_abc_scope_with_a_method_nobody_uses_is_ctx_22(tmp_path):
     ]
 
 
+def test_ctx_22_reports_a_stage_packages_scope_in_its_own_module(tmp_path):
+    package = f"{OM}/opcontext"
+    stages = OPCONTEXT + "\n\nclass CredentialScope(ABC):\n    def check(self) -> bool:\n        return True\n"
+    write_project(
+        tmp_path,
+        {f"{package}/__init__.py": "from acme.om.opcontext.stages import *  # noqa: F403\n", f"{package}/stages.py": stages},
+    )
+    code, report = check_json(tmp_path, "--rule", "CTX-22")
+    assert code == 1
+    assert {f["path"] for f in report["findings"]} == {f"{package}/stages.py"}
+
+
 # --- CTX-24
 
 
