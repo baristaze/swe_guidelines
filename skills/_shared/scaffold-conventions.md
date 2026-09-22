@@ -224,7 +224,9 @@ the order the guideline presents them, never by number.
   (the id and a unique key the table declares) returns an
   `InsertOutcome`, `INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, and the
   manager reads the row back by the key that collided; a create with
-  the id as its only key returns `bool`. The one exception to the
+  the id as its only key returns `bool`, `True` when the base's
+  `_insert`, which always reports an `InsertOutcome`, answered
+  `INSERTED`. The one exception to the
   whole entity is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
