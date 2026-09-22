@@ -4,6 +4,116 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.28.0 (2026-09-22)
+
+An outside review of delivery and of the guideline's seams, applied in
+full where it held. The state bucket holds state alone, no secret value
+reaches state or a plan, a deployer is bound to its branch, and the
+deploy migrates the database. The tooling stops what it starts and reads
+the spellings it missed. Minor: rules are added and sharpened, and one is
+reversed, which before 1.0.0 bumps the minor number.
+
+### Changed
+
+- **Reversed.** "Heartbeats and Leases", lens `ASY-24`: a worker no
+  longer stops claiming when its heartbeats fail. It beats in memory,
+  `/healthz` reads that beat, and the liveness key in the cache is
+  published best effort. A cache outage never pauses claiming.
+- "Cloud: AWS": each account has an artifacts bucket for bundles, and
+  the state bucket holds state alone. The account boundary names its two
+  scoped exceptions: the replication writes into production's artifacts
+  bucket and registry. `DEL-41`, `DEL-31`, `DEL-42`.
+- "Cloud: AWS": release fast-forwards to the commit of the last
+  successful staging deploy, pushed by the ruleset's one bypass actor,
+  and the release workflow dispatches production itself when that key is
+  absent. Each deploy workflow has a concurrency group that never
+  cancels a run in progress. The saved production plan stays out of
+  workflow artifacts. Production's lookup waits a bounded time for the
+  replicated copy. A revert through `main` is the rollback, and the
+  runtime's circuit breaker covers a failed rollout. `DEL-38`, `DEL-31`.
+- "Cloud: AWS": the equal-graph rule covers the environment roots, and a
+  bootstrap root may differ. `DEL-02`. The trade-off of staging under
+  production's domain is named, and CloudFront's certificate lives in
+  `us-east-1`.
+- "Operator Roles": the deployer trusts the environment and the branch,
+  and each repository-host environment has a deployment-branch policy
+  (`OPS-28`). Three cloud roles plus the supporter's operator-plane
+  identity; the everyday permission set is not an operator role
+  (`OPS-02`, `OPS-05`). The administrator is the one deliberate
+  exception to the credential boundary, granted for the run. Roles are
+  `<product>-<verb>-<environment>`, the profile is
+  `<product>-<environment>-investigate`, and `prod` is the folder
+  spelling (`OPS-06`).
+- "Operator Credentials": the environments' file is exempt from `OPS-09`
+  and `OPS-27`.
+- "Dashboards and Alarms as Code": unhealthy targets join the default
+  alarm set, and the scaffold no longer counts it (`OPS-15`).
+- "Creating and Destroying an Environment": staging's run deploys,
+  production's ends at its bootstrap, and staging's second run reads
+  production's names from the environments' file. Destroy reads the
+  `release` branch and the applied state, and production keeps its final
+  snapshot and its automated backups (`OPS-19`).
+- "The Telemetry Round Trip": the deployed smoke test makes no
+  deliberate failure, reads its signals as the investigator, and runs as
+  a named smoke identity in a named smoke tenant (`OPS-22`).
+- Storage and the rest: a role has its own pool once it has its own URL,
+  and roles share one pool until then, in Resilience too. Backups are
+  per instance until a role moves to its own database. A field added to
+  a stored shape is excluded from the dump until the release after
+  (`STO-25`). `TopicPayload` declares `truncated`. A relay in the request
+  path never raises. Sign-up names enumeration and address claiming as
+  its costs. Readiness is bounded by the prober's timeout (`NET-10`). A
+  `429` releases the idempotency marker (`NET-09`). The enqueue reads
+  back by the key that collided (`ASY-25`). A stale holder drops its item
+  (`ASY-26`). The worker rollout limit gives its real reason, and
+  `ASY-18`'s title matches its rule. Wording: the two "three kinds", the
+  quota on the park side, the hint's actor, containment names no roles,
+  the operator gate replaces an undefined term, and `CON-03`, `CON-19`
+  and the gate's sentences are split.
+- `arch-scaffold-new`, `arch-scaffold-app`, and the create, nuke, and
+  infra-as-code templates follow.
+
+### Added
+
+- "Infrastructure as Code": no secret value in state or in a plan. A
+  generated password is ephemeral and written write-only, or the database
+  service manages it. New lens `DEL-46`; `OPS-04` follows.
+- "Migrating a Deployed Database", a new subsection of Deployment: the
+  migration is a one-off task on the new image before the rollout, inside
+  the same apply, and in production after the approval. The first
+  operator of a deployed environment is granted by the same kind of task.
+  New lens `DEL-45`.
+- "Cloud: AWS": the target group and each task probe `/healthz`, and
+  `/readyz` never drives a check that replaces tasks. New lens `DEL-44`;
+  `DEL-10` follows. 241 lenses.
+
+### Fixed
+
+- The benchmark stops what it starts. A timeout kills the named
+  container, which runs with `--init`, no capabilities, and bounded
+  memory, processors, and processes. The host runtime kills the whole
+  process group. A failed subject is recorded, never judged, and the run
+  exits 6; `benchmark.yml` runs with `--strict`.
+- `arch-check` reads the spellings it missed: stage classes through
+  import aliases, `th.local()` and a renamed `ContextVar` (`CTX-07`), the
+  OM chain through a star import, `model_config | {...}` and a nested
+  `Config` (`OM-07`, `OM-10`, `OM-11`), `__table__` and Core `Table(...)`
+  (`STO-09`, now partial), `BackgroundTasks` through `Annotated`,
+  `multiprocessing`, `os.fork` and `sched` (`ASY-15`),
+  `default_factory=uuid.uuid4` (`OM-12`), and an aliased `boto3`
+  (`ASY-01`).
+- `arch-check` no longer passes a misspelled `--package`, accepts only an
+  ADR under `docs/adr/` for a deviation, reads a stage package whole, opens
+  a Dockerfile heredoc only in RUN, COPY, and ADD, and skips a `**spread`
+  mapping in `CTX-15`.
+- The workflows scope the provider keys to the run step, persist no
+  checkout token, and refuse a release tag off `main`. The link check
+  reads every link form. The no-section-numbers check covers every
+  Markdown file, the ops-skill templates are held to the skill
+  frontmatter rules, the benchmark viewer sends `nosniff`, a sandboxing
+  CSP, and no referrer and refuses a foreign `Host`, and scores round
+  halves up.
+
 ## 0.27.0 (2026-09-21)
 
 One cloud account per environment. The account is the boundary
