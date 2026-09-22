@@ -4572,13 +4572,18 @@ back. Deleting an applied revision leaves every deployed version
 table naming a file that no longer exists.
 
 When a full pass is too slow for a release that is healthy but wrong,
-the production workflow is dispatched with the previous release commit
-as its input. It accepts only an ancestor of `release` that production
-ran before, plans that commit's copies behind the same approval, and
-leaves `release` where it is; the next fast-forward moves it on. The
-previous release runs on the current schema, because every migration
-is compatible with the release before it (see
-[Migrations](#migrations)).
+the fast rollback returns production to the previous release, and only
+to that one. A person dispatches the production workflow with the
+previous release commit as its input. It swaps the service and worker
+images back to that commit's digests and the portal back to that
+commit's bundle. It runs no migration and plans no Terraform, so nothing
+else the current release declared moves. It leaves `release` where it
+is; the next fast-forward moves it on.
+
+The previous release runs on the current schema, because every
+migration is compatible with the release before it (see
+[Migrations](#migrations)). A release older than that has no such
+promise, so anything older rolls forward, by a revert.
 
 A rollout that fails is a different thing: the runtime's deployment
 circuit breaker rolls it back on its own. The apply waits for the
@@ -5410,9 +5415,12 @@ The run reads that on `release`, the branch production applies, and on
 the applied state, never on `main` alone. A change merged to `main`
 and not yet released is not yet in production.
 
-The run applies from the exact commit the environment runs: `release` at
-origin for production, and `main` for staging. It applies in a clean
-worktree of its own, never from the working tree it was started in. So
+The run applies from the exact commit the environment runs. For
+production that is `release` at origin. For staging it is the `main`
+commit of its last successful deploy, which the deployment record
+names, never the tip of `main`, which may still be deploying or may
+have failed. The run applies in a clean worktree of its own, never
+from the working tree it was started in. So
 nothing unreleased reaches production on the way down. It empties what
 must be empty and destroys the environment root. Outside production a
 secret is deleted with no recovery window, so a create that follows
