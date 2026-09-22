@@ -1,0 +1,38 @@
+name: changelog
+
+# The changelog is written once per release, in the release pull request
+# (CONTRIBUTING.md, Versioning). Any other pull request that edits it
+# puts every open one in conflict, so this run refuses it. A title edit
+# reruns it, since a title can mark the release.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: only a release edits CHANGELOG.md
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      # Actions are pinned by commit; the comment names the tag the commit carries.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The title and the branch reach the script as environment, never as
+      # workflow text, so a title cannot inject a command.
+      - name: the changelog is the release's
+        env:
+          BASE: ${{ github.base_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git fetch --quiet origin "$BASE"
+          python3 scripts/check_changelog.py --base "origin/$BASE" --title "$TITLE" --branch "$BRANCH"
