@@ -98,6 +98,7 @@ Skeleton:
 - The target group's health check and each task definition's own health check on `/healthz`, never `/readyz`
 - The ECS deployment circuit breaker with rollback on every service
 - The API's migration as a one-off task on the new image before its rollout, which the rollout depends on: it first runs `migrate ensure-logins`, which connects under the master URL and nothing else does, creates each of the three logins by its fixed name when absent, sets its password from its URL's secret, and grants the migration login `CREATE` on the database; then `migrate upgrade --all` runs the migrations as the migration login
+- The API's `grant-operator` subcommand as a second one-off task definition on the same image, `<root>-<env>-grant-operator`, holding the runtime login's and the system login's URLs as secrets and never the migration login's or the master's; `grant-operator.yml` runs it with the email and the permission as the command's arguments, and the environment root outputs its name
 - Every ECS service waits for its steady state (`wait_for_steady_state`), so a rollout the circuit breaker rolled back fails the apply
 - Environment names match the settings' cloud-environment set
 - `deployment/cloud/environments.json` naming the region and, per environment, its `account_id`, its `admin_profile` (`<root>-<env>-admin`), its `sso_profile` (`<root>-<env>`), and its public names, read by every root and both scripts, with every provider's `allowed_account_ids` pinned to the environment's account
