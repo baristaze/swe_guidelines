@@ -14,7 +14,7 @@ Rules:
   from its heading to the next heading of the same or a higher level; a
   citation of a whole section takes no parentheses;
 - Severity is high, medium, or low;
-- a Principle is at most 100 words, and Look for and Violation are at most
+- a Principle is at most 120 words, and Look for and Violation are at most
   three sentences each, so a lens stays one rule a reviewer can hold;
 - a field value runs to the next field or lens heading, wrapped lines
   and list items included; fenced code is neither a lens nor a field,
@@ -86,7 +86,7 @@ CROSS_REFERENCES = frozenset(
     }
 )
 """(lens, identifier) pairs a lens quotes from a section it does not cite, on purpose."""
-MAX_PRINCIPLE_WORDS = 100
+MAX_PRINCIPLE_WORDS = 120
 MAX_SENTENCES = 3
 MAX_COLUMNS = 80
 

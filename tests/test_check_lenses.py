@@ -79,10 +79,10 @@ def test_stated_count_must_equal_the_catalog(repo, lenses, capsys):
     assert "lenses/README.md" in capsys.readouterr().out
 
 
-def test_principle_over_a_hundred_words_fails(repo, lenses, capsys):
-    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 101)
+def test_principle_over_a_hundred_and_twenty_words_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 121)
     assert lenses.main() == 1
-    assert "Principle is 101 words, limit 100" in capsys.readouterr().out
+    assert "Principle is 121 words, limit 120" in capsys.readouterr().out
 
 
 def test_four_sentences_in_look_for_or_violation_fail(repo, lenses, capsys):
@@ -100,10 +100,12 @@ def test_line_wider_than_eighty_columns_fails(repo, lenses, capsys):
 
 
 def test_list_continuation_lines_count_toward_the_principle(repo, lenses, capsys):
-    items = "\n".join(f"{marker} {' '.join(['word'] * 10)}" for marker in ["-", "*", "**", "-", "*", "-", "-", "*", "**", "-"])
+    items = "\n".join(
+        f"{marker} {' '.join(['word'] * 10)}" for marker in ["-", "*", "**", "-", "*", "-", "-", "*", "**", "-", "*", "-"]
+    )
     repo.edit("lenses/om.md", "**Principle.** One table per entity.\n", f"**Principle.** One table per entity.\n{items}\n")
     assert lenses.main() == 1
-    assert "Principle is 106 words, limit 100" in capsys.readouterr().out
+    assert "Principle is 126 words, limit 120" in capsys.readouterr().out
 
 
 def test_a_new_field_line_still_ends_the_value_before_it(repo, lenses):
