@@ -1293,6 +1293,11 @@ The dependency is an implementation detail, not part of
 manager in the right order and wires dependencies between them. Callers
 see only the interfaces.
 
+A manager calls a peer for a fact its own decision rests on. A step
+that joins two operations each namespace exposes, such as reserving
+stock and then placing the order, belongs to the service impl instead
+(see [Direction of Calls](#direction-of-calls)).
+
 ### Operations Without a Principal
 
 A few operations exist before any principal does, or act across every
@@ -3289,6 +3294,14 @@ Calls flow downward through the layers, never upward:
 Cross-service orchestration therefore lives in the service impl, not
 in the OM. It composes. It never decides.
 
+What the call is decides who makes it. A manager calls a peer manager
+for a fact its own decision rests on, one the rule needs whichever
+process runs it (see [Cross-Manager
+Dependencies](#cross-manager-dependencies)). A step that joins two
+operations each namespace exposes on its own is the service impl's,
+because a split may put one of them behind a wire. Placing an order is
+the second kind.
+
 Placing an order needs reserved stock. Reserving stock is an operation
 of the inventory namespace (`InventoryManagerInterface.reserve`), and
 `inventory-api` exposes it. `InventoryServiceInterface` has the two
@@ -3302,7 +3315,7 @@ whole of that change.
 The orders service impl orchestrates:
 
 ``` python
-# services/orders-api/src/acme/services/orders_api/impl/orders.py (network layer)
+# services/api/src/acme/services/api/impl/orders.py (network layer)
 
 class OrderServiceImpl(OrderServiceInterface):
     def __init__(
@@ -5341,7 +5354,7 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 │   └── tests/
 │
 ├── services/
-│   ├── api/                            # the one API process; splits into <ns>-api later
+│   ├── api/                            # the one API process; a split serves it as <ns>-api
 │   │   ├── pyproject.toml
 │   │   ├── src/
 │   │   │   └── acme/
