@@ -367,3 +367,48 @@ def test_an_answer_with_a_unicode_line_separator_is_kept_whole(tmp_path, monkeyp
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1"]) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
     assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "one\u2028two\u2029three\n"
+
+
+def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    prompts: list[str] = []
+
+    def judge_all(flags, prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    read_from: list[Path] = []
+    source = run.E.source
+
+    def spy(target, globs, *args, **kwargs):
+        read_from.append(Path(target))
+        return source(target, globs, *args, **kwargs)
+
+    monkeypatch.setattr(run.E, "source", spy)
+    target = tmp_path / "target"
+    (target / "src").mkdir(parents=True)
+    (target / "tests").mkdir()
+    (target / "src" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (target / "tests" / "test_a.py").write_text("def test_a(): ...\n", encoding="utf-8")
+    probe = (
+        "import pathlib, sys; root = pathlib.Path(sys.argv[1]); "
+        "print(sorted(p.relative_to(root).as_posix() for p in root.rglob('*.py')))"
+    )
+    scenario = {
+        "name": "seen",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", probe, "{target}"], "target": str(target)},
+        "evidence": {"files": ["**/*.py"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "seen.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs")]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
+    assert answer == "['src/a.py', 'tests/test_a.py']\n"  # the subject saw the tests
+    assert "### Source: tests/test_a.py" in prompts[0] and "### Source: src/a.py" in prompts[0]
+    (staged,) = read_from
+    assert staged != target and staged.name == "target"  # the staged copy, not the original

@@ -338,10 +338,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(exc, file=sys.stderr)
         return 2
 
-    # The evidence the judges get. The expected findings describe the
+    # The evidence the judges get. The source is read from the target as
+    # the runtime staged it, the copy the subject reads, so the judges and
+    # the subject see the same files. The expected findings describe the
     # scenario's own target; on any other target they would be wrong, so
     # they are dropped and the run says so. The source goes either way.
-    source_text = E.source(target, scn.evidence.files) if target and scn.evidence.files else ""
+    source_text = E.source(rt.target, scn.evidence.files) if rt.target and scn.evidence.files else ""
     expected_path = scn.resolve(scn.evidence.expected)
     expected_note = None
     if expected_path and target != own_target:

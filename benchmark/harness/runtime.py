@@ -65,7 +65,8 @@ CONTAINER_TARGET = "/target"
 # reference, and nothing else. The benchmark, its fixtures and their
 # answer keys, the docs, and the repository's own CLAUDE.md stay out.
 PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
-STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tests")
+# What no staged copy carries: the caches a tool leaves behind.
+STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 
 
 def new_sandbox() -> Path:
@@ -86,7 +87,12 @@ def stage_plugin(root: Path, dest: Path) -> Path:
 
 
 def stage_target(target: Path, dest: Path) -> Path:
-    """Copy the target folder alone into `dest`, so no sibling of it is in reach."""
+    """Copy the target folder alone into `dest`, so no sibling of it is in reach.
+
+    The copy is the whole target, its tests included, less the caches: the
+    subject reviews what the judges read as evidence, and the judges read
+    this copy.
+    """
     shutil.copytree(target, dest, symlinks=True, ignore=STAGE_IGNORE, dirs_exist_ok=True)
     return dest
 

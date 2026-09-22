@@ -111,6 +111,18 @@ def test_the_sandbox_holds_only_the_payload_and_goes_at_teardown(tmp_path):
     assert not sandbox.exists()
 
 
+def test_the_staged_target_keeps_its_tests(tmp_path):
+    # The subject reviews the whole target, tests included, as the judges do.
+    target = tmp_path / "target"
+    (target / "tests").mkdir(parents=True)
+    (target / "tests" / "test_a.py").write_text("def test_a(): ...", encoding="utf-8")
+    (target / "__pycache__").mkdir()
+    (target / "__pycache__" / "a.cpython-314.pyc").write_bytes(b"")
+    staged = RT.stage_target(target, tmp_path / "staged")
+    assert (staged / "tests" / "test_a.py").is_file()
+    assert not (staged / "__pycache__").exists()
+
+
 def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
     target = tmp_path / "checkout"
     target.mkdir()

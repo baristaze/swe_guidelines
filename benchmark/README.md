@@ -87,7 +87,8 @@ outside the checkout, a fresh temporary folder per run:
 <sandbox>/
   plugin/                  a copy of the plugin payload only: the manifest,
                            skills, agents, lenses, architecture.md, checkers
-  target/                  a copy of the target folder, without its siblings
+  target/                  a copy of the target folder, tests included,
+                           without its siblings
   workspace/<repeat>/      what the subject worked in, empty at the start
   home/<repeat>/, tmp/<repeat>/  the host runtime's private HOME and TMPDIR
 ```
@@ -196,6 +197,9 @@ scenario can give the judges evidence:
 
 - `evidence.files`: the target's source, with line numbers, so a
   finding that names a file and a line is checked against that line.
+  The source is read from the staged copy of the target, the one the
+  subject reads, so the judges and the subject see the same files. A
+  line ends at a newline and nowhere else, as an editor counts it.
 - `evidence.expected`: the defects planted in the scenario's own
   target, one per entry with a lens, a file, and a line, and what the
   target does right. The file lives beside the target, never inside
