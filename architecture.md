@@ -2466,9 +2466,15 @@ class BucketsInterface(ABC):
     @abstractmethod
     async def presign_get(self, org_id: UUID, bucket: Buckets, key: str, ttl: timedelta) -> str | None: ...
     @abstractmethod
-    async def presign_put(
+    async def presign_post(
         self, org_id: UUID, bucket: Buckets, key: str, content_type: str, max_bytes: int, ttl: timedelta
-    ) -> str | None: ...
+    ) -> PresignedPost | None: ...
+
+class PresignedPost(BaseModel):  # a form the browser posts: the fields in order, then the file
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    fields: tuple[tuple[str, str], ...]
 ```
 
 A listing is bounded like any read that returns a list. Keys come back
@@ -2491,16 +2497,21 @@ Presigned URLs let a browser or a remote process move bytes directly to
 and from the store, with a short expiry. The service never proxies a
 large upload through its own memory.
 
-A presigned upload is bounded. It names its content type and a maximum
-length, `max_bytes`. The store refuses a body of another type or a
-longer one, so a URL handed to a browser cannot fill the bucket.
+A presigned upload is bounded. A presigned `PUT` cannot bound a body's
+size, so an upload is a presigned `POST`. `presign_post` returns the
+URL and the form fields the browser posts with the file. The signed
+policy in those fields carries the content type and a
+`content-length-range` from zero to `max_bytes`. The store refuses a
+body of another type or a longer one, so a form handed to a browser
+cannot fill the bucket.
 
 Either presign returns `None` when its backend cannot sign a URL. The
 caller then moves the bytes through `put` and `get` itself, and holds
 them to the same bounds.
 
 A local filesystem impl with the same layout serves development and
-tests. It refuses a key that is absolute or climbs out of its root with
+tests. It holds an upload to the same content type and `max_bytes`,
+and refuses a key that is absolute or climbs out of its root with
 `..`, as the cloud's keys cannot.
 
 ### Topics
