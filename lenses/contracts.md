@@ -474,11 +474,14 @@ state in a constructor; the rest is judged.
 ## CON-19 The copy on update starts from the stored row
 
 **Principle.** The manager's copy on update starts from the stored row.
-The caller's entity supplies the fields a caller may change.
-`PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
-`deleted_by`) stay as stored, so no caller rewrites who made a row or
-brings a deleted one back by sending an entity. The copy is
-`model_validate` over the two dumps, because it carries one.
+The caller's entity supplies the fields a caller may change. The copy
+excludes `set(PROVENANCE_FIELDS) | set(<Entity>.MANAGER_OWNED_FIELDS)`
+from the caller's dump. `PROVENANCE_FIELDS` (`created_at`,
+`created_by`, `deleted_at`, `deleted_by`) stay as stored, so no caller
+rewrites who made a row or brings a deleted one back by sending an
+entity. The entity's `MANAGER_OWNED_FIELDS` stay as stored too, so no
+caller writes a field the manager owns. The copy is `model_validate`
+over the two dumps, because it carries one.
 
 **Source.** The Business Layer, Shape of an Operation.
 
@@ -487,7 +490,8 @@ it excludes, and which call builds it.
 
 **Violation.** An update copied from the caller's entity, so a sent
 `created_by` or a cleared `deleted_at` is written; an update that
-excludes fewer fields than `PROVENANCE_FIELDS`; a `model_copy` fed the
+excludes fewer fields than `PROVENANCE_FIELDS` and the entity's
+`MANAGER_OWNED_FIELDS` together; a `model_copy` fed the
 caller's dump (the copy call itself is OM-10).
 
 **Severity.** medium
