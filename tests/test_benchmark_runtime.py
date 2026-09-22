@@ -351,3 +351,18 @@ def test_the_container_is_named_bounded_and_killed_by_name_on_a_timeout(tmp_path
     assert status.timed_out
     calls = log.read_text(encoding="utf-8").splitlines()
     assert calls[-1] == f"kill {rt.container_name}"
+
+
+def test_the_vm_helpers_run_without_the_judge_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-openai")
+    monkeypatch.setenv("NOT_A_KEY", "judge-openai")  # the value is what counts, whatever the name
+    envs: list[dict[str, str]] = []
+    monkeypatch.setattr(RT.subprocess, "run", lambda argv, **kwargs: envs.append(kwargs.get("env")))
+    config = {"exec_prefix": ["fake-shell", "--"], "sync": ["fake-copy", "{local}/", "{remote}/"], "fetch": ["x"]}
+    rt = RT.build("vm", tmp_path, None, config)
+    rt.prepare_repeat(0)
+    rt.collect(["*.md"])
+    rt.teardown()
+    assert envs and all(env is not None for env in envs)
+    for env in envs:
+        assert "judge-openai" not in env.values()

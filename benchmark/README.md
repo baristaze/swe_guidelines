@@ -55,10 +55,18 @@ Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client
 is handed `GEMINI_API_KEY` and the ambient `GOOGLE_API_KEY` is taken
 out of its way, because those two names often hold different accounts.
-The judges' keys stay in the harness process. A subject that runs a
-command, a skill's `claude -p` included, is handed `ANTHROPIC_API_KEY`
-and no other key, in its environment on the host and by `-e` in a
-container.
+
+The subject has a key of its own: `SUBJECT_ANTHROPIC_API_KEY`. A
+subject that runs a command, a skill's `claude -p` included, gets that
+value as `ANTHROPIC_API_KEY`, in its environment on the host and on
+another machine, and by `-e` in a container. It is spawned from an
+environment that never held a judge's key, on every runtime: every
+provider key name is taken out, and so is any variable whose value is
+a judge's key, whatever its name. So a subject key set to a judge's key
+is dropped, not handed on, and the stream says so. Give the subject a
+key of its own, one you can cap and revoke on its own. `--strict`
+refuses a skill run whose subject has none.
+
 
 ## What a run leaves behind
 

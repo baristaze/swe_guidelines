@@ -52,16 +52,29 @@ SCENARIOS = BENCHMARK / "scenarios"
 SCHEMA = BENCHMARK / "schema" / "result.schema.json"
 MODELS = BENCHMARK / "models.yaml"
 DEFAULT_OUT = BENCHMARK / "runs"
-# What a subject inherits beyond its private HOME and TMPDIR and its keys.
+# What a subject inherits beyond its private HOME and TMPDIR and its key.
 PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
-# The keys a subject that runs a command is handed: `claude -p` needs the
-# Anthropic key and nothing else. The judges' keys stay in this process.
-SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
-    """The key names the subject's command needs. A `qa` subject runs no command."""
-    return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
+    """The key names the subject's command reads. A `qa` subject runs no command."""
+    return [] if scn.kind == "qa" else list(RT.SUBJECT_KEYS)
+
+
+def subject_env(scn: S.Scenario, source: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment the subject is spawned from: no judge's key is ever in it.
+
+    `claude -p` reads ANTHROPIC_API_KEY. The subject's value for it comes
+    from SUBJECT_ANTHROPIC_API_KEY, a key of its own, so no judge's key is
+    copied into the subject's environment, on any runtime.
+    """
+    source = dict(os.environ) if source is None else source
+    env = RT.passthrough_env(PASSTHROUGH, source)
+    for name in subject_keys(scn):
+        value = source.get(RT.SUBJECT_KEYS[name])
+        if value:
+            env[name] = value
+    return RT.scrub(env, source)[0]
 
 
 def new_run_dir(out: Path, scenario: str) -> tuple[str, Path]:
@@ -318,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
     if args.runtime == "container":
-        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(n)])
+        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(RT.SUBJECT_KEYS[n])])
     # The subject lives outside the checkout, with copies of the plugin
     # payload and of the target, so neither an answer key nor the
     # repository's CLAUDE.md is in its reach.
@@ -388,6 +401,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     if missing and args.strict:
         print(f"strict: no key for {', '.join(missing)}", file=sys.stderr)
         return 3
+    no_subject_key = [RT.SUBJECT_KEYS[n] for n in subject_keys(scn) if not os.environ.get(RT.SUBJECT_KEYS[n])]
+    if scn.kind == "skill" and no_subject_key and args.strict:
+        print(f"strict: the subject has no key of its own; set {', '.join(no_subject_key)}", file=sys.stderr)
+        return 3
 
     if isinstance(rt, RT.ContainerRuntime) and args.build:
         with CliStream(run_dir / "streams" / "build.jsonl") as build_stream:
@@ -425,7 +442,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         },
     )
 
-    env = RT.passthrough_env(PASSTHROUGH + subject_keys(scn))
+    env = subject_env(scn)
+
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
     failed_subjects: list[int] = []
     try:

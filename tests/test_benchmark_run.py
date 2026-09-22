@@ -221,6 +221,8 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
 
 
 def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch):
+
+
     # What a subject can read: the staged plugin payload and the staged
     # target. The fixtures' answer keys, the benchmark folder, and every
     # CLAUDE.md up the tree are out of reach.
@@ -268,24 +270,54 @@ def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tm
     assert code == 0 and logged[logged.index("--providers") + 1] == "7" and logged[logged.index("--effort") + 1] == "high"
 
 
-def test_the_subject_is_handed_the_anthropic_key_and_no_judge_key(tmp_path, monkeypatch):
+JUDGE_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "XAI_API_KEY", "GROK_API_KEY")
+
+
+@pytest.mark.parametrize("runtime", ["host", "vm"])
+def test_the_subject_holds_its_own_key_and_no_judge_key(tmp_path, monkeypatch, runtime):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
-    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"):
-        monkeypatch.setenv(name, "k")
-    script = "import os; print(sorted(k for k in os.environ if k.endswith('_API_KEY')))"
+    for name in JUDGE_KEYS:
+        monkeypatch.setenv(name, f"judge-{name}")
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "subject-key")
+    script = "import os; print(sorted((k, v) for k, v in os.environ.items() if k.endswith('_KEY') or 'judge-' in v))"
     scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
     path = tmp_path / "keys.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
-    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15"]) == 0
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15", "--repeat", "1"]
+    if runtime == "vm":
+        config = tmp_path / "vm.json"
+        # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+        vm = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote"), "remote_plugin": str(tmp_path)}
+        config.write_text(json.dumps(vm), encoding="utf-8")
+
+        argv += ["--runtime", "vm", "--runtime-config", str(config)]
+    assert run.main(argv) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
-    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "['ANTHROPIC_API_KEY']\n"
+    answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
+    assert answer == "[('ANTHROPIC_API_KEY', 'subject-key')]\n"
+
+
+def test_a_subject_key_that_is_a_judge_key_is_never_handed_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "shared")
+    rt = run.RT.build("host", tmp_path)
+    rt.prepare()
+    script = "import os; print(sorted(k for k, v in os.environ.items() if v == 'shared'))"
+    with run.CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(
+            [sys.executable, "-c", script], rt.workspace, {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": "shared"}, stream
+        )
+    assert status.ok
+    lines = [r["line"] for r in run.CliStream.read(tmp_path / "cli.jsonl")]
+    assert "[]" in lines
+    assert any("ANTHROPIC_API_KEY holds a judge's key" in line for line in lines)
 
 
 def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY"):
         monkeypatch.setenv(name, "k")
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "s")
     path = tmp_path / "one.json"
     path.write_text(json.dumps(SKILL), encoding="utf-8")
     argv = ["--scenario", str(path), "--providers", "15", "--runtime", "container", "--dry-run"]
@@ -293,7 +325,7 @@ def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     (run_dir,) = (tmp_path / "runs").iterdir()
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["runtime"]["config"]["keys"] == ["ANTHROPIC_API_KEY"]
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY")
     assert run.main([*argv, "--out", str(tmp_path / "later")]) == 0
     (later,) = (tmp_path / "later").iterdir()
     assert json.loads((later / "run.json").read_text(encoding="utf-8"))["runtime"]["config"]["keys"] == []
@@ -423,3 +455,14 @@ def test_the_workflow_runs_the_subject_in_the_container_built_before_the_keys():
     run_step = workflow.index("      - name: run every scenario")
     assert build < run_step and "docker build -t swe-guidelines-benchmark:latest" in workflow[build:run_step]
     assert "_API_KEY" not in workflow[:run_step]  # no key is in reach while anything is installed
+
+
+def test_strict_refuses_a_skill_whose_subject_has_no_key_of_its_own(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "judge")
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY", raising=False)
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1", "--strict"]
+    assert run.main(argv) == 3
+    assert "SUBJECT_ANTHROPIC_API_KEY" in capsys.readouterr().err

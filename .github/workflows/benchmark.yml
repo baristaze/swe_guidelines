@@ -44,7 +44,9 @@ jobs:
     # The subject runs in the container runtime. On the host it would run
     # as this job's user and could read the run step's environment, the
     # judges' keys with it, and the answer files in the checkout; in the
-    # container it sees its three mounts and the one key it is handed.
+    # container it sees its three mounts and the one key it is handed, its
+    # own, never a judge's.
+
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       # No token left in .git/config for the subject to find.
@@ -73,6 +75,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          # The subject's own key: the harness hands it to the subject as
+          # ANTHROPIC_API_KEY, and never hands on a judge's key.
+          SUBJECT_ANTHROPIC_API_KEY: ${{ secrets.SUBJECT_ANTHROPIC_API_KEY }}
+
           SCENARIOS: ${{ inputs.scenarios }}
           PROVIDERS: ${{ inputs.providers }}
           EFFORT: ${{ inputs.effort }}
