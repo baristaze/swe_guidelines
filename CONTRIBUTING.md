@@ -62,7 +62,8 @@ reverses a rule is a major release. A change that adds or sharpens a
 rule is a minor release. Everything else is a patch. Before 1.0.0 a
 removed or reversed rule bumps the minor number, as semver reads
 0.x, and the changelog entry names the reversal; 1.0.0 is for the
-text that has stopped moving. `CHANGELOG.md` lists every release.
+text that has stopped moving. `CHANGELOG.md` lists the latest
+release; every release's notes stay on its GitHub release.
 
 The changelog is written once per release, never per change. Every
 pull request that edits one file conflicts with every other open one,
