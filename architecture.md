@@ -1925,6 +1925,12 @@ class OrderStoragePostgresImpl(PgStorageBase, OrderStorageInterface):
         self._inventory_storage = inventory_storage
 ```
 
+The order storage uses it for one read. An order's pick list names the
+warehouse each line ships from, and the storage reads those warehouses
+through `InventoryStorageInterface.read_warehouse`, under the same
+tenant, rather than joining the other namespace's table. The read
+model comes back whole from one storage call.
+
 The dependency is an implementation detail, not part of
 `OrderStorageInterface`. The storage root constructs every storage impl
 in the right order and wires dependencies between them.
@@ -1979,6 +1985,13 @@ size is how wide it is. Until then every role shares one pool, sized
 for their sum, and the bulkhead is one URL away. The system login has a
 pool of its own beside it, since its URL names another login (see [The
 Second Fence](#the-second-fence)).
+
+The database's connection budget is counted at the most processes that
+can run at once, never at the desired count. That is each process's
+pools, times its autoscaling maximum (see [Scale-Out as a
+Lever](#scale-out-as-a-lever)), plus the tasks a rollout starts beside
+the old ones before it stops them. A budget counted at the desired
+count runs out on the first rollout of a scaled-out service.
 
 Rules that make the move safe:
 
@@ -2341,8 +2354,9 @@ impl does the same when it needs to.
     thread local, or a context, whichever stage or scope it is.
 -   Observability is used through its vendor API directly (see [Traces
     and Metrics](#traces-and-metrics) and [Error
-    Tracking](#error-tracking)). So is a feature flag SDK, on the rare
-    day one is needed (see [Configuration](#configuration)).
+    Tracking](#error-tracking)). A feature flag service is not: on the
+    rare day one is needed, it sits behind an interface with a twin,
+    like any vendor (see [Configuration](#configuration)).
 -   Every impl can `describe()` itself in one line, and the container
     logs the chosen backends once at start. An operator reading a boot
     log knows exactly what a process is talking to.
@@ -3201,8 +3215,11 @@ whether an address holds an identity, which the rate limit slows and
 does not stop. And anyone can take an address they do not own, which
 its owner then meets as a conflict. With no verified mailbox there is
 also no recovery by mail: a person who loses a password is helped by
-an operator, through the operator plane. A product that sends mail to
-the address, or trusts it across tenants, ends the choice.
+an operator, through the operator plane. That reset is an operator
+write, and it is audited with the operator and the identity it reset.
+
+Verification is the first step to add when the choice ends. A product
+that sends mail to the address, or trusts it across tenants, ends it.
 
 The memberships of an identity are read under the identity stage,
 bounded like every list. The list is the same choice a sign-in answers
@@ -3258,16 +3275,19 @@ Gateway](#the-gateway)).
 ### Intra-Service Communication
 
 All services run in the same local or virtual network.
-Service-to-service calls never cross the public internet, and TLS is
-not required for intra-service traffic. A managed backend that accepts
-only TLS is configured with it; that is a connection string, not an
-architectural concern.
+Service-to-service calls never cross the public internet. Services and
+workers sit in private subnets. Security groups admit only the
+platform's own processes. Only the gateway has a public address. All of
+it is declared in Terraform.
 
-That rests on the network being private. Services and workers sit in
-private subnets. Security groups admit only the platform's own
-processes. Only the gateway has a public address. All of it is declared
-in Terraform. A runtime that offers mutual TLS between tasks at no cost
-turns it on.
+Plain traffic inside that network still has a risk, and it is named.
+Anything that reaches the network reads it: a compromised task, a
+mirrored interface, a security group rule written too wide. So a call
+between tasks uses TLS by default wherever the runtime offers it,
+mutual TLS between tasks included. Where the runtime does not offer
+it, plain traffic inside the private network is the accepted risk. A
+managed backend that accepts only TLS is configured with it; that is a
+connection string, not an architectural concern.
 
 The rule is where the trust boundary is, not that traffic inside it is
 plain.
@@ -3446,8 +3466,10 @@ A TypeScript app generates its types from the committed OpenAPI
 document into one file. It re-exports the names it uses through a
 curated facade, so feature code never imports generated paths.
 Transport lives in one small hand-written client that knows the error
-envelope and the request id. A Python consumer imports one typed
-client package, built the same way. When the document changes, every
+envelope and the request id. The three live in the portal, under
+`apps/portal/src/api/`, and the operator console imports them from the
+portal's workspace package, never a copy. A Python consumer imports
+one typed client package under `clients/python/`, built the same way. When the document changes, every
 consumer picks up the new shapes on the next build. The import path is
 the version.
 
@@ -4163,10 +4185,11 @@ marks itself offline.
 Read from the outside, the worker is alive until its work is safely
 back in the queue.
 
-A rollout never runs more workers than desired at once. Each worker
-opens its pool, and the database's connection budget counts every
-worker once, at its ceiling; a rollout that doubled the workers would
-spend connections the budget never counted.
+A rollout of workers stops an old worker before it starts a new one,
+so it never runs more workers than the count it rolls. The database's
+connection budget counts every worker at its autoscaling maximum (see
+[Database Roles](#database-roles)). A rollout that started new workers
+beside the old ones would spend connections the budget never counted.
 
 ### Maintenance Without a Scheduler
 
@@ -4609,15 +4632,23 @@ copies where they are.
 
 What production releases is only as sound as the copy, and staging is
 the less trusted account: every merge deploys it, and its build runs
-third-party install scripts. So the copy is held three ways. Every
-repository in both accounts refuses to overwrite a tag, so no later
-push can replace the image behind a commit. Production's artifacts
-bucket refuses to replace an object under the bundle prefix: it is
-versioned, and an object lock or its policy refuses a second write to
-a key that exists. And the build records each image digest and each
-bundle's hash outside staging's account, on the repository host beside
-the deployment record, and production compares the replicated copy
-with that record before it plans, and refuses a mismatch.
+third-party install scripts. So the copy is held three ways.
+
+Every repository in both accounts refuses to overwrite a tag, so no
+later push can replace the image behind a commit.
+
+Production's artifacts bucket keeps every version under the bundle
+prefix. It is versioned, and an object lock keeps each version from
+being deleted or changed. A lock protects the versions that exist. It
+does not refuse a new one, so a later write to the same key lands as a
+newer version beside the first. Production therefore reads a bundle by
+the version whose hash matches the record below, never by its key
+alone.
+
+And the build records each image digest and each bundle's hash outside
+staging's account, on the repository host beside the deployment
+record. Production compares the replicated copy with that record
+before it plans, and refuses a mismatch.
 
 The build steps hold a credential that pushes images and bundles and
 nothing else. The credential that applies an environment is held by
@@ -4697,8 +4728,8 @@ so a redeploy of the previous release always finds its copies.
 
 > **Principle:** One cloud account per environment, and nothing spans
 > two but the replication into production's registry and artifacts
-> bucket. The copy is held by immutable tags, a bundle prefix that
-> refuses overwrites, and a digest record kept outside staging's
+> bucket. The copy is held by immutable tags, a locked bundle prefix
+> that keeps every version, and a digest record kept outside staging's
 > account. Services and workers run on the container runtime. Browser
 > apps ship from a private S3 bucket through CloudFront, built once
 > and promoted. Production promotes copies replicated into its own
@@ -4771,6 +4802,12 @@ bootstrap's roles and trust, and to the bootstrap's state key. Then
 the widest role a deploy run can mint is the boundary, and the
 bootstrap stays the administrator's.
 
+The same fence covers users and access keys, because a user is a
+second door to the same power. The deployer is refused a user created
+without the boundary, and it is refused an access key outright: no
+cloud user and no long-lived key exist anywhere (see [Operator
+Roles](#operator-roles)).
+
 The layout of the environments is written once, in one file in the
 repository: each environment's account id, the region, its public
 names, and the profile names a person holds for it. The scripts and
@@ -4793,11 +4830,17 @@ A password the database service manages and rotates on its own has no
 URL to hold, and a process then builds its URL from the host and that
 secret at start.
 
-A rotation bumps the write-only version and puts the same version into
-the task definition, so the services roll and every new task reads the
-new URL; a running pool read its URL at start and is replaced, not
-reconnected. A rotation outside a pull request is not something this
-document covers.
+A rotation of the generated password bumps the write-only version and
+puts the same version into the task definition. The services roll, and
+every new task reads the new URL. A running pool read its URL at start,
+and it is replaced, not reconnected.
+
+A managed rotation does not roll the services, because it happens
+outside any deploy. So a pool on a managed password reconnects on an
+authentication failure: it reads the secret again and opens the
+connection with the new password. The connections it already holds
+keep working until they close. Any other rotation outside a pull
+request is not something this document covers.
 
 > **Principle:** Every cloud resource is declared in Terraform. No
 > clicks in the console, no untracked state. Each environment has a
@@ -4963,7 +5006,11 @@ by a named choice.
     or through the cloud's private endpoints for those services. Which
     one is the environment's named choice: the NAT gateway is the
     simpler and the larger fixed cost, and endpoints trade it for one
-    charge per service.
+    charge per service. An endpoint reaches only the cloud's own
+    services. The error tracker, the identity provider's published
+    keys, and every outside provider still need egress, so an
+    environment on endpoints keeps a narrow egress path for them, or
+    names each one it goes without.
 -   **Encryption.** The database, the cache, every bucket, and the
     secret store are encrypted at rest. Every connection to the
     database and the cache uses TLS, and the database refuses one that
@@ -6040,8 +6087,10 @@ compiled into the bundle.
 
 Runtime variation that belongs to the product is a modelled entity
 with a manager and a storage: which tenant may do what, which plan
-allows which limit. A feature flag, on the rare day one is needed, is
-a vendor SDK used directly, with its client injected at boot.
+allows which limit. A feature flag, on the rare day one is needed, sits
+behind an interface with a real client and a twin, like any vendor
+(see [Twins for External Services](#twins-for-external-services)). The
+container injects it at boot.
 
 > **Principle:** One settings object per process, read once at boot.
 > Backends are chosen there; nothing below reads the environment.
@@ -6259,7 +6308,8 @@ Each of these is stated where it applies. None of them is a shape.
 ### Versions
 
 Every dependency runs on its latest stable release, adopted once a
-patch release sits behind it (below). That covers the language
+patch release sits behind it (below). The one exception is the
+deployed database engine's major version. That covers the language
 runtimes (Python, Node), the workspace and package tools (uv, pnpm),
 the container engine (Docker), the backing services (Postgres, the
 cache, the queue), Terraform and its providers, and the libraries
@@ -6286,6 +6336,11 @@ The version is stated where the tool reads it:
 -   The engine versions declared in Terraform.
 -   `required_version` and the provider constraints of every root, and
     the Terraform version the CI steps install.
+
+A deployed database engine moves to a new major version only by a
+planned upgrade: rehearsed on a restored copy, with a snapshot taken
+first, in a window of its own. It never moves because a newer line
+became the latest stable. Its minor versions follow the rule above.
 
 The lock files hold the libraries at the versions those declarations
 resolve, and every root commits its `.terraform.lock.hcl`, so a plan
