@@ -1,0 +1,24 @@
+# arch-scaffold-new: the client and the ops package
+
+Step 3 of `arch-scaffold-new` reads this file. It is the file-by-file
+list of `clients/python/` and `ops/`, both under `<target-dir>/`,
+written after the API and its operator plane exist. The conventions in
+`../_shared/scaffold-conventions.md` hold throughout, and what must
+never be missed is in the skill's `Created` section, not here.
+
+## Files
+
+| File                                              | Holds                                                                                     |
+|---------------------------------------------------|-------------------------------------------------------------------------------------------|
+| `clients/python/`                                 | the Python client, `<root>-client`, in the shape `arch-scaffold-app` defines it, generated from the OpenAPI document step 3's `make openapi` emits, whether or not `--no-portal`, so its operator-plane calls exist before `ops/` is written; the ops package and a remote service impl import it, and the app skill finds it present and skips its row |
+| `ops/` | the workspace member `<root>-ops`; the full list is below the table |
+| `ops/README.md`, `ops/stress/README.md`           | how the platform is operated: the roles and profiles, the env file, the nine skills and what each needs, the generator and its profiles; and, under `stress/`, what a scenario holds (profile, duration, ramp, soak, the target p95 and error ratio, the weighted session steps) and that the numbers are the team's |
+
+## `ops/`
+
+- The workspace member `<root>-ops`, package `<root>.ops`, binary `<root>-ops`: `traffic --env <env> --profile light\|regular\|heavy\|stress [--duration S] [--orgs N] [--report path]`, the one generator (its tenants and their members created through `POST /v1/admin/orgs` and `POST /v1/admin/orgs/{org_id}/members` by the provisioner identity of the env file and named with the run id, and removed through `DELETE /v1/admin/orgs/{org_id}` when the run ends, a failure included, the tenants it could not remove named in the report; `--orgs 0` drives the seeded people and needs no provisioner, so it is local only and refused against a cloud environment, which has no seeded people), riding `clients/python/` and the operator plane, driving the edge and never a manager, with realistic sessions (sign in, list, add a handful, edit, complete, reopen, move, list, delete one, read events, one socket that sees its own change, sign out; the socket is the generator's own, opened with `websockets` on `/v1/realtime/socket?ticket=` after `POST /v1/realtime/tickets` through the client, since `clients/python/` is REST only) and four profiles differing by tenants, members, concurrency, and think time, reporting requests by route and status, p50, p95, p99, and the error ratio
+- `stress --scenario ops/stress/<name>.yaml --env <env> [--report path]`, the same generator at the scenario's profile with its ramp, soak, and target
+- `signals check --env <env> --request-id <id> [--since-minutes N] [--log-file PATH]` over `SignalsInterface` (`log_lines`, `metric_delta`, `trace`, `error_event`) with `SignalsLocalImpl` (the Prometheus HTTP API, the Jaeger HTTP API, GlitchTip's REST API with the token the seed creates, the captured stdout) and `SignalsCloudImpl` (CloudWatch Logs Insights, `GetMetricData` on the product's namespace, X-Ray, the error tracker's REST API)
+- `size --env <env>` (tenants, users, the main entity written in the last day, through `GET /v1/admin/size`)
+- `token --env <env> --identity operator\|provisioner`, which writes an operator token into the env file as `<ROOT>_OPERATOR_TOKEN` or `<ROOT>_PROVISIONER_TOKEN` without printing it. For the operator, the person runs it in their own terminal: it asks there for the email, the password, and the TOTP code, signs in, and calls the mint route `POST /v1/admin/me/tokens` with `permission: read` and an `Idempotency-Key` of its own, so no agent ever holds a password or a code. For the provisioner it reads the token the grant job wrote into `<root-slug>-<env>-provisioner-token`, under the person's `sso_profile`. Against `local` it runs `uv run <root>-api grant-operator --mint-token` for the seeded identity, as `make seed` does. Every other command reaches the operator plane with the token alone, and answers an expired one by naming this command; every command that reads the env file refuses one that is not owner-only (`0600`), and none prints a value from it
+- `ops/tests/test_telemetry_roundtrip.py` under the `telemetry` marker, which starts the API as a real process with the OTLP endpoint and the DSN set, drives one session, and reads every signal back by request id, so the same test runs as the deployed smoke test with a different base; it reaches the operator plane with an operator token, `<ROOT>_OPERATOR_TOKEN` locally and the smoke identity's token when deployed
