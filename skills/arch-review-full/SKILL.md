@@ -1,7 +1,7 @@
 ---
 name: arch-review-full
 description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
-allowed-tools: Read, Grep, Glob, Agent, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Agent, Bash(python3:*), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-full
@@ -16,8 +16,10 @@ collects, and merges.
 `$ARGUMENTS` names what to review, exactly as `arch-review-<group>`
 reads it (see `${CLAUDE_SKILL_DIR}/../arch-review-om/SKILL.md`, Input).
 Resolve it once, here, into a concrete description (the list of files,
-or the range) and hand the same description to every reviewer so the
-eight reports cover the same ground. An empty scope is reported as
+or the range or commit) and hand the same description to every
+reviewer so the eight reports cover the same ground. A range or a
+commit is handed over as the ref, with its list of files, and the
+reviewer reads each file at that ref, never from the working tree. An empty scope is reported as
 "nothing to review" and the skill stops. `all` costs eight full reads
 of the repository, one per reviewer, and on a large tree takes minutes
 and a large share of each reviewer's context; a path or a range is the
@@ -30,10 +32,13 @@ cheaper question whenever the change is narrower than the tree.
    path; the lens catalog is `${CLAUDE_SKILL_DIR}/../../lenses/` and
    the guideline is `${CLAUDE_SKILL_DIR}/../../architecture.md`.
    Reviewers do not see this skill's text, so pass them absolute paths.
-3. Run the checker once, for every group, from the root of the
+3. When the scope reads the working tree (empty, `all`, or a path),
+   run the checker once, for every group, from the root of the
    repository under review:
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --format json`.
-   Keep its output. Each reviewer gets the part of it that belongs to
+   The checker reads the working tree only, so for a range or a commit
+   it is not run: note that, and every reviewer judges every lens of
+   its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to
    its group (the rules run, the findings, and the `exceptions_applied`
    entries whose rule is one of its lenses), so no reviewer runs it
    again. The findings whose `group` is
