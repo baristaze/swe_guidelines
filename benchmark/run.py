@@ -26,6 +26,7 @@ file per judgement, `results.json` in the schema, and `report.md`.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import subprocess
@@ -43,6 +44,7 @@ if str(BENCHMARK) not in sys.path:
 from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
 from harness import providers as P  # noqa: E402
+from harness import redact as X  # noqa: E402
 from harness import results as R  # noqa: E402
 from harness import runtime as RT  # noqa: E402
 from harness import scenario as S  # noqa: E402
@@ -52,16 +54,29 @@ SCENARIOS = BENCHMARK / "scenarios"
 SCHEMA = BENCHMARK / "schema" / "result.schema.json"
 MODELS = BENCHMARK / "models.yaml"
 DEFAULT_OUT = BENCHMARK / "runs"
-# What a subject inherits beyond its private HOME and TMPDIR and its keys.
+# What a subject inherits beyond its private HOME and TMPDIR and its key.
 PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
-# The keys a subject that runs a command is handed: `claude -p` needs the
-# Anthropic key and nothing else. The judges' keys stay in this process.
-SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
-    """The key names the subject's command needs. A `qa` subject runs no command."""
-    return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
+    """The key names the subject's command reads. A `qa` subject runs no command."""
+    return [] if scn.kind == "qa" else list(RT.SUBJECT_KEYS)
+
+
+def subject_env(scn: S.Scenario, source: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment the subject is spawned from: no judge's key is ever in it.
+
+    `claude -p` reads ANTHROPIC_API_KEY. The subject's value for it comes
+    from SUBJECT_ANTHROPIC_API_KEY, a key of its own, so no judge's key is
+    copied into the subject's environment, on any runtime.
+    """
+    source = dict(os.environ) if source is None else source
+    env = RT.passthrough_env(PASSTHROUGH, source)
+    for name in subject_keys(scn):
+        value = source.get(RT.SUBJECT_KEYS[name])
+        if value:
+            env[name] = value
+    return RT.scrub(env, source)[0]
 
 
 def new_run_dir(out: Path, scenario: str) -> tuple[str, Path]:
@@ -122,7 +137,27 @@ def subject_prompt(scn: S.Scenario, target: str | None) -> str:
     return prompt
 
 
-def subject_argv(scn: S.Scenario, name: str, plugin: str | None, target: str | None, claude: str = "claude") -> list[str]:
+def subject_model(scn: S.Scenario, flag: str | None, matrix: dict[str, Any]) -> str | None:
+    """The model the subject runs on: the flag, else the scenario's, else the matrix's first.
+
+    A skill runs `claude -p`, whose default model moves under the run; a
+    score is only comparable to another on the same model, so the model is
+    always pinned. A command subject runs what its argv says, and has no
+    model unless the flag names one.
+    """
+    if flag:
+        return flag
+    if scn.subject.model:
+        return scn.subject.model
+    if scn.kind == "command":
+        return None
+    provider = "anthropic" if scn.kind == "skill" else P.name(P.parse(scn.subject.provider or "anthropic"))
+    return J.models_for(matrix, provider)[0] or None
+
+
+def subject_argv(
+    scn: S.Scenario, name: str, plugin: str | None, target: str | None, claude: str = "claude", model: str | None = None
+) -> list[str]:
     """The command a subject of each kind runs. `qa` runs no command.
 
     `plugin` and `target` are paths as the subject sees them, which the
@@ -145,6 +180,8 @@ def subject_argv(scn: S.Scenario, name: str, plugin: str | None, target: str | N
         "--max-turns",
         str(scn.subject.max_turns),
     ]
+    if model:
+        argv += ["--model", model]
     if target:
         # The workspace is the subject's working directory; the target is outside it.
         argv += ["--add-dir", target]
@@ -153,18 +190,26 @@ def subject_argv(scn: S.Scenario, name: str, plugin: str | None, target: str | N
     return argv
 
 
-def answer_text(stdout: str) -> str:
-    """The answer inside a `claude --output-format json` envelope, or the raw text."""
+def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
+    """The answer, the models, and the error flag of a `claude --output-format json` envelope.
+
+    The models are the keys of `modelUsage`: the models that answered, read
+    back so a run records what ran and not only what it asked for. Output
+    that is not an envelope is the answer as it is, with no model and no
+    error.
+    """
     text = stdout.strip()
     if not text.startswith("{"):
-        return stdout
+        return stdout, [], False
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return stdout
-    if isinstance(data, dict) and isinstance(data.get("result"), str):
-        return data["result"]
-    return stdout
+        return stdout, [], False
+    if not isinstance(data, dict) or not isinstance(data.get("result"), str):
+        return stdout, [], False
+    usage = data.get("modelUsage")
+    models = sorted(str(m) for m in usage) if isinstance(usage, dict) else []
+    return data["result"], models, data.get("is_error") is True
 
 
 def stdout_of(stream_path: Path) -> str:
@@ -189,11 +234,10 @@ def context_text(scn: S.Scenario) -> str:
 
 
 def run_subject_qa(
-    scn: S.Scenario, streams: CliStream, env: dict[str, str], matrix: dict[str, Any], effort: str
+    scn: S.Scenario, streams: CliStream, env: dict[str, str], matrix: dict[str, Any], effort: str, model: str
 ) -> tuple[RT.ExitStatus, str]:
     """A `qa` subject: one provider model answers the prompt itself, at the effort the run names."""
     provider = P.parse(scn.subject.provider or "anthropic")
-    model = scn.subject.model or J.models_for(matrix, P.name(provider))[0]
     key = P.key(provider, env)
     started = time.monotonic()
     if not key:
@@ -247,18 +291,27 @@ def build_parser() -> argparse.ArgumentParser:
         prog="benchmark/run.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "command", nargs="?", default="run", choices=["run", "list"], help="run a scenario, or list what there is"
+        "command",
+        nargs="?",
+        default="run",
+        choices=["run", "list", "redact"],
+        help="run a scenario, list what there is, or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
-    parser.add_argument("--repeat", type=int, default=1, help="how many times the subject runs")
+    parser.add_argument(
+        "--repeat", type=int, default=3, help="how many times the subject runs; one run is an anecdote, so 3 by default"
+    )
     parser.add_argument("--runtime", default="host", choices=list(RT.NAMES), help="where the subject runs")
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="folder the run folders are written under")
     parser.add_argument(
         "--claude", default=os.environ.get("CLAUDE_BIN", "claude"), help="the Claude Code binary the subject runs"
+    )
+    parser.add_argument(
+        "--subject-model", default=None, help="the model the subject runs on; the scenario's, else the matrix's first"
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
@@ -282,7 +335,19 @@ def command_list(out: Path) -> int:
     for name, ready, keys in P.availability():
         flag = int(P.Provider[name.upper()])
         print(f"  {name:10} flag={flag:<3} key={'present' if ready else 'absent '} ({keys})")
+    for source in RT.SUBJECT_KEYS.values():
+        print(f"  {'subject':10} key={'present' if os.environ.get(source) else 'absent '} ({source})")
+
     print(f"\nruns folder: {out}")
+    return 0
+
+
+def command_redact(out: Path) -> int:
+    """Redact every key value and every key-shaped string from the run folders, in place."""
+    found = X.redact_folder(out, X.key_values())
+    for path, count in found.items():
+        print(f"redacted {count} key(s) in {path.relative_to(out)}")
+    print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
     return 0
 
 
@@ -291,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out).resolve()
     if args.command == "list":
         return command_list(out)
+    if args.command == "redact":
+        return command_redact(out)
     if not args.scenario:
         print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
         return 2
@@ -318,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
     if args.runtime == "container":
-        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(n)])
+        config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(RT.SUBJECT_KEYS[n])])
     # The subject lives outside the checkout, with copies of the plugin
     # payload and of the target, so neither an answer key nor the
     # repository's CLAUDE.md is in its reach.
@@ -332,8 +399,9 @@ def main(argv: list[str] | None = None) -> int:
 def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix) -> int:
     """Everything after the runtime exists: the caller tears the runtime down whatever happens here."""
     rt.stage()
+    model = subject_model(scn, args.subject_model, matrix)
     try:
-        argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude)
+        argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -364,6 +432,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "repeat": args.repeat,
         "models": {P.name(p): J.models_for(matrix, P.name(p)) for p in P.members(flags)},
         "subject_argv": argv_subject,
+        "subject_model": model,
         "guideline_sha": git_sha(ROOT),
         "target_sha": git_sha(target) if target else None,
         "evidence": {
@@ -387,6 +456,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     missing = [P.name(p) for p in P.members(flags) if not P.available(p)]
     if missing and args.strict:
         print(f"strict: no key for {', '.join(missing)}", file=sys.stderr)
+        return 3
+    no_subject_key = [RT.SUBJECT_KEYS[n] for n in subject_keys(scn) if not os.environ.get(RT.SUBJECT_KEYS[n])]
+    if scn.kind == "skill" and no_subject_key and args.strict:
+        print(f"strict: the subject has no key of its own; set {', '.join(no_subject_key)}", file=sys.stderr)
         return 3
 
     if isinstance(rt, RT.ContainerRuntime) and args.build:
@@ -416,7 +489,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             "skill": scn.subject.skill,
             "prompt": scn.subject.prompt,
             "argv": argv_subject,
-            "model": scn.subject.model,
+            "model": model,
             "provider": scn.subject.provider,
             "target": str(target) if target else None,
             "plugin": rt.plugin_path(),
@@ -425,7 +498,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         },
     )
 
-    env = RT.passthrough_env(PASSTHROUGH + subject_keys(scn))
+    env = subject_env(scn)
+
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
     failed_subjects: list[int] = []
     try:
@@ -434,11 +508,18 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             streams.note(f"[repeat {index}] start")
             rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
             if scn.kind == "qa":
-                status, artifact = run_subject_qa(scn, streams, dict(os.environ), matrix, effort)
+                status, artifact = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
+                models = [model] if model else []
             else:
                 status = rt.run(argv_subject, rt.workspace, env, streams, timeout_s=scn.subject.timeout_s)
                 lines = [r["line"] for r in CliStream.read(run_dir / "streams" / "cli.jsonl")[mark:] if r.get("s") == "out"]
-                artifact = answer_text("\n".join(lines))
+                artifact, models, is_error = read_envelope("\n".join(lines))
+                if is_error:
+                    status = dataclasses.replace(status, is_error=True)
+                if model and models and not any(m.startswith(model) for m in models):
+                    notes.append(
+                        f"repeat {index}: the subject was pinned to {model}, and the envelope reports {', '.join(models)}"
+                    )
             streams.note(f"[repeat {index}] exit {status.code}")
 
             art_dir = run_dir / "artifacts" / str(index)
@@ -458,9 +539,11 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 # worth a judge's money, and a score of it would be a score of
                 # the failure. The repeat is recorded with no judgement.
                 failed_subjects.append(index)
-                reason = "timed out" if status.timed_out else f"exit {status.code}"
+                reason = "timed out" if status.timed_out else "is_error" if status.is_error else f"exit {status.code}"
                 print(f"  repeat {index} subject failed ({reason}); not judged")
-                run.repeats.append(R.RepeatResult(index=index, exit_status=status.as_dict(), artifact_paths=paths))
+                run.repeats.append(
+                    R.RepeatResult(index=index, exit_status=status.as_dict(), artifact_paths=paths, subject_models=models)
+                )
                 continue
 
             prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
@@ -485,6 +568,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                     artifact_paths=paths,
                     judgements=judgements,
                     expected=expected,
+                    subject_models=models,
                 )
             )
     finally:
@@ -509,7 +593,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     summary = data["summary"]
     for provider, stats in summary["per_provider"].items():
-        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s)")
+        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
+    if summary["self_judged"]:
+        print(f"note: {summary['self_judged']}")
+    for fallback in summary["fallbacks"]:
+        print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
+
     for skipped in summary["skipped"]:
         print(f"{skipped['provider']:10} not answered: {skipped['reason']}")
     print(f"report: {run_dir / 'report.md'}")

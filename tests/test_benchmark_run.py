@@ -221,6 +221,8 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
 
 
 def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")  # the built-in matrix, no pyyaml needed
+
     # What a subject can read: the staged plugin payload and the staged
     # target. The fixtures' answer keys, the benchmark folder, and every
     # CLAUDE.md up the tree are out of reach.
@@ -268,24 +270,54 @@ def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tm
     assert code == 0 and logged[logged.index("--providers") + 1] == "7" and logged[logged.index("--effort") + 1] == "high"
 
 
-def test_the_subject_is_handed_the_anthropic_key_and_no_judge_key(tmp_path, monkeypatch):
+JUDGE_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "XAI_API_KEY", "GROK_API_KEY")
+
+
+@pytest.mark.parametrize("runtime", ["host", "vm"])
+def test_the_subject_holds_its_own_key_and_no_judge_key(tmp_path, monkeypatch, runtime):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
-    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"):
-        monkeypatch.setenv(name, "k")
-    script = "import os; print(sorted(k for k in os.environ if k.endswith('_API_KEY')))"
+    for name in JUDGE_KEYS:
+        monkeypatch.setenv(name, f"judge-{name}")
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "subject-key")
+    script = "import os; print(sorted((k, v) for k, v in os.environ.items() if k.endswith('_KEY') or 'judge-' in v))"
     scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
     path = tmp_path / "keys.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
-    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15"]) == 0
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15", "--repeat", "1"]
+    if runtime == "vm":
+        config = tmp_path / "vm.json"
+        # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+        vm = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote"), "remote_plugin": str(tmp_path)}
+        config.write_text(json.dumps(vm), encoding="utf-8")
+
+        argv += ["--runtime", "vm", "--runtime-config", str(config)]
+    assert run.main(argv) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
-    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "['ANTHROPIC_API_KEY']\n"
+    answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
+    assert answer == "[('ANTHROPIC_API_KEY', 'subject-key')]\n"
+
+
+def test_a_subject_key_that_is_a_judge_key_is_never_handed_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "shared")
+    rt = run.RT.build("host", tmp_path)
+    rt.prepare()
+    script = "import os; print(sorted(k for k, v in os.environ.items() if v == 'shared'))"
+    with run.CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(
+            [sys.executable, "-c", script], rt.workspace, {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": "shared"}, stream
+        )
+    assert status.ok
+    lines = [r["line"] for r in run.CliStream.read(tmp_path / "cli.jsonl")]
+    assert "[]" in lines
+    assert any("ANTHROPIC_API_KEY holds a judge's key" in line for line in lines)
 
 
 def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY"):
         monkeypatch.setenv(name, "k")
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "s")
     path = tmp_path / "one.json"
     path.write_text(json.dumps(SKILL), encoding="utf-8")
     argv = ["--scenario", str(path), "--providers", "15", "--runtime", "container", "--dry-run"]
@@ -293,7 +325,7 @@ def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     (run_dir,) = (tmp_path / "runs").iterdir()
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["runtime"]["config"]["keys"] == ["ANTHROPIC_API_KEY"]
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY")
     assert run.main([*argv, "--out", str(tmp_path / "later")]) == 0
     (later,) = (tmp_path / "later").iterdir()
     assert json.loads((later / "run.json").read_text(encoding="utf-8"))["runtime"]["config"]["keys"] == []
@@ -324,8 +356,16 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
     assert all(r["judgements"] == [] for r in results["repeats"])
-    assert results["summary"]["overall_mean"] is None
+    assert results["summary"]["overall_mean"] == 0.0  # a failed repeat is a failure, never a gap in the mean
+    assert results["summary"]["failed_repeats"] == [0, 1]
     assert any("not judged" in note for note in results["notes"])
+
+
+def test_a_run_repeats_three_times_unless_told_otherwise():
+    assert run.build_parser().parse_args([]).repeat == 3
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    repeat = workflow[workflow.index("      repeat:") :]
+    assert 'default: "3"' in repeat.split("\n\n")[0]
 
 
 def test_the_workflow_runs_every_scenario_strict():
@@ -423,3 +463,116 @@ def test_the_workflow_runs_the_subject_in_the_container_built_before_the_keys():
     run_step = workflow.index("      - name: run every scenario")
     assert build < run_step and "docker build -t swe-guidelines-benchmark:latest" in workflow[build:run_step]
     assert "_API_KEY" not in workflow[:run_step]  # no key is in reach while anything is installed
+
+
+def test_strict_refuses_a_skill_whose_subject_has_no_key_of_its_own(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "judge")
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY", raising=False)
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1", "--strict"]
+    assert run.main(argv) == 3
+    assert "SUBJECT_ANTHROPIC_API_KEY" in capsys.readouterr().err
+
+
+def test_a_skill_subject_runs_on_the_model_it_is_pinned_to():
+    argv = run.subject_argv(S.from_data(SKILL), "swe-guidelines", "/plugin", None, "claude", model="claude-opus-5")
+    assert argv[argv.index("--model") + 1] == "claude-opus-5"
+
+
+def test_the_subject_model_defaults_to_the_scenario_then_the_matrix():
+    matrix = run.J.DEFAULT_MATRIX
+    assert run.subject_model(S.from_data(SKILL), None, matrix) == matrix["anthropic"]["model"]
+    pinned = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review it.", "model": "claude-sonnet-5"}))
+    assert run.subject_model(pinned, None, matrix) == "claude-sonnet-5"
+    assert run.subject_model(pinned, "claude-haiku-5", matrix) == "claude-haiku-5"
+    command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"})
+    assert run.subject_model(command, None, matrix) is None
+
+
+def test_the_envelope_gives_the_answer_the_models_and_the_error():
+    envelope = json.dumps({"type": "result", "is_error": False, "result": "the answer", "modelUsage": {"claude-opus-5": {}}})
+    assert run.read_envelope(envelope) == ("the answer", ["claude-opus-5"], False)
+    failed = json.dumps({"type": "result", "is_error": True, "result": "API Error: 401", "modelUsage": {}})
+    assert run.read_envelope(failed) == ("API Error: 401", [], True)
+    assert run.read_envelope("plain text\n") == ("plain text\n", [], False)
+
+
+def envelope_scenario(tmp_path, envelope):
+    script = f"print({json.dumps(json.dumps(envelope))})"
+    scenario = {
+        "name": "envelope",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "envelope.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    return path
+
+
+def test_an_envelope_that_reports_an_error_fails_the_repeat(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    path = envelope_scenario(tmp_path, {"type": "result", "is_error": True, "result": "API Error: 401"})
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 6
+    assert judged == []
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["repeats"][0]["exit_status"]["code"] == 0
+    assert results["repeats"][0]["exit_status"]["is_error"] is True
+
+
+def test_the_model_the_envelope_reports_is_recorded_beside_the_pin(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    envelope = {"type": "result", "is_error": False, "result": "ok", "modelUsage": {"claude-sonnet-5": {}}}
+    path = envelope_scenario(tmp_path, envelope)
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--subject-model", "claude-opus-5"]
+    assert run.main(argv) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["subject_model"] == "claude-opus-5"
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["subject"]["model"] == "claude-opus-5"
+    assert results["repeats"][0]["subject_models"] == ["claude-sonnet-5"]
+    assert any("claude-opus-5" in note and "claude-sonnet-5" in note for note in results["notes"])
+
+
+def test_the_workflow_redacts_the_run_folders_before_it_shows_or_uploads_them():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    run_step = workflow.index("      - name: run every scenario")
+    redact = workflow.index("      - name: redact every run folder")
+    summary = workflow.index("      - name: write the summary")
+    upload = workflow.index("      - name: keep every run as evidence")
+    assert run_step < redact < summary < upload
+    assert "benchmark/run.py redact --out benchmark/runs" in workflow[redact:summary]
+    for step in (workflow[summary:upload], workflow[upload:]):
+        assert "steps.redact.outcome == 'success'" in step
+
+
+def test_the_workflow_runs_behind_the_benchmark_environment():
+    assert "    environment: benchmark\n" in WORKFLOW.read_text(encoding="utf-8")
+
+
+def test_the_redact_command_scrubs_a_runs_folder(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-openai-value")
+    (tmp_path / "one").mkdir()
+    (tmp_path / "one" / "answer.md").write_text("judge-openai-value\n", encoding="utf-8")
+    assert run.main(["redact", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "one" / "answer.md").read_text(encoding="utf-8") == "[redacted]\n"
+    assert "answer.md" in capsys.readouterr().out
+
+
+def test_the_listing_says_whether_the_subject_has_a_key_of_its_own(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "SCENARIOS", tmp_path)
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY", raising=False)
+    assert run.main(["list", "--out", str(tmp_path)]) == 0
+    assert "subject    key=absent  (SUBJECT_ANTHROPIC_API_KEY)" in capsys.readouterr().out

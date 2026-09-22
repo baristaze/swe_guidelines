@@ -18,7 +18,7 @@ on:
         type: string
       repeat:
         description: "how many times each subject runs"
-        default: "1"
+        default: "3"
         type: string
 
 permissions:
@@ -35,6 +35,11 @@ jobs:
     name: every scenario, judged
     runs-on: ubuntu-26.04
     timeout-minutes: 180
+    # The keys are secrets of the `benchmark` environment, never of the
+    # repository. The environment admits the `main` branch only and waits
+    # for a required reviewer, so no other branch and no unreviewed
+    # dispatch runs with them. benchmark/README.md says how to create it.
+    environment: benchmark
     # The provider keys are the run step's alone. Everything is installed
     # before it, in steps that hold no key: the harness's dependencies from
     # benchmark/run.py.lock, and the container image with Claude Code in it.
@@ -44,7 +49,8 @@ jobs:
     # The subject runs in the container runtime. On the host it would run
     # as this job's user and could read the run step's environment, the
     # judges' keys with it, and the answer files in the checkout; in the
-    # container it sees its three mounts and the one key it is handed.
+    # container it sees its three mounts and the one key it is handed, its
+    # own, never a judge's.
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       # No token left in .git/config for the subject to find.
@@ -73,6 +79,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          # The subject's own key: the harness hands it to the subject as
+          # ANTHROPIC_API_KEY, and never hands on a judge's key.
+          SUBJECT_ANTHROPIC_API_KEY: ${{ secrets.SUBJECT_ANTHROPIC_API_KEY }}
           SCENARIOS: ${{ inputs.scenarios }}
           PROVIDERS: ${{ inputs.providers }}
           EFFORT: ${{ inputs.effort }}
@@ -119,8 +128,23 @@ jobs:
             echo "::error::failed scenarios: ${failed[*]}"
             exit 1
           fi
-      - name: write the summary
+      - name: redact every run folder
+        id: redact
+        # A subject can print anything it can read. Every file of every run
+        # folder is scanned, frames included, and every provider key value
+        # and anything shaped like a key is replaced before a run folder is
+        # shown or uploaded. The summary and the upload wait for this step.
         if: always()
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          SUBJECT_ANTHROPIC_API_KEY: ${{ secrets.SUBJECT_ANTHROPIC_API_KEY }}
+          UV_OFFLINE: "1"
+        run: uv run --locked benchmark/run.py redact --out benchmark/runs
+      - name: write the summary
+        if: always() && steps.redact.outcome == 'success'
         run: |
           for report in benchmark/runs/*/report.md; do
             [ -f "$report" ] || continue
@@ -128,7 +152,7 @@ jobs:
             echo >> "$GITHUB_STEP_SUMMARY"
           done
       - name: keep every run as evidence
-        if: always()
+        if: always() && steps.redact.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-runs

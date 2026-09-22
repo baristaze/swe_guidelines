@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from . import providers as P
 from .capture import CliStream
 
 NAMES = ("host", "container", "vm")
@@ -75,6 +76,35 @@ CONTAINER_TARGET = "/target"
 PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
 # What no staged copy carries: the caches a tool leaves behind.
 STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache")
+# The subject's own key, by the name the subject reads it under and the
+# name the harness reads it from. `claude -p` reads ANTHROPIC_API_KEY; its
+# value comes from SUBJECT_ANTHROPIC_API_KEY, never from a judge's key, so
+# a subject that leaks its key leaks no judge's.
+SUBJECT_KEYS = {"ANTHROPIC_API_KEY": "SUBJECT_ANTHROPIC_API_KEY"}
+
+
+def judge_key_values(source: dict[str, str] | None = None) -> set[str]:
+    """The values of every provider key in the harness's environment."""
+    source = dict(os.environ) if source is None else source
+    return {source[n] for n in P.JUDGE_KEY_NAMES if source.get(n)}
+
+
+def scrub(env: dict[str, str], source: dict[str, str] | None = None) -> tuple[dict[str, str], list[str]]:
+    """The environment without any judge key, and the names that held one.
+
+    A variable goes when its value is a judge's key, whatever its name, so
+    a subject key set to a judge's key is dropped rather than handed on.
+    Every process a runtime starts gets its environment through here.
+    """
+    judged = judge_key_values(source)
+    named = (set(P.JUDGE_KEY_NAMES) | set(SUBJECT_KEYS.values())) - set(SUBJECT_KEYS)
+    dropped = sorted(k for k, v in env.items() if v in judged or k in named)
+    return {k: v for k, v in env.items() if k not in dropped}, dropped
+
+
+def clean_env() -> dict[str, str]:
+    """The harness's own environment with every judge key out: for the helper commands."""
+    return scrub(dict(os.environ))[0]
 
 
 def new_sandbox() -> Path:
@@ -113,10 +143,13 @@ class ExitStatus:
     signal: int | None = None
     duration_s: float = 0.0
     timed_out: bool = False
+    # The subject exited cleanly and said it failed: `is_error` in the
+    # `claude --output-format json` envelope.
+    is_error: bool = False
 
     @property
     def ok(self) -> bool:
-        return self.code == 0 and not self.timed_out
+        return self.code == 0 and not self.timed_out and not self.is_error
 
     def as_dict(self) -> dict:
         return {
@@ -124,6 +157,7 @@ class ExitStatus:
             "signal": self.signal,
             "duration_s": round(self.duration_s, 3),
             "timed_out": self.timed_out,
+            "is_error": self.is_error,
         }
 
 
@@ -214,12 +248,15 @@ class BaseRuntime:
         """Spawn the composed command and write both its streams as they come."""
         command = self.command(argv, cwd)
         streams.note(f"[{self.name}] {' '.join(command)}")
+        environment, dropped = scrub(self.environment(env))
+        for name in dropped:
+            streams.note(f"[{self.name}] {name} holds a judge's key or names one; the subject is not handed it")
         started = time.monotonic()
         try:
             proc = subprocess.Popen(
                 command,
                 cwd=str(cwd),
-                env=self.environment(env),
+                env=environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 # UTF-8 whatever the locale says, and a byte that is not
@@ -377,7 +414,7 @@ class ContainerRuntime(BaseRuntime):
         command = self.build_command()
         started = time.monotonic()
         try:
-            proc = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace")
+            proc = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", env=clean_env())
         except OSError as exc:
             # No container engine: the build failed, recorded as the shell records it.
             if streams is not None:
@@ -447,7 +484,7 @@ class ContainerRuntime(BaseRuntime):
     def stop(self, proc: subprocess.Popen) -> None:
         """Kill the container by name, then the client."""
         if self.container_name:
-            subprocess.run([self.docker, "kill", self.container_name], capture_output=True, check=False)
+            subprocess.run([self.docker, "kill", self.container_name], capture_output=True, check=False, env=clean_env())
         super().stop(proc)
 
 
@@ -466,18 +503,20 @@ class VmConfig:
 class VmRuntime(BaseRuntime):
     """Another machine, reached through a command prefix.
 
-    The prefix is configuration, for example
-    `["limactl", "shell", "default", "--"]`. The sync command is
-    configuration too; `{local}` and `{remote}` in any of its words are
-    replaced with the two workspace paths. Each repeat gets its own
-    remote folder under `remote_workspace`, as it gets its own local
-    one, and the subject runs inside it. The prefix has to hand its
-    words on as words (`limactl shell`, `docker exec`); one that joins
-    them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
-    machine and starts none, and copies neither the plugin checkout nor
-    the target there: `remote_plugin` and `remote_target` say where the
-    operator put them, and a run that needs one and is not told is
-    refused before it starts.
+       The prefix is configuration, for example
+       `["limactl", "shell", "default", "--"]`. The sync command is
+       configuration too; `{local}` and `{remote}` in any of its words are
+       replaced with the two workspace paths. Each run gets its own folder
+       under `remote_workspace`, removed at teardown, and each repeat its
+       own folder inside that, as it gets its own local one. The subject
+       runs inside it.
+    The prefix has to hand its
+       words on as words (`limactl shell`, `docker exec`); one that joins
+       them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
+       machine and starts none, and copies neither the plugin checkout nor
+       the target there: `remote_plugin` and `remote_target` say where the
+       operator put them, and a run that needs one and is not told is
+       refused before it starts.
     """
 
     name = "vm"
@@ -519,10 +558,17 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
         return str(self.vm.remote_target)
 
+    def remote_run(self) -> str:
+        """This run's folder on the other machine, named after the run folder.
+
+        Two runs never share one, so no run finds what an earlier one left.
+        """
+        base = self.vm.remote_workspace.rstrip("/")
+        return f"{base}/{self.run_dir.name}"
+
     def remote(self) -> str:
         """The workspace on the other machine: one folder per repeat once a repeat is prepared."""
-        base = self.vm.remote_workspace.rstrip("/") or "/"
-        return f"{base}/{self.slot}" if self.slot is not None else base
+        return f"{self.remote_run()}/{self.slot}" if self.slot is not None else self.remote_run()
 
     def _fill(self, words: list[str]) -> list[str]:
         return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.remote()) for w in words]
@@ -541,8 +587,8 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs exec_prefix in its runtime config")
         if self.vm.sync:
             # The repeat's remote folder is new, and a sync may not make its parents.
-            subprocess.run([*self.vm.exec_prefix, "mkdir", "-p", self.remote()], check=False)
-            subprocess.run(self.sync_command(), check=False)
+            subprocess.run([*self.vm.exec_prefix, "mkdir", "-p", self.remote()], check=False, env=clean_env())
+            subprocess.run(self.sync_command(), check=False, env=clean_env())
         return path
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
@@ -557,8 +603,14 @@ class VmRuntime(BaseRuntime):
 
     def collect(self, globs: list[str]) -> list[Path]:
         if self.vm.fetch:
-            subprocess.run(self.fetch_command(), check=False)
+            subprocess.run(self.fetch_command(), check=False, env=clean_env())
         return super().collect(globs)
+
+    def teardown(self) -> None:
+        """Remove this run's folder on the other machine, then what is here."""
+        if self.prepared and self.vm.exec_prefix:
+            subprocess.run([*self.vm.exec_prefix, "rm", "-rf", "--", self.remote_run()], check=False, env=clean_env())
+        super().teardown()
 
 
 def build(

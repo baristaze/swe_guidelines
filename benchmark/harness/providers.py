@@ -36,6 +36,9 @@ KEY_NAMES: dict[Provider, tuple[str, ...]] = {
     Provider.GEMINI: ("GEMINI_API_KEY",),
     Provider.XAI: ("XAI_API_KEY", "GROK_API_KEY"),
 }
+# Every name a provider key goes by on a machine, the ambient Google name
+# included: what a subject's environment never carries.
+JUDGE_KEY_NAMES: tuple[str, ...] = (*(n for names in KEY_NAMES.values() for n in names), "GOOGLE_API_KEY")
 
 
 def name(provider: Provider) -> str:

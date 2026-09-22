@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import html
+import ipaddress
 import json
 import mimetypes
+import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -108,6 +110,7 @@ def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = 
 
 
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+WILDCARD = {"0.0.0.0", "::", ""}
 
 
 class RunsServer(ThreadingHTTPServer):
@@ -117,10 +120,36 @@ class RunsServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.runs_folder = Path(runs)
         host, port = self.server_address[:2]
+        self.port = int(port)
         # The names a browser may use for this server. A page on another
         # name that resolves here (DNS rebinding) is refused.
-        names = {str(host), "localhost", "127.0.0.1", "[::1]"} if str(host) in LOOPBACK else {str(host)}
+        self.wildcard = str(host) in WILDCARD
+        local = {"localhost", "127.0.0.1", "[::1]"}
+        names = local | {str(host)} if str(host) in LOOPBACK or self.wildcard else {str(host)}
+        if self.wildcard:
+            names |= {socket.gethostname(), socket.getfqdn()}
         self.hosts = {f"{n}:{port}" for n in names} | ({"localhost", "127.0.0.1"} if port == 80 else set())
+
+    def admits(self, host: str) -> bool:
+        """Whether a request's Host header names this server.
+
+        Bound to every address, the server answers any address of this
+        machine, which a browser writes as an IP literal. A literal cannot
+        be rebound, so it is safe to admit. A name is admitted only when it
+        is this machine's own, or a loopback name.
+        """
+        if host in self.hosts:
+            return True
+        if not self.wildcard:
+            return False
+        name, _, port = host.rpartition(":")
+        if port != str(self.port):
+            return False
+        try:
+            ipaddress.ip_address(name[1:-1] if name.startswith("[") and name.endswith("]") else name)
+        except ValueError:
+            return False
+        return True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -157,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         assert isinstance(self.server, RunsServer)
-        if (self.headers.get("Host") or "") not in self.server.hosts:
+        if not self.server.admits(self.headers.get("Host") or ""):
             return self._send(421, b"this server answers to its own address only\n", "text/plain; charset=utf-8")
         path = unquote(urlparse(self.path).path)
         parts = [p for p in path.split("/") if p]

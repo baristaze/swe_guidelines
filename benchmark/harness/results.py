@@ -41,12 +41,15 @@ class RepeatResult:
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
+    # The models the subject's envelope reports it ran on; empty when it reports none.
+    subject_models: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         out = {
             "index": self.index,
             "exit_status": self.exit_status,
             "artifact_paths": list(self.artifact_paths),
+            "subject_models": list(self.subject_models),
             "judgements": [j.as_dict() for j in self.judgements],
         }
         if self.expected is not None:
@@ -81,19 +84,49 @@ class RunResult:
             "target_sha": self.target_sha,
             "subject": self.subject,
             "repeats": [r.as_dict() for r in self.repeats],
-            "summary": summarize(self.repeats),
+            "summary": summarize(self.repeats, self.subject),
             "notes": list(self.notes),
         }
 
 
-def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
-    """Scores per provider over every repeat, who did not answer, and who missed some.
+def failed(exit_status: dict[str, Any]) -> bool:
+    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its envelope."""
+    return exit_status.get("code", 0) != 0 or bool(exit_status.get("timed_out")) or bool(exit_status.get("is_error"))
+
+
+def is_claude(subject: dict[str, Any]) -> bool:
+    """Whether the subject is a Claude model: a skill's `claude -p`, an Anthropic `qa`, or a pinned Claude model."""
+    kind = subject.get("kind")
+    if kind == "skill":
+        return True
+    if kind == "qa" and (subject.get("provider") or "anthropic") == "anthropic":
+        return True
+    return str(subject.get("model") or "").startswith("claude")
+
+
+def stdev(values: list[float]) -> float | None:
+    """The sample standard deviation, to one place; None with fewer than two values."""
+    return half_up(statistics.stdev(values), 1) if len(values) > 1 else None
+
+
+def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Scores per provider over every repeat, their spread, who did not answer, and who missed some.
+
+    A repeat whose subject failed is a failure, never a gap: it scores 0
+    for every provider that scored the run, so a subject that fails one
+    time in three cannot keep the mean of the two times it did not. When
+    every repeat failed, the run scores 0.
 
     The overall mean is the mean of the providers' means, so each provider
     weighs once: a provider that answered more repeats does not outweigh one
     that answered fewer. A provider that answered no judgement is skipped; one
     that answered some and missed others is named under `missed`, with the
     count and the first reason, and is not a failure of the run by itself.
+
+    The spread is over the repeats: each repeat's mean over its providers,
+    and their minimum, maximum, and standard deviation. A Claude subject
+    judged by a panel that scores with Claude is named under `self_judged`,
+    because a model may favor its own kind.
     """
     scores: dict[str, list[int]] = {}
     misses: dict[str, list[str]] = {}
@@ -103,19 +136,65 @@ def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
                 scores.setdefault(j.provider, []).append(j.verdict.score)
             else:
                 misses.setdefault(j.provider, []).append(j.error or j.status)
+    failures = [r.index for r in repeats if failed(r.exit_status)]
+    for values in scores.values():
+        values.extend([0] * len(failures))
     per_provider = {
         provider: {
             "mean": half_up(statistics.fmean(values), 1),
             "min": min(values),
             "max": max(values),
             "n": len(values),
+            "stdev": stdev([float(v) for v in values]),
         }
         for provider, values in sorted(scores.items())
     }
     means = [statistics.fmean(values) for values in scores.values()]
+    if means:
+        overall: float | None = half_up(statistics.fmean(means), 1)
+    else:
+        overall = 0.0 if failures else None
+    repeat_means: list[float] = []
+    for repeat in repeats:
+        if failed(repeat.exit_status):
+            repeat_means.append(0.0)
+            continue
+        answered = [j.verdict.score for j in repeat.judgements if j.status == "ok" and j.verdict is not None]
+        if answered:
+            repeat_means.append(half_up(statistics.fmean(answered), 1))
+    spread = (
+        {"repeat_means": repeat_means, "min": min(repeat_means), "max": max(repeat_means), "stdev": stdev(repeat_means)}
+        if repeat_means
+        else None
+    )
+    self_judged = None
+    if subject and is_claude(subject) and "anthropic" in scores:
+        self_judged = (
+            "a Claude subject is judged by a panel that includes Claude (anthropic); "
+            "read its score beside the other providers' before trusting the mean"
+        )
+    fallbacks: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for repeat in repeats:
+        for j in repeat.judgements:
+            if j.status == "ok" and j.fallback:
+                entry = fallbacks.setdefault(
+                    (j.provider, j.fallback["from"], j.model),
+                    {
+                        "provider": j.provider,
+                        "from": j.fallback["from"],
+                        "to": j.model,
+                        "count": 0,
+                        "reason": j.fallback["reason"],
+                    },
+                )
+                entry["count"] += 1
     return {
         "per_provider": per_provider,
-        "overall_mean": half_up(statistics.fmean(means), 1) if means else None,
+        "overall_mean": overall,
+        "failed_repeats": failures,
+        "spread": spread,
+        "self_judged": self_judged,
+        "fallbacks": [fallbacks[k] for k in sorted(fallbacks)],
         "skipped": [{"provider": p, "reason": r[0]} for p, r in sorted(misses.items()) if p not in scores],
         "missed": [{"provider": p, "count": len(r), "reason": r[0]} for p, r in sorted(misses.items()) if p in scores],
     }
@@ -197,14 +276,34 @@ def report_text(run: RunResult) -> str:
                     ]
                 )
             )
-    lines += ["", "## Summary", "", _row(["Provider", "Mean", "Min", "Max", "n"]), _row(["---"] * 5)]
+    lines += ["", "## Summary", "", _row(["Provider", "Mean", "Min", "Max", "Stdev", "n"]), _row(["---"] * 6)]
     for provider, stats in summary["per_provider"].items():
-        lines.append(_row([provider, str(stats["mean"]), str(stats["min"]), str(stats["max"]), str(stats["n"])]))
+        deviation = "-" if stats["stdev"] is None else str(stats["stdev"])
+        lines.append(_row([provider, str(stats["mean"]), str(stats["min"]), str(stats["max"]), deviation, str(stats["n"])]))
     overall = summary["overall_mean"]
     lines += ["", f"Overall mean: {overall if overall is not None else 'no score'}.", ""]
+    spread = summary["spread"]
+    if spread:
+        deviation = "-" if spread["stdev"] is None else str(spread["stdev"])
+        means = ", ".join(str(m) for m in spread["repeat_means"])
+        lines += [f"Spread over the repeats: means {means}; min {spread['min']}, max {spread['max']}, stdev {deviation}.", ""]
+    if summary["failed_repeats"]:
+        failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
+        lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
+    if summary["self_judged"]:
+        lines += [f"Note: {summary['self_judged']}.", ""]
+
     if summary["skipped"]:
         lines += ["### Not answered", ""]
         lines += [f"- `{s['provider']}`: {s['reason']}" for s in summary["skipped"]]
+        lines += [""]
+    if summary.get("fallbacks"):
+        lines += ["### Fallbacks", "", "A model answered in place of the one the matrix put first.", ""]
+        lines += [
+            f"- `{f['provider']}`: `{f['to']}` answered in place of `{f['from']}` in {f['count']} judgement(s); "
+            f"first reason: {f['reason']}"
+            for f in summary["fallbacks"]
+        ]
         lines += [""]
     if summary.get("missed"):
         lines += ["### Answered in part", ""]

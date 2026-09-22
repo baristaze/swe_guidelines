@@ -59,10 +59,16 @@
               "code": { "type": "integer" },
               "signal": { "type": ["integer", "null"] },
               "duration_s": { "type": "number" },
-              "timed_out": { "type": "boolean" }
+              "timed_out": { "type": "boolean" },
+              "is_error": { "type": "boolean" }
             }
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "subject_models": {
+            "description": "The models the subject's envelope reports it ran on.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "expected": {
             "description": "Which planted findings the artifact names by lens id and file; present only when the scenario plants some.",
             "type": "object",
@@ -91,6 +97,21 @@
                   "additionalProperties": { "type": "integer" }
                 },
                 "error": { "type": ["string", "null"] },
+                "fallback": {
+                  "description": "The model the matrix put first and why it did not answer, when a later model answered in its place.",
+                  "oneOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "required": ["from", "reason"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "from": { "type": "string" },
+                        "reason": { "type": "string" }
+                      }
+                    }
+                  ]
+                },
                 "verdict": {
                   "oneOf": [
                     { "type": "null" },
@@ -134,17 +155,44 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["mean", "min", "max", "n"],
+            "required": ["mean", "min", "max", "n", "stdev"],
             "additionalProperties": false,
             "properties": {
               "mean": { "type": "number" },
               "min": { "type": "integer" },
               "max": { "type": "integer" },
-              "n": { "type": "integer", "minimum": 0 }
+              "n": { "type": "integer", "minimum": 0 },
+              "stdev": { "type": ["number", "null"] }
             }
           }
         },
         "overall_mean": { "type": ["number", "null"] },
+        "failed_repeats": {
+          "description": "The repeats whose subject failed; each scores 0 in every provider's mean.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "spread": {
+          "description": "Each scored repeat's mean over its providers, a failed repeat as 0, and their range and standard deviation.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["repeat_means", "min", "max", "stdev"],
+              "additionalProperties": false,
+              "properties": {
+                "repeat_means": { "type": "array", "items": { "type": "number" } },
+                "min": { "type": "number" },
+                "max": { "type": "number" },
+                "stdev": { "type": ["number", "null"] }
+              }
+            }
+          ]
+        },
+        "self_judged": {
+          "description": "Set when a Claude subject is judged by a panel that scores with Claude.",
+          "type": ["string", "null"]
+        },
         "skipped": {
           "type": "array",
           "items": {
@@ -153,6 +201,21 @@
             "additionalProperties": false,
             "properties": {
               "provider": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "fallbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["provider", "from", "to", "count", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "provider": { "type": "string" },
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "count": { "type": "integer", "minimum": 1 },
               "reason": { "type": "string" }
             }
           }

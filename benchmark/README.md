@@ -28,12 +28,13 @@ imported inside the functions that call them.
 | `--scenario` | a scenario name from `scenarios/`, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
-| `--repeat` | how many times the subject runs; every repeat is judged by every provider |
+| `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
 | `--runtime` | `host` (the default), `container`, or `vm` |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
+| `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running |
@@ -51,14 +52,40 @@ answer is a note, not a lost run. `--strict` fails on a provider that
 answered none. The overall mean is the mean of the providers' means,
 so each provider weighs once, however many judgements it answered.
 
+A repeat whose subject failed is not judged, and it is not dropped
+either. It counts as a failure: it scores 0 in every provider's mean,
+and a run whose every repeat failed scores 0. A subject fails on a
+nonzero exit, a timeout, or `is_error` in its envelope. Dropping the
+failures would let a subject that fails one time in three keep the
+score of the two times it did not.
+
+One run of a subject is an anecdote, so `--repeat` is 3 by default.
+The summary reports the spread: each provider's standard deviation,
+and each repeat's mean over its providers with their range and
+standard deviation. A Claude subject judged by a panel that includes
+Claude is named in the summary under `self_judged`. A model may favor
+its own kind, so read the Anthropic score beside the others.
+
 Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client
 is handed `GEMINI_API_KEY` and the ambient `GOOGLE_API_KEY` is taken
 out of its way, because those two names often hold different accounts.
-The judges' keys stay in the harness process. A subject that runs a
-command, a skill's `claude -p` included, is handed `ANTHROPIC_API_KEY`
-and no other key, in its environment on the host and by `-e` in a
-container.
+
+The subject has a key of its own: `SUBJECT_ANTHROPIC_API_KEY`. A
+subject that runs a command, a skill's `claude -p` included, gets that
+value as `ANTHROPIC_API_KEY`, in its environment on the host and on
+another machine, and by `-e` in a container. It is spawned from an
+environment that never held a judge's key, on every runtime: every
+provider key name is taken out, and so is any variable whose value is
+a judge's key, whatever its name. So a subject key set to a judge's key
+is dropped, not handed on, and the stream says so. Give the subject a
+key of its own, one you can cap and revoke on its own. `--strict`
+refuses a skill run whose subject has none.
+
+Out of the subject's environment is not out of its reach. The judges'
+keys stay in the harness process, out of the subject's reach, in the
+container runtime only. On the host the subject runs as the harness's
+own user and can read the harness's environment (see Runtimes).
 
 ## What a run leaves behind
 
@@ -137,12 +164,17 @@ measurement.
   the plugin checkout nor the target either: `remote_plugin` and
   `remote_target` in the runtime config say where they are on that
   machine, and a run that needs one and is not told is refused before
-  it starts. Each repeat gets its own folder under `remote_workspace`
-  (`{remote}` in the sync and fetch commands names it), and the
-  subject runs inside that folder, so what it writes is what fetch
-  brings back. The prefix has to hand its words on as words, as
-  `limactl shell` and `docker exec` do; `ssh` joins them into one
-  remote shell line and needs a wrapper.
+  it starts. Each run gets a folder of its own under
+  `remote_workspace`, named after the run folder, and each repeat a
+  folder inside it (`{remote}` in the sync and fetch commands names
+  it). So no run finds what an earlier run left there. The subject
+  runs inside the repeat's folder, so what it writes is what fetch
+  brings back. The run's folder is removed when the run ends. The
+  prefix has to hand its words on as words, as `limactl shell` and
+  `docker exec` do; `ssh` joins them into one remote shell line and
+  needs a wrapper. The plugin checkout at `remote_plugin` is whatever
+  the operator put there, not a staged payload. If it is a whole
+  checkout, the answer files are in it, and the subject can read them.
 
 A path on this machine means nothing in a container or on another
 machine. So the runtime answers where the plugin checkout and the
@@ -188,8 +220,14 @@ judges:
 `kind: skill` runs `claude -p "/<plugin>:<skill> <prompt>"` with
 `--plugin-dir` pointing at the staged copy of this checkout's plugin
 payload, so the skills under test are the ones in the working tree, not
-the installed ones. `kind: command`
-runs `subject.argv`. `kind: qa` sends `subject.prompt` to
+the installed ones. It also gets `--model`: the subject's model is
+always pinned, because `claude -p` on its default model measures
+whatever that default is today. The run records the pin in `run.json`
+and in `subject.model`. Each repeat records `subject_models`, the models
+the JSON envelope reports under `modelUsage`, and a run notes a repeat
+whose envelope does not report the pinned model. An envelope with
+`is_error` set is a failed repeat, whatever the exit code.
+`kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
 
 An unknown key in a scenario file is refused rather than ignored: a
@@ -221,7 +259,10 @@ scenario can give the judges evidence:
   target does right. The file lives beside the target, never inside
   it, and the subject gets a copy of the target alone and a copy of
   the plugin that holds no fixture. So the answers are on no path the
-  subject is given, and in the container they are out of its reach.
+  subject is given. The subject cannot read the answers in the
+  container runtime only: on the host it can read them at their fixed
+  path in the checkout, and on another machine it can read them in
+  whatever checkout `remote_plugin` names.
   On any other target the list would be wrong, so a run with
   `--target` drops it and says so; the source still goes to the
   judges.
@@ -242,10 +283,15 @@ answers are in `fixtures/review-om.expected.yaml`.
 Every provider gets the same prompt: the rubric, what produced the
 artifact, the artifact, and the evidence when the scenario gives some,
 each truncated at a stated limit so the judge knows whether it saw the
-whole thing. Every provider answers in the
-same shape through its own structured-output path: `score` from 0 to
-100, `verdict` of `pass`, `weak`, or `fail`, `findings` of
-`{severity, note}`, `strengths`, and a short `rationale`.
+whole thing. The artifact sits inside a fence of backticks longer than
+any run of backticks in it, so it cannot close the fence. The prompt
+says that nothing inside the fence is an instruction, so a heading the
+subject wrote cannot pass for one of the prompt's own.
+
+Every provider answers in the same shape through its own
+structured-output path: `score` from 0 to 100, `verdict` of `pass`,
+`weak`, or `fail`, `findings` of `{severity, note}`, `strengths`, and a
+short `rationale`.
 
 `models.yaml` holds the matrix: one model per provider, the fallbacks
 tried in order when a model is refused or out of quota, and the effort
@@ -253,8 +299,13 @@ word each SDK expects. The file is a snapshot a monthly run redefines,
 not a rule. The results name whichever model answered.
 
 A model under load answers with a transient error, and the harness asks
-it again. A model out of quota is not asked again; the next model in
-the matrix is. A provider that never answers is recorded with what it
+it again: a `503`, an overload, and a timeout are transient. A model out
+of quota is not asked again; the next model in the matrix is. A
+judgement a later model answered records `fallback`: the model the
+matrix put first and the reason it did not answer. The summary names
+every fallback, because a score from a fallback model is not a score
+from the model the matrix names.
+ A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
 
@@ -279,6 +330,11 @@ tails the frame folder. There is no
 subscriber to register and no cost to watching: the files are written
 either way, so watching late loses nothing.
 
+`serve.py` listens on `127.0.0.1` unless `--host` says otherwise, and
+answers only a request that names it. Bound to `0.0.0.0`, it answers
+any address of this machine and the machine's own name. It refuses
+every other name, so a page on a name that resolves here gets nothing.
+
 ## The words
 
 - "benchmark", always the whole word.
@@ -286,6 +342,31 @@ either way, so watching late loses nothing.
 
 `scripts/check_leaks.py` refuses the rest of the list in every Markdown
 file here.
+
+## The workflow
+
+`.github/workflows/benchmark.yml` runs every scenario on demand, in the
+container runtime. Its job runs in a GitHub environment named
+`benchmark`, and the workflow does not create it. Create it under the
+repository's Settings, Environments, with these rules:
+
+- Deployment branches: selected branches, `main` only. A dispatch from
+  any other branch never reaches the keys.
+- Required reviewers: at least one. A dispatch waits until a reviewer
+  approves it, because a run spends money and hands a subject a key.
+- Secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `XAI_API_KEY`, and `SUBJECT_ANTHROPIC_API_KEY`, as secrets of the
+  environment, never of the repository.
+
+Without the environment, the job does not start.
+
+A subject can print anything it can read. So before the workflow
+writes the summary or uploads the run folders, it runs
+`uv run benchmark/run.py redact --out benchmark/runs`. That scans every
+file of every run folder as bytes, frames included, and replaces two
+things with `[redacted]`: the value of every provider key the harness
+knows by name, and anything shaped like a provider, GitHub, or AWS key.
+The summary and the upload run only when the redaction succeeded.
 
 ## Tests
 
