@@ -2569,6 +2569,10 @@ Durable work never rides a topic. It is a row in the work queue (see
 [The Work Queue](#the-work-queue)). The topic is a wake-up that only
 says "there is work".
 
+The same holds for an effect. An effect a handler must bring about is
+never sent only on a topic. It rides an outbox row or a work item, and
+a topic carries hints only.
+
 A missed notification degrades to polling latency, never to lost work.
 
 `consumer` names the subscriber for logs and metrics. `subscribe`
@@ -3925,6 +3929,12 @@ it with a growing delay, or fails it when the attempts run out. A
 failed item is a dead letter: an audit entry names it and a metric
 counts it.
 
+A done or a failed item is kept for a retention period from settings,
+so an operator can read what ran. Then the sweep purges it, as it
+purges done outbox rows (see [Maintenance Without a
+Scheduler](#maintenance-without-a-scheduler)). A queue that is never
+purged grows with every item it ever ran.
+
 A worker that finds an item is not its to run hands it back without
 spending an attempt. A release hands it back available at once, and a
 deferral hands it back available after a delay.
@@ -4003,9 +4013,13 @@ A worker is a small loop. One turn of it:
 1. Claim from the queue when a slot is free.
 2. Do the work, by calling OM managers and other services through their
    interfaces.
-3. Write the result to storage.
-4. Produce a notification onto a topic, when the work has one to
-   produce.
+3. Write the result through a manager. The write lands its outbox rows
+   in the same transaction, and the relay notifies from them.
+4. Complete the item.
+
+A notification that must reach someone is never only a publish on a
+topic, because a topic is at most once (see [Topics](#topics)). It
+rides the outbox row of the write, or a work item of its own.
 
 Handlers are idempotent by the rule from [Idempotency on the Consumer
 Side](#idempotency-on-the-consumer-side). Replays and at-least-once
@@ -4017,18 +4031,14 @@ class WorkHandlerInterface(ABC):
     async def handle(self, ctx: OpContext, item: WorkItem) -> None: ...
 
 class NotifyShipmentHandlerImpl(WorkHandlerInterface):  # handles WorkKind.NOTIFY_SHIPMENT
-    def __init__(
-        self,
-        order_manager: OrderManagerInterface,
-        topics: TopicsInterface,
-    ):
+    def __init__(self, order_manager: OrderManagerInterface):
         self._order_manager = order_manager
-        self._topics = topics
 
     async def handle(self, ctx: OpContext, item: WorkItem) -> None:
         # the unique index on idempotency_key deduped the enqueue; the claim token fences every write
         summary = await self._order_manager.get_shipment_summary(ctx, item.target_id)
-        await self._topics.publish(Topics.SHIPMENT_UPDATED, summary.to_payload(ctx.org_id, item.idempotency_key))
+        # a write keyed by the item: its outbox row lands with it, and the relay notifies
+        await self._order_manager.record_shipment_notice(ctx, summary, item.idempotency_key)
 ```
 
 The worker container runs the loop. The handler reads like a
@@ -4046,19 +4056,21 @@ flowchart LR
 
     subgraph Worker [Worker container - always on]
         direction TB
-        Loop["loop:<br/>claim → handle → write → complete → notify"]
+        Loop["loop:<br/>claim → handle → write → complete"]
     end
 
     Mgr[OM managers /<br/>domain services]
-    Sto[(Storage)]
+    Sto[(Storage<br/>row and outbox row)]
+    Relay[Outbox relay]
     Notif[Topic]
 
     Queue --> Loop
     Wake --> Loop
     Tick --> Loop
     Loop -->|call| Mgr
-    Mgr --> Sto
-    Loop -->|publish| Notif
+    Mgr -->|one transaction| Sto
+    Sto -->|outbox row| Relay
+    Relay -->|notify| Notif
 
     style Worker fill:#eef
 ```
@@ -4133,9 +4145,11 @@ timer. The sweep does the standing chores:
 - requeue work items whose lease expired
 - expire the leases other records hold, past their due time
 - resume records whose park time has passed
-- roll periods
+- open the next period of a record kept per period, such as a usage
+  window or a billing month, once the current one has ended
 - relay what a crash left in the outbox
 - purge done outbox rows and soft-deleted rows past retention
+- purge done and failed work items past retention (`purge_items`)
 - purge idempotency markers past their retention, socket tickets
   redeemed or expired, and sessions ended or past their lifetime
 
