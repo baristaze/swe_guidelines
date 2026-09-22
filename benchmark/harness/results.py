@@ -41,14 +41,18 @@ class RepeatResult:
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
+    # The models the subject's envelope reports it ran on; empty when it reports none.
+    subject_models: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         out = {
             "index": self.index,
             "exit_status": self.exit_status,
             "artifact_paths": list(self.artifact_paths),
+            "subject_models": list(self.subject_models),
             "judgements": [j.as_dict() for j in self.judgements],
         }
+
         if self.expected is not None:
             out["expected"] = dict(self.expected)
         return out

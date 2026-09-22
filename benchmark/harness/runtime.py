@@ -143,10 +143,13 @@ class ExitStatus:
     signal: int | None = None
     duration_s: float = 0.0
     timed_out: bool = False
+    # The subject exited cleanly and said it failed: `is_error` in the
+    # `claude --output-format json` envelope.
+    is_error: bool = False
 
     @property
     def ok(self) -> bool:
-        return self.code == 0 and not self.timed_out
+        return self.code == 0 and not self.timed_out and not self.is_error
 
     def as_dict(self) -> dict:
         return {
@@ -154,6 +157,7 @@ class ExitStatus:
             "signal": self.signal,
             "duration_s": round(self.duration_s, 3),
             "timed_out": self.timed_out,
+            "is_error": self.is_error,
         }
 
 

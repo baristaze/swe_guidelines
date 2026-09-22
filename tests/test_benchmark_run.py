@@ -466,3 +466,68 @@ def test_strict_refuses_a_skill_whose_subject_has_no_key_of_its_own(tmp_path, mo
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1", "--strict"]
     assert run.main(argv) == 3
     assert "SUBJECT_ANTHROPIC_API_KEY" in capsys.readouterr().err
+
+
+def test_a_skill_subject_runs_on_the_model_it_is_pinned_to():
+    argv = run.subject_argv(S.from_data(SKILL), "swe-guidelines", "/plugin", None, "claude", model="claude-opus-5")
+    assert argv[argv.index("--model") + 1] == "claude-opus-5"
+
+
+def test_the_subject_model_defaults_to_the_scenario_then_the_matrix():
+    matrix = run.J.DEFAULT_MATRIX
+    assert run.subject_model(S.from_data(SKILL), None, matrix) == matrix["anthropic"]["model"]
+    pinned = S.from_data(dict(SKILL, subject={**SKILL["subject"], "model": "claude-sonnet-5"}))
+    assert run.subject_model(pinned, None, matrix) == "claude-sonnet-5"
+    assert run.subject_model(pinned, "claude-haiku-5", matrix) == "claude-haiku-5"
+    command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"})
+    assert run.subject_model(command, None, matrix) is None
+
+
+def test_the_envelope_gives_the_answer_the_models_and_the_error():
+    envelope = json.dumps({"type": "result", "is_error": False, "result": "the answer", "modelUsage": {"claude-opus-5": {}}})
+    assert run.read_envelope(envelope) == ("the answer", ["claude-opus-5"], False)
+    failed = json.dumps({"type": "result", "is_error": True, "result": "API Error: 401", "modelUsage": {}})
+    assert run.read_envelope(failed) == ("API Error: 401", [], True)
+    assert run.read_envelope("plain text\n") == ("plain text\n", [], False)
+
+
+def envelope_scenario(tmp_path, envelope):
+    script = f"print({json.dumps(json.dumps(envelope))})"
+    scenario = {
+        "name": "envelope",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "envelope.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    return path
+
+
+def test_an_envelope_that_reports_an_error_fails_the_repeat(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    judged: list[str] = []
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: judged.append("called") or [])
+    path = envelope_scenario(tmp_path, {"type": "result", "is_error": True, "result": "API Error: 401"})
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 6
+    assert judged == []
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["repeats"][0]["exit_status"]["code"] == 0
+    assert results["repeats"][0]["exit_status"]["is_error"] is True
+
+
+def test_the_model_the_envelope_reports_is_recorded_beside_the_pin(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    envelope = {"type": "result", "is_error": False, "result": "ok", "modelUsage": {"claude-sonnet-5": {}}}
+    path = envelope_scenario(tmp_path, envelope)
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--subject-model", "claude-opus-5"]
+    assert run.main(argv) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["subject_model"] == "claude-opus-5"
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["subject"]["model"] == "claude-opus-5"
+    assert results["repeats"][0]["subject_models"] == ["claude-sonnet-5"]
+    assert any("claude-opus-5" in note and "claude-sonnet-5" in note for note in results["notes"])

@@ -59,10 +59,17 @@
               "code": { "type": "integer" },
               "signal": { "type": ["integer", "null"] },
               "duration_s": { "type": "number" },
-              "timed_out": { "type": "boolean" }
+              "timed_out": { "type": "boolean" },
+              "is_error": { "type": "boolean" }
             }
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "subject_models": {
+            "description": "The models the subject's envelope reports it ran on.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+
           "expected": {
             "description": "Which planted findings the artifact names by lens id and file; present only when the scenario plants some.",
             "type": "object",

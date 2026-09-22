@@ -34,6 +34,7 @@ imported inside the functions that call them.
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
+| `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running |
@@ -199,7 +200,14 @@ judges:
 `kind: skill` runs `claude -p "/<plugin>:<skill> <prompt>"` with
 `--plugin-dir` pointing at the staged copy of this checkout's plugin
 payload, so the skills under test are the ones in the working tree, not
-the installed ones. `kind: command`
+the installed ones. It also gets `--model`: the subject's model is
+always pinned, because `claude -p` on its default model measures
+whatever that default is today. The run records the pin in `run.json`
+and in `subject.model`. Each repeat records `subject_models`, the models
+the JSON envelope reports under `modelUsage`, and a run notes a repeat
+whose envelope does not report the pinned model. An envelope with
+`is_error` set is a failed repeat, whatever the exit code. `kind: command`
+
 runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
 
