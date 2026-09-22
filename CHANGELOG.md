@@ -135,6 +135,13 @@ lenses change severity, which before 1.0.0 bumps the minor number.
 
 ### Fixed
 
+- "Intra-Service Communication": each console script starts at an
+  entry module that installs the trust store before the process's first
+  import, never as a side effect of importing a module. Injected after
+  urllib3 or the cloud SDK has bound `ssl.SSLContext`, the first TLS
+  context recursed until the process died, which only a deployed start
+  shows. `arch-scaffold-service` and `arch-scaffold-worker` write the
+  entry module and a test that replays the start.
 - `arch-check` reads the spellings real code uses: a base imported
   under another name, a stage through `Annotated` or an alias, a
   table renamed by a migration, a quoted identifier, and a client
