@@ -172,14 +172,18 @@ development and tests.
 
 **Source.** Infrastructure, Buckets.
 
-**Look for.** The `Buckets` enum; the bucket interface; how uploads
-and downloads reach clients; the local impl.
+**Look for.** The `Buckets` enum; the bucket interface, and
+`presign_put` taking the content type and `max_bytes`; how uploads and
+downloads reach clients, and what a caller does when a presign returns
+`None`; the local impl.
 
 **Violation.** A large blob (a document, an upload, an export) stored
 in a column or on a service's disk; a bucket name passed as a free
 string; a route that streams a large upload through the process
-instead of handing out a presigned URL; a local setup that needs the
-cloud object store to run tests.
+instead of handing out a presigned URL; an upload URL that names no
+content type or no maximum length; a `None` from a presign that the
+caller does not answer by moving the bytes itself under the same
+bounds; a local setup that needs the cloud object store to run tests.
 
 **Severity.** medium
 
@@ -316,8 +320,10 @@ together; the key on every message the handler forwards.
 a duplicate on redelivery; a dedupe marker committed separately from
 the effect it guards, so a crash between them suppresses the work for
 good; a key minted by the consumer instead of the producer; a
-downstream message that drops the incoming key and mints a new one; a
-webhook handler that ignores the provider's delivery id.
+downstream message that drops the incoming key and mints a new one; an
+inbound webhook route whose key is not a UUID v5 over the provider's
+name and its delivery id, so a provider's retry arrives under a new
+key.
 
 **Severity.** high
 

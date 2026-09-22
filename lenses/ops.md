@@ -67,12 +67,13 @@ the create and destroy runs that names the administrator profile; an
 administrator role assumed by a pipeline; a break-glass grant with
 no record, no time bound, or no reconciling pull request after it.
 A person's everyday permission set is not a fifth role, since no skill
-runs under it, and neither is the provisioner, an identity of the
-operator plane that holds no cloud role.
+runs under it. Neither is the provisioner, an identity of the operator
+plane that holds no cloud role, nor the smoke test's read grant, which
+writes nothing.
 
 **Severity.** high
 
-## OPS-03 The deployer is the pipeline, and the only role that writes
+## OPS-03 The deployer is the pipeline and applies every cloud change
 
 **Principle.** The deployer is the pipeline: one per environment,
 assumed by the workflow through the repository host's identity
@@ -165,7 +166,7 @@ tag; a staging role that lists a production resource.
 
 **Severity.** medium
 
-## OPS-07 Every person and every operator signs in with a second factor
+## OPS-07 Every cloud and operator sign-in carries a second factor
 
 **Principle.** People sign in through the identity center with a second
 factor: no cloud user, no long-lived key. The investigator trusts the
@@ -175,7 +176,7 @@ operator's sign-in only with a second factor, a TOTP code enrolled per
 operator identity.
 
 **Source.** Operations, Operator Roles; The Network Layer, The Gateway;
-Deployment, Security Defaults.
+OpContext, The Operator Context; Deployment, Security Defaults.
 
 **Look for.** Any cloud user or access key in the roots, the scripts,
 or the cloud tool's configuration; the trust policy of each

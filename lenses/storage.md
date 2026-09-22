@@ -628,8 +628,9 @@ changes.
 **Source.** The Storage Layer, Translation; The Storage Layer,
 Migrations.
 
-**Look for.** Every value object dumped into a JSON column and the
-history of its fields; for an added field, the release that began
+**Look for.** Every value object dumped into a JSON column, the
+work-item and event payload shapes among them, and the history of its
+fields; for an added field, the release that began
 writing it and whether the release before it could read it, and
 whether the release that only reads it names it in its dump's
 `exclude`; for a
