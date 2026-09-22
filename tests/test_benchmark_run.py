@@ -331,3 +331,27 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
 def test_the_workflow_runs_every_scenario_strict():
     workflow = (RUN.parent.parent / ".github" / "workflows" / "benchmark.yml").read_text(encoding="utf-8")
     assert "--strict" in workflow
+
+
+def test_two_runs_in_the_same_second_get_two_folders(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    monkeypatch.setattr(run.time, "strftime", lambda *args: "20260101-000000")  # one second for both
+    scenario = {
+        "name": "twice",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", "import uuid; print(uuid.uuid4().hex)"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "twice.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    out = str(tmp_path / "runs")
+    assert run.main(["--scenario", str(path), "--out", out]) == 0
+    assert run.main(["--scenario", str(path), "--out", out]) == 0
+    first, second = sorted((tmp_path / "runs").iterdir())
+    answers = [(d / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") for d in (first, second)]
+    assert answers[0] != answers[1] and answers[0].count("\n") == answers[1].count("\n") == 1
+    for folder in (first, second):
+        results = json.loads((folder / "results.json").read_text(encoding="utf-8"))
+        assert results["run_id"] == folder.name

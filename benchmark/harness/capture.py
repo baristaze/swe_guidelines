@@ -24,13 +24,16 @@ class CliStream:
 
     Two reader threads write here at once, so every write holds a lock and
     flushes. A tail of the file is therefore always whole lines.
+
+    The file is created, never reopened: a stream file that is already
+    there belongs to another run, and writing into it would mix the two.
     """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._fh = self.path.open("a", encoding="utf-8")
+        self._fh = self.path.open("x", encoding="utf-8")
         self.count = 0
 
     def write(self, stream: str, line: str, t: float | None = None) -> None:

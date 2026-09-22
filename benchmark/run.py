@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,24 @@ SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
 def subject_keys(scn: S.Scenario) -> list[str]:
     """The key names the subject's command needs. A `qa` subject runs no command."""
     return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
+
+
+def new_run_dir(out: Path, scenario: str) -> tuple[str, Path]:
+    """A run folder no other run has, and its name.
+
+    The name starts with the second and the scenario, so the folders sort
+    by time. A random suffix tells apart two runs of one scenario started
+    in the same second, and the folder is created only when it is not
+    there yet, so no run ever writes into another's.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    while True:
+        run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scenario}-{uuid.uuid4().hex[:8]}"
+        try:
+            (out / run_id).mkdir()
+        except FileExistsError:
+            continue
+        return run_id, out / run_id
 
 
 def git_sha(path: Path) -> str:
@@ -292,9 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"the target {target} is not a folder", file=sys.stderr)
         return 2
 
-    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scn.name}"
-    run_dir = out / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_id, run_dir = new_run_dir(out, scn.name)
 
     config: dict = {}
     if args.runtime_config:

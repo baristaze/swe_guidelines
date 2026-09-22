@@ -29,6 +29,15 @@ def test_a_torn_last_line_is_left_out(tmp_path):
     assert [r["line"] for r in CliStream.read(path)] == ["whole"]
 
 
+def test_a_stream_file_that_is_already_there_is_never_appended_to(tmp_path):
+    path = tmp_path / "cli.jsonl"
+    with CliStream(path) as stream:
+        stream.write("out", "first run")
+    with pytest.raises(FileExistsError):
+        CliStream(path)
+    assert [r["line"] for r in CliStream.read(path)] == ["first run"]
+
+
 def test_frames_are_numbered_and_indexed(tmp_path):
     sink = FrameSink(tmp_path / "browser")
     first = sink.add(b"one", t=1.0)

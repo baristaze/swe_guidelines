@@ -63,7 +63,7 @@ container.
 ## What a run leaves behind
 
 ```text
-runs/<YYYYMMDD-HHMMSS>-<scenario>/
+runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   run.json                 the resolved scenario, runtime, models, and argv
   streams/cli.jsonl        one JSON line per output line, written as it happens
   streams/build.jsonl      the image build's output, with `--runtime container --build`
@@ -74,6 +74,11 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>/
   results.json             the record, in schema/result.schema.json
   report.md                the same run for a person
 ```
+
+The random part of the name tells apart two runs of one scenario
+started in the same second. A run folder is created only when it is
+not there yet, and a stream file likewise, so no run writes into
+another's.
 
 The subject never works in the run folder. It lives in a sandbox
 outside the checkout, a fresh temporary folder per run:
