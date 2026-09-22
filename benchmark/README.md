@@ -186,8 +186,9 @@ judges:
 ```
 
 `kind: skill` runs `claude -p "/<plugin>:<skill> <prompt>"` with
-`--plugin-dir` pointing at this checkout, so the skills under test are
-the ones in the working tree, not the installed ones. `kind: command`
+`--plugin-dir` pointing at the staged copy of this checkout's plugin
+payload, so the skills under test are the ones in the working tree, not
+the installed ones. `kind: command`
 runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
 
