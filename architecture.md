@@ -3722,7 +3722,7 @@ producer's idempotency key. It records its own claim.
 class WorkItem(Identifiable, Trackable):
     kind: WorkKind             # what to do
     target_id: UUID            # the record it advances
-    idempotency_key: UUID      # unique
+    idempotency_key: UUID      # unique per tenant
     request_id: UUID           # the request that caused the work
     traceparent: str | None = None   # the trace context of that request, for a link
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)
@@ -3753,6 +3753,11 @@ It reads back by the key that collided, so `create_item` returns an
 the key carries another id. A contract case enqueues the same key
 under a different id and asserts both: the outcome is `KEY_EXISTS`,
 and the read-back returns the first row.
+
+The unique index leads with the tenant, `(org_id, idempotency_key)`,
+as every index on a tenant table does. So a key collides only within
+its tenant, and the read-back under that tenant always finds the row
+that holds it.
 
 The manager's copy stamps the actor, the status, and the attempts. It
 clears every claim field. It leaves the id and the timestamps as

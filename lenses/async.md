@@ -353,22 +353,25 @@ in service code off the socket edge; the rest is judged.
 
 ## ASY-16 Durable work is a row with the queue's shape
 
-**Principle.** A work item names its kind and target, carries a unique
-idempotency key, a `lane` routing string, a status, an `available_at`,
-its claim (`claimed_by` for an operator, `claim_token` the fence,
-`lease_expires_at`), and its attempts; payload shapes are fixed per
-kind by `WORK_PAYLOADS`. The lane is the routing:
+**Principle.** A work item names its kind and target, carries an
+idempotency key unique per tenant, a `lane` routing string, a status,
+an `available_at`, its claim (`claimed_by` for an operator,
+`claim_token` the fence, `lease_expires_at`), and its attempts; payload
+shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
 one table serves a shared pool and any dedicated lane.
 
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
-table and the index on `idempotency_key`; how routing is expressed.
+table and its unique index on `(org_id, idempotency_key)`; how routing
+is expressed.
 
 **Violation.** A row with no lease, no claim token, or no attempt
 count; a payload with no shape fixed for its kind; no unique index on
 the idempotency key; a second table or topic invented for routing when
-the `lane` string would do.
+the `lane` string would do; a unique index on the key alone, so a key
+another tenant holds answers `KEY_EXISTS` and the read-back under this
+tenant finds nothing.
 
 **Severity.** medium
 
