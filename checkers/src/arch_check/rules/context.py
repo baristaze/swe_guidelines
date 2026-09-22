@@ -48,10 +48,6 @@ CLASS_BUILDERS = frozenset({"model_validate", "model_construct", "model_copy"})
 ABOVE_REQUEST = tuple(s for s in STAGES if s != REQUEST_STAGE)
 
 
-def bases(cls: ast.ClassDef) -> list[str]:
-    return [last(b) or b for b in base_names(cls)]
-
-
 def class_index(project: Project) -> dict[str, list[ast.ClassDef]]:
     """Every class of the source by name; two classes may share one."""
     out: dict[str, list[ast.ClassDef]] = {}
@@ -61,15 +57,15 @@ def class_index(project: Project) -> dict[str, list[ast.ClassDef]]:
     return out
 
 
-def ancestors(index: dict[str, list[ast.ClassDef]], name: str) -> list[str]:
+def ancestors(project: Project, index: dict[str, list[ast.ClassDef]], name: str) -> list[str]:
     """Every class a class named `name` refines, by name, nearest first; itself left out."""
     out: list[str] = []
-    todo = [b for cls in index.get(name, []) for b in bases(cls)]
+    todo = [b for cls in index.get(name, []) for b in project.bases(cls)]
     while todo:
         n = todo.pop(0)
         if n != name and n not in out:
             out.append(n)
-            todo += [b for cls in index.get(n, []) for b in bases(cls)]
+            todo += [b for cls in index.get(n, []) for b in project.bases(cls)]
     return out
 
 
@@ -508,11 +504,11 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
     index = class_index(project)
 
     def extends(name: str, target: str) -> bool:
-        return name == target or target in ancestors(index, name)
+        return name == target or target in ancestors(project, index, name)
 
     def carries_org_id(cls: ast.ClassDef) -> bool:
         return "org_id" in declared_fields(cls) or any(
-            "org_id" in declared_fields(c) for a in ancestors(index, cls.name) for c in index.get(a, [])
+            "org_id" in declared_fields(c) for a in ancestors(project, index, cls.name) for c in index.get(a, [])
         )
 
     for file, tree in project.trees(project.sub("infra")):
@@ -555,7 +551,7 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
     operator = stages.get("OperatorContext")
     if file is not None and operator is not None:
         index = class_index(project)
-        lineage = ancestors(index, "OperatorContext")
+        lineage = ancestors(project, index, "OperatorContext")
         if "IdentityContext" not in lineage:
             yield Violation.at(stage_rel(project, operator, file), operator, "OperatorContext does not refine IdentityContext")
         for name in ["OperatorContext", *lineage]:
@@ -567,7 +563,7 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
                 )
     for f, tree in project.trees():
         for cls in classes(tree):
-            if not any(n.endswith(OPERATION_INTERFACES) for n in [cls.name, *bases(cls)]):
+            if not any(n.endswith(OPERATION_INTERFACES) for n in [cls.name, *project.bases(cls)]):
                 continue
             for fn in interface_methods(cls):
                 for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
@@ -602,10 +598,10 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
         cls = stages.get(name)
         if cls is None:
             continue
-        if "Protocol" in bases(cls):
+        if "Protocol" in project.bases(cls):
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is a Protocol; a stage is a concrete frozen type")
         parent = expected.get(name)
-        lineage = ancestors(index, name)
+        lineage = ancestors(project, index, name)
         if parent and parent in stages and parent not in lineage:
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} does not subclass {parent}")
         if name == "OpContext" and "IdentityContext" in lineage:
@@ -667,7 +663,7 @@ def scopes_are_protocols(project: Project) -> Iterator[Violation]:
         else:
             used |= annotation_names(tree)
     for name, cls in scopes.items():
-        if "Protocol" not in bases(cls):
+        if "Protocol" not in project.bases(cls):
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is not a Protocol; a scope is satisfied structurally")
         extra = [n for n in body_without_docstring(cls.body) if not is_property_member(n)]
         if extra:

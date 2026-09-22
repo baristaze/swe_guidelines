@@ -732,3 +732,28 @@ def test_the_breaker_settings_defaults_pass_con_23(tmp_path):
     src += "\n\ndef build(inner):\n    return CacheBreakerImpl(inner, failure_threshold=5)\n"
     code, found, _ = run(tmp_path, "CON-23", {f"{INFRA}/settings.py": src})
     assert (code, found) == (1, [("CON-23", f"{INFRA}/settings.py", 11)])
+
+
+ALIASED_ROOT = (
+    "from functools import cached_property\n\n"
+    "from acme.infra import InfraInterface as Root\n"
+    "from acme.infra.cache import CacheInterface as Cache\n\n\n"
+    "class InfraLocalImpl(Root):\n"
+    "    def __init__(self) -> None:\n        self._cache = CacheMemoryImpl()\n\n"
+    "    @cached_property\n    def get_topics(self):\n        return self._topics\n\n\n"
+    "class CacheMemoryImpl(Cache):\n    pass\n\n\n"
+    "class CacheRedisImpl(Cache):\n    pass\n"
+)
+
+
+def test_a_base_imported_under_an_alias_is_the_class_it_names(tmp_path):
+    files = {
+        f"{INFRA}/cache/__init__.py": "from abc import ABC\n\n\nclass CacheInterface(ABC):\n    pass\n",
+        f"{INFRA}/impl/local.py": ALIASED_ROOT,
+    }
+    for rule_id in ("CON-01", "CON-03", "CON-06"):
+        code, found, _ = run(tmp_path, rule_id, files)
+        assert (rule_id, code, found) == (rule_id, 0, [])
+    code, found, messages = run(tmp_path, "CON-20", files)
+    assert (code, [line for _, _, line in found]) == (1, [12])
+    assert "caches on first use" in messages[0]

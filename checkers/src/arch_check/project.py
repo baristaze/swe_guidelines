@@ -90,6 +90,8 @@ class Project:
         self.parse_errors: dict[str, tuple[int, str]] = {}
         self._trees: dict[str, ast.Module | None] = {}
         self._imports: dict[str, list[Import]] = {}
+        self._bound: dict[str, dict[str, str]] = {}
+        self._owners: dict[int, SourceFile] = {}
         self.read_paths: set[str] = set()
         """Every file `read` returned, so the runner reads the inline ignores of the files the rules read."""
 
@@ -205,6 +207,8 @@ class Project:
                 if tree is not None and depth(tree) > MAX_DEPTH:
                     self._trees[file.rel] = None
                     self.parse_errors[file.rel] = (1, f"nests deeper than the {MAX_DEPTH} levels arch-check walks")
+                elif tree is not None:
+                    self._owners.update((id(n), file) for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
         return self._trees[file.rel]
 
     def trees(self, *prefixes: str) -> Iterator[tuple[SourceFile, ast.Module]]:
@@ -247,6 +251,47 @@ class Project:
                     out.append(Import(module=target, names=tuple(a.name for a in node.names), node=node))
         out.sort(key=lambda i: (i.node.lineno, i.node.col_offset))
         self._imports[file.rel] = out
+        return out
+
+    def bound_names(self, file: SourceFile) -> dict[str, str]:
+        """Local name to the absolute dotted name an import binds it to, for every import of a file.
+
+        `from a.b import C as D` gives `D -> a.b.C`; `import a.b` gives
+        `a -> a`; `import a.b as c` gives `c -> a.b`.
+        """
+        if file.rel in self._bound:
+            return self._bound[file.rel]
+        out: dict[str, str] = {}
+        for imp in self.imports(file):
+            node = imp.node
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name != "*":
+                        out[alias.asname or alias.name] = f"{imp.module}.{alias.name}"
+            else:
+                for alias in node.names:
+                    if alias.asname:
+                        out[alias.asname] = alias.name
+                    else:
+                        head = alias.name.split(".")[0]
+                        out[head] = head
+        self._bound[file.rel] = out
+        return out
+
+    def bases(self, cls: ast.ClassDef) -> list[str]:
+        """The class names a class's bases mean, last segment only, read through its file's imports.
+
+        `abc.ABC` gives `ABC`, and `Root` after `from acme.om.storage
+        import StorageInterface as Root` gives `StorageInterface`. A
+        class this project did not parse is read as written.
+        """
+        file = self._owners.get(id(cls))
+        bound = self.bound_names(file) if file is not None else {}
+        out: list[str] = []
+        for name in base_names(cls):
+            head, _, rest = name.partition(".")
+            target = bound.get(head, head)
+            out.append(last(f"{target}.{rest}" if rest else target) or name)
         return out
 
     def import_graph(self, *prefixes: str) -> dict[str, set[str]]:

@@ -16,7 +16,7 @@ import re
 from collections.abc import Iterator
 
 from arch_check.model import Violation
-from arch_check.project import Function, Project, SourceFile, base_names, classes, decorator_names, dotted, is_under, last
+from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last
 from arch_check.registry import rule
 from arch_check.rules._contracts_util import (
     HTTP_VERBS,
@@ -46,11 +46,6 @@ ROOT_INTERFACES = ["StorageInterface", "InfraInterface", "ServicesInterface"]
 EMPTY_LITERALS = (ast.List, ast.Dict, ast.Tuple, ast.Set)
 
 
-def bases(cls: ast.ClassDef) -> list[str]:
-    """The last segment of every base name: `abc.ABC` gives `ABC`."""
-    return [last(b) or b for b in base_names(cls)]
-
-
 def roots(project: Project, rule_id: str) -> set[str]:
     """The root interfaces named in `roots`, and every class that implements one, through any depth of bases."""
     names: list[str] = project.option(rule_id, "roots", list(ROOT_INTERFACES), {"roots"})
@@ -58,8 +53,8 @@ def roots(project: Project, rule_id: str) -> set[str]:
     return set(names) | {sub for n in names for sub in impls.get(n, [])}
 
 
-def is_root(cls: ast.ClassDef, names: set[str]) -> bool:
-    return cls.name in names or any(b in names for b in bases(cls))
+def is_root(project: Project, cls: ast.ClassDef, names: set[str]) -> bool:
+    return cls.name in names or any(b in names for b in project.bases(cls))
 
 
 # --- CON-01
@@ -82,7 +77,7 @@ def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
     """
     allowed: set[str] = set(project.option("CON-01", "sync_methods", [], {"sync_methods"}))
     for file, cls in classes_named(project, "Impl"):
-        if not any(b.endswith(("Interface", "Impl")) for b in bases(cls)):
+        if not any(b.endswith(("Interface", "Impl")) for b in project.bases(cls)):
             yield Violation.at(file.rel, cls, f"{cls.name} subclasses no *Interface; an impl implements an interface")
     for suffix in ("ManagerInterface", "StorageInterface"):
         for file, cls in classes_named(project, suffix):
@@ -108,7 +103,7 @@ def interfaces_are_abstract(project: Project) -> Iterator[Violation]:
     Whether an impl adds public methods its callers use is judged."""
     for file, cls in classes_named(project, "Interface"):
         meta = next((last(dotted(k.value)) for k in cls.keywords if k.arg == "metaclass"), None)
-        if not any(b == "ABC" or b.endswith("Interface") for b in bases(cls)) and meta != "ABCMeta":
+        if not any(b == "ABC" or b.endswith("Interface") for b in project.bases(cls)) and meta != "ABCMeta":
             yield Violation.at(file.rel, cls, f"{cls.name} is not an ABC; an interface is an abstract class")
         for fn in interface_methods(cls):
             if "overload" in {last(d) for d in decorator_names(fn)}:
@@ -127,7 +122,7 @@ def implementers(project: Project) -> dict[str, list[str]]:
     direct: dict[str, list[str]] = {}
     for _, tree in project.trees():
         for cls in classes(tree):
-            for b in bases(cls):
+            for b in project.bases(cls):
                 direct.setdefault(b, []).append(cls.name)
     out: dict[str, list[str]] = {}
     for name in direct:
@@ -157,7 +152,7 @@ def impls_are_named_and_paired(project: Project) -> Iterator[Violation]:
     for file, cls in classes_named(project, ""):
         if cls.name.endswith("Interface"):
             continue
-        if any(b.endswith("Interface") for b in bases(cls)) and not cls.name.endswith("Impl"):
+        if any(b.endswith("Interface") for b in project.bases(cls)) and not cls.name.endswith("Impl"):
             yield Violation.at(file.rel, cls, f"{cls.name} implements an interface; its name ends in Impl")
     impls = implementers(project)
     infra = project.sub("infra")
@@ -208,7 +203,7 @@ def sibling_methods(project: Project) -> dict[str, dict[str, list[Function]]]:
         if is_memory_module(project, file):
             continue
         for cls in classes(tree):
-            for b in bases(cls):
+            for b in project.bases(cls):
                 if b.endswith("Interface"):
                     for fn in interface_methods(cls):
                         out.setdefault(b, {}).setdefault(fn.name, []).append(fn)
@@ -240,7 +235,7 @@ def memory_impls_are_whole(project: Project) -> Iterator[Violation]:
             for fn in interface_methods(cls):
                 if not returns_empty(fn):
                     continue
-                others = [o for b in bases(cls) for o in siblings.get(b, {}).get(fn.name, [])]
+                others = [o for b in project.bases(cls) for o in siblings.get(b, {}).get(fn.name, [])]
                 if others and not all(returns_empty(o) for o in others):
                     yield Violation.at(
                         file.rel,
@@ -282,7 +277,7 @@ def dependencies_are_injected(project: Project) -> Iterator[Violation]:
                     yield Violation.at(
                         file.rel, arg, f"{cls.name}.__init__ types `{arg.arg}` as {bad[0]}; a dependency is typed by interface"
                     )
-        if is_root(cls, root_names):
+        if is_root(project, cls, root_names):
             continue
         for call in calls(cls):
             name = called_name(call)
@@ -319,7 +314,7 @@ def tunables_arrive_as_options(project: Project) -> Iterator[Violation]:
     between deployments, and whether the options object is frozen, is
     judged."""
     for file, cls in classes_named(project, ""):
-        if not (MANAGER_IMPL.search(cls.name) or any(b.endswith("ManagerInterface") for b in base_names(cls))):
+        if not (MANAGER_IMPL.search(cls.name) or any(b.endswith("ManagerInterface") for b in project.bases(cls))):
             continue
         init = init_of(cls)
         for arg in arguments(init) if init else []:
@@ -380,7 +375,7 @@ def cycles_are_broken_above(project: Project) -> Iterator[Violation]:
         if file.module.rpartition(".")[2] in WIRING_MODULES:
             scopes: list[ast.AST] = [tree]
         else:
-            scopes = [cls for cls in classes(tree) if is_root(cls, root_names)]
+            scopes = [cls for cls in classes(tree) if is_root(project, cls, root_names)]
         for scope in scopes:
             for node in ast.walk(scope):
                 for t in private_targets(node):
@@ -471,7 +466,7 @@ def roots_wire_at_boot(project: Project) -> Iterator[Violation]:
                     yield Violation.at(file.rel, node, f"{cls.name} holds an impl type; a manager field is its interface")
     for file, tree in project.trees():
         for cls in classes(tree):
-            if not is_root(cls, root_names):
+            if not is_root(project, cls, root_names):
                 continue
             for fn in interface_methods(cls):
                 if fn.name.startswith("get_") and any(n.endswith("Impl") for n in names_in(fn.returns)):
@@ -542,7 +537,7 @@ def every_service_has_its_impl(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees(services):
         process = ".".join(file.module.split(".")[: services.count(".") + 2])
         for cls in classes(tree):
-            by_process.setdefault(process, set()).update(bases(cls))
+            by_process.setdefault(process, set()).update(project.bases(cls))
     for file, cls in classes_named(project, "ServiceInterface", services):
         process = ".".join(file.module.split(".")[: services.count(".") + 2])
         if cls.name not in by_process.get(process, set()):
@@ -729,7 +724,7 @@ def roots_build_once(project: Project) -> Iterator[Violation]:
     root_names = roots(project, "CON-20")
     for file, tree in project.trees():
         for cls in classes(tree):
-            if cls.name in listed or not is_root(cls, root_names):
+            if cls.name in listed or not is_root(project, cls, root_names):
                 continue
             for fn in interface_methods(cls):
                 if not fn.name.startswith("get_"):
@@ -776,7 +771,7 @@ def breakers_are_infrastructure(project: Project) -> Iterator[Violation]:
         defaults = {
             id(n)
             for cls in classes(tree)
-            if cls.name.endswith("Settings") or "BaseSettings" in {last(b) for b in base_names(cls)}
+            if cls.name.endswith("Settings") or "BaseSettings" in project.bases(cls)
             for stmt in cls.body
             if isinstance(stmt, ast.AnnAssign | ast.Assign) and stmt.value is not None
             for n in ast.walk(stmt.value)

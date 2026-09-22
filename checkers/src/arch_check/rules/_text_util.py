@@ -327,26 +327,8 @@ def module_matches(module: str, pattern: str) -> bool:
 
 
 def imported_names(project: Project, file: Any) -> dict[str, str]:
-    """Local name to the absolute dotted name it binds, for every import of a file.
-
-    `from a.b import C as D` gives `D -> a.b.C`; `import a.b` gives
-    `a -> a`; `import a.b as c` gives `c -> a.b`.
-    """
-    out: dict[str, str] = {}
-    for imp in project.imports(file):
-        node = imp.node
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.name != "*":
-                    out[alias.asname or alias.name] = f"{imp.module}.{alias.name}"
-        else:
-            for alias in node.names:
-                if alias.asname:
-                    out[alias.asname] = alias.name
-                else:
-                    head = alias.name.split(".")[0]
-                    out[head] = head
-    return out
+    """Local name to the absolute dotted name it binds, for every import of a file (`Project.bound_names`)."""
+    return project.bound_names(file)
 
 
 def resolved(name: str | None, names: dict[str, str]) -> str | None:
