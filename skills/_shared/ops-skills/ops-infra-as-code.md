@@ -42,6 +42,10 @@ Refuse any other identity, an administrator profile above all. The
 role reads the state bucket under `environments/<env>/` and describes every resource, which is all a
 plan needs. It cannot lock the state and cannot write it, so the plan
 runs with `-lock=false`, and an apply under it fails by construction.
+It also runs with `-refresh=false`: a refresh reads each secret's
+current version, which the investigate role is denied and only the
+plan role may. A denied refresh is expected, never a finding to widen
+the role; a plan that needs a refresh is the pipeline's.
 
 The pull request needs `gh auth status` to name a login. No env file
 is read; this skill touches no application credential.
@@ -91,7 +95,7 @@ is read; this skill touches no application credential.
    ```bash
    cd deployment/terraform/environments/<dir>   # staging, or prod for production
    AWS_PROFILE=acme-<env>-investigate terraform init -reconfigure
-   AWS_PROFILE=acme-<env>-investigate terraform plan -lock=false -out=/dev/null
+   AWS_PROFILE=acme-<env>-investigate terraform plan -lock=false -refresh=false -out=/dev/null
    ```
 
    Read the plan whole. A destroy the change did not ask for stops

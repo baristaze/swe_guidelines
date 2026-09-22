@@ -125,10 +125,10 @@ up` instead of its steps, or a shortcut with no step behind it.
 
 **Principle.** An external service has one interface and at least two
 impls: the real client and a deterministic twin with the same wire
-shapes.
-Tests, the local stack, and CI run against the twin; the real client
-is proven against fixtures and a non-gating sandbox workflow. A twin
-refuses to run off loopback and names its provenance on every record.
+shapes. Tests, the local stack, and CI run against the twin; the real
+client is proven against fixtures and a non-gating sandbox workflow. A
+twin refuses to run outside `local` and names its provenance on every
+record.
 
 **Source.** Deployment, Twins for External Services.
 
@@ -163,7 +163,7 @@ origin, the development seed with a local database; the start-up
 inventory log line.
 
 **Violation.** A staging or production environment that can start on
-the file secrets backend; a twin selectable off a loopback origin; a
+the file secrets backend; a twin selectable in any environment but `local`; a
 development seed that runs against a non-local database; a boot
 with no line saying which backends are in use; a runbook that carries
 a check the process could make itself.
@@ -747,12 +747,12 @@ distribution.
 
 ## DEL-31 Production promotes, it never rebuilds
 
-**Principle.** Production does not rebuild: it promotes what staging
-already ran, images by digest and bundles by build id, and refuses a
-commit staging never built. It promotes the copies replicated into its
-own account and never reads staging's. A bundle is built once and
-reads what differs between environments from a `config.json` deployed
-next to it.
+**Principle.** Production does not rebuild: it promotes the copies of
+what staging deployed, replicated into its own account, images by digest
+and bundles by commit, and never reads staging's. Tags are immutable,
+the bundle prefix refuses overwrites, and a copy that differs from the
+digest record kept outside staging's account is refused. A bundle reads
+what differs from a `config.json`.
 
 **Source.** Deployment, Cloud: AWS.
 
@@ -762,7 +762,11 @@ build, that waits a bounded time for the copy), the plan it writes,
 and the approval between the plan and the apply. The replication of
 the registry and of the kept bundles into production's artifacts
 bucket, and the one write production grants each; the `config.json`
-each deploy writes next to the bundle.
+each deploy writes next to the bundle; the tag mutability of every
+repository, the overwrite refusal on production's bundle prefix, and
+the record the staging deploy writes on the repository host that
+production compares with the copy; the credential the build steps
+hold.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
@@ -770,7 +774,11 @@ with no digest from staging that is deployed instead of refused; a
 production job or task that reads staging's registry or bucket, or a
 replication that may create a repository; a bundle kept in a state
 bucket, or replicated into one; a lookup that refuses at once while the
-copy is still in flight; an API origin or DSN compiled
+copy is still in flight; a repository with mutable tags, or a bundle
+prefix a second write can replace; a production lookup that accepts a
+copy with no record to compare against, or accepts a commit staging
+built and failed to deploy; a build step that holds the credential
+that applies; an API origin or DSN compiled
 into a bundle (the approval on the plan is DEL-38).
 
 **Severity.** medium
@@ -916,11 +924,11 @@ is assumed; a race that asserts both callers succeed.
 ## DEL-38 Staging is main, production is release, moved by a fast-forward
 
 **Principle.** Staging is `main`: every merge deploys it with no
-approval. Production is `release`, moved only by a fast-forward to the
-last commit staging deployed successfully, and pushed by the one actor
-its ruleset admits. A push to `release` plans production, waits for a
-person's approval on that plan, and applies it, after checking that
-`release` is an ancestor of `main`.
+approval. Production is `release`, fast-forwarded to the last commit
+staging deployed by the repository host's app, the one actor its ruleset
+admits. A push to `release` plans production, waits for a person's
+approval, and applies, after checking that `release` is an ancestor of
+`main`.
 
 **Source.** Deployment, Cloud: AWS.
 
@@ -928,10 +936,11 @@ person's approval on that plan, and applies it, after checking that
 absence of an approval on it; the production workflow's trigger (a
 push to `release`), its ancestor check before the plan, and the
 environment protection that holds the apply until a person approves;
-the `release` workflow, the commit it fast-forwards to and the key it
-pushes with, and the ruleset that lets nothing else push to
-`release`; the concurrency group on each deploy workflow; where the
-saved production plan is kept.
+the `release` workflow, the commit it fast-forwards to, the app token
+it pushes with and the environment that holds the app's key, and the
+ruleset that lets nothing else push to `release`; the concurrency group
+on each deploy workflow; where the saved production plan is kept; the
+guarded redeploy of a previous release commit.
 
 **Violation.** A staging deploy behind an approval, or one triggered by
 anything but `main`; a commit made on `release` or a merge into it; a
@@ -939,10 +948,12 @@ production apply with no plan approved first; a deploy of production
 that plans without checking that `release` is an ancestor of `main`;
 a person or a job that can push to `release` other than the
 fast-forward; a fast-forward to the tip of `main` rather than to the
-last successful staging deploy; a push with the workflow's own token
-that starts no production run and is not followed by a dispatch; a
-deploy workflow with no concurrency group, or one that cancels a run
-in progress; a saved plan uploaded as a workflow artifact.
+last successful staging deploy; a push to `release` made with a deploy
+key or a repository-wide secret, or an app key held outside an
+environment that admits `main` alone; a deploy workflow with no
+concurrency group, or one that cancels a run in progress; a saved plan
+uploaded as a workflow artifact; a redeploy that accepts a commit
+production never ran, skips the approval, or moves `release` back.
 
 **Severity.** medium
 
@@ -1082,11 +1093,11 @@ dependency.
 
 ## DEL-45 The deploy migrates, as a one-off task before the rollout
 
-**Principle.** A deployed database is migrated by the deploy, never by
-a person: a one-off task on the new image, with the service's network
-and secret, inside the same apply and before the rollout that depends
-on it. Production migrates after the approval. A deployed
-environment's first operator is granted by the same kind of task.
+**Principle.** A deployed database is migrated by the deploy: a one-off
+task on the new image, inside the apply and before the rollout, in
+production after the approval. A revert never removes an applied
+migration. A deployed environment's first operator is granted by the
+same kind of task, run by the pipeline.
 
 **Source.** Deployment, Migrating a Deployed Database.
 
@@ -1098,7 +1109,9 @@ deployed environment is made.
 **Violation.** A migration run by hand against a deployed database; a
 migration after the rollout, or outside the apply, so new tasks serve
 an old schema; a production migration before the approval; a first
-operator inserted by a database login from a laptop.
+operator inserted by a database login from a laptop, or granted by the
+administrator outside the pipeline; a revert that deletes a migration
+a deployed version table names.
 
 **Severity.** medium
 
@@ -1122,3 +1135,55 @@ readable value, a connection URL with its password computed as an
 output or a module input.
 
 **Severity.** high
+
+## DEL-47 The deployer cannot widen itself
+
+**Principle.** Every role the deployer creates carries a named
+permissions boundary. The deployer is denied changes to that boundary,
+to the deploy and bootstrap roles and trust, and to the bootstrap's
+state key, so the widest role a deploy run can mint is the boundary.
+
+**Source.** Deployment, Infrastructure as Code.
+
+**Look for.** The deploy role's fences: the condition that refuses a
+role created without the boundary, and the denies on the boundary, on
+the deploy and bootstrap roles, on the identity federation's trust,
+and on the bootstrap's state key; the boundary every task role carries.
+
+**Violation.** A deploy role that may create a role with no boundary,
+or remove a role's boundary; a deploy role that may edit its own
+policies, another deploy role, the investigator's trust, or the
+identity federation; a deploy role that may write the bootstrap's
+state.
+
+**Severity.** high
+
+## DEL-48 Every environment takes the security defaults
+
+**Principle.** Every environment takes the security defaults: private
+subnets with a named egress, encryption at rest and TLS to every store,
+a trail per account, a stated web-firewall position, a production
+database that survives a zone and restores to a point in time, a second
+factor at sign-in, a protected `main`, a scan on push, and pinned
+Terraform.
+
+**Source.** Deployment, Security Defaults; Technology Choices and How
+to Override Them, Versions.
+
+**Look for.** The network's subnets and egress; the encryption and TLS
+settings of the database, the cache, and the buckets; the trail in each
+bootstrap root; the web firewall, or the record of why there is none;
+production's database: its zones, deletion protection, recovery window,
+and final snapshot; the branch protection and the code owners; the
+registry's scan setting; `required_version`, the provider constraints,
+and the committed `.terraform.lock.hcl` of every root.
+
+**Violation.** A task or a database with a public address; a store
+unencrypted at rest, or a database that accepts a connection without
+TLS; an account with no trail; a production edge with no firewall and
+no record of the choice; a production database in one zone with
+customers on it, or with no point-in-time recovery; a sign-in with a
+password alone; a `main` that merges without review; a root with no
+lock file or an unpinned provider.
+
+**Severity.** medium

@@ -128,6 +128,7 @@ it in the middle.
   - [Local: Docker Compose](#local-docker-compose)
   - [Twins for External Services](#twins-for-external-services)
   - [What a Process Refuses](#what-a-process-refuses)
+  - [Security Defaults](#security-defaults)
 - [Operations](#operations)
   - [Operator Roles](#operator-roles)
   - [Operator Credentials](#operator-credentials)
@@ -351,8 +352,8 @@ was constructed.
 > `entity.model_copy(update={...})`. When the update carries dumped
 > data, as the caller's fields do, the entity is rebuilt from a dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
-> It takes that dict, never an instance of its own class, which it
-> would hand back unvalidated. `model_copy` does not validate, so it
+> Pass it that dict, never an instance of the class: given an
+> instance, `model_validate` hands it back without validating it. `model_copy` does not validate, so it
 > would leave a dumped value object as a plain dict. A manager that
 > updates an entity sets `updated_at` and `updated_by` in the same
 > copy, so the caller gets back the copy that was written.
@@ -1117,17 +1118,20 @@ two, and never a choice between them. An operator operation takes
 `OperatorContext`. A tenant operation takes `OpContext`.
 
 Three kinds of operation take a weaker stage, and no other. A
-transition of the tenancy manager takes the stage it refines. The
-exchange of a sign-in for a tenant session takes the identity stage
-(see [Stages](#stages)). An operation of [Operations Without a
+transition of the tenancy manager takes the stage it refines. An
+operation of an identity before any tenant takes the identity stage
+(see [Stages](#stages)): the exchange of a sign-in for a tenant
+session, the list of its memberships, and ending its own sign-in. An
+operation of [Operations Without a
 Principal](#operations-without-a-principal) takes `RequestContext`, or
 a tenant id and no stage at all.
 
 Two things keep the planes apart: the type system at every call site,
 and `arch-check` at the few places a stage is built. An operator route
 cannot act inside a tenant. It reads a tenant's rows only by naming the
-tenant as a parameter of the read. A tenant route cannot reach the
-operator plane. [The Gateway](#the-gateway) and [The Operator
+tenant as a parameter of the read, and every such read is recorded
+with the tenant and the operator, so support access leaves a trail. A
+tenant route cannot reach the operator plane. [The Gateway](#the-gateway) and [The Operator
 Console](#the-operator-console) describe the plane further.
 
 > **Principle:** Tenant operations take `OpContext`; operator operations
@@ -1177,7 +1181,10 @@ class InventoryManagerImpl(InventoryManagerInterface):
         rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json")),)
         await self._storage.write_warehouse(ctx.org_id, updated, rows)  # one atomic method
         for row in rows:  # relaying at once (a write that also starts work carries a second row)
-            await self._relay.relay(ctx.org_id, row)  # never raises: a failure is left to the sweep
+            # The lower-latency choice; relaying from the sweep alone is the
+            # cheaper first step (Database Roles). Never raises: a failure
+            # is left to the sweep.
+            await self._relay.relay(ctx.org_id, row)
         return updated
 ```
 
@@ -1334,9 +1341,8 @@ the sweep, where no principal exists.
 
 Operations without a principal come in three kinds: operations on the
 request stage, bookkeeping with no principal, and handoffs by tenant
-id. Each is
-declared as such on its interface, and nothing else is of those
-kinds.
+id. Each is declared as such on its interface, and nothing else is of
+those kinds.
 
 ## The Storage Layer
 
@@ -1590,6 +1596,11 @@ every tenant table is tenant-scoped. A global table composes
 ``` python
 # acme/om/storage/tables/base.py
 
+class Base(DeclarativeBase):
+    # Every datetime column is a timestamp with a time zone: a bare
+    # Mapped[datetime] would map to one without.
+    type_annotation_map = {datetime: DateTime(timezone=True)}
+
 class IdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
     org_id: Mapped[UUID] = mapped_column(index=True, sort_order=-999)  # storage-only
@@ -1667,7 +1678,13 @@ Four index rules cover almost every table:
     the compound one.
 3.  Index what the SQL filters on, not what Python filters afterwards.
     Reach for a compound index when a real query asks for one.
-4.  A unique key on a `SoftDeletable` table is unique among the living.
+4.  A unique key a tenant's caller supplies is unique within the
+    tenant: it leads with `org_id`. So one tenant cannot hold a value
+    another tenant needs, and a conflict tells a caller nothing about
+    another tenant. A handle that is global by design, an org's slug or
+    an identity's email, answers a taken value as a conflict and never
+    names who holds it.
+5.  A unique key on a `SoftDeletable` table is unique among the living.
     It is a partial unique index, `WHERE deleted_at IS NULL`. A deleted
     row frees its key, so the same slug, email, or membership can be
     created again. The memory impl refuses only among the living too,
@@ -1980,8 +1997,8 @@ because `SET LOCAL` takes no bind parameters.
 
 `EMPTY_UUID` as the `org_id` is the **system scope**: the transaction
 reads across tenants. The system scope is never a default. It is passed
-explicitly, and the methods that pass it are the ones `arch-check`
-already enumerates (see [Records of
+explicitly, it runs on a connection of the system login (below), and
+the methods that pass it are the ones `arch-check` already enumerates (see [Records of
 Decisions](#records-of-decisions)): the cross-tenant sweeps, and the
 lookups by credential digest that sign a person in, which read tenant
 rows before any tenant is known. An `identity` table is not among
@@ -2003,7 +2020,8 @@ The expression is the scope, and there is one shape per scope:
 ``` sql
 -- org
 org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
-  OR current_setting('app.org_id', true) = '<EMPTY_UUID>'
+  OR (current_setting('app.org_id', true) = '<EMPTY_UUID>'
+      AND current_user = '<system_login>')
 
 -- both: the org expression above, AND
 (current_setting('app.user_id', true) IS NULL
@@ -2025,15 +2043,31 @@ closed: a read returns nothing and a write is refused. The `both`
 narrowing applies when the transaction names a person and is absent when
 it does not. The system-scope clause is the one deliberate bypass. It is
 spelled out in the `org` expression, which `both` includes, so that it
-can be grepped. An `identity` policy has no bypass: its rows are read
+can be grepped, and it holds only for the system login. The runtime
+login can write the setting, as any session can, and the clause still
+admits nothing to it, so a statement injected into a request cannot
+read across tenants by naming the system scope. An `identity` policy has no bypass: its rows are read
 under the identity they belong to.
 
-The login the application connects with is never a superuser and never
-carries `BYPASSRLS`. A superuser bypasses every policy, so a fence
-behind one is a drawing. The login may own the tables, because `FORCE`
-holds the owner. A test asserts on the live connection that
-`current_user` is neither superuser nor `BYPASSRLS`. That test is what
-makes the fence real instead of a claim.
+Three logins reach the database, and none is a superuser or carries
+`BYPASSRLS`. A superuser bypasses every policy, so a fence behind one
+is a drawing.
+
+-   The **migration login** owns the schema. It runs the migrations,
+    in the deploy's one-off task, and nothing else holds it.
+-   The **runtime login** is what every request's connection uses. It
+    owns nothing and holds only `SELECT`, `INSERT`, `UPDATE`, and
+    `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
+    off, or alter a table, whatever statement reaches it.
+-   The **system login** is the runtime login's twin for the system
+    scope: the sweeps and the lookups by credential digest run on a
+    connection of their own under it, and the `org` policy admits the
+    system scope to it alone.
+
+A test asserts on each live connection that `current_user` is neither
+superuser nor `BYPASSRLS`, that the runtime login owns no table, and
+that the runtime login naming the system scope reads nothing. Those
+tests are what make the fence real instead of a claim.
 
 A policy ships in the [migration](#migrations) that creates its table,
 in the same role. The check that the ORM metadata and the migrated
@@ -2064,8 +2098,7 @@ One revision chain and one version table per role.
 
 The minute stamp is the file's sort key and the revision id, so two
 authors never negotiate a counter. Two migrations of one role in the
-same minute collide on the stamp, and the later one waits a minute or
-takes a suffix. Two migrations that name the same parent are a real
+same minute collide on the stamp, and the later one takes a suffix. Two migrations that name the same parent are a real
 conflict, and the tool reporting it is the point.
 
 A migration file is never edited once it has been applied anywhere. The
@@ -2165,7 +2198,7 @@ compute. A cache is scoped, so unrelated consumers do not step on each
 other's keys:
 
 ``` python
-class CacheScope(str, Enum):
+class CacheScope(StrEnum):
     NETWORK_RESPONSE = "network_response"
     CATALOG_INDEX = "catalog_index"
     RATE_LIMIT = "rate_limit"
@@ -2199,6 +2232,15 @@ class CatalogManagerImpl(CatalogManagerInterface):
 `org_id` is passed explicitly on every call, so keys from different
 tenants cannot collide. A value that is personal to a user carries the
 user id inside the key.
+
+Within a tenant, what one member may read another may not: a role, a
+team, a person's own rows. So a cached read sits below authorization,
+never above it. The manager caches the tenant's data and applies the
+caller's visibility to what it read, from the cache or from storage,
+on every call. A read that cannot be cached that way carries every
+input its visibility depends on in the key, the role and the team
+among them, and a key that omits one serves one member's view to
+another.
 
 `increment` is the one atomic primitive. It exists for two things:
 rate limits (see [The Gateway](#the-gateway)) and generations.
@@ -2240,7 +2282,7 @@ Buckets are for large blobs: generated documents, user uploads,
 exports. The shape is S3-like and deliberately simple:
 
 ``` python
-class Buckets(str, Enum):
+class Buckets(StrEnum):
     ORDER_DOCUMENTS = "order-documents"
     USER_FILE_UPLOADS = "user-file-uploads"
     PRODUCT_IMAGES = "product-images"
@@ -2282,10 +2324,14 @@ One tenant's blobs cannot be read or listed by another.
 
 Presigned URLs let a browser or a remote process move bytes directly to
 and from the store, with a short expiry. The service never proxies a
-large upload through its own memory.
+large upload through its own memory. A presigned upload is bounded: it
+names its content type and a maximum length, and the store refuses a
+body that exceeds either, so a URL handed to a browser cannot fill the
+bucket.
 
 A local filesystem impl with the same layout serves development and
-tests.
+tests. It refuses a key that is absolute or climbs out of its root with
+`..`, as the cloud's keys cannot.
 
 ### Topics
 
@@ -2304,7 +2350,7 @@ class TopicPayload(BaseModel):
     truncated: bool = False  # set by a bus that trims; the consumer re-reads the record
     org_id: UUID
 
-class Topics(str, Enum):
+class Topics(StrEnum):
     ORDER_PLACED = "order_placed"
     SHIPMENT_UPDATED = "shipment_updated"
     CATALOG_IMPORTED = "catalog_imported"
@@ -2366,6 +2412,12 @@ technology through the interface.
 A queue is for work whose producer is outside the platform and cannot
 be told to wait: inbound webhooks, partner deliveries, bulk uploads.
 
+An inbound webhook is authenticated by what the provider signs, never
+by its URL. The route checks the provider's signature over the body
+and a timestamp inside a replay window, and refuses a delivery that
+fails either, before anything is enqueued. A token in the path only
+routes to the integration that owns it, and the access log masks it.
+
 This is the inbound queue for outside producers. Durable internal work
 is the work table of [The Work Queue](#the-work-queue).
 
@@ -2374,7 +2426,7 @@ and the in-process impl is a faithful twin (see [Twins for External
 Services](#twins-for-external-services)):
 
 ``` python
-class Queues(str, Enum):
+class Queues(StrEnum):
     WEBHOOKS = "webhooks"
     BULK_UPLOADS = "bulk_uploads"
     # ...
@@ -2422,18 +2474,32 @@ The object model holds only **references** to them:
 ``` python
 class SecretsInterface(ABC):
     @abstractmethod
-    async def get(self, name: str) -> str: ...  # raises SecretNotFound
+    async def get(self, org_id: UUID, name: str) -> str: ...  # raises SecretNotFound
     @abstractmethod
-    async def has(self, name: str) -> bool: ...
+    async def has(self, org_id: UUID, name: str) -> bool: ...
     @abstractmethod
-    async def put(self, name: str, value: str) -> None: ...
+    async def put(self, org_id: UUID, name: str, value: str) -> None: ...
     @abstractmethod
-    async def delete(self, name: str) -> None: ...
+    async def delete(self, org_id: UUID, name: str) -> None: ...
 ```
 
+A secret belongs to a tenant, as a cache entry and a bucket object do:
+every call takes the `org_id` first, and the impl keeps each tenant's
+secrets under a prefix of its own, so a name one tenant presents can
+never resolve to another tenant's secret, or to one of the platform's.
+
 A `CarrierIntegration` entity carries `credential_ref: str`, the name
-of a secret, never the value. The value is resolved at the point of
-use, for exactly one operation, and then discarded.
+of a secret, never the value. The manager sets it when it puts the
+secret, and no caller writes it: it is excluded from every create and
+update a caller shapes, as the provenance fields are. The value is
+resolved at the point of use, for exactly one operation, and then
+discarded.
+
+That is a tenant's secret. The process's own credentials are another
+kind: the database URL and the internal signing key reach the process
+at start, from the runtime's injection, and the process holds them for
+its life. They are never read through the tenant capability, and no
+tenant name reaches them.
 
 A secret value never enters:
 
@@ -2784,7 +2850,7 @@ write whose guard is in the statement itself:
 | Marker            | Event                                   | Guard                          | Then                                              |
 |-------------------|-----------------------------------------|--------------------------------|---------------------------------------------------|
 | none              | `begin`                                 |                                | pending under attempt A, id minted; the request runs |
-| pending           | `finish` by A with a `2xx` or a `4xx`   | the attempt is A               | finished; the outcome stored                      |
+| pending           | `finish` by A with a `2xx`, or a `4xx` but a `429` | the attempt is A    | finished; the outcome stored                      |
 | pending           | a `5xx` in A                            | the attempt is A               | released; digest and id kept, no attempt          |
 | pending           | `finish` or release by an attempt not A | the attempt is not the caller's | unchanged; the caller is refused                  |
 | pending, lease live | a retry's `begin`                     | key and digest match           | unchanged; refused as `Conflict`, the first attempt still running |
@@ -2794,10 +2860,10 @@ write whose guard is in the statement itself:
 | any               | `begin` under another digest            |                                | unchanged; refused                                |
 
 The pending lease is an option of the idempotency manager. It runs from
-the attempt, never from the marker. The attempt token is a `uuid_v7`, so
-an attempt older than the lease was either abandoned by a crash between
-the marker and its outcome, or is still running past it. Either way, the
-next retry takes it over, and the token that retry stamps starts the
+the attempt, never from the marker. The attempt token is a `uuid_v7`,
+so it carries the time the attempt began. An attempt older than the
+lease has either crashed between the marker and its outcome, or is
+still running past the lease. Either way, the next retry takes it over, and the token that retry stamps starts the
 lease again. Staleness is measured from the current attempt, never from
 when the marker was first written. A released marker holds no attempt
 and is taken over at once.
@@ -2867,8 +2933,10 @@ name to sign in with, not proof of a mailbox. The choice has two
 consequences, and both are named. Sign-up tells anyone who asks
 whether an address holds an identity, which the rate limit slows and
 does not stop. And anyone can take an address they do not own, which
-its owner then meets as a conflict. A product that sends mail to the
-address, or trusts it across tenants, ends the choice.
+its owner then meets as a conflict. With no verified mailbox there is
+also no recovery by mail: a person who loses a password is helped by
+an operator, through the operator plane. A product that sends mail to
+the address, or trusts it across tenants, ends the choice.
 
 The memberships of an identity are read under the identity stage,
 bounded like every list. The list is the same choice a sign-in answers
@@ -2897,6 +2965,19 @@ that minted them (see [Public Types](#public-types)). A lookup hashes
 the presented value and reads the row by the digest, and the secret's
 entropy is the defense.
 
+The identity, its credentials, and its password hash live in the
+tenancy role's own tables, under the `identity` scope (see [The
+Storage Layer](#the-storage-layer)), never in a system table. So
+sign-up writes one role, in one transaction.
+
+Sign-in has a defense that does not fail open. The per-address rate
+limit rides the cache and fails open, so beside it the tenancy manager
+counts failed sign-ins per identity in its own storage and answers a
+run of them with a growing delay before the next attempt is checked.
+Every session has an idle lifetime and an absolute one, both settings,
+and every API key an expiry. The operator plane admits only with a
+second factor (see [Operator Roles](#operator-roles)).
+
 ### Intra-Service Communication
 
 All services run in the same local or virtual network.
@@ -2916,7 +2997,11 @@ plain.
 
 A service-to-service call carries a short-lived internal credential,
 minted by the calling process. The token names the principal, the
-tenant, the request id, and an expiry a few minutes out. Every process
+tenant, the request id, the service it is for as its audience, the
+key it was signed with, and an expiry a few minutes out. The callee
+refuses a token meant for another service. The key id lets a new key
+sign beside the old one while both verify, so a key rotates without
+an outage. Every process
 reads the signing key from the secret store (see [Secrets](#secrets)),
 and the callee verifies the token against that same key. The callee's
 gateway then rebuilds `OpContext` from it like any other credential
@@ -3595,6 +3680,14 @@ That is the last time the system asks whether they may. The work runs
 on the service role's authority, and `user_id` is the attribution. A
 person whose membership ends while their work waits does not stop it.
 
+That authorization at enqueue covers the whole run, so it has to be
+as wide as the run. The permission that enqueues a kind covers every
+operation its handler composes: a role may enqueue a kind only if it
+may call each of those operations itself. A test holds each kind's
+enqueue permission to its handler's calls, so a handler that grows a
+call the enqueuing role could not make fails the gate, and no one
+reaches through a queue what they could not do directly.
+
 A kind of work that must stop when the person's permission does says so
 in its handler. That handler reads the live membership by name before
 its sensitive step. It is the one place an operation holding an
@@ -3741,6 +3834,8 @@ timer. The sweep does the standing chores:
 - roll periods
 - relay what a crash left in the outbox
 - purge done outbox rows and soft-deleted rows past retention
+- purge idempotency markers past their retention, socket tickets
+  redeemed or expired, and sessions ended or past their lifetime
 
 The sweep is idempotent and serialized by the database. It needs no
 leader, no lock, and no scheduler component.
@@ -4085,10 +4180,14 @@ deploying or may have failed. So a release is a `main` commit that has
 already run on staging. A push to `release` plans production, waits
 for a person's approval on that plan, and then applies it.
 
-The fast-forward pushes with a deploy key, and that key is the only
-actor the ruleset on `release` lets push. A push made with the
-workflow's own token starts no workflow, so without the key the
-release workflow starts the production workflow itself.
+The fast-forward pushes with a token of the repository host's app, and
+that app is the only actor the ruleset on `release` lets push. The
+workflow's own token cannot push to `release` at all. The app's push
+starts the production workflow, as a person's push would. The app's
+key lives in an environment of its own on the repository host,
+`release`, whose deployment-branch policy admits `main` alone, so only
+the release workflow running on `main` can mint the token. No deploy
+key and no repository-wide secret can push to `release`.
 
 The saved plan the approval is about lives in production's state
 bucket, under the apply's access. It is never a workflow artifact: a
@@ -4097,22 +4196,49 @@ artifact is readable by anyone who reads the repository. The reviewer
 reads the plan's text rendering, which masks sensitive values.
 
 Each deploy workflow runs one at a time per environment, in a
-concurrency group that never cancels a run in progress. Two quick
-merges then deploy in order, and neither takes the other's state lock
-halfway through.
+concurrency group that never cancels a run in progress, so no run
+takes another's state lock halfway through. The group keeps one
+pending run: a third quick merge replaces the second while the first
+is still deploying, and the second commit is never deployed on its
+own. That is safe, because the fast-forward only ever targets a
+commit that did deploy.
 
 Production does not rebuild. It promotes what staging already ran:
 service and worker images by the digest staging built for that commit,
-browser bundles by build id. A release commit that staging never built
-is refused.
+and browser bundles kept by that commit. A release commit that staging
+never built is refused, and so is one staging built and failed to
+deploy: a successful staging deploy records itself outside staging's
+account, as a deployment record on the repository host, and both the
+fast-forward and production's lookup read that record, never the mere
+presence of a copy.
 
 A revert is the rollback. It goes through `main`, then staging, then
 `release`, like every other change, so a rollback also ships what else
-landed on `main` since. There is no hotfix branch, and that is the
-trade for a production history that is always a prefix of `main`'s.
+landed on `main` since, and it takes as long as one full pass: a
+staging deploy, then production's plan, approval, and apply. There is
+no hotfix branch, and that is the trade for a production history that
+is always a prefix of `main`'s.
+
+A revert never removes an applied migration. A schema only rolls
+forward: a revert of a change that migrated keeps the migration file,
+and when the schema itself must go back, a new migration takes it
+back. Deleting an applied revision leaves every deployed version
+table naming a file that no longer exists.
+
+When a full pass is too slow for a release that is healthy but wrong,
+the production workflow is dispatched with the previous release commit
+as its input. It accepts only an ancestor of `release` that production
+ran before, plans that commit's copies behind the same approval, and
+leaves `release` where it is; the next fast-forward moves it on. The
+previous release runs on the current schema, because every migration
+is compatible with the release before it (see
+[Migrations](#migrations)).
+
 A rollout that fails is a different thing: the runtime's deployment
-circuit breaker rolls it back on its own, and the apply that started
-it fails.
+circuit breaker rolls it back on its own. The apply waits for the
+service's steady state, so a rollout the breaker rolled back fails the
+apply, and the state then names the task definition that failed while
+the previous one runs; the next apply writes the running shape again.
 
 Production never reads staging's account to promote. What it releases
 is a copy in its own. The registry replicates every image staging
@@ -4127,6 +4253,23 @@ release is a commit staging built after that. It is also asynchronous,
 so production's lookup of a release commit waits a bounded time for
 the copy before it refuses. Tearing staging down leaves production's
 copies where they are.
+
+What production releases is only as sound as the copy, and staging is
+the less trusted account: every merge deploys it, and its build runs
+third-party install scripts. So the copy is held three ways. Every
+repository in both accounts refuses to overwrite a tag, so no later
+push can replace the image behind a commit. Production's artifacts
+bucket refuses to replace an object under the bundle prefix: it is
+versioned, and an object lock or its policy refuses a second write to
+a key that exists. And the build records each image digest and each
+bundle's hash outside staging's account, on the repository host beside
+the deployment record, and production compares the replicated copy
+with that record before it plans, and refuses a mismatch.
+
+The build steps hold a credential that pushes images and bundles and
+nothing else. The credential that applies an environment is held by
+the apply job alone, so an install script that runs during a build
+never holds what applies.
 
 Two rules hold the branches. Nothing pushes to `release` but the
 fast-forward. A deploy of production checks that `release` is an
@@ -4149,6 +4292,19 @@ the API origin, the error-tracking DSN, and the environment name. The
 bundle reads them at start from a `config.json` that each
 environment's deploy writes next to it. Production receives the files
 the smaller environment already served.
+
+The distribution answers every path that is not a file with the app's
+`index.html`, so the app's own routes load on a reload. Hashed assets
+are cached as immutable. `index.html` and `config.json` are never
+cached, so a deploy that changes the API origin is read on the next
+load. Every response carries the app's security headers: the content
+security policy, `Strict-Transport-Security`, `frame-ancestors`
+through the policy, and `X-Content-Type-Options: nosniff`.
+
+The gateway's edge serves the versioned API, the socket, `/healthz`,
+and `/readyz`, which answer nothing a caller could use. It answers
+`/metrics` with a 404, and it serves no interactive API documentation:
+those pages are a local URL only.
 
 Every environment has one base domain, a variable like any other.
 Production's base domain is the product's own domain, `<domain>`. A
@@ -4177,9 +4333,18 @@ hosted, and it delegates each name to its zone with NS records. The
 create run writes that delegation once. A deploy then writes only
 inside its own account's zones, and never touches the domain's.
 
+Every commit staging builds leaves images and a bundle in both
+accounts, so both carry a retention. Each registry keeps a bounded
+number of images and never expires one production runs, which the
+production deploy tags when it promotes it. Each artifacts bucket
+expires bundles after a retention that outlasts the last few releases,
+so a redeploy of the previous release always finds its copies.
+
 > **Principle:** One cloud account per environment, and nothing spans
 > two but the replication into production's registry and artifacts
-> bucket. Services and workers run on the container runtime. Browser
+> bucket. The copy is held by immutable tags, a bundle prefix that
+> refuses overwrites, and a digest record kept outside staging's
+> account. Services and workers run on the container runtime. Browser
 > apps ship from a private S3 bucket through CloudFront, built once
 > and promoted. Production promotes copies replicated into its own
 > account, from the last commit staging deployed. A revert is the
@@ -4214,9 +4379,10 @@ the tracker (see [Error Tracking](#error-tracking)).
 
 Every cloud resource is defined in Terraform: networks, services,
 databases, topics, buckets, IAM. The roles a person or an agent
-operates under, the budget, the dashboard, the alarms, and the
-autoscaling of every process are resources too, declared beside the
-services (see [Operations](#operations)).
+operates under and the budget are resources too, declared in the
+bootstrap root below. The dashboard, the alarms, and the autoscaling
+of every process are declared beside the services (see
+[Operations](#operations)).
 
 That Terraform lives in the same monorepo as the application code. An
 environment change is therefore a pull request, and a new environment
@@ -4233,6 +4399,21 @@ The **environment root** holds everything else, and the pipeline
 applies it on every deploy. A bootstrap root's state lives in its own
 account's bucket, beside the environment root's, and no deploy role
 can write it.
+
+A change to what a bootstrap root holds is a pull request and then a
+create run in each account, because no pipeline applies it: a new
+process's image repository, a budget, a role. The scaffold of a
+service and of a worker says so, since each adds a repository.
+
+The environment root declares its tasks' roles, so the deployer
+creates roles, and a credential that creates roles can make itself an
+administrator unless it is fenced. So every role the deployer creates
+carries a named permissions boundary, and the deployer is refused a
+role created without it. The deployer is also denied every change to
+that boundary, to its own role and the other deploy roles, to the
+bootstrap's roles and trust, and to the bootstrap's state key. Then
+the widest role a deploy run can mint is the boundary, and the
+bootstrap stays the administrator's.
 
 The layout of the environments is written once, in one file in the
 repository: each environment's account id, the region, its public
@@ -4251,8 +4432,16 @@ database through a write-only attribute, or the database service
 manages it. A secret's value is written to the secret store through a
 write-only attribute too. A connection URL a process needs is written
 to the secret store with the password in it, and never computed as an
-output. Rotating one is a version bump on the write-only attribute, in
-a pull request.
+output. That rule assumes the generated password, written write-only.
+A password the database service manages and rotates on its own has no
+URL to hold, and a process then builds its URL from the host and that
+secret at start.
+
+A rotation bumps the write-only version and puts the same version into
+the task definition, so the services roll and every new task reads the
+new URL; a running pool read its URL at start and is replaced, not
+reconnected. A rotation outside a pull request is not something this
+document covers.
 
 > **Principle:** Every cloud resource is declared in Terraform. No
 > clicks in the console, no untracked state. Each environment has a
@@ -4274,14 +4463,19 @@ until the rollout ends. Production runs its migration after the
 approval, because it runs inside the apply the approval holds.
 
 A deployed environment's first operator is granted the same way: a
-one-off task on the image, under the same login, that puts one
-identity on the operator allowlist. The administrator runs it once,
-after the first deploy, and every later entry is an operation of the
-operator plane.
+one-off task on the image that puts one identity on the operator
+allowlist. It is a pipeline job, dispatched by a person on the
+environment's branch and run under the deployer, never an
+administrator step, so production's grant waits behind the same
+approval as its apply. Every later entry is an operation of the
+operator plane. Until the grant has run, nothing holds an operator
+password for that environment: the create run writes the operator's
+file with those lines empty.
 
 > **Principle:** The deploy migrates, as a one-off task on the new
 > image before the rollout, inside the apply. The first operator is
-> granted by the same kind of task.
+> granted by the same kind of task, run by the pipeline. A revert
+> never removes an applied migration.
 
 ### Local: Docker Compose
 
@@ -4388,12 +4582,57 @@ Settings that are only safe locally are refused by the process, not by
 a checklist. Each of these is refused at boot:
 
 - a staging or production environment on the file secrets backend
-- a twin selected off a loopback origin
+- a twin selected in any environment but `local`
 - the development seed against a database that is not local
 
 Each refusal is a one-line check at boot that exits naming the
 setting. A boot that succeeds logs one line naming every backend it
 chose.
+
+### Security Defaults
+
+Every environment takes these from its first apply. They cost little
+next to what they prevent, and each is a default a team changes only
+by a named choice.
+
+-   **Egress.** The tasks and the database live in private subnets
+    with no public address. They reach the registry, the secret store,
+    the logs, the object store, and the queue through a NAT gateway,
+    or through the cloud's private endpoints for those services. Which
+    one is the environment's named choice: the NAT gateway is the
+    simpler and the larger fixed cost, and endpoints trade it for one
+    charge per service.
+-   **Encryption.** The database, the cache, every bucket, and the
+    secret store are encrypted at rest. Every connection to the
+    database and the cache uses TLS, and the database refuses one that
+    does not.
+-   **The cloud's own audit trail.** Each account records its API
+    calls to a trail of its own, kept in that account, which the
+    investigator reads. A managed threat-detection service beside it is
+    the team's named choice.
+-   **The public edge.** The gateway's rate limits fail open, so they
+    are no defense against a flood. Production's load balancer and
+    distribution sit behind the cloud's managed web firewall with its
+    common rule sets, or the team records why not.
+-   **The database's availability.** Production's database runs in two
+    zones once real customers depend on it, carries deletion
+    protection, keeps point-in-time recovery with a retention the
+    environment declares, and leaves a final snapshot on delete. A
+    restore is rehearsed (see [Database Roles](#database-roles)).
+-   **Sign-in.** People sign in to the identity center with a second
+    factor, and so does an operator of the plane (see [Operator
+    Roles](#operator-roles)).
+-   **The branch that deploys.** `main` is protected: a merge needs a
+    review and every required check, and the files under `deployment/`
+    and `.github/` carry code owners, since a merge to `main` is a
+    staging deploy under a role that writes infrastructure.
+-   **Images.** Every registry scans an image on push.
+
+> **Principle:** Private subnets with a named egress, encryption at
+> rest and TLS to every store, a trail per account, a stated position
+> on the web firewall, a production database that survives a zone and
+> restores to a point in time, a second factor at every sign-in, a
+> protected `main`, and a scan on every push.
 
 ## Operations
 
@@ -4420,6 +4659,16 @@ back after it, never held between runs. On the platform, the one writing identit
 agent runs under is the traffic generator's (see [Traffic and
 Stress](#traffic-and-stress)).
 
+The administrator is also the break-glass. When the pipeline cannot do
+what an incident needs, because the repository host is down, a killed
+apply left the state locked, or a runaway process must stop now, a
+person is granted the administrator for the incident, time-bound, and
+the grant is recorded with its reason. What the person changes by hand
+is reconciled by a pull request afterwards, so the declared graph and
+the running one agree again. A stale state lock has a narrower answer
+first: a workflow that unlocks a named lock, under the deployer,
+dispatched by a person.
+
 That is the whole posture. The loop has a person in it at every write.
 The shapes below let the person step back one step at a time, without
 a redesign, when an agent has earned it.
@@ -4437,11 +4686,12 @@ set, each held under a named profile: the administrator, the deployer,
 and the investigator. The fourth, the supporter, is the investigator's
 cloud role plus an identity of the operator plane.
 
-The **administrator** is a person. It creates an environment and it
-destroys one (see [Creating and Destroying an
-Environment](#creating-and-destroying-an-environment)). It does
-nothing else, and no skill but those two runs under it. It is granted
-for the run, time-bound, and taken back after it.
+The **administrator** is a role a person holds. The role creates an
+environment and destroys one (see [Creating and Destroying an
+Environment](#creating-and-destroying-an-environment)), and it is the
+break-glass above. It does nothing else, and no skill but those two
+runs under it. It is granted for the run, time-bound, and taken back
+after it.
 
 The **deployer** is the pipeline. It is assumed by the workflow
 through the identity federation of the repository host, never by a
@@ -4453,8 +4703,11 @@ Each deployer credential has an environment of its own on the
 repository host: staging's, production's plan with no reviewer, and
 production's apply with the required reviewer. A deployer role trusts
 a job only when the job declares that environment and runs on that
-environment's branch: the trust names both the environment and the
-ref the token carries. Each repository-host environment also carries a
+environment's branch: the trust names the environment and the ref the
+token carries, and the repository by its immutable id and its owner's,
+never by a name alone, because a freed name can be claimed by someone
+else. Where a cloud cannot condition on those claims, a customized
+subject template on the repository host carries them in the subject. Each repository-host environment also carries a
 deployment-branch policy, so staging deploys from `main` alone, and
 production's plan and apply from `release` alone. A branch pushed with a
 workflow that declares `staging` then gets neither the environment nor
@@ -4470,7 +4723,9 @@ per environment. It reads every log group, every metric, every trace,
 every error, every alarm, and the description of every resource. It
 reads the state of the infrastructure, so it can plan a change, and
 the state holds no secret value (see [Infrastructure as
-Code](#infrastructure-as-code)). It cannot read a secret's value, a
+Code](#infrastructure-as-code)). It plans without a refresh and
+without the lock: a refresh reads each secret's current version, which
+only the plan role may, and the lock is a write. It cannot read a secret's value, a
 data bucket's objects, or a database row. It cannot assume any other
 role.
 
@@ -4503,15 +4758,28 @@ A person signs in through the cloud's identity center. The
 credential is short-lived, and there is no cloud user and no
 long-lived access key anywhere. The administrator is a permission set
 of the identity center in each account. A person also holds an
-everyday permission set, which the team sizes. It is not an operator
-role: no skill runs under it, every skill refuses it, and its one use
-in the platform is to sign in and chain. The investigator role trusts
+everyday permission set. In production it signs in and chains to the
+investigator, and holds nothing that writes. In a smaller environment
+a team may widen it for hands-on work, as a named choice, which is the
+one place a person's own credential writes outside the administrator.
+It is not an operator role: no skill runs under it, and every skill
+refuses it. The investigator role trusts
 the identity center's everyday role in its own account. That role's
 name carries a generated suffix, so the trust matches it by pattern
 and never by a copied name. An agent's profile chains from the
 person's signed-in session to the investigator role, so an agent
-works inside a session a person opened, and it holds less than the
+works inside a session a person opened, and never holds more than the
 person does.
+
+A chained session lasts an hour at most. A skill that runs longer, a
+watch above all, reads its profile again on each interval and stops,
+saying so, when the person's session behind it has ended.
+
+A person signs in to the identity center with a second factor, and an
+operator of the plane does too (see [The Operator
+Context](#the-operator-context)): the operator plane reads across
+tenants, so a password alone never admits to it. An operator's token
+is short-lived, and every tenant it reads is recorded.
 
 > **Principle:** Administrator, deployer, investigator, supporter.
 > A person or an agent holds a read-only role; the pipeline holds the
@@ -4577,9 +4845,14 @@ they read the product's own documents for what is specific to it.
 | `ops-infra-as-code`              | investigator  | a Terraform change in the guideline's shape, planned        |
 | `ops-cloud-deployment-create`    | administrator | an environment, from nothing to its first deploy            |
 | `ops-cloud-deployment-nuke`      | administrator | an environment gone, with what remains named                |
-| `ops-simulate-traffic`           | none          | realistic traffic at the edge, at a chosen profile          |
+| `ops-simulate-traffic`           | provisioner   | realistic traffic at the edge, at a chosen profile          |
 | `stress-test-create-or-update`   | none          | a stress scenario, with its target stated before the run    |
-| `stress-test-run`                | none          | a run against the scenario, pass or fail against the target |
+| `stress-test-run`                | provisioner, investigator | a run against the scenario, pass or fail against the target |
+
+The provisioner is the traffic generator's identity on the operator
+plane, whose entry writes (see [Traffic and
+Stress](#traffic-and-stress)); it holds no cloud role. A run that reads
+signals back holds the investigator for the reads.
 
 Every skill takes the environment it acts on, and `local` is one of
 them for every skill but the administrator's two, which act on a
@@ -4591,11 +4864,18 @@ skill says so, and the agent that invokes it spawns another to run it.
 A watch is written for a burst: it batches what arrives per interval,
 caps what it reports, and never reads the same window twice.
 
-The first responder to an alarm is an agent. Before it escalates, it
-reads the platform's size: how many tenants, how many users, how much
-traffic in the last day. An alarm on a platform of one tenant and one
-user is the developer at work, and the agent suppresses it with that
-reason. What it cannot explain, it escalates with everything it read.
+The first responder to an alarm is an agent. An alarm reaches it
+through the watch, which reads every alarm's state, or through the
+person its topic mailed, who hands it over. Before it escalates, the
+agent reads what the traffic was: how many tenants, how many users, how
+much traffic in the last day, and whose.
+
+Outside production, an alarm raised by the team's own traffic, the
+developer at work, a stress run, the traffic generator's tenants, may
+be suppressed with that reason. In production an alarm is never
+suppressed: a new production has one tenant, and that tenant is the
+first customer. Every suppression is recorded with what the agent read.
+What the agent cannot explain, it escalates with everything it read.
 
 The operator plane is read by the supporter's skill through the
 platform's routes, never through a database login. A read of a
@@ -4604,8 +4884,9 @@ operator, so support access has a trail.
 
 > **Principle:** The operational skills are built in, one per task
 > that repeats, and every one but the administrator's two runs against
-> the local stack. The first responder is an agent that reads the
-> platform's size before it escalates.
+> the local stack. The first responder is an agent that reads whose
+> traffic raised an alarm before it escalates, and it never suppresses
+> one in production.
 
 ### Dashboards and Alarms as Code
 
@@ -4626,9 +4907,11 @@ A small default set of alarms goes to one topic per environment, and
 a person's address subscribes to it. The set covers the edge (the
 error ratio, the latency, and the unhealthy targets at the load
 balancer), the processes (a
-service running below its desired count), and the database (its
-processor and its free storage). The thresholds are numbers, and the
-numbers are the system's. The set and the topic are the shape.
+service running below its desired count), the database (its
+processor and its free storage), and, in a system with a queue, the
+queue (the age of the oldest waiting item, parked and failed work, and
+the outbox's lag). The thresholds are numbers, and the numbers are the
+system's. The set and the topic are the shape.
 
 A tenant admin's view of their own organization is a product screen:
 a feature served by the app-specific service from the activity role.
@@ -4651,15 +4934,20 @@ deployment: a minimum, a maximum, and a target the runtime tracks. The
 minimum is the desired count, so turning autoscaling on changes
 nothing until load does.
 
+The apply never sets the count autoscaling owns: once a service
+scales, the desired count is left to the runtime, so an apply never
+resets a scaled-out service.
+
 One variable per environment turns it on, and it is off by default.
 Every lever below it is declared on, so a single flip scales the whole
 environment, and the flip is a pull request that a person reads. The
 default is off because an unattended scale-out is a bill nobody
 approved.
 
-The database's storage grows on its own from the start. That is a
-ceiling on how full a disk gets, not a bill that scales with traffic,
-and a full disk is an outage.
+The database's storage grows on its own from the start, up to a
+maximum the environment declares. That raises the bill as data grows,
+not as traffic does, and it is cheaper than a full disk, which is an
+outage.
 
 > **Principle:** Every process declares its autoscaling. One root
 > variable per environment turns it on, off by default, with every
@@ -4673,9 +4961,11 @@ amount and alerts the owner at half of it, at nine-tenths of it, at all
 of it, and when the forecast crosses it. Beside the budget, an anomaly
 monitor watches each service's spend and reports a jump.
 
-The amount is the team's. A reference for a team of two is a hundred
-or two a month for each of staging and production, and the budget is
-the catch-all under which every other bound sits.
+The amount is the team's, and the budget is the catch-all under which
+every other bound sits. The fixed costs of an environment are most of
+a small one's bill: the network's egress (see [Security
+Defaults](#security-defaults)), the load balancer, and the database,
+before any traffic.
 
 Two more bounds cost nothing and are set from the start. Every log
 group has a retention. Every resource carries the environment tag from
@@ -4691,7 +4981,9 @@ Creating an environment is the administrator's one run, and it is a
 script the repository holds, run by the skill that narrates it.
 
 The run takes one environment and acts in that environment's account
-alone. It checks that the administrator profile resolves to the
+alone, with one credential outside it: the domain host's token, for
+the delegation. That token is scoped to the domain's zone, short-lived
+where the host allows it, and held only for the run. It checks that the administrator profile resolves to the
 account the environments' file names. It applies the bootstrap root
 with local state, then moves that state into the bucket the root
 made. It writes the delegation of each public name at the domain's
@@ -4727,8 +5019,13 @@ protection off, so the destruction of production is itself a pull
 request a person read. The run reads that on `release`, the branch
 production applies, and on the applied state, never on `main` alone:
 a change merged to `main` and not yet released is not yet in
-production. The run empties what must be empty and destroys the
-environment root. Production's database always leaves a final
+production. The run applies from the exact commit the environment runs,
+`release` at origin for production and `main` for staging, in a clean
+worktree of its own, never from the working tree it was started in, so
+nothing unreleased reaches production on the way down. It empties what
+must be empty and destroys the environment root. Outside production a
+secret is deleted with no recovery window, so a create that follows
+finds its names free. Production's database always leaves a final
 snapshot, and its automated backups stay. The run reports what
 remains: that snapshot, everything the bootstrap root holds, which
 serves the environment's next life, and production's copies of what
@@ -4759,7 +5056,10 @@ the operator plane for the tenants it needs and through the public
 routes for everything else. It creates those tenants under an operator
 identity of its own, whose allowlist entry writes. Only the generator
 uses that identity, and the tenants it creates are named for the run,
-so no real tenant is touched. It reports what an operator reads:
+so no real tenant is touched. The run removes them when it ends, and
+the size an agent reads before it escalates leaves them out. In
+production the identity is disabled until a run needs it, and
+disabled again after, so no standing writing credential waits there. It reports what an operator reads:
 requests by route and status, the p50, p95, and p99, and the error
 ratio.
 
@@ -4802,7 +5102,10 @@ reads both.
 Against a deployed environment it changes in three ways. No call fails
 on purpose, so production's tracker and its error-ratio alarm see
 nothing staged. The readers hold the investigator's profile, the one
-credential that reads every signal. And a session that signs in does
+credential that reads every signal, when a person runs it after a
+create run. On a routine deploy the pipeline runs it as a job after
+the rollout, under a read grant of its own that reads the signals and
+writes nothing. And a session that signs in does
 so as an identity named for the smoke test, in a tenant named for it,
 which the operator plane created the way it creates the traffic
 generator's.
@@ -5170,8 +5473,14 @@ request id, so an event leads to its log lines and its trace.
 Reporting is off until a DSN is set. An empty value or `off` means
 unset, so a missing tracker never stops a boot.
 
-Locally, the `devx` profile runs GlitchTip seeded with a fixed project
-key. The DSN in `.env` then works without a visit to its UI.
+An event carries no secret. The SDK is initialized with local
+variables off and default personal data off, and a scrubber removes the
+authorization header, cookies, and every field a request names as a
+credential before an event leaves the process.
+
+Locally, the `devx` profile runs a Sentry-compatible tracker whose
+project the stack seeds, so the DSN in `.env` works without a visit to
+its UI.
 
 A browser app reports from each route's error element and from the
 React root's error callbacks. The router catches a render error before
@@ -5540,7 +5849,8 @@ Every dependency runs on its latest stable release, adopted once a
 patch release sits behind it (below). That covers the language
 runtimes (Python, Node), the workspace and package tools (uv, pnpm),
 the container engine (Docker), the backing services (Postgres, the
-cache, the queue), and the libraries every workspace member installs.
+cache, the queue), Terraform and its providers, and the libraries
+every workspace member installs.
 
 Where a technology publishes a long-term support line, the version is
 the current active LTS release, not a newer line that has not entered
@@ -5561,9 +5871,12 @@ The version is stated where the tool reads it:
     stack](#local-docker-compose).
 -   The runtime steps of CI.
 -   The engine versions declared in Terraform.
+-   `required_version` and the provider constraints of every root, and
+    the Terraform version the CI steps install.
 
 The lock files hold the libraries at the versions those declarations
-resolve.
+resolve, and every root commits its `.terraform.lock.hcl`, so a plan
+in CI and a plan on a laptop resolve the same providers.
 
 > **Principle:** Every dependency runs on its latest stable release:
 > the current active LTS line where one exists, the newest stable
@@ -5699,8 +6012,8 @@ The bounds that make it so:
 -   [A retry is classified and never stacked](#direction-of-calls):
     only a failure that can differ is retried, bounded in count and
     spaced by a delay that grows and carries jitter.
--   [A worker claims within its capacity](#shape-of-a-worker) and
-    stops claiming when its heartbeats fail, and [resumes are
+-   [A worker claims within its capacity](#shape-of-a-worker), beats
+    in memory so a cache outage never pauses it, and [resumes are
     staggered](#maintenance-without-a-scheduler), so a dependency
     coming back is not met by every parked record at once.
 -   [A lane on the work queue](#the-work-queue) carries a tenant whose
@@ -5739,7 +6052,7 @@ commitments a team makes per system, once the shape holds and the
 numbers are known, and a rule that fit every system would say nothing.
 They are:
 
--   A threat model, and the rotation of secrets and keys.
+-   A threat model, and a schedule for rotating secrets and keys.
 -   Service objectives, the thresholds of the alarms, and the on-call
     posture behind them.
 -   The tuning of deadlines and retry budgets, and the numbers an

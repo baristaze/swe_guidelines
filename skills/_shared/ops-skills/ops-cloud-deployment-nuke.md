@@ -1,6 +1,6 @@
 ---
 name: ops-cloud-deployment-nuke
-description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root, the state prefix, the images, and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the profile and the account against deployment/cloud/environments.json. Refuses production unless --confirm production is typed and a merged change on main sets the database's deletion protection off. Supports --dry-run. The one skill besides create that needs a credential that writes."
+description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root, the state prefix, the images, and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the profile and the account against deployment/cloud/environments.json. Refuses production unless --confirm production is typed and a released change on release, applied, sets the database's deletion protection off; applies from the environment's exact origin commit in a clean worktree. Supports --dry-run. The one skill besides create that needs a credential that writes."
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
 ---
 
@@ -75,7 +75,10 @@ and a worker added since is one more name.
      not yet released has changed nothing there, and neither has a
      working tree. The script also reads `deletion_protection` from
      the database in the applied state and refuses while it is on.
-     Stop and name the release that is still to come.
+     Stop and name the release that is still to come. The script
+     applies from a clean worktree of `origin/release` (staging's of
+     `origin/main`), never from the working tree it was started in,
+     so nothing unreleased reaches production on the way down.
 3. Read what the environment holds, so the report can say what is
    gone and what stays:
 
@@ -131,7 +134,8 @@ and a worker added since is one more name.
 
 **Credential.** <admin_profile>, <Arn>, account <id> (expected <id>)
 **Confirmation.** <typed | not needed (staging)>
-**Deletion protection on main.** <false, PR <url> | not needed (staging)>
+**Deletion protection on release.** <false, PR <url>, applied | not needed (staging)>
+**Applied from.** <origin/release | origin/main> at <sha>, a clean worktree
 
 ## Gone
 

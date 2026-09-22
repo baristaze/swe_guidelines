@@ -25,10 +25,10 @@ types to `network`.
 
 **Principle.** Every manager, service, and worker-handler operation
 takes a context first: `OpContext` for a tenant operation,
-`OperatorContext` for an operator one (CTX-20). A weaker stage is
-taken only by a tenancy transition, the sign-in exchange, and an
-operation with no principal (CTX-16). A helper that needs less takes a
-scope (CTX-22); no manager operation does.
+`OperatorContext` for an operator one (CTX-20). Only a tenancy
+transition, an identity's operations before a tenant, and an operation
+with no principal take a weaker stage (CTX-16). A helper that needs
+less takes a scope (CTX-22); no manager operation does.
 
 **Source.** OpContext, The Operator Context; The Business Layer.
 

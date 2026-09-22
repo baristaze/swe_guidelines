@@ -75,8 +75,8 @@ and a worker added since is one more name.
    It prints tenants, users, and the entities written in the last day
    (one count per entity the product exposes on the operator plane,
    and the events), through `GET /v1/admin/size` with the env file's
-   operator identity. A platform of one tenant and one user is the
-   developer. Every finding below is read against this number.
+   operator identity. Every finding below is read against this number
+   and against whose traffic it was.
 3. Alarms. Cloud:
 
    ```bash
@@ -205,10 +205,12 @@ and a worker added since is one more name.
    ```
 
 10. The first responder rule. An alarm or a finding is read against
-    the size of step 2. When the platform holds one tenant and one
-    user, the person behind the signal is the developer: the finding
-    is reported as suppressed, with the reason and the size, and not
-    escalated. A platform with tenants who are not the team gets the
+    the size of step 2 and whose traffic raised it. In production
+    nothing is suppressed: a new production has one tenant, and it is
+    the first customer. Outside production, when the traffic is the
+    team's own (the developer, a stress run, the generator's run
+    tenants), the finding is reported as suppressed, with the reason
+    and what was read, and not escalated. A platform with tenants who are not the team gets the
     finding as a finding, with the request ids that prove it.
 11. Write the report. Name the next skill: `ops-root-cause` with an
     org id when one tenant's rows explain it, `ops-watch` when the

@@ -812,10 +812,10 @@ retried; a count or a delay hard-coded instead of read from settings.
 
 **Principle.** A key per issuer answers who signed, and that is
 attribution. Where a system contains an issuer, containment is a
-declaration per issuer, configured at the callee, of what it may
-assert: the tenants, the roles, the principals. The callee verifies
+declaration per issuer, configured at the callee, of the tenants and
+principals it may assert; the token names no role. The callee verifies
 the signature, then refuses a credential that reaches past the
-declaration, before the gateway rebuilds the context.
+declaration.
 
 **Source.** The Network Layer, Intra-Service Communication.
 

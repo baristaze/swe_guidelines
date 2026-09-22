@@ -528,12 +528,12 @@ own storage that take a single outbox row; the rest is judged.
 
 ## STO-21 Analytics reads a mirror; roles are backed up and retained
 
-**Principle.** Cross-tenant analytics never runs in a request path; it
-reads a mirror. Every role is backed up and its restore rehearsed, and
-a role restored earlier than its siblings is reconciled from the
-outbox. A done outbox row outlives the backup schedule, a soft-deleted
-row is purged after its entity's retention period, and personal data
-lives in named fields.
+**Principle.** Cross-tenant analytics reads a mirror, never a request
+path. Every database is backed up and its restore rehearsed, per
+instance until a role has its own; a role restored early is reconciled
+from the outbox. A done outbox row outlives the backups, a soft-deleted
+row is purged after its retention, and personal data lives in named
+fields.
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -547,8 +547,8 @@ reads, and the fields that hold personal data.
 **Violation.** A cross-tenant analytical query runs against the `core`
 role in a request handler. A role with no backup schedule, or no
 runbook recording a restore rehearsal; a done outbox row deleted on
-done, or kept shorter than the backup schedule. An entity with no
-retention period, a hard delete outside the purge, or personal data
+done, or kept shorter than the backup schedule. A soft-deletable entity with
+no retention period, a hard delete outside the purge, or personal data
 spread over unnamed fields, so erasing a person is a hunt.
 
 **Severity.** medium
@@ -707,12 +707,11 @@ every engine a storage impl builds; the rest is judged.
 
 ## STO-28 Every table declares its tenancy scope and the policy matches
 
-**Principle.** Every table declares its tenancy scope (`system`, `org`,
-`identity`, `both`) in one map beside the role map, and the database
-carries the policy that scope implies: for `org`, `identity`, and
-`both`, one policy with row-level security enabled and forced; for
-`system`, none. The login the application connects with is never a
-superuser and never carries `BYPASSRLS`.
+**Principle.** Every table declares its tenancy scope in one map, and
+the database carries the policy it implies, row-level security enabled
+and forced. Three logins, none superuser or `BYPASSRLS`: the migration
+login owns the schema, the runtime login holds DML only, and only the
+system login is admitted to the system scope.
 
 **Source.** The Storage Layer, The Second Fence; Database Roles;
 Migrations.
@@ -720,14 +719,18 @@ Migrations.
 **Look for.** The scope map beside the role map, and a scope for every
 table; the policy in each table's migration, its expression, and the
 `ENABLE` and `FORCE` statements; the test that reads `pg_class` and
-`pg_policies` against the map, and the one that asserts on the live
-connection that `current_user` is neither superuser nor `BYPASSRLS`.
+`pg_policies` against the map, and the ones that assert on each live
+connection that `current_user` is neither superuser nor `BYPASSRLS`,
+that the runtime login owns no table, and that the runtime login
+naming the system scope reads nothing.
 
 **Violation.** A table missing from the scope map, or a migrated policy
 that does not match the scope declared; a policy without `FORCE ROW
 LEVEL SECURITY`, so the owner the application connects as walks past
 it; a login that is a superuser or carries `BYPASSRLS`, which no test
-on the live connection would catch.
+on the live connection would catch; a runtime login that owns a table,
+so an injected statement can drop a policy or turn `FORCE` off; a
+system-scope clause any login's setting can satisfy.
 
 **Severity.** high
 

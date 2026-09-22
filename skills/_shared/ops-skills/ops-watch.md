@@ -1,6 +1,6 @@
 ---
 name: ops-watch
-description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it holds a tail open for the whole window and reports when the window ends or an alarm fires. It applies the first responder rule: an alarm on a platform of one tenant and one user is the developer and is suppressed, not escalated. Never writes."
+description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it holds a tail open for the whole window and reports when the window ends or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
 allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*)
 ---
 
@@ -58,6 +58,10 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
 ## Procedure
 
 1. Verify the credential as Role and credential states. Read the env
+   file. A chained session lasts an hour at most, so every interval
+   reads the profile again and checks `sts get-caller-identity`; when
+   the person's session behind it has ended, the watch stops and says
+   so in its report, rather than retrying on a credential that is gone.
    file. Note the start time; every batch is `[start + k * interval,
    start + (k + 1) * interval)`, and no batch is read twice.
 2. Read the platform's size once:
@@ -106,10 +110,12 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
    is a count in the batch, never a line per event: the tail's lines
    over `--cap` are counted by level and dropped.
 6. The first responder rule. An alarm transition is read against the
-   size of step 2. One tenant and one user is the developer: the
-   alarm is written into the batch as suppressed, with the reason and
-   the size, and the watch goes on. More than that, and the alarm is
-   an escalation: the batch is closed early, the report is written
+   size of step 2 and whose traffic it was. In production an alarm is
+   never suppressed. Outside production, an alarm raised by the team's
+   own traffic (one tenant and one user who are the developer, a
+   stress run, the traffic generator's run tenants) is written into
+   the batch as suppressed, with the reason and what was read, and the
+   watch goes on. Anything else is an escalation: the batch is closed early, the report is written
    with the alarm at the top, and the sub-agent returns so the
    invoker can act.
 7. When the window passes, close the tails and write the report with
