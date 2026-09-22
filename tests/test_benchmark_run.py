@@ -569,3 +569,10 @@ def test_the_redact_command_scrubs_a_runs_folder(tmp_path, monkeypatch, capsys):
     assert run.main(["redact", "--out", str(tmp_path)]) == 0
     assert (tmp_path / "one" / "answer.md").read_text(encoding="utf-8") == "[redacted]\n"
     assert "answer.md" in capsys.readouterr().out
+
+
+def test_the_listing_says_whether_the_subject_has_a_key_of_its_own(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "SCENARIOS", tmp_path)
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY", raising=False)
+    assert run.main(["list", "--out", str(tmp_path)]) == 0
+    assert "subject    key=absent  (SUBJECT_ANTHROPIC_API_KEY)" in capsys.readouterr().out

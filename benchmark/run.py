@@ -335,6 +335,9 @@ def command_list(out: Path) -> int:
     for name, ready, keys in P.availability():
         flag = int(P.Provider[name.upper()])
         print(f"  {name:10} flag={flag:<3} key={'present' if ready else 'absent '} ({keys})")
+    for source in RT.SUBJECT_KEYS.values():
+        print(f"  {'subject':10} key={'present' if os.environ.get(source) else 'absent '} ({source})")
+
     print(f"\nruns folder: {out}")
     return 0
 
