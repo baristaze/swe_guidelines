@@ -3276,8 +3276,12 @@ identity, or the tenant and the principal a credential names.
 
 Sign-in has a defense that does not fail open. The per-address rate
 limit rides the cache and fails open, so beside it the tenancy manager
-counts failed sign-ins per identity in its own storage and answers a
-run of them with a growing delay before the next attempt is checked.
+counts failed sign-ins in its own storage, keyed on the email's
+digest. Each failure doubles the delay before the next attempt for
+that email is checked, from a base to a cap, both settings. An attempt
+inside the delay is refused `429` before its password is checked, and
+a success resets the delay. The key is the email, not the identity,
+so an unknown email is delayed like a known one.
 Every session has an idle lifetime and an absolute one, both settings,
 and every API key an expiry. The operator plane admits only with a
 second factor, checked at the operator gate (see [The

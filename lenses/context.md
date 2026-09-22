@@ -894,22 +894,29 @@ points an integration at a secret it does not own.
 ## CTX-36 Failed sign-ins are throttled in storage; sessions have two lifetimes
 
 **Principle.** Sign-in has a defense that does not fail open: the
-tenancy manager counts failed sign-ins per identity in its own storage
-and answers a run of them with a growing delay before the next attempt
-is checked. Every session has an idle and an absolute lifetime, both
-settings, and every API key an expiry.
+tenancy manager counts failed sign-ins in its own storage, keyed on
+the email's digest, and each failure doubles the delay before the next
+attempt for that email is checked, up to a cap. An attempt inside the
+delay is refused `429` before its password is checked, and a success
+resets it. An unknown email is delayed like a known one. Every
+session has an idle and an absolute lifetime, both settings, and every
+API key an expiry.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
 **Look for.** The sign-in transition and where it records a failure;
-the delay it applies and what it grows with; the session's idle and
+what the count is keyed on, the delay it applies, its base and cap,
+and whether the refusal comes before the password check; the session's idle and
 absolute lifetimes in settings and where each is checked; the expiry
 on an API key.
 
 **Violation.** A sign-in whose only defense is the per-address rate
 limit on the cache, which fails open; a failure count kept in the
-cache instead of the tenancy manager's storage; a session with no idle
+cache instead of the tenancy manager's storage; a count keyed on the
+identity, so an unknown email answers faster than a known one; an
+attempt inside the delay whose password is still checked; a session
+with no idle
 or no absolute lifetime; an API key with no expiry.
 
 **Severity.** high
