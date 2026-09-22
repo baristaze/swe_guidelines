@@ -394,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
 
     env = RT.passthrough_env(PASSTHROUGH + subject_keys(scn))
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
+    failed_subjects: list[int] = []
     try:
         for index in range(max(1, args.repeat)):
             mark = streams.count
@@ -418,6 +419,16 @@ def main(argv: list[str] | None = None) -> int:
             paths += file_paths
             parts += file_parts
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
+
+            if not status.ok:
+                # A subject that failed or ran out of time produced no answer
+                # worth a judge's money, and a score of it would be a score of
+                # the failure. The repeat is recorded with no judgement.
+                failed_subjects.append(index)
+                reason = "timed out" if status.timed_out else f"exit {status.code}"
+                print(f"  repeat {index} subject failed ({reason}); not judged")
+                run.repeats.append(R.RepeatResult(index=index, exit_status=status.as_dict(), artifact_paths=paths))
+                continue
 
             prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
             expected = E.named(expected_data, blob)
@@ -449,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
             result = screencast.stop()
             notes.append(f"screencast: {result.frames} frame(s)" + (f", {result.error}" if result.error else ""))
 
+    if failed_subjects:
+        notes.append(f"subject failed in repeat(s) {', '.join(map(str, failed_subjects))}; not judged")
     run.notes = notes
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
@@ -469,6 +482,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"report: {run_dir / 'report.md'}")
     if problems:
         return 5
+    if failed_subjects:
+        print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
+        return 6
     if args.strict and summary["skipped"]:
         return 3
     return 0

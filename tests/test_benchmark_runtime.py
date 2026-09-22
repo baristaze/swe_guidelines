@@ -180,7 +180,8 @@ def test_a_relative_run_folder_is_made_absolute(tmp_path, monkeypatch):
     assert Path(env["TMPDIR"]).is_absolute()
     box = RT.build("container", Path("runs/one"), None, {"image": "img:1"})
     box.prepare()
-    mount = box.command(["claude"], box.workspace)[4]
+    command = box.command(["claude"], box.workspace)
+    mount = command[command.index("-v") + 1]
     assert mount == f"{tmp_path.resolve() / 'runs' / 'one' / 'workspace'}:/workspace:rw"
 
 
@@ -221,3 +222,47 @@ def test_a_build_with_no_container_engine_is_a_recorded_failure(tmp_path):
         status = rt.build(streams)
     assert status.code == 127
     assert "could not start" in (tmp_path / "build.jsonl").read_text(encoding="utf-8")
+
+
+def test_a_timeout_kills_the_whole_process_group(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    marker = tmp_path / "child-alive"
+    # The subject starts a child that outlives it unless its group is killed.
+    script = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', 'import time, pathlib; time.sleep(3); pathlib.Path(r\"{marker}\").write_text(\"x\")']); "
+        "time.sleep(30)"
+    )
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run([sys.executable, "-c", script], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream, timeout_s=1)
+    assert status.timed_out
+    import time
+
+    time.sleep(4)
+    assert not marker.exists()
+
+
+def test_the_container_is_named_bounded_and_killed_by_name_on_a_timeout(tmp_path):
+    log = tmp_path / "docker.log"
+    fake = tmp_path / "docker"
+    # `run` sleeps like a subject that never ends; `kill` records its name.
+    fake.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> {log}\n'
+        'if [ "$1" = run ]; then exec sleep 30; fi\n',
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    rt = RT.build("container", tmp_path, None, {"docker": str(fake), "image": "img:1", "memory": "1g"})
+    rt.prepare()
+    command = rt.command(["claude"], rt.workspace)
+    for flag in ("--init", "--name", "--pids-limit", "--cpus"):
+        assert flag in command
+    assert command[command.index("--cap-drop") + 1] == "ALL"
+    assert command[command.index("--memory") + 1] == "1g"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(["claude"], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream, timeout_s=1)
+    assert status.timed_out
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert calls[-1] == f"kill {rt.container_name}"

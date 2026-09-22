@@ -95,7 +95,7 @@ jobs:
             echo "::group::$name"
             if ! uv run benchmark/run.py --scenario "$name" \
               ${judges[@]+"${judges[@]}"} \
-              --repeat "$REPEAT" --out benchmark/runs \
+              --strict --repeat "$REPEAT" --out benchmark/runs \
               --claude "$(command -v claude)"; then
               failed+=("$name")
             fi

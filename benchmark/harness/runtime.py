@@ -11,7 +11,13 @@ Isolation is a choice, and the choice is named:
   `TMPDIR` under the run folder keep a subject from writing into the
   operator's account by accident. Nothing stops a subject that means to.
 - `container` isolates with Docker: the plugin checkout and the target
-  read-only, the workspace read-write, the keys passed one by one.
+  read-only, the workspace read-write, the keys passed one by one, every
+  capability dropped, and memory, processor, and process count bounded.
+
+A subject that runs past its timeout is stopped whole. The host runtime
+starts it in a process group of its own and kills the group. The
+container runtime names its container and kills the container, because
+killing the `docker run` client leaves the container running and paying.
 - `vm` runs the command on another machine through a configured prefix.
   The harness provisions nothing; it composes the prefix and the sync
   command, and the tests cover that composition with a fake prefix.
@@ -26,7 +32,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal as signals
 import subprocess
+import uuid
 import threading
 import time
 from dataclasses import dataclass, field
@@ -140,6 +148,9 @@ class BaseRuntime:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                # A group of its own, so a timeout reaches every process the
+                # subject started, not only the first.
+                start_new_session=True,
             )
         except OSError as exc:
             # A binary that is not there is a repeat that failed, recorded as
@@ -157,7 +168,8 @@ class BaseRuntime:
             proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
             timed_out = True
-            proc.kill()
+            streams.note(f"[{self.name}] timed out after {timeout_s}s; stopping the subject")
+            self.stop(proc)
             proc.wait()
         for r in readers:
             r.join(timeout=5)
@@ -169,6 +181,13 @@ class BaseRuntime:
             duration_s=time.monotonic() - started,
             timed_out=timed_out,
         )
+
+    def stop(self, proc: subprocess.Popen) -> None:
+        """Kill the subject's whole process group."""
+        try:
+            os.killpg(proc.pid, signals.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
 
     def collect(self, globs: list[str]) -> list[Path]:
         """Every workspace file one of the globs names, once, in path order.
@@ -232,6 +251,11 @@ class ContainerRuntime(BaseRuntime):
         self.dockerfile = Path(self.config.get("dockerfile", Path(__file__).resolve().parent.parent / "runtime" / "Dockerfile"))
         self.docker = self.config.get("docker", "docker")
         self.keys = list(self.config.get("keys", []))
+        # The bounds on what one subject may take; the config can raise them.
+        self.memory = str(self.config.get("memory", "4g"))
+        self.cpus = str(self.config.get("cpus", "2"))
+        self.pids = str(self.config.get("pids", "512"))
+        self.container_name: str | None = None
 
     def build_command(self) -> list[str]:
         """The image build, for a caller that wants to build before it runs."""
@@ -260,7 +284,14 @@ class ContainerRuntime(BaseRuntime):
         return CONTAINER_TARGET if self.target else None
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
-        out = [self.docker, "run", "--rm", "-v", f"{self.workspace}:/workspace:rw", "-w", "/workspace"]
+        # A name per run, so a timeout can kill this container and no other.
+        self.container_name = f"swe-guidelines-benchmark-{uuid.uuid4().hex[:12]}"
+        out = [
+            self.docker, "run", "--rm", "--name", self.container_name, "--init",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--memory", self.memory, "--cpus", self.cpus, "--pids-limit", self.pids,
+            "-v", f"{self.workspace}:/workspace:rw", "-w", "/workspace",
+        ]
         if self.plugin:
             out += ["-v", f"{self.plugin}:{CONTAINER_PLUGIN}:ro"]
         if self.target:
@@ -273,6 +304,12 @@ class ContainerRuntime(BaseRuntime):
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         """Docker carries the keys by name, so the local environment holds them."""
         return dict(env)
+
+    def stop(self, proc: subprocess.Popen) -> None:
+        """Kill the container by name, then the client."""
+        if self.container_name:
+            subprocess.run([self.docker, "kill", self.container_name], capture_output=True, check=False)
+        super().stop(proc)
 
 
 @dataclass
