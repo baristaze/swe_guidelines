@@ -467,6 +467,46 @@ def test_net_09_a_key_behind_an_annotated_alias_passes(tmp_path, files):
     assert (code, where) == (0, [])
 
 
+def dense_imports(count):
+    """`count` modules, each importing a name from every module before it and the key from the one just before.
+
+    The imports form a DAG with 2 ** count paths from the last module to the first. The first module
+    closes a cycle through the last one and imports from itself, and every module assigns an alias
+    that names itself.
+    """
+    deps = "acme.services.api.deps"
+    files = {}
+    for i in range(count):
+        lines = [f"from {deps}.m{j} import name{j}" for j in range(i)]
+        if i == 0:
+            lines += [
+                "from acme.services.api.gateway.idempotency import idem",
+                f"from {deps}.m{count - 1} import name{count - 1}",
+                f"from {deps}.m0 import name0",
+                "Key = Annotated[str, Depends(idem)]",
+            ]
+        else:
+            lines.append(f"from {deps}.m{i - 1} import Key")
+        lines += [f"name{i} = 1", f"Loop{i} = Loop{i}"]
+        files[f"{SVC}/deps/m{i}.py"] = "\n".join(lines) + "\n"
+    return files
+
+
+def test_net_09_a_key_read_through_dense_and_cyclic_imports_finishes(tmp_path, monkeypatch):
+    from arch_check import runner
+
+    monkeypatch.setattr(runner, "BUDGET", 5.0)
+    count = 30
+    source = (
+        f"from acme.services.api.deps.m{count - 1} import Key, name0\n\n"
+        "@router.post('', status_code=201)\nasync def create(ctx: Ctx, key: Key): ...\n\n"
+        "@router.post('/other', status_code=201)\nasync def other(ctx: Ctx, n: name0): ...\n"
+    )
+    files = {IDEM: "def idem(): ...\n", ROUTER: source, **dense_imports(count)}
+    code, where, msgs = found(tmp_path, "NET-09", files)
+    assert (code, where) == (1, [("NET-09", ROUTER, 7)]), msgs
+
+
 def test_net_09_an_alias_of_something_else_is_no_key(tmp_path):
     source = (
         "from acme.services.api.gateway.auth import user\n\n"
