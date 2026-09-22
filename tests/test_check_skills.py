@@ -305,7 +305,7 @@ def test_the_description_limits_leave_room_in_the_hosts_listing(skills):
     assert (skills.DESCRIPTION_LIMIT, skills.DESCRIPTIONS_TOTAL) == (500, 5000)
 
 
-@pytest.mark.parametrize("line", ["name:arch-review-full", "description:\"Full review.\""])
+@pytest.mark.parametrize("line", ["name:arch-review-full", 'description:"Full review."'])
 def test_a_key_without_a_space_after_its_colon_fails(repo, skills, capsys, line):
     key = line.partition(":")[0]
     text = repo.read("skills/arch-review-full/SKILL.md")
