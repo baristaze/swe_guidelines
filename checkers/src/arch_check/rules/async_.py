@@ -681,10 +681,13 @@ def receiver(node: ast.expr, bound: dict[str, str], loops: set[str], executors: 
     "ASY-15",
     options=("edge",),
     coverage="partial",
-    summary="No web service module outside the socket edge starts a task, a thread, a timer, or a scheduler.",
+    summary="No web service or gateway module outside the socket edge starts a task, a thread, a timer, or a scheduler.",
 )
 def services_spawn_nothing(project: Project) -> Iterator[Violation]:
-    """Reads `edge` under `[tool.arch-check.options.ASY-15]`: module globs of the socket edge, where a
+    """Every module under `<pkg>.services` or `<pkg>.gateway` is read: the gateway runs in every web service.
+    A worker is where background work belongs, so it is not read.
+
+    Reads `edge` under `[tool.arch-check.options.ASY-15]`: module globs of the socket edge, where a
     task that forwards to a held socket may run (`*.realtime`, `*.realtime.*`).
 
     The guideline names no module for the socket edge, so the default is a guess: a project whose edge
@@ -695,7 +698,8 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
     `submit` or `map` on an executor no `with` holds. A task group's `create_task` is not one.
     """
     edge = project.option("ASY-15", "edge", EDGE, {"edge"})
-    for file in project.modules_under(project.sub("services")):
+    # the gateway runs inside every web service, in the service's own package or in its own distribution
+    for file in project.modules_under(project.sub("services"), project.sub("gateway")):
         if module_globs(file.module, edge):
             continue
         tree = project.tree(file)

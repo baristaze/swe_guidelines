@@ -182,3 +182,28 @@ def test_the_om_importing_a_service_interface_is_con_12(tmp_path):
     assert code == 1
     assert rules_found(report) == [("CON-12", f"{OM}/orders/impl.py", 1)]
     assert "a lower layer never imports a service" in report["findings"][0]["message"]
+
+
+WORKER = "workers/maintenance/src/acme/workers/maintenance"
+
+
+@pytest.mark.parametrize(
+    "rel,source",
+    [
+        (f"{API}/gateway/auth.py", "from acme.om.tenancy.storage.tables.identities import Identities\n"),
+        ("gateway/src/acme/gateway/auth.py", "from acme.om.storage.impl.postgres import StoragePostgresImpl\n"),
+        (f"{WORKER}/handlers/sweep.py", "from acme.om.tasks.impl.manager import TasksManagerImpl\n"),
+        (f"{WORKER}/relay.py", "from acme.om.tasks.storage.tables.tasks import Tasks\n"),
+    ],
+)
+def test_the_gateway_and_a_worker_reaching_past_an_interface_is_con_10(tmp_path, rel, source):
+    write_project(tmp_path, {"gateway/src/acme/gateway/__init__.py": "", rel: source})
+    code, report = check_json(tmp_path, "--rule", "CON-10")
+    assert code == 1
+    assert [(r, p) for r, p, _ in rules_found(report)] == [("CON-10", rel)]
+
+
+def test_a_worker_container_wires_the_impls_for_con_10(tmp_path):
+    write_project(tmp_path, {f"{WORKER}/container.py": "from acme.om.storage.impl.postgres import StoragePostgresImpl\n"})
+    code, _, _ = check(tmp_path, "--rule", "CON-10")
+    assert code == 0
