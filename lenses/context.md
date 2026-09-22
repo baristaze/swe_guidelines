@@ -869,15 +869,18 @@ handler's calls; a handler that asks again without a recorded decision.
 `org_id` first, and the impl keeps each tenant's secrets under a
 prefix of its own, so a name one tenant presents never resolves to
 another tenant's secret or the platform's. The manager sets
-`credential_ref` when it puts the secret; every create and update a
-caller shapes excludes it.
+`credential_ref` when it puts the secret. The entity lists it in
+`MANAGER_OWNED_FIELDS`, so every create and update a caller shapes
+excludes it.
 
-**Source.** Infrastructure, Secrets.
+**Source.** Infrastructure, Secrets; The Business Layer, Shape of an
+Operation.
 
 **Look for.** The secrets interface and whether each method takes
 `org_id` first; the key each impl builds from the tenant and the name;
-where `credential_ref` is set, and whether any request or create shape
-a caller fills carries it.
+where `credential_ref` is set, whether the entity's
+`MANAGER_OWNED_FIELDS` names it, and whether any request or create
+shape a caller fills carries it.
 
 **Violation.** A secrets method with no tenant, or an impl that stores
 names unprefixed, so a name can reach another tenant's secret or the

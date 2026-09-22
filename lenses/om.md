@@ -137,10 +137,10 @@ for every entity composing `Trackable`, a manager method that sets
 **Violation.** A `BaseOrder` with helper methods that `Order` and
 `ReturnOrder` extend; an entity composing `SoftDeletable` while no
 manager method sets `deleted_at`, or composing `Trackable` while no
-method sets `updated_at` and `updated_by`; an update that stamps the
-time and leaves `updated_by` as the creator; a mixin introduced to
+method sets `updated_at` and `updated_by`; a mixin introduced to
 avoid repeating two fields that mean different things in different
-entities.
+entities. (How an update stamps `updated_at` and `updated_by` is
+CON-17.)
 
 **Severity.** medium
 
