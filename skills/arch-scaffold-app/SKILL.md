@@ -57,7 +57,8 @@ Browser app (`portal` or `admin`), under `apps/<app-name>/`:
 | `src/main.tsx`, `src/app/App.tsx`, `src/app/routes.tsx`  | the shell and the routes; `main.tsx` awaits the config, then initializes the Sentry SDK only when the DSN is set, reporting from the React root's error callbacks and from each route's error element |
 | `src/app/RequireAuth.tsx` (portal) or `src/app/RequireAdmin.tsx` (admin) | the sign-in gate; the console renders the API's own refusal |
 | `src/features/sign_in/` (portal)                         | the sign-in screen the gate renders, in the same split as every screen: login (`POST /v1/auth/login`) and sign-up (`POST /v1/auth/signup`, the same answer), then the membership choice from the answer's `memberships` (one goes straight in, several show the picker before the first screen, none show a plain message), then the exchange for a tenant session (`POST /v1/auth/exchange` with the `org_id`), after which the login credential is dropped and only the session is held |
-| `src/features/org_chip/` (portal)                        | the org chip in the app's chrome, in the same split: the current org's name; with more than one membership it opens the list (`GET /v1/auth/memberships`) and switches by a second exchange presenting the current session, then, before the new session is used, clears the query cache and every tenant store entry and reopens the realtime socket |
+| `src/features/org_chip/` (portal)                        | the org chip in the app's chrome, in the same split: the current org's name; with more than one membership it opens the list (`GET /v1/auth/memberships`) and switches by a second exchange presenting the current session, then, before the new session is used, clears the query cache and every tenant store entry and reopens the realtime socket; its sign-out calls `POST /v1/auth/logout`, then clears the session store, the query cache, and every tenant store, and closes the socket |
+| `src/features/operator_sign_in/` (admin)                 | the console's sign-in, in the same split: email, password, and the TOTP code (`POST /v1/auth/login` with `totp_code`), since the operator gate admits no sign-in without a second factor; on the gate's `second_factor_not_enrolled` refusal, the enrolment: `POST /v1/admin/me/totp` once, its `otpauth://` URI shown as a code for the person's authenticator app and never stored by the console, then `POST /v1/admin/me/totp/confirm` with the first code, then a fresh sign-in with a code |
 | `src/design/tokens.ts` and `src/design/kit/` (first browser app only) | design tokens and a minimal component kit; the second app imports the first app's |
 | `src/queries/keys.ts`, `src/queries/<domain>.ts`         | the query-key factory (entity name first in every key, so the envelope router invalidates by name) and one TanStack Query hooks module per domain |
 | `src/store/<domain>.ts`                                  | one Zustand store per client-state domain; the session and the connection state are two; the session store holds the bearer in memory and mirrors it to `sessionStorage`, so a reload survives and a closed tab forgets, and never touches `localStorage`; it holds one bearer and the current org, never two sessions |
@@ -117,9 +118,12 @@ CLI, under `apps/<app-name>/`:
    tenant store are cleared, and the socket reopens under the new
    session before the first request of the new tenant.
 4. Console: no socket, no tenant context, no membership picker and no
-   org chip; the portal's sign-in form without its exchange, since the
-   operator plane admits only the login credential; the operator gate
-   rendered from the API's own refusal.
+   org chip; its own sign-in with the TOTP code and without the
+   portal's exchange, since the operator plane admits only the login
+   credential and only with a second factor; the operator gate
+   rendered from the API's own refusal, `second_factor_required`
+   included, and the enrolment rendered from its
+   `second_factor_not_enrolled` refusal.
 5. CLI: every call goes through `<root>-client`; creating calls send
    `Idempotency-Key`; followed operations poll at a fixed cadence and
    exit non-zero on failure; the settings are read once at the start

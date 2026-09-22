@@ -263,7 +263,12 @@ the order the guideline presents them, never by number.
   investigate profile of their environment and read the owner-only
   env file `~/.config/<root>/ops/<env>.env`, except
   `ops-infra-as-code`, which plans against the cloud and reads no env
-  file. `make seed` writes `local.env`. Create and nuke hold the
+  file. `make seed` writes `local.env`. Every sign-in of an operator
+  identity from the env file sends its password and a TOTP code. The
+  code is derived by `<root>-ops totp` from that identity's TOTP
+  secret, which the enrolment answered once and `<root>-ops enrol`
+  wrote into the same owner-only file; no template and no repository
+  file holds a secret's value. Create and nuke hold the
   environment's administrator profile alone, the one
   `deployment/cloud/environments.json` names beside its account id. The traffic and stress skills have no
   role: `ops-simulate-traffic` and `stress-test-run` read the env

@@ -53,7 +53,10 @@ the repository. It holds `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
 `ACME_OPERATOR_PASSWORD` (a `read` entry; the file's `write` entry,
 `ACME_PROVISIONER_EMAIL`, belongs to the traffic generator alone), `ACME_ERROR_TRACKER_URL`, and
 `ACME_ERROR_TRACKER_TOKEN`; `local.env`, which `make seed` writes, adds `ACME_PROMETHEUS_URL` and
-`ACME_JAEGER_URL`. Never print the password or the token.
+`ACME_JAEGER_URL`. The operator signs in with its password and a TOTP code, which
+`acme-ops` derives from `ACME_OPERATOR_TOTP_SECRET`, the secret
+`acme-ops enrol` wrote into the same file when the operator enrolled.
+Never print the password, the secret, a code, or the token.
 
 ## Procedure
 

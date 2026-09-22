@@ -41,7 +41,13 @@ repository, gives the generator its provisioner identity
 `ACME_API_URL`, the file's one `write` entry, which creates the run's
 own tenants),
 and the signals their URLs and token; `local.env` is the one
-`make seed` writes. Never print the password or the token.
+`make seed` writes. The provisioner signs in with its password and a
+TOTP code, which `acme-ops` derives from
+`ACME_PROVISIONER_TOTP_SECRET`, the secret `acme-ops enrol` wrote
+into the same file. In production the provisioner's entry is
+disabled between runs; the person enables it and disables it again
+by dispatching `grant-operator.yml`, as `ops-simulate-traffic`
+states. Never print the password, the secret, a code, or the token.
 
 ## Procedure
 

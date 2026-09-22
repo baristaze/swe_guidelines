@@ -47,9 +47,20 @@ repository, whose provisioner identity (`ACME_PROVISIONER_EMAIL`,
 the sessions run in; that identity's allowlist entry is `write`, it is
 the one write entry the file holds, and only this generator uses it.
 The tenants it creates are the generator's own, named with the run
-id, so no real tenant is touched. With `--orgs 0` the run drives the
-seeded people and needs no provisioner. Never print the password or the
-token.
+id, so no real tenant is touched, and removed when the run ends. The
+provisioner signs in with its password and a TOTP code, which
+`acme-ops` derives from `ACME_PROVISIONER_TOTP_SECRET`, the secret
+`acme-ops enrol` wrote into the same file. With `--orgs 0` the run
+drives the seeded people and needs no provisioner. Never print the
+password, the secret, a code, or the token.
+
+In production the provisioner's allowlist entry is disabled between
+runs, so no standing writing credential waits there. A run with
+`--orgs` above `0` against production needs the person to enable it
+first, by dispatching `grant-operator.yml` on `release` with the
+provisioner's email and `write`, and to disable it after, by
+dispatching it again with `disable`; this skill holds no role that
+does either, and says which dispatch is due.
 
 ## Procedure
 

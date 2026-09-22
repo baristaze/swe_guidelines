@@ -54,8 +54,11 @@ the traffic generator alone), `ACME_ERROR_TRACKER_URL`, and
 `ACME_ERROR_TRACKER_TOKEN`. `local.env`, which `make seed` writes,
 points at the compose stack
 and adds the twins, `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on
-the ports `.env` names. Read the file, use its values in commands, and
-never print the password or the token.
+the ports `.env` names. The operator signs in with its password and a TOTP code, which
+`acme-ops` derives from `ACME_OPERATOR_TOTP_SECRET`, the secret
+`acme-ops enrol` wrote into the same file when the operator enrolled.
+Read the file, use its values in commands, and never print the
+password, the secret, a code, or the token.
 
 ## Procedure
 
