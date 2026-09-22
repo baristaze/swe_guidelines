@@ -2050,7 +2050,8 @@ reads across tenants. The system scope is never a default. It is passed
 explicitly, and it runs on a connection of the system login (below).
 
 The methods that pass it are enumerated, and they are of three kinds.
-The first is the cross-tenant sweeps. Among them are the purge of
+The first is the cross-tenant sweeps, with the queue's claim and
+`fail_orphaned` beside them. Among the sweeps are the purge of
 ended sessions and the purge of redeemed or expired socket tickets,
 which reach `identity` tables. The second is the lookups that run
 before an identity is known:
@@ -3853,7 +3854,8 @@ Shape](#namespace-shape)), and it builds the context from it. Every
 write after the claim reads the row under that context's tenant, so an
 item of another tenant is not found. A context is never carried from one
 item to the next. An item whose tenant is gone is failed, never run
-under another context.
+under another context. No stage exists for it, so it is failed through
+`fail_orphaned`, a system-scope queue method that needs none.
 
 A sweep that acts on every tenant asks the tenancy manager for one
 service context per live tenant.
@@ -3865,6 +3867,8 @@ The person authorized the work once, at enqueue, under their own stage.
 That is the last time the system asks whether they may. The work runs
 on the service role's authority, and `user_id` is the attribution. A
 person whose membership ends while their work waits does not stop it.
+When the creator holds no live membership, or is the platform
+(`EMPTY_UUID`), the claim builds the tenant's service context instead.
 
 That authorization at enqueue covers the whole run, so it has to be
 as wide as the run. The permission that enqueues a kind covers every
