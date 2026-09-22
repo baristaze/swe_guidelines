@@ -99,6 +99,12 @@ and a worker added since is one more name.
    - running processes: the `up` targets again, one per process
    - the database's CPU and free storage: no local exporter; report
      them as not read
+   - the queue, in a system with a worker, from the gauges its sweep
+     sets: `max(acme_queue_oldest_age_seconds)` (the oldest waiting
+     item), `max(acme_work_failed)` (failed work),
+     `max(acme_records_parked)` (parked records), and
+     `max(acme_outbox_lag_seconds)` (the outbox's lag), each against
+     the threshold its cloud alarm declares
    With `--alarm <name>`, start here and apply the first responder
    rule of step 10 before reading anything else.
 4. Request rate, error ratio, p95, by route. Cloud, one query per
@@ -123,10 +129,12 @@ and a worker added since is one more name.
    `acme_outcomes_total{subsystem, outcome}` (subsystems `worker`,
    `outbox`, `queue`, `cache`, `rate_limit`, `admission`,
    `idempotency`), read as `sum by (subsystem, outcome)
-   (increase(acme_outcomes_total[<since>]))`. Queue depth, the oldest
-   age, and pool checkouts have no metric; the cloud reads the queue
-   from `aws sqs get-queue-attributes` and the pool from the database's
-   connection count. Cloud also reads the
+   (increase(acme_outcomes_total[<since>]))`. The queue's age, its
+   failed and parked work, and the outbox's lag are the sweep's
+   gauges of step 3, read over the window, and in the cloud from the
+   same metrics through `get-metric-data` beside their alarms. Pool
+   checkouts have no metric; the cloud reads the pool from the
+   database's connection count. Cloud also reads the
    running count against the desired count:
 
    ```bash
@@ -248,7 +256,7 @@ and a worker added since is one more name.
 ## Signals
 
 - Requests: <rate>, error ratio <ratio>, p95 <ms> by route
-- Workers: <outcomes per kind>, queue depth <n>, oldest <age>
+- Workers: <outcomes per kind>, queue oldest <age>, failed <n>, parked <n>, outbox lag <age>
 - Pool and cache: <checkouts, timeouts, hits, misses>
 - Errors: <count>, top issue <title> (<request id, or none>)
 - Cost: <month to date> of <budget> USD (cloud only)

@@ -102,13 +102,15 @@ Never print the password, the secret, a code, or the token.
      --state-value ALARM --profile acme-<env>-investigate
    ```
 
-   Local: the six alarm conditions as queries against
+   Local: the alarm conditions of `ops-investigate`, the queue's
+   among them, as queries against
    `$ACME_PROMETHEUS_URL/api/v1/query`. An alarm that was already in
    `ALARM` in the last batch is not reported again; a transition
    (`OK` to `ALARM`, `ALARM` to `OK`) is.
 5. Each interval, read one number per signal for that interval and
    nothing more: the request count, the 5xx count, the p95, the
-   worker failures, through `get-metric-data` with `--period` equal
+   worker failures, the oldest waiting item's age, and the outbox's
+   lag, through `get-metric-data` with `--period` equal
    to the interval, or the same as a Prometheus range query. A burst
    is a count in the batch, never a line per event: the tail's lines
    over `--cap` are counted by level and dropped.
@@ -150,7 +152,7 @@ Never print the password, the secret, a code, or the token.
 
 ## Batches
 
-- <start of batch>: <requests> requests, <5xx> 5xx, p95 <ms>, <failures> worker failures; <lines> lines shown, <dropped> over the cap (<by level>)
+- <start of batch>: <requests> requests, <5xx> 5xx, p95 <ms>, <failures> worker failures, queue oldest <age>, outbox lag <age>; <lines> lines shown, <dropped> over the cap (<by level>)
   - <line>
   - <line>
 
