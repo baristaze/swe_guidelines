@@ -52,7 +52,6 @@ class RepeatResult:
             "subject_models": list(self.subject_models),
             "judgements": [j.as_dict() for j in self.judgements],
         }
-
         if self.expected is not None:
             out["expected"] = dict(self.expected)
         return out

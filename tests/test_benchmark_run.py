@@ -484,7 +484,7 @@ def test_a_skill_subject_runs_on_the_model_it_is_pinned_to():
 def test_the_subject_model_defaults_to_the_scenario_then_the_matrix():
     matrix = run.J.DEFAULT_MATRIX
     assert run.subject_model(S.from_data(SKILL), None, matrix) == matrix["anthropic"]["model"]
-    pinned = S.from_data(dict(SKILL, subject={**SKILL["subject"], "model": "claude-sonnet-5"}))
+    pinned = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review it.", "model": "claude-sonnet-5"}))
     assert run.subject_model(pinned, None, matrix) == "claude-sonnet-5"
     assert run.subject_model(pinned, "claude-haiku-5", matrix) == "claude-haiku-5"
     command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"})
@@ -516,7 +516,12 @@ def envelope_scenario(tmp_path, envelope):
 def test_an_envelope_that_reports_an_error_fails_the_repeat(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     judged: list[str] = []
-    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: judged.append("called") or [])
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
     path = envelope_scenario(tmp_path, {"type": "result", "is_error": True, "result": "API Error: 401"})
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 6
     assert judged == []

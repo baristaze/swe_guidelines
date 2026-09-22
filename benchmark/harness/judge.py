@@ -471,7 +471,6 @@ def judge_one(
             verdict=verdict,
             fallback={"from": models[0], "reason": errors[0] if errors else ""} if model != models[0] else None,
         )
-
     return Judgement(
         provider=name,
         model=models[0] if models else "",

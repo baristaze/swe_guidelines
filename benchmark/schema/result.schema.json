@@ -69,7 +69,6 @@
             "type": "array",
             "items": { "type": "string" }
           },
-
           "expected": {
             "description": "Which planted findings the artifact names by lens id and file; present only when the scenario plants some.",
             "type": "object",
@@ -194,7 +193,6 @@
           "description": "Set when a Claude subject is judged by a panel that scores with Claude.",
           "type": ["string", "null"]
         },
-
         "skipped": {
           "type": "array",
           "items": {
@@ -224,7 +222,6 @@
         },
         "missed": {
           "type": "array",
-
           "items": {
             "type": "object",
             "required": ["provider", "count", "reason"],
