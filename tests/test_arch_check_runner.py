@@ -39,7 +39,7 @@ def test_a_file_nested_deeper_than_the_rules_walk_is_a_parse_finding(tmp_path):
 
 def test_a_rule_walks_a_file_nested_just_under_the_limit(tmp_path, monkeypatch):
     def walks(project):
-        for f, tree in project.trees():
+        for _, tree in project.trees():
             ast.unparse(tree)
             ast.NodeVisitor().visit(tree)
             yield from ()

@@ -325,7 +325,9 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
 NPM_INSTALL = re.compile(r"\bnpm\s+(install|i)\b(?P<rest>[^&|;\n]*)")
 YARN_INSTALL = re.compile(r"\byarn(\s+install)?[ \t]*(?=$|&|\||;|\n)|\byarn\s+install\b[^&|;\n]*", re.MULTILINE)
 PIP_INSTALL = re.compile(r"\b(?:uv\s+)?pip3?\s+install\b(?P<rest>[^&|;\n]*)")
-NPM_VALUE_FLAGS = frozenset({"--prefix", "--registry", "--cache", "--userconfig", "--omit", "--include", "--workspace", "-w", "--tag"})
+NPM_VALUE_FLAGS = frozenset(
+    {"--prefix", "--registry", "--cache", "--userconfig", "--omit", "--include", "--workspace", "-w", "--tag"}
+)
 PIP_VALUE_FLAGS = frozenset(
     {
         "-t",

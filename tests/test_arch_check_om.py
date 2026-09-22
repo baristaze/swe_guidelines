@@ -474,9 +474,7 @@ def test_model_copy_fed_an_annotated_dump_is_om_10(tmp_path):
     ["{'owner': other.model_dump()}", "dict(owner=other.model_dump())", "{'title': 't', **{'owner': other.model_dump()}}"],
 )
 def test_model_copy_fed_a_dump_as_one_field_is_om_10(tmp_path, update):
-    source = IMPL_SOURCE + (
-        f"\n\ndef bad(current: Task, other: Task) -> Task:\n    return current.model_copy(update={update})\n"
-    )
+    source = IMPL_SOURCE + (f"\n\ndef bad(current: Task, other: Task) -> Task:\n    return current.model_copy(update={update})\n")
     code, report = run(tmp_path, "OM-10", {TASK_IMPL: source})
     assert code == 1
     assert "model_copy(update=...) fed a dump" in messages(report)[0]

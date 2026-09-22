@@ -623,7 +623,8 @@ def test_del_11_a_makefile_saved_with_a_bom_is_read(tmp_path):
 
 
 def test_del_26_a_dockerfile_saved_with_a_bom_is_read(tmp_path):
-    files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": BOM + "FROM acme/base:1.2.0-rc.1 AS b\nFROM python:3.11\n"}
+    image = BOM + "FROM acme/base:1.2.0-rc.1 AS b\nFROM python:3.11\n"
+    files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": image}
     assert found(tmp_path, "DEL-26", files) == (1, [("DEL-26", "deployment/docker/api.Dockerfile", 1)])
 
 

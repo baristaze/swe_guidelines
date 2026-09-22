@@ -139,12 +139,12 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
                 found = [Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin) for v in r.check(project)]
             except ConfigError:
                 raise
-            except Exception as e:  # MemoryError and RecursionError included: one rule never stops the others
+            except Exception as raised:  # MemoryError and RecursionError included: one rule never stops the others
                 traceback.print_exc(file=sys.stderr)
                 failed.add(r.id)
-                detail = f": {e}" if str(e) else ""
+                detail = f": {raised}" if str(raised) else ""
                 errors.append(
-                    framework(ERROR, PYPROJECT, 1, 1, f"{r.id} raised {type(e).__name__}{detail}; its findings are missing")
+                    framework(ERROR, PYPROJECT, 1, 1, f"{r.id} raised {type(raised).__name__}{detail}; its findings are missing")
                 )
             else:
                 raw.extend(found)

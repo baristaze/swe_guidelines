@@ -399,9 +399,9 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
         for local, full in names.items():
             owner, _, attr = full.rpartition(".")
             source = project.module(owner)
-            if local not in out and source is not None and source.module not in seen:
-                if attr in idem_names(source, seen | {file.module}):
-                    out.add(local)
+            reachable = local not in out and source is not None and source.module not in seen
+            if reachable and source is not None and attr in idem_names(source, seen | {file.module}):
+                out.add(local)
         tree = project.tree(file)
         aliases: list[tuple[str, ast.expr]] = []
         for node in tree.body if tree is not None else []:
