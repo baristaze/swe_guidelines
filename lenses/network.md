@@ -426,7 +426,7 @@ exists only as a frame; a client that tracks the last frame seen
 instead of the last contiguous one, so a dropped frame is skipped for
 good.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-18 Inbound socket traffic is subscribe, unsubscribe, and ping
 
@@ -531,7 +531,7 @@ collision; an event table in the `core` role; an event with no
 request id and the app; code that reads `seq` as the order of core
 writes.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-23 Wire and payload changes are additive within a version
 
