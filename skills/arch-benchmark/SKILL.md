@@ -2,6 +2,7 @@
 name: arch-benchmark
 description: "Run a benchmark scenario (a skill, a command, or a question) in a declared runtime and have frontier models score it against the rubric. Use to measure a change to a skill or the text."
 allowed-tools: Read, Grep, Glob, Bash(uv run:*), Bash(ls:*)
+disable-model-invocation: true
 ---
 
 # arch-benchmark

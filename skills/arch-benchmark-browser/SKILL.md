@@ -2,6 +2,7 @@
 name: arch-benchmark-browser
 description: "Run the benchmark prompt in the chatgpt.com, claude.ai, and gemini.google.com products, signed in, and save each answer with its conversation URL as proof."
 allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
+disable-model-invocation: true
 ---
 
 # arch-benchmark-browser
