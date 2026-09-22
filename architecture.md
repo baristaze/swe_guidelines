@@ -238,6 +238,7 @@ class SoftDeletable(Platform):
     deleted_by: UUID | None = None
 
 PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "deleted_by"})  # stay as stored on update
+# Beside it, each entity declares MANAGER_OWNED_FIELDS: the fields its manager sets and a caller never writes.
 
 EMPTY_UUID = UUID(int=0)
 ```
@@ -248,6 +249,7 @@ operation exercises. `Trackable` goes on where an update exists,
 
 ``` python
 class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
+    MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]] = ()  # a warehouse has none; the copy still reads it
     address: str
     timezone: str
 ```
@@ -1183,12 +1185,13 @@ class InventoryManagerImpl(InventoryManagerInterface):
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
         current = await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
+        caller_owned = set(PROVENANCE_FIELDS) | set(Warehouse.MANAGER_OWNED_FIELDS)  # never the caller's to write
         updated = Warehouse.model_validate({  # a copy that carries a dump is validated, never model_copy
             **current.model_dump(),
-            **warehouse.model_dump(exclude=set(PROVENANCE_FIELDS)),  # the caller's fields, never who made or deleted it
+            **warehouse.model_dump(exclude=caller_owned),  # the caller's fields, and nothing the manager owns
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
-        rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json")),)
+        rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, {}),)  # ids only, never a field value
         await self._storage.write_warehouse(ctx.org_id, updated, rows)  # one atomic method
         for row in rows:  # relaying at once (a write that also starts work carries a second row)
             # The lower-latency choice; relaying from the sweep alone is the
@@ -1201,8 +1204,9 @@ class InventoryManagerImpl(InventoryManagerInterface):
 The caller that originates an entity constructs it whole and hands it
 to `create_*`, with `id=new_id()`, `created_at`, `updated_at`,
 `created_by`, and `updated_by` set. On create, the manager's copy sets
-what is the manager's to decide: the actor from the context, the
-initial status, a position. It leaves the id and the timestamps as
+what is the manager's to decide: the actor from the context, and every
+field in the entity's `MANAGER_OWNED_FIELDS`, such as the initial
+status or a position. It leaves the id and the timestamps as
 constructed.
 
 A create whose id is already written returns the row as stored. Ids are
@@ -1240,11 +1244,19 @@ row whose `updated_by` is not the context's is the work item, whose
 bookkeeping the platform signs (see [The Work Queue](#the-work-queue)).
 
 The copy on update starts from the stored row. The caller's entity
-supplies the fields a caller may change. The fields in
-`PROVENANCE_FIELDS`, a constant beside the mixins naming `created_at`,
-`created_by`, `deleted_at`, and `deleted_by`, stay as stored. So no
+supplies the fields a caller may change, and two sets of fields stay
+as stored.
+
+The first is `PROVENANCE_FIELDS`, a constant beside the mixins naming
+`created_at`, `created_by`, `deleted_at`, and `deleted_by`. So no
 caller rewrites who made a row, or brings a deleted one back, by
 sending an entity.
+
+The second is the entity's own `MANAGER_OWNED_FIELDS`, a tuple each
+entity declares. It names the fields its manager sets and a caller
+never writes: a `credential_ref` (see [Secrets](#secrets)), a status
+its transitions own, a position. The manager writes those through the
+operations that own them, never through an update a caller shaped.
 
 A partial update is the service impl's translation. It reads the
 current entity through the manager's `get_*`, copies the request's set
@@ -1257,9 +1269,21 @@ Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does.
 
 Last writer wins by default. An entity whose concurrent edits matter
-carries a `version`. The copy increments it, and the write is a
-compare-and-set that raises `Conflict` when the row moved. That is
+carries a `version`, and its update is a compare-and-set. That is
 optimistic concurrency.
+
+The version the write compares against comes from the caller, never
+from a read inside the update. On a `PATCH` it is the `If-Match`
+header. Elsewhere it is an `expected_version` field of the request.
+The partial update copies that version onto the entity it hands the
+manager, in place of the one its own read returned. The manager's
+copy increments it, and the write succeeds only while the stored row
+still carries the caller's version. A mismatch raises
+`PreconditionFailed`, a `412` (see [Exceptions](#exceptions)).
+
+A version re-read inside the update would always match. The edit that
+landed between the caller's read and its write would then be
+overwritten, which is the lost update the version exists to refuse.
 
 ### Parameters
 
@@ -2642,10 +2666,11 @@ never resolve to another tenant's secret, or to one of the platform's.
 
 A `CarrierIntegration` entity carries `credential_ref: str`, the name
 of a secret, never the value. The manager sets it when it puts the
-secret, and no caller writes it: it is excluded from every create and
-update a caller shapes, as the provenance fields are. The value is
-resolved at the point of use, for exactly one operation, and then
-discarded.
+secret, and no caller writes it: it is in the entity's
+`MANAGER_OWNED_FIELDS`, so every create and update a caller shapes
+leaves it as the manager set it (see [Shape of an
+Operation](#shape-of-an-operation)). The value is resolved at the
+point of use, for exactly one operation, and then discarded.
 
 That is a tenant's secret. The process's own credentials are another
 kind: the database URL and the internal signing key reach the process
@@ -5880,6 +5905,10 @@ class NotFound(PlatformException):
 class Conflict(PlatformException):
     http_status = 409
     code = "conflict"
+
+class PreconditionFailed(PlatformException):  # the caller's expected version no longer matches
+    http_status = 412
+    code = "precondition_failed"
 
 class ValidationFailed(PlatformException):
     http_status = 422
