@@ -299,6 +299,11 @@ birth time is the one in its id, since every id is a `uuid_v7` with the
 millisecond in front (see [Identifiers](#identifiers)). The "when" of an
 audit entry costs no column.
 
+The one write an audit entry takes after its birth is erasure. When a
+person is erased, the personal fields of their audit entries are
+redacted in place (see [Database Roles](#database-roles)). Nothing else
+touches the row.
+
 > **Principle:** Inheritance expresses abstraction, not code reuse. Each
 > mixin is a promise about what the entity is.
 
@@ -2021,19 +2026,35 @@ and a restore are per instance. A role gets a schedule of its own when
 it moves to a database of its own.
 
 A role restored to an earlier point than its siblings is reconciled
-from the outbox, not by hand. The rows relayed since that point are
-relayed again, which is harmless because the relay is idempotent on the
-row's key. And for an event whose destination role was restored past
-it, the outbox row is the one trace that it existed.
+from the outbox, not by hand. And for an event whose destination role
+was restored past it, the outbox row is the one trace that it existed.
+
+When `activity` or `queue` comes back to an earlier point than `core`,
+the rows relayed since that point are already marked done. So the
+restore runbook's last step, run by the person who restored, clears
+`done_at` on every outbox row created after the restored role's point.
+The sweep then relays those rows again. That is harmless, because the
+relay is idempotent on the row's key, and a row whose destination
+survived is a no-op. When `core` comes back to an earlier point than
+the others, nothing is replayed. The events and work items of the lost
+writes remain: a work item whose record is gone fails as not found,
+and an event names a record that a read no longer finds.
 
 That is why a done outbox row is kept for a retention period and purged
 by the sweep, never deleted on done. It is also why that period
 outlives the backup schedule of the roles the outbox feeds.
 
 A soft-deleted row is purged by the maintenance sweep after its
-entity's retention period. Purge is the one hard delete. Personal data
-lives in named fields, so erasing a person is a sweep over a list, not
-a hunt.
+entity's retention period. Purge is the one hard delete.
+
+Personal data lives in named fields, so erasing a person is a sweep
+over a list, not a hunt. An outbox row's payload, a work item's
+payload, and an event carry ids, never the value of a personal field,
+so the relay and the stream hold nothing to erase. An audit entry may
+carry values, since it records what changed. So the erasure sweep
+redacts the personal fields of the erased person's audit entries. That
+redaction is the one write an append-only record takes, and the sweep
+states it by name.
 
 > **Principle:** Every table has one role. The role is its schema, its
 > pool, and its migration chain. Nothing crosses a role.
@@ -3645,20 +3666,21 @@ The default shape is one stream per tenant. A socket is subscribed to
 its tenant's stream when it opens, so there is nothing to choose. The
 `subscribe` frame is what a client sends when the product keeps more
 than one stream, to name the visibility scopes it may see. A kind is
-never a subscription. An entity's snapshot lives in the record for
-audit and never on the wire.
+never a subscription. What changed in an entity lives in its audit
+entry, and never on the wire.
 
 Replay from storage is the durability mechanism. The socket is a hint
 that something changed.
 
 The record is an `Event` in the `activity` role: `Identifiable` plus
 `org_id`, `seq`, `kind`, `target_id`, `actor_id` (the principal of the
-write, `EMPTY_UUID` for the platform), and a typed payload. One named
-atomic storage method appends it and assigns `seq`. That sequence is
-per tenant and gapless, and it is the one number storage assigns,
-because only the database can order commits. Gapless is a decision: a
-client treats a gap as a loss and replays, so a number that was
-skipped would cost a replay on every socket of the tenant.
+write, `EMPTY_UUID` for the platform), and a typed payload of ids, never
+the value of a personal field (see [Database Roles](#database-roles)).
+One named atomic storage method appends it and assigns `seq`. That
+sequence is per tenant and gapless, and it is the one number storage
+assigns, because only the database can order commits. Gapless is a
+decision: a client treats a gap as a loss and replays, so a number that
+was skipped would cost a replay on every socket of the tenant.
 
 The append takes the next number from a cursor row per tenant in the
 same role, `UPDATE cursors SET head = head + 1 WHERE org_id = ...
