@@ -353,10 +353,11 @@ was constructed.
 > data, as the caller's fields do, the entity is rebuilt from a dict:
 > `Warehouse.model_validate({**current.model_dump(), **changes})`.
 > Pass it that dict, never an instance of the class: given an
-> instance, `model_validate` hands it back without validating it. `model_copy` does not validate, so it
-> would leave a dumped value object as a plain dict. A manager that
-> updates an entity sets `updated_at` and `updated_by` in the same
-> copy, so the caller gets back the copy that was written.
+> instance, `model_validate` hands it back without validating it.
+> `model_copy` does not validate, so it would leave a dumped value
+> object as a plain dict. A manager that updates an entity sets
+> `updated_at` and `updated_by` in the same copy, so the caller gets
+> back the copy that was written.
 
 Fields are tuples and frozen models, never `list` or `dict`. A mapping
 field is a `FrozenMapping`: a `Mapping` annotated with a validator that
@@ -378,10 +379,10 @@ freeze.
 The same rule applies to every object built on the OM base chain. That
 includes the sub-objects of `OpContext` (see [OpContext](#opcontext)).
 The views of [Public Types](#public-types) sit on a base of their own,
-frozen and tolerant, and keep the same rule for the same reason. There is one
-deliberate exception: the SQLAlchemy row classes under `tables/` must be
-mutable so the session can track writes. They never leak past the
-storage boundary.
+frozen and tolerant, and keep the same rule for the same reason. There
+is one deliberate exception: the SQLAlchemy row classes under `tables/`
+must be mutable so the session can track writes. They never leak past
+the storage boundary.
 
 ### Identifiers
 
@@ -496,9 +497,9 @@ function, so the two cannot drift apart.
 
 Some rules the engine must evaluate for itself, inside a statement, a
 filter or an ordering. Such a rule is spelled once more in that
-statement, named as such. The contract case that runs both impls is
-what holds the two spellings together. Everything a rule decides before
-or after the statement calls the function.
+statement, named as such. The contract case that runs both impls (see
+[Tests](#tests)) is what holds the two spellings together. Everything a
+rule decides before or after the statement calls the function.
 
 > **Principle:** A namespace's rules are pure functions in one module.
 > Storage impls and manager impls call them. A rule the engine must
@@ -1821,12 +1822,12 @@ Fence](#the-second-fence), so its id collides on the insert. That
 collision is refused as `Conflict`, never surfaced as a driver error.
 
 Its sibling `_insert` is the create primitive: an insert that does
-nothing on an existing id or unique key and says which one collided. The outbox rows land only when
-the insert won. A retried create therefore neither overwrites the row
-nor announces it twice, and a key collision surfaces as a report, never
-as a driver error. An id another tenant holds reports the same way, and
-the manager's read-back under its own tenant finds nothing and refuses
-it as `Conflict`.
+nothing on an existing id or unique key and says which one collided. The
+outbox rows land only when the insert won. A retried create therefore
+neither overwrites the row nor announces it twice, and a key collision
+surfaces as a report, never as a driver error. An id another tenant
+holds reports the same way, and the manager's read-back under its own
+tenant finds nothing and refuses it as `Conflict`.
 
 Every query filters by `org_id` and every write checks it, so a bug in
 a caller cannot move a row across tenants. Each operation opens its own
@@ -2164,8 +2165,9 @@ One revision chain and one version table per role.
 
 The minute stamp is the file's sort key and the revision id, so two
 authors never negotiate a counter. Two migrations of one role in the
-same minute collide on the stamp, and the later one takes a suffix. Two migrations that name the same parent are a real
-conflict, and the tool reporting it is the point.
+same minute collide on the stamp, and the later one takes a suffix.
+Two migrations that name the same parent are a real conflict, and the
+tool reporting it is the point.
 
 A migration file is never edited once it has been applied anywhere. The
 runner refuses a file that names a table of another role. A run that
@@ -2303,10 +2305,11 @@ Within a tenant, what one member may read another may not: a role, a
 team, a person's own rows. So a cached read sits below authorization,
 never above it. The manager caches the tenant's data and applies the
 caller's visibility to what it read, from the cache or from storage,
-on every call. A read that cannot be cached that way carries every
-input its visibility depends on in the key, the role and the team
-among them, and a key that omits one serves one member's view to
-another.
+on every call.
+
+A read that cannot be cached that way carries in its key every input
+its visibility depends on, the role and the team among them. A key
+that omits one serves one member's view to another.
 
 `increment` is the one atomic primitive. It exists for two things:
 rate limits (see [The Gateway](#the-gateway)) and generations.
@@ -3434,8 +3437,9 @@ changes.
 Per socket, the process keeps one bounded send buffer in memory and a
 drainer task that writes it to the wire. The buffer has two lanes. A
 frame that reports the state of the socket itself is a control frame:
-the first frame, a pong with the head `seq`, a subscription confirmed
-or ended, an error. An event hint is a stream frame.
+the first frame, a pong with the head `seq` (the tenant's latest
+sequence number, below), a subscription confirmed or ended, an error. An
+event hint is a stream frame.
 
 The drainer sends control frames first. When the buffer is full, the
 oldest stream frame is dropped and the drop is logged. A control frame
@@ -3793,10 +3797,11 @@ audit, and causality survive the asynchronous hop.
 A worker holds no tenant of its own. `WorkItem` carries no `org_id`
 field. The tenant arrives beside each item: the claim reads across
 tenants and gets the tenant back with the row (see [Namespace
-Shape](#namespace-shape)), and it builds the context from it. Every write after the claim
-reads the row under that context's tenant, so an item of another tenant
-is not found. A context is never carried from one item to the next. An
-item whose tenant is gone is failed, never run under another context.
+Shape](#namespace-shape)), and it builds the context from it. Every
+write after the claim reads the row under that context's tenant, so an
+item of another tenant is not found. A context is never carried from one
+item to the next. An item whose tenant is gone is failed, never run
+under another context.
 
 A sweep that acts on every tenant asks the tenancy manager for one
 service context per live tenant.
@@ -4334,12 +4339,13 @@ commit that did deploy.
 
 Production does not rebuild. It promotes what staging already ran:
 service and worker images by the digest staging built for that commit,
-and browser bundles kept by that commit. A release commit that staging
-never built is refused, and so is one staging built and failed to
-deploy: a successful staging deploy records itself outside staging's
-account, as a deployment record on the repository host, and both the
-fast-forward and production's lookup read that record, never the mere
-presence of a copy.
+and browser bundles kept by that commit.
+
+A release commit that staging never built is refused. So is one that
+staging built and failed to deploy. A successful staging deploy
+records itself outside staging's account, as a deployment record on
+the repository host. Both the fast-forward and production's lookup
+read that record, never the mere presence of a copy.
 
 A revert is the rollback. It goes through `main`, then staging, then
 `release`, like every other change, so a rollback also ships what else
@@ -4366,8 +4372,8 @@ is compatible with the release before it (see
 A rollout that fails is a different thing: the runtime's deployment
 circuit breaker rolls it back on its own. The apply waits for the
 service's steady state, so a rollout the breaker rolled back fails the
-apply, and the state then names the task definition that failed while
-the previous one runs; the next apply writes the running shape again.
+apply. The state then names the task definition that failed, while the
+previous one runs. The next apply writes the running shape again.
 
 Production never reads staging's account to promote. What it releases
 is a copy in its own. The registry replicates every image staging
@@ -4524,8 +4530,9 @@ The **bootstrap root** holds what must exist before the pipeline can
 run: the state bucket, the artifacts bucket, the trust of the
 repository host's identity federation, the environment's deploy roles,
 its investigator role, its budget and anomaly monitor, its image
-registry, and the zones of its public names. The administrator applies it (see [Creating and
-Destroying an Environment](#creating-and-destroying-an-environment)).
+registry, and the zones of its public names. The administrator
+applies it (see [Creating and Destroying an
+Environment](#creating-and-destroying-an-environment)).
 The **environment root** holds everything else, and the pipeline
 applies it on every deploy. A bootstrap root's state lives in its own
 account's bucket, beside the environment root's, and no deploy role
@@ -4886,12 +4893,12 @@ on the operator allowlist whose entry grants read and nothing more
 (see [The Operator Context](#the-operator-context)). Its cloud role is
 the investigator's, unchanged.
 
-No operator role a person or an agent holds writes to the cloud,
-except the administrator's two steps. The widening a smaller
-environment may name, below, is not an operator role. An infrastructure change is a pull request,
-and the deployer applies it. A data change is an operation of the
-platform, under a tenant context or an operator context, and the manager
-decides it.
+No operator role a person or an agent holds writes to the cloud, except
+the administrator's two steps. The widening a smaller environment may
+name, below, is not an operator role. An infrastructure change is a pull
+request, and the deployer applies it. A data change is an operation of
+the platform, under a tenant context or an operator context, and the
+manager decides it.
 
 Roles are named `<product>-<verb>-<environment>`, with the verb the
 role does: `deploy`, `plan`, `investigate`. So the name says what it
@@ -4967,8 +4974,8 @@ configuration, one per role per environment. Everything else an
 operator reaches, the error tracker's token and the operator plane's
 identity, lives in one owner-only file per environment outside the
 repository. The file also names the environment's base URL, which is
-no secret: the environments' file names the same public names. A skill reads the file
-for the environment it was given.
+no secret: the environments' file names the same public names. A skill
+reads the file for the environment it was given.
 
 The platform's own secrets are the ones [Secrets](#secrets) describes,
 held in the secret store and resolved at the point of use. An
@@ -5136,17 +5143,19 @@ script the repository holds, run by the skill that narrates it.
 The run takes one environment and acts in that environment's account
 alone, with one credential outside it: the domain host's token, for
 the delegation. That token is scoped to the domain's zone, short-lived
-where the host allows it, and held only for the run. It checks that the administrator profile resolves to the
-account the environments' file names. It applies the bootstrap root
-with local state, then moves that state into the bucket the root
-made. It writes the delegation of each public name at the domain's
-zone. It writes the investigator's profile, chained from the
-identity center's everyday profile. It creates the repository host's
-environments for that environment's deployer credentials, with their
-deployment-branch policies, and sets their variables from the
-bootstrap root's outputs. Staging's run then starts the first deploy,
-and ends with the smoke test. From there the environment is deployed
-the way every other commit is: by the pipeline, under the deployer.
+where the host allows it, and held only for the run.
+
+The run checks that the administrator profile resolves to the account
+the environments' file names. It applies the bootstrap root with local
+state, then moves that state into the bucket the root made. It writes
+the delegation of each public name at the domain's zone. It writes the
+investigator's profile, chained from the identity center's everyday
+profile. It creates the repository host's environments for that
+environment's deployer credentials, with their deployment-branch
+policies, and sets their variables from the bootstrap root's outputs.
+Staging's run then starts the first deploy, and ends with the smoke
+test. From there the environment is deployed the way every other
+commit is: by the pipeline, under the deployer.
 
 Production's run ends at its bootstrap. Its first deploy is its first
 release, and that waits for a commit staging built after the
@@ -5169,20 +5178,22 @@ environment-aware: a smaller environment goes on a word, and
 production refuses unless two things hold. Its name is typed as a
 confirmation, and a released change has already turned its deletion
 protection off, so the destruction of production is itself a pull
-request a person read. The run reads that on `release`, the branch
-production applies, and on the applied state, never on `main` alone:
-a change merged to `main` and not yet released is not yet in
-production. The run applies from the exact commit the environment runs,
-`release` at origin for production and `main` for staging, in a clean
-worktree of its own, never from the working tree it was started in, so
+request a person read.
+
+The run reads that on `release`, the branch production applies, and on
+the applied state, never on `main` alone. A change merged to `main`
+and not yet released is not yet in production.
+
+The run applies from the exact commit the environment runs: `release` at
+origin for production, and `main` for staging. It applies in a clean
+worktree of its own, never from the working tree it was started in. So
 nothing unreleased reaches production on the way down. It empties what
 must be empty and destroys the environment root. Outside production a
 secret is deleted with no recovery window, so a create that follows
 finds its names free. Production's database always leaves a final
-snapshot, and its automated backups stay. The run reports what
-remains: that snapshot, everything the bootstrap root holds, which
-serves the environment's next life, and production's copies of what
-staging built.
+snapshot, and its automated backups stay. The run reports what remains:
+that snapshot, everything the bootstrap root holds, which serves the
+environment's next life, and production's copies of what staging built.
 
 > **Principle:** Create and destroy are the administrator's two runs,
 > scripted, narrated by a skill, dry-runnable, and one account at a
@@ -5212,9 +5223,9 @@ uses that identity, and the tenants it creates are named for the run,
 so no real tenant is touched. The run removes them when it ends, and
 the size an agent reads before it escalates leaves them out. In
 production the identity is disabled until a run needs it, and
-disabled again after, so no standing writing credential waits there. It reports what an operator reads:
-requests by route and status, the p50, p95, and p99, and the error
-ratio.
+disabled again after, so no standing writing credential waits there.
+It reports what an operator reads: requests by route and status, the
+p50, p95, and p99, and the error ratio.
 
 The stress test is the same generator with a scenario: a profile, a
 duration, a ramp, a soak, and a target stated before the run. The
