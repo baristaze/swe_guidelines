@@ -885,7 +885,8 @@ the stronger one cannot be handed the weaker.
 operator's allowlist entry grants. An entry grants read, or read and
 write, so a read operator is refused a write the way a tenant viewer
 is. An operator with no confirmed second factor yet holds `ENROL` alone
-(see [The Gateway](#the-gateway)). The type itself is the evidence that the allowlist was consulted.
+(see [The Gateway](#the-gateway)). The type itself is the evidence
+that the allowlist was consulted.
 
 The chain continues below `OpContext` only when the domain earns it. A
 stage for a role exists when operations rely on that role instead of
@@ -984,8 +985,8 @@ at that instant, whatever the client does. A revocation or a
 membership's end travels on the topic bus like any other change, as
 the control message `SESSION_REVOKED` (see [Realtime at the
 Edge](#realtime-at-the-edge)). Every process that holds a socket for
-that session closes it on the message.
-The expiry covers a frame that was missed.
+that session closes it on the message. The expiry covers a frame that
+was missed.
 
 What a socket carries in the meantime is hints, never a field of an
 entity. So the window a missed frame opens is one of metadata, and it
@@ -1715,8 +1716,8 @@ class SoftDeletableMixin:
 ```
 
 Concrete table classes live in their owning namespace's `tables/`
-folder and compose the mixins their entity has, in the same house-style
-order as the OM:
+folder and compose the mixins their entity has, in the order of the OM
+(see [Naming Entities](#naming-entities)):
 
 ``` python
 # acme/om/inventory/storage/tables/warehouses.py
@@ -1745,13 +1746,13 @@ frozen. This is the one deliberate exception to the OM immutability
 rule, and it is bounded: rows never leave the storage impl.
 
 Column order is part of the model. Every table opens with its mixin
-columns in house-style order, and its own columns follow. A new column
-is declared at the end of its class, so the physical table and the
-class stay in step when the column is appended.
+columns, and its own columns follow. A new column is declared at the
+end of its class, so the physical table and the class stay in step
+when the column is appended.
 
 > **Python tip:** SQLAlchemy places mixin columns after the class's own
 > columns, whatever the base order says. The negative `sort_order`
-> bands on the mixins pin the header block back to the front.
+> bands on the mixins above pin them back to the front.
 
 Five index rules cover almost every table:
 
@@ -1816,9 +1817,9 @@ staged like every other migration, and for the same reason. A rollout
 runs two releases at once. The release that adds the field reads it and
 does not write it: its dump names the field in `exclude`, so a row it
 writes carries no key the release before it forbids. The release after
-it drops the exclusion and writes it. A field written
-before its readers are out is an unreadable row in the process still
-serving beside them.
+it drops the exclusion and writes it. A field written before its
+readers are out is an unreadable row in the process still serving
+beside them.
 
 A rename or a removal is a migration that rewrites the column, in the
 expand-and-contract shape of [Migrations](#migrations), before the
@@ -2343,10 +2344,9 @@ impl does the same when it needs to.
     cannot cross tenants at the key level. Topic payloads carry
     `org_id`, so a consumer can filter before it acts.
 -   Cross-tenant reference data uses `EMPTY_UUID` as the `org_id` on
-    cache and bucket calls. The system scope is the zero UUID by value,
-    so infra checks against it without importing the OM. An impl treats
-    it as a reserved system scope. System keys and tenant keys live in
-    disjoint namespaces, and a tenant caller cannot read or write
+    cache and bucket calls (see [Identifiers](#identifiers)). The
+    system scope is the zero UUID by value, so infra checks against it
+    without importing the OM, and a tenant caller cannot read or write
     system data by mistake.
 -   Wire-up happens in the app container at boot (see [The App
     Container](#the-app-container)). Managers and service impls receive
@@ -3329,10 +3329,10 @@ process signed. It does not narrow what that process may assert.
 Containment is a second thing. It is a declaration, per issuer, of what
 that issuer may assert: the tenants it may name and the principals it
 may speak for. The token names no role, so the callee reads the role
-from the tenancy domain when it rebuilds the context. The callee verifies the
-signature, reads the declaration for the issuer that signed, and
-refuses a credential that reaches past it, before the gateway rebuilds
-`OpContext` from it. The declaration is configuration of the callee,
+from the tenancy domain when it rebuilds the context. The callee
+verifies the signature, reads the declaration for the issuer that
+signed, and refuses a credential that reaches past it, before the
+gateway rebuilds `OpContext` from it. The declaration is configuration of the callee,
 alongside the keys it verifies against, so an issuer cannot widen its
 own reach by minting a wider token.
 
@@ -3382,12 +3382,13 @@ freshly minted secret in the clear.
 Paging is fixed too. A list returns a bare list with a server-clamped
 `limit`: the route takes the limit the client asks for, the manager
 clamps it to its page size, and the storage read carries it in the
-statement (see [Storage Principles](#storage-principles)). A list that
-can outgrow the clamp returns a page envelope (`items` and
-`next_cursor`) and pages by an opaque cursor over the
-list's own order; that cursor is the id when the order is the creation
-order, since a v7 id sorts by time. An append-only stream pages by a
-monotonic sequence number (`after_seq`). Nothing pages by an offset.
+statement (see [Storage Principles](#storage-principles)).
+
+A list that can outgrow the clamp returns a page envelope, `items` and
+`next_cursor`. It pages by an opaque cursor over the list's own order.
+When that order is the creation order, the cursor is the id, since a
+v7 id sorts by time. An append-only stream pages by a monotonic
+sequence number (`after_seq`). Nothing pages by an offset.
 
 Inside `/v1` a view only gains fields, and a request only gains
 optional ones. A removal or a rename is a new prefix.
@@ -3605,15 +3606,15 @@ message processed, so the next run sees the same input again. An
 operator may replay a backlog to recover from a bad deploy. Message
 handlers must be safe to run more than once with the same payload.
 
-The recipe is independent of the implementation. Every message carries
-a producer-generated idempotency key: a `uuid_v7` is natural. A
-message that came from outside carries a UUID v5 over the provider's
-name and its delivery id (see [Queues](#queues)). The
-handler dedupes before doing work, through a unique index on the key
-or a storage-level upsert keyed on it. Each pipeline stage forwards
-the key and applies the same check. [Topics](#topics) shows this on
-`TopicPayload`. The same pattern fits a work item, a queued webhook
-delivery, and the `Idempotency-Key` header at the HTTP edge.
+The recipe is independent of the implementation. Every message carries a
+producer-generated idempotency key: a `uuid_v7` is natural. A message
+that came from outside carries a UUID v5 over the provider's name and
+its delivery id (see [Queues](#queues)). The handler dedupes before
+doing work, through a unique index on the key or a storage-level upsert
+keyed on it. Each pipeline stage forwards the key and applies the same
+check. [Topics](#topics) shows this on `TopicPayload`. The same pattern
+fits a work item, a queued webhook delivery, and the `Idempotency-Key`
+header at the HTTP edge.
 
 The key lives on the row the effect produces, or marker and effect are
 one named atomic write (the idempotent consumer pattern). A marker
@@ -3957,9 +3958,9 @@ an app enqueues that way.
 The two paths differ in one field. The relayed enqueue presents the
 outbox row's id as the item's `idempotency_key`, and as the item's id
 too. Both are the same on every run of the relay, and it never mints a
-fresh id. The direct create presents its caller's. Either
-way the enqueue is one insert in storage under one key, so a relay that
-runs twice and a caller that retries both meet the row already there.
+fresh id. The direct create presents its caller's. Either way the
+enqueue is one insert in storage under one key, so a relay that runs
+twice and a caller that retries both meet the row already there.
 
 The item's `request_id` is the request that caused the work. Its
 `traceparent` is that request's trace context.
@@ -4486,9 +4487,9 @@ see [Cloud: AWS](#cloud-aws)), its own bundle, and its own routes under
 memberships, so it has no picker and no org chip.
 
 Its authority comes from the operator allowlist and from the operator
-plane's gate in [The Gateway](#the-gateway), which admits only the
-person's own sign-in. Not from a
-tenant role, and not from a flag in the portal.
+plane's gate in [The Gateway](#the-gateway), which admits a person only
+through their own sign-in. It never comes from a tenant role, or from
+a flag in the portal.
 
 > **Principle:** The operator console shares the portal's stack and
 > design, never its security context.
@@ -4722,9 +4723,9 @@ accounts, so both carry a retention. Each registry keeps a bounded
 number of images and never expires one production runs. The production
 deploy marks such an image when it promotes it: it adds a new tag,
 under a prefix the retention spares. Tags are immutable, so the deploy
-adds a tag and never moves one. Each artifacts bucket
-expires bundles after a retention that outlasts the last few releases,
-so a redeploy of the previous release always finds its copies.
+adds a tag and never moves one. Each artifacts bucket expires bundles
+after a retention that outlasts the last few releases, so a redeploy
+of the previous release always finds its copies.
 
 > **Principle:** One cloud account per environment, and nothing spans
 > two but the replication into production's registry and artifacts
@@ -5060,10 +5061,10 @@ agent holding one may look at everything it reaches.
 
 A cloud credential that writes is held by a pipeline, or by the
 administrator for its two named steps, creating an environment and
-destroying one. The one other is a person's everyday permission set in
-a smaller environment, when the team widens it as a named choice (see
-[Operator Roles](#operator-roles)). No agent holds that one, and no
-skill runs under it.
+destroying one. One more credential may write: a person's everyday
+permission set in a smaller environment, when the team widens it as a
+named choice (see [Operator Roles](#operator-roles)). No agent holds
+that one, and no skill runs under it.
 
 The administrator is the one deliberate exception to that boundary.
 Its permission set is wide, because the bootstrap writes trust and
@@ -5142,9 +5143,8 @@ declares `staging` then gets neither the environment nor the role.
 Each environment holds its own variables under the same names, the
 role and the state bucket among them. So a job reads the value of the
 environment it declared, and a staging job never holds a production
-value. The
-federation replaces every cloud key, so the repository holds no cloud
-secret.
+value. The federation replaces every cloud key, so the repository
+holds no cloud secret.
 
 The **investigator** reads everything and writes nothing. There is one
 per environment. It reads every log group, every metric, every trace,
@@ -5344,14 +5344,17 @@ Beside them, one row for the backing services: the database, the
 cache, the queue.
 
 A small default set of alarms goes to one topic per environment, and
-a person's address subscribes to it. The set covers the edge (the
-error ratio, the latency, and the unhealthy targets at the load
-balancer), the processes (a
-service running below its desired count), the database (its
-processor and its free storage), and, in a system with a queue, the
-queue (the age of the oldest waiting item, parked and failed work, and
-the outbox's lag). The thresholds are numbers, and the numbers are the
-system's. The set and the topic are the shape.
+a person's address subscribes to it. The set covers four things:
+
+- the edge: the error ratio, the latency, and the unhealthy targets at
+  the load balancer;
+- the processes: a service running below its desired count;
+- the database: its processor and its free storage;
+- in a system with a queue, the queue: the age of the oldest waiting
+  item, parked and failed work, and the outbox's lag.
+
+The thresholds are numbers, and the numbers are the system's. The set
+and the topic are the shape.
 
 A tenant admin's view of their own organization is a product screen:
 a feature served by the app-specific service from the activity role.
@@ -5858,12 +5861,6 @@ Logging uses Python's standard `logging` module. It is the
 platform-wide paradigm. Every library in our stack either uses it or
 integrates with it. We do not bring in a competing library.
 
-> **Python tip:** a `contextvars.ContextVar` set by the gateway
-> middleware and read by a `logging.Filter` is the whole mechanism.
-> The context variable is a convenience, not the source of truth. That
-> is still `request_id` on the request stage, which every stage
-> inherits.
-
 Every module gets its logger with `logging.getLogger(__name__)`. The
 logger hierarchy then mirrors the OM namespace tree.
 
@@ -5874,6 +5871,11 @@ environments and human-readable locally, switched by an env flag.
 The request id is attached through a logging filter. The filter reads
 a context variable set at the entry point that builds the context, so
 operations never need to remember to include it.
+
+> **Python tip:** a `contextvars.ContextVar` read by a
+> `logging.Filter` is the whole mechanism. The context variable is a
+> convenience, not the source of truth. That is still `request_id` on
+> the request stage, which every stage inherits.
 
 Every line carries four things: the service it came from, the
 environment it ran in, the request id, and the request that caused it
@@ -6204,10 +6206,8 @@ End-to-end tests build the container over the memory storage root and
 the local infra root, every backend a twin, and drive the app
 in-process. Markers `integration`, `e2e`, and `slow` decide which gate
 runs what. The tests [Records of Decisions](#records-of-decisions)
-lists live in the unit suite, except the tenancy scope check, which
-reads a migrated database and runs in the integration job beside the
-schema diff (see [The Second Fence](#the-second-fence)). The rules
-`arch-check` decides run in the fast gate beside them.
+lists run where that list says, and the rules `arch-check` decides run
+in the fast gate.
 
 A run against a deployed environment checks what no in-process test
 can: the gateway in front, the credentials, the network, the worker
@@ -6547,19 +6547,5 @@ beside the rules it touches.
 
 ## Next: An End-to-End Reference Implementation
 
-This document describes a system one layer at a time, with a commerce
-platform as the running example.
-
-The next step is to apply it whole. One small, scoped project, fun to
-build, that follows every section end to end, from the object model at
-the center to the apps at the edge, in the shapes and the technologies
-named here. Where it does not yet, it records the gap as a deviation,
-in the shape of [Records of Decisions](#records-of-decisions), so the
-distance between the text and the code is always written down.
-
-That project is Tadas, a to-do app for teams, used by people and by
-agents alike. Its repository is <https://github.com/baristaze/tadas>.
-
-A guideline is a claim until something is built with it. A reader who
-wants to see a shape in running code rather than in a snippet starts
-there.
+Tadas, a to-do app for teams, applies this document end to end and
+records each gap as a deviation: <https://github.com/baristaze/tadas>.
