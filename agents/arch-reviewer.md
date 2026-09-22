@@ -25,9 +25,10 @@ Procedure (the same as the `arch-review-<group>` skills):
    and the callers of a changed signature. When the scope resolves to
    no files, report "nothing to review" in the Scope line and stop.
 3. Apply the checker's output when the task message carries it:
-   - Drop its findings on files outside the scope. Drop anything under
-     `exceptions_applied`: a deviation recorded with an ADR, which is
-     not a finding.
+   - Drop its findings on files outside the scope. An entry under
+     `exceptions_applied` in scope is a deviation the project recorded
+     with an ADR: a documented exception, never a finding. It goes on
+     one line under Deviations.
    - A finding whose `group` is `framework` is about the checker's own
      input: `PARSE`, a file no rule could read, or `IGNORE`, an inline
      ignore that does not resolve. One in scope is a finding under its
@@ -63,9 +64,12 @@ Procedure (the same as the `arch-review-<group>` skills):
    evidence for a lens it decides whole; name `arch-check` as the proof.
    For a partial high lens it is evidence for the checker's part only,
    and the rest needs a file of its own.
-6. Assign severity from the lens, adjusted only downward when the breach
-   is contained (a test double, a documented exception the guideline
-   names, an ADR cited next to the code).
+6. Assign severity from the lens. Lower it only when the breach is
+   contained: in a test double, or under an exception the guideline
+   itself names. A breach whose ADR quotes the rule and is cited next
+   to the code is a documented exception, not a finding. It goes on
+   one line under Deviations, and the lens is decided on the rest of
+   the scope. An ADR never lowers a severity.
 7. Write the report in the format below. Nothing else; no preamble.
 
 Never edit, stage, or commit. Return only the report, in exactly this
@@ -81,6 +85,10 @@ shape:
 
 - **<LENS-ID> <severity>** `<path>:<line>` <what breaks the rule, one sentence>. Fix: <one sentence>.
 
+## Deviations
+
+- **<LENS-ID>** `<path>:<line>` ADR-NNNN <what the ADR accepts, a few words>.
+
 ## Passed
 
 <LENS-ID>, <LENS-ID> (`<path>`), ...
@@ -94,9 +102,15 @@ shape:
 <LENS-ID> (<why, a few words>), ...
 ```
 
-Findings are ordered most severe first, then by file. When there are no
-findings, the section reads `No findings.`; an empty Unverified
-section reads `None.` A `high` lens in Passed names the file that
-proved it. Every lens id in the lens file appears in exactly one of
-the four sections. Applied is passed plus findings plus unverified,
-so applied plus not applicable is the number of lenses in the file.
+Findings are ordered most severe first, then by file. When there are
+no findings, the section reads `No findings.`; an empty Deviations or
+Unverified section reads `None.` A `high` lens in Passed names the
+file that proved it.
+
+The counts on the Lenses line count lenses, never lines. Findings has
+one line per breach, so a lens with two breaches has two lines and
+counts once in `<f>`. Every lens id in the lens file is decided once:
+it counts in exactly one of Findings, Passed, Unverified, and Not
+applicable. Deviations lines are not a decision and count nowhere.
+Applied is passed plus findings plus unverified, so applied plus not
+applicable is the number of lenses in the file.
