@@ -1167,7 +1167,7 @@ protected `main`, a scan on push, and pinned Terraform.
 **Source.** Deployment, Security Defaults; Technology Choices and How
 to Override Them, Versions.
 
-**Look for.** The network's subnets and egress; the encryption and TLS
+**Look for.** The network's egress; the encryption and TLS
 settings of the database, the cache, and the buckets; the trail in each
 bootstrap root; the web firewall, or the record of why there is none;
 production's database: its zones, deletion protection, recovery window,
@@ -1175,13 +1175,14 @@ and final snapshot; the branch protection and the code owners; the
 registry's scan setting; `required_version`, the provider constraints,
 and the committed `.terraform.lock.hcl` of every root.
 
-**Violation.** A task or a database with a public address; a store
+**Violation.** A private subnet with no named egress; a store
 unencrypted at rest, or a database that accepts a connection without
 TLS; an account with no trail; a production edge with no firewall and
 no record of the choice; a production database in one zone with
 customers on it, or with no point-in-time recovery; a `main` that
 merges without review; a root with no lock file or an unpinned
-provider. (The second factor at sign-in is OPS-07.)
+provider. (A task or a database with a public address is NET-12; the
+second factor at sign-in is OPS-07.)
 
 **Severity.** medium
 

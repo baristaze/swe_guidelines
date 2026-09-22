@@ -297,17 +297,18 @@ store.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
-**Look for.** The subnet and security-group declarations for services
-and workers; whether a runtime that offers mutual TLS at no cost has
-it on; certificate handling in service impls; how HTTP clients are
+**Look for.** The subnet and security-group declarations for services,
+workers, and the database, and which of them carries a public
+address; whether a runtime that offers mutual TLS at no cost has it
+on; certificate handling in service impls; how HTTP clients are
 constructed and whether a bundled certificate store stands in for the
 system's.
 
-**Violation.** A service or worker with a public address, which is an
-exposure and not a convention slip, or a security group open past the
-platform's own processes; an HTTP client pinned to a bundled CA set so a
-corporate proxy or private CA fails; TLS configured per component
-instead of once at boot.
+**Violation.** A service, a worker, or a database with a public
+address, which is an exposure and not a convention slip, or a security
+group open past the platform's own processes; an HTTP client pinned
+to a bundled CA set so a corporate proxy or private CA fails; TLS
+configured per component instead of once at boot.
 
 **Severity.** medium
 
