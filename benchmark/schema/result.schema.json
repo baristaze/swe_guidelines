@@ -156,6 +156,19 @@
               "reason": { "type": "string" }
             }
           }
+        },
+        "missed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["provider", "count", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "provider": { "type": "string" },
+              "count": { "type": "integer", "minimum": 1 },
+              "reason": { "type": "string" }
+            }
+          }
         }
       }
     }
