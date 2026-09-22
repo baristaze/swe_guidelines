@@ -469,6 +469,19 @@ def test_model_copy_fed_an_annotated_dump_is_om_10(tmp_path):
     assert "model_copy(update=...) fed a dump" in messages(report)[0]
 
 
+@pytest.mark.parametrize(
+    "update",
+    ["{'owner': other.model_dump()}", "dict(owner=other.model_dump())", "{'title': 't', **{'owner': other.model_dump()}}"],
+)
+def test_model_copy_fed_a_dump_as_one_field_is_om_10(tmp_path, update):
+    source = IMPL_SOURCE + (
+        f"\n\ndef bad(current: Task, other: Task) -> Task:\n    return current.model_copy(update={update})\n"
+    )
+    code, report = run(tmp_path, "OM-10", {TASK_IMPL: source})
+    assert code == 1
+    assert "model_copy(update=...) fed a dump" in messages(report)[0]
+
+
 def test_a_scalar_taken_out_of_a_dump_is_not_om_10(tmp_path):
     source = IMPL_SOURCE + (
         "\n\ndef fine(current: Task, other: Task) -> Task:\n"
@@ -627,6 +640,15 @@ def test_the_entry_module_of_a_namespace_is_an_option(tmp_path):
     pyproject = '[tool.arch-check]\npackage = "acme"\n\n[tool.arch-check.options.OM-14]\nentry = { tasks = "board" }\n'
     code, _ = run(tmp_path, "OM-14", files, pyproject)
     assert code == 0
+
+
+@pytest.mark.parametrize("value", ["{ tasks = 5 }", "{ tasks = [5] }", "{ tasks = [] }", '{ tasks = "" }'])
+def test_a_malformed_entry_option_exits_2(tmp_path, value):
+    pyproject = f'[tool.arch-check]\npackage = "acme"\n\n[tool.arch-check.options.OM-14]\nentry = {value}\n'
+    write_project(tmp_path, pyproject=pyproject)
+    code, _, err = check(tmp_path, "--rule", "OM-14")
+    assert code == 2
+    assert "[tool.arch-check.options.OM-14] `entry`" in err
 
 
 def test_the_outbox_entry_module_is_manager_or_relay(tmp_path):

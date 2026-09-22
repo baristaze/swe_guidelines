@@ -498,16 +498,18 @@ def chain_params(idx: Index, module: str, fn: ast.FunctionDef | ast.AsyncFunctio
 
 
 def is_dump(node: ast.AST | None, dumped: set[str]) -> bool:
-    """Whether a value is a dump: `x.model_dump(...)`, a name bound to one, or a dict display or `dict(...)`
-    spreading one. A scalar pulled out of a dump (`x.model_dump()["title"]`) has the field's own type and is not."""
+    """Whether a value is or holds a dump: `x.model_dump(...)`, a name bound to one, or a dict display or
+    `dict(...)` that spreads one or sets a field to one (`{"owner": x.model_dump()}`): `model_copy` does not
+    validate, so the field would hold a dict. A scalar pulled out of a dump (`x.model_dump()["title"]`) has the
+    field's own type and is not."""
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "model_dump":
         return True
     if isinstance(node, ast.Name):
         return node.id in dumped
     if isinstance(node, ast.Dict):
-        return any(k is None and is_dump(v, dumped) for k, v in zip(node.keys, node.values, strict=True))
+        return any(is_dump(v, dumped) for v in node.values)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
-        return any(k.arg is None and is_dump(k.value, dumped) for k in node.keywords)
+        return any(is_dump(k.value, dumped) for k in node.keywords)
     return False
 
 
@@ -758,9 +760,7 @@ def namespace_shape(project: Project) -> Iterator[Violation]:
     for name, directory in namespaces(project, skip):
         ns = f"{om}.{name}"
         wanted = entry.get(name, "manager")
-        candidates = [wanted] if isinstance(wanted, str) else wanted if isinstance(wanted, list) else []
-        if not candidates or not all(isinstance(c, str) for c in candidates):
-            continue
+        candidates = [wanted] if isinstance(wanted, str) else list(wanted) if isinstance(wanted, list) else []
         module = next((c for c in candidates if project.module(f"{ns}.{c}") is not None), candidates[0])
         init = project.module(ns)
         for part, is_pkg in ((module, False), ("types", True), ("impl", True), ("storage", True)):

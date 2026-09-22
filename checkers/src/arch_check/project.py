@@ -100,7 +100,8 @@ class Project:
 
         `allowed` is every key the rule reads; any other key under the rule's
         table is a `ConfigError`, so a misspelt option never silently falls
-        back to the default. The value must have the default's type.
+        back to the default. The value must have the default's type, and a
+        table's entries are each a name or a non-empty list of names.
         """
         table = self.config.options.get(rule, {})
         unknown = sorted(set(table) - set(allowed))
@@ -111,6 +112,12 @@ class Project:
         value = table[key]
         if not isinstance(value, type(default)) or (isinstance(value, list) and not all(isinstance(v, str) for v in value)):
             raise ConfigError(f"[tool.arch-check.options.{rule}] `{key}` must be a {type(default).__name__}")
+        if isinstance(value, dict):
+            for name, item in value.items():
+                if not names(item):
+                    raise ConfigError(
+                        f"[tool.arch-check.options.{rule}] `{key}`: {name} must be a name or a non-empty list of names"
+                    )
         return value
 
     # --- names
@@ -282,6 +289,13 @@ class Project:
     def lines(self, rel: str) -> list[str]:
         text = self.read(rel)
         return text.splitlines() if text is not None else []
+
+
+def names(value: object) -> bool:
+    """Whether an option's table entry is a name or a non-empty list of names, the one shape a table option takes."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    return isinstance(value, list) and bool(value) and all(isinstance(v, str) and v.strip() for v in value)
 
 
 # --- ast helpers
