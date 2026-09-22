@@ -19,25 +19,29 @@ platform's own secrets, the ones the secret store holds, to `async`
 ## OPS-01 Every task is a skill, and the credential is the boundary
 
 **Principle.** Every operational task is a skill a person runs with an
-agent. The safety boundary is the credential the skill holds, never
-the prompt. A cloud credential a person or an agent holds reads and
-never writes; one that writes is held by a pipeline, or by the
-administrator for its two named steps, creating and destroying an
-environment.
+agent, and the boundary is the credential it holds, never the prompt.
+A cloud credential that writes is held by a pipeline, or by the
+administrator for creating and destroying an environment. On the
+platform, the one writing identity an agent runs under is the traffic
+generator's.
 
-**Source.** Operations.
+**Source.** Operations; Operational Skills; Traffic and Stress.
 
 **Look for.** The operational tasks the tree holds (investigating an
 alarm, tracing a complaint, planning an infrastructure change, driving
-traffic) and whether each is a skill; the credential each skill runs
-under and whether it can write; what stands between an agent and a
-write, a prompt or a credential.
+traffic) and whether each is a skill; the cloud credential each skill
+runs under and whether it can write, and the operator-plane identity
+it holds; what stands between an agent and a write, a prompt or a
+credential.
 
 **Violation.** An operational task done by hand from a runbook with no
-skill; a skill an agent runs under a credential that writes; a prompt's
-instruction ("do not apply") as the only thing keeping an agent from a
-write; a writing cloud credential held by a person for anything but the
-administrator's two steps.
+skill; a skill an agent runs under a cloud credential that writes, or
+under a writing operator-plane identity other than the provisioner, the
+traffic generator's own (OPS-20); a prompt's instruction ("do not
+apply") as the only thing keeping an agent from a write; a writing
+cloud credential a person holds outside the administrator's two steps.
+A smaller environment's everyday set, widened for hands-on work as a
+named choice that no skill runs under, is the one exception.
 
 **Severity.** high
 
@@ -50,19 +54,21 @@ administrator is a role a person holds, granted for the run: it creates
 and destroys an environment and is the break-glass, recorded and
 time-bound, and no other skill runs under it.
 
-**Source.** Operations, Operator Roles.
+**Source.** Operations, Operator Roles; Operational Skills.
 
 **Look for.** The roles each bootstrap root declares and the profiles
 that hold them; the permissions of the administrator permission set;
 which skills name an administrator profile.
 
-**Violation.** A fifth operator role, or a role with no profile (a
-person's everyday permission set is not one: no skill runs under it);
-a person's everyday profile holding the administrator role; an
+**Violation.** A fifth operator role, or a role with no profile; a
+person's everyday profile holding the administrator role; an
 administrator permission set held between runs; a skill other than
 the create and destroy runs that names the administrator profile; an
 administrator role assumed by a pipeline; a break-glass grant with
 no record, no time bound, or no reconciling pull request after it.
+A person's everyday permission set is not a fifth role, since no skill
+runs under it, and neither is the provisioner, an identity of the
+operator plane that holds no cloud role.
 
 **Severity.** high
 
