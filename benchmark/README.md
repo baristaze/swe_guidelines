@@ -66,7 +66,6 @@ standard deviation. A Claude subject judged by a panel that includes
 Claude is named in the summary under `self_judged`. A model may favor
 its own kind, so read the Anthropic score beside the others.
 
-
 Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client
 is handed `GEMINI_API_KEY` and the ambient `GOOGLE_API_KEY` is taken
@@ -83,6 +82,10 @@ is dropped, not handed on, and the stream says so. Give the subject a
 key of its own, one you can cap and revoke on its own. `--strict`
 refuses a skill run whose subject has none.
 
+Out of the subject's environment is not out of its reach. The judges'
+keys stay in the harness process, out of the subject's reach, in the
+container runtime only. On the host the subject runs as the harness's
+own user and can read the harness's environment (see Runtimes).
 
 ## What a run leaves behind
 
@@ -166,10 +169,12 @@ measurement.
   folder inside it (`{remote}` in the sync and fetch commands names
   it). So no run finds what an earlier run left there. The subject
   runs inside the repeat's folder, so what it writes is what fetch
-  brings back. The run's folder is removed when the run ends.
- The prefix has to hand its words on as words, as
-  `limactl shell` and `docker exec` do; `ssh` joins them into one
-  remote shell line and needs a wrapper.
+  brings back. The run's folder is removed when the run ends. The
+  prefix has to hand its words on as words, as `limactl shell` and
+  `docker exec` do; `ssh` joins them into one remote shell line and
+  needs a wrapper. The plugin checkout at `remote_plugin` is whatever
+  the operator put there, not a staged payload. If it is a whole
+  checkout, the answer files are in it, and the subject can read them.
 
 A path on this machine means nothing in a container or on another
 machine. So the runtime answers where the plugin checkout and the
@@ -221,9 +226,8 @@ whatever that default is today. The run records the pin in `run.json`
 and in `subject.model`. Each repeat records `subject_models`, the models
 the JSON envelope reports under `modelUsage`, and a run notes a repeat
 whose envelope does not report the pinned model. An envelope with
-`is_error` set is a failed repeat, whatever the exit code. `kind: command`
-
-runs `subject.argv`. `kind: qa` sends `subject.prompt` to
+`is_error` set is a failed repeat, whatever the exit code.
+`kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
 
 An unknown key in a scenario file is refused rather than ignored: a
@@ -255,7 +259,10 @@ scenario can give the judges evidence:
   target does right. The file lives beside the target, never inside
   it, and the subject gets a copy of the target alone and a copy of
   the plugin that holds no fixture. So the answers are on no path the
-  subject is given, and in the container they are out of its reach.
+  subject is given. The subject cannot read the answers in the
+  container runtime only: on the host it can read them at their fixed
+  path in the checkout, and on another machine it can read them in
+  whatever checkout `remote_plugin` names.
   On any other target the list would be wrong, so a run with
   `--target` drops it and says so; the source still goes to the
   judges.
@@ -285,7 +292,6 @@ Every provider answers in the same shape through its own
 structured-output path: `score` from 0 to 100, `verdict` of `pass`,
 `weak`, or `fail`, `findings` of `{severity, note}`, `strengths`, and a
 short `rationale`.
-
 
 `models.yaml` holds the matrix: one model per provider, the fallbacks
 tried in order when a model is refused or out of quota, and the effort
@@ -329,7 +335,6 @@ answers only a request that names it. Bound to `0.0.0.0`, it answers
 any address of this machine and the machine's own name. It refuses
 every other name, so a page on a name that resolves here gets nothing.
 
-
 ## The words
 
 - "benchmark", always the whole word.
@@ -364,7 +369,6 @@ knows by name, and anything shaped like a provider, GitHub, or AWS key.
 The summary and the upload run only when the redaction succeeded.
 
 ## Tests
-
 
 The harness logic is tested from the repository root, in
 `tests/test_benchmark_*.py`, with the standard library and fake judges,
