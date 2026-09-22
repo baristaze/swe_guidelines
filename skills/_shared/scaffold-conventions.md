@@ -187,15 +187,26 @@ the order the guideline presents them, never by number.
   Business Layer (Shape of an Operation) states. A `core`-role write
   lands the core row and its `OutboxRow`s in one storage method,
   `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
-  once; a tenant write's row comes from `outbox_row(ctx, kind,
-  target_id, payload)`, so it carries the actor, the request id, the
-  trace context, and the app of the write. An operator write's row
-  never does: the operator managers stamp it from the identity id and
-  the request id their stage carries, through a helper of the operator
-  plane, as Stages and Scopes states, and an operator route's
-  idempotency marker is keyed on the operator's identity with no
-  tenant, since `OperatorContext` carries no `org_id`. The caller constructs the entity whole and hands it to
-  `create_<entity>`; the one exception is an entity that carries a
+  once. A relay in the request path never raises: the write has
+  committed by then, so a failure to relay is logged and left to the
+  sweep, and the request answers as the success it was, as The Storage
+  Layer (Database Roles) states. A tenant write's row comes from
+  `outbox_row(ctx, kind, target_id, payload)`, so it carries the
+  actor, the request id, the trace context, and the app of the write.
+  An operator write's row never does: the operator managers stamp it
+  from the identity id and the request id their stage carries, through
+  a helper of the operator plane, as Stages and Scopes states. An
+  operator route's idempotency marker fills the marker's own fields:
+  its `org_id` is `EMPTY_UUID`, since `OperatorContext` carries none,
+  and its `user_id` is the operator's identity id, so its storage
+  calls run under the system scope and are listed among the
+  system-scope methods. The caller constructs the entity whole and hands it to
+  `create_<entity>`. A create that can collide on more than one key
+  (the id and a unique key the table declares) returns an
+  `InsertOutcome`, `INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, and the
+  manager reads the row back by the key that collided; a create with
+  the id as its only key returns `bool`. The one exception to the
+  whole entity is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
   row, re-mints the secret on it in the same named atomic write, its
