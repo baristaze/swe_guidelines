@@ -110,17 +110,36 @@ the order the guideline presents them, never by number.
   `arch-check` reads by default); the migration that creates the
   table creates its policy, with `ENABLE` and `FORCE ROW LEVEL
   SECURITY`; and the Postgres base
-  opens every session through one funnel that takes `org_id` and an
-  optional `user_id` and sets `app.org_id`, `app.user_id`, and
+  opens every session through one funnel, `_session_for(stmt, *,
+  org_id=None, user_id=None, identity_id=None)`, which takes the scope
+  of the call by keyword and sets `app.org_id`, `app.user_id`, and
   `app.identity_id` with `set_config(..., true)`, so the settings die
-  with the transaction. `EMPTY_UUID` as the `org_id` is the system
-  scope, passed explicitly and never a default, by the methods the
-  `tenantless` list enumerates. Nothing in a manager or an impl assumes
-  the policy is there. The login the application connects with is
-  never a superuser and never carries `BYPASSRLS`, and an integration
-  test asserts that on the live connection, beside the one that reads
-  `pg_class` and `pg_policies` for every table in the scope map, as
-  The Storage Layer (The Second Fence) states.
+  with the transaction and a setting the call does not name stays
+  unset. The base's `_upsert` and `_insert` take the same keyword-only
+  scope arguments. `EMPTY_UUID` as the `org_id` is the system scope,
+  passed explicitly and never a default, by the methods the
+  `tenantless` list enumerates: the cross-tenant sweeps, and the
+  lookups that run before an identity is known (sign-in by the email's
+  digest, and the lookups by credential digest: the API key, the
+  session token, the socket ticket). Everything after such a lookup
+  runs under the scope it found. Nothing in a manager or an impl
+  assumes the policy is there.
+- Three logins reach the database, as The Storage Layer (The Second
+  Fence) names them, and each has its own URL in settings, in the
+  local compose file, and among the Terraform secrets: the migration
+  login, which owns the schema and runs the migrations and nothing
+  else; the runtime login, which every request's connection uses and
+  which holds `SELECT`, `INSERT`, `UPDATE`, and `DELETE` and owns
+  nothing; and the system login, the runtime login's twin for the
+  system scope, which the `org` and `identity` policies admit to the
+  system scope and nothing else does. The funnel selects the system
+  login's engine when the call names the system scope, and the
+  runtime login's engine otherwise; no caller picks an engine. None of
+  the three is a superuser or carries `BYPASSRLS`. An integration
+  test asserts that on each live connection, and that the runtime
+  login owns no table and reads nothing when it names the system
+  scope, beside the test that reads `pg_class` and `pg_policies` for
+  every table in the scope map.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.

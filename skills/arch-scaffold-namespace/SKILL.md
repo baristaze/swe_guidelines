@@ -41,7 +41,7 @@ Under `om/src/<root>/om/<ns>/`:
 | `impl/manager.py`          | `<Ns>ManagerImpl(<Ns>ManagerInterface)` taking `<Ns>StorageInterface` and `OutboxRelayInterface`, writing the core row and its `OutboxRow` in one storage call on every write and relaying the row at once; the relay dispatches on the row's `kind`, and an entity change appends the `Event` and publishes `ENTITY_CHANGED`, so the realtime channel has a producer |
 | `storage/__init__.py`      | `<Ns>StorageInterface`, a docstring, no methods yet                     |
 | `storage/impl/__init__.py` | empty                                                                   |
-| `storage/impl/postgres.py` | `<Ns>StoragePostgresImpl(PgStorageBase, <Ns>StorageInterface)`; every method opens its session through the base's funnel, passing the call's scope (`org_id`, and `user_id` when the call narrows to one person), which is what sets the transaction settings the database policies read, as The Storage Layer (The Second Fence) states |
+| `storage/impl/postgres.py` | `<Ns>StoragePostgresImpl(PgStorageBase, <Ns>StorageInterface)`; every method opens its session through the base's funnel, passing the call's scope by keyword (`_session_for(stmt, org_id=org_id)`, with `user_id=user_id` when the call narrows to one person, or `identity_id=identity_id` on a table scoped to an identity), which is what selects the login's engine and sets the transaction settings the database policies read, as The Storage Layer (The Second Fence) states |
 | `storage/impl/memory.py`   | `<Ns>StorageMemoryImpl(MemoryStorageBase, <Ns>StorageInterface)`        |
 | `storage/tables/__init__.py` | empty; the entity skill adds one module per table                     |
 
