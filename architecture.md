@@ -871,7 +871,7 @@ the stronger one cannot be handed the weaker.
 `OperatorContext` adds one field to `IdentityContext`: what the
 operator's allowlist entry grants. An entry grants read, or read and
 write, so a read operator is refused a write the way a tenant viewer
-is. An operator with no second factor enrolled yet holds `ENROL` alone
+is. An operator with no confirmed second factor yet holds `ENROL` alone
 (see [The Gateway](#the-gateway)). The type itself is the evidence that the allowlist was consulted.
 
 The chain continues below `OpContext` only when the domain earns it. A
@@ -3004,10 +3004,12 @@ before admission, and refuses a sign-in that carries none. A tenant's
 sign-in does not require a second factor. The operator plane reads
 across tenants, so a password alone never admits to it.
 
-An operator enrols a TOTP secret once. The secret is stored encrypted,
-under a key from the secret store (see [Secrets](#secrets)). Until
-then, the gate admits the sign-in with `OperatorPermission.ENROL`
-alone, and enrolment is the one route that permission reaches. A code
+An operator enrols a TOTP secret once: one call mints it, and a
+first code confirms it. The secret is enrolled once it is confirmed.
+It is stored encrypted, under a key from the secret store (see
+[Secrets](#secrets)). Until it is confirmed, the gate admits the
+sign-in with `OperatorPermission.ENROL` alone, and the two enrolment
+calls are all that permission reaches. A code
 that was already used is refused, even inside its time step.
 
 The gate then asks the tenancy manager to admit that identity as an
