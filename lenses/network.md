@@ -676,21 +676,25 @@ call that reaches a router without the gateway's dependencies.
 
 **Severity.** high
 
-## NET-28 The request id is accepted or minted at the edge
+## NET-28 The request id is accepted as a UUID or minted at the edge
 
-**Principle.** The gateway accepts an inbound `x-request-id` or mints
-one, stamps it on the context, echoes it in the response header, and
-attaches it to the log context and the trace span.
+**Principle.** The gateway accepts an inbound `x-request-id` only when
+it parses as a UUID, and otherwise mints one. It stamps the id on the
+context, echoes it in the response header, and attaches it to the log
+context and the trace span.
 
 **Source.** The Network Layer, The Gateway.
 
-**Look for.** The request-id middleware and what it writes to the
-context, the response, the log context, and the span; whether the
-socket route gets the same treatment.
+**Look for.** The request-id middleware, how it parses an inbound
+header, and what it writes to the context, the response, the log
+context, and the span; whether the socket route gets the same
+treatment.
 
-**Violation.** A response without the `x-request-id` header; a span
-without the request id; a request id minted below the gateway or read
-from the header by a router; a socket whose context carries none.
+**Violation.** An inbound header taken as any string, so a caller
+writes free text into every log line and span; a response without the
+`x-request-id` header, or a span without the request id; a request id
+minted below the gateway or read from the header by a router, or a
+socket whose context carries none.
 
 **Severity.** medium
 
