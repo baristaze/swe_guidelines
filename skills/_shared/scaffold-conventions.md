@@ -100,7 +100,8 @@ the order the guideline presents them, never by number.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps), each documented in its docstring and listed under
+  sweeps, and the four lookups that run before an identity is known),
+  each documented in its docstring and listed as `Class.method` under
   `[tool.arch-check.options.CTX-12] tenantless` in the root
   `pyproject.toml`, which `arch-check` holds both ways. The manager
   methods that take the request stage are listed in the repository's
@@ -112,7 +113,10 @@ the order the guideline presents them, never by number.
   `TABLE_SCOPES`, beside the role map, `TABLE_ROLES` (the names
   `arch-check` reads by default); the migration that creates the
   table creates its policy, with `ENABLE` and `FORCE ROW LEVEL
-  SECURITY`; and the Postgres base
+  SECURITY`, the `org` and `identity` expressions each carrying the
+  one system-login clause, `OR (current_setting('app.org_id', true) =
+  '<EMPTY_UUID>' AND current_user = '<system_login>')`; and the
+  Postgres base
   opens every session through one funnel, `_session_for(stmt, *,
   org_id=None, user_id=None, identity_id=None)`, which takes the scope
   of the call by keyword and sets `app.org_id`, `app.user_id`, and
@@ -120,13 +124,16 @@ the order the guideline presents them, never by number.
   with the transaction and a setting the call does not name stays
   unset. The base's `_upsert` and `_insert` take the same keyword-only
   scope arguments. `EMPTY_UUID` as the `org_id` is the system scope,
-  passed explicitly and never a default, by the methods the
-  `tenantless` list enumerates: the cross-tenant sweeps, and the
-  lookups that run before an identity is known (sign-in by the email's
-  digest, and the lookups by credential digest: the API key, the
-  session token, the socket ticket). Everything after such a lookup
-  runs under the scope it found. Nothing in a manager or an impl
-  assumes the policy is there.
+  passed explicitly and never a default, by the enumerated
+  system-scope methods of The Storage Layer (The Second Fence), and by
+  nothing else. They are the cross-tenant sweeps, the purges of ended
+  sessions and of redeemed or expired socket tickets among them; the
+  four lookups that run before an identity is known,
+  `read_identity_by_email_digest`, `read_api_key_by_digest`,
+  `read_session_by_digest`, and `redeem_socket_ticket`; and the
+  operator plane's marker calls. Everything after such a lookup runs
+  under the scope it found. Nothing in a manager or an impl assumes the
+  policy is there.
 - Three logins reach the database, as The Storage Layer (The Second
   Fence) names them, and each has its own URL in settings, in the
   local compose file, and among the Terraform secrets: the migration
@@ -202,9 +209,9 @@ the order the guideline presents them, never by number.
   operator route's idempotency marker fills the marker's own fields:
   its `org_id` is `EMPTY_UUID`, since `OperatorContext` carries none,
   and its `user_id` is the operator's identity id, so its storage
-  calls run under the system scope and are listed among the
-  system-scope methods. The caller constructs the entity whole and hands it to
-  `create_<entity>`. A create that can collide on more than one key
+  calls run under the system scope, on the system login, among the
+  enumerated system-scope methods. The caller constructs the entity
+  whole and hands it to `create_<entity>`. A create that can collide on more than one key
   (the id and a unique key the table declares) returns an
   `InsertOutcome`, `INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, and the
   manager reads the row back by the key that collided; a create with
