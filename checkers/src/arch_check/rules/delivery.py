@@ -322,9 +322,60 @@ def dockerfiles(project: Project) -> Iterator[Violation]:
             locked_at_end.append(locked_env)
 
 
-NPM_INSTALL = re.compile(r"\bnpm\s+(install|i)\b(?P<rest>[^&|;]*)")
-YARN_INSTALL = re.compile(r"\byarn(\s+install)?\s*(?=$|&|\||;)|\byarn\s+install\b[^&|;]*")
-PIP_INSTALL = re.compile(r"\b(?:uv\s+)?pip3?\s+install\b(?P<rest>[^&|;]*)")
+NPM_INSTALL = re.compile(r"\bnpm\s+(install|i)\b(?P<rest>[^&|;\n]*)")
+YARN_INSTALL = re.compile(r"\byarn(\s+install)?[ \t]*(?=$|&|\||;|\n)|\byarn\s+install\b[^&|;\n]*", re.MULTILINE)
+PIP_INSTALL = re.compile(r"\b(?:uv\s+)?pip3?\s+install\b(?P<rest>[^&|;\n]*)")
+NPM_VALUE_FLAGS = frozenset({"--prefix", "--registry", "--cache", "--userconfig", "--omit", "--include", "--workspace", "-w", "--tag"})
+PIP_VALUE_FLAGS = frozenset(
+    {
+        "-t",
+        "--target",
+        "--prefix",
+        "--root",
+        "--src",
+        "-i",
+        "--index-url",
+        "--extra-index-url",
+        "-f",
+        "--find-links",
+        "-c",
+        "--constraint",
+        "--cache-dir",
+        "--trusted-host",
+        "--python",
+        "--python-version",
+        "--platform",
+        "--implementation",
+        "--abi",
+        "--only-binary",
+        "--no-binary",
+        "--index-strategy",
+        "--resolution",
+        "--prerelease",
+    }
+)
+"""The flags of `npm install` and `pip install` (`uv pip install` too) whose next word is their value, not a package."""
+EXACT_VERSION = re.compile(r"^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+
+
+def packages(words: list[str], value_flags: frozenset[str]) -> list[str]:
+    """The words of an install that name a package: flags dropped, and the value after a flag that takes one."""
+    out: list[str] = []
+    skip = False
+    for w in words:
+        if skip:
+            skip = False
+        elif w.startswith("-"):
+            skip = w in value_flags
+        else:
+            out.append(w)
+    return out
+
+
+def npm_pinned(spec: str) -> bool:
+    """Whether an npm package spec names an exact version: `tool@1.2.3`, never `tool@latest` or `tool@^1.2`."""
+    _, at, version = spec.lstrip("@").rpartition("@")
+    return bool(at) and EXACT_VERSION.match(version) is not None
 
 
 def unlocked_installs(args: str) -> list[str]:
@@ -334,10 +385,9 @@ def unlocked_installs(args: str) -> list[str]:
     it names with `==`."""
     out: list[str] = []
     for m in NPM_INSTALL.finditer(args):
-        rest = m.group("rest")
-        packages = [w for w in rest.split() if not w.startswith("-")]
+        named = packages(m.group("rest").split(), NPM_VALUE_FLAGS)
         # `npm install -g tool@1.2.3` installs one pinned tool, not the project
-        if not packages or any("@" not in w.lstrip("@") for w in packages):
+        if not named or not all(npm_pinned(w) for w in named):
             out.append("`npm install` without a lock; an image runs `npm ci`, or installs a tool at a pinned version")
     for m in YARN_INSTALL.finditer(args):
         if "--frozen-lockfile" not in m.group(0) and "--immutable" not in m.group(0):
@@ -350,8 +400,7 @@ def unlocked_installs(args: str) -> list[str]:
         if "-r" in words or "--requirement" in words or any(w.startswith("--requirement=") for w in words):
             out.append("`pip install -r` without --require-hashes; an image installs from a locked, hashed list")
             continue
-        packages = [w for w in words if not w.startswith("-")]
-        if any("==" not in w for w in packages):
+        if any("==" not in w for w in packages(words, PIP_VALUE_FLAGS)):
             out.append("`pip install` of an unpinned package; an image pins each one with == or requires hashes")
     return out
 

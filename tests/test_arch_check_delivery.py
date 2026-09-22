@@ -625,3 +625,33 @@ def test_del_11_a_makefile_saved_with_a_bom_is_read(tmp_path):
 def test_del_26_a_dockerfile_saved_with_a_bom_is_read(tmp_path):
     files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": BOM + "FROM acme/base:1.2.0-rc.1 AS b\nFROM python:3.11\n"}
     assert found(tmp_path, "DEL-26", files) == (1, [("DEL-26", "deployment/docker/api.Dockerfile", 1)])
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "RUN <<EOF\npip install uv==0.12.17\nnpm ci\nEOF",
+        "RUN pip install --target /opt/tools uv==0.12.17",
+        "RUN pip install --prefix=/opt uv==0.12.17",
+        "RUN pip install --index-url https://pypi.example/simple uv==0.12.17",
+        "RUN uv pip install -i https://pypi.example/simple uv==0.12.17",
+        "RUN npm install -g --prefix /usr/local @anthropic-ai/claude-code@2.1.276",
+    ],
+)
+def test_del_10_a_heredoc_of_pinned_installs_or_a_flag_value_passes(tmp_path, run):
+    image = GOOD_IMAGE.replace("FROM python:3.14-slim\nUSER", f"FROM python:3.14-slim\n{run}\nUSER", 1)
+    assert found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image}) == (0, [])
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "RUN npm install -g @anthropic-ai/claude-code@latest",
+        "RUN npm install -g tool@^1.2.0",
+        "RUN pip install --target /opt/tools fastapi",
+    ],
+)
+def test_del_10_a_tag_or_a_range_is_no_pin(tmp_path, run):
+    image = GOOD_IMAGE.replace("FROM python:3.14-slim\nUSER", f"FROM python:3.14-slim\n{run}\nUSER", 1)
+    code, where = found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image})
+    assert (code, [line for _, _, line in where]) == (1, [5])
