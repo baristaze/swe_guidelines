@@ -75,7 +75,11 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `<api>/tests/test_<ns>_<entity>_api.py` (unless `--no-api`)   | the routes over the in-process app and memory container                |
 
 `<api>` is the service whose `--namespaces` includes `<ns>`, else
-`services/api`, else the API rows are skipped with a note.
+`services/api`, else the API rows are skipped with a note. When `<ns>`
+is new to `<api>`, its `types/<ns>.py`, `services/<ns>.py`,
+`impl/<ns>.py`, and `routers/<ns>.py` do not exist yet, and the
+`Changed` rows below create them. `<ns_singular>` is the namespace's
+singular in snake case, as `arch-scaffold-namespace` names it.
 
 ## Changed
 
@@ -94,6 +98,7 @@ namespace, `<role>` the role, `<stamp>` the minute stamp
 | `<api>/.../impl/<ns>.py` (unless `--no-api`)            | the translation on `<Ns>ServiceImpl`: build the entity from the request, call one manager operation, project the result onto the view; the partial update reads the current entity through the manager's `get_<entity>` and copies the request's set fields onto it before handing the whole entity to `update_<entity>` |
 | `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, put and delete routes; each declares the route and its dependencies (the context, and on the post the gateway's `Idempotency-Key`, like every route that writes a durable row), calls one operation of the service impl, and returns what it returns |
 | `<api>/.../routers/__init__.py` (when `<ns>` is new to it) | the router added to `all_routers()`                                       |
+| `<api>/.../services/__init__.py`, `<api>/.../impl/__init__.py` (when `<ns>` is new to it) | `get_<ns_singular>_service()` on `ServicesInterface`, and `<Ns>ServiceImpl` constructed over the managers in `ServicesImpl`, so the container wires the new service at `build` |
 | `apps/<portal>/src/api/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
 
 ## Procedure

@@ -63,7 +63,11 @@ Under `om/src/<root>/om/<ns>/`:
 2. A cross-manager dependency the new manager needs is a constructor
    parameter typed by interface and a wiring line in `root.py`; the
    interface stays untouched.
-3. When a first entity was named, read
+3. The namespace reaches the API with its first entity: the entity
+   skill's `Changed` rows add its service getter, its service impl,
+   and its router to the API service. A namespace with no entity has
+   no route.
+4. When a first entity was named, read
    `${CLAUDE_SKILL_DIR}/../arch-scaffold-entity/SKILL.md` and follow
    its Created, Changed, and Procedure with these arguments:
    `<namespace> <FirstEntity> <field:type ...> --role <role> --scope <scope>`.
