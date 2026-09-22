@@ -129,6 +129,15 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - Scaffold skills have the five sections Input, Created, Changed,
   Procedure, Output, in that order (`scripts/check_skills.py` holds
   them to it).
+- A skill keeps its spine and names its detail. An invariant that must
+  never be missed stays inline in the skill body, because a referenced
+  file is a promise and an inlined line is a guarantee; long reference
+  material moves into `skills/<name>/references/<file>.md` and is named
+  by the step that reads it, which reads it when that step runs and not
+  before. `scripts/check_skills.py` holds both ends: a reference file no
+  step names is an orphan and an error, and a skill body past the word
+  bound is an error whose fix is to move reference material into a
+  step's file.
 - The release version is written once, in `.claude-plugin/plugin.json`;
   every other copy is checked against it.
 - Scaffold skills share `skills/_shared/scaffold-conventions.md`.

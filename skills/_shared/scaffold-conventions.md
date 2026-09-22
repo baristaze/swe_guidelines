@@ -9,11 +9,23 @@ it creates, the files it changes, and the steps that differ.
 Every scaffold skill has the same sections, in this order: `## Input`
 (the `$ARGUMENTS` grammar as `<positional> [--flag value]`, required
 flags stated in prose, what to ask when something is missing),
-`## Created` (a table, columns `File` and `Holds`), `## Changed` (a
+`## Created` (what the skill creates), `## Changed` (a
 table, columns `File` and `Change`), `## Procedure` (numbered, only the
 steps that differ from this file), `## Output` (one line pointing here).
 Sections are cited by title, as `Title (Subsection, Subsection)`, in
 the order the guideline presents them, never by number.
+
+A skill keeps its spine and names its detail. The spine is the
+frontmatter, the input, the procedure as an ordered list a reader can
+hold in their head, the output, and every invariant that must never be
+missed, stated inline and short, because a referenced file is a promise
+and an inlined line is a guarantee. Long per-step reference material, a
+file-by-file list above all, moves into `references/<name>.md` under the
+skill's own folder, and the step that needs it says to read it. A
+reference file is read when its step runs, and not before. `## Created`
+then names its references and carries the invariants; a scaffold whose
+list is short keeps it inline, as a table with the columns `File` and
+`Holds`.
 
 ## Before writing anything
 
