@@ -7,7 +7,7 @@
 # `benchmark/run.py --runtime container --build` runs that command for you.
 # The image carries the runtimes the guideline names as current, the uv
 # workspace tool, and the Claude Code command line, and nothing else. The
-# run mounts the plugin checkout read-only at /plugin, the target, when
+# run mounts the staged plugin payload read-only at /plugin, the target, when
 # there is one, read-only at /target, and the workspace read-write at
 # /workspace, and it hands the subject those paths, never the host's.
 FROM python:3.14-slim-bookworm
@@ -30,8 +30,10 @@ RUN useradd --create-home --shell /bin/bash runner
 USER runner
 WORKDIR /workspace
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-RUN npm config set prefix /home/runner/.local && npm install -g @anthropic-ai/claude-code
+# Pinned, and no script piped into a shell: uv comes from its release
+# image, Claude Code at the version the benchmark workflow installs.
+COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /uvx /usr/local/bin/
+RUN npm config set prefix /home/runner/.local && npm install -g @anthropic-ai/claude-code@2.1.276
 
 ENTRYPOINT []
 CMD ["bash", "-lc", "claude --version"]

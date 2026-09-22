@@ -35,8 +35,10 @@ jobs:
     name: every scenario, judged
     runs-on: ubuntu-26.04
     timeout-minutes: 180
-    # The provider keys are the run step's alone: no install step, and no
-    # package lifecycle script it runs, ever sees them.
+    # The provider keys are the run step's alone. Everything is installed
+    # before it, in steps that hold no key: Claude Code, and the harness's
+    # dependencies from benchmark/run.py.lock. The run step is offline to
+    # uv, so it runs what was installed and fetches nothing.
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       # No token left in .git/config for the subject to find.
@@ -53,6 +55,8 @@ jobs:
       - name: install Claude Code
         # The subject of a skill scenario is `claude -p`, which signs in with the API key.
         run: npm install -g @anthropic-ai/claude-code@2.1.276
+      - name: install the harness, locked, before any key is in reach
+        run: uv sync --locked --script benchmark/run.py
       - name: run every scenario
         # Each scenario brings its own target, if it needs one; a target
         # passed to all of them would drop the planted findings of one.
@@ -68,6 +72,7 @@ jobs:
           PROVIDERS: ${{ inputs.providers }}
           EFFORT: ${{ inputs.effort }}
           REPEAT: ${{ inputs.repeat }}
+          UV_OFFLINE: "1"
         run: |
           set -uo pipefail
           set -f  # a scenario name is never a glob
@@ -97,7 +102,7 @@ jobs:
           failed=()
           for name in $names; do
             echo "::group::$name"
-            if ! uv run benchmark/run.py --scenario "$name" \
+            if ! uv run --locked benchmark/run.py --scenario "$name" \
               ${judges[@]+"${judges[@]}"} \
               --strict --repeat "$REPEAT" --out benchmark/runs \
               --claude "$(command -v claude)"; then
@@ -122,5 +127,14 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-runs
-          path: benchmark/runs
+          # The run folders hold the record: streams, artifacts, judgements,
+          # results. The subject's HOME, TMPDIR, and workspace lived in a
+          # sandbox outside them and are gone; the exclusions keep it so if
+          # an older run folder is ever in the tree.
+          path: |
+            benchmark/runs
+            !benchmark/runs/*/home
+            !benchmark/runs/*/tmp
+            !benchmark/runs/*/workspace
           if-no-files-found: warn
+          retention-days: 30
