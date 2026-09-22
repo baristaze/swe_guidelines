@@ -353,3 +353,49 @@ def test_an_ops_skill_template_without_allowed_tools_fails(repo, skills, capsys)
     repo.write("skills/_shared/ops-skills/ops-watch.md", template)
     assert skills.main() == 1
     assert "skills/_shared/ops-skills/ops-watch.md: no allowed-tools" in capsys.readouterr().out
+
+
+def test_a_reference_file_a_step_names_passes_and_its_own_references_resolve(repo, skills, capsys):
+    repo.write("skills/arch-scaffold-thing/references/parts.md", "# Parts\n\nThe long list.\n")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        "skills/arch-scaffold-thing/references/parts.md: no step of skills/arch-scaffold-thing/SKILL.md "
+        "names ${CLAUDE_SKILL_DIR}/references/parts.md" in out
+    )
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "1. Write the thing.",
+        "1. Read `${CLAUDE_SKILL_DIR}/references/parts.md`, then write the thing.",
+    )
+    assert skills.main() == 0
+    repo.write("skills/arch-scaffold-thing/references/parts.md", "# Parts\n\nRead `${CLAUDE_SKILL_DIR}/gone.json`.\n")
+    assert skills.main() == 1
+    assert (
+        "skills/arch-scaffold-thing/references/parts.md: reference ${CLAUDE_SKILL_DIR}/gone.json does not exist"
+        in capsys.readouterr().out
+    )
+
+
+def test_a_reference_named_outside_the_procedure_is_still_an_orphan(repo, skills, capsys):
+    repo.write("skills/arch-scaffold-thing/references/parts.md", "# Parts\n\nThe long list.\n")
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "| `thing.py` | the thing |",
+        "| `thing.py` | the thing, listed in `${CLAUDE_SKILL_DIR}/references/parts.md` |",
+    )
+    assert skills.main() == 1
+    assert "names ${CLAUDE_SKILL_DIR}/references/parts.md" in capsys.readouterr().out
+
+
+def test_a_body_over_the_word_bound_fails(repo, skills, capsys):
+    filler = ("word " * 40).strip()
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "One line.\n", "One line.\n\n" + f"{filler}\n" * 73)
+    assert skills.main() == 0
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "One line.\n", "One line.\n\n" + f"{filler}\n")
+    assert skills.main() == 1
+    assert (
+        "skills/arch-scaffold-thing/SKILL.md: the body is 3007 words, limit 3000; "
+        "move the long per-step material into skills/arch-scaffold-thing/references/ "
+        "and have the step that reads it name the file" in capsys.readouterr().out
+    )

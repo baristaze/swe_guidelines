@@ -5345,6 +5345,15 @@ them for every skill but the administrator's two, which act on a
 cloud. Every skill states its role, the credential check, what it
 reads, what it never does, and the shape of its report.
 
+A skill keeps its spine and names its detail. Its body is loaded in
+full every time it runs, so it carries the input, the procedure as an
+ordered list, the output, and every invariant that must never be
+missed, stated inline and short: a referenced file is a promise and an
+inlined line is a guarantee. Long reference material moves into a file
+under the skill's own folder, named by the step that reads it, and that
+step says to read it before it runs. A reference file is read when its
+step runs, and not before.
+
 A watch is a loop that outlives the conversation that started it. The
 skill says so, and the agent that invokes it spawns another to run it.
 A watch is written for a burst: it batches what arrives per interval,

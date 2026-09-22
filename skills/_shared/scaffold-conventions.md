@@ -9,11 +9,23 @@ it creates, the files it changes, and the steps that differ.
 Every scaffold skill has the same sections, in this order: `## Input`
 (the `$ARGUMENTS` grammar as `<positional> [--flag value]`, required
 flags stated in prose, what to ask when something is missing),
-`## Created` (a table, columns `File` and `Holds`), `## Changed` (a
+`## Created` (what the skill creates), `## Changed` (a
 table, columns `File` and `Change`), `## Procedure` (numbered, only the
 steps that differ from this file), `## Output` (one line pointing here).
 Sections are cited by title, as `Title (Subsection, Subsection)`, in
 the order the guideline presents them, never by number.
+
+A skill keeps its spine and names its detail. The spine is the
+frontmatter, the input, the procedure as an ordered list a reader can
+hold in their head, the output, and every invariant that must never be
+missed, stated inline and short, because a referenced file is a promise
+and an inlined line is a guarantee. Long per-step reference material, a
+file-by-file list above all, moves into `references/<name>.md` under the
+skill's own folder, and the step that needs it says to read it. A
+reference file is read when its step runs, and not before. `## Created`
+then names its references and carries the invariants; a scaffold whose
+list is short keeps it inline, as a table with the columns `File` and
+`Holds`.
 
 ## Before writing anything
 
@@ -32,7 +44,10 @@ the order the guideline presents them, never by number.
    docstring habits. The guideline decides the shape; the repository
    decides the spelling. When bootstrapping there is nothing to open;
    the guideline's snippets are the house style.
-3. Read the sections of `architecture.md` the skill names, in full.
+3. Read the sections of `architecture.md` the skill names, in full. A
+   reference file cites sections of its own; those are read at the step
+   that reads the file, and the skill names them among its sections
+   too, so the list at the top is the whole of what a run reads.
 4. Check every path in the skill's `Created` table. A path that exists
    is a collision: stop and say so; never overwrite. A migration stamp
    that already exists in the role's folder takes the next minute or
@@ -356,7 +371,8 @@ the order the guideline presents them, never by number.
   log group (`/acme/<env>/api`) becomes `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
   case, and `Acme` its CamelCase form.
   Every one takes `--env staging|production`, and every one but
-  create and nuke also takes `local`. Each holds the
+  create and nuke also takes `local`, reading the `devx` stand-ins.
+  Each holds the
   credential of the role Operations (Operational Skills) gives it.
   The investigator and supporter skills hold the read-only
   investigate profile of their environment and read the owner-only
