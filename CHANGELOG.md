@@ -4,6 +4,70 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.27.0 (2026-09-21)
+
+One cloud account per environment. The account is the boundary
+between environments, each account has a bootstrap root the
+administrator applies, and people sign in through the identity
+center. Minor: rules are added and sharpened, and one is reversed,
+which before 1.0.0 bumps the minor number.
+
+### Changed
+
+- **Reversed.** `architecture.md`, "Operator Roles", lens `OPS-07`: an
+  agent's principal is no longer one cloud user whose only permission
+  is to assume the read-only roles. People sign in through the cloud's
+  identity center, with short-lived credentials, no cloud user, and no
+  long-lived key anywhere. The investigator role trusts the identity
+  center's everyday role in its own account, matched by pattern. An
+  agent's profile chains from the person's signed-in session. The
+  create run no longer mints a key.
+- `architecture.md`, "Cloud: AWS": production promotes the copies
+  replicated into its own account and never reads staging's. The
+  registry replicates every image, digest for digest, and the object
+  store replicates every kept bundle. Production grants those two
+  writes and nothing more, and replication never creates a
+  repository. The first release is a commit built after replication
+  is on. Lens `DEL-31` sharpened.
+- `architecture.md`, "Operator Credentials": a skill compares the
+  account with the one the environments' file names. A writing script
+  asks again before every apply, and clears keys exported in the
+  shell first. Lens `OPS-08` sharpened.
+- "Cost Boundaries": a budget for each environment's account. Lens
+  `OPS-18`.
+- "Creating and Destroying an Environment": the create run acts in one
+  account at a time, in the order staging, production, then staging
+  again to turn replication on. Destroy leaves the bootstrap root.
+  Lens `OPS-19`. `OPS-02` and `OPS-06` read the bootstrap roots, and
+  `DEL-03` validates every root.
+- `arch-scaffold-new`, the ops skill templates (create and nuke
+  rewritten, the account check in every investigator skill),
+  `scaffold-conventions.md`, and `docs/adopting.md` follow.
+
+### Added
+
+- `architecture.md`, "Cloud: AWS": every environment has a cloud
+  account of its own, and no root spans two. The environment tag
+  stays as a second fence, for a root applied in the wrong account.
+  New lens `DEL-41`.
+- `architecture.md`, "Cloud: AWS": each public name has a hosted zone
+  in its environment's account. The domain's zone delegates to it from
+  wherever the domain is hosted, and the create run writes the
+  delegation once. New lens `DEL-43`.
+- `architecture.md`, "Infrastructure as Code": each environment has a
+  bootstrap root the administrator applies (state, federation trust,
+  deploy and investigator roles, budget, registry, zones) and an
+  environment root the pipeline applies. One file names every
+  environment's account, region, public names, and profiles, and every
+  provider pins its account. New lens `DEL-42`.
+- `architecture.md`, "Operator Roles": each deployer credential has an
+  environment of its own on the repository host, with its own
+  variables under the same names. The federation replaces every cloud
+  key, so the repository holds no cloud secret. New lens `OPS-28`.
+- "Monorepo Folder Structure": the tree gains
+  `deployment/cloud/environments.json` and
+  `deployment/terraform/bootstrap/{staging,prod}/`. 238 lenses.
+
 ## 0.26.0 (2026-09-21)
 
 Sign-up opens a deployed environment, and an app works in one tenant
