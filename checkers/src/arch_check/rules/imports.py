@@ -12,9 +12,10 @@ manager. A callback handed down is judged by the review. A bare
 `TaxServiceInterface` from `<pkg>.integrations` is a lower dependency.
 
 CON-10 (upper layers depend on lower layers): nothing under
-`<pkg>.infra` imports `<pkg>.om`; a router, a service module, a gateway
-module, or a worker module imports no storage impl, table, or manager
-impl; a manager impl imports no storage impl or table. A session read
+`<pkg>.infra` imports `<pkg>.om`; no module of a service, the gateway,
+or a worker, the wiring modules left out, imports a storage impl, a
+table, or a manager impl; a manager impl imports no storage impl or
+table. A session read
 through an interface is judged.
 """
 
@@ -25,7 +26,7 @@ from collections.abc import Iterator
 from arch_check.model import Violation
 from arch_check.project import Import, Project, SourceFile, is_under
 from arch_check.registry import rule
-from arch_check.rules._contracts_util import in_manager_impl, in_om_storage, namespace_of, service_part
+from arch_check.rules._contracts_util import in_manager_impl, in_om_storage, namespace_of
 
 
 def offending(project: Project, file: SourceFile, forbidden: tuple[str, ...]) -> Iterator[tuple[Import, str]]:
@@ -93,21 +94,17 @@ EXEMPT_SERVICE_MODULES = frozenset({"root", "container"})
     "managers no storage impl.",
 )
 def infra_never_imports_the_om(project: Project) -> Iterator[Violation]:
-    """Nothing under `<pkg>.infra` imports `<pkg>.om`. Modules under
-    `<pkg>.services.<process>.routers`, `.services`, `.impl`, and
-    `.gateway`, under `<pkg>.gateway`, and under `<pkg>.workers` (the
-    services root and each container left out, as they wire the impls)
-    import no storage impl, no table module, and no
-    `<pkg>.om.<ns>.impl`. Modules under `<pkg>.om.<ns>.impl` import no
+    """Nothing under `<pkg>.infra` imports `<pkg>.om`. No module under
+    `<pkg>.services`, `<pkg>.gateway`, or `<pkg>.workers` (a module named
+    `root` or `container` left out, as it wires the impls) imports a
+    storage impl, a table module, or `<pkg>.om.<ns>.impl`: a route
+    module wherever it sits is judged. Modules under `<pkg>.om.<ns>.impl` import no
     storage impl and no table module."""
     om = (project.sub("om"),)
     for file in project.modules_under(project.sub("infra")):
         for imp, hit in offending(project, file, om):
             yield Violation.at(file.rel, imp.node, f"{file.module} imports {hit}; infra imports nothing from the OM")
     for file in project.modules_under(project.sub("services"), project.sub("gateway"), project.sub("workers")):
-        in_service = is_under(file.module, project.sub("services"))
-        if in_service and service_part(project, file.module) not in {"routers", "services", "impl", "gateway"}:
-            continue
         if file.module.rpartition(".")[2] in EXEMPT_SERVICE_MODULES:
             continue
         for imp in project.imports(file):

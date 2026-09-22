@@ -246,6 +246,37 @@ def test_a_root_may_construct_impls_under_con_06(tmp_path):
     assert code == 0
 
 
+def test_a_dataclass_impl_field_typed_by_an_impl_or_any_is_con_06(tmp_path):
+    impl = (
+        "from dataclasses import dataclass, field\nfrom typing import Any, ClassVar\n\n\n"
+        "@dataclass(frozen=True)\nclass TasksManagerImpl(TasksManagerInterface):\n"
+        "    storage: TasksStoragePostgresImpl\n    cache: Any\n    events: EventsManagerInterface\n"
+        "    LIMIT: ClassVar[int] = 10\n"
+    )
+    code, found, messages = run(tmp_path, "CON-06", {f"{OM}/tasks/impl/manager.py": impl})
+    assert (code, [line for _, _, line in found]) == (1, [7, 8])
+    assert "types `storage` as TasksStoragePostgresImpl" in messages[0]
+    assert "types `cache` as Any" in messages[1]
+
+
+def test_a_classmethod_constructor_is_judged_as_one_under_con_06(tmp_path):
+    impl = (
+        "class TasksManagerImpl(TasksManagerInterface):\n"
+        "    def __init__(self, storage: TasksStorageInterface) -> None:\n        self._storage = storage\n\n"
+        "    @classmethod\n    def create(cls, pool: PoolImpl) -> 'TasksManagerImpl':\n"
+        "        return cls(TasksStoragePostgresImpl.connect(pool))\n"
+    )
+    storage = (
+        "class TasksStoragePostgresImpl(TasksStorageInterface):\n"
+        "    @classmethod\n    def connect(cls, pool: Pool) -> 'TasksStoragePostgresImpl':\n        return cls()\n"
+    )
+    files = {f"{OM}/tasks/impl/manager.py": impl, f"{OM}/tasks/storage/impl/postgres.py": storage}
+    code, found, messages = run(tmp_path, "CON-06", files)
+    assert (code, [line for _, _, line in found]) == (1, [6, 7])
+    assert "TasksManagerImpl.create types `pool` as PoolImpl" in messages[0]
+    assert "constructs TasksStoragePostgresImpl" in messages[1]
+
+
 # --- CON-07
 
 
@@ -276,6 +307,15 @@ def test_a_manager_impl_by_tech_or_by_interface_is_con_07(tmp_path, header):
     assert len(found) == 1
     code, _, _ = run(tmp_path, "CON-07", {f"{OM}/tasks/impl/manager.py": impl.replace("page_size: int", "options: O")})
     assert code == 0
+
+
+def test_an_infra_impl_named_for_a_secrets_manager_is_not_con_07(tmp_path):
+    impl = (
+        "class SecretsAwsSecretsManagerImpl(SecretsInterface):\n"
+        "    def __init__(self, client: SecretsClient, ttl_seconds: int) -> None:\n        pass\n"
+    )
+    code, found, _ = run(tmp_path, "CON-07", {f"{INFRA}/secrets/aws.py": impl})
+    assert (code, found) == (0, [])
 
 
 # --- CON-08
@@ -534,6 +574,15 @@ def test_a_router_that_branches_or_takes_a_manager_is_con_15(tmp_path):
     assert [line for _, _, line in found] == [7, 15]
     assert "does more than" in messages[0]
     assert "takes a TasksManagerInterface" in messages[1]
+
+
+def test_a_route_reaching_through_an_attribute_chain_is_con_15(tmp_path):
+    router = ROUTER.replace(
+        "    return await tasks.get_task(ctx, task_id)", "    return await request.app.state.tasks.get_task(ctx, task_id)"
+    )
+    code, found, messages = run(tmp_path, "CON-15", {f"{API}/routers/tasks.py": router})
+    assert (code, [line for _, _, line in found]) == (1, [7])
+    assert "does more than await one service call" in messages[0]
 
 
 # --- CON-16
