@@ -47,6 +47,14 @@ def test_ops_20_one_generator_built_on_a_load_tool_passes(tmp_path):
     assert found(tmp_path, "OPS-20", files) == (0, [])
 
 
+def test_ops_20_an_unparseable_manifest_is_reported(tmp_path):
+    files = {"tools/load/pyproject.toml": '[project]\ndependencies = ["locust"]\n', "apps/portal/package.json": '{"k6": }'}
+    write_project(tmp_path, files)
+    code, report = check_json(tmp_path, "--rule", "OPS-20")
+    assert (code, rules_found(report)) == (1, [("OPS-20", "apps/portal/package.json", 1)])
+    assert report["findings"][0]["message"].startswith("apps/portal/package.json does not parse (")
+
+
 def test_ops_20_a_second_load_tool_fails(tmp_path):
     files = {
         "ops/pyproject.toml": '[project]\nname = "acme-ops"\n\n[dependency-groups]\nload = ["Locust>=2"]\n',

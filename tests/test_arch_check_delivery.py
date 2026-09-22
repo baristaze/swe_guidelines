@@ -32,6 +32,13 @@ def found(tmp_path, rule, files, pyproject=WORKSPACE):
     return code, rules_found(report)
 
 
+def said(tmp_path, rule, files, pyproject=WORKSPACE):
+    """(exit status, [(path, message)]) of a run of one rule."""
+    write_project(tmp_path, files, pyproject=pyproject)
+    code, report = check_json(tmp_path, "--rule", rule)
+    return code, [(f["path"], f["message"]) for f in report["findings"]]
+
+
 # --- DEL-07
 
 
@@ -112,6 +119,24 @@ def test_del_09_a_worker_with_routers_and_a_service_with_no_script_fail(tmp_path
     code, where = found(tmp_path, "DEL-09", files)
     assert code == 1
     assert sorted(p for _, p, _ in where) == ["services/api/pyproject.toml", f"{WRK}/routers"]
+
+
+def test_del_09_an_unparseable_pyproject_is_not_a_missing_one(tmp_path):
+    code, what = said(tmp_path, "DEL-09", workspace(**{"services/api/pyproject.toml": "[project\n"}))
+    assert code == 1
+    assert what == [
+        (
+            "services/api/pyproject.toml",
+            "services/api/pyproject.toml does not parse (Expected ']' at the end of a table declaration); "
+            "arch-check cannot read what it declares",
+        )
+    ]
+
+
+def test_del_11_an_unparseable_member_pyproject_is_reported(tmp_path):
+    code, what = said(tmp_path, "DEL-11", workspace(**{"infra/pyproject.toml": "[tool.ruff\nline-length = 1\n"}))
+    assert (code, [p for p, _ in what]) == (1, ["infra/pyproject.toml"])
+    assert "does not parse" in what[0][1]
 
 
 # --- DEL-10
@@ -331,9 +356,26 @@ def test_del_12_and_13_react_on_vite_with_query_and_zustand_pass(tmp_path):
 
 def test_del_12_a_second_framework_and_a_cli_in_typescript_fail(tmp_path):
     files = {"apps/portal/package.json": '{"dependencies": {"react": "1", "next": "15"}}', "apps/cli/package.json": "{}"}
-    code, where = found(tmp_path, "DEL-12", files)
+    code, what = said(tmp_path, "DEL-12", files)
     assert code == 1
-    assert sorted(p for _, p, _ in where) == ["apps/cli", "apps/portal/package.json", "apps/portal/package.json"]
+    assert sorted(what) == [
+        ("apps/cli", "apps/cli is not a Python distribution; the CLI is Python"),
+        ("apps/portal/package.json", "depends on next; a browser app is react on vite and nothing else"),
+        ("apps/portal/package.json", "no vite dependency; a browser app is react on vite"),
+    ]
+
+
+BROKEN = '{\n  "dependencies": {"react": "1", "next": "15", "redux": "5",}\n}\n'
+
+
+@pytest.mark.parametrize("rule", ["DEL-12", "DEL-13"])
+def test_del_12_and_13_an_unparseable_manifest_is_reported_not_read_as_empty(tmp_path, rule):
+    code, what = said(tmp_path, rule, {"apps/portal/package.json": BROKEN, "package.json": '{"devDependencies": {"vite": "8"}}'})
+    assert code == 1
+    [(path, message)] = what
+    assert path == "apps/portal/package.json"
+    assert message.startswith("apps/portal/package.json does not parse (")
+    assert message.endswith("); arch-check cannot read what it declares")
 
 
 def test_del_13_a_third_state_library_fails(tmp_path):

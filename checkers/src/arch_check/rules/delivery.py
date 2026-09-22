@@ -36,6 +36,7 @@ from arch_check.rules._text_util import (
     resolved,
     subdirs,
     subtable,
+    unparseable,
     walk,
     workspace_members,
 )
@@ -174,7 +175,8 @@ def one_project_shape(project: Project) -> Iterator[Violation]:
             where = f"{folder}/pyproject.toml"
             data = load_toml(project, where)
             if data is None:
-                yield Violation(folder, 1, 1, f"{folder} has no pyproject.toml; a {role[:-1]} is a distribution")
+                broken = unparseable(project, where)
+                yield broken or Violation(folder, 1, 1, f"{folder} has no pyproject.toml; a {role[:-1]} is a distribution")
                 continue
             if not subtable(data, "project").get("scripts"):
                 yield Violation(where, 1, 1, f"{folder} declares no [project.scripts] console entry point")
@@ -449,6 +451,10 @@ def workspace_tooling_at_the_root(project: Project) -> Iterator[Violation]:
     for rel in walk(project, names=("pyproject.toml",)):
         if rel == "pyproject.toml":
             continue
+        broken = unparseable(project, rel)
+        if broken is not None:
+            yield broken
+            continue
         tool = subtable(load_toml(project, rel), "tool")
         for name in LINT_TABLES:
             if name in tool:
@@ -481,9 +487,10 @@ OTHER_STATE = (
 )
 
 
-def browser_apps(project: Project) -> Iterator[tuple[str, set[str]]]:
+def browser_apps(project: Project) -> Iterator[tuple[str, set[str] | Violation]]:
+    """Each app manifest with the packages it names, or the finding that it does not parse."""
     for rel in project.files("apps/*/package.json"):
-        yield rel, npm_dependencies(load_json(project, rel))
+        yield rel, unparseable(project, rel) or npm_dependencies(load_json(project, rel))
 
 
 @rule(
@@ -513,8 +520,14 @@ def react_on_vite(project: Project) -> Iterator[Violation]:
     framework = project.option("DEL-12", "framework", "react", keys)
     bundler = project.option("DEL-12", "bundler", "vite", keys)
     root_deps = npm_dependencies(load_json(project, "package.json"))
+    broken = unparseable(project, "package.json")
+    if broken is not None:
+        yield broken
     for rel, deps in browser_apps(project):
         if rel == "apps/cli/package.json":
+            continue
+        if isinstance(deps, Violation):
+            yield deps
             continue
         for need in (framework, bundler):
             if need not in deps | root_deps:
@@ -554,6 +567,9 @@ def query_and_zustand(project: Project) -> Iterator[Violation]:
     server = project.option("DEL-13", "server_state", "@tanstack/react-query", keys)
     client = project.option("DEL-13", "client_state", "zustand", keys)
     for rel, deps in browser_apps(project):
+        if isinstance(deps, Violation):
+            yield deps
+            continue
         for dep in sorted(deps):
             if dep in OTHER_STATE and dep not in {server, client}:
                 yield Violation(rel, 1, 1, f"depends on {dep}; server state is {server}, client state {client}")

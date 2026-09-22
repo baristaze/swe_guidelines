@@ -187,6 +187,13 @@ def test_a_distribution_importing_the_om_without_depending_on_it_is_om_01(tmp_pa
     assert "does not depend on acme-om" in messages(report)[0]
 
 
+def test_an_unparseable_om_pyproject_is_reported_as_one_for_om_01(tmp_path):
+    code, report = run(tmp_path, "OM-01", {"om/pyproject.toml": "[project\nname = 1\n"})
+    assert code == 1
+    assert found(report) == [("OM-01", "om/pyproject.toml")]
+    assert report["findings"][0]["message"].startswith("om/pyproject.toml does not parse (")
+
+
 def test_an_om_with_no_distribution_of_its_own_is_om_01(tmp_path):
     code, report = run(tmp_path, "OM-01", {"om/pyproject.toml": None})
     assert code == 1

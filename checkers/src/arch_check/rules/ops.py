@@ -22,6 +22,7 @@ from arch_check.rules._text_util import (
     npm_dependencies,
     python_dependencies,
     subdirs,
+    unparseable,
     walk,
 )
 
@@ -76,6 +77,10 @@ def one_traffic_generator(project: Project) -> Iterator[Violation]:
     the profiles, are judged.
     """
     found: list[tuple[str, str]] = []
+    for rel in walk(project, names=("pyproject.toml", "package.json")):
+        broken = unparseable(project, rel)
+        if broken is not None:
+            yield broken
     for rel in walk(project, names=("pyproject.toml",)):
         found.extend((rel, dep) for dep in sorted(python_dependencies(load_toml(project, rel) or {}) & LOAD_TOOLS_PY))
     for rel in walk(project, names=("package.json",)):
