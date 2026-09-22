@@ -89,8 +89,11 @@ the order the guideline presents them, never by number.
 - Every manager and service operation takes a context first: `ctx:
   OpContext` for a tenant operation, `rctx: RequestContext` for the
   transitions that produce a stronger stage (sign-up, sign-in, claim,
-  sweep), `ictx: IdentityContext` for the memberships read, the
-  exchange, and the operator admission,
+  sweep), `ictx: IdentityContext` for the operations of an identity
+  before any tenant (the memberships read, the exchange, and the
+  sign-out), the stage it refines for every other transition (the
+  operator admission takes `ictx` because it refines it, not because
+  it acts for the identity),
   `OperatorContext` for an operation on the operator plane,
   a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
   `CredentialScope`) for a helper or an edge concern that needs less.
