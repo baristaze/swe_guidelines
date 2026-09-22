@@ -188,3 +188,9 @@ def test_the_expected_check_is_recorded_per_repeat_and_reported(tmp_path):
     assert set(schema["properties"]["repeats"]["items"]["properties"]["expected"]["required"]) == {"expected", "named", "missed"}
     problems = R.validate(data, SCHEMA)
     assert problems in ([], ["jsonschema is not installed; results.json was written unvalidated"])
+
+
+def test_a_mean_and_a_score_round_halves_up():
+    from harness.judge import half_up
+
+    assert half_up(72.5) == 73.0 and half_up(0.25, 1) == 0.3 and half_up(80.45, 1) == 80.5

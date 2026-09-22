@@ -253,6 +253,21 @@ def test_a_disable_without_an_existing_adr_exits_2(tmp_path):
     assert "ADR file docs/adr/0099-missing.md does not exist" in err
 
 
+@pytest.mark.parametrize("adr", ["pyproject.toml", "/etc/hosts", "docs/adr/../../pyproject.toml"])
+def test_a_disable_whose_adr_is_not_a_record_under_the_adr_folder_exits_2(tmp_path, adr):
+    bad_project(tmp_path, pyproject=PYPROJECT + DISABLE.format(adr=adr))
+    code, _, err = check(tmp_path)
+    assert code == 2
+    assert "is not a Markdown file under docs/adr/" in err
+
+
+def test_a_misspelled_package_exits_2_instead_of_passing(tmp_path):
+    bad_project(tmp_path)
+    code, _, err = check(tmp_path, "--package", "acmee", "--group", "om")
+    assert code == 2
+    assert "no module is under the package 'acmee'" in err
+
+
 def test_a_disable_of_an_unknown_rule_exits_2(tmp_path):
     bad_project(tmp_path, pyproject=PYPROJECT + DISABLE.format(adr=ADR).replace("CON-12", "CON-99"))
     code, _, err = check(tmp_path)

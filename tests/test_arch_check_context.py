@@ -131,6 +131,23 @@ def test_an_entity_in_the_context_or_an_import_above_the_base_is_ctx_02(tmp_path
     assert "holds the entity User" in messages[1]
 
 
+def test_a_stage_package_is_read_whole_by_ctx_02(tmp_path):
+    package = f"{OM}/opcontext"
+    init = "from acme.om.opcontext.stages import *  # noqa: F403\n"
+
+    def package_run(where, stages):
+        write_project(where, {f"{package}/__init__.py": init, f"{package}/stages.py": stages})
+        code, report = check_json(where, "--rule", "CTX-02")
+        return code, rules_found(report), [f["message"] for f in report["findings"]]
+
+    code, _, _ = package_run(tmp_path / "clean", OPCONTEXT)
+    assert code == 0
+    broken = OPCONTEXT.replace("    request_id: UUID\n    app: str\n", "    app: str\n")
+    code, found, messages = package_run(tmp_path / "broken", broken)
+    assert (code, [p for _, p, _ in found]) == (1, [f"{package}/stages.py"])
+    assert "declares no request_id" in messages[0]
+
+
 def test_the_base_imported_as_a_module_passes_ctx_02(tmp_path):
     stages = OPCONTEXT.replace(
         "from acme.om.base import Platform\n", "from acme.om import base, exceptions\n\nPlatform = base.Platform\n"
@@ -183,6 +200,16 @@ def test_the_request_stage_minted_below_the_edge_is_ctx_05(tmp_path):
     assert all("constructs RequestContext" in m for m in messages)
 
 
+def test_the_request_stage_imported_under_another_name_is_still_ctx_05(tmp_path):
+    src = (
+        "from acme.om.opcontext import RequestContext as RC\n\n"
+        "def f():\n    return RC(request_id=x)\n\n"
+        "def g():\n    return RC.model_validate({})\n"
+    )
+    code, found, _ = run(tmp_path, "CTX-05", {f"{OM}/tasks/impl/manager.py": src})
+    assert (code, [line for _, _, line in found]) == (1, [4, 7])
+
+
 # --- CTX-06
 
 
@@ -223,6 +250,16 @@ def test_a_context_variable_or_a_thread_local_elsewhere_is_ctx_07(tmp_path):
     code, found, _ = run(tmp_path, "CTX-07", files)
     assert code == 1
     assert [p for _, p, _ in found] == [f"{OM}/tasks/impl/manager.py", f"{API}/gateway/auth.py"]
+
+
+def test_a_thread_local_or_a_context_variable_under_an_alias_is_ctx_07(tmp_path):
+    files = {
+        f"{API}/gateway/auth.py": "import threading as th\n\nstate = th.local()\n",
+        f"{API}/gateway/keys.py": "from threading import local as tl\n\nstate = tl()\n",
+        f"{OM}/tasks/impl/manager.py": "from contextvars import ContextVar as CV\n\ncurrent = CV('org')\n",
+    }
+    code, found, _ = run(tmp_path, "CTX-07", files)
+    assert (code, len(found)) == (1, 3)
 
 
 def test_the_gateway_log_module_holds_the_context_variable_under_ctx_07(tmp_path):
@@ -407,6 +444,13 @@ TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {Topics.TASK: TaskPayload, To
 
 def test_payloads_extending_the_base_pass_ctx_15(tmp_path):
     code, _, _ = run(tmp_path, "CTX-15", {f"{INFRA}/topics/__init__.py": TOPICS})
+    assert code == 0
+
+
+def test_a_spread_mapping_in_the_payloads_passes_ctx_15(tmp_path):
+    topics = TOPICS.replace("= {Topics.TASK: TaskPayload,", "= {**BASE_PAYLOADS, Topics.TASK: TaskPayload,")
+    assert "**BASE_PAYLOADS" in topics
+    code, _, _ = run(tmp_path, "CTX-15", {f"{INFRA}/topics/__init__.py": topics})
     assert code == 0
 
 

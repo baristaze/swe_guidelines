@@ -90,10 +90,12 @@ def test_the_om_importing_infra_is_not_con_10(tmp_path):
 
 
 def test_the_package_name_comes_from_the_config(tmp_path):
-    # With package "other", nothing here is under other.om, so nothing is judged.
+    # With package "other", nothing here is under it: a misspelled package is an
+    # error, never a clean run that judged nothing.
     write_project(tmp_path, {"om/src/acme/om/tasks/impl/manager.py": "import acme.services\n"})
-    code, _, _ = check(tmp_path, "--package", "other", "--group", "contracts")
-    assert code == 0
+    code, _, err = check(tmp_path, "--package", "other", "--group", "contracts")
+    assert code == 2
+    assert "no module is under the package 'other'" in err
 
 
 # --- the network and business layers reach storage through interfaces (CON-10)

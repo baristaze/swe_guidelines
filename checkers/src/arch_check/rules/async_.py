@@ -213,6 +213,7 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
         return (last(called) or "").endswith("Impl") and (head in infra_names(project, file) or is_under(called, infra))
 
     for file, tree in project.trees():
+        bound = bindings(tree)
         for node in tree.body:
             value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
             if isinstance(value, ast.Await):
@@ -220,7 +221,9 @@ def no_ambient_infra(project: Project) -> Iterator[Violation]:
             if not isinstance(value, ast.Call):
                 continue
             called = dotted(value.func) or ""
-            if called in clients or infra_impl(file, called):
+            # `import boto3 as b3; b3.client(...)` is `boto3.client(...)`, read through the import
+            through = resolved(value.func, bound)
+            if called in clients or through in clients or infra_impl(file, called):
                 yield Violation.at(file.rel, node, f"a module-level {called}(); an infra handle arrives through a constructor")
     for file in manager_impl_files(project):
         impl = project.tree(file)
@@ -548,6 +551,9 @@ SPAWNS = frozenset(
         "asyncio.ensure_future",
         "threading.Thread",
         "threading.Timer",
+        "multiprocessing.Process",
+        "multiprocessing.context.Process",
+        "os.fork",
         "fastapi.BackgroundTasks",
         "starlette.background.BackgroundTasks",
         "starlette.background.BackgroundTask",
@@ -559,10 +565,18 @@ LOOP_CALLS = frozenset({"call_later", "call_at"})
 LOOPS = frozenset({"asyncio.get_running_loop", "asyncio.get_event_loop", "asyncio.new_event_loop"})
 LOOP_SPAWNS = frozenset({"create_task", "run_in_executor"})
 """What a loop starts in the background: `loop.create_task` outlives the request as `asyncio.create_task` does."""
-EXECUTORS = frozenset({"concurrent.futures.ThreadPoolExecutor", "concurrent.futures.ProcessPoolExecutor"})
-EXECUTOR_SPAWNS = frozenset({"submit", "map"})
+EXECUTORS = frozenset(
+    {
+        "concurrent.futures.ThreadPoolExecutor",
+        "concurrent.futures.ProcessPoolExecutor",
+        "multiprocessing.Pool",
+        "multiprocessing.pool.Pool",
+        "multiprocessing.pool.ThreadPool",
+    }
+)
+EXECUTOR_SPAWNS = frozenset({"submit", "map", "apply_async", "map_async"})
 """An executor held past a `with` runs what it is given after the request returns; one a `with` holds waits for it."""
-SCHEDULERS = ("apscheduler", "schedule", "rq_scheduler", "aiocron", "crontab")
+SCHEDULERS = ("apscheduler", "schedule", "sched", "rq_scheduler", "aiocron", "crontab")
 """Scheduler libraries. A job queue such as celery or rq is not one."""
 EDGE = ["*.realtime", "*.realtime.*"]
 
@@ -620,6 +634,16 @@ def held(tree: ast.Module, bound: dict[str, str]) -> tuple[set[str], set[str]]:
     return loops, executors
 
 
+def unannotated(node: ast.expr, bound: dict[str, str]) -> ast.expr:
+    """The type an `Annotated[X, ...]` annotation carries, X; any other annotation as it is."""
+    if isinstance(node, ast.Subscript) and last(resolved(node.value, bound) or "") == "Annotated":
+        inner = node.slice
+        if isinstance(inner, ast.Tuple) and inner.elts:
+            return inner.elts[0]
+        return inner
+    return node
+
+
 def receiver(node: ast.expr, bound: dict[str, str], loops: set[str], executors: set[str]) -> str | None:
     """`loop` or `executor` when a method is called on one: made inline, or a name or attribute bound to one."""
     if isinstance(node, ast.Call):
@@ -674,7 +698,7 @@ def services_spawn_nothing(project: Project) -> Iterator[Violation]:
                     what = name or attr
                     yield Violation.at(file.rel, node, f"a web service calls {what}(); work that outlives a request is a worker")
             elif isinstance(node, ast.arg) and node.annotation is not None:
-                name = resolved(node.annotation, bound)
+                name = resolved(unannotated(node.annotation, bound), bound)
                 if name in SPAWNS:
                     yield Violation.at(file.rel, node, f"a web service takes {name}; work that outlives a request is a worker")
 

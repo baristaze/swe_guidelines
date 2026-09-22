@@ -458,6 +458,19 @@ def test_sto_09_a_table_next_to_the_types_and_an_interface_in_impl(tmp_path):
     assert sorted(p for _, p, _ in rules_found(report)) == sorted(files)
 
 
+def test_sto_09_reads_a_table_spelled_with_table_a_declared_attr_or_core(tmp_path):
+    files = {
+        f"{OM}/widgets/types/a.py": "class A(Base):\n    __table__ = Table('a', metadata)\n",
+        f"{OM}/widgets/types/b.py": (
+            "class B(Base):\n    @declared_attr.directive\n    def __tablename__(cls):\n        return 'b'\n"
+        ),
+        f"{OM}/widgets/types/c.py": "import sqlalchemy as sa\n\nc = sa.Table('c', metadata)\n",
+    }
+    code, report = run(tmp_path, "STO-09", files)
+    assert code == 1
+    assert sorted({p for _, p, _ in rules_found(report)}) == sorted(files)
+
+
 def test_sto_09_a_namespace_storage_without_its_parts(tmp_path):
     code, report = run(tmp_path, "STO-09", {f"{OM}/gadgets/storage/__init__.py": ""})
     assert code == 1

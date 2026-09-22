@@ -10,7 +10,12 @@ repeated heading resolves as `#title-1`, `#title-2`, and headings inside
 fenced code do not count. A link that starts with `/` resolves against
 the repository root, as GitHub resolves it. A link that resolves
 outside the repository is broken, whichever way it gets there.
-Exit status is non-zero on any broken link.
+
+No file refers to a section by number, and no heading is numbered: a
+cross-reference names the section by title, because numbers shift when
+a section is inserted. The changelog's release headings are versions,
+not section numbers, and fenced code is not read.
+Exit status is non-zero on any broken link or numbered section.
 Standard library only.
 """
 
@@ -23,13 +28,56 @@ from pathlib import Path
 
 from _common import ROOT, anchors, arguments, markdown_files
 
-LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# The text may hold one level of brackets (`[see [the note]](x.md)`), the
+# destination may be wrapped in `<...>`, and the title may be quoted either
+# way or parenthesised.
+LINK = re.compile(
+    r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]"
+    r"\(\s*(?:<([^>]*)>|([^)\s]+))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)"
+)
+# A reference definition, `[label]: target "title"`, at the start of a line.
+DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(?:<([^>]*)>|(\S+))")
+FENCE = re.compile(r"^ {0,3}(```|~~~)")
+NUMBERED_REFERENCE = re.compile(r"\bsections? \d+", re.IGNORECASE)
+NUMBERED_HEADING = re.compile(r"^#{1,6} \d+(\.\d+)*[.)]?\s")
+VERSIONED = ("CHANGELOG.md",)
 EXTERNAL = ("http://", "https://", "mailto:")
 
 
 def headings(path: Path) -> set[str]:
     """Every anchor the file defines, duplicates numbered as the generator numbers them."""
     return {anchor for _, _, anchor in anchors(path.read_text(encoding="utf-8"))}
+
+
+def definitions(text: str) -> list[tuple[int, str]]:
+    """(line, target) of every reference definition outside fenced code."""
+    out: list[tuple[int, str]] = []
+    fenced = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        m = DEFINITION.match(line) if not fenced else None
+        if m:
+            out.append((number, m.group(1) if m.group(1) is not None else m.group(2)))
+    return out
+
+
+def numbered(path: Path, text: str) -> list[str]:
+    """Every line outside fenced code that refers to a section by number or numbers a heading."""
+    out: list[str] = []
+    fenced = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if NUMBERED_REFERENCE.search(line):
+            out.append(f"{path.relative_to(ROOT)}:{number}: refers to a section by number")
+        elif NUMBERED_HEADING.match(line) and path.name not in VERSIONED:
+            out.append(f"{path.relative_to(ROOT)}:{number}: a numbered heading; headings are unnumbered")
+    return out
 
 
 def main(argv: Sequence[str] = ()) -> int:
@@ -40,10 +88,13 @@ def main(argv: Sequence[str] = ()) -> int:
     for path in files:
         own = headings(path)
         text = path.read_text(encoding="utf-8")
+        errors += numbered(path, text)
         flat = text.replace("\n", " ")  # same length, so offsets map back to lines
-        for m in LINK.finditer(flat):
-            ln = text.count("\n", 0, m.start()) + 1
-            target = m.group(1)
+        found = [
+            (text.count("\n", 0, m.start()) + 1, m.group(1) if m.group(1) is not None else m.group(2))
+            for m in LINK.finditer(flat)
+        ]
+        for ln, target in found + definitions(text):
             where = f"{path.relative_to(ROOT)}:{ln}"
             if target.startswith(EXTERNAL):
                 continue
@@ -62,7 +113,7 @@ def main(argv: Sequence[str] = ()) -> int:
                 errors.append(f"{where}: missing anchor #{anchor} in {file_part}")
     if errors:
         print("\n".join(errors))
-        print(f"\n{len(errors)} broken link(s)")
+        print(f"\n{len(errors)} broken link(s) or numbered section(s)")
         return 1
     print(f"links ok: {len(files)} file(s) scanned")
     return 0

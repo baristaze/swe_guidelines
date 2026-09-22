@@ -257,3 +257,37 @@ def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     assert run.main([*argv, "--out", str(tmp_path / "later")]) == 0
     (later,) = (tmp_path / "later").iterdir()
     assert json.loads((later / "run.json").read_text(encoding="utf-8"))["runtime"]["config"]["keys"] == []
+
+
+def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    scenario = {
+        "name": "missing",
+        "kind": "command",
+        # A binary that is not there: exit 127, as the shell records it.
+        "subject": {"argv": [str(tmp_path / "no-such-claude"), "-p", "hi"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "missing.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2"]) == 6
+    assert judged == []
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
+    assert all(r["judgements"] == [] for r in results["repeats"])
+    assert results["summary"]["overall_mean"] is None
+    assert any("not judged" in note for note in results["notes"])
+
+
+def test_the_workflow_runs_every_scenario_strict():
+    workflow = (RUN.parent.parent / ".github" / "workflows" / "benchmark.yml").read_text(encoding="utf-8")
+    assert "--strict" in workflow

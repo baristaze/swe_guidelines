@@ -78,3 +78,16 @@ def test_every_planted_finding_of_review_om_points_at_the_line_it_shows():
         assert 1 <= int(line) <= len(lines), f"{fid}: line {line}"
         assert lines[int(line) - 1].strip() == shows.replace("''", "'"), f"{fid}: line {line} no longer shows the defect"
     assert "expected" not in {p.name for p in (fixtures / "review-om").rglob("*")}, "the answers stay out of the checkout"
+
+
+def test_two_planted_files_of_one_base_name_are_told_apart_by_their_path():
+    expected = {
+        "findings": [
+            {"id": "A", "lens": "OM-07", "file": "om/tasks/__init__.py"},
+            {"id": "B", "lens": "OM-07", "file": "om/orders/__init__.py"},
+        ]
+    }
+    # names only the tasks package; the bare base name would have counted both
+    result = E.named(expected, "- OM-07 in om/tasks/__init__.py: the root relaxes extra")
+    assert result == {"expected": 2, "named": ["A"], "missed": ["B"]}
+    assert E.shortest_name("om/types/warehouse.py", {"om/types/warehouse.py", "om/rules.py"}) == "warehouse.py"

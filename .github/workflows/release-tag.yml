@@ -17,9 +17,21 @@ jobs:
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.12.17"
           python-version: "3.14"
+      # An adopter pins git#vX.Y.Z, so a tag names a commit main already has:
+      # never one made on a side branch or pushed ahead of its merge.
+      - name: the tagged commit is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME names $GITHUB_SHA, which is not on main; tag the squash of the release pull request"
+            exit 1
+          fi
       - name: check the tag against every copy of the version
         run: uv run --no-project python scripts/check_version.py --tag "$GITHUB_REF_NAME"

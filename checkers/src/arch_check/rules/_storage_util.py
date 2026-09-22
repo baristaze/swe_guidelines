@@ -210,12 +210,27 @@ def tablename(cls: ast.ClassDef) -> str | None:
     return None
 
 
+TABLE_DUNDERS = frozenset({"__tablename__", "__table__"})
+
+
 def has_tablename(cls: ast.ClassDef) -> bool:
+    """A mapped class: its body assigns `__tablename__` or `__table__`, or computes one (`@declared_attr`)."""
     return any(
-        (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__tablename__" for t in n.targets))
-        or (isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "__tablename__")
+        (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in TABLE_DUNDERS for t in n.targets))
+        or (isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in TABLE_DUNDERS)
+        or (isinstance(n, ast.FunctionDef) and n.name in TABLE_DUNDERS)
         for n in cls.body
     )
+
+
+def core_tables(tree: ast.Module) -> list[ast.Call]:
+    """Every `Table(...)` or `sqlalchemy.Table(...)` call at the top level of a module: a Core table."""
+    out = []
+    for stmt in tree.body:
+        value = stmt.value if isinstance(stmt, ast.Assign | ast.AnnAssign) else None
+        if isinstance(value, ast.Call) and call_name(value) == "Table":
+            out.append(value)
+    return out
 
 
 def tables(project: Project, *prefixes: str) -> list[Table]:
