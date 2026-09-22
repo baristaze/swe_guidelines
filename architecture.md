@@ -4027,6 +4027,14 @@ between two environments is a variable. A service that runs in the
 smaller environment runs in production with nothing more than scale
 changes.
 
+Every environment has a cloud account of its own. The account is the
+boundary between environments. A credential of one account reaches
+nothing in another, and nothing in one trusts a principal of the
+other. No root spans two environments, so nothing is shared between
+them: each account holds its own state, its own registry, its own
+trust, and its own budget. The environment tag every resource carries
+stays as a second fence, for a root applied in the wrong account.
+
 The smaller environment is staging, and staging is `main`. Every merge
 to `main` deploys it, with no approval. Staging is always the tip of
 the default branch, and a merge is the deployment.
@@ -4041,6 +4049,16 @@ Production does not rebuild. It promotes what staging already ran:
 service and worker images by the digest staging built for that commit,
 browser bundles by build id. A release commit that staging never built
 is refused.
+
+Production never reads staging's account to promote. What it releases
+is a copy in its own. The registry replicates every image staging
+pushes into production's registry, digest for digest, and the object
+store replicates every bundle staging keeps into production's state
+bucket. Production grants those two writes and nothing more.
+Replication never creates a repository, so every repository keeps the
+settings its root declares. Replication copies from the moment it is
+on, so the first release is a commit staging built after that.
+Tearing staging down leaves production's copies where they are.
 
 Two rules hold the branches. Nothing pushes to `release` but the
 fast-forward. A deploy of production checks that `release` is an
@@ -4075,10 +4093,19 @@ Each browser app is its own origin, and the API is another. In
 production the bare `<domain>` is the company website, which is not
 part of the platform.
 
-> **Principle:** Services and workers run on the container runtime.
-> Browser apps ship from a private S3 bucket through CloudFront, built
-> once and promoted. `api.`, `app.`, and `admin.` sit under each
-> environment's base domain.
+Each public name an environment serves has a hosted zone of its own
+in that environment's account, and the name's records sit at the
+zone's apex. The domain's own zone stays wherever the domain is
+hosted, and it delegates each name to its zone with NS records. The
+create run writes that delegation once. A deploy then writes only
+inside its own account's zones, and never touches the domain's.
+
+> **Principle:** One cloud account per environment, and nothing spans
+> two. Services and workers run on the container runtime. Browser apps
+> ship from a private S3 bucket through CloudFront, built once and
+> promoted. Production promotes copies replicated into its own
+> account. `api.`, `app.`, and `admin.` sit under each environment's
+> base domain, each delegated to a zone in that environment's account.
 
 Every environment collects what its processes emit.
 
@@ -4104,10 +4131,33 @@ services (see [Operations](#operations)).
 
 That Terraform lives in the same monorepo as the application code. An
 environment change is therefore a pull request, and a new environment
-is a fresh parameter set. CI formats and validates every environment.
+is a fresh parameter set. CI formats and validates every root.
+
+Each environment has two roots, and they differ in who applies them.
+The **bootstrap root** holds what must exist before the pipeline can
+run: the state bucket, the trust of the repository host's identity
+federation, the environment's deploy roles, its investigator role,
+its budget and anomaly monitor, its image registry, and the zones of
+its public names. The administrator applies it (see [Creating and
+Destroying an Environment](#creating-and-destroying-an-environment)).
+The **environment root** holds everything else, and the pipeline
+applies it on every deploy. A bootstrap root's state lives in its own
+account's bucket, beside the environment root's, and no deploy role
+can write it.
+
+The layout of the environments is written once, in one file in the
+repository: each environment's account id, the region, its public
+names, and the profile names a person holds for it. The scripts and
+the roots read that file and never ask for those values again. Every
+provider pins the account of the environment it applies, so a
+credential for the wrong account fails the plan before anything
+changes.
 
 > **Principle:** Every cloud resource is declared in Terraform. No
-> clicks in the console, no untracked state.
+> clicks in the console, no untracked state. Each environment has a
+> bootstrap root the administrator applies and an environment root
+> the pipeline applies. One file names every environment's account,
+> and every provider pins its own.
 
 ### Local: Docker Compose
 
@@ -4266,6 +4316,16 @@ person. There is one per environment and two for production, one that
 plans and one that applies, so the approval gates the credential that
 writes (see [Cloud: AWS](#cloud-aws)).
 
+Each deployer credential has an environment of its own on the
+repository host: staging's, production's plan with no reviewer, and
+production's apply with the required reviewer. A deployer role trusts
+a job only when the job declares that environment. Each environment
+holds its own variables under the same names, the role and the state
+bucket among them, so a job reads the value of the environment it
+declared and a staging job never holds a production value. The
+federation replaces every cloud key, so the repository holds no cloud
+secret.
+
 The **investigator** reads everything and writes nothing. There is one
 per environment. It reads every log group, every metric, every trace,
 every error, every alarm, and the description of every resource. It
@@ -4288,18 +4348,27 @@ platform, under a tenant context or an operator context, and the manager
 decides it.
 
 Roles are named `<product>-<role>-<environment>`, so the name says
-what it is and where it reaches. A role's permissions stop at its
-environment, and its fences deny every other environment by tag.
+what it is and where it reaches. A role lives in its environment's
+account, and its permissions stop there. Its fences also deny every
+other environment by tag, which holds even if a root is applied in
+the wrong account.
 
-The principal an agent holds is one user whose only permission is to
-assume the read-only roles. Its profiles chain from that user, one per
-role per environment. Moving to the cloud's identity center when the
-team grows changes the roles' trust policy and nothing below it.
+A person signs in through the cloud's identity center. The
+credential is short-lived, and there is no cloud user and no
+long-lived access key anywhere. The administrator is a permission set
+of the identity center in each account. The investigator role trusts
+the identity center's everyday role in its own account. That role's
+name carries a generated suffix, so the trust matches it by pattern
+and never by a copied name. An agent's profile chains from the
+person's signed-in session to the investigator role, so an agent
+works inside a session a person opened, and it holds less than the
+person does.
 
 > **Principle:** Administrator, deployer, investigator, supporter.
 > A person or an agent holds a read-only role; the pipeline holds the
 > writing one; the administrator creates and destroys, and nothing
-> else.
+> else. People sign in through the identity center: no cloud user and
+> no long-lived key.
 
 ### Operator Credentials
 
@@ -4311,8 +4380,15 @@ cloud who it is and compares the answer with the role it expects. A
 skill that finds itself under a wider credential than it needs stops
 and says so. It never proceeds on the reasoning that more is enough.
 The two administrator skills do the same in reverse: they refuse to run
-under anything but the administrator profile. They act on a cloud
-environment only; the local stack has no administrator.
+under anything but the environment's administrator profile. They act
+on a cloud environment only; the local stack has no administrator.
+
+A skill compares the account as well as the role. The account it
+expects is the one the environments' file names (see [Infrastructure
+as Code](#infrastructure-as-code)), never the one the shell happens to
+hold. A script that writes asks again before every apply, and refuses
+a mismatch. Keys exported in the shell outrank a profile for most
+cloud tools, so a script clears them before it runs anything.
 
 The credentials an operator holds are of two kinds, and both are
 first-class. The cloud profiles live in the cloud tool's own
@@ -4439,15 +4515,15 @@ and a full disk is an outage.
 
 ### Cost Boundaries
 
-An account has a budget from its first apply. The budget names a monthly
+Every environment's account has a budget from its first apply, so a
+bill is read one environment at a time. The budget names a monthly
 amount and alerts the owner at half of it, at nine-tenths of it, at all
 of it, and when the forecast crosses it. Beside the budget, an anomaly
 monitor watches each service's spend and reports a jump.
 
-The amount is the team's. A reference for a team of two with a
-staging and a production environment is a few hundred dollars a
-month, and the budget is the catch-all under which every other bound
-sits.
+The amount is the team's. A reference for a team of two is a hundred
+or two a month for each of staging and production, and the budget is
+the catch-all under which every other bound sits.
 
 Two more bounds cost nothing and are set from the start. Every log
 group has a retention. Every resource carries the environment tag from
@@ -4462,13 +4538,24 @@ the provider's default tags, so a cost report reads by environment.
 Creating an environment is the administrator's one run, and it is a
 script the repository holds, run by the skill that narrates it.
 
-The run creates the state backend, applies the shared root (the
-identity federation, the deploy roles, the investigator roles, the
-operators' user, the budget, the zone), mints the operators' key and
-writes the profiles, sets the repository's variables and environments
-from the shared root's outputs, and starts the first deploy. From
-there the environment is deployed the way every other commit is: by
-the pipeline, under the deployer. The run ends with the smoke test.
+The run takes one environment and acts in that environment's account
+alone. It checks that the administrator profile resolves to the
+account the environments' file names. It applies the bootstrap root
+with local state, then moves that state into the bucket the root
+made. It writes the delegation of each public name at the domain's
+zone. It writes the investigator's profile, chained from the
+identity center's everyday profile. It creates the repository host's
+environments for that environment's deployer credentials, and sets
+their variables from the bootstrap root's outputs. Then it starts the
+first deploy. From there the environment is deployed the way every
+other commit is: by the pipeline, under the deployer. The run ends
+with the smoke test.
+
+The order across accounts follows the one direction anything crosses.
+Staging runs first, then production. Staging then runs again: the
+replication into production needs production's registry and bucket
+to exist, and the second run finds them and turns it on. Every run is
+safe to repeat, so a repeat is also how an account is reproduced.
 
 Everything the run does is declared or scripted. It prints every
 command before it runs it, and a dry run prints them without running
@@ -4480,12 +4567,15 @@ production refuses unless two things hold. Its name is typed as a
 confirmation, and a merged change has already turned its deletion
 protection off, so the destruction of production is itself a pull
 request a person read. The run empties what must be empty, destroys
-the environment root, and reports what remains: the zone, the state
-prefix, the images, the shared roles.
+the environment root, and reports what remains: everything the
+bootstrap root holds, which serves the environment's next life, and
+production's copies of what staging built.
 
 > **Principle:** Create and destroy are the administrator's two runs,
-> scripted, narrated by a skill, and dry-runnable. Production is
-> destroyed only behind a typed name and a merged change.
+> scripted, narrated by a skill, dry-runnable, and one account at a
+> time: staging, production, then staging again to turn replication
+> on. Production is destroyed only behind a typed name and a merged
+> change.
 
 ### Traffic and Stress
 
@@ -4695,9 +4785,14 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
 │
 ├── deployment/
 │   ├── README.md                       # what runs where, locally and in the cloud
+│   ├── cloud/
+│   │   └── environments.json           # each environment's account, region, names, profiles
 │   ├── terraform/
 │   │   ├── modules/
-│   │   └── environments/
+│   │   ├── bootstrap/                  # per account, applied by the administrator
+│   │   │   ├── staging/
+│   │   │   └── prod/
+│   │   └── environments/               # per environment, applied by the pipeline
 │   │       ├── staging/
 │   │       └── prod/
 │   ├── local/

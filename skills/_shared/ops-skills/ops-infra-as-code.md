@@ -35,11 +35,11 @@ of that environment, `acme-<env>-investigate`, which assumes the role
 aws sts get-caller-identity --profile acme-<env>-investigate
 ```
 
-and check that `Arn` reads
+and check that `Account` is the environment's `account_id` in
+`deployment/cloud/environments.json` and that `Arn` reads
 `arn:aws:sts::<account>:assumed-role/acme-investigate-<env>/...`.
-Refuse any other identity, the administrator profile `acme-admin`
-above all. The role reads the state bucket under
-`environments/<env>/` and describes every resource, which is all a
+Refuse any other identity, an administrator profile above all. The
+role reads the state bucket under `environments/<env>/` and describes every resource, which is all a
 plan needs. It cannot lock the state and cannot write it, so the plan
 runs with `-lock=false`, and an apply under it fails by construction.
 
@@ -49,7 +49,7 @@ is read; this skill touches no application credential.
 ## Procedure
 
 1. Read `deployment/terraform/` whole before writing: `modules/`, both
-   `environments/`, and `shared/`. The shape to keep:
+   `environments/`, and both `bootstrap/` roots. The shape to keep:
    - One module graph. Every environment instantiates the same
      modules; what differs is a variable in that environment's
      `terraform.tfvars`, never a resource that exists in one root and
@@ -65,8 +65,10 @@ is read; this skill touches no application credential.
      deletion protection is a variable of its own,
      `database_deletion_protection`, `true` in production, so only a
      merged change turns it off.
-   - The budget in `shared`: `monthly_budget_usd`, the four
-     notifications, the anomaly monitor, to `owner_email`.
+   - The budget in the environment's bootstrap root:
+     `monthly_budget_usd`, the four notifications, the anomaly
+     monitor, to `owner_email`. A change there is the
+     administrator's run, never the pipeline's.
    - The alarm topic `acme-<env>-alarms` and the six alarms, the
      dashboard `acme-<env>`, the log retention on every group, and
      `default_tags` with `environment` on the provider.
@@ -103,8 +105,10 @@ is read; this skill touches no application credential.
 - No secret value in the Terraform or the pull request: a secret is a
   reference to the secret store, never its value.
 - No tenant data; the skill reads resource descriptions and state.
-- No change to `shared/` and an environment in the same pull request
-  unless the change needs both, said in the description.
+- No change to a `bootstrap/` root and an environment root in the
+  same pull request unless the change needs both, said in the
+  description: the pipeline applies the environment root, and the
+  bootstrap root waits for the administrator's run.
 
 ## Output
 

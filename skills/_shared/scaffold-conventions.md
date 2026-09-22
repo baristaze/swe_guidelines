@@ -240,7 +240,8 @@ the order the guideline presents them, never by number.
   env file `~/.config/<root>/ops/<env>.env`, except
   `ops-infra-as-code`, which plans against the cloud and reads no env
   file. `make seed` writes `local.env`. Create and nuke hold the
-  administrator profile alone. The traffic and stress skills have no
+  environment's administrator profile alone, the one
+  `deployment/cloud/environments.json` names beside its account id. The traffic and stress skills have no
   role: `ops-simulate-traffic` and `stress-test-run` read the env
   file for the provisioner identity, and hold the investigate profile
   only to read the signals back from a cloud environment;

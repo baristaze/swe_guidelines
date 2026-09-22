@@ -1,13 +1,13 @@
 ---
 name: ops-cloud-deployment-nuke
-description: "Destroy one cloud environment of the platform as the administrator: empty the buckets, destroy the environment root, and report what remains (the zone, the state prefix, the images, the shared resources). Runs scripts/cloud_nuke.sh after checking the administrator profile. Refuses production unless --confirm production is typed and a merged change on main sets the database's deletion protection off. Supports --dry-run. The one skill besides create that needs a credential that writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
+description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root, the state prefix, the images, and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the profile and the account against deployment/cloud/environments.json. Refuses production unless --confirm production is typed and a merged change on main sets the database's deletion protection off. Supports --dry-run. The one skill besides create that needs a credential that writes."
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
 ---
 
 # ops-cloud-deployment-nuke
 
 The opposite of create, and just as rare. An environment is destroyed
-by a person holding the administrator profile, with an agent checking
+by a person holding its account's administrator profile, with an agent checking
 the preconditions and narrating. Production is protected twice: by a
 pull request that lifts deletion protection, merged before this skill
 runs, and by the name typed into the command.
@@ -25,17 +25,26 @@ stack has no administrator.
 
 ## Role and credential
 
-This skill needs the administrator profile `acme-admin` and refuses
-anything else. Before any other command, run
+The environment's `account_id` and `admin_profile` come from
+`deployment/cloud/environments.json`:
 
 ```bash
-aws sts get-caller-identity --profile acme-admin
+jq '.environments.<env>' deployment/cloud/environments.json
 ```
 
-and check that `Arn` is the administrator's own identity in the
-account the environment belongs to, never
+This skill needs that `admin_profile` and refuses anything else.
+Before any other command, run
+
+```bash
+aws sts get-caller-identity --profile <admin_profile>
+```
+
+and check that `Account` is the environment's `account_id` and `Arn`
+is the identity center's administrator permission set, never
 `assumed-role/acme-investigate-*`. Every `aws` command below carries
-`--profile acme-admin`; the script inherits it.
+`--profile <admin_profile>`; the script clears any keys exported in
+the shell, inherits the profile, and asks the account again before
+every apply.
 
 No env file is read. The script removes the environment's
 `~/.config/acme/ops/<env>.env` and its investigate profile from
@@ -69,9 +78,9 @@ and a worker added since is one more name.
 
    ```bash
    aws ecs describe-services --cluster acme-<env> \
-     --services acme-<env>-api acme-<env>-maintenance --profile acme-admin
+     --services acme-<env>-api acme-<env>-maintenance --profile <admin_profile>
    aws s3api list-buckets --query 'Buckets[?starts_with(Name, `acme-<env>-`)].Name' \
-     --profile acme-admin
+     --profile <admin_profile>
    ```
 
 4. Run the script, dry first:
@@ -88,22 +97,22 @@ and a worker added since is one more name.
    versions included, and never the state bucket; `terraform destroy`
    of the environment root; the GitHub environment and its variables
    removed; the local profile and env file removed.
-5. Read what remains and write the report. The zone stays, because
-   the registrar delegates to it. The state prefix stays, empty, so
-   a recreate finds its backend. The images stay. `shared` stays: the roles, the
-   budget, the operators user serve the other environment. A resource
-   the destroy could not remove is listed with the reason the script
-   printed.
+5. Read what remains and write the report. The bootstrap root stays:
+   the zones the domain delegates to, the state bucket with its empty
+   prefix, the registry and its images, the roles, the budget. It is
+   what the environment's next life starts from. Destroying staging
+   leaves production's copies of what staging built in production's
+   account. A resource the destroy could not remove is listed with the
+   reason the script printed.
 
 ## What it never does
 
 - No destroy without the preconditions: the profile, the typed
   confirmation, the merged change.
-- No touch of `shared`, the state bucket, or the zone.
-- No destroy of the other environment: every command names `<env>`,
-  and the role fences deny the other environment's tags to the
-  investigate roles; the administrator has no fence, which is why
-  every command is narrated before it runs.
+- No touch of the bootstrap root, the state bucket, or the zones.
+- No destroy of the other environment: it lives in another account,
+  which this profile cannot reach, and every provider pins the
+  environment's own.
 - No secret value printed.
 - No console clicks: a resource the CLI cannot remove is reported,
   not clicked away.
@@ -113,7 +122,7 @@ and a worker added since is one more name.
 ```markdown
 # Environment destroyed: <env>
 
-**Credential.** acme-admin, <Arn>, account <id>
+**Credential.** <admin_profile>, <Arn>, account <id> (expected <id>)
 **Confirmation.** <typed | not needed (staging)>
 **Deletion protection on main.** <false, PR <url> | not needed (staging)>
 
@@ -127,9 +136,8 @@ and a worker added since is one more name.
 
 ## Remains
 
-- Zone <name> (delegated at the registrar)
+- Bootstrap root: zones <names> (delegated at the domain's DNS host), roles <names>, budget
 - State prefix environments/<env>/ in <bucket>, empty
 - Images: <repositories>
-- shared: <role>, <user>, budget
 - <resource the destroy could not remove>: <reason>
 ```

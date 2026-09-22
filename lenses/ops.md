@@ -6,9 +6,10 @@ Group id: `ops`. Covers Operations and Documentation as Code of
 This group judges how the system is operated once it is deployed: who
 holds which credential, what a skill may do under it, what is declared
 as code beside the environment, and what a reader is served. It leaves
-the deployment posture and the environments themselves to `delivery`
-(DEL-02, DEL-03, DEL-38), what a process emits and where it lands to
-`delivery` (DEL-19, DEL-20, DEL-32, DEL-39), the `devx` profile and the
+the deployment posture and the environments themselves to
+`delivery` (DEL-02, DEL-03, DEL-38, DEL-41, DEL-42, DEL-43), what a
+process emits and where it lands to `delivery` (DEL-19, DEL-20,
+DEL-32, DEL-39), the `devx` profile and the
 local URLs to `delivery` (DEL-33, DEL-34), the in-process suite and the
 deployed smoke test's place beside it to `delivery` (DEL-36), the
 operator plane's gate and its context to `context` (CTX-20), and the
@@ -50,9 +51,9 @@ but those two runs under it.
 
 **Source.** Operations, Operator Roles.
 
-**Look for.** The roles the shared root declares and the profiles that
-hold them; the permissions of the administrator role; which skills
-name the administrator profile.
+**Look for.** The roles each bootstrap root declares and the profiles
+that hold them; the permissions of the administrator permission set;
+which skills name an administrator profile.
 
 **Violation.** A fifth role, or a role with no profile; a person's
 everyday profile holding the administrator role; a skill other than
@@ -134,62 +135,68 @@ CTX-20.)
 ## OPS-06 Roles are named `<product>-<role>-<environment>`, fenced by tag
 
 **Principle.** Roles are named `<product>-<role>-<environment>`, so the
-name says what it is and where it reaches. A role's permissions stop
-at its environment, and its fences deny every other environment by tag.
+name says what it is and where it reaches. A role lives in its
+environment's account and its permissions stop there. Its fences also
+deny every other environment by tag, which holds if a root is ever
+applied in the wrong account.
 
 **Source.** Operations, Operator Roles.
 
-**Look for.** The role names in the shared root; the condition on each
-role's statements and the environment tag it keys on; whether a
-staging role reaches a production resource.
+**Look for.** The role names in each bootstrap root; the account each
+role lives in; the deny on the other environment's tag in each role's
+fences; whether a staging role reaches a production resource.
 
 **Violation.** A role whose name lacks the product, the role, or the
-environment; a role with no tag condition, so it reaches every
-environment in the account; a staging role that lists a production
-resource.
+environment; a role in an account that is not its environment's; a
+role with no deny on the other environment's tag; a staging role that
+lists a production resource.
 
 **Severity.** medium
 
-## OPS-07 An agent's principal is one user that only assumes read-only roles
+## OPS-07 People sign in through the identity center; agents chain from it
 
-**Principle.** The principal an agent holds is one user whose only
-permission is to assume the read-only roles. Its profiles chain from
-that user, one per role per environment. Moving to the cloud's
-identity center when the team grows changes the roles' trust policy
-and nothing below it.
+**Principle.** A person signs in through the cloud's identity center,
+with short-lived credentials: no cloud user and no long-lived key.
+The investigator role trusts the identity center's everyday role of
+its own account, matched by pattern. An agent's profile chains from
+the person's signed-in session, so it works inside a session a person
+opened and holds less than the person.
 
 **Source.** Operations, Operator Roles.
 
-**Look for.** The operators' user in the shared root and its policy;
-the trust policy of the investigator and supporter roles; the profile
-chain in the cloud tool's configuration, from the user to each role.
+**Look for.** Any cloud user or access key in the roots, the scripts,
+or the cloud tool's configuration; the trust policy of each
+investigator role and the principal pattern it matches; the profile
+chain from the signed-in profile to each investigator role.
 
-**Violation.** A user with a permission beyond assuming the read-only
-roles; a user that can assume the deployer or the administrator; a
-profile that holds a role's key directly instead of chaining from the
-user.
+**Violation.** A cloud user, or an access key minted for a person or an
+agent; an investigator role that trusts another account, or a
+principal by a copied generated name; an agent profile holding a key
+of its own instead of chaining from a person's session.
 
 **Severity.** high
 
 ## OPS-08 A skill verifies its credential and refuses a wider one
 
-**Principle.** A skill names the profile it needs and runs under that
-profile and no other. Before it reads anything, it asks the cloud who
-it is and compares the answer with the role it expects. Under a wider
-credential than it needs it stops and says so. The two administrator
-skills refuse to run under anything but the administrator profile.
+**Principle.** A skill names the profile it needs and runs under it
+alone. Before it reads anything, it asks the cloud who it is and
+compares the role and the account with the ones the environments' file
+names. Under a wider credential it stops. A script that writes clears
+the shell's exported keys first, and asks again before every apply.
 
 **Source.** Operations, Operator Credentials.
 
 **Look for.** The profile each skill names; the identity call at the
-top of every skill and the comparison that follows it; what the skill
-does when the answer is a wider role; the same check, reversed, in the
-create and destroy skills.
+top of every skill and the comparison that follows it, the account
+included; what the skill does when the answer is a wider role; the
+same check, reversed, in the create and destroy scripts, before each
+apply, after the exported keys are cleared.
 
 **Violation.** A skill that reads before it checks who it is; a skill
 that proceeds under the administrator or the deployer because more is
-enough; a skill that takes whatever profile the shell has set; a
-create or destroy run that accepts a non-administrator profile.
+enough; a skill that takes whatever profile or keys the shell has set;
+a create or destroy run that accepts another profile, applies without
+checking the account, or compares it with nothing written down.
 
 **Severity.** high
 
@@ -400,7 +407,8 @@ made outside a pull request; a database with a fixed disk.
 
 ## OPS-18 A budget and an anomaly monitor from the first apply
 
-**Principle.** An account has a budget from its first apply. It names
+**Principle.** Every environment's account has a budget from its
+first apply. It names
 a monthly amount and alerts the owner at half of it, at nine-tenths of it,
 at all of it, and when the forecast crosses it. An anomaly monitor
 watches each service's spend and reports a jump. Every resource
@@ -408,7 +416,7 @@ carries the environment tag through the provider's default tags.
 
 **Source.** Operations, Cost Boundaries.
 
-**Look for.** The budget resource in the shared root, its amount, its
+**Look for.** The budget resource in each bootstrap root, its amount, its
 four thresholds, and the address they alert; the anomaly monitor and
 its subscription; the provider's default tags block and the
 environment tag in it.
@@ -432,13 +440,13 @@ deletion protection off.
 
 **Source.** Operations, Creating and Destroying an Environment.
 
-**Look for.** The create script: the state backend, the shared root,
-the operators' key and profiles, the repository's variables and
-environments from the root's outputs, the first deploy, the smoke
-test at the end. The destroy script: the word a smaller environment
-goes on, the typed name production demands, the deletion protection
-check, what it empties, and the report of what remains (the zone, the
-state prefix, the images, the shared roles).
+**Look for.** The create script: one account per run, the bootstrap
+root and its state moved into its bucket, the delegation, the
+investigator's profile, the repository host's environments and their
+variables from the outputs, the first deploy, and the order across
+accounts. The destroy script: the word staging goes on, production's
+typed name and deletion protection check, and the report of what
+remains.
 
 **Violation.** A step of creation done by hand in the console; a run
 that executes a command it did not print, or has no dry run; a
@@ -644,5 +652,29 @@ workarounds in it; the map for a narrower line the team drew.
 document; a token in a runbook; a note that only a team member could
 act on; a deployment workaround written into a document served to a
 tenant.
+
+**Severity.** high
+
+## OPS-28 One repository-host environment per deployer credential
+
+**Principle.** Each deployer credential has an environment of its own
+on the repository host: staging's, production's plan with no
+reviewer, production's apply with the required reviewer. Each holds
+its own variables under the same names, so a job reads the value of
+the environment it declared. The federation replaces every cloud key,
+so the repository holds no cloud secret.
+
+**Source.** Operations, Operator Roles.
+
+**Look for.** The environments on the repository host and the rules
+on each; the variables each holds and their names; the trust of each
+deployer role and the environment its subject names; any cloud key
+stored as a secret.
+
+**Violation.** One environment shared by two credentials, or a
+reviewer on the plan's environment, so the plan waits on its own
+approval; a production value in a repository-wide variable a staging
+job can read; a cloud access key stored as a secret. (The approval
+itself is DEL-38.)
 
 **Severity.** high

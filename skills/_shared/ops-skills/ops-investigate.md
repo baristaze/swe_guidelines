@@ -37,10 +37,11 @@ of that environment, `acme-<env>-investigate`, which assumes the role
 aws sts get-caller-identity --profile acme-<env>-investigate
 ```
 
-and check that `Arn` reads
+and check that `Account` is the environment's `account_id` in
+`deployment/cloud/environments.json` and that `Arn` reads
 `arn:aws:sts::<account>:assumed-role/acme-investigate-<env>/...`.
-Refuse to run under any other identity, the administrator profile
-`acme-admin` above all. A wider credential is not a convenience; it is
+Refuse to run under any other identity, an administrator profile
+above all. A wider credential is not a convenience; it is
 the boundary gone. Every `aws` command below carries
 `--profile acme-<env>-investigate`. Never read `AWS_PROFILE` as a
 substitute.
