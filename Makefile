@@ -1,6 +1,8 @@
 # Software Design and Architecture Guidelines: checks and generators
 SHELL := /bin/bash
-PYTHON := python3
+# The scripts run through uv, so they run on the Python uv selects: the
+# one UV_PYTHON names (CI sets it per leg), else the one on PATH.
+PYTHON := uv run --no-project python
 # The tests need pytest, pyyaml, and jsonschema, which a system python3 may
 # not carry; uv brings them at pinned versions, locally and in CI alike.
 PYTEST := uv run --no-project --with pytest==9.1.1 --with pyyaml==6.0.3 --with jsonschema==4.26.0 python -m pytest
@@ -54,7 +56,7 @@ test:              ## the checkers and generators pass their own tests (pytest t
 plugin:            ## validate the plugin, marketplace, skills, and agents with Claude Code (skipped when claude is not installed)
 	@if command -v claude >/dev/null 2>&1; then \
 	  claude plugin validate . --strict && claude plugin validate skills --strict && claude plugin validate agents --strict \
-	  && python3 scripts/check_plugin.py; \
+	  && $(PYTHON) scripts/check_plugin.py; \
 	else echo "plugin: claude not installed, skipped"; fi
 
 gen-skills:        ## regenerate the review skills from the template and the lens files
