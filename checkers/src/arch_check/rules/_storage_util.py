@@ -34,6 +34,7 @@ MIXIN_RANK: dict[str, int] = {
     "IdentifiableMixin": 0,
     "GlobalIdentifiableMixin": 0,
     "FeedIdentifiableMixin": 0,
+    "IdentityScopedMixin": 0,
     "NamedMixin": 1,
     "CreatedMixin": 2,
     "TrackableMixin": 2,

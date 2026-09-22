@@ -1349,3 +1349,35 @@ def test_sto_26_a_table_class_where_that_lets_the_dead_in(tmp_path, where):
     files = edit(WIDGETS, 'postgresql_where=text("deleted_at IS NULL")', f"postgresql_where={where}")
     code, report = run(tmp_path, "STO-26", files)
     assert (code, [p for _, p, _ in rules_found(report)]) == (1, [WIDGETS])
+
+
+IDENTITY_SCOPED = """\
+
+class IdentityScopedMixin:
+    id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
+    identity_id: Mapped[UUID] = mapped_column(index=True, sort_order=-999)
+"""
+
+
+def test_sto_11_the_identity_scoped_mixin_leads_and_carries_no_org_id(tmp_path):
+    files = {BASE: GOOD[BASE] + IDENTITY_SCOPED}
+    files[CATALOG] = (
+        GOOD[CATALOG]
+        .replace("GlobalIdentifiableMixin", "IdentityScopedMixin")
+        .replace("IdentityScopedMixin, CreatedMixin, Base", "CreatedMixin, IdentityScopedMixin, Base")
+        .replace("    title: Mapped[str]\n", "    title: Mapped[str]\n    org_id: Mapped[UUID]\n")
+    )
+    code, report = run(tmp_path, "STO-11", files)
+    assert code == 1
+    assert_messages(
+        report,
+        [
+            "Catalog composes IdentityScopedMixin and declares org_id",
+            "Catalog lists CreatedMixin before IdentityScopedMixin; the house order is identity, name, lifecycle, soft delete",
+        ],
+    )
+    code, report = run(tmp_path, "STO-13", {BASE: GOOD[BASE] + IDENTITY_SCOPED.replace("-999", "-600")})
+    assert code == 1
+    assert messages(report) == [
+        "NamedMixin.name sorts at -900, before IdentityScopedMixin.identity_id at -600; bands follow the house order"
+    ]
