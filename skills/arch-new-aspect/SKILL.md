@@ -56,9 +56,10 @@ for the aspect in one message and stop.
      more than one principle is a section; one principle is a
      subsection; a qualification is a paragraph.
    - Where does it live? In the section whose layer it touches, in
-     reading order; a rationale or a pointer goes at the end of the
-     document, after the last section, a pointer after any rationale
-     already there. Which existing places should mention it, with a
+     reading order. A rationale or a pointer goes at the end of the
+     document, before the closing pointer section (the one whose title
+     starts with `Next:`), which stays last. A pointer goes after any
+     rationale already there. Which existing places should mention it, with a
      named anchor link, at the first place a reader needs it? A
      rationale or a pointer placed at the end is linked from the
      introduction, so a reader who does not reach the end still finds
@@ -102,7 +103,14 @@ for the aspect in one message and stop.
      - `AGENTS.md`, when a new invariant appears.
      - The release level. It goes in the report and never into
        `CHANGELOG.md`, since the release pull request writes the
-       changelog. A new or sharpened rule is minor. A removed or
+       changelog. The report carries the release note the release
+       pull request copies, in the style of the latest sections of
+       `CHANGELOG.md`: one bullet under Added, Changed, Removed, or
+       Fixed, naming the section title in quotes and the lens ids, then
+       stating the change for a reader who adopts the guideline. It
+       names no file and lists no cascade; the level is its own field.
+       A reversal opens with `**Reversed.**`.
+       A new or sharpened rule is minor. A removed or
        reversed rule is major; before 1.0.0 it bumps the minor number,
        and the entry names the reversal, as `CONTRIBUTING.md` states.
        A pointer, a rationale, or a wording change that states no new
@@ -142,7 +150,8 @@ A short report, and nothing else:
 **Mentions.** <existing places that now link to it>
 **Lenses.** <ids added or changed, with their groups>, or none, and why
 **Cascade.** <files changed outside the guideline and the lenses>
-**Release note.** <the entry the release will carry, in the changelog's own style: a bullet naming the file, the section title in quotes, what cascaded, and ending with the level>, <minor | major | patch>
+**Release note.** <Added | Changed | Removed | Fixed>: <one bullet: the section title in quotes, the lens ids, and the change stated>
+**Level.** <minor | major | patch>, and why
 **Vocabulary.** <terms rephrased for the leak checker>, or none
 **Text.** <the first sentence of the guideline text added; the reviewer reads the rest in `git diff`>
 **Check.** `make check` <passed | failed: what>
