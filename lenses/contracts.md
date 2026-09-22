@@ -66,11 +66,11 @@ interface methods; the rest is judged.
 ## CON-03 Satisfiable without its technology, which is named last
 
 **Principle.** Every interface can be satisfied without the technology
-behind it, usually as two impls interchangeable at wiring time; names
-put the technology last. A manager over its own storage meets it through
-the memory roots, one fronting an external provider through the
-provider's twin, and a service interface carries the in-process impl
-alone until a split.
+behind it, usually as two impls interchangeable at wiring time. Names
+put the technology last. A manager over its own storage meets it
+through the memory roots. One fronting an external provider meets it
+through the provider's twin. A service interface carries the
+in-process impl alone until a split.
 
 **Source.** Interfaces, Multiple impls per interface.
 
@@ -465,8 +465,8 @@ state in a constructor; the rest is judged.
 
 ## CON-19 The copy on update starts from the stored row
 
-**Principle.** The manager's copy on update starts from the stored row:
-the caller's entity supplies the fields a caller may change, and
+**Principle.** The manager's copy on update starts from the stored row.
+The caller's entity supplies the fields a caller may change.
 `PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
 `deleted_by`) stay as stored, so no caller rewrites who made a row or
 brings a deleted one back by sending an entity. The copy is

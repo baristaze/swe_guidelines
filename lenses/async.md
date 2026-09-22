@@ -384,12 +384,13 @@ bound but the process's life.
 
 **Severity.** high
 
-## ASY-18 Shutdown drains first and goes offline last
+## ASY-18 Shutdown hands work back first and goes offline last
 
 **Principle.** On a stop signal the worker cancels in-flight tasks,
 each returns its work item to the queue with a note, then the
 heartbeat stops, then the worker marks itself offline. A rollout never
-runs more workers than desired at once, because a worker holds leases.
+runs more workers than desired at once, because the connection budget
+counts every worker once, at its ceiling.
 
 **Source.** Worker Roles, Shutdown.
 
@@ -521,21 +522,22 @@ past the lease.
 nothing about the record, which lives in another role: a handler is
 idempotent on the item's key, a contended record carries a `version`
 written by compare-and-set, and an external side effect is keyed by
-the item or reconciled, never assumed exclusive. Liveness is read
-back on every beat.
+the item or reconciled, never assumed exclusive. Liveness beats in
+memory; its cache key is extra.
 
 **Source.** Worker Roles, Shape of a Worker.
 
 **Look for.** What the record writes compare against; the handler's
 dedupe on the item's key; how an external call is keyed; the
-heartbeat key under the `WORKER_LIVENESS` scope and the failure path.
+in-memory beat `/healthz` answers from, and the best-effort key under
+the `WORKER_LIVENESS` scope.
 
 **Violation.** A record write that treats the lease alone as
 exclusive, with no `version` and no idempotent handler behind it; an
 external side effect performed as if the lease made it exclusive; a
-heartbeat that is only written and never read back; a heartbeat
-failure that crashes the worker, or repeated failures that leave it
-claiming.
+`/healthz` that answers without reading the last beat; a failed
+publish of the cache key that crashes the worker or pauses claiming,
+so an outage of the cache halts every worker.
 
 **Severity.** high
 
@@ -543,7 +545,7 @@ claiming.
 
 **Principle.** Enqueue is a create: the insert that reports an existing
 id, so a retried enqueue never resets a claim, and a duplicate
-`idempotency_key` is reported, never a driver error; the manager's
+`idempotency_key` is reported, never a driver error. The manager's
 copy stamps actor, status, and attempts, clears every claim field, and
 keeps the id and the timestamps. Enqueue then publishes the wake-up;
 claim stamps claim and lease together.
@@ -559,14 +561,15 @@ complete, defer, requeue, and fail methods and what each does to
 `attempts`.
 
 **Violation.** An enqueue that upserts, so a retry resets a claim or
-announces twice; a caller-supplied status, attempt count, or claim
-field written as sent, or a timestamp the copy resets; a publish
-before the row exists; a manager that enqueues in a second statement
-after its own core write instead of riding the second outbox row of
-that write (STO-20); a relayed enqueue whose key changes between runs,
-so a second relay lands a second item; a failed attempt requeued with
-no delay; an item that fails its last attempt with no audit entry and
-no metric (the hand-back that spends no attempt is ASY-26).
+announces twice; a read-back by id after a collision on the key, which
+finds nothing and answers `Conflict`; a caller-supplied status, attempt
+count, or claim field written as sent, or a timestamp the copy resets; a
+publish before the row exists; a manager that enqueues in a second
+statement after its own core write instead of riding the second outbox
+row of that write (STO-20); a relayed enqueue whose key changes between
+runs, so a second relay lands a second item; a failed attempt requeued
+with no delay; an item that fails its last attempt with no audit entry
+and no metric (the hand-back that spends no attempt is ASY-26).
 
 **Severity.** high
 
@@ -576,7 +579,7 @@ no metric (the hand-back that spends no attempt is ASY-26).
 completion, release, deferral, and renewal carry it and condition on it
 in the statement itself, the token and never the worker's name, since
 one worker can hold one item twice across a requeue; a stale holder is
-refused with `Conflict` and hands the item back without spending an
+refused with `Conflict` and drops the item without spending an
 attempt.
 
 **Source.** Worker Roles, Shape of a Worker.
