@@ -304,18 +304,25 @@ def mixins(project: Project) -> dict[str, Mixin]:
             if cls.name.endswith("Mixin") and cls.name not in found:
                 found[cls.name] = Mixin(cls.name, file, cls, own_columns(cls))
 
-    def collect(name: str, seen: frozenset[str]) -> dict[str, ast.AST]:
+    collected: dict[str, dict[str, ast.AST]] = {}
+
+    def collect(name: str) -> dict[str, ast.AST]:
+        """A mixin's columns, its bases' first; each mixin is read once, and a base met again in a cycle gives nothing."""
+        if name in collected:
+            return collected[name]
+        collected[name] = {}
         m = found[name]
         out: dict[str, ast.AST] = {}
         for base in base_names(m.node):
             b = last(base) or ""
-            if b in found and b not in seen:
-                out.update(collect(b, seen | {b}))
+            if b in found:
+                out.update(collect(b))
         out.update(m.own)
+        collected[name] = out
         return out
 
     for name, m in found.items():
-        m.columns = collect(name, frozenset({name}))
+        m.columns = collect(name)
     return found
 
 

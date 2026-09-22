@@ -57,12 +57,20 @@ def own_declarations(file: SourceFile, tree: ast.Module) -> dict[str, Declaratio
     return out
 
 
-def exported(project: Project, module: str, seen: frozenset[str] = frozenset()) -> dict[str, Declaration]:
-    """What a module declares or re-exports: its own names, then each `from x import y` of the project, followed."""
+def exported(project: Project, module: str, memo: dict[str, dict[str, Declaration]] | None = None) -> dict[str, Declaration]:
+    """What a module declares or re-exports: its own names, then each `from x import y` of the project, followed.
+
+    Each module is read once per call, so imports that reach a module by many paths cost one read of it.
+    A module met again while it is still being read, through an import cycle, gives nothing.
+    """
+    memo = {} if memo is None else memo
+    if module in memo:
+        return memo[module]
     file = project.module(module)
     tree = project.tree(file) if file else None
-    if file is None or tree is None or module in seen:
+    if file is None or tree is None:
         return {}
+    memo[module] = {}
     out = own_declarations(file, tree)
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom):
@@ -70,13 +78,14 @@ def exported(project: Project, module: str, seen: frozenset[str] = frozenset()) 
         source = project.resolve(file, node.level, node.module) if node.level else node.module or ""
         if project.module(source) is None:
             continue
-        found = exported(project, source, seen | {module})
+        found = exported(project, source, memo)
         for a in node.names:
             if a.name == "*":
                 for name, decl in found.items():
                     out.setdefault(name, decl)
             elif a.name in found:
                 out.setdefault(a.asname or a.name, found[a.name])
+    memo[module] = out
     return out
 
 
