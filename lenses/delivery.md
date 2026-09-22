@@ -765,8 +765,7 @@ bucket, and the one write production grants each; the `config.json`
 each deploy writes next to the bundle; the tag mutability of every
 repository, the overwrite refusal on production's bundle prefix, and
 the record the staging deploy writes on the repository host that
-production compares with the copy; the credential the build steps
-hold.
+production compares with the copy.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
@@ -777,9 +776,9 @@ bucket, or replicated into one; a lookup that refuses at once while the
 copy is still in flight; a repository with mutable tags, or a bundle
 prefix a second write can replace; a production lookup that accepts a
 copy with no record to compare against, or accepts a commit staging
-built and failed to deploy; a build step that holds the credential
-that applies; an API origin or DSN compiled
-into a bundle (the approval on the plan is DEL-38).
+built and failed to deploy; an API origin or DSN compiled into a
+bundle (the approval on the plan is DEL-38, the credential a build
+step holds is DEL-51).
 
 **Severity.** medium
 
@@ -1227,3 +1226,22 @@ or up, or plans or applies Terraform; a rollback that moves `release`
 back.
 
 **Severity.** medium
+
+## DEL-51 A build step holds the push credential and nothing that applies
+
+**Principle.** The build steps hold a credential that pushes images
+and bundles and nothing else. The credential that applies an
+environment is held by the apply job alone, so an install script that
+runs during a build never holds what applies.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The credential each build step assumes, and what its
+policy allows; the job that holds the apply credential, and whether a
+dependency install or a build runs inside that job.
+
+**Violation.** A build step that holds the credential that applies, or
+one whose push credential may write anything but images and bundles;
+an install or a build run inside the apply job.
+
+**Severity.** high
