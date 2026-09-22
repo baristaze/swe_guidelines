@@ -83,8 +83,10 @@ class Import:
 class Project:
     """The repository at `config.root`, read through `config`."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, declared: dict[str, set[str]] | None = None) -> None:
         self.config = config
+        self.declared = declared or {}
+        """Every option key the rules of one id declare, by id: a shipped rule and a local one may share an id."""
         self.root = config.root
         self.package = config.package
         self.parse_errors: dict[str, tuple[int, str]] = {}
@@ -102,11 +104,12 @@ class Project:
 
         `allowed` is every key the rule reads; any other key under the rule's
         table is a `ConfigError`, so a misspelt option never silently falls
-        back to the default. The value must have the default's type, and a
+        back to the default. A key another rule of the same id declares
+        (`declared`) is that rule's, never a misspelling. The value must have the default's type, and a
         table's entries are each a name or a non-empty list of names.
         """
         table = self.config.options.get(rule, {})
-        unknown = sorted(set(table) - set(allowed))
+        unknown = sorted(set(table) - set(allowed) - self.declared.get(rule, set()))
         if unknown:
             raise ConfigError(f"[tool.arch-check.options.{rule}]: unknown key(s) {', '.join(unknown)}")
         if key not in table:
