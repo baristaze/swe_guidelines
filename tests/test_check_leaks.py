@@ -166,3 +166,38 @@ def test_claude_code_worktrees_are_not_scanned(repo, leaks):
     repo.write(".claude/worktrees/agent-1/docs/notes.md", "# Notes\n\nThe firmware of Tadas.\n")
     repo.write(".claude/worktrees/agent-1/Makefile", "# Tadas\n")
     assert leaks.main() == 0
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        ".github/workflows/ci.yml",
+        ".github/dependabot.yml",
+        ".github/ISSUE_TEMPLATE/config.yaml",
+        "benchmark/scenarios/review.yaml",
+        "skills/arch-review-om/evals.yaml",
+        ".claude-plugin/plugin.json",
+    ],
+)
+def test_a_product_term_in_a_published_yaml_or_json_file_fails(repo, leaks, capsys, rel):
+    repo.write(rel, "name: check\n# drives the firmware\n")
+    assert leaks.main() == 1
+    assert f"{rel}:2: product term 'firmware'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("folder", ["scripts", "checkers/src/arch_check", "benchmark/harness"])
+def test_a_product_term_in_a_python_docstring_fails(repo, leaks, capsys, folder):
+    rel = f"{folder}/tool.py"
+    source = '"""A tool."""\n\nTERMS = ["firmware"]\n\n\ndef run():\n    """Run it.\n\n    Drives the firmware.\n    """\n'
+    repo.write(rel, source)
+    assert leaks.main() == 1
+    out = capsys.readouterr().out
+    assert f"{rel}:9: product term 'firmware'" in out
+    assert "1 leak(s)" in out
+
+
+def test_python_code_and_the_tests_are_not_scanned_for_product_terms(repo, leaks):
+    repo.write("scripts/tool.py", 'TERMS = [r"\\bfirmware\\b"]  # the firmware\n')
+    repo.write("tests/test_tool.py", '"""The firmware case."""\n')
+    repo.write("scripts/broken.py", "def (:\n")
+    assert leaks.main() == 0
