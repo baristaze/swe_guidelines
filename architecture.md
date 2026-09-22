@@ -4748,18 +4748,23 @@ at an environment. The person chooses what to do. The agent does it.
 
 The safety boundary is the credential the skill holds, never the
 prompt. A credential that can only read cannot break anything, so an
-agent holding one may look at everything it reaches. A cloud
-credential that writes is held by a pipeline, or by the administrator
-for its two named steps, creating an environment and destroying one,
-and by nothing else.
+agent holding one may look at everything it reaches.
+
+A cloud credential that writes is held by a pipeline, or by the
+administrator for its two named steps, creating an environment and
+destroying one. The one other is a person's everyday permission set in
+a smaller environment, when the team widens it as a named choice (see
+[Operator Roles](#operator-roles)). No agent holds that one, and no
+skill runs under it.
 
 The administrator is the one deliberate exception to that boundary.
 Its permission set is wide, because the bootstrap writes trust and
 roles, so what keeps it to its two steps is the skill and the person,
 not the credential. That is why it is granted for the run and taken
-back after it, never held between runs. On the platform, the one writing identity an
-agent runs under is the traffic generator's (see [Traffic and
-Stress](#traffic-and-stress)).
+back after it, never held between runs.
+
+On the platform, the one writing identity an agent runs under is the
+traffic generator's (see [Traffic and Stress](#traffic-and-stress)).
 
 The administrator is also the break-glass. When the pipeline cannot do
 what an incident needs, because the repository host is down, a killed
@@ -4776,10 +4781,10 @@ The shapes below let the person step back one step at a time, without
 a redesign, when an agent has earned it.
 
 > **Principle:** Every operational task is a skill a person runs with
-> an agent. The boundary is the credential. A cloud credential a
-> person or an agent holds reads and never writes, except the
+> an agent. The boundary is the credential. A cloud credential an
+> agent holds reads and never writes. A person's reads too, except the
 > administrator's, which creates and destroys an environment and does
-> nothing else.
+> nothing else, and a smaller environment's named widening.
 
 ### Operator Roles
 
@@ -4787,6 +4792,13 @@ Four roles operate a platform. Three are cloud roles with a permission
 set, each held under a named profile: the administrator, the deployer,
 and the investigator. The fourth, the supporter, is the investigator's
 cloud role plus an identity of the operator plane.
+
+Two credentials sit beside the four and are not operator roles. The
+provisioner is the traffic generator's identity on the operator plane,
+and it holds no cloud role (see [Operational
+Skills](#operational-skills)). The smoke test's read grant reads the
+signals after a rollout and writes nothing (see [The Telemetry Round
+Trip](#the-telemetry-round-trip)).
 
 The **administrator** is a role a person holds. The role creates an
 environment and destroys one (see [Creating and Destroying an
@@ -4803,20 +4815,25 @@ writes (see [Cloud: AWS](#cloud-aws)).
 
 Each deployer credential has an environment of its own on the
 repository host: staging's, production's plan with no reviewer, and
-production's apply with the required reviewer. A deployer role trusts
-a job only when the job declares that environment and runs on that
-environment's branch: the trust names the environment and the ref the
-token carries, and the repository by its immutable id and its owner's,
-never by a name alone, because a freed name can be claimed by someone
-else. Where a cloud cannot condition on those claims, a customized
-subject template on the repository host carries them in the subject. Each repository-host environment also carries a
-deployment-branch policy, so staging deploys from `main` alone, and
-production's plan and apply from `release` alone. A branch pushed with a
-workflow that declares `staging` then gets neither the environment nor
-the role. Each environment
-holds its own variables under the same names, the role and the state
-bucket among them, so a job reads the value of the environment it
-declared and a staging job never holds a production value. The
+production's apply with the required reviewer.
+
+A deployer role trusts a job only when the job declares that
+environment and runs on that environment's branch. The trust names the
+environment and the ref the token carries. It names the repository by
+its immutable id and its owner's, never by a name alone, because a
+freed name can be claimed by someone else. Where a cloud cannot
+condition on those claims, a customized subject template on the
+repository host carries them in the subject.
+
+Each repository-host environment also carries a deployment-branch
+policy, so staging deploys from `main` alone, and production's plan
+and apply from `release` alone. A branch pushed with a workflow that
+declares `staging` then gets neither the environment nor the role.
+
+Each environment holds its own variables under the same names, the
+role and the state bucket among them. So a job reads the value of the
+environment it declared, and a staging job never holds a production
+value. The
 federation replaces every cloud key, so the repository holds no cloud
 secret.
 
@@ -4827,9 +4844,9 @@ reads the state of the infrastructure, so it can plan a change, and
 the state holds no secret value (see [Infrastructure as
 Code](#infrastructure-as-code)). It plans without a refresh and
 without the lock: a refresh reads each secret's current version, which
-only the plan role may, and the lock is a write. It cannot read a secret's value, a
-data bucket's objects, or a database row. It cannot assume any other
-role.
+only the plan role may, and the lock is a write. It cannot read a
+secret's value, a data bucket's objects, or a database row. It cannot
+assume any other role.
 
 The **supporter** is the investigator plus one thing: a read of a
 named tenant's rows through the platform's own operator plane (see
@@ -4839,8 +4856,9 @@ on the operator allowlist whose entry grants read and nothing more
 (see [The Operator Context](#the-operator-context)). Its cloud role is
 the investigator's, unchanged.
 
-No role a person or an agent holds writes to the cloud, except the
-administrator's two steps. An infrastructure change is a pull request,
+No operator role a person or an agent holds writes to the cloud,
+except the administrator's two steps. The widening a smaller
+environment may name, below, is not an operator role. An infrastructure change is a pull request,
 and the deployer applies it. A data change is an operation of the
 platform, under a tenant context or an operator context, and the manager
 decides it.
@@ -4851,27 +4869,30 @@ is and where it reaches. The profile a person holds for the
 investigator puts the environment first, `<product>-<environment>-investigate`,
 because a person picks the environment before the role. The folders
 under `deployment/terraform/` spell production `prod`; every name a
-process, a role, or the repository host reads spells it `production`. A role lives in its environment's
-account, and its permissions stop there. Its fences also deny every
-other environment by tag, which holds even if a root is applied in
-the wrong account.
+process, a role, or the repository host reads spells it `production`.
+
+A role lives in its environment's account, and its permissions stop
+there. Its fences also deny every other environment by tag, which
+holds even if a root is applied in the wrong account.
 
 A person signs in through the cloud's identity center. The
 credential is short-lived, and there is no cloud user and no
 long-lived access key anywhere. The administrator is a permission set
 of the identity center in each account. A person also holds an
 everyday permission set. In production it signs in and chains to the
-investigator, and holds nothing that writes. In a smaller environment
-a team may widen it for hands-on work, as a named choice, which is the
-one place a person's own credential writes outside the administrator.
-It is not an operator role: no skill runs under it, and every skill
-refuses it. The investigator role trusts
-the identity center's everyday role in its own account. That role's
-name carries a generated suffix, so the trust matches it by pattern
-and never by a copied name. An agent's profile chains from the
-person's signed-in session to the investigator role, so an agent
-works inside a session a person opened, and never holds more than the
-person does.
+investigator, and holds nothing that writes.
+
+In a smaller environment a team may widen it for hands-on work, as a
+named choice. That is the one place a person's own credential writes
+outside the administrator. It is not an operator role: no skill runs
+under it, and every skill refuses it.
+
+The investigator role trusts the identity center's everyday role in
+its own account. That role's name carries a generated suffix, so the
+trust matches it by pattern and never by a copied name. An agent's
+profile chains from the person's signed-in session to the investigator
+role. So an agent works inside a session a person opened, and never
+holds more than the person does.
 
 A chained session lasts an hour at most. A skill that runs longer, a
 watch above all, reads its profile again on each interval and stops,
