@@ -299,7 +299,7 @@ invoking agent spawns another to run it. It batches per interval, caps
 what it reports, never reads a window twice, and reads its profile each
 interval, stopping when the person's session ends.
 
-**Source.** Operations, Operational Skills.
+**Source.** Operations, Operational Skills; Operator Roles.
 
 **Look for.** The `ops-watch` skill's statement that it is a loop and
 how it is launched; the interval, the batch, the cap, and the cursor
@@ -368,7 +368,7 @@ shape.
 **Source.** Operations, Dashboards and Alarms as Code.
 
 **Look for.** The alarm resources in the environment's Terraform, the
-topic they publish to, and the subscription on it; the three areas the
+topic they publish to, and the subscription on it; the four areas the
 set covers (the error ratio, the latency, and the unhealthy targets at
 the load balancer, a service below its desired count, the database's
 processor and free storage, the oldest waiting item's age, parked and

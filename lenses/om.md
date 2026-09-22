@@ -52,8 +52,8 @@ cross-tenant sweep may instead get the tenant back beside each row
 (CTX-12).
 
 **Violation.** An entity gaining a field because a client wanted it in
-JSON; an entity carrying a column-oriented attribute such as a raw
-foreign key that no manager reads; `org_id` on an entity every reader
+JSON; an entity carrying an attribute that exists only for a
+column's sake; `org_id` on an entity every reader
 of which holds a context; an entity a reader without one takes, such
 as an `OutboxRow` or an `Event`, declared without it.
 

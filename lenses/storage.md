@@ -575,13 +575,13 @@ compare-and-set that returns quietly instead of raising `Conflict`; a
 
 **Severity.** medium
 
-## STO-23 The minute stamp is the revision id, and a collision waits
+## STO-23 The minute stamp is the revision id, and a collision takes a suffix
 
 **Principle.** The minute stamp is the file's sort key and the revision
 id, so two authors never negotiate a counter. Two migrations of one
-role in the same minute collide on the stamp, and the later one waits
-a minute or takes a suffix; two migrations naming the same parent are
-a real conflict the tool reports on purpose.
+role in the same minute collide on the stamp, and the later one takes
+a suffix; two migrations naming the same parent are a real conflict
+the tool reports on purpose.
 
 **Source.** The Storage Layer, Migrations.
 

@@ -605,27 +605,29 @@ its to run failed or handed back with an attempt spent.
 
 **Severity.** high
 
-## ASY-27 A cross-service chain expires its first step or is a saga
+## ASY-27 A cross-service chain carries its key; a durable one is a saga
 
-**Principle.** A synchronous chain across services carries its
-idempotency key forward, so a retry reruns a step instead of repeating
-it, and a step that reserves something bounds it with an expiry. A
-chain that must survive a crash between steps is a durable record
-advanced by workers: the irreversible step last, a compensating step
-for each one before it.
+**Principle.** A synchronous chain across services carries the
+idempotency key forward, so a retry finds what an earlier step made,
+and a reservation is a record with an expiry. A chain that must
+survive a crash between steps is a durable record advanced by a
+worker: the irreversible step last, a compensating step for each one
+before it.
 
-**Source.** The Network Layer, Long-Running Orchestrations; Direction
-of Calls.
+**Source.** The Network Layer, Direction of Calls; Long-Running
+Orchestrations.
 
 **Look for.** Every service impl that sequences calls across services;
-the key each step is called under and whether a retry reruns it; the
-expiry on anything a step reserves; the compensation of each step
-before the irreversible one.
+the key each step is called under and whether a retry finds the
+earlier result; the expiry on a reservation; in a durable chain, the
+place of the irreversible step and the compensation of each step
+before it.
 
-**Violation.** A step that reserves something with no expiry, so a
-failed later step leaks it; a step called under no key, so a retry
-repeats it; an irreversible step followed by one that can fail; a
-chain that must outlive a crash held only in the service's memory.
+**Violation.** A step called under no key, so a retry repeats it; a
+reservation with no expiry, so a failed later step leaks it; a durable
+chain whose irreversible step is not last, or a step before it with
+no compensation; a chain that must outlive a crash held only in the
+service's memory.
 
 **Severity.** high
 

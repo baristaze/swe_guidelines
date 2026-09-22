@@ -67,7 +67,7 @@ identity, tenant, or app information; the audit record type.
 **Violation.** A `User` or `Org` entity embedded in the context, so a
 role change waits for a new session and the context module imports
 the tenancy types; a context with no credential id, so rate limits
-and socket tickets key on something else; identity or tenant data
+key on something else; identity or tenant data
 passed beside the context as extra parameters; a second ad-hoc
 "current user" object; app type derived from headers below the
 gateway; a request id threaded by hand; an audit row written without

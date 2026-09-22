@@ -134,10 +134,10 @@ record.
 
 **Look for.** `integrations/` and provider selection in settings: one
 interface per external service, the impls behind it, provenance fields
-on records the provider produces, the guard that refuses a twin off
-loopback, the workflow that exercises real clients. The short list of
-services that cannot be twinned faithfully and use a shared
-development tenant instead.
+on records the provider produces, the guard that refuses a twin
+outside a local environment, the workflow that exercises real
+clients. The short list of services that cannot be twinned faithfully
+and use a shared development tenant instead.
 
 **Violation.** A test suite that needs a live account or network to
 pass; a twin that can be selected in a production-named environment;
@@ -159,7 +159,7 @@ every backend it chose.
 
 **Look for.** Boot code and settings validation: checks pairing the
 environment name with the secrets backend, twin selection with the
-origin, the development seed with a local database; the start-up
+environment, the development seed with a local database; the start-up
 inventory log line.
 
 **Violation.** A staging or production environment that can start on
