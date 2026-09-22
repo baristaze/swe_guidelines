@@ -499,18 +499,20 @@ class VmConfig:
 class VmRuntime(BaseRuntime):
     """Another machine, reached through a command prefix.
 
-    The prefix is configuration, for example
-    `["limactl", "shell", "default", "--"]`. The sync command is
-    configuration too; `{local}` and `{remote}` in any of its words are
-    replaced with the two workspace paths. Each repeat gets its own
-    remote folder under `remote_workspace`, as it gets its own local
-    one, and the subject runs inside it. The prefix has to hand its
-    words on as words (`limactl shell`, `docker exec`); one that joins
-    them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
-    machine and starts none, and copies neither the plugin checkout nor
-    the target there: `remote_plugin` and `remote_target` say where the
-    operator put them, and a run that needs one and is not told is
-    refused before it starts.
+       The prefix is configuration, for example
+       `["limactl", "shell", "default", "--"]`. The sync command is
+       configuration too; `{local}` and `{remote}` in any of its words are
+       replaced with the two workspace paths. Each run gets its own folder
+       under `remote_workspace`, removed at teardown, and each repeat its
+       own folder inside that, as it gets its own local one. The subject
+       runs inside it.
+    The prefix has to hand its
+       words on as words (`limactl shell`, `docker exec`); one that joins
+       them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
+       machine and starts none, and copies neither the plugin checkout nor
+       the target there: `remote_plugin` and `remote_target` say where the
+       operator put them, and a run that needs one and is not told is
+       refused before it starts.
     """
 
     name = "vm"
@@ -552,10 +554,17 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
         return str(self.vm.remote_target)
 
+    def remote_run(self) -> str:
+        """This run's folder on the other machine, named after the run folder.
+
+        Two runs never share one, so no run finds what an earlier one left.
+        """
+        base = self.vm.remote_workspace.rstrip("/")
+        return f"{base}/{self.run_dir.name}"
+
     def remote(self) -> str:
         """The workspace on the other machine: one folder per repeat once a repeat is prepared."""
-        base = self.vm.remote_workspace.rstrip("/") or "/"
-        return f"{base}/{self.slot}" if self.slot is not None else base
+        return f"{self.remote_run()}/{self.slot}" if self.slot is not None else self.remote_run()
 
     def _fill(self, words: list[str]) -> list[str]:
         return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.remote()) for w in words]
@@ -591,8 +600,13 @@ class VmRuntime(BaseRuntime):
     def collect(self, globs: list[str]) -> list[Path]:
         if self.vm.fetch:
             subprocess.run(self.fetch_command(), check=False, env=clean_env())
-
         return super().collect(globs)
+
+    def teardown(self) -> None:
+        """Remove this run's folder on the other machine, then what is here."""
+        if self.prepared and self.vm.exec_prefix:
+            subprocess.run([*self.vm.exec_prefix, "rm", "-rf", "--", self.remote_run()], check=False, env=clean_env())
+        super().teardown()
 
 
 def build(

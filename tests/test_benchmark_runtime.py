@@ -158,14 +158,14 @@ def test_the_vm_runs_behind_the_prefix_and_fills_the_sync_paths(tmp_path):
         "remote_workspace": "/opt/work",
         "fetch": ["fake-copy", "station:{remote}/", "{local}/"],
     }
-    rt = RT.build("vm", tmp_path, None, config)
+    rt = RT.build("vm", tmp_path / "run-1", None, config)
     assert isinstance(rt, RT.VmRuntime)
     rt.workspace = tmp_path / "workspace"
     command = rt.command(["claude", "-p", "hi"], rt.workspace)
     assert command[:5] == ["fake-shell", "station", "--", "sh", "-c"]
-    assert command[6:] == ["sh", "/opt/work", "claude", "-p", "hi"]  # the folder is an argument, not script text
-    assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/"]
-    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/", f"{rt.workspace}/"]
+    assert command[6:] == ["sh", "/opt/work/run-1", "claude", "-p", "hi"]  # the folder is an argument, not script text
+    assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/run-1/"]
+    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/", f"{rt.workspace}/"]
 
 
 def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch):
@@ -177,15 +177,35 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
         "remote_workspace": "/opt/work/",
         "fetch": ["fake-copy", "station:{remote}/", "{local}/"],
     }
-    rt = RT.build("vm", tmp_path, None, config)
+    rt = RT.build("vm", tmp_path / "run-1", None, config)
     assert isinstance(rt, RT.VmRuntime)
     first = rt.prepare_repeat(0)
-    assert ran == [["fake-shell", "--", "mkdir", "-p", "/opt/work/0"], ["fake-copy", f"{first}/", "station:/opt/work/0/"]]
-    assert rt.command(["claude"], first)[-2:] == ["/opt/work/0", "claude"]
+    assert ran == [
+        ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/0"],
+        ["fake-copy", f"{first}/", "station:/opt/work/run-1/0/"],
+    ]
+    assert rt.command(["claude"], first)[-2:] == ["/opt/work/run-1/0", "claude"]
     second = rt.prepare_repeat(1)
-    assert rt.sync_command() == ["fake-copy", f"{second}/", "station:/opt/work/1/"]
-    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/1/", f"{second}/"]
-    assert rt.command(["claude"], second)[-2:] == ["/opt/work/1", "claude"]
+    assert rt.sync_command() == ["fake-copy", f"{second}/", "station:/opt/work/run-1/1/"]
+    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/1/", f"{second}/"]
+    assert rt.command(["claude"], second)[-2:] == ["/opt/work/run-1/1", "claude"]
+
+
+def test_two_vm_runs_never_share_a_remote_workspace_and_each_removes_its_own(tmp_path, monkeypatch):
+    # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+    remote = tmp_path / "remote"
+    script = "import os, pathlib; print(len(os.listdir('.'))); pathlib.Path('left.md').write_text('x')"
+    seen = []
+    for name in ("run-1", "run-2"):
+        rt = RT.build("vm", tmp_path / name, None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
+        rt.prepare_repeat(0)
+        with CliStream(tmp_path / f"{name}.jsonl") as stream:
+            assert rt.run([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}, stream).ok
+        seen += [r["line"] for r in CliStream.read(tmp_path / f"{name}.jsonl") if r["s"] == "out"]
+        assert (remote / name / "0" / "left.md").is_file()
+        rt.teardown()
+        assert not (remote / name).exists()
+    assert seen == ["0", "0"]  # the second run found nothing the first left
 
 
 def test_the_vm_subject_runs_in_the_remote_workspace_not_the_shell_default(tmp_path):
@@ -197,7 +217,8 @@ def test_the_vm_subject_runs_in_the_remote_workspace_not_the_shell_default(tmp_p
     with CliStream(tmp_path / "cli.jsonl") as stream:
         status = rt.run([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}, stream)
     assert status.ok
-    assert (remote / "0" / "out.md").read_text(encoding="utf-8") == "x"
+    assert (remote / "run" / "0" / "out.md").read_text(encoding="utf-8") == "x"
+
     assert not (tmp_path / "out.md").exists()
 
 

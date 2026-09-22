@@ -145,10 +145,13 @@ measurement.
   the plugin checkout nor the target either: `remote_plugin` and
   `remote_target` in the runtime config say where they are on that
   machine, and a run that needs one and is not told is refused before
-  it starts. Each repeat gets its own folder under `remote_workspace`
-  (`{remote}` in the sync and fetch commands names it), and the
-  subject runs inside that folder, so what it writes is what fetch
-  brings back. The prefix has to hand its words on as words, as
+  it starts. Each run gets a folder of its own under
+  `remote_workspace`, named after the run folder, and each repeat a
+  folder inside it (`{remote}` in the sync and fetch commands names
+  it). So no run finds what an earlier run left there. The subject
+  runs inside the repeat's folder, so what it writes is what fetch
+  brings back. The run's folder is removed when the run ends.
+ The prefix has to hand its words on as words, as
   `limactl shell` and `docker exec` do; `ssh` joins them into one
   remote shell line and needs a wrapper.
 
