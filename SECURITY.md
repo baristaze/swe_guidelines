@@ -9,10 +9,12 @@ functions that use them, and only a benchmark run, which is started by
 hand and never on push, calls a provider. The one network listener is
 `benchmark/serve.py`, a local viewer of run folders bound to the
 loopback address by default. The gate fetches tools at pinned versions
-and ships none of them: `pytest`, `pyyaml`, and `jsonschema` for the
-tests; `ruff` and `mypy` through `uvx`; `markdownlint-cli2` through
-`npx`; and `@anthropic-ai/claude-code`, so `make plugin` can validate
-the manifests.
+and ships none of them: `pytest`, `pyyaml`, and `jsonschema` through
+`uv` for the tests; `ruff` and `mypy` through `uvx`; and
+`markdownlint-cli2` through `npx`. The gate never fetches
+`@anthropic-ai/claude-code`. `make plugin` runs it only when `claude`
+is already installed, and the CI workflow installs it at a pinned
+version so the manifests are validated there.
 
 ## Reporting a vulnerability
 

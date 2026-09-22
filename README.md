@@ -129,10 +129,11 @@ make gen-toc      # regenerate the table of contents of architecture.md
 Requirements: Python 3.10 or newer, and Node 24, the current LTS.
 CI runs the checks on Python 3.10, the floor `pyproject.toml`
 declares, and on 3.14, the latest stable release. The scripts need
-nothing past the standard library; `make check` also needs `pytest`, for the scripts' own tests; `npx`, for
-markdownlint (`make lint` fetches `markdownlint-cli2` through `npx` at
-a pinned version); and `uv`, for ruff and mypy (`make ruff` and `make
-mypy` fetch them through `uvx` at pinned versions). The pins follow
+nothing past the standard library. `make check` also needs `npx` and
+`uv`, and fetches the rest itself at pinned versions. `make lint`
+fetches `markdownlint-cli2` through `npx`. `make test` runs the tests
+with `pytest`, `pyyaml`, and `jsonschema` brought by `uv`. `make ruff`
+and `make mypy` fetch ruff and mypy through `uvx`. The pins follow
 the guideline's own latest-stable rule on purpose. CI runs `make check`
 on every pull request.
 
