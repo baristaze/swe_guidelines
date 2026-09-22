@@ -926,7 +926,9 @@ or no absolute lifetime; an API key with no expiry.
 **Principle.** A key's effective role is the lower of the role it was
 issued with and its issuer's current role. It is checked at every use,
 never only at issue, so a demoted issuer's key loses what the issuer
-lost. Removing the issuer's membership revokes the issuer's keys.
+lost. Removing the issuer's membership revokes, in the same write,
+every key the issuer minted in that tenant, and a revoked key is refused
+`401`.
 
 **Source.** OpContext; The Network Layer, The Gateway.
 
@@ -936,7 +938,8 @@ and which of the two it grants; what removing a membership does to
 the keys its holder issued.
 
 **Violation.** A key admitted at the role stored on it while its issuer
-now holds a lower one; a key that outlives its issuer's membership; a
+now holds a lower one; a key that outlives its issuer's membership,
+or one revoked in a later write than the removal; a
 role comparison made once, when the key is minted, and never again.
 (The cap at issue is CTX-03.)
 

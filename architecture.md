@@ -804,7 +804,8 @@ That cap holds at every use, not only at issue. An API key's effective
 role is the lower of the role it was issued with and its issuer's
 current role. `authenticate` computes it each time the key is
 presented, so a demoted issuer's keys are demoted with it. Removing the
-issuer's membership revokes every key the issuer minted in that tenant.
+issuer's membership revokes, in the same write, every key the issuer
+minted in that tenant, and a revoked key is refused `401`.
 
 A role reserved for services is not a rung on that ladder. No
 credential a person mints carries it, and every operation that issues a
