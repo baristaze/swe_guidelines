@@ -32,6 +32,7 @@ from arch_check.rules._storage_util import (
     column_call,
     column_calls_of,
     composed,
+    core_tables,
     enum_values,
     has_tablename,
     ident,
@@ -427,14 +428,23 @@ def storage_interfaces_are_technology_free(project: Project) -> Iterator[Violati
 
 @rule(
     "STO-09",
-    coverage="full",
+    coverage="partial",
     summary="Each namespace storage has its interface, impl/ and tables/; tables live only in storage/tables.",
 )
 def storage_namespace_shape(project: Project) -> Iterator[Violation]:
+    """A table is a class that assigns or computes `__tablename__` or
+    `__table__`, or a top-level `Table(...)` call. A table mapped another
+    way (`registry.map_imperatively`, a table built in a function) is
+    judged, which is why the coverage is partial."""
     om = project.sub("om")
     for t in tables(project):
         if not in_tables(project, t.file.module):
             yield Violation.at(t.file.rel, t.node, f"table class {t.node.name} lives outside storage/tables/")
+    for file, tree in project.trees():
+        if in_tables(project, file.module):
+            continue
+        for call in core_tables(tree):
+            yield Violation.at(file.rel, call, "a Core Table(...) lives outside storage/tables/")
     for file, tree in project.trees(om):
         parts = file.module.split(".")
         if "impl" in parts or "types" in parts:

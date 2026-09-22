@@ -447,6 +447,22 @@ def test_asy_15_a_service_spawning_a_task_or_a_thread(tmp_path):
     assert len(report["findings"]) == 4
 
 
+def test_asy_15_an_annotated_background_task_a_process_or_sched(tmp_path):
+    files = {
+        f"{API}/routers/export.py": (
+            "from typing import Annotated\nfrom fastapi import BackgroundTasks, Depends\n"
+            "import multiprocessing\nfrom multiprocessing import Pool\n\n\n"
+            "async def f(job, tasks: Annotated[BackgroundTasks, Depends()]):\n"
+            "    multiprocessing.Process(target=job).start()\n"
+            "    pool = Pool(2)\n    pool.apply_async(job)\n"
+        ),
+        f"{API}/sweep.py": "import sched\n",
+    }
+    code, report = run(tmp_path, "ASY-15", files)
+    assert code == 1
+    assert len(report["findings"]) == 4
+
+
 def test_asy_15_the_edge_comes_from_the_options(tmp_path):
     files = {f"{API}/sockets/hub.py": "import asyncio\n\n\ndef f(c):\n    return asyncio.create_task(c)\n"}
     code, _ = run(tmp_path, "ASY-15", files)

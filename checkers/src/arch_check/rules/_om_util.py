@@ -55,6 +55,8 @@ class Index:
         self.project = project
         self.classes: dict[Key, ClassInfo] = {}
         self.bindings: dict[str, dict[str, str]] = {}
+        # A module to the modules it star-imports from.
+        self.stars: dict[str, list[str]] = {}
         for file, tree in project.trees():
             names: dict[str, str] = {}
             for node in ast.walk(tree):
@@ -70,6 +72,8 @@ class Index:
                     for a in node.names:
                         if a.name != "*":
                             names[a.asname or a.name] = f"{base}.{a.name}" if base else a.name
+                        elif base:
+                            self.stars.setdefault(file.module, []).append(base)
             self.bindings[file.module] = names
             for cls in tree.body:
                 if isinstance(cls, ast.ClassDef):
@@ -108,6 +112,14 @@ class Index:
             return (module, name)
         target = self.bindings.get(module, {}).get(name)
         if target is None:
+            # `from acme.om.base import *` binds every public name of the
+            # base; a class reached that way is still on the chain.
+            if name.startswith("_"):
+                return None
+            for source in self.stars.get(module, []):
+                found = self.lookup(source, name, depth + 1)
+                if found is not None:
+                    return found
             return None
         return self.lookup_dotted(target, depth + 1)
 
@@ -244,23 +256,45 @@ def field_name(node: ast.AnnAssign) -> str:
 
 
 def config_settings(cls: ast.ClassDef) -> list[tuple[ast.AST, str, ast.expr]]:
-    """(node, key, value) of every model setting a class makes: `model_config = ConfigDict(...)` or a dict, and class keywords."""
+    """(node, key, value) of every model setting a class makes.
+
+    `model_config = ConfigDict(...)` or a dict, the two joined with `|`
+    (`Base.model_config | {"extra": "allow"}`), a nested `class Config:`
+    whose assignments are settings, and class keywords.
+    """
     out: list[tuple[ast.AST, str, ast.expr]] = []
     for kw in cls.keywords:
         if kw.arg and kw.arg != "metaclass":
             out.append((kw, kw.arg, kw.value))
     for node in cls.body:
+        if isinstance(node, ast.ClassDef) and node.name == "Config":
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign) and stmt.value is not None:
+                    out.extend((t, t.id, stmt.value) for t in stmt.targets if isinstance(t, ast.Name))
+                elif isinstance(stmt, ast.AnnAssign) and stmt.value is not None and isinstance(stmt.target, ast.Name):
+                    out.append((stmt.target, stmt.target.id, stmt.value))
+            continue
         if not is_model_config(node):
             continue
         assert isinstance(node, ast.Assign | ast.AnnAssign)
-        value = node.value
-        if isinstance(value, ast.Call):
-            out.extend((k, k.arg, k.value) for k in value.keywords if k.arg)
-        elif isinstance(value, ast.Dict):
-            for k, v in zip(value.keys, value.values, strict=True):
-                if isinstance(k, ast.Constant) and isinstance(k.value, str):
-                    out.append((k, k.value, v))
+        if node.value is not None:
+            out.extend(_settings_in(node.value))
     return out
+
+
+def _settings_in(value: ast.expr) -> list[tuple[ast.AST, str, ast.expr]]:
+    """The settings one `model_config` value spells, through `|` on either side."""
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.BitOr):
+        return _settings_in(value.left) + _settings_in(value.right)
+    if isinstance(value, ast.Call):
+        return [(k, k.arg, k.value) for k in value.keywords if k.arg]
+    if isinstance(value, ast.Dict):
+        return [
+            (k, k.value, v)
+            for k, v in zip(value.keys, value.values, strict=True)
+            if isinstance(k, ast.Constant) and isinstance(k.value, str)
+        ]
+    return []
 
 
 def is_model_config(node: ast.stmt) -> bool:

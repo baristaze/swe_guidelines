@@ -38,6 +38,7 @@ from arch_check.rules._contracts_util import (
     stage_module,
     union_members,
 )
+from arch_check.rules._text_util import imported_names, resolved
 
 OPERATION_INTERFACES = ("ManagerInterface", "ServiceInterface", "HandlerInterface")
 LIFECYCLE = frozenset({"describe", "start", "close", "healthcheck"})
@@ -88,16 +89,31 @@ def operations(project: Project) -> Iterator[tuple[SourceFile, ast.ClassDef, Fun
                 yield file, cls, fn
 
 
-def constructed(call: ast.Call, names: set[str]) -> str | None:
-    """What a call constructs when it is one of `names`: `X(...)`, `m.X(...)`, `X.model_validate(...)`."""
+def constructed(call: ast.Call, names: set[str], aliases: dict[str, str] | None = None) -> str | None:
+    """What a call constructs when it is one of `names`: `X(...)`, `m.X(...)`, `X.model_validate(...)`.
+
+    `aliases` is the file's imports (`imported_names`), so a class
+    imported under another name (`from ..context import RequestContext
+    as RC`) is still the class it names.
+    """
+    aliases = aliases or {}
+
+    def named(local: str | None) -> str | None:
+        if local is None:
+            return None
+        if local in names:
+            return local
+        real = last(resolved(local, aliases))
+        return real if real in names else None
+
     func = call.func
-    if isinstance(func, ast.Name) and func.id in names:
-        return func.id
+    if isinstance(func, ast.Name):
+        return named(func.id)
     if isinstance(func, ast.Attribute):
         if func.attr in names:
             return func.attr
-        if func.attr in CLASS_BUILDERS and last(dotted(func.value)) in names:
-            return last(dotted(func.value))
+        if func.attr in CLASS_BUILDERS:
+            return named(dotted(func.value))
     return None
 
 
@@ -203,8 +219,9 @@ def request_stage_at_the_edge(project: Project) -> Iterator[Violation]:
         lower = any(is_under(file.module, p) for p in below)
         if not (network or lower):
             continue
+        aliases = imported_names(project, file)
         for call in calls(tree):
-            name = constructed(call, {REQUEST_STAGE})
+            name = constructed(call, {REQUEST_STAGE}, aliases)
             if name is not None:
                 yield Violation.at(file.rel, call, f"{file.module} constructs {name}; the request stage is minted at the edge")
 
@@ -325,15 +342,14 @@ def no_ambient_state(project: Project) -> Iterator[Violation]:
     defaults = list(LOG_MODULES)
     allowed = {f"{project.package}.{m}" for m in project.option("CTX-07", "modules", defaults, {"modules"})}
     for file, tree in project.trees():
-        threading_local = any(
-            isinstance(n, ast.ImportFrom) and n.module == "threading" and any(a.name == "local" for a in n.names)
-            for n in ast.walk(tree)
-        )
+        # Through the imports, so `import threading as th; th.local()` and
+        # `from threading import local as tl; tl()` are the same call.
+        aliases = imported_names(project, file)
         for call in calls(tree):
-            name = dotted(call.func)
+            name = resolved(dotted(call.func), aliases)
             if last(name) == "ContextVar" and file.module not in allowed:
                 yield Violation.at(file.rel, call, f"{file.module} creates a ContextVar; ambient state flows through the context")
-            elif name == "threading.local" or (name == "local" and threading_local):
+            elif name == "threading.local":
                 yield Violation.at(file.rel, call, f"{file.module} uses a thread local; ambient state flows through the context")
 
 
@@ -660,6 +676,7 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
     `OperatorContext` calls `outbox_row(...)` or constructs `OpContext`.
     Who the operator row names is judged or run as a test."""
     for file, tree in project.trees():
+        aliases = imported_names(project, file)
         for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             args = [*fn.args.posonlyargs, *fn.args.args]
             if args and args[0].arg in {"self", "cls"}:
@@ -668,7 +685,7 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
                 continue
             for call in calls(fn):
                 name = called_name(call)
-                if name == "outbox_row" or constructed(call, {"OpContext"}):
+                if name == "outbox_row" or constructed(call, {"OpContext"}, aliases):
                     yield Violation.at(
                         file.rel, call, f"{fn.name} takes OperatorContext and calls {name}; the operator plane stamps its own"
                     )
@@ -732,8 +749,9 @@ def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     for file, tree in project.trees():
         scope = enclosing(tree)
         copies = stage_copies(tree)
+        aliases = imported_names(project, file)
         for call in calls(tree):
-            name = constructed(call, names) or copies.get(call)
+            name = constructed(call, names, aliases) or copies.get(call)
             if name is None or name not in names:
                 continue
             where = scope.get(call, "<module>")
@@ -769,8 +787,9 @@ def handoff_names_its_cause(project: Project) -> Iterator[Violation]:
     if file is not None and request is not None and "caused_by_request_id" not in declared_fields(request):
         yield Violation.at(file.rel, request, f"{REQUEST_STAGE} declares no caused_by_request_id")
     for f, tree in project.trees(project.sub("workers")):
+        aliases = imported_names(project, f)
         for call in calls(tree):
-            if constructed(call, {REQUEST_STAGE}) is None:
+            if constructed(call, {REQUEST_STAGE}, aliases) is None:
                 continue
             for k in call.keywords:
                 if k.arg == "request_id" and isinstance(k.value, ast.Attribute) and k.value.attr == "request_id":

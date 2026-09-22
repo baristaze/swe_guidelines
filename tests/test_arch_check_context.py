@@ -183,6 +183,16 @@ def test_the_request_stage_minted_below_the_edge_is_ctx_05(tmp_path):
     assert all("constructs RequestContext" in m for m in messages)
 
 
+def test_the_request_stage_imported_under_another_name_is_still_ctx_05(tmp_path):
+    src = (
+        "from acme.om.opcontext import RequestContext as RC\n\n"
+        "def f():\n    return RC(request_id=x)\n\n"
+        "def g():\n    return RC.model_validate({})\n"
+    )
+    code, found, _ = run(tmp_path, "CTX-05", {f"{OM}/tasks/impl/manager.py": src})
+    assert (code, [line for _, _, line in found]) == (1, [4, 7])
+
+
 # --- CTX-06
 
 
@@ -223,6 +233,16 @@ def test_a_context_variable_or_a_thread_local_elsewhere_is_ctx_07(tmp_path):
     code, found, _ = run(tmp_path, "CTX-07", files)
     assert code == 1
     assert [p for _, p, _ in found] == [f"{OM}/tasks/impl/manager.py", f"{API}/gateway/auth.py"]
+
+
+def test_a_thread_local_or_a_context_variable_under_an_alias_is_ctx_07(tmp_path):
+    files = {
+        f"{API}/gateway/auth.py": "import threading as th\n\nstate = th.local()\n",
+        f"{API}/gateway/keys.py": "from threading import local as tl\n\nstate = tl()\n",
+        f"{OM}/tasks/impl/manager.py": "from contextvars import ContextVar as CV\n\ncurrent = CV('org')\n",
+    }
+    code, found, _ = run(tmp_path, "CTX-07", files)
+    assert (code, len(found)) == (1, 3)
 
 
 def test_the_gateway_log_module_holds_the_context_variable_under_ctx_07(tmp_path):
