@@ -2047,11 +2047,11 @@ because `SET LOCAL` takes no bind parameters.
 reads across tenants. The system scope is never a default. It is passed
 explicitly, and it runs on a connection of the system login (below).
 
-The methods that pass it are the ones `arch-check` already enumerates
-(see [Namespace Shape](#namespace-shape) and [Records of
-Decisions](#records-of-decisions)). They are of two kinds. The first is
-the cross-tenant sweeps. The second is the lookups that run before an
-identity is known:
+The methods that pass it are enumerated, and they are of three kinds.
+The first is the cross-tenant sweeps. Among them are the purge of
+ended sessions and the purge of redeemed or expired socket tickets,
+which reach `identity` tables. The second is the lookups that run
+before an identity is known:
 
 -   `read_identity_by_email_digest`, the sign-in lookup;
 -   `read_api_key_by_digest`;
@@ -2061,6 +2061,18 @@ identity is known:
 Each of these reads rows before any tenant or identity is known, so it
 cannot name one. Everything after the lookup runs under the identity
 it found, or under the tenant and the principal the credential names.
+
+The sweeps and the lookups take no tenant, so `arch-check` lists them
+with the other tenant-less methods (see [Namespace
+Shape](#namespace-shape) and [Records of
+Decisions](#records-of-decisions)).
+
+The third kind is the operator plane's idempotency-marker methods:
+`begin`, `finish`, the release, and the take-over. The operator plane
+has no tenant, so its marker is keyed under `EMPTY_UUID` as the
+`org_id`, with the operator's identity id as the user id (see [The
+Gateway](#the-gateway)). These methods take `org_id` like any other.
+The operator gate is the one caller that hands them `EMPTY_UUID`.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
@@ -2112,8 +2124,10 @@ request cannot read across tenants or identities by naming the system
 scope.
 
 An `identity` table is read under the identity its rows belong to. The
-one exception is the lookups that run before an identity is known,
-which run on the system login. Nothing else bypasses its policy.
+exceptions are the enumerated system-scope methods that reach one: the
+four lookups, and the purges of ended sessions and of redeemed or
+expired socket tickets. They run on the system login. Nothing else
+bypasses its policy.
 
 Three logins reach the database, and none is a superuser or carries
 `BYPASSRLS`. A superuser bypasses every policy, so a fence behind one
@@ -2129,8 +2143,8 @@ is a drawing.
     `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
     off, or alter a table, whatever statement reaches it.
 -   The **system login** is the runtime login's twin for the system
-    scope. The sweeps and the lookups that run before an identity is
-    known run under it, on a pool of their own. The `org` and
+    scope. The enumerated system-scope methods run under it, on a pool
+    of their own. The `org` and
     `identity` policies admit the system scope to it alone.
 
 A test asserts on each live connection that `current_user` is neither
@@ -2889,8 +2903,10 @@ The gateway owns a short list of edge concerns, each done once:
     The protocol runs in order. `begin` writes the marker pending, per
     tenant and principal, under the key. The operator plane has no
     tenant, so its marker is keyed under the system scope, `EMPTY_UUID`
-    as the `org_id`, with the operator's identity id as the user id. The
-    marker carries a digest of the request, the id the create will use,
+    as the `org_id`, with the operator's identity id as the user id.
+    Those marker calls run on the system login, among the enumerated
+    system-scope methods (see [The Second
+    Fence](#the-second-fence)). The marker carries a digest of the request, the id the create will use,
     minted before the marker, and an attempt token. `finish` stores the
     outcome on the marker. A retry replays that stored outcome. All of
     it uses the same storage primitive the queue handlers use.
@@ -3414,8 +3430,8 @@ handlers must be safe to run more than once with the same payload.
 
 The recipe is independent of the implementation. Every message carries
 a producer-generated idempotency key: a `uuid_v7` is natural. A
-message that came from outside carries a UUID v5 derived from the
-outside system's delivery id (see [Queues](#queues)). The
+message that came from outside carries a UUID v5 over the provider's
+name and its delivery id (see [Queues](#queues)). The
 handler dedupes before doing work, through a unique index on the key
 or a storage-level upsert keyed on it. Each pipeline stage forwards
 the key and applies the same check. [Topics](#topics) shows this on
