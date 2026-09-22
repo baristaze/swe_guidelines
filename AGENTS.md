@@ -90,6 +90,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
   vocabulary of the one origin the guideline was extracted from, not a
   general check: it catches that vocabulary flowing back in, and a
   fork replaces it with its own. Agents are named as agents.
+  `scripts/check_leaks.py` also reads the YAML and JSON under
+  `.github/`, `.claude-plugin/`, `skills/`, `agents/`, and `benchmark/`,
+  and the docstrings under `scripts/`, `checkers/`, and `benchmark/`.
 - No history in the guideline: it states what we do, in the present
   tense, with no changelog phrasing and no survey of the alternatives
   weighed. Naming the near miss a rule rules out ("X, never Y") is
@@ -104,7 +107,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
 - Every skill's `name` equals its folder name and starts with `arch-`;
   every `${CLAUDE_SKILL_DIR}/...` reference resolves; frontmatter is
   flat `key: value` lines; descriptions are one complete double-quoted
-  string; `allowed-tools` is comma-separated. `scripts/check_skills.py`
+  string; `allowed-tools` is comma-separated and never empty, in every
+  skill and ops-skill template. `scripts/check_skills.py`
   refuses a bare `Bash`, a trailing space inside the parentheses, and
   the `Bash(cmd *)` spelling; it accepts both the prefix form and an
   exact `Bash(make <target>)`: the exact form for a Makefile target,
@@ -135,8 +139,15 @@ lenses (`skills/`), and the checkers that keep the three consistent
 
 ```bash
 make check                       # everything CI runs
+make checkers-dist               # builds the arch-check wheel and runs its entry point
 claude plugin validate . --strict   # manifests, skills, agents (when claude is installed)
 ```
+
+CI runs `make test` and `make checkers-dist` on Python 3.11,
+arch-check's floor. `.github/pins/` holds every tool version
+(`requirements.txt` for uv and the Python tools, `package.json` for the
+npm tools); the Makefile and the workflows read them there, and
+dependabot updates them.
 
 ## Conventions
 
@@ -170,3 +181,6 @@ claude plugin validate . --strict   # manifests, skills, agents (when claude is 
   open pull request in conflict. So the pull request description
   carries what the release section needs: what changed, in the
   guideline's voice, the level, and a reversal named as one.
+  `scripts/check_changelog.py`, run by `.github/workflows/changelog.yml`,
+  refuses a pull request that edits `CHANGELOG.md` unless its title is
+  `Release X.Y.Z: ...` or its branch is `release-X-Y-Z`.

@@ -475,7 +475,8 @@ role and migrates a subset of the roles.
 **Severity.** medium
 
 **Check.** `arch-check` decides the file names, the pairs, the wrappers,
-and the roles each file names; the rest is judged.
+the roles each file names, and that every table a migration names is
+schema-qualified with no `search_path`; the rest is judged.
 
 ## STO-19 One URL per role, one engine per URL, and a move that changes no code
 
