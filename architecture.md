@@ -1695,7 +1695,7 @@ class stay in step when the column is appended.
 > columns, whatever the base order says. The negative `sort_order`
 > bands on the mixins pin the header block back to the front.
 
-Four index rules cover almost every table:
+Five index rules cover almost every table:
 
 1.  A feed wants a compound index on `(org_id, id)`. Ids are v7, so
     that index already sorts by creation time. A B-tree scans backwards
