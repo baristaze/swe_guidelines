@@ -5050,7 +5050,10 @@ by a named choice.
 -   **The branch that deploys.** `main` is protected: a merge needs a
     review and every required check, and the files under `deployment/`
     and `.github/` carry code owners, since a merge to `main` is a
-    staging deploy under a role that writes infrastructure.
+    staging deploy under a role that writes infrastructure. `release`
+    has a ruleset of its own: no push, no force push, no deletion, and
+    one bypass actor, the repository host's app the release workflow
+    pushes with (see [Cloud: AWS](#cloud-aws)).
 -   **Images.** Every registry scans an image on push.
 
 > **Principle:** Private subnets with a named egress, encryption at
