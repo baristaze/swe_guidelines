@@ -3232,16 +3232,19 @@ minted by the calling process. The token names the principal, the
 tenant, the request id, the service it is for as its audience, the
 key it was signed with, and an expiry a few minutes out. The callee
 refuses a token meant for another service. The key id lets a new key
-sign beside the old one while both verify, so a key rotates without
-an outage. Every process
-reads the signing key from the secret store (see [Secrets](#secrets)),
-and the callee verifies the token against that same key. The callee's
-gateway then rebuilds `OpContext` from it like any other credential
-kind. No service trusts a bare header.
+sign beside the old one while both verify, so a key rotates without an
+outage.
+
+The signing key is a process credential. The runtime injects it at
+start, like the database URL, and it is never read through the tenant
+capability (see [Secrets](#secrets)). The callee verifies the token
+against that same key. The callee's gateway then rebuilds `OpContext`
+from it like any other credential kind. No service trusts a bare
+header.
 
 One key is one trust domain.
 
-Every process that reads the key can mint a credential naming any
+Every process that holds the key can mint a credential naming any
 principal in any tenant. The fence around that key is the private
 network and the secret store's access list.
 
