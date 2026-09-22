@@ -57,7 +57,18 @@ Rules:
   scaffold copies into a new tree as a real skill, has the frontmatter a
   skill has: its name is its file name, its description one
   double-quoted string, and its allowed-tools entries each a Name or a
-  `Bash(cmd:*)` prefix, comma-separated.
+  `Bash(cmd:*)` prefix, comma-separated;
+- a skill keeps its spine and names its detail. Every Markdown file under a
+  skill's folder other than its `SKILL.md` is reference material, and at
+  least one numbered step of that skill's `## Procedure` names it as
+  `${CLAUDE_SKILL_DIR}/<path>`, so the step that reads it says so. A
+  reference file no step names is an orphan: nothing opens it, so it is an
+  error. A `${CLAUDE_SKILL_DIR}/...` reference inside a reference file
+  resolves from the skill's folder, the same way the body's does;
+- a skill body stays under `BODY_WORDS` words. The body is loaded in full
+  every time the skill runs, so its length is a cost paid per run, and the
+  fix a failure names is the split: move the long per-step material into the
+  file a step reads.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -96,6 +107,16 @@ KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
 SCAFFOLD_SECTIONS = ("Input", "Created", "Changed", "Procedure", "Output")
+STEP = re.compile(r"^\d+\.\s")
+BODY_WORDS = 3000
+"""The bound on a skill body, in words.
+
+The split that moved the scaffolds' file-by-file lists into their
+`references/` folders left the largest body at about 2,400 words, and
+the three it split at about 1,400 each. 3,000 clears the largest with a
+quarter to spare, so a skill can grow a section without tripping it,
+and still refuses the 10,000-word body the split started from.
+"""
 INDICATORS = ("'", "[", "{", "&", "*", "!", "|", ">", "%", "@", "`", "#", "-", "?", ",", "]", "}")
 
 
@@ -169,6 +190,30 @@ def body_of(text: str) -> str:
     """The skill text after the frontmatter."""
     m = FRONTMATTER.match(text)
     return text[m.end() :] if m else text
+
+
+SECTION = re.compile(r"^##\s+(.+?)\s*$")
+
+
+def steps(body: str) -> list[str]:
+    """The numbered steps of a skill's `## Procedure`, one string each.
+
+    A step opens with `<n>. ` at the left margin and runs to the next
+    one or to the end of the section, so its indented continuation lines
+    are part of it. A skill with no `## Procedure` has no steps, and a
+    reference file beside it is therefore an orphan.
+    """
+    inside = False
+    found: list[list[str]] = []
+    for line in body.split("\n"):
+        heading = SECTION.match(line)
+        if heading:
+            inside = heading.group(1) == "Procedure"
+        elif inside and STEP.match(line):
+            found.append([line])
+        elif inside and found:
+            found[-1].append(line)
+    return ["\n".join(step) for step in found]
 
 
 def code_spans(text: str) -> list[str]:
@@ -321,7 +366,24 @@ def main(argv: Sequence[str] = ()) -> int:
                     errors.append(f"{rel}: {tool!r} names no make target; name one, Bash(make <target>)")
                 elif cmd.startswith("make ") and not runs_command(cmd, runs):
                     errors.append(f"{rel}: allowed-tools names Bash({cmd}) but the body never runs {cmd}")
+        words = len(body_of(text).split())
+        if words > BODY_WORDS:
+            errors.append(
+                f"{rel}: the body is {words} words, limit {BODY_WORDS}; "
+                f"move the long per-step material into skills/{folder.name}/references/ "
+                "and have the step that reads it name the file"
+            )
         refs = [(ref, str(rel)) for ref in REF.findall(text)]
+        named = steps(body_of(text))
+        for reference in sorted(p for p in folder.rglob("*.md") if p != skill):
+            at = str(reference.relative_to(ROOT))
+            inside = reference.relative_to(folder).as_posix()
+            if not any(f"${{CLAUDE_SKILL_DIR}}/{inside}" in step for step in named):
+                errors.append(
+                    f"{at}: no step of {rel} names ${{CLAUDE_SKILL_DIR}}/{inside}; "
+                    "a reference file is read by the step that names it"
+                )
+            refs += [(ref, at) for ref in REF.findall(reference.read_text(encoding="utf-8"))]
         conventions = SKILLS / CONVENTIONS
         if CONVENTIONS in body_of(text) and conventions.exists():
             # the conventions file is read on this skill's behalf, from this skill's folder
