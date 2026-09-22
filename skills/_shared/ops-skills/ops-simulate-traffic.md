@@ -20,7 +20,8 @@ tenants, members, concurrency, and think time.
 `--env` and `--profile` are required; ask for them when missing.
 `--duration` is in seconds, sixty by default. `--orgs` is how many
 tenants the run provisions, the profile's number by default; `0`
-drives the seeded people alone. `--report` writes the table as JSON
+drives the seeded people alone, so it is for `local` only and refused
+against a cloud environment, which has no seeded people. `--report` writes the table as JSON
 beside printing it. `local` drives the API at the `ACME_API_URL` of
 `~/.config/acme/ops/local.env`, which `make seed` writes with a local
 provisioner, started by `scripts/dev.sh` or `make up`, and needs no
@@ -49,8 +50,8 @@ token the file holds, and only this generator uses it. The tenants it
 creates are the generator's own, named with the run id, so no real
 tenant is touched, and removed when the run ends. The file holds no
 password and no TOTP secret: an agent never signs in with a password.
-With `--orgs 0` the run drives the seeded people and needs no
-provisioner.
+A cloud run always provisions its tenants, so it always needs the
+provisioner's token.
 
 Never read the env file, with `Read`, `cat`, or anything else: its
 values stay out of this conversation. `acme-ops` reads the file
@@ -70,7 +71,9 @@ In production the provisioner's allowlist entry is disabled between
 runs, so no standing writing credential waits there. A run with
 `--orgs` above `0` against production needs the person to enable it
 first, by dispatching `grant-operator.yml` on `release` with the
-provisioner's email, `write`, and `mint_token: provisioner`, and to
+provisioner's email, `write`, and `mint_token: provisioner`, then
+copying the token into the env file with `uv run acme-ops token --env
+production --identity provisioner` in their own terminal, and to
 disable it after, by
 dispatching it again with `disable`; this skill holds no role that
 does either, and says which dispatch is due.

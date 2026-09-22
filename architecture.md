@@ -756,7 +756,7 @@ class SecurityContext(Platform):
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
-    credential_kind: CredentialKind  # api_key, session_token, internal, ...
+    credential_kind: CredentialKind  # password, api_key, tenant_session, operator_token, internal
     credential_id: UUID
 
 class AppContext(Platform):
@@ -3132,8 +3132,9 @@ the row the retry found.
 The operator plane has its own gate. It authenticates the bearer into
 the identity stage, and that stage admits only two credentials: the
 person's own sign-in, and an operator token. It never admits an API
-key. It never admits a session either. That holds whether the person
-exchanged the session or an invitation someone else issued minted it.
+key. It never admits a tenant session either. That holds whether the
+person exchanged the session or an invitation someone else issued
+minted it.
 
 An operator's sign-in is admitted only with a second factor: a TOTP
 code (RFC 6238) from an authenticator enrolled for that operator
@@ -3159,7 +3160,8 @@ supporter's agent present an **operator token** instead:
     by the grant job for the provisioner and the smoke identity (see
     [Migrating a Deployed Database](#migrating-a-deployed-database)).
 -   It names one identity on the allowlist and carries one operator
-    permission that the identity's entry grants.
+    permission that the identity's entry grants. `write` implies
+    `read`.
 -   It expires within one hour.
 -   It is stored as its digest and shown once, like every credential
     the tenancy namespace issues. The row is a session of kind
