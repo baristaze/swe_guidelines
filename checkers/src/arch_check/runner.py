@@ -11,14 +11,21 @@ exception cannot outlive the code it excused.
 Each rule runs on its own. A rule that raises is an `ERROR` finding
 that names it, what it found before it raised is dropped, and the
 other rules still run; the command exits 2, because a rule that did
-not finish has not cleared the project.
+not finish has not cleared the project. A rule that runs past
+`BUDGET` seconds is stopped and reported the same way, so a slow rule
+shows up as an error instead of a run that never ends. The budget
+needs a timer signal, so it holds on the main thread of a POSIX
+system and nowhere else.
 """
 
 from __future__ import annotations
 
+import contextlib
 import io
 import re
+import signal
 import sys
+import threading
 import tokenize
 import traceback
 from collections.abc import Iterator, Sequence
@@ -34,6 +41,8 @@ IGNORE = "IGNORE"
 ERROR = "ERROR"
 RECURSION = 12 * MAX_DEPTH
 """The recursion limit the rules run under: enough frames for a recursive walk of the deepest tree a rule is given."""
+BUDGET = 60.0
+"""The seconds one rule may run before it is stopped and reported as an `ERROR` finding."""
 MARKER = re.compile(r"#\s*arch-check:\s*ignore\[(?P<rules>[^\]]*)\](?P<rest>.*)$")
 ADR = re.compile(r"^\s*ADR-(\d{4})\b")
 
@@ -126,6 +135,29 @@ def read_markers(project: Project, paths: set[str], known: set[str], findings: l
     return out
 
 
+class Overrun(Exception):
+    """A rule ran past its budget."""
+
+
+@contextlib.contextmanager
+def budget(seconds: float) -> Iterator[None]:
+    """Raise `Overrun` in the block once it has run `seconds`, where a timer signal can do it."""
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def stop(signum: int, frame: object) -> None:
+        raise Overrun(f"ran past its budget of {seconds:g} seconds")
+
+    previous = signal.signal(signal.SIGALRM, stop)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequence[str] = ()) -> Result:
     """Run `rules`; `known` is every registered id; `paths` limits what is reported, never what is read."""
     raw: list[Finding] = []
@@ -136,11 +168,15 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
     try:
         for r in rules:
             try:
-                found = [Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin) for v in r.check(project)]
+                with budget(BUDGET):
+                    found = [
+                        Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin) for v in r.check(project)
+                    ]
             except ConfigError:
                 raise
-            except Exception as raised:  # MemoryError and RecursionError included: one rule never stops the others
-                traceback.print_exc(file=sys.stderr)
+            except Exception as raised:  # MemoryError, RecursionError, and Overrun included: one rule never stops the others
+                if not isinstance(raised, Overrun):
+                    traceback.print_exc(file=sys.stderr)
                 failed.add(r.id)
                 detail = f": {raised}" if str(raised) else ""
                 errors.append(

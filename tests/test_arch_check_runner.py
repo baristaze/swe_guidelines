@@ -3,16 +3,18 @@
 A source file that exhausts the parser, or nests deeper than the rules
 walk, is a `PARSE` finding on that file. A rule that raises is an
 `ERROR` finding naming the rule: the other rules still run, their
-findings are still reported, and the run exits 2.
+findings are still reported, and the run exits 2. A rule that runs
+past its budget is stopped and reported the same way.
 """
 
 import ast
+import signal
 
 import pytest
 
 pytest.importorskip("tomllib")
 
-from arch_check import registry
+from arch_check import registry, runner
 from arch_check.model import Violation
 from arch_check.project import MAX_DEPTH
 from arch_check_fixtures import check, check_json, rules_found, write_project
@@ -80,3 +82,20 @@ def test_an_error_is_reported_whatever_paths_are_asked_for(tmp_path, monkeypatch
     assert code == 2
     assert "ERROR OM-03 raised MemoryError" in out
     assert "MemoryError" in err
+
+
+@pytest.mark.skipif(not hasattr(signal, "setitimer"), reason="the budget needs a timer signal")
+def test_a_rule_that_runs_past_its_budget_is_an_error_and_the_others_still_run(tmp_path, monkeypatch):
+    def spins(project):
+        while True:
+            pass
+        yield
+
+    monkeypatch.setattr(runner, "BUDGET", 0.2)
+    monkeypatch.setitem(registry.RULES, "OM-03", registry.make("OM-03", spins, coverage="full", summary="spins"))
+    write_project(tmp_path, {IMPL: BAD})
+    code, report = check_json(tmp_path)
+    assert code == 2
+    assert ("CON-12", IMPL, 1) in rules_found(report)
+    errors = [f["message"] for f in report["findings"] if f["rule"] == "ERROR"]
+    assert errors == ["OM-03 raised Overrun: ran past its budget of 0.2 seconds; its findings are missing"]
