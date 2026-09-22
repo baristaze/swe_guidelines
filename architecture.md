@@ -871,7 +871,8 @@ the stronger one cannot be handed the weaker.
 `OperatorContext` adds one field to `IdentityContext`: what the
 operator's allowlist entry grants. An entry grants read, or read and
 write, so a read operator is refused a write the way a tenant viewer
-is. The type itself is the evidence that the allowlist was consulted.
+is. An operator with no second factor enrolled yet holds `ENROL` alone
+(see [The Gateway](#the-gateway)). The type itself is the evidence that the allowlist was consulted.
 
 The chain continues below `OpContext` only when the domain earns it. A
 stage for a role exists when operations rely on that role instead of
@@ -2994,15 +2995,17 @@ someone else issued minted it.
 
 An operator's sign-in is admitted only with a second factor: a TOTP
 code (RFC 6238) from an authenticator enrolled for that operator
-identity. The gate checks it here, before admission, and refuses a
-sign-in that did not present one. A tenant's sign-in does not require
-a second factor. The operator plane reads across tenants, so a
-password alone never admits to it.
+identity. The sign-in verifies the code and records the verified
+factor on the credential it issues. The gate checks that record here,
+before admission, and refuses a sign-in that carries none. A tenant's
+sign-in does not require a second factor. The operator plane reads
+across tenants, so a password alone never admits to it.
 
 An operator enrols a TOTP secret once. The secret is stored encrypted,
 under a key from the secret store (see [Secrets](#secrets)). Until
-then, enrolment is the one route an operator's sign-in reaches. A code that was already used is refused, even inside its time
-step.
+then, the gate admits the sign-in with `OperatorPermission.ENROL`
+alone, and enrolment is the one route that permission reaches. A code
+that was already used is refused, even inside its time step.
 
 The gate then asks the tenancy manager to admit that identity as an
 operator. That produces an `OperatorContext` when the identity is on
@@ -4631,8 +4634,9 @@ one-off task on the image that puts one identity on the operator
 allowlist. It is a pipeline job, dispatched by a person on the
 environment's branch and run under the deployer, never an
 administrator step, so production's grant waits behind the same
-approval as its apply. Every later entry is an operation of the
-operator plane. Until the grant has run, nothing holds an operator
+approval as its apply. The same job grants every later entry and
+disables one, so no identity on the operator plane widens the
+allowlist. Until the grant has run, nothing holds an operator
 password for that environment: the create run writes the operator's
 file with those lines empty.
 

@@ -1095,21 +1095,22 @@ dependency.
 **Principle.** A deployed database is migrated by the deploy: a one-off
 task on the new image, inside the apply and before the rollout, in
 production after the approval. A revert never removes an applied
-migration. A deployed environment's first operator is granted by the
-same kind of task, run by the pipeline.
+migration. A deployed environment's operators are granted and disabled
+by the same kind of task, run by the pipeline.
 
 **Source.** Deployment, Migrating a Deployed Database.
 
 **Look for.** Where each environment root runs the migration, what it
 runs on and under, and what the rollout depends on; how production
-orders it against the approval; how the first allowlist entry of a
-deployed environment is made.
+orders it against the approval; how an allowlist entry of a deployed
+environment is made or disabled.
 
 **Violation.** A migration run by hand against a deployed database; a
 migration after the rollout, or outside the apply, so new tasks serve
-an old schema; a production migration before the approval; a first
+an old schema; a production migration before the approval; an
 operator inserted by a database login from a laptop, or granted by the
-administrator outside the pipeline; a revert that deletes a migration
+administrator outside the pipeline; an operator-plane route that
+writes the allowlist; a revert that deletes a migration
 a deployed version table names.
 
 **Severity.** medium
