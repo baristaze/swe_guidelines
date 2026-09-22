@@ -4821,9 +4821,10 @@ a redesign, when an agent has earned it.
 
 > **Principle:** Every operational task is a skill a person runs with
 > an agent. The boundary is the credential. A cloud credential an
-> agent holds reads and never writes. A person's reads too, except the
-> administrator's, which creates and destroys an environment and does
-> nothing else, and a smaller environment's named widening.
+> agent holds reads and never writes. A person's reads too, with two
+> exceptions: the administrator's, which creates and destroys an
+> environment and does nothing else, and the widening a smaller
+> environment names.
 
 ### Operator Roles
 
