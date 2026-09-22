@@ -8,4 +8,4 @@ imports the code it checks. Standard library only.
 `scripts/check_version.py` holds it equal to `.claude-plugin/plugin.json`.
 """
 
-__version__ = "0.30.0"
+__version__ = "0.31.0"
