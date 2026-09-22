@@ -40,7 +40,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments
+from _common import NUMBERED_REFERENCE, arguments, fenced_lines, headings, unfenced
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
@@ -56,7 +56,7 @@ FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Check)\.
 CHECK_FULL = "`arch-check` decides it."
 CHECK_PARTIAL = re.compile(r"^`arch-check` decides (.+); the rest is judged\.$")
 LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
-NUMBERED = re.compile(r"\bsections? \d+", re.IGNORECASE)
+NUMBERED = NUMBERED_REFERENCE
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
 LABELLED = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
@@ -72,24 +72,13 @@ def sections() -> dict[str, set[str]]:
     """Map each section title to the set of its subsection titles, skipping fenced code."""
     out: dict[str, set[str]] = {}
     current: str | None = None
-    in_fence = False
-    for line in GUIDELINE.read_text(encoding="utf-8").splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^## (.+)$", line)
-        if m:
-            current = m.group(1).strip()
-            if current in SKIP_SECTIONS:
-                current = None
-                continue
-            out[current] = set()
-            continue
-        m = re.match(r"^### (.+)$", line)
-        if m and current is not None:
-            out[current].add(m.group(1).strip())
+    for level, title in headings(GUIDELINE.read_text(encoding="utf-8")):
+        if level == 2:
+            current = None if title in SKIP_SECTIONS else title
+            if current is not None:
+                out[current] = set()
+        elif level == 3 and current is not None:
+            out[current].add(title)
     return out
 
 
@@ -103,13 +92,7 @@ def paragraph_labels() -> dict[tuple[str, str], set[str]]:
     out: dict[tuple[str, str], set[str]] = {}
     section: str | None = None
     current: tuple[str, str] | None = None
-    in_fence = False
-    for line in GUIDELINE.read_text(encoding="utf-8").splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for line in unfenced(GUIDELINE.read_text(encoding="utf-8")).splitlines():
         m = re.match(r"^(#{1,3}) (.+)$", line)
         if m:
             level, title = len(m.group(1)), m.group(2).strip()
@@ -228,7 +211,7 @@ def check_file(
     second file reusing a prefix and number is caught.
     """
     text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    lines = text.split("\n")
     prefix: str | None = None
     expected = 1
     count = 0
@@ -238,14 +221,7 @@ def check_file(
             errors.append(f"{path.name}:{ln}: refers to a section by number")
         if len(line) > MAX_COLUMNS:
             errors.append(f"{path.name}:{ln}: {len(line)} columns, limit {MAX_COLUMNS}")
-    fenced: set[int] = set()
-    in_fence = False
-    for n, line in enumerate(lines):
-        if line.startswith("```"):
-            in_fence = not in_fence
-            fenced.add(n)
-        elif in_fence:
-            fenced.add(n)
+    fenced = {n for n, code in enumerate(fenced_lines(text)) if code}
     while i < len(lines):
         m = None if i in fenced else HEADING.match(lines[i])
         if not m:

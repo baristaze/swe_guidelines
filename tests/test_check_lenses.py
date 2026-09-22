@@ -230,3 +230,27 @@ def test_labels_on_a_whole_section_are_refused(repo, lenses, labelled, capsys):
     repo.edit("lenses/om.md", "The Storage Layer, Tables; Principles.", "The Storage Layer (Keys).")
     assert lenses.main() == 1
     assert "'The Storage Layer' names no subsection, so it takes no labels" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("cite", ["subsection 3.2", "Subsection 3", "§4", "§ 4.1"])
+def test_a_subsection_or_a_section_sign_by_number_fails(repo, lenses, capsys, cite):
+    repo.edit("lenses/om.md", "Tables holding two entities.", f"Tables holding two entities, as in {cite}.")
+    assert lenses.main() == 1
+    assert "om.md:24: refers to a section by number" in capsys.readouterr().out
+
+
+def test_a_heading_inside_a_tilde_fence_is_no_section_to_cite(repo, lenses, capsys):
+    repo.edit("architecture.md", "One table per entity.\n", "One table per entity.\n\n~~~\n## Phantom\n~~~\n")
+    repo.edit("lenses/om.md", "**Source.** Interfaces, Principles.", "**Source.** Phantom.")
+    assert lenses.main() == 1
+    assert "'Phantom' is not a section of architecture.md" in capsys.readouterr().out
+
+
+def test_lens_syntax_inside_a_tilde_fence_is_an_example(repo, lenses, capsys):
+    example = "~~~markdown\n## OM-09 An example lens\n\n**Principle.** Shown, not counted.\n~~~\n"
+    repo.edit(
+        "lenses/om.md",
+        "**Violation.** A table with a discriminator column.\n",
+        f"**Violation.** A table with a discriminator column, like this:\n\n{example}",
+    )
+    assert lenses.main() == 0, capsys.readouterr().out

@@ -26,7 +26,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import ROOT, anchors, arguments, markdown_files, unfenced
+from _common import NUMBERED_REFERENCE, ROOT, anchors, arguments, fenced_lines, markdown_files, unfenced
 
 # The text may hold one level of brackets (`[see [the note]](x.md)`), the
 # destination may be wrapped in `<...>`, and the title may be quoted either
@@ -37,8 +37,6 @@ LINK = re.compile(
 )
 # A reference definition, `[label]: target "title"`, at the start of a line.
 DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(?:<([^>]*)>|(\S+))")
-FENCE = re.compile(r"^ {0,3}(```|~~~)")
-NUMBERED_REFERENCE = re.compile(r"\bsections? \d+", re.IGNORECASE)
 NUMBERED_HEADING = re.compile(r"^#{1,6} \d+(\.\d+)*[.)]?\s")
 VERSIONED = ("CHANGELOG.md",)
 EXTERNAL = ("http://", "https://", "mailto:")
@@ -52,12 +50,8 @@ def headings(path: Path) -> set[str]:
 def definitions(text: str) -> list[tuple[int, str]]:
     """(line, target) of every reference definition outside fenced code."""
     out: list[tuple[int, str]] = []
-    fenced = False
-    for number, line in enumerate(text.splitlines(), start=1):
-        if FENCE.match(line):
-            fenced = not fenced
-            continue
-        m = DEFINITION.match(line) if not fenced else None
+    for number, (line, code) in enumerate(zip(text.split("\n"), fenced_lines(text), strict=True), start=1):
+        m = DEFINITION.match(line) if not code else None
         if m:
             out.append((number, m.group(1) if m.group(1) is not None else m.group(2)))
     return out
@@ -66,12 +60,8 @@ def definitions(text: str) -> list[tuple[int, str]]:
 def numbered(path: Path, text: str) -> list[str]:
     """Every line outside fenced code that refers to a section by number or numbers a heading."""
     out: list[str] = []
-    fenced = False
-    for number, line in enumerate(text.splitlines(), start=1):
-        if FENCE.match(line):
-            fenced = not fenced
-            continue
-        if fenced:
+    for number, (line, code) in enumerate(zip(text.split("\n"), fenced_lines(text), strict=True), start=1):
+        if code:
             continue
         if NUMBERED_REFERENCE.search(line):
             out.append(f"{path.relative_to(ROOT)}:{number}: refers to a section by number")

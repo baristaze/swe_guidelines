@@ -52,6 +52,10 @@ def plain(heading: str) -> str:
 
 # a paired emphasis delimiter: `*x*`, `**x**`, or `_x_` at a word boundary, never a lone `*`
 EMPHASIS = re.compile(r"(\*{1,3}|(?<!\w)_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)")
+CODE_SPAN = re.compile(r"(`+)(.+?)\1")
+
+NUMBERED_REFERENCE = re.compile(r"\b(?:sub)?sections?\s+\d+|§\s*\d+", re.IGNORECASE)
+"""A reference to a section by number: `section 4`, `subsection 3.2`, `§4`. Every checker refuses it with this one pattern."""
 
 
 def slug(heading: str) -> str:
@@ -61,12 +65,21 @@ def slug(heading: str) -> str:
     links keep their text, backticks and paired emphasis markers are
     stripped (a lone `*` is punctuation, dropped after the trim), the
     rest is lowercased, and every character that is not a letter, a
-    digit, a space, `-`, or `_` is dropped. Each space then
-    becomes one hyphen, so a double space is `--`. Underscores stay
-    (`EMPTY_UUID` anchors as `empty_uuid`). `anchors` numbers repeats;
-    this function does not.
+    digit, a space, `-`, or `_` is dropped. Text inside a code span is
+    code, never emphasis, so `__init__` keeps its underscores. Each
+    space then becomes one hyphen, so a double space is `--`.
+    Underscores stay (`EMPTY_UUID` anchors as `empty_uuid`). `anchors`
+    numbers repeats; this function does not.
     """
-    text = EMPHASIS.sub(r"\2", plain(heading).replace("`", "")).strip().lower()
+    text = plain(heading)
+    parts: list[str] = []
+    at = 0
+    for m in CODE_SPAN.finditer(text):
+        parts.append(EMPHASIS.sub(r"\2", text[at : m.start()]))
+        parts.append(m.group(2))
+        at = m.end()
+    parts.append(EMPHASIS.sub(r"\2", text[at:]))
+    text = "".join(parts).replace("`", "").strip().lower()
     text = re.sub(r"[^\w\- ]", "", text)
     return text.replace(" ", "-")
 
@@ -74,28 +87,38 @@ def slug(heading: str) -> str:
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
-def unfenced(text: str) -> str:
-    """The text with every line of fenced code, fences included, blanked to spaces.
+def fenced_lines(text: str) -> list[bool]:
+    """For each line of `text` (split on newlines), whether it is fenced code, its fences included.
 
     A fence opens with three or more backticks or tildes, indented at most
     three spaces, and closes with a run of the same character at least as
-    long, as CommonMark reads it. Blanked, not dropped, so offsets and line
-    numbers still map back to the file.
+    long, as CommonMark reads it. Every script that skips fenced code asks
+    this function, so none of them can read a fence another one skips.
     """
-    out: list[str] = []
+    out: list[bool] = []
     opener: str | None = None
     for line in text.split("\n"):
         m = FENCE.match(line)
         if opener is None and m:
             opener = m.group(1)
-            out.append(" " * len(line))
+            out.append(True)
         elif opener is not None:
             if m and m.group(1)[0] == opener[0] and len(m.group(1)) >= len(opener) and not line.strip().strip(opener[0]):
                 opener = None
-            out.append(" " * len(line))
+            out.append(True)
         else:
-            out.append(line)
-    return "\n".join(out)
+            out.append(False)
+    return out
+
+
+def unfenced(text: str) -> str:
+    """The text with every line of fenced code, fences included, blanked to spaces.
+
+    Blanked, not dropped, so offsets and line numbers still map back to
+    the file. `fenced_lines` decides which lines are code.
+    """
+    lines = text.split("\n")
+    return "\n".join(" " * len(line) if code else line for line, code in zip(lines, fenced_lines(text), strict=True))
 
 
 def headings(text: str) -> list[tuple[int, str]]:
@@ -116,17 +139,21 @@ def anchors(text: str) -> list[tuple[int, str, str]]:
     """(level, title, anchor) for every heading of a document.
 
     The second heading with a given slug gets `-1`, the third `-2`, and
-    so on, which is the rule GitHub applies. Both the generator that
-    writes anchors and the checker that resolves them use this function,
-    so the two cannot disagree.
+    so on, skipping a numbered anchor an earlier heading already took
+    (`Foo`, `Foo`, `Foo 1` anchor as `foo`, `foo-1`, `foo-1-1`), which
+    is the rule github-slugger applies. Both the generator that writes
+    anchors and the checker that resolves them use this function, so
+    the two cannot disagree.
     """
     seen: dict[str, int] = {}
     out: list[tuple[int, str, str]] = []
     for level, title in headings(text):
-        base = slug(title)
-        n = seen.get(base, 0)
-        seen[base] = n + 1
-        out.append((level, title, base if n == 0 else f"{base}-{n}"))
+        base = found = slug(title)
+        while found in seen:
+            seen[base] += 1
+            found = f"{base}-{seen[base]}"
+        seen[found] = 0
+        out.append((level, title, found))
     return out
 
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from _common import anchors, headings, markdown_files, slug
+from _common import anchors, fenced_lines, headings, markdown_files, slug
 
 SCRIPTS = [
     "check_agents",
@@ -61,6 +61,9 @@ GITHUB_SLUGGER = [
     # underscores stay
     ("CTX-13 The system scope is EMPTY_UUID", "ctx-13-the-system-scope-is-empty_uuid"),
     ("`snake_case` heading", "snake_case-heading"),
+    # underscores inside a code span are text, never emphasis
+    ("The `__init__` module", "the-__init__-module"),
+    ("`_private` and `__dunder__`", "_private-and-__dunder__"),
     # inline code and emphasis keep their text
     ("`OpContext` and *friends*", "opcontext-and-friends"),
     ("the _emph_ word", "the-emph-word"),
@@ -135,3 +138,15 @@ def test_anchors_number_repeats_the_way_github_does():
 def test_a_heading_inside_a_tilde_or_long_fence_is_not_a_heading():
     text = "# Top\n\n~~~\n# not a heading\n~~~\n\n````md\n```\n# still code\n```\n````\n\n## After\n"
     assert headings(text) == [(1, "Top"), (2, "After")]
+
+
+def test_a_repeat_skips_a_numbered_anchor_an_earlier_heading_took():
+    text = "## Foo\n\n## Foo\n\n## Foo 1\n"
+    assert [a for _, _, a in anchors(text)] == ["foo", "foo-1", "foo-1-1"]
+    text = "## Foo 1\n\n## Foo\n\n## Foo\n"
+    assert [a for _, _, a in anchors(text)] == ["foo-1", "foo", "foo-2"]
+
+
+def test_fenced_lines_mark_every_line_of_a_fence_of_either_kind():
+    text = "a\n~~~\nb\n~~~\nc\n````md\n```\nd\n````\ne"
+    assert fenced_lines(text) == [False, True, True, True, False, True, True, True, True, False]
