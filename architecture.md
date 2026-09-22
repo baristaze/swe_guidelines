@@ -1551,10 +1551,12 @@ referenced in the interface. A consumer of
 `InventoryStorageInterface` must not be able to tell whether it is
 talking to SQLAlchemy, Postgres, or a columnar store.
 
-A small number of tables are global by nature: the identities behind
-tenant users, platform-owned reference data, a health row per external
-provider. Their storage methods take no `org_id`, and the interface
-docstring says why.
+A small number of tables hold no tenant's rows. Platform-owned
+reference data and a health row per external provider are global. The
+identities behind tenant users are scoped to the identity, and their
+methods take `identity_id` in place of `org_id` (see [The Second
+Fence](#the-second-fence)). Neither kind takes `org_id`, and the
+interface docstring says why.
 
 Cross-tenant sweeps are the other exception. A sweep that expires the
 leases past due, in every tenant, up to its batch size, returns
