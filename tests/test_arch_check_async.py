@@ -642,6 +642,25 @@ def test_asy_04_a_scope_declared_in_a_submodule_and_re_exported(tmp_path):
     assert rules_found(report) == [("ASY-04", f"{INFRA}/cache/scopes.py", 4)]
 
 
+def test_asy_04_a_scope_re_exported_through_dense_and_cyclic_imports_finishes(tmp_path, monkeypatch):
+    from arch_check import runner
+
+    monkeypatch.setattr(runner, "BUDGET", 5.0)
+    count = 30
+    scope = 'from enum import Enum\n\n\nclass CacheScope(str, Enum):\n    RATE_LIMIT = "rate_limit"\n'
+    init = GOOD[CACHE].replace('class CacheScope(str, Enum):\n    RATE_LIMIT = "rate_limit"\n\n\n', "")
+    files = {CACHE: "from .r0 import CacheScope\n" + init}
+    # each module imports a name from every module after it: 2 ** count paths from the first to the last
+    for i in range(count - 1):
+        lines = [f"from .r{j} import name{j}" for j in range(i + 1, count)]
+        files[f"{INFRA}/cache/r{i}.py"] = "\n".join([*lines, f"from .r{i + 1} import CacheScope", f"name{i} = 1"]) + "\n"
+    last = f"{INFRA}/cache/r{count - 1}.py"
+    files[last] = f"from .r0 import name0\nname{count - 1} = 1\n" + scope.replace("(str, Enum)", "")
+    code, report = run(tmp_path, "ASY-04", files)
+    assert rules_found(report) == [("ASY-04", last, 6)]
+    assert code == 1
+
+
 def test_asy_08_a_filesystem_impl_and_a_string_bucket_inside_infra_pass(tmp_path):
     files = edit(f"{INFRA}/buckets/local.py", "BucketsLocalImpl", "FilesystemBucketsImpl")
     files[f"{INFRA}/buckets/s3.py"] = (

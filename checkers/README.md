@@ -55,6 +55,10 @@ The flags:
 - `2` also when a rule raises. The rule's findings are missing, so the
   run reports an `ERROR` finding that names the rule, and every other
   rule still runs.
+- `2` also when a rule runs past 60 seconds. The rule is stopped and
+  reported the same way, so a slow rule is an error, never a run that
+  does not end. The budget needs a timer signal: it holds on macOS and
+  Linux, and not on Windows.
 
 A file that does not parse is a `PARSE` finding, never a crash. So is
 a file nested deeper than 2500 levels, or one that exhausts the
