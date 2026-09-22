@@ -1291,8 +1291,8 @@ header. Elsewhere it is an `expected_version` field of the request.
 A `PATCH` on a versioned entity that carries neither is refused with
 `ValidationFailed`, since an update with no version would overwrite
 blind.
-The partial update copies that version onto the entity it hands the
-manager, in place of the one its own read returned. The manager's
+The partial update hands that version to the manager beside the
+entity, in place of the one its own read returned. The manager's
 copy increments it, and the write succeeds only while the stored row
 still carries the caller's version. A mismatch raises
 `PreconditionFailed`, a `412` (see [Exceptions](#exceptions)).

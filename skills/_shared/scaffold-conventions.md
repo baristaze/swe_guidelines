@@ -236,7 +236,7 @@ the order the guideline presents them, never by number.
   empty, naming the fields the manager sets and a caller never
   writes (a `credential_ref`, a status its transitions own, a
   position); an entity whose concurrent edits matter carries a
-  `version`, the expected version comes from the caller (an
+  `version`, which is manager-owned, the expected version comes from the caller (an
   `If-Match` header on the `PATCH`, or an `expected_version` field)
   and is never re-read inside the update, the write is a
   compare-and-set against it, and a mismatch raises
