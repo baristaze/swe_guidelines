@@ -22,8 +22,15 @@ lenses (`skills/`), and the checkers that keep the three consistent
   the nine project-local operational skills as flat templates, one
   file each, with `acme` for the product; `arch-scaffold-new` copies
   them into a new tree, and `make leaks`, `make links`, and `make lint`
-  hold them (they are not skills of this plugin, so `check_skills.py`
-  does not read them). `skills/arch-new-aspect`
+  hold them. They are not skills of this plugin, but a new tree runs
+  them as skills, so `scripts/check_skills.py` reads their frontmatter
+  and nothing else. It holds the same flat `key: value` lines a
+  skill's frontmatter has. The name equals the file name. The
+  description is one double-quoted string of at most 1024 characters,
+  outside the plugin's description budget. `allowed-tools` is
+  comma-separated, with no bare `Bash`, and each Bash entry is the
+  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`.
+  `skills/arch-new-aspect`
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,
   skills, and docs, and names the release level.
