@@ -3184,10 +3184,16 @@ a new writer's output. The reverse, a new reader in front of an old
 writer, holds only when the new field is optional with a default the
 reader applies when it is absent.
 
-So a topic payload, a work item payload, and a realtime envelope only
-gain optional, defaulted fields. A row written before the deploy has no
-such field. A producer still on the old build sends none. The consumer
-tolerates both, so the two roll out in either order.
+So a topic payload and a realtime envelope only gain optional,
+defaulted fields. A producer still on the old build sends none, and
+the consumer tolerates that, so the two roll out in either order. That
+holds for a payload that lives only on the wire.
+
+A work item payload and an event payload are stored. They are stored
+shapes, strict like every other, so an added field in one is staged
+across two releases (see [Translation](#translation)). The release
+that adds the field reads it and does not write it. The release after
+it writes it.
 
 A request forbids what it does not know. The service that accepts a new
 optional field therefore rolls out before the app that sends it. And an
