@@ -2314,8 +2314,10 @@ starts, and compares that count with the rows the statement reports.
 It fails on a difference, and the whole transaction rolls back, the
 fence included.
 
-A migration test holds that. It seeds rows of two tenants, runs the
-backfill against the migrated database, and asserts that the count
+The count does not catch a missing `NO FORCE` on its own. Under
+`FORCE` the count and the update both see zero rows, and zero equals
+zero. A migration test catches it. It seeds rows of two tenants, runs
+the backfill against the migrated database, and asserts that the count
 covers both tenants' rows.
 
 A check that the ORM metadata and the migrated schema agree, for every

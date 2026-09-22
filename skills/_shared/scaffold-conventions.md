@@ -186,9 +186,13 @@ the order the guideline presents them, never by number.
   ALTER TABLE <role>.<table> FORCE ROW LEVEL SECURITY;
   ```
 
-  Its integration test seeds rows of two tenants, runs the migration,
-  and asserts that every row of both tenants was touched, so a
-  backfill the policy silently narrowed to nothing fails.
+  The count alone does not catch a missing `NO FORCE`: under `FORCE`
+  the count and the update both see zero rows, and zero equals zero.
+  So its integration test seeds rows of two tenants, runs the
+  migration, and asserts that every row of both tenants was touched,
+  and that test is what fails a backfill the policy silently narrowed
+  to nothing. `run_sql(role, file)` runs the file as one transaction
+  and never splits it on `;`.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
