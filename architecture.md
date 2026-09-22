@@ -1305,13 +1305,18 @@ tenant:
 -   finding the integration that owns an inbound webhook token.
 
 These take the request stage, `RequestContext`, as their first argument
-(see [Stages](#stages)), and they are documented as transitions. Each
-one *produces* a stronger stage rather than consuming one. A sign-in
-returns the identity stage. A sign-up returns it too, after it creates
-the identity and the tenant it answers with, so it acts inside no
-tenant that existed before it. A claim returns the `OpContext` under
-which the work runs. A sweep asks for one service context per live
-tenant.
+(see [Stages](#stages)).
+
+The first four are transitions. Each one *produces* a stronger stage
+rather than consuming one. A sign-in returns the identity stage. A
+sign-up returns it too, after it creates the identity and the tenant it
+answers with, so it acts inside no tenant that existed before it. A
+claim returns the `OpContext` under which the work runs. A sweep asks
+for one service context per live tenant.
+
+The webhook lookup produces no stage. It returns the integration that
+owns the token, and the route then checks the provider's signature
+before anything is enqueued (see [Queues](#queues)).
 
 There are very few of them, and a test names each one (see [Records
 of Decisions](#records-of-decisions)). A new operation that takes the
@@ -1324,9 +1329,10 @@ that audits. Such a sweep holds one service context per live tenant
 and calls the manager as any caller would.
 
 Other sweeps are bookkeeping with no principal, such as relaying the
-outbox or expiring a lease. Such a sweep reads across tenants in one
-statement and gets the tenant back with each row (see [Namespace
-Shape](#namespace-shape)).
+outbox or expiring a lease. Such a sweep takes the `RequestContext` its
+pass minted as its first argument, like the claim. It reads across
+tenants in one statement and gets the tenant back with each row (see
+[Namespace Shape](#namespace-shape)).
 
 A service context is minted for the tenant, not for a member. It
 carries the tenant, the role reserved for services, and the system user
