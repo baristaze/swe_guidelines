@@ -95,8 +95,18 @@ for the aspect in one message and stop.
        `lenses/README.md`; and `README.md`. A group the checker decides
        in part gets its module under `checkers/src/arch_check/rules/`
        and its tests in `tests/test_arch_check_<group>.py`.
-     - The scaffold skills whose `Created` or `Changed` tables gain a
-       file, or whose section lists gain a section.
+     - The scaffold skills whose output the aspect changes. That is
+       any behavior the guideline changes: a route, an operation, a
+       check, a test, a setting, or a step. It is not only a file a
+       `Created` or `Changed` table gains, or a section a section
+       list gains. Read every `arch-scaffold-*` skill for it, and
+       grep them and `agents/` for every identifier the aspect
+       renames.
+     - `skills/_shared/`: `scaffold-conventions.md`, which every
+       scaffold follows, and the ops templates under
+       `skills/_shared/ops-skills/`, which a new tree copies as its
+       operational skills. A rule that changes what a scaffold writes
+       or what an operator runs lands there too.
      - `docs/adopting.md`, when an adopter must do something or gains
        a place to look.
      - `README.md`, when a count or a summary changes.

@@ -39,7 +39,8 @@ and check that `Account` is the environment's `account_id` in
 `deployment/cloud/environments.json` and that `Arn` reads
 `arn:aws:sts::<account>:assumed-role/acme-investigate-<env>/...`.
 Refuse any other identity, an administrator profile above all. The
-role reads the state bucket under `environments/<env>/` and describes every resource, which is all a
+role reads the state bucket under `environments/<dir>/` (`staging`, or
+`prod` for production) and describes every resource, which is all a
 plan needs. It cannot lock the state and cannot write it, so the plan
 runs with `-lock=false`, and an apply under it fails by construction.
 It also runs with `-refresh=false`: a refresh reads each secret's

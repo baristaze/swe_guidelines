@@ -1,7 +1,8 @@
 ---
 name: ops-cloud-deployment-create
 description: "Create one cloud environment of the platform in its own account, from nothing to its first deploy, as that account's administrator: the bootstrap root (state bucket, OIDC trust, deploy and investigate roles, budget, registry, zones), the delegation of its public names, the investigate profile chained from the identity center sign-in, the GitHub environments and their variables, then the first deploy through the pipeline and the smoke test. Runs scripts/cloud_create.sh after checking the profile and the account against deployment/cloud/environments.json, and the GitHub login. Supports --dry-run. The one skill besides nuke that needs a credential that writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(scripts/cloud_create.sh:*)
+disable-model-invocation: true
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*)
 ---
 
 # ops-cloud-deployment-create
@@ -23,13 +24,22 @@ exists. `local` is refused: this skill acts on a cloud environment
 only, and the local stack has no administrator.
 
 The script also needs `OWNER_EMAIL` and `ALARM_EMAIL` (as environment
-variables or as `--owner-email` and `--alarm-email`), and the token
+variables or as `--owner-email` and `--alarm-email`), the id of the
+repository host's app that `release.yml` pushes with (`--app-id`),
+and the token
 that writes the delegation at the domain's DNS host, as an environment
 variable only, so it never lands in shell history. That token is the
 run's one credential outside the account: scoped to the domain's zone,
 short-lived where the host allows it, and held only for the run. It refuses without
 them; ask for any that is missing, and never for the token's value in
 the conversation.
+
+The app is the one piece a person makes by hand, before the first
+run: the repository host has no command that creates it. The person
+makes it with contents write on the repository, installs it there,
+and stores its private key in the `release` environment. The script
+lists those steps as manual, and the report names them until they
+are done.
 
 ## Order
 
@@ -69,10 +79,15 @@ The GitHub login is `gh auth status`; it names a user who can write
 the repository's environments and their variables.
 
 No env file is read. The script writes one: `~/.config/acme/ops/<env>.env`,
-owner-only, with the API's URL and the operator, provisioner, and
-tracker lines empty, the TOTP secret lines among them: no operator
+owner-only, with the API's URL and the lines `ACME_OPERATOR_TOKEN`,
+`ACME_PROVISIONER_TOKEN`, and the tracker's left empty: no operator
 exists until the pipeline's first-operator job has run and the
-operator has enrolled a second factor. It writes the investigate profile into
+operator has enrolled a second factor. The script prints the two
+tracker lines, `ACME_ERROR_TRACKER_URL` and `ACME_ERROR_TRACKER_TOKEN`,
+as the one part of the env file a person fills by hand, once they
+have made the environment's project in the error tracker. The file never holds a
+password or a TOTP secret, since an agent never signs in with a
+password. It writes the investigate profile into
 `~/.aws/config`. The skill prints the names of what was written and
 never a value.
 
@@ -81,7 +96,9 @@ never a value.
 1. Verify the profile and the account as Role and credential states.
    Check the GitHub login.
 2. Run the script, in dry mode first when `--dry-run` was given, or
-   when it is the first time this environment is created:
+   when it is the first time this environment is created. The script
+   is not among this skill's tools, so every run asks the person
+   before it starts, and the person's approval is the go:
 
    ```bash
    scripts/cloud_create.sh <env> --dry-run
@@ -103,10 +120,16 @@ never a value.
    - The investigate profile `acme-<env>-investigate`, chained by
      `role_arn` and `source_profile` from the identity center profile
      `<sso_profile>`. No key is minted anywhere.
+   - The repository's two branch rulesets, when absent: `main`
+     (a pull request with a review and a code owner's review, every
+     required check, no force push, no deletion) and `release` (no
+     push, no force push, no deletion, and one bypass actor, the
+     repository host's app `release.yml` pushes with).
    - The GitHub environments (staging's `staging`; production's
      `production-plan` with no reviewer and `production` with the
-     required reviewer), each with its deployment-branch policy
-     (staging's `main`, production's `release`), and each one's
+     required reviewer; and `release`, for `release.yml`), each with
+     its deployment-branch policy (staging's `main`, production's
+     `release`, and `release`'s own `main` alone), and each one's
      variables from the root's outputs, under the same names in each.
    - The first deploy, through the pipeline: the script pushes nothing
      and applies no environment root itself. For staging it dispatches
@@ -115,11 +138,12 @@ never a value.
    - The smoke test, printed as the step after the first operator
      and never run by this skill: the telemetry round trip against
      the deployed base, one traffic session read back by request id
-     through CloudWatch, X-Ray, and the error tracker. It signs in
-     through the operator plane, so it cannot pass before
-     `grant-operator.yml` has put an identity on the allowlist, that
-     identity has enrolled with `uv run acme-ops enrol --env <env>
-     --identity operator`, and the env file's lines are filled.
+     through CloudWatch, X-Ray, and the error tracker. The deploy
+     workflows run it after each apply with the smoke identity's
+     operator token, so it is skipped until `grant-operator.yml` has
+     granted the smoke identity a `read` entry, the environment's
+     `SMOKE_EMAIL` variable names it, and the grant job has minted its
+     token (`mint_token: smoke`).
 4. Check the result with the investigate profile the script wrote,
    because that is the profile every later skill holds:
 
@@ -138,9 +162,10 @@ never a value.
 - No act outside the environment's account: every provider pins it,
   and the script refuses a profile that resolves anywhere else.
 - No cloud user and no access key, for a person or an agent.
-- No secret value printed: the DNS token, the operator password, the
-  tracker token stay in the environment or in owner-only files and
-  appear in the report as the names that hold them.
+- No secret value read or printed: the DNS token, the operator
+  tokens, and the tracker token stay in the environment, the secret
+  store, or owner-only files, and appear in the report as the names
+  that hold them.
 - No console clicks: what the script cannot do with the CLI is
   reported as a manual step with its exact command.
 - No tenant data; there is none yet.
@@ -164,11 +189,12 @@ never a value.
 - Profile written: acme-<env>-investigate from <sso_profile> (~/.aws/config)
 - Env file written: ~/.config/acme/ops/<env>.env
 - First deploy: workflow run <url>, <status> | production: waits for Order
-- Smoke test: not yet; it follows the first-operator grant and the enrolment
+- Smoke test: not yet; it follows the smoke identity's grant and its token
 
 ## Next
 
 - <the next run of Order, or nothing>
-- Dispatch `grant-operator.yml` for the first operator, enrol its second factor, fill the env file, then run the smoke test
+- Dispatch `grant-operator.yml` for the first operator, who enrols the second factor at the console's first sign-in and runs `uv run acme-ops token --env <env> --identity operator` in their own terminal; grant the smoke identity and set `SMOKE_EMAIL`, so the next deploy runs the smoke test
+- Manual steps left: <the app, its installation, its key in the `release` environment, the tracker's lines in the env file, or none>
 - Put <admin_profile> away; every later skill runs under acme-<env>-investigate.
 ```

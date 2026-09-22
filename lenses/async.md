@@ -167,23 +167,29 @@ the storage layer; the rest is judged.
 **Principle.** Large blobs live in buckets named by an enum, laid out
 under keys the manager chooses, with presigned URLs for direct upload
 and download so the service never proxies a large transfer through its
-own memory. A local filesystem impl with the same layout serves
-development and tests.
+own memory. An upload is a presigned POST, `presign_post`, because a
+presigned PUT cannot bound the size: its policy carries the content
+type and a `content-length-range` up to `max_bytes`. A local
+filesystem impl with the same layout serves development and tests. It
+enforces the same bound and refuses a key with `..`.
 
 **Source.** Infrastructure, Buckets.
 
 **Look for.** The `Buckets` enum; the bucket interface, and
-`presign_put` taking the content type and `max_bytes`; how uploads and
-downloads reach clients, and what a caller does when a presign returns
-`None`; the local impl.
+`presign_post(org_id, bucket, key, content_type, max_bytes, ttl) ->
+PresignedPost | None`, a `PresignedPost` being a URL and its fields;
+how uploads and downloads
+reach clients, and what a caller does when a presign returns `None`;
+the local impl, its size check, and its key check.
 
-**Violation.** A large blob (a document, an upload, an export) stored
-in a column or on a service's disk; a bucket name passed as a free
-string; a route that streams a large upload through the process
-instead of handing out a presigned URL; an upload URL that names no
-content type or no maximum length; a `None` from a presign that the
-caller does not answer by moving the bytes itself under the same
-bounds; a local setup that needs the cloud object store to run tests.
+**Violation.** A large blob stored in a column or on a service's disk,
+a bucket name passed as a free string, or a route that streams a large
+upload through the process instead of handing out a presigned URL; an
+upload through a presigned PUT, or a POST policy with no content type
+or no `content-length-range`; a `None` from a presign that the caller
+does not answer by moving the bytes itself under the same bounds, or a
+local impl that accepts a longer body, a key with `..`, or needs the
+cloud object store to run tests.
 
 **Severity.** medium
 
@@ -219,19 +225,22 @@ base, and the `publish` and `subscribe` signatures; the rest is judged.
 
 **Principle.** A topic is best effort: a published event reaches the
 processes subscribed at the time, at most once, and a bus hiccup may
-lose it. Durable work is a row in the work queue, and a missed
-notification degrades to polling latency, never to lost work. A bus
-backed by the database connects to the queue role.
+lose it. So an effect that must happen is never sent only on a topic.
+It rides an outbox row or a work item, and a topic carries hints only.
+A missed notification degrades to polling latency, never to lost work.
+A bus backed by the database connects to the queue role.
 
 **Source.** Infrastructure, Topics; The Storage Layer, Database Roles.
 
 **Look for.** What each topic handler does with a message; whether any
-handler is the only path by which some work gets done; which database
-URL the database-backed topic impl opens.
+handler is the only path by which some work gets done, or whether an
+outbox row or a work item carries it too; which database URL the
+database-backed topic impl opens.
 
-**Violation.** A handler that performs the work itself with no backing
-row; a producer that publishes a task and writes nothing durable; a
-consumer that assumes it will see every message ever published; a
+**Violation.** A handler whose effect must happen (a charge, an email,
+a record written) and that no outbox row or work item backs; a
+producer that publishes a task and writes nothing durable; a consumer
+that assumes it will see every message ever published, or a
 database-backed bus pointed at a role other than the queue role.
 
 **Severity.** high
@@ -279,8 +288,9 @@ handler that does the whole job inline.
 
 **Principle.** The object model holds only references to secrets. A
 tenant's secret is resolved at the point of use, for one operation,
-and discarded. The process's own credentials come from the runtime's
-injection and never pass through the tenant capability. No value
+and discarded. The process's own credentials, the database URL and
+the internal signing key, are injected by the runtime at start and
+never pass through the tenant capability. No value
 enters an entity, a log line, an audit payload, an error message, or a
 subprocess environment.
 
@@ -425,23 +435,26 @@ deploy.
 its own timer, idempotent and serialized by the database, with no
 leader, lock, or scheduler. It requeues expired items, expires leases,
 resumes parked records (staggered), rolls periods, relays the outbox,
-and purges done outbox rows, soft-deleted rows, idempotency markers,
-redeemed or expired socket tickets, and ended sessions.
+and purges done outbox rows, done and failed work items past a
+retention setting (`purge_items(before)`), soft-deleted rows,
+idempotency markers, redeemed or expired socket tickets, and ended
+sessions.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
 
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
-the sweep relays the outbox and runs every purge.
+the sweep relays the outbox and runs every purge, the work queue's
+`purge_items` and its retention setting among them.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
 so a crash between the core write and its handoff is never repaired;
-a purge missing, so done rows, idempotency markers, socket tickets, or
-sessions outlive their retention or their lifetime; every parked
-record resumed in the same instant.
+a purge missing, so done rows, done or failed work items, idempotency
+markers, socket tickets, or sessions outlive their retention or their
+lifetime; every parked record resumed in the same instant.
 
 **Severity.** medium
 

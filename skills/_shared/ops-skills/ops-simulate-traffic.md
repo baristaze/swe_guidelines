@@ -20,7 +20,8 @@ tenants, members, concurrency, and think time.
 `--env` and `--profile` are required; ask for them when missing.
 `--duration` is in seconds, sixty by default. `--orgs` is how many
 tenants the run provisions, the profile's number by default; `0`
-drives the seeded people alone. `--report` writes the table as JSON
+drives the seeded people alone, so it is for `local` only and refused
+against a cloud environment, which has no seeded people. `--report` writes the table as JSON
 beside printing it. `local` drives the API at the `ACME_API_URL` of
 `~/.config/acme/ops/local.env`, which `make seed` writes with a local
 provisioner, started by `scripts/dev.sh` or `make up`, and needs no
@@ -42,30 +43,44 @@ aws sts get-caller-identity --profile acme-<env>-investigate
 
 and refused under any other identity, an administrator profile above all. And the
 env file `~/.config/acme/ops/<env>.env`, owner-only and outside the
-repository, whose provisioner identity (`ACME_PROVISIONER_EMAIL`,
-`ACME_PROVISIONER_PASSWORD` against `ACME_API_URL`) creates the tenants
-the sessions run in; that identity's allowlist entry is `write`, it is
-the one write entry the file holds, and only this generator uses it.
-The tenants it creates are the generator's own, named with the run
-id, so no real tenant is touched, and removed when the run ends. The
-provisioner signs in with its password and a TOTP code, which
-`acme-ops` derives from `ACME_PROVISIONER_TOTP_SECRET`, the secret
-`acme-ops enrol` wrote into the same file. With `--orgs 0` the run
-drives the seeded people and needs no provisioner. Never print the
-password, the secret, a code, or the token.
+repository, whose provisioner token (`ACME_PROVISIONER_TOKEN` against
+`ACME_API_URL`) creates the tenants the sessions run in; the
+provisioner's allowlist entry is `write`, its token is the one write
+token the file holds, and only this generator uses it. The tenants it
+creates are the generator's own, named with the run id, so no real
+tenant is touched, and removed when the run ends. The file holds no
+password and no TOTP secret: an agent never signs in with a password.
+A cloud run always provisions its tenants, so it always needs the
+provisioner's token.
+
+Never read the env file, with `Read`, `cat`, or anything else: its
+values stay out of this conversation. `acme-ops` reads the file
+itself from `--env`, and a command that needs a value from it
+sources the file and makes the call in the same command, because
+shell state does not persist between calls. Never print a token.
+The provisioner's token carries one permission and expires within
+the hour. When the generator reports it refused or expired, stop and
+ask the person to refresh it: locally with `uv run acme-ops token
+--env local --identity provisioner`, and in the cloud by dispatching
+`grant-operator.yml` with `mint_token: provisioner`, then running
+`uv run acme-ops token --env <env> --identity provisioner` in their
+own terminal, which copies the token the grant job wrote under their
+identity-center sign-in.
 
 In production the provisioner's allowlist entry is disabled between
 runs, so no standing writing credential waits there. A run with
 `--orgs` above `0` against production needs the person to enable it
 first, by dispatching `grant-operator.yml` on `release` with the
-provisioner's email and `write`, and to disable it after, by
+provisioner's email, `write`, and `mint_token: provisioner`, then
+copying the token into the env file with `uv run acme-ops token --env
+production --identity provisioner` in their own terminal, and to
+disable it after, by
 dispatching it again with `disable`; this skill holds no role that
 does either, and says which dispatch is due.
 
 ## Procedure
 
-1. Verify the credential as Role and credential states. Read the env
-   file. Against `production`, ask before running anything above
+1. Verify the credential as Role and credential states. Against `production`, ask before running anything above
    `light`; the generator's tenants are real rows in the real
    database, and the choice is the platform developer's. Against
    `production` with `--orgs` above `0`, a generator whose

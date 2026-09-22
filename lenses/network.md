@@ -297,17 +297,18 @@ store.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
-**Look for.** The subnet and security-group declarations for services
-and workers; whether a runtime that offers mutual TLS at no cost has
-it on; certificate handling in service impls; how HTTP clients are
+**Look for.** The subnet and security-group declarations for services,
+workers, and the database, and which of them carries a public
+address; whether a runtime that offers mutual TLS at no cost has it
+on; certificate handling in service impls; how HTTP clients are
 constructed and whether a bundled certificate store stands in for the
 system's.
 
-**Violation.** A service or worker with a public address, which is an
-exposure and not a convention slip, or a security group open past the
-platform's own processes; an HTTP client pinned to a bundled CA set so a
-corporate proxy or private CA fails; TLS configured per component
-instead of once at boot.
+**Violation.** A service, a worker, or a database with a public
+address, which is an exposure and not a convention slip, or a security
+group open past the platform's own processes; an HTTP client pinned
+to a bundled CA set so a corporate proxy or private CA fails; TLS
+configured per component instead of once at boot.
 
 **Severity.** medium
 
@@ -425,7 +426,7 @@ exists only as a frame; a client that tracks the last frame seen
 instead of the last contiguous one, so a dropped frame is skipped for
 good.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-18 Inbound socket traffic is subscribe, unsubscribe, and ping
 
@@ -518,19 +519,20 @@ retry. A manager records one event per write through the outbox.
 
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
 `kind`, `target_id`, `actor_id`, a typed payload) and its table's
-role; the audit entry, the same shape plus the request id and the app;
-the append method, the cursor row it locks, and where the head `seq`
+role; the audit entry, the same fields plus the request id and the
+app, whose `org_id` is a storage column and not a model field; the
+append method, the cursor row it locks, and where the head `seq`
 the pong carries is read from; the `after_seq` read. (Whether the
 event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
 gaps; `MAX(seq) + 1` computed in the append and retried on the
 collision; an event table in the `core` role; an event with no
-`actor_id`, or an audit entry that is not the event's shape plus the
-request id and the app; code that reads `seq` as the order of core
-writes.
+`actor_id`; an audit entry that lacks the request id, the app, or a
+field of the event other than `org_id`, or one that declares `org_id`
+as a model field; code that reads `seq` as the order of core writes.
 
-**Severity.** high
+**Severity.** medium
 
 ## NET-23 Wire and payload changes are additive within a version
 
@@ -654,11 +656,13 @@ holds its connection until the engine gives up.
 ## NET-27 A service-to-service call carries a short-lived internal credential
 
 **Principle.** A service-to-service call carries a short-lived token
-the caller mints with a key from the secret store. It names the
+the caller mints with the internal signing key. It names the
 principal, the tenant, the request id, the callee as its audience, the
-key's id, and an expiry minutes out. The callee refuses a token meant
-for another service and rebuilds the context from it; no service
-trusts a bare header.
+key's id, and an expiry minutes out. The signing key is a process
+credential: the runtime injects it at start, like the database URL,
+and it is never read through the tenant capability. The callee refuses
+a token meant for another service and rebuilds the context from it; no
+service trusts a bare header.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
@@ -668,29 +672,34 @@ rebuilds a context from it; the audience check and the key lookup by
 id on the callee; the remote impl of every service interface.
 
 **Violation.** A callee that trusts a tenant or user id in a header
-from a peer service; an internal token with no expiry, or one signed
-with a key held in settings instead of the secret store; a token with
+from a peer service; an internal token with no expiry; a signing key
+read through the tenant capability, or written into a settings file
+instead of injected at start; a token with
 no audience, or a callee that accepts one meant for another service; a
 token with no key id, so a key cannot rotate without an outage; a peer
 call that reaches a router without the gateway's dependencies.
 
 **Severity.** high
 
-## NET-28 The request id is accepted or minted at the edge
+## NET-28 The request id is accepted as a UUID or minted at the edge
 
-**Principle.** The gateway accepts an inbound `x-request-id` or mints
-one, stamps it on the context, echoes it in the response header, and
-attaches it to the log context and the trace span.
+**Principle.** The gateway accepts an inbound `x-request-id` only when
+it parses as a UUID, and otherwise mints one. It stamps the id on the
+context, echoes it in the response header, and attaches it to the log
+context and the trace span.
 
 **Source.** The Network Layer, The Gateway.
 
-**Look for.** The request-id middleware and what it writes to the
-context, the response, the log context, and the span; whether the
-socket route gets the same treatment.
+**Look for.** The request-id middleware, how it parses an inbound
+header, and what it writes to the context, the response, the log
+context, and the span; whether the socket route gets the same
+treatment.
 
-**Violation.** A response without the `x-request-id` header; a span
-without the request id; a request id minted below the gateway or read
-from the header by a router; a socket whose context carries none.
+**Violation.** An inbound header taken as any string, so a caller
+writes free text into every log line and span; a response without the
+`x-request-id` header, or a span without the request id; a request id
+minted below the gateway or read from the header by a router, or a
+socket whose context carries none.
 
 **Severity.** medium
 

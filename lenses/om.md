@@ -53,9 +53,9 @@ cross-tenant sweep may instead get the tenant back beside each row
 
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying an attribute that exists only for a
-column's sake; `org_id` on an entity every reader
-of which holds a context; an entity a reader without one takes, such
-as an `OutboxRow` or an `Event`, declared without it.
+column's sake; `org_id` on an entity every reader of which holds a
+context, an audit entry among them; an entity a reader without one
+takes, such as an `OutboxRow` or an `Event`, declared without it.
 
 **Severity.** medium
 
@@ -69,7 +69,10 @@ fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
 `Created` (`created_at`), `Trackable` (`Created` plus `updated_at`,
 `created_by`, `updated_by`), `SoftDeletable` (`deleted_at`,
 `deleted_by`). A new trait is a new mixin. `new_id()`, `utcnow()`, and
-`PROVENANCE_FIELDS` live in the base module; `OutboxRow` and
+`PROVENANCE_FIELDS` live in the base module. Each entity declares
+`MANAGER_OWNED_FIELDS`, a tuple, even when empty, and the copy on
+update excludes `set(PROVENANCE_FIELDS) |
+set(<Entity>.MANAGER_OWNED_FIELDS)`. `OutboxRow` and
 `IdempotencyMarker` are declared once, each in its namespace.
 
 **Source.** Naming Entities; The Storage Layer, Namespace Shape.
@@ -78,7 +81,8 @@ fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
 declares; whether entities redeclare a mixin's fields locally; whether
 `new_id()` and `utcnow()` are the helpers used to construct entities;
 what `PROVENANCE_FIELDS` names (`created_at`, `created_by`,
-`deleted_at`, `deleted_by`); the fields of `OutboxRow`, which carries
+`deleted_at`, `deleted_by`); each entity's `MANAGER_OWNED_FIELDS`
+and what it names; the fields of `OutboxRow`, which carries
 the provenance of the write it announces (`actor_id`, `request_id`,
 `traceparent`, `app`) and no `created_by`, since no person stands
 behind the row.
@@ -88,9 +92,10 @@ new mixin for the new trait; an entity declaring its own `created_at`
 next to `Trackable`; a root class that holds fields; a local
 `datetime.now()` or id factory used in place of the base helpers; a
 `PROVENANCE_FIELDS` declared per namespace or naming other fields than
-the four; an `OutboxRow` with no `actor_id`, `request_id`, or `app`,
-so the relay has no provenance to stamp on the event, or with a
-`created_by`.
+the four; an entity with no `MANAGER_OWNED_FIELDS`, or a field its
+manager sets that the tuple leaves out; an `OutboxRow` with no
+`actor_id`, `request_id`, or `app`, so the relay has no provenance to
+stamp on the event, or with a `created_by`.
 
 **Severity.** medium
 
@@ -137,10 +142,10 @@ for every entity composing `Trackable`, a manager method that sets
 **Violation.** A `BaseOrder` with helper methods that `Order` and
 `ReturnOrder` extend; an entity composing `SoftDeletable` while no
 manager method sets `deleted_at`, or composing `Trackable` while no
-method sets `updated_at` and `updated_by`; an update that stamps the
-time and leaves `updated_by` as the creator; a mixin introduced to
+method sets `updated_at` and `updated_by`; a mixin introduced to
 avoid repeating two fields that mean different things in different
-entities.
+entities. (How an update stamps `updated_at` and `updated_by` is
+CON-17.)
 
 **Severity.** medium
 

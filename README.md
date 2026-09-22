@@ -15,7 +15,7 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 252 lenses in eight groups. Each
+- **[`lenses/`](lenses/README.md)**: 258 lenses in eight groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Eight group reviews, one
@@ -66,8 +66,10 @@ In a project, pinned at the guideline's tag, in the `Makefile`'s fast
 gate:
 
 ```make
+ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.30.0\#subdirectory=checkers" arch-check
+
 arch-check: ## the guideline's static checks
-	uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.30.0\#subdirectory=checkers" arch-check
+	$(ARCH_CHECK)
 ```
 
 and in the root `pyproject.toml`:

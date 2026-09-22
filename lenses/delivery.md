@@ -750,7 +750,8 @@ distribution.
 **Principle.** Production does not rebuild: it promotes the copies of
 what staging deployed, replicated into its own account, images by digest
 and bundles by commit, and never reads staging's. Tags are immutable,
-the bundle prefix refuses overwrites, and a copy that differs from the
+and a locked bundle prefix keeps every version; production reads the
+version whose hash matches the record. A copy that differs from the
 digest record kept outside staging's account is refused. A bundle reads
 what differs from a `config.json`.
 
@@ -763,10 +764,10 @@ and the approval between the plan and the apply. The replication of
 the registry and of the kept bundles into production's artifacts
 bucket, and the one write production grants each; the `config.json`
 each deploy writes next to the bundle; the tag mutability of every
-repository, the overwrite refusal on production's bundle prefix, and
-the record the staging deploy writes on the repository host that
-production compares with the copy; the credential the build steps
-hold.
+repository, the versioning and object lock on production's bundle
+prefix, how production picks the version by its hash, and the record
+the staging deploy writes on the repository host that production
+compares with the copy.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
@@ -774,12 +775,13 @@ with no digest from staging that is deployed instead of refused; a
 production job or task that reads staging's registry or bucket, or a
 replication that may create a repository; a bundle kept in a state
 bucket, or replicated into one; a lookup that refuses at once while the
-copy is still in flight; a repository with mutable tags, or a bundle
-prefix a second write can replace; a production lookup that accepts a
-copy with no record to compare against, or accepts a commit staging
-built and failed to deploy; a build step that holds the credential
-that applies; an API origin or DSN compiled
-into a bundle (the approval on the plan is DEL-38).
+copy is still in flight; a repository with mutable tags; a bundle
+prefix with no versioning or no lock, or a bundle read by its key
+alone instead of by the version whose hash matches the record; a
+production lookup that accepts a copy with no record to compare
+against, or accepts a commit staging built and failed to deploy; an
+API origin or DSN compiled into a bundle (the approval on the plan is
+DEL-38, the credential a build step holds is DEL-51).
 
 **Severity.** medium
 
@@ -939,8 +941,8 @@ environment protection that holds the apply until a person approves;
 the `release` workflow, the commit it fast-forwards to, the app token
 it pushes with and the environment that holds the app's key, and the
 ruleset that lets nothing else push to `release`; the concurrency group
-on each deploy workflow; where the saved production plan is kept; the
-guarded redeploy of a previous release commit.
+on each deploy workflow; where the saved production plan is kept.
+(The fast rollback to the previous release is DEL-50.)
 
 **Violation.** A staging deploy behind an approval, or one triggered by
 anything but `main`; a commit made on `release` or a merge into it; a
@@ -952,8 +954,7 @@ last successful staging deploy; a push to `release` made with a deploy
 key or a repository-wide secret, or an app key held outside an
 environment that admits `main` alone; a deploy workflow with no
 concurrency group, or one that cancels a run in progress; a saved plan
-uploaded as a workflow artifact; a redeploy that accepts a commit
-production never ran, skips the approval, or moves `release` back.
+uploaded as a workflow artifact.
 
 **Severity.** medium
 
@@ -1169,7 +1170,7 @@ protected `main`, a scan on push, and pinned Terraform.
 **Source.** Deployment, Security Defaults; Technology Choices and How
 to Override Them, Versions.
 
-**Look for.** The network's subnets and egress; the encryption and TLS
+**Look for.** The network's egress; the encryption and TLS
 settings of the database, the cache, and the buckets; the trail in each
 bootstrap root; the web firewall, or the record of why there is none;
 production's database: its zones, deletion protection, recovery window,
@@ -1177,13 +1178,14 @@ and final snapshot; the branch protection and the code owners; the
 registry's scan setting; `required_version`, the provider constraints,
 and the committed `.terraform.lock.hcl` of every root.
 
-**Violation.** A task or a database with a public address; a store
+**Violation.** A private subnet with no named egress; a store
 unencrypted at rest, or a database that accepts a connection without
 TLS; an account with no trail; a production edge with no firewall and
 no record of the choice; a production database in one zone with
 customers on it, or with no point-in-time recovery; a `main` that
 merges without review; a root with no lock file or an unpinned
-provider. (The second factor at sign-in is OPS-07.)
+provider. (A task or a database with a public address is NET-12; the
+second factor at sign-in is OPS-07.)
 
 **Severity.** medium
 
@@ -1204,5 +1206,46 @@ the headers, cookies, and credential fields it removes.
 personal data on; a process that sends events with no scrubber; a
 scrubber that leaves the authorization header, a cookie, or a field a
 request names as a credential in the event.
+
+**Severity.** high
+
+## DEL-50 The fast rollback goes one release back and changes nothing else
+
+**Principle.** The fast rollback goes to the previous release only. It
+swaps the image digests and the portal bundle, runs no migration, and
+plans no Terraform. The previous release runs on the current schema,
+because every migration is compatible with the release before it.
+Anything older rolls forward through a revert.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The rollback path of the production workflow: the commit
+it accepts, what it changes (the digests in the task definitions, the
+bundle the distribution serves), and whether it runs the migration
+task or a Terraform plan; what it does to `release`.
+
+**Violation.** A rollback that accepts a commit older than the previous
+release, or one production never ran; a rollback that migrates, down
+or up, or plans or applies Terraform; a rollback that moves `release`
+back.
+
+**Severity.** medium
+
+## DEL-51 A build step holds the push credential and nothing that applies
+
+**Principle.** The build steps hold a credential that pushes images
+and bundles and nothing else. The credential that applies an
+environment is held by the apply job alone, so an install script that
+runs during a build never holds what applies.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The credential each build step assumes, and what its
+policy allows; the job that holds the apply credential, and whether a
+dependency install or a build runs inside that job.
+
+**Violation.** A build step that holds the credential that applies, or
+one whose push credential may write anything but images and bundles;
+an install or a build run inside the apply job.
 
 **Severity.** high

@@ -238,6 +238,7 @@ class SoftDeletable(Platform):
     deleted_by: UUID | None = None
 
 PROVENANCE_FIELDS = frozenset({"created_at", "created_by", "deleted_at", "deleted_by"})  # stay as stored on update
+# Beside it, each entity declares MANAGER_OWNED_FIELDS: the fields its manager sets and a caller never writes.
 
 EMPTY_UUID = UUID(int=0)
 ```
@@ -248,6 +249,7 @@ operation exercises. `Trackable` goes on where an update exists,
 
 ``` python
 class Warehouse(Identifiable, Named, Trackable, SoftDeletable):
+    MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]] = ()  # a warehouse has none; the copy still reads it
     address: str
     timezone: str
 ```
@@ -296,6 +298,11 @@ no `updated_at`. It is never hidden, so it carries no `deleted_at`. Its
 birth time is the one in its id, since every id is a `uuid_v7` with the
 millisecond in front (see [Identifiers](#identifiers)). The "when" of an
 audit entry costs no column.
+
+The one write an audit entry takes after its birth is erasure. When a
+person is erased, the personal fields of their audit entries are
+redacted in place (see [Database Roles](#database-roles)). Nothing else
+touches the row.
 
 > **Principle:** Inheritance expresses abstraction, not code reuse. Each
 > mixin is a promise about what the entity is.
@@ -749,7 +756,7 @@ class SecurityContext(Platform):
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
-    credential_kind: CredentialKind  # api_key, session_token, internal, ...
+    credential_kind: CredentialKind  # password, api_key, tenant_session, operator_token, internal
     credential_id: UUID
 
 class AppContext(Platform):
@@ -792,6 +799,13 @@ A credential never carries a role above its issuer's. Above means the
 permission set: a role is at most another when its permissions are a
 subset of the other's. Where a rank exists for comparison, it is derived
 from the permission table or held to it by a unit test.
+
+That cap holds at every use, not only at issue. An API key's effective
+role is the lower of the role it was issued with and its issuer's
+current role. `authenticate` computes it each time the key is
+presented, so a demoted issuer's keys are demoted with it. Removing the
+issuer's membership revokes, in the same write, every key the issuer
+minted in that tenant, and a revoked key is refused `401`.
 
 A role reserved for services is not a rung on that ladder. No
 credential a person mints carries it, and every operation that issues a
@@ -872,7 +886,8 @@ the stronger one cannot be handed the weaker.
 operator's allowlist entry grants. An entry grants read, or read and
 write, so a read operator is refused a write the way a tenant viewer
 is. An operator with no confirmed second factor yet holds `ENROL` alone
-(see [The Gateway](#the-gateway)). The type itself is the evidence that the allowlist was consulted.
+(see [The Gateway](#the-gateway)). The type itself is the evidence
+that the allowlist was consulted.
 
 The chain continues below `OpContext` only when the domain earns it. A
 stage for a role exists when operations rely on that role instead of
@@ -916,8 +931,8 @@ identity stage is established from the sign-in credential or from a
 live session, as the session's own identity. A revoked or expired
 session is refused. That is what lets a signed-in app list its
 memberships and switch tenants with the one bearer it holds. The
-operator plane is narrower, and admits only the sign-in (see [The
-Gateway](#the-gateway)).
+operator plane is narrower. It admits only the sign-in, or the operator
+token an agent presents (see [The Gateway](#the-gateway)).
 
 Switching tenants is a second exchange. The app presents its session
 and the new org, and gets a new session. An exchange presented with a
@@ -971,8 +986,8 @@ at that instant, whatever the client does. A revocation or a
 membership's end travels on the topic bus like any other change, as
 the control message `SESSION_REVOKED` (see [Realtime at the
 Edge](#realtime-at-the-edge)). Every process that holds a socket for
-that session closes it on the message.
-The expiry covers a frame that was missed.
+that session closes it on the message. The expiry covers a frame that
+was missed.
 
 What a socket carries in the meantime is hints, never a field of an
 entity. So the window a missed frame opens is one of metadata, and it
@@ -1183,12 +1198,13 @@ class InventoryManagerImpl(InventoryManagerInterface):
     async def update_warehouse(self, ctx: OpContext, warehouse: Warehouse) -> Warehouse:
         ctx.require(Permission.WRITE)
         current = await self.get_warehouse(ctx, warehouse.id)  # existence and tenancy, or NotFound
+        caller_owned = set(PROVENANCE_FIELDS) | set(Warehouse.MANAGER_OWNED_FIELDS)  # never the caller's to write
         updated = Warehouse.model_validate({  # a copy that carries a dump is validated, never model_copy
             **current.model_dump(),
-            **warehouse.model_dump(exclude=set(PROVENANCE_FIELDS)),  # the caller's fields, never who made or deleted it
+            **warehouse.model_dump(exclude=caller_owned),  # the caller's fields, and nothing the manager owns
             "updated_at": utcnow(), "updated_by": ctx.user_id,
         })
-        rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, updated.model_dump(mode="json")),)
+        rows = (outbox_row(ctx, "inventory.warehouse.updated", updated.id, {}),)  # ids only, never a field value
         await self._storage.write_warehouse(ctx.org_id, updated, rows)  # one atomic method
         for row in rows:  # relaying at once (a write that also starts work carries a second row)
             # The lower-latency choice; relaying from the sweep alone is the
@@ -1201,8 +1217,9 @@ class InventoryManagerImpl(InventoryManagerInterface):
 The caller that originates an entity constructs it whole and hands it
 to `create_*`, with `id=new_id()`, `created_at`, `updated_at`,
 `created_by`, and `updated_by` set. On create, the manager's copy sets
-what is the manager's to decide: the actor from the context, the
-initial status, a position. It leaves the id and the timestamps as
+what is the manager's to decide: the actor from the context, and every
+field in the entity's `MANAGER_OWNED_FIELDS`, such as the initial
+status or a position. It leaves the id and the timestamps as
 constructed.
 
 A create whose id is already written returns the row as stored. Ids are
@@ -1240,11 +1257,19 @@ row whose `updated_by` is not the context's is the work item, whose
 bookkeeping the platform signs (see [The Work Queue](#the-work-queue)).
 
 The copy on update starts from the stored row. The caller's entity
-supplies the fields a caller may change. The fields in
-`PROVENANCE_FIELDS`, a constant beside the mixins naming `created_at`,
-`created_by`, `deleted_at`, and `deleted_by`, stay as stored. So no
+supplies the fields a caller may change, and two sets of fields stay
+as stored.
+
+The first is `PROVENANCE_FIELDS`, a constant beside the mixins naming
+`created_at`, `created_by`, `deleted_at`, and `deleted_by`. So no
 caller rewrites who made a row, or brings a deleted one back, by
 sending an entity.
+
+The second is the entity's own `MANAGER_OWNED_FIELDS`, a tuple each
+entity declares. It names the fields its manager sets and a caller
+never writes: a `credential_ref` (see [Secrets](#secrets)), a status
+its transitions own, a position. The manager writes those through the
+operations that own them, never through an update a caller shaped.
 
 A partial update is the service impl's translation. It reads the
 current entity through the manager's `get_*`, copies the request's set
@@ -1257,9 +1282,24 @@ Mutating methods return the entity that was written, so the caller
 holds the same snapshot the storage does.
 
 Last writer wins by default. An entity whose concurrent edits matter
-carries a `version`. The copy increments it, and the write is a
-compare-and-set that raises `Conflict` when the row moved. That is
+carries a `version`, and its update is a compare-and-set. That is
 optimistic concurrency.
+
+The version the write compares against comes from the caller, never
+from a read inside the update. On a `PATCH` it is the `If-Match`
+header. Elsewhere it is an `expected_version` field of the request.
+A `PATCH` on a versioned entity that carries neither is refused with
+`ValidationFailed`, since an update with no version would overwrite
+blind.
+The partial update hands that version to the manager beside the
+entity, in place of the one its own read returned. The manager's
+copy increments it, and the write succeeds only while the stored row
+still carries the caller's version. A mismatch raises
+`PreconditionFailed`, a `412` (see [Exceptions](#exceptions)).
+
+A version re-read inside the update would always match. The edit that
+landed between the caller's read and its write would then be
+overwritten, which is the lost update the version exists to refuse.
 
 ### Parameters
 
@@ -1553,12 +1593,14 @@ referenced in the interface. A consumer of
 `InventoryStorageInterface` must not be able to tell whether it is
 talking to SQLAlchemy, Postgres, or a columnar store.
 
-A small number of tables hold no tenant's rows. Platform-owned
-reference data and a health row per external provider are global. The
-identities behind tenant users are scoped to the identity, and their
-methods take `identity_id` in place of `org_id` (see [The Second
-Fence](#the-second-fence)). Neither kind takes `org_id`, and the
-interface docstring says why.
+A small number of tables hold no tenant's rows, and they are of two
+kinds. Platform-owned reference data and a health row per external
+provider are global. An identity, and the rows that belong to it
+across tenants, are scoped to the identity: their tables compose
+`IdentityScopedMixin` (see [Defining ORM
+Classes](#defining-orm-classes)), and their methods take `identity_id`
+in place of `org_id` (see [The Second Fence](#the-second-fence)).
+Neither kind takes `org_id`, and the interface docstring says why.
 
 Cross-tenant sweeps are the other exception. A sweep that expires the
 leases past due, in every tenant, up to its batch size, returns
@@ -1569,14 +1611,15 @@ Edge](#realtime-at-the-edge) do. Such a row already names its tenant and
 is returned alone.
 
 The lookups that run before an identity is known are the third
-exception. Sign-in presents an email, and every other credential is
-looked up by its digest. Neither names a tenant or an identity. They are
-`read_identity_by_email_digest`, `read_api_key_by_digest`,
-`read_session_by_digest`, and `redeem_socket_ticket`, and they run in
-the system scope (see [The Second Fence](#the-second-fence)).
+exception. Sign-in presents an email. An external provider's sign-in
+presents an issuer and a subject. Every other credential is looked up
+by its digest. None of them names a tenant or an identity. The five
+lookups run in the system scope, and [The Second
+Fence](#the-second-fence) lists them.
 
-These are the documented exceptions to the `org_id`-first rule, and
-`arch-check` enumerates them (see [Records of
+These are the documented exceptions to the `org_id`-first rule. [The
+Second Fence](#the-second-fence) lists every one of them by name, and
+`arch-check` holds the code to that list (see [Records of
 Decisions](#records-of-decisions)).
 
 The enumeration reads signatures. It says which methods take the
@@ -1632,8 +1675,10 @@ what is specific to the entity.
 
 The common mixins live at `acme.om.storage.tables`, with one
 storage-only addition. `org_id` rides on `IdentifiableMixin`, because
-every tenant table is tenant-scoped. A global table composes
-`GlobalIdentifiableMixin`, which carries `id` alone.
+every tenant table is tenant-scoped. A table scoped to an identity
+composes `IdentityScopedMixin`, which carries `id` and `identity_id`
+and no `org_id`. A global table composes `GlobalIdentifiableMixin`,
+which carries `id` alone.
 
 ``` python
 # acme/om/storage/tables/base.py
@@ -1650,6 +1695,10 @@ class IdentifiableMixin:
 class FeedIdentifiableMixin:  # a feed table: (org_id, id) is declared compound, so no single index
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
     org_id: Mapped[UUID] = mapped_column(sort_order=-999)
+
+class IdentityScopedMixin:  # an identity-scoped table: no org_id
+    id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
+    identity_id: Mapped[UUID] = mapped_column(index=True, sort_order=-999)
 
 class GlobalIdentifiableMixin:
     id: Mapped[UUID] = mapped_column(primary_key=True, sort_order=-1000)
@@ -1671,8 +1720,8 @@ class SoftDeletableMixin:
 ```
 
 Concrete table classes live in their owning namespace's `tables/`
-folder and compose the mixins their entity has, in the same house-style
-order as the OM:
+folder and compose the mixins their entity has, in the order of the OM
+(see [Naming Entities](#naming-entities)):
 
 ``` python
 # acme/om/inventory/storage/tables/warehouses.py
@@ -1701,13 +1750,13 @@ frozen. This is the one deliberate exception to the OM immutability
 rule, and it is bounded: rows never leave the storage impl.
 
 Column order is part of the model. Every table opens with its mixin
-columns in house-style order, and its own columns follow. A new column
-is declared at the end of its class, so the physical table and the
-class stay in step when the column is appended.
+columns, and its own columns follow. A new column is declared at the
+end of its class, so the physical table and the class stay in step
+when the column is appended.
 
 > **Python tip:** SQLAlchemy places mixin columns after the class's own
 > columns, whatever the base order says. The negative `sort_order`
-> bands on the mixins pin the header block back to the front.
+> bands on the mixins above pin them back to the front.
 
 Five index rules cover almost every table:
 
@@ -1772,9 +1821,9 @@ staged like every other migration, and for the same reason. A rollout
 runs two releases at once. The release that adds the field reads it and
 does not write it: its dump names the field in `exclude`, so a row it
 writes carries no key the release before it forbids. The release after
-it drops the exclusion and writes it. A field written
-before its readers are out is an unreadable row in the process still
-serving beside them.
+it drops the exclusion and writes it. A field written before its
+readers are out is an unreadable row in the process still serving
+beside them.
 
 A rename or a removal is a migration that rewrites the column, in the
 expand-and-contract shape of [Migrations](#migrations), before the
@@ -1881,6 +1930,12 @@ class OrderStoragePostgresImpl(PgStorageBase, OrderStorageInterface):
         self._inventory_storage = inventory_storage
 ```
 
+The order storage uses it for one read. An order's pick list names the
+warehouse each line ships from, and the storage reads those warehouses
+through `InventoryStorageInterface.read_warehouse`, under the same
+tenant, rather than joining the other namespace's table. The read
+model comes back whole from one storage call.
+
 The dependency is an implementation detail, not part of
 `OrderStorageInterface`. The storage root constructs every storage impl
 in the right order and wires dependencies between them.
@@ -1936,6 +1991,13 @@ for their sum, and the bulkhead is one URL away. The system login has a
 pool of its own beside it, since its URL names another login (see [The
 Second Fence](#the-second-fence)).
 
+The database's connection budget is counted at the most processes that
+can run at once, never at the desired count. That is each process's
+pools, times its autoscaling maximum (see [Scale-Out as a
+Lever](#scale-out-as-a-lever)), plus the tasks a rollout starts beside
+the old ones before it stops them. A budget counted at the desired
+count runs out on the first rollout of a scaled-out service.
+
 Rules that make the move safe:
 
 -   No cross-role foreign keys and no cross-role statements. A
@@ -1988,19 +2050,35 @@ and a restore are per instance. A role gets a schedule of its own when
 it moves to a database of its own.
 
 A role restored to an earlier point than its siblings is reconciled
-from the outbox, not by hand. The rows relayed since that point are
-relayed again, which is harmless because the relay is idempotent on the
-row's key. And for an event whose destination role was restored past
-it, the outbox row is the one trace that it existed.
+from the outbox, not by hand. And for an event whose destination role
+was restored past it, the outbox row is the one trace that it existed.
+
+When `activity` or `queue` comes back to an earlier point than `core`,
+the rows relayed since that point are already marked done. So the
+restore runbook's last step, run by the person who restored, clears
+`done_at` on every outbox row created after the restored role's point.
+The sweep then relays those rows again. That is harmless, because the
+relay is idempotent on the row's key, and a row whose destination
+survived is a no-op. When `core` comes back to an earlier point than
+the others, nothing is replayed. The events and work items of the lost
+writes remain: a work item whose record is gone fails as not found,
+and an event names a record that a read no longer finds.
 
 That is why a done outbox row is kept for a retention period and purged
 by the sweep, never deleted on done. It is also why that period
 outlives the backup schedule of the roles the outbox feeds.
 
 A soft-deleted row is purged by the maintenance sweep after its
-entity's retention period. Purge is the one hard delete. Personal data
-lives in named fields, so erasing a person is a sweep over a list, not
-a hunt.
+entity's retention period. Purge is the one hard delete.
+
+Personal data lives in named fields, so erasing a person is a sweep
+over a list, not a hunt. An outbox row's payload, a work item's
+payload, and an event carry ids, never the value of a personal field,
+so the relay and the stream hold nothing to erase. An audit entry may
+carry values, since it records what changed. So the erasure sweep
+redacts the personal fields of the erased person's audit entries. That
+redaction is the one write an append-only record takes, and the sweep
+states it by name.
 
 > **Principle:** Every table has one role. The role is its schema, its
 > pool, and its migration chain. Nothing crosses a role.
@@ -2024,8 +2102,10 @@ map](#database-roles), and it has four values:
 | `both`     | a tenant, and a person in it | on `org_id`, narrowed by the declared person column |
 
 A `system` table is a global one, composing `GlobalIdentifiableMixin`
-(see [Defining ORM Classes](#defining-orm-classes)). The other three
-carry the column their policy rests on, and the map names it.
+(see [Defining ORM Classes](#defining-orm-classes)). An `identity`
+table composes `IdentityScopedMixin`, so its column is `identity_id`.
+The other three carry the column their policy rests on, and the map
+names it.
 
 A storage impl opens a session in one place, the base class's session
 helper. That funnel is the one place every statement already passes, so
@@ -2049,14 +2129,28 @@ because `SET LOCAL` takes no bind parameters.
 reads across tenants. The system scope is never a default. It is passed
 explicitly, and it runs on a connection of the system login (below).
 
-The methods that pass it are enumerated, and they are of three kinds.
-The first is the cross-tenant sweeps, with the queue's claim and
-`fail_orphaned` beside them. Among the sweeps are the purge of
-ended sessions and the purge of redeemed or expired socket tickets,
-which reach `identity` tables. The second is the lookups that run
-before an identity is known:
+The methods that pass it are listed here, by name, and no other method
+passes it. They are of three kinds.
+
+The first is the cross-tenant sweeps and the queue's own bookkeeping:
+
+-   the queue's `claim_next`, `fail_orphaned`, and `read_gauges`;
+-   the outbox's `read_pending`, `read_oldest_pending`, and
+    `purge_done`;
+-   `purge_items`, which purges done and failed work items;
+-   `purge_markers`, which purges idempotency markers past retention;
+-   `purge_socket_tickets` and `purge_sessions`, which purge redeemed
+    or expired socket tickets and ended sessions, and reach `identity`
+    tables.
+
+A namespace that adds a sweep across tenants, one that expires the
+leases its records hold, say, adds it to this list by name.
+
+The second is the five lookups that run before an identity is known:
 
 -   `read_identity_by_email_digest`, the sign-in lookup;
+-   `read_identity_by_issuer_subject`, the lookup behind the external
+    provider's find-or-create;
 -   `read_api_key_by_digest`;
 -   `read_session_by_digest`;
 -   `redeem_socket_ticket`, which finds the ticket by its digest.
@@ -2065,19 +2159,19 @@ Each of these reads rows before any tenant or identity is known, so it
 cannot name one. Everything after the lookup runs under the identity
 it found, or under the tenant and the principal the credential names.
 
-The sweeps and the lookups take no tenant, so `arch-check` lists them
-with the other tenant-less methods (see [Namespace
-Shape](#namespace-shape) and [Records of
+The sweeps and the lookups take no tenant. They are the tenant-less
+methods of [Namespace Shape](#namespace-shape), and `arch-check` holds
+the code to this list (see [Records of
 Decisions](#records-of-decisions)).
 
-The third kind is the operator plane's idempotency-marker methods:
-`begin`, `finish`, the release, and the take-over. The operator plane
-has no tenant, so its marker is keyed under `EMPTY_UUID` as the
-`org_id`, with the operator's identity id as the user id (see [The
-Gateway](#the-gateway)). These methods take `org_id` like any other.
-The operator gate is the one caller that hands them `EMPTY_UUID`. The
-operator plane's size read, which counts users and rows across
-tenants, is of this kind too.
+The third kind is the operator plane's idempotency-marker methods,
+`begin`, `finish`, the release, and the take-over, and its size read,
+which counts users and rows across tenants. The operator plane has no
+tenant, so its marker is keyed under `EMPTY_UUID` as the `org_id`,
+with the operator's identity id as the user id (see [The
+Gateway](#the-gateway)). The marker methods take `org_id` like any
+other. The operator gate is the one caller that hands them
+`EMPTY_UUID`.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
@@ -2129,9 +2223,8 @@ request cannot read across tenants or identities by naming the system
 scope.
 
 An `identity` table is read under the identity its rows belong to. The
-exceptions are the enumerated system-scope methods that reach one: the
-four lookups, and the purges of ended sessions and of redeemed or
-expired socket tickets. They run on the system login. Nothing else
+exceptions are the listed system-scope methods that reach one: the
+five lookups, `purge_socket_tickets`, and `purge_sessions`. They run on the system login. Nothing else
 bypasses its policy.
 
 Three logins reach the database, and none is a superuser or carries
@@ -2140,17 +2233,19 @@ is a drawing.
 
 -   The **migration login** owns the schema. It runs the migrations,
     in the deploy's one-off task, and no process of a deployed
-    environment holds it otherwise. The step of the negative control
-    in [Tests](#tests) that turns a policy off runs under it too,
-    because only the owner can alter a table.
+    environment holds it otherwise. `FORCE` binds it like any other
+    login, so a data migration lifts the fence for its own statements
+    and puts it back (see [Migrations](#migrations)). The step of the
+    negative control in [Tests](#tests) that turns a policy off runs
+    under it too, because only the owner can alter a table.
 -   The **runtime login** is what every request's connection uses. It
     owns nothing and holds only `SELECT`, `INSERT`, `UPDATE`, and
     `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
     off, or alter a table, whatever statement reaches it.
 -   The **system login** is the runtime login's twin for the system
-    scope. The enumerated system-scope methods run under it, on a pool
-    of their own. The `org` and
-    `identity` policies admit the system scope to it alone.
+    scope. The listed system-scope methods run under it, on a pool of
+    their own. The `org` and `identity` policies admit the system scope
+    to it alone.
 
 A test asserts on each live connection that `current_user` is neither
 superuser nor `BYPASSRLS`, that the runtime login owns no table, and
@@ -2200,6 +2295,31 @@ drop in a later one: expand and contract. A field added to a stored
 JSON shape is staged the same way, one release apart, because the shape
 forbids what it does not know (see [Translation](#translation)).
 
+A backfill is a data migration, and it runs under the fence. The
+migration login owns the tables, and `FORCE ROW LEVEL SECURITY` binds
+the owner (see [The Second Fence](#the-second-fence)). A migration
+names no tenant, so its `UPDATE` would match no row and succeed. So a
+data migration lifts the fence for its own statements and puts it
+back, in the same transaction:
+
+``` sql
+ALTER TABLE core.warehouses NO FORCE ROW LEVEL SECURITY;
+UPDATE core.warehouses SET timezone = 'UTC' WHERE timezone IS NULL;
+ALTER TABLE core.warehouses FORCE ROW LEVEL SECURITY;
+```
+
+A backfill that touched nothing looks like one that had nothing to do.
+So a data migration counts the rows it means to touch before it
+starts, and compares that count with the rows the statement reports.
+It fails on a difference, and the whole transaction rolls back, the
+fence included.
+
+The count does not catch a missing `NO FORCE` on its own. Under
+`FORCE` the count and the update both see zero rows, and zero equals
+zero. A migration test catches it. It seeds rows of two tenants, runs
+the backfill against the migrated database, and asserts that the count
+covers both tenants' rows.
+
 A check that the ORM metadata and the migrated schema agree, for every
 role, needs a migrated database. So it is a target of its own,
 `make migrate-check`. An author runs it against the local stack after
@@ -2230,10 +2350,9 @@ impl does the same when it needs to.
     cannot cross tenants at the key level. Topic payloads carry
     `org_id`, so a consumer can filter before it acts.
 -   Cross-tenant reference data uses `EMPTY_UUID` as the `org_id` on
-    cache and bucket calls. The system scope is the zero UUID by value,
-    so infra checks against it without importing the OM. An impl treats
-    it as a reserved system scope. System keys and tenant keys live in
-    disjoint namespaces, and a tenant caller cannot read or write
+    cache and bucket calls (see [Identifiers](#identifiers)). The
+    system scope is the zero UUID by value, so infra checks against it
+    without importing the OM, and a tenant caller cannot read or write
     system data by mistake.
 -   Wire-up happens in the app container at boot (see [The App
     Container](#the-app-container)). Managers and service impls receive
@@ -2241,8 +2360,9 @@ impl does the same when it needs to.
     thread local, or a context, whichever stage or scope it is.
 -   Observability is used through its vendor API directly (see [Traces
     and Metrics](#traces-and-metrics) and [Error
-    Tracking](#error-tracking)). So is a feature flag SDK, on the rare
-    day one is needed (see [Configuration](#configuration)).
+    Tracking](#error-tracking)). A feature flag service is not: on the
+    rare day one is needed, it sits behind an interface with a twin,
+    like any vendor (see [Configuration](#configuration)).
 -   Every impl can `describe()` itself in one line, and the container
     logs the chosen backends once at start. An operator reading a boot
     log knows exactly what a process is talking to.
@@ -2393,9 +2513,15 @@ class BucketsInterface(ABC):
     @abstractmethod
     async def presign_get(self, org_id: UUID, bucket: Buckets, key: str, ttl: timedelta) -> str | None: ...
     @abstractmethod
-    async def presign_put(
+    async def presign_post(
         self, org_id: UUID, bucket: Buckets, key: str, content_type: str, max_bytes: int, ttl: timedelta
-    ) -> str | None: ...
+    ) -> PresignedPost | None: ...
+
+class PresignedPost(BaseModel):  # a form the browser posts: the fields in order, then the file
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    fields: tuple[tuple[str, str], ...]
 ```
 
 A listing is bounded like any read that returns a list. Keys come back
@@ -2418,16 +2544,21 @@ Presigned URLs let a browser or a remote process move bytes directly to
 and from the store, with a short expiry. The service never proxies a
 large upload through its own memory.
 
-A presigned upload is bounded. It names its content type and a maximum
-length, `max_bytes`. The store refuses a body of another type or a
-longer one, so a URL handed to a browser cannot fill the bucket.
+A presigned upload is bounded. A presigned `PUT` cannot bound a body's
+size, so an upload is a presigned `POST`. `presign_post` returns the
+URL and the form fields the browser posts with the file. The signed
+policy in those fields carries the content type and a
+`content-length-range` from zero to `max_bytes`. The store refuses a
+body of another type or a longer one, so a form handed to a browser
+cannot fill the bucket.
 
 Either presign returns `None` when its backend cannot sign a URL. The
 caller then moves the bytes through `put` and `get` itself, and holds
 them to the same bounds.
 
 A local filesystem impl with the same layout serves development and
-tests. It refuses a key that is absolute or climbs out of its root with
+tests. It holds an upload to the same content type and `max_bytes`,
+and refuses a key that is absolute or climbs out of its root with
 `..`, as the cloud's keys cannot.
 
 ### Topics
@@ -2484,6 +2615,10 @@ dispatcher for tests all satisfy it.
 Durable work never rides a topic. It is a row in the work queue (see
 [The Work Queue](#the-work-queue)). The topic is a wake-up that only
 says "there is work".
+
+The same holds for an effect. An effect a handler must bring about is
+never sent only on a topic. It rides an outbox row or a work item, and
+a topic carries hints only.
 
 A missed notification degrades to polling latency, never to lost work.
 
@@ -2593,10 +2728,11 @@ never resolve to another tenant's secret, or to one of the platform's.
 
 A `CarrierIntegration` entity carries `credential_ref: str`, the name
 of a secret, never the value. The manager sets it when it puts the
-secret, and no caller writes it: it is excluded from every create and
-update a caller shapes, as the provenance fields are. The value is
-resolved at the point of use, for exactly one operation, and then
-discarded.
+secret, and no caller writes it: it is in the entity's
+`MANAGER_OWNED_FIELDS`, so every create and update a caller shapes
+leaves it as the manager set it (see [Shape of an
+Operation](#shape-of-an-operation)). The value is resolved at the
+point of use, for exactly one operation, and then discarded.
 
 That is a tenant's secret. The process's own credentials are another
 kind: the database URL and the internal signing key reach the process
@@ -2848,9 +2984,10 @@ The gateway owns a short list of edge concerns, each done once:
 
 -   **Credentials.** Every credential kind has a distinct prefix: an
     API key, a session token, a login credential, a single-use socket
-    ticket, an invitation link. The prefix decides which dependency
-    will accept it. An agent presents an API key that is
-    membership-scoped, expiring, and role-capped at its issuer's role.
+    ticket, an invitation link, an operator token. The prefix decides
+    which dependency will accept it. An agent presents an API key that
+    is membership-scoped, expiring, and role-capped at its issuer's
+    current role (see [OpContext](#opcontext)).
     A person signs in with a credential that carries no tenant, then
     exchanges it for a tenant-scoped session token. So the same person
     in two tenants is one identity with two memberships. A switch
@@ -2863,9 +3000,11 @@ The gateway owns a short list of edge concerns, each done once:
 -   **Origins.** Cross-origin requests are accepted only from the
     browser apps' origins, a list read from settings. Every other
     origin is refused.
--   **Request id.** The gateway accepts an inbound `x-request-id` or
-    mints one. It stamps it on the context, echoes it in the response
-    header, and attaches it to the log context and the trace span.
+-   **Request id.** The gateway accepts an inbound `x-request-id` only
+    when it parses as a UUID. Otherwise it mints one, so a caller
+    cannot write an arbitrary string into every log line. It stamps the
+    id on the context, echoes it in the response header, and attaches
+    it to the log context and the trace span.
 -   **Error envelope.** One handler translates `PlatformException` and
     `InfraException` (see [Exceptions](#exceptions)) into `{"error":
     {"code", "message", "request_id"}}`, with the status and the code
@@ -2909,10 +3048,11 @@ The gateway owns a short list of edge concerns, each done once:
     tenant and principal, under the key. The operator plane has no
     tenant, so its marker is keyed under the system scope, `EMPTY_UUID`
     as the `org_id`, with the operator's identity id as the user id.
-    Those marker calls run on the system login, among the enumerated
+    Those marker calls run on the system login, among the listed
     system-scope methods (see [The Second
-    Fence](#the-second-fence)). The marker carries a digest of the request, the id the create will use,
-    minted before the marker, and an attempt token. `finish` stores the
+    Fence](#the-second-fence)). The marker carries a digest of the
+    request, the id the create will use, minted before the marker, and
+    an attempt token. `finish` stores the
     outcome on the marker. A retry replays that stored outcome. All of
     it uses the same storage primitive the queue handlers use.
 
@@ -2992,10 +3132,11 @@ refused, like a worker whose lease has passed, and whatever it wrote is
 the row the retry found.
 
 The operator plane has its own gate. It authenticates the bearer into
-the identity stage, and that stage admits only the person's own
-sign-in. It never admits an API key. It never admits a session either.
-That holds whether the person exchanged the session or an invitation
-someone else issued minted it.
+the identity stage, and that stage admits only two credentials: the
+person's own sign-in, and an operator token. It never admits an API
+key. It never admits a tenant session either. That holds whether the
+person exchanged the session or an invitation someone else issued
+minted it.
 
 An operator's sign-in is admitted only with a second factor: a TOTP
 code (RFC 6238) from an authenticator enrolled for that operator
@@ -3005,13 +3146,41 @@ before admission, and refuses a sign-in that carries none. A tenant's
 sign-in does not require a second factor. The operator plane reads
 across tenants, so a password alone never admits to it.
 
-An operator enrols a TOTP secret once: one call mints it, and a
-first code confirms it. The secret is enrolled once it is confirmed.
-It is stored encrypted, under a key from the secret store (see
+An operator enrols a TOTP secret once: one call mints it, and a first
+code confirms it. The secret is enrolled once it is confirmed. It is
+stored encrypted, under a key from the secret store (see
 [Secrets](#secrets)). Until it is confirmed, the gate admits the
 sign-in with `OperatorPermission.ENROL` alone, and the two enrolment
-calls are all that permission reaches. A code
-that was already used is refused, even inside its time step.
+calls are all that permission reaches. A code that was already used is
+refused, even inside its time step.
+
+An agent or a pipeline never signs in to the operator plane with a
+password. The traffic generator, the deployed smoke test, and a
+supporter's agent present an **operator token** instead:
+
+-   It is minted by an operator signed in with the second factor, or
+    by the grant job for the provisioner and the smoke identity (see
+    [Migrating a Deployed Database](#migrating-a-deployed-database)).
+-   It names one identity on the allowlist and carries one operator
+    permission that the identity's entry grants. `write` implies
+    `read`.
+-   It expires within one hour.
+-   It is stored as its digest and shown once, like every credential
+    the tenancy namespace issues. The row is a session of kind
+    `operator`, found by `read_session_by_digest` like every session.
+
+An operator mints one through `POST /v1/admin/me/tokens`, which calls
+the tenancy manager's `issue_operator_token(octx, permission,
+expires_in)`. The route refuses unless the operator stage came from a
+sign-in with a verified second factor, so a token never mints a token.
+The grant job calls `grant_operator_token(rctx, email, expires_in)`
+instead, an operation on the request stage.
+
+`admit_operator` admits an operator token as the one named exception
+to "a password alone never admits". It is not a password, and a second
+factor or an approved pipeline job stood behind its minting. The
+`OperatorContext` it produces carries the token's one permission. A
+person still signs in with a password and a TOTP code.
 
 The gate then asks the tenancy manager to admit that identity as an
 operator. That produces an `OperatorContext` when the identity is on
@@ -3062,8 +3231,11 @@ whether an address holds an identity, which the rate limit slows and
 does not stop. And anyone can take an address they do not own, which
 its owner then meets as a conflict. With no verified mailbox there is
 also no recovery by mail: a person who loses a password is helped by
-an operator, through the operator plane. A product that sends mail to
-the address, or trusts it across tenants, ends the choice.
+an operator, through the operator plane. That reset is an operator
+write, and it is audited with the operator and the identity it reset.
+
+Verification is the first step to add when the choice ends. A product
+that sends mail to the address, or trusts it across tenants, ends it.
 
 The memberships of an identity are read under the identity stage,
 bounded like every list. The list is the same choice a sign-in answers
@@ -3074,7 +3246,9 @@ gateway's dependency accepts the provider's token and verifies it
 against the provider's published keys. It hands the tenancy manager the
 issuer and the subject. The manager's transition finds or creates the
 identity keyed on that pair and produces the same `IdentityContext` a
-sign-in does. From there the exchange into a tenant session, the
+sign-in does. The lookup by the pair is
+`read_identity_by_issuer_subject`, a system-scope method like the
+other lookups below. From there the exchange into a tenant session, the
 memberships, and the sessions are the ones every person has.
 
 The provider is an integration: an interface with a real client and a
@@ -3098,15 +3272,21 @@ tenancy namespace's own tables in the `core` role, under the
 a system table. So sign-up writes one role, in one transaction.
 
 Sign-in cannot name the identity it is looking for, because finding it
-is the point. So the lookup by email digest, and each lookup by a
-credential's digest, is a system-scope method on the system login.
+is the point. So the lookup by email digest, the lookup by issuer and
+subject, and each lookup by a credential's digest are system-scope
+methods on the system login (see [The Second
+Fence](#the-second-fence)).
 Everything after the lookup runs under the scope it found: the
 identity, or the tenant and the principal a credential names.
 
 Sign-in has a defense that does not fail open. The per-address rate
 limit rides the cache and fails open, so beside it the tenancy manager
-counts failed sign-ins per identity in its own storage and answers a
-run of them with a growing delay before the next attempt is checked.
+counts failed sign-ins in its own storage, keyed on the email's
+digest. Each failure doubles the delay before the next attempt for
+that email is checked, from a base to a cap, both settings. An attempt
+inside the delay is refused `429` before its password is checked, and
+a success resets the delay. The key is the email, not the identity,
+so an unknown email is delayed like a known one.
 Every session has an idle lifetime and an absolute one, both settings,
 and every API key an expiry. The operator plane admits only with a
 second factor, checked at the operator gate (see [The
@@ -3115,16 +3295,19 @@ Gateway](#the-gateway)).
 ### Intra-Service Communication
 
 All services run in the same local or virtual network.
-Service-to-service calls never cross the public internet, and TLS is
-not required for intra-service traffic. A managed backend that accepts
-only TLS is configured with it; that is a connection string, not an
-architectural concern.
+Service-to-service calls never cross the public internet. Services and
+workers sit in private subnets. Security groups admit only the
+platform's own processes. Only the gateway has a public address. All of
+it is declared in Terraform.
 
-That rests on the network being private. Services and workers sit in
-private subnets. Security groups admit only the platform's own
-processes. Only the gateway has a public address. All of it is declared
-in Terraform. A runtime that offers mutual TLS between tasks at no cost
-turns it on.
+Plain traffic inside that network still has a risk, and it is named.
+Anything that reaches the network reads it: a compromised task, a
+mirrored interface, a security group rule written too wide. So a call
+between tasks uses TLS by default wherever the runtime offers it,
+mutual TLS between tasks included. Where the runtime does not offer
+it, plain traffic inside the private network is the accepted risk. A
+managed backend that accepts only TLS is configured with it; that is a
+connection string, not an architectural concern.
 
 The rule is where the trust boundary is, not that traffic inside it is
 plain.
@@ -3134,16 +3317,19 @@ minted by the calling process. The token names the principal, the
 tenant, the request id, the service it is for as its audience, the
 key it was signed with, and an expiry a few minutes out. The callee
 refuses a token meant for another service. The key id lets a new key
-sign beside the old one while both verify, so a key rotates without
-an outage. Every process
-reads the signing key from the secret store (see [Secrets](#secrets)),
-and the callee verifies the token against that same key. The callee's
-gateway then rebuilds `OpContext` from it like any other credential
-kind. No service trusts a bare header.
+sign beside the old one while both verify, so a key rotates without an
+outage.
+
+The signing key is a process credential. The runtime injects it at
+start, like the database URL, and it is never read through the tenant
+capability (see [Secrets](#secrets)). The callee verifies the token
+against that same key. The callee's gateway then rebuilds `OpContext`
+from it like any other credential kind. No service trusts a bare
+header.
 
 One key is one trust domain.
 
-Every process that reads the key can mint a credential naming any
+Every process that holds the key can mint a credential naming any
 principal in any tenant. The fence around that key is the private
 network and the secret store's access list.
 
@@ -3163,10 +3349,10 @@ process signed. It does not narrow what that process may assert.
 Containment is a second thing. It is a declaration, per issuer, of what
 that issuer may assert: the tenants it may name and the principals it
 may speak for. The token names no role, so the callee reads the role
-from the tenancy domain when it rebuilds the context. The callee verifies the
-signature, reads the declaration for the issuer that signed, and
-refuses a credential that reaches past it, before the gateway rebuilds
-`OpContext` from it. The declaration is configuration of the callee,
+from the tenancy domain when it rebuilds the context. The callee
+verifies the signature, reads the declaration for the issuer that
+signed, and refuses a credential that reaches past it, before the
+gateway rebuilds `OpContext` from it. The declaration is configuration of the callee,
 alongside the keys it verifies against, so an issuer cannot widen its
 own reach by minting a wider token.
 
@@ -3216,12 +3402,13 @@ freshly minted secret in the clear.
 Paging is fixed too. A list returns a bare list with a server-clamped
 `limit`: the route takes the limit the client asks for, the manager
 clamps it to its page size, and the storage read carries it in the
-statement (see [Storage Principles](#storage-principles)). A list that
-can outgrow the clamp returns a page envelope (`items` and
-`next_cursor`) and pages by an opaque cursor over the
-list's own order; that cursor is the id when the order is the creation
-order, since a v7 id sorts by time. An append-only stream pages by a
-monotonic sequence number (`after_seq`). Nothing pages by an offset.
+statement (see [Storage Principles](#storage-principles)).
+
+A list that can outgrow the clamp returns a page envelope, `items` and
+`next_cursor`. It pages by an opaque cursor over the list's own order.
+When that order is the creation order, the cursor is the id, since a
+v7 id sorts by time. An append-only stream pages by a monotonic
+sequence number (`after_seq`). Nothing pages by an offset.
 
 Inside `/v1` a view only gains fields, and a request only gains
 optional ones. A removal or a rename is a new prefix.
@@ -3300,8 +3487,10 @@ A TypeScript app generates its types from the committed OpenAPI
 document into one file. It re-exports the names it uses through a
 curated facade, so feature code never imports generated paths.
 Transport lives in one small hand-written client that knows the error
-envelope and the request id. A Python consumer imports one typed
-client package, built the same way. When the document changes, every
+envelope and the request id. The three live in the portal, under
+`apps/portal/src/api/`, and the operator console imports them from the
+portal's workspace package, never a copy. A Python consumer imports
+one typed client package under `clients/python/`, built the same way. When the document changes, every
 consumer picks up the new shapes on the next build. The import path is
 the version.
 
@@ -3437,15 +3626,15 @@ message processed, so the next run sees the same input again. An
 operator may replay a backlog to recover from a bad deploy. Message
 handlers must be safe to run more than once with the same payload.
 
-The recipe is independent of the implementation. Every message carries
-a producer-generated idempotency key: a `uuid_v7` is natural. A
-message that came from outside carries a UUID v5 over the provider's
-name and its delivery id (see [Queues](#queues)). The
-handler dedupes before doing work, through a unique index on the key
-or a storage-level upsert keyed on it. Each pipeline stage forwards
-the key and applies the same check. [Topics](#topics) shows this on
-`TopicPayload`. The same pattern fits a work item, a queued webhook
-delivery, and the `Idempotency-Key` header at the HTTP edge.
+The recipe is independent of the implementation. Every message carries a
+producer-generated idempotency key: a `uuid_v7` is natural. A message
+that came from outside carries a UUID v5 over the provider's name and
+its delivery id (see [Queues](#queues)). The handler dedupes before
+doing work, through a unique index on the key or a storage-level upsert
+keyed on it. Each pipeline stage forwards the key and applies the same
+check. [Topics](#topics) shows this on `TopicPayload`. The same pattern
+fits a work item, a queued webhook delivery, and the `Idempotency-Key`
+header at the HTTP edge.
 
 The key lives on the row the effect produces, or marker and effect are
 one named atomic write (the idempotent consumer pattern). A marker
@@ -3529,20 +3718,21 @@ The default shape is one stream per tenant. A socket is subscribed to
 its tenant's stream when it opens, so there is nothing to choose. The
 `subscribe` frame is what a client sends when the product keeps more
 than one stream, to name the visibility scopes it may see. A kind is
-never a subscription. An entity's snapshot lives in the record for
-audit and never on the wire.
+never a subscription. What changed in an entity lives in its audit
+entry, and never on the wire.
 
 Replay from storage is the durability mechanism. The socket is a hint
 that something changed.
 
 The record is an `Event` in the `activity` role: `Identifiable` plus
 `org_id`, `seq`, `kind`, `target_id`, `actor_id` (the principal of the
-write, `EMPTY_UUID` for the platform), and a typed payload. One named
-atomic storage method appends it and assigns `seq`. That sequence is
-per tenant and gapless, and it is the one number storage assigns,
-because only the database can order commits. Gapless is a decision: a
-client treats a gap as a loss and replays, so a number that was
-skipped would cost a replay on every socket of the tenant.
+write, `EMPTY_UUID` for the platform), and a typed payload of ids, never
+the value of a personal field (see [Database Roles](#database-roles)).
+One named atomic storage method appends it and assigns `seq`. That
+sequence is per tenant and gapless, and it is the one number storage
+assigns, because only the database can order commits. Gapless is a
+decision: a client treats a gap as a loss and replays, so a number that
+was skipped would cost a replay on every socket of the tenant.
 
 The append takes the next number from a cursor row per tenant in the
 same role, `UPDATE cursors SET head = head + 1 WHERE org_id = ...
@@ -3788,9 +3978,9 @@ an app enqueues that way.
 The two paths differ in one field. The relayed enqueue presents the
 outbox row's id as the item's `idempotency_key`, and as the item's id
 too. Both are the same on every run of the relay, and it never mints a
-fresh id. The direct create presents its caller's. Either
-way the enqueue is one insert in storage under one key, so a relay that
-runs twice and a caller that retries both meet the row already there.
+fresh id. The direct create presents its caller's. Either way the
+enqueue is one insert in storage under one key, so a relay that runs
+twice and a caller that retries both meet the row already there.
 
 The item's `request_id` is the request that caused the work. Its
 `traceparent` is that request's trace context.
@@ -3812,6 +4002,12 @@ Completion does one of three things. It marks the row done, or requeues
 it with a growing delay, or fails it when the attempts run out. A
 failed item is a dead letter: an audit entry names it and a metric
 counts it.
+
+A done or a failed item is kept for a retention period from settings,
+so an operator can read what ran. Then the sweep purges it, as it
+purges done outbox rows (see [Maintenance Without a
+Scheduler](#maintenance-without-a-scheduler)). A queue that is never
+purged grows with every item it ever ran.
 
 A worker that finds an item is not its to run hands it back without
 spending an attempt. A release hands it back available at once, and a
@@ -3891,9 +4087,13 @@ A worker is a small loop. One turn of it:
 1. Claim from the queue when a slot is free.
 2. Do the work, by calling OM managers and other services through their
    interfaces.
-3. Write the result to storage.
-4. Produce a notification onto a topic, when the work has one to
-   produce.
+3. Write the result through a manager. The write lands its outbox rows
+   in the same transaction, and the relay notifies from them.
+4. Complete the item.
+
+A notification that must reach someone is never only a publish on a
+topic, because a topic is at most once (see [Topics](#topics)). It
+rides the outbox row of the write, or a work item of its own.
 
 Handlers are idempotent by the rule from [Idempotency on the Consumer
 Side](#idempotency-on-the-consumer-side). Replays and at-least-once
@@ -3905,18 +4105,14 @@ class WorkHandlerInterface(ABC):
     async def handle(self, ctx: OpContext, item: WorkItem) -> None: ...
 
 class NotifyShipmentHandlerImpl(WorkHandlerInterface):  # handles WorkKind.NOTIFY_SHIPMENT
-    def __init__(
-        self,
-        order_manager: OrderManagerInterface,
-        topics: TopicsInterface,
-    ):
+    def __init__(self, order_manager: OrderManagerInterface):
         self._order_manager = order_manager
-        self._topics = topics
 
     async def handle(self, ctx: OpContext, item: WorkItem) -> None:
         # the unique index on idempotency_key deduped the enqueue; the claim token fences every write
         summary = await self._order_manager.get_shipment_summary(ctx, item.target_id)
-        await self._topics.publish(Topics.SHIPMENT_UPDATED, summary.to_payload(ctx.org_id, item.idempotency_key))
+        # a write keyed by the item: its outbox row lands with it, and the relay notifies
+        await self._order_manager.record_shipment_notice(ctx, summary, item.idempotency_key)
 ```
 
 The worker container runs the loop. The handler reads like a
@@ -3934,19 +4130,21 @@ flowchart LR
 
     subgraph Worker [Worker container - always on]
         direction TB
-        Loop["loop:<br/>claim → handle → write → complete → notify"]
+        Loop["loop:<br/>claim → handle → write → complete"]
     end
 
     Mgr[OM managers /<br/>domain services]
-    Sto[(Storage)]
+    Sto[(Storage<br/>row and outbox row)]
+    Relay[Outbox relay]
     Notif[Topic]
 
     Queue --> Loop
     Wake --> Loop
     Tick --> Loop
     Loop -->|call| Mgr
-    Mgr --> Sto
-    Loop -->|publish| Notif
+    Mgr -->|one transaction| Sto
+    Sto -->|outbox row| Relay
+    Relay -->|notify| Notif
 
     style Worker fill:#eef
 ```
@@ -4008,10 +4206,11 @@ marks itself offline.
 Read from the outside, the worker is alive until its work is safely
 back in the queue.
 
-A rollout never runs more workers than desired at once. Each worker
-opens its pool, and the database's connection budget counts every
-worker once, at its ceiling; a rollout that doubled the workers would
-spend connections the budget never counted.
+A rollout of workers stops an old worker before it starts a new one,
+so it never runs more workers than the count it rolls. The database's
+connection budget counts every worker at its autoscaling maximum (see
+[Database Roles](#database-roles)). A rollout that started new workers
+beside the old ones would spend connections the budget never counted.
 
 ### Maintenance Without a Scheduler
 
@@ -4021,9 +4220,11 @@ timer. The sweep does the standing chores:
 - requeue work items whose lease expired
 - expire the leases other records hold, past their due time
 - resume records whose park time has passed
-- roll periods
+- open the next period of a record kept per period, such as a usage
+  window or a billing month, once the current one has ended
 - relay what a crash left in the outbox
 - purge done outbox rows and soft-deleted rows past retention
+- purge done and failed work items past retention (`purge_items`)
 - purge idempotency markers past their retention, socket tickets
   redeemed or expired, and sessions ended or past their lifetime
 
@@ -4306,9 +4507,9 @@ see [Cloud: AWS](#cloud-aws)), its own bundle, and its own routes under
 memberships, so it has no picker and no org chip.
 
 Its authority comes from the operator allowlist and from the operator
-plane's gate in [The Gateway](#the-gateway), which admits only the
-person's own sign-in. Not from a
-tenant role, and not from a flag in the portal.
+plane's gate in [The Gateway](#the-gateway), which admits a person only
+through their own sign-in. It never comes from a tenant role, or from
+a flag in the portal.
 
 > **Principle:** The operator console shares the portal's stack and
 > design, never its security context.
@@ -4417,13 +4618,18 @@ back. Deleting an applied revision leaves every deployed version
 table naming a file that no longer exists.
 
 When a full pass is too slow for a release that is healthy but wrong,
-the production workflow is dispatched with the previous release commit
-as its input. It accepts only an ancestor of `release` that production
-ran before, plans that commit's copies behind the same approval, and
-leaves `release` where it is; the next fast-forward moves it on. The
-previous release runs on the current schema, because every migration
-is compatible with the release before it (see
-[Migrations](#migrations)).
+the fast rollback returns production to the previous release, and only
+to that one. A person dispatches the production workflow with the
+previous release commit as its input. It swaps the service and worker
+images back to that commit's digests and the portal back to that
+commit's bundle. It runs no migration and plans no Terraform, so nothing
+else the current release declared moves. It leaves `release` where it
+is; the next fast-forward moves it on.
+
+The previous release runs on the current schema, because every
+migration is compatible with the release before it (see
+[Migrations](#migrations)). A release older than that has no such
+promise, so anything older rolls forward, by a revert.
 
 A rollout that fails is a different thing: the runtime's deployment
 circuit breaker rolls it back on its own. The apply waits for the
@@ -4447,15 +4653,23 @@ copies where they are.
 
 What production releases is only as sound as the copy, and staging is
 the less trusted account: every merge deploys it, and its build runs
-third-party install scripts. So the copy is held three ways. Every
-repository in both accounts refuses to overwrite a tag, so no later
-push can replace the image behind a commit. Production's artifacts
-bucket refuses to replace an object under the bundle prefix: it is
-versioned, and an object lock or its policy refuses a second write to
-a key that exists. And the build records each image digest and each
-bundle's hash outside staging's account, on the repository host beside
-the deployment record, and production compares the replicated copy
-with that record before it plans, and refuses a mismatch.
+third-party install scripts. So the copy is held three ways.
+
+Every repository in both accounts refuses to overwrite a tag, so no
+later push can replace the image behind a commit.
+
+Production's artifacts bucket keeps every version under the bundle
+prefix. It is versioned, and an object lock keeps each version from
+being deleted or changed. A lock protects the versions that exist. It
+does not refuse a new one, so a later write to the same key lands as a
+newer version beside the first. Production therefore reads a bundle by
+the version whose hash matches the record below, never by its key
+alone.
+
+And the build records each image digest and each bundle's hash outside
+staging's account, on the repository host beside the deployment
+record. Production compares the replicated copy with that record
+before it plans, and refuses a mismatch.
 
 The build steps hold a credential that pushes images and bundles and
 nothing else. The credential that applies an environment is held by
@@ -4529,14 +4743,14 @@ accounts, so both carry a retention. Each registry keeps a bounded
 number of images and never expires one production runs. The production
 deploy marks such an image when it promotes it: it adds a new tag,
 under a prefix the retention spares. Tags are immutable, so the deploy
-adds a tag and never moves one. Each artifacts bucket
-expires bundles after a retention that outlasts the last few releases,
-so a redeploy of the previous release always finds its copies.
+adds a tag and never moves one. Each artifacts bucket expires bundles
+after a retention that outlasts the last few releases, so a redeploy
+of the previous release always finds its copies.
 
 > **Principle:** One cloud account per environment, and nothing spans
 > two but the replication into production's registry and artifacts
-> bucket. The copy is held by immutable tags, a bundle prefix that
-> refuses overwrites, and a digest record kept outside staging's
+> bucket. The copy is held by immutable tags, a locked bundle prefix
+> that keeps every version, and a digest record kept outside staging's
 > account. Services and workers run on the container runtime. Browser
 > apps ship from a private S3 bucket through CloudFront, built once
 > and promoted. Production promotes copies replicated into its own
@@ -4609,6 +4823,12 @@ bootstrap's roles and trust, and to the bootstrap's state key. Then
 the widest role a deploy run can mint is the boundary, and the
 bootstrap stays the administrator's.
 
+The same fence covers users and access keys, because a user is a
+second door to the same power. The deployer is refused a user created
+without the boundary, and it is refused an access key outright: no
+cloud user and no long-lived key exist anywhere (see [Operator
+Roles](#operator-roles)).
+
 The layout of the environments is written once, in one file in the
 repository: each environment's account id, the region, its public
 names, and the profile names a person holds for it. The scripts and
@@ -4631,11 +4851,17 @@ A password the database service manages and rotates on its own has no
 URL to hold, and a process then builds its URL from the host and that
 secret at start.
 
-A rotation bumps the write-only version and puts the same version into
-the task definition, so the services roll and every new task reads the
-new URL; a running pool read its URL at start and is replaced, not
-reconnected. A rotation outside a pull request is not something this
-document covers.
+A rotation of the generated password bumps the write-only version and
+puts the same version into the task definition. The services roll, and
+every new task reads the new URL. A running pool read its URL at start,
+and it is replaced, not reconnected.
+
+A managed rotation does not roll the services, because it happens
+outside any deploy. So a pool on a managed password reconnects on an
+authentication failure: it reads the secret again and opens the
+connection with the new password. The connections it already holds
+keep working until they close. Any other rotation outside a pull
+request is not something this document covers.
 
 > **Principle:** Every cloud resource is declared in Terraform. No
 > clicks in the console, no untracked state. Each environment has a
@@ -4663,9 +4889,17 @@ environment's branch and run under the deployer, never an
 administrator step, so production's grant waits behind the same
 approval as its apply. The same job grants every later entry and
 disables one, so no identity on the operator plane widens the
-allowlist. Until the grant has run, nothing holds an operator
-password for that environment: the create run writes the operator's
-file with those lines empty.
+allowlist.
+
+The same job mints the operator tokens of the two identities no person
+signs in as: the provisioner's, for a traffic run, and the smoke
+identity's, for the smoke test (see [The Gateway](#the-gateway)). It
+writes each into the secret store, as
+`<root-slug>-<env>-provisioner-token` and
+`<root-slug>-<env>-smoke-token`, and never prints one.
+Until the grant has run, nothing holds an operator credential for that
+environment: the create run writes the operator's file with its token
+line empty.
 
 > **Principle:** The deploy migrates, as a one-off task on the new
 > image before the rollout, inside the apply. The first operator is
@@ -4796,7 +5030,11 @@ by a named choice.
     or through the cloud's private endpoints for those services. Which
     one is the environment's named choice: the NAT gateway is the
     simpler and the larger fixed cost, and endpoints trade it for one
-    charge per service.
+    charge per service. An endpoint reaches only the cloud's own
+    services. The error tracker, the identity provider's published
+    keys, and every outside provider still need egress, so an
+    environment on endpoints keeps a narrow egress path for them, or
+    names each one it goes without.
 -   **Encryption.** The database, the cache, every bucket, and the
     secret store are encrypted at rest. Every connection to the
     database and the cache uses TLS, and the database refuses one that
@@ -4821,7 +5059,10 @@ by a named choice.
 -   **The branch that deploys.** `main` is protected: a merge needs a
     review and every required check, and the files under `deployment/`
     and `.github/` carry code owners, since a merge to `main` is a
-    staging deploy under a role that writes infrastructure.
+    staging deploy under a role that writes infrastructure. `release`
+    has a ruleset of its own: no push, no force push, no deletion, and
+    one bypass actor, the repository host's app the release workflow
+    pushes with (see [Cloud: AWS](#cloud-aws)).
 -   **Images.** Every registry scans an image on push.
 
 > **Principle:** Private subnets with a named egress, encryption at
@@ -4846,10 +5087,10 @@ agent holding one may look at everything it reaches.
 
 A cloud credential that writes is held by a pipeline, or by the
 administrator for its two named steps, creating an environment and
-destroying one. The one other is a person's everyday permission set in
-a smaller environment, when the team widens it as a named choice (see
-[Operator Roles](#operator-roles)). No agent holds that one, and no
-skill runs under it.
+destroying one. One more credential may write: a person's everyday
+permission set in a smaller environment, when the team widens it as a
+named choice (see [Operator Roles](#operator-roles)). No agent holds
+that one, and no skill runs under it.
 
 The administrator is the one deliberate exception to that boundary.
 Its permission set is wide, because the bootstrap writes trust and
@@ -4920,6 +5161,13 @@ freed name can be claimed by someone else. Where a cloud cannot
 condition on those claims, a customized subject template on the
 repository host carries them in the subject.
 
+The subject the trust expects is the one the repository host issues,
+spelled exactly. A host that issues an immutable subject carries the
+ids beside the names in it, `repo:<owner>@<owner id>/<name>@<repo
+id>:environment:<environment>`, and a trust written for the name-only
+form refuses every job. So the trust builds the subject from the same
+ids it conditions on, never from a name typed beside them.
+
 Each repository-host environment also carries a deployment-branch
 policy, so staging deploys from `main` alone, and production's plan
 and apply from `release` alone. A branch pushed with a workflow that
@@ -4928,9 +5176,8 @@ declares `staging` then gets neither the environment nor the role.
 Each environment holds its own variables under the same names, the
 role and the state bucket among them. So a job reads the value of the
 environment it declared, and a staging job never holds a production
-value. The
-federation replaces every cloud key, so the repository holds no cloud
-secret.
+value. The federation replaces every cloud key, so the repository
+holds no cloud secret.
 
 The **investigator** reads everything and writes nothing. There is one
 per environment. It reads every log group, every metric, every trace,
@@ -4948,8 +5195,11 @@ named tenant's rows through the platform's own operator plane (see
 [The Operator Context](#the-operator-context)). The tenant is a
 parameter of every read. The credential that reads it is an identity
 on the operator allowlist whose entry grants read and nothing more
-(see [The Operator Context](#the-operator-context)). Its cloud role is
-the investigator's, unchanged.
+(see [The Operator Context](#the-operator-context)). The supporter's
+agent presents an operator token with that read, which the supporter
+minted after signing in with the second factor (see [The
+Gateway](#the-gateway)). Its cloud role is the investigator's,
+unchanged.
 
 No operator role a person or an agent holds writes to the cloud, except
 the administrator's two steps. The widening a smaller environment may
@@ -4996,8 +5246,9 @@ saying so, when the person's session behind it has ended.
 A person signs in to the identity center with a second factor. An
 operator of the plane does too, checked at the operator gate (see [The
 Gateway](#the-gateway)). The operator plane reads across tenants, so a
-password alone never admits to it. An operator's token is short-lived,
-and every tenant it reads is recorded.
+password alone never admits to it. An agent presents an operator
+token, which expires within an hour, and every tenant it reads is
+recorded.
 
 > **Principle:** Administrator, deployer, investigator, supporter.
 > A person or an agent holds a read-only role; the pipeline holds the
@@ -5029,11 +5280,17 @@ cloud tools, so a script clears them before it runs anything.
 The credentials an operator holds are of two kinds, and both are
 first-class. The cloud profiles live in the cloud tool's own
 configuration, one per role per environment. Everything else an
-operator reaches, the error tracker's token and the operator plane's
-identity, lives in one owner-only file per environment outside the
-repository. The file also names the environment's base URL, which is
-no secret: the environments' file names the same public names. A skill
-reads the file for the environment it was given.
+operator reaches lives in one owner-only file per environment outside
+the repository: the error tracker's token and two operator tokens,
+with `<ROOT>` the product's settings prefix. `<ROOT>_OPERATOR_TOKEN`
+is a `read` token, for the investigator and the supporter.
+`<ROOT>_PROVISIONER_TOKEN` is the provisioner's `write` token, for the
+traffic generator.
+The file never holds an operator's password or TOTP secret, since
+agents do not sign in with them (see [The Gateway](#the-gateway)). The
+file also names the environment's base URL, which is no secret: the
+environments' file names the same public names. A skill reads the file
+for the environment it was given.
 
 The platform's own secrets are the ones [Secrets](#secrets) describes,
 held in the secret store and resolved at the point of use. An
@@ -5069,7 +5326,8 @@ they read the product's own documents for what is specific to it.
 
 The provisioner is the traffic generator's identity on the operator
 plane, whose entry writes (see [Traffic and
-Stress](#traffic-and-stress)); it holds no cloud role. A run that reads
+Stress](#traffic-and-stress)); it presents an operator token and holds
+no cloud role. A run that reads
 signals back holds the investigator for the reads.
 
 Every skill takes the environment it acts on, and `local` is one of
@@ -5122,14 +5380,17 @@ Beside them, one row for the backing services: the database, the
 cache, the queue.
 
 A small default set of alarms goes to one topic per environment, and
-a person's address subscribes to it. The set covers the edge (the
-error ratio, the latency, and the unhealthy targets at the load
-balancer), the processes (a
-service running below its desired count), the database (its
-processor and its free storage), and, in a system with a queue, the
-queue (the age of the oldest waiting item, parked and failed work, and
-the outbox's lag). The thresholds are numbers, and the numbers are the
-system's. The set and the topic are the shape.
+a person's address subscribes to it. The set covers four things:
+
+- the edge: the error ratio, the latency, and the unhealthy targets at
+  the load balancer;
+- the processes: a service running below its desired count;
+- the database: its processor and its free storage;
+- in a system with a queue, the queue: the age of the oldest waiting
+  item, parked and failed work, and the outbox's lag.
+
+The thresholds are numbers, and the numbers are the system's. The set
+and the topic are the shape.
 
 A tenant admin's view of their own organization is a product screen:
 a feature served by the app-specific service from the activity role.
@@ -5242,9 +5503,12 @@ The run reads that on `release`, the branch production applies, and on
 the applied state, never on `main` alone. A change merged to `main`
 and not yet released is not yet in production.
 
-The run applies from the exact commit the environment runs: `release` at
-origin for production, and `main` for staging. It applies in a clean
-worktree of its own, never from the working tree it was started in. So
+The run applies from the exact commit the environment runs. For
+production that is `release` at origin. For staging it is the `main`
+commit of its last successful deploy, which the deployment record
+names, never the tip of `main`, which may still be deploying or may
+have failed. The run applies in a clean worktree of its own, never
+from the working tree it was started in. So
 nothing unreleased reaches production on the way down. It empties what
 must be empty and destroys the environment root. Outside production a
 secret is deleted with no recovery window, so a create that follows
@@ -5276,12 +5540,15 @@ and stress.
 It runs against any environment, the local stack included, through
 the operator plane for the tenants it needs and through the public
 routes for everything else. It creates those tenants under an operator
-identity of its own, whose allowlist entry writes. Only the generator
-uses that identity, and the tenants it creates are named for the run,
-so no real tenant is touched. The run removes them when it ends, and
-the size an agent reads before it escalates leaves them out. In
-production the identity is disabled until a run needs it, and
-disabled again after, so no standing writing credential waits there.
+identity of its own, the provisioner, whose allowlist entry writes.
+The generator presents an operator token for it, never a password (see
+[The Gateway](#the-gateway)). Only the generator uses that identity,
+and the tenants it creates are named for the run, so no real tenant is
+touched. The run removes them when it ends. The count of tenants,
+users, and traffic an agent reads before it escalates an alarm (see
+[Operational Skills](#operational-skills)) leaves them out. In
+production the identity is disabled until a run needs it, and disabled
+again after, so no standing writing credential waits there.
 It reports what an operator reads: requests by route and status, the
 p50, p95, and p99, and the error ratio.
 
@@ -5327,10 +5594,11 @@ nothing staged. The readers hold the investigator's profile, the one
 credential that reads every signal, when a person runs it after a
 create run. On a routine deploy the pipeline runs it as a job after
 the rollout, under a read grant of its own that reads the signals and
-writes nothing. And a session that signs in does
-so as an identity named for the smoke test, in a tenant named for it,
-which the operator plane created the way it creates the traffic
-generator's.
+writes nothing. And its session runs in a tenant named for the smoke
+test, which the operator plane created the way it creates the traffic
+generator's. The test reaches the operator plane with the smoke
+identity's operator token, which the grant job minted, never with a
+password.
 
 > **Principle:** One test drives real traffic and reads every signal
 > back by request id, through one reader interface with a local and a
@@ -5629,12 +5897,6 @@ Logging uses Python's standard `logging` module. It is the
 platform-wide paradigm. Every library in our stack either uses it or
 integrates with it. We do not bring in a competing library.
 
-> **Python tip:** a `contextvars.ContextVar` set by the gateway
-> middleware and read by a `logging.Filter` is the whole mechanism.
-> The context variable is a convenience, not the source of truth. That
-> is still `request_id` on the request stage, which every stage
-> inherits.
-
 Every module gets its logger with `logging.getLogger(__name__)`. The
 logger hierarchy then mirrors the OM namespace tree.
 
@@ -5645,6 +5907,11 @@ environments and human-readable locally, switched by an env flag.
 The request id is attached through a logging filter. The filter reads
 a context variable set at the entry point that builds the context, so
 operations never need to remember to include it.
+
+> **Python tip:** a `contextvars.ContextVar` read by a
+> `logging.Filter` is the whole mechanism. The context variable is a
+> convenience, not the source of truth. That is still `request_id` on
+> the request stage, which every stage inherits.
 
 Every line carries four things: the service it came from, the
 environment it ran in, the request id, and the request that caused it
@@ -5791,6 +6058,10 @@ class Conflict(PlatformException):
     http_status = 409
     code = "conflict"
 
+class PreconditionFailed(PlatformException):  # the caller's expected version no longer matches
+    http_status = 412
+    code = "precondition_failed"
+
 class ValidationFailed(PlatformException):
     http_status = 422
     code = "validation_failed"
@@ -5854,8 +6125,10 @@ compiled into the bundle.
 
 Runtime variation that belongs to the product is a modelled entity
 with a manager and a storage: which tenant may do what, which plan
-allows which limit. A feature flag, on the rare day one is needed, is
-a vendor SDK used directly, with its client injected at boot.
+allows which limit. A feature flag, on the rare day one is needed, sits
+behind an interface with a real client and a twin, like any vendor
+(see [Twins for External Services](#twins-for-external-services)). The
+container injects it at boot.
 
 > **Principle:** One settings object per process, read once at boot.
 > Backends are chosen there; nothing below reads the environment.
@@ -5969,10 +6242,8 @@ End-to-end tests build the container over the memory storage root and
 the local infra root, every backend a twin, and drive the app
 in-process. Markers `integration`, `e2e`, and `slow` decide which gate
 runs what. The tests [Records of Decisions](#records-of-decisions)
-lists live in the unit suite, except the tenancy scope check, which
-reads a migrated database and runs in the integration job beside the
-schema diff (see [The Second Fence](#the-second-fence)). The rules
-`arch-check` decides run in the fast gate beside them.
+lists run where that list says, and the rules `arch-check` decides run
+in the fast gate.
 
 A run against a deployed environment checks what no in-process test
 can: the gateway in front, the credentials, the network, the worker
@@ -6073,7 +6344,8 @@ Each of these is stated where it applies. None of them is a shape.
 ### Versions
 
 Every dependency runs on its latest stable release, adopted once a
-patch release sits behind it (below). That covers the language
+patch release sits behind it (below). The one exception is the
+deployed database engine's major version. That covers the language
 runtimes (Python, Node), the workspace and package tools (uv, pnpm),
 the container engine (Docker), the backing services (Postgres, the
 cache, the queue), Terraform and its providers, and the libraries
@@ -6100,6 +6372,11 @@ The version is stated where the tool reads it:
 -   The engine versions declared in Terraform.
 -   `required_version` and the provider constraints of every root, and
     the Terraform version the CI steps install.
+
+A deployed database engine moves to a new major version only by a
+planned upgrade: rehearsed on a restored copy, with a snapshot taken
+first, in a window of its own. It never moves because a newer line
+became the latest stable. Its minor versions follow the rule above.
 
 The lock files hold the libraries at the versions those declarations
 resolve, and every root commits its `.terraform.lock.hcl`, so a plan
@@ -6306,19 +6583,5 @@ beside the rules it touches.
 
 ## Next: An End-to-End Reference Implementation
 
-This document describes a system one layer at a time, with a commerce
-platform as the running example.
-
-The next step is to apply it whole. One small, scoped project, fun to
-build, that follows every section end to end, from the object model at
-the center to the apps at the edge, in the shapes and the technologies
-named here. Where it does not yet, it records the gap as a deviation,
-in the shape of [Records of Decisions](#records-of-decisions), so the
-distance between the text and the code is always written down.
-
-That project is Tadas, a to-do app for teams, used by people and by
-agents alike. Its repository is <https://github.com/baristaze/tadas>.
-
-A guideline is a claim until something is built with it. A reader who
-wants to see a shape in running code rather than in a snippet starts
-there.
+Tadas, a to-do app for teams, applies this document end to end and
+records each gap as a deviation: <https://github.com/baristaze/tadas>.

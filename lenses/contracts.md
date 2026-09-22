@@ -413,7 +413,10 @@ copy, write. The caller constructs the entity whole (`id=new_id()`,
 timestamps) and hands it to `create_*`; the manager's copy sets the
 actor from the context and its own fields, and leaves the id and
 timestamps as constructed. Updates and deletes are stamped by the
-copy, and a mutating method returns the entity it wrote.
+copy. The update copy starts from the stored row and excludes
+`PROVENANCE_FIELDS` and `MANAGER_OWNED_FIELDS` alike, so a caller
+never writes a field the manager owns. A mutating method returns the
+entity it wrote.
 
 **Source.** The Business Layer, Shape of an Operation.
 
@@ -421,8 +424,9 @@ copy, and a mutating method returns the entity it wrote.
 read that confirms existence and tenancy before an update, the copy
 that sets the actor, the initial status, or a position on create and
 `updated_at` / `updated_by` or `deleted_at` / `deleted_by` after, the
-return statement; the call site that constructs the entity handed to
-`create_*`.
+fields the update copy excludes, the return statement; the call site
+that constructs the entity handed to `create_*`; each entity's
+`MANAGER_OWNED_FIELDS`.
 
 **Violation.** An update writes without first reading the entity back
 through the manager's own `get_*`; on a create, a manager fills in `id`
@@ -430,11 +434,14 @@ or a timestamp the originating caller left unset, resets one the caller
 constructed, or writes the actor the caller sent instead of the
 context's; on an update or a delete, `updated_at`, `updated_by`, or
 `deleted_at` is set by the caller or by storage instead of by the
-manager; a mutating method returns `None` or a different snapshot than
-the one written. The work item is the one row the guideline exempts:
-every write after its enqueue signs `updated_by` with `EMPTY_UUID`, and
-the relayed enqueue takes the actor off the outbox row (OM-13, CTX-16,
-ASY-25).
+manager, or an update stamps the time and leaves `updated_by` as the
+creator; an update copy that takes a provenance field or a
+manager-owned field, such as a status its transitions own, from the
+caller's entity; a mutating method returns `None` or a different
+snapshot than the one written. The work item is the one row the
+guideline exempts: every write after its enqueue signs `updated_by`
+with `EMPTY_UUID`, and the relayed enqueue takes the actor off the
+outbox row (OM-13, CTX-16, ASY-25).
 
 **Severity.** medium
 
@@ -467,11 +474,14 @@ state in a constructor; the rest is judged.
 ## CON-19 The copy on update starts from the stored row
 
 **Principle.** The manager's copy on update starts from the stored row.
-The caller's entity supplies the fields a caller may change.
-`PROVENANCE_FIELDS` (`created_at`, `created_by`, `deleted_at`,
-`deleted_by`) stay as stored, so no caller rewrites who made a row or
-brings a deleted one back by sending an entity. The copy is
-`model_validate` over the two dumps, because it carries one.
+The caller's entity supplies the fields a caller may change. The copy
+excludes `set(PROVENANCE_FIELDS) | set(<Entity>.MANAGER_OWNED_FIELDS)`
+from the caller's dump. `PROVENANCE_FIELDS` (`created_at`,
+`created_by`, `deleted_at`, `deleted_by`) stay as stored, so no caller
+rewrites who made a row or brings a deleted one back by sending an
+entity. The entity's `MANAGER_OWNED_FIELDS` stay as stored too, so no
+caller writes a field the manager owns. The copy is `model_validate`
+over the two dumps, because it carries one.
 
 **Source.** The Business Layer, Shape of an Operation.
 
@@ -480,7 +490,8 @@ it excludes, and which call builds it.
 
 **Violation.** An update copied from the caller's entity, so a sent
 `created_by` or a cleared `deleted_at` is written; an update that
-excludes fewer fields than `PROVENANCE_FIELDS`; a `model_copy` fed the
+excludes fewer fields than `PROVENANCE_FIELDS` and the entity's
+`MANAGER_OWNED_FIELDS` together; a `model_copy` fed the
 caller's dump (the copy call itself is OM-10).
 
 **Severity.** medium

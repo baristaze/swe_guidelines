@@ -1,7 +1,7 @@
 ---
 name: arch-review-context
 description: "Architecture review through the Context lenses: stages, scopes, OperatorContext, authorization, tenancy, provenance. For a change in this area, or as one leg of arch-review-full."
-allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-context
@@ -18,17 +18,37 @@ This pass covers OpContext (Stages, Scopes, The Operator Context), Separation of
 
 ## Input
 
-`$ARGUMENTS` names what to review. Interpret it as follows, in order:
+`$ARGUMENTS` names what to review. Read it as the first of these that
+matches:
 
-1. Empty: the current branch's changes against the repository's default
-   branch (committed since the merge base, plus the working tree). The
-   default branch is `origin/HEAD` when set, else `main`, else
-   `master`. When the scope resolves to no files, report "nothing to
-   review" in the report's Scope line and stop.
-2. A path or glob: every file under it, as it is now. A path that does
-   not exist is an error; say so and stop.
-3. A git ref or range (`abc123`, `main..HEAD`): the diff of that range.
-4. The word `all`: the whole repository. Expect this to take a while.
+1. Empty: the current branch's change. The default branch is
+   `origin/HEAD` when set, else `main`, else `master`. The scope is
+   every file changed since the merge base of `HEAD` and the default
+   branch (`git diff --name-only <base>`, committed and uncommitted
+   alike), plus every untracked file git does not ignore
+   (`git status --porcelain --untracked-files=all`). When there is no
+   merge base (no default branch, a shallow clone, or unrelated
+   histories), the scope is the uncommitted change against `HEAD` plus
+   the untracked files, and the Scope line says the merge base was not
+   found. In a repository with no commit, it is every file not
+   ignored.
+2. The word `all`: every file in the repository that git does not
+   ignore, tracked or untracked. Expect this to take a while.
+3. A range (`main..HEAD`, `main...HEAD`): the files that range
+   changes, read as they are at its end.
+4. A commit that `git rev-parse --verify --quiet "<arg>^{commit}"`
+   resolves (a SHA, a tag, a branch): the change that commit made,
+   against its first parent.
+5. A path or a glob: every file under it as it is now, untracked files
+   included. A path that does not exist is an error; say so and stop.
+   A name that is both a commit and a path reads as the commit; write
+   `./<name>` for the path.
+
+The empty scope, `all`, and a path read the working tree. A range and
+a commit read history, which may not be checked out: read each file at
+the range's end or the commit with `git show <ref>:<path>`, never from
+the working tree. When the scope resolves to no files, report "nothing
+to review" in the report's Scope line and stop.
 
 Read changed files in full, not only the changed lines. Rules break in
 the interaction between the new code and its neighbors, so pull in the
@@ -39,10 +59,13 @@ of a changed signature.
 
 1. Read the lens file end to end before looking at any code.
 2. Establish the scope and list the files in it.
-3. Run the checker that shipped with this lens file, from the root of
-   the repository under review:
+3. When the scope reads the working tree, run the checker that
+   shipped with this lens file, from the root of the repository under
+   review:
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --group context --format json`.
-   Then read its output:
+   The checker reads the working tree only. For a range or a commit it
+   is not run: say so in the Scope line and judge every lens in step 4.
+   Otherwise read its output:
    - Exit 0 means no findings and exit 1 means findings. Both are a
      run.
    - Drop its findings on files outside the scope. An entry under

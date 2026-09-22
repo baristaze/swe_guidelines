@@ -1,7 +1,8 @@
 ---
 name: ops-cloud-deployment-nuke
 description: "Destroy one cloud environment of the platform as its account's administrator: empty the buckets, destroy the environment root, and report what remains (the bootstrap root, the state prefix, the images, and production's copies of what staging built). Runs scripts/cloud_nuke.sh after checking the profile and the account against deployment/cloud/environments.json. Refuses production unless --confirm production is typed and a released change on release, applied, sets the database's deletion protection off; applies from the environment's exact origin commit in a clean worktree. Supports --dry-run. The one skill besides create that needs a credential that writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*), Bash(scripts/cloud_nuke.sh:*)
+disable-model-invocation: true
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(gh:*), Bash(jq:*), Bash(git fetch:*), Bash(git show:*)
 ---
 
 # ops-cloud-deployment-nuke
@@ -54,7 +55,9 @@ No env file is read. The script removes the environment's
 
 The process names below are the ones `deployment/README.md` lists;
 `api` and `maintenance` are a tree the scaffold built with its worker,
-and a worker added since is one more name.
+and a worker added since is one more name. A tree built with
+`--no-worker` has `api` alone: the API process runs the sweep, so
+leave `maintenance` out of every command below.
 
 1. Verify the administrator profile as Role and credential states.
 2. Production only, two checks, both before the script runs:
@@ -76,9 +79,12 @@ and a worker added since is one more name.
      working tree. The script also reads `deletion_protection` from
      the database in the applied state and refuses while it is on.
      Stop and name the release that is still to come. The script
-     applies from a clean worktree of `origin/release` (staging's of
-     `origin/main`), never from the working tree it was started in,
-     so nothing unreleased reaches production on the way down.
+     applies from a clean worktree of `origin/release`, never from
+     the working tree it was started in, so nothing unreleased reaches
+     production on the way down. Staging's destroy applies the same
+     way from the commit of staging's last successful deploy, read
+     from its deployment record, never from the tip of `main`, which
+     may hold a merge staging never ran.
 3. Read what the environment holds, so the report can say what is
    gone and what stays:
 
@@ -89,9 +95,12 @@ and a worker added since is one more name.
      --profile <admin_profile>
    ```
 
-4. Run the script dry, show the person what it printed, and wait for
-   the person's word before the real run, in staging as in
-   production; an unattended session stops after the dry run:
+4. Run the script dry, show the person what it printed, and stop.
+   The real run waits for an explicit go the person types in this
+   session after reading the dry run, in staging as in production;
+   an unattended session ends at the dry run. The script is not
+   among this skill's tools, so each run also asks the person before
+   it starts:
 
    ```bash
    scripts/cloud_nuke.sh <env> --dry-run
@@ -138,7 +147,7 @@ and a worker added since is one more name.
 **Credential.** <admin_profile>, <Arn>, account <id> (expected <id>)
 **Confirmation.** <the person's word after the dry run; typed --confirm production (production)>
 **Deletion protection on release.** <false, PR <url>, applied | not needed (staging)>
-**Applied from.** <origin/release | origin/main> at <sha>, a clean worktree
+**Applied from.** <origin/release | staging's last successful deploy> at <sha>, a clean worktree
 
 ## Gone
 
@@ -152,7 +161,7 @@ and a worker added since is one more name.
 
 - Final snapshot <name> and the automated backups (production)
 - Bootstrap root: zones <names> (delegated at the domain's DNS host), roles <names>, budget
-- State prefix environments/<env>/ in <bucket>, empty
+- State prefix environments/<staging|prod>/ in <bucket>, empty
 - Images: <repositories>
 - <resource the destroy could not remove>: <reason>
 ```

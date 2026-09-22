@@ -36,26 +36,38 @@ aws sts get-caller-identity --profile acme-<env>-investigate
 
 and refused under any other identity, an administrator profile above all. The env
 file `~/.config/acme/ops/<env>.env`, owner-only and outside the
-repository, gives the generator its provisioner identity
-(`ACME_PROVISIONER_EMAIL`, `ACME_PROVISIONER_PASSWORD` against
-`ACME_API_URL`, the file's one `write` entry, which creates the run's
-own tenants),
-and the signals their URLs and token; `local.env` is the one
-`make seed` writes. The provisioner signs in with its password and a
-TOTP code, which `acme-ops` derives from
-`ACME_PROVISIONER_TOTP_SECRET`, the secret `acme-ops enrol` wrote
-into the same file. In production the provisioner's entry is
-disabled between runs; the person enables it and disables it again
-by dispatching `grant-operator.yml`, as `ops-simulate-traffic`
-states. Never print the password, the secret, a code, or the token.
+repository, gives the generator the provisioner's token
+(`ACME_PROVISIONER_TOKEN` against `ACME_API_URL`, the file's one
+`write` token, which creates the run's own tenants), and the signals
+their URLs and token; `local.env` is the one `make seed` writes. The
+file holds no password and no TOTP secret: an agent never signs in
+with a password. In production the provisioner's entry is disabled
+between runs; the person enables it, with its token, and disables it
+again by dispatching `grant-operator.yml`, as `ops-simulate-traffic`
+states.
+
+Never read the env file, with `Read`, `cat`, or anything else: its
+values stay out of this conversation. `acme-ops` reads the file
+itself from `--env`, and a command that needs a value from it
+sources the file and makes the call in the same command, because
+shell state does not persist between calls. Never print a token.
+The provisioner's token carries one permission and expires within
+the hour. When the generator reports it refused or expired, stop and
+ask the person to refresh it: locally with `uv run acme-ops token
+--env local --identity provisioner`, and in the cloud by dispatching
+`grant-operator.yml` with `mint_token: provisioner`, then running
+`uv run acme-ops token --env <env> --identity provisioner` in their
+own terminal, which copies the token the grant job wrote under their
+identity-center sign-in.
 
 ## Procedure
 
 1. Read the scenario. Refuse one without a target; that is
    `stress-test-create-or-update`'s job. `--scenario <name>` and a bare
    `<name>` mean the same file. Verify the credential as Role and
-   credential states. Check the env file exists, is owner-only, and
-   holds the keys; never print it.
+   credential states. Check the env file exists and is owner-only,
+   through `acme-ops`, which refuses a file that is not; never read
+   or print it.
 2. Say what is about to happen and wait for the person: a real run
    is the platform developer's choice, because it costs money in the
    cloud, writes rows, and can trip the alarms it is meant to test.

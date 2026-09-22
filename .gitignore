@@ -18,3 +18,8 @@ __pycache__/
 
 # benchmark run folders (the manual is checked in, the runs are not)
 benchmark/runs/
+
+# Python environments, builds, and local secrets
+.venv/
+dist/
+.env

@@ -299,7 +299,7 @@ the same tenant.
 **Principle.** Global tables, cross-tenant sweeps, and the lookups that
 run before an identity is known are the exceptions to the tenant-first
 rule. A global method takes no tenant and its docstring says why; a
-bookkeeping sweep gets the tenant back with each row; the four lookups
+bookkeeping sweep gets the tenant back with each row; the five lookups
 run in the system scope. `arch-check` enumerates them (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Second Fence; The
@@ -307,12 +307,14 @@ Business Layer, Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the list the
 checker holds; each step of the sweep and whether it is bookkeeping with
-no principal (relaying the outbox, expiring a lease, purging ended
-sessions and redeemed or expired socket tickets) or a tenant operation
-(CTX-17); what each cross-tenant read returns, as `tuple[UUID, Entity]`
-or an entity carrying `org_id`; the four lookups by name,
-`read_identity_by_email_digest`, `read_api_key_by_digest`,
-`read_session_by_digest`, and `redeem_socket_ticket`; every call that
+no principal (relaying the outbox, expiring a lease, `purge_items`
+purging done and failed work items, purging ended sessions and
+redeemed or expired socket tickets) or a tenant operation (CTX-17);
+what each cross-tenant read returns, as `tuple[UUID, Entity]` or an
+entity carrying `org_id`; the five lookups by name,
+`read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
+`read_api_key_by_digest`, `read_session_by_digest`, and
+`redeem_socket_ticket`; every call that
 passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
 calls are the one caller that takes `org_id` and is handed
 `EMPTY_UUID`, by the operator gate alone.
@@ -346,7 +348,7 @@ tenant's id; a made-up sentinel other than `EMPTY_UUID`; an impl that
 treats the system scope like any tenant and lets a tenant caller reach
 it.
 
-**Severity.** medium
+**Severity.** high
 
 ## CTX-14 Cache and bucket calls take the tenant first
 
@@ -869,15 +871,18 @@ handler's calls; a handler that asks again without a recorded decision.
 `org_id` first, and the impl keeps each tenant's secrets under a
 prefix of its own, so a name one tenant presents never resolves to
 another tenant's secret or the platform's. The manager sets
-`credential_ref` when it puts the secret; every create and update a
-caller shapes excludes it.
+`credential_ref` when it puts the secret. The entity lists it in
+`MANAGER_OWNED_FIELDS`, so every create and update a caller shapes
+excludes it.
 
-**Source.** Infrastructure, Secrets.
+**Source.** Infrastructure, Secrets; The Business Layer, Shape of an
+Operation.
 
 **Look for.** The secrets interface and whether each method takes
 `org_id` first; the key each impl builds from the tenant and the name;
-where `credential_ref` is set, and whether any request or create shape
-a caller fills carries it.
+where `credential_ref` is set, whether the entity's
+`MANAGER_OWNED_FIELDS` names it, and whether any request or create
+shape a caller fills carries it.
 
 **Violation.** A secrets method with no tenant, or an impl that stores
 names unprefixed, so a name can reach another tenant's secret or the
@@ -889,22 +894,91 @@ points an integration at a secret it does not own.
 ## CTX-36 Failed sign-ins are throttled in storage; sessions have two lifetimes
 
 **Principle.** Sign-in has a defense that does not fail open: the
-tenancy manager counts failed sign-ins per identity in its own storage
-and answers a run of them with a growing delay before the next attempt
-is checked. Every session has an idle and an absolute lifetime, both
-settings, and every API key an expiry.
+tenancy manager counts failed sign-ins in its own storage, keyed on
+the email's digest, and each failure doubles the delay before the next
+attempt for that email is checked, up to a cap. An attempt inside the
+delay is refused `429` before its password is checked, and a success
+resets it. An unknown email is delayed like a known one. Every
+session has an idle and an absolute lifetime, both settings, and every
+API key an expiry.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
 
 **Look for.** The sign-in transition and where it records a failure;
-the delay it applies and what it grows with; the session's idle and
+what the count is keyed on, the delay it applies, its base and cap,
+and whether the refusal comes before the password check; the session's idle and
 absolute lifetimes in settings and where each is checked; the expiry
 on an API key.
 
 **Violation.** A sign-in whose only defense is the per-address rate
 limit on the cache, which fails open; a failure count kept in the
-cache instead of the tenancy manager's storage; a session with no idle
+cache instead of the tenancy manager's storage; a count keyed on the
+identity, so an unknown email answers faster than a known one; an
+attempt inside the delay whose password is still checked; a session
+with no idle
 or no absolute lifetime; an API key with no expiry.
+
+**Severity.** high
+
+## CTX-37 A key's role is the lower of its own and its issuer's, at every use
+
+**Principle.** A key's effective role is the lower of the role it was
+issued with and its issuer's current role. It is checked at every use,
+never only at issue, so a demoted issuer's key loses what the issuer
+lost. Removing the issuer's membership revokes, in the same write,
+every key the issuer minted in that tenant, and a revoked key is refused
+`401`.
+
+**Source.** OpContext; The Network Layer, The Gateway.
+
+**Look for.** Where an API key is admitted: whether the admission
+reads the issuer's current membership and role beside the key's own,
+and which of the two it grants; what removing a membership does to
+the keys its holder issued.
+
+**Violation.** A key admitted at the role stored on it while its issuer
+now holds a lower one; a key that outlives its issuer's membership,
+or one revoked in a later write than the removal; a
+role comparison made once, when the key is minted, and never again.
+(The cap at issue is CTX-03.)
+
+**Severity.** high
+
+## CTX-38 An agent reaches the operator plane with an operator token
+
+**Principle.** Agents and pipelines never sign in with a password. The
+traffic generator, the deployed smoke test, and a supporter agent use
+an operator token. An operator signed in with the second factor mints
+it, or the grant job does for the provisioner and the smoke identity.
+It carries one operator permission, expires within one hour, and is
+a session of kind `operator`, stored as its digest and shown once.
+The mint route is `POST /v1/admin/me/tokens`; the grant job writes its
+tokens into the secret store. `admit_operator` admits it as the one
+named exception to "a password alone never admits". The ops env file
+holds `<ROOT>_OPERATOR_TOKEN`, a `read` token, and
+`<ROOT>_PROVISIONER_TOKEN`, a `write` token, and no password or TOTP
+secret.
+
+**Source.** OpContext, The Operator Context; The Network Layer, The
+Gateway; Deployment, Migrating a Deployed Database; Operations,
+Operator Credentials.
+
+**Look for.** How the traffic generator, the smoke test, and each
+agent skill authenticate to the operator plane; where an operator
+token is minted (`issue_operator_token`, `grant_operator_token`), its
+permission, its expiry, and how it is stored and found
+(`read_session_by_digest`);
+the mint route and whether it refuses a stage that came from a
+token; where the grant job puts the token it mints; what
+`admit_operator` accepts; the keys in each ops env file.
+
+**Violation.** An agent or a pipeline that signs in with a password or
+holds a TOTP secret; an operator token with more than one permission,
+an expiry past one hour, or a value stored in the clear; a token
+minted by a sign-in with no second factor, or by another token; a
+grant job that prints a token instead of writing it into the secret
+store; a gate that admits some other credential without a second
+factor.
 
 **Severity.** high

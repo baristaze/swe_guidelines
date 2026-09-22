@@ -546,25 +546,31 @@ writes to.
 
 **Severity.** medium
 
-## STO-22 Concurrent edits that matter carry a version
+## STO-22 Concurrent edits that matter carry a version, and the caller names it
 
 **Principle.** Last writer wins by default. An entity whose concurrent
 edits matter carries a `version`, the copy increments it, and the
 write is a compare-and-set that raises `Conflict` when the row moved
-(optimistic concurrency).
+(optimistic concurrency). The expected version comes from the caller,
+an `If-Match` header on a PATCH or an `expected_version` field, and is
+never re-read inside the update. The compare runs against the caller's
+version, and a mismatch answers 412.
 
 **Source.** The Business Layer, Shape of an Operation; The Storage
 Layer, A Storage Impl.
 
 **Look for.** Entities that carry `version`, the copy that increments
 it, the write behind each, and the `WHERE` that compares the stored
-value; entities that carry none and whether a concurrent edit on them
-matters.
+value; where that value comes from, the request's `If-Match` or
+`expected_version` or a read inside the update; entities that carry
+none and whether a concurrent edit on them matters.
 
 **Violation.** An entity with a `version` whose write overwrites
 without comparing it, or whose copy never increments it; a
-compare-and-set that returns quietly instead of raising `Conflict`; a
-`version` added to every table by default.
+compare-and-set that returns quietly instead of raising `Conflict`, or
+a mismatch answered with a status other than 412; an update that reads
+the row and compares against the version it just read, so two stale
+editors both win; a `version` added to every table by default.
 
 **Severity.** medium
 
@@ -828,5 +834,53 @@ data.
 **Violation.** A soft-deletable entity with no retention period; a hard
 delete outside the purge; personal data spread over unnamed fields, so
 erasing a person is a hunt.
+
+**Severity.** medium
+
+## STO-33 A data migration lifts FORCE in one transaction and counts rows
+
+**Principle.** The migration login owns the tables, and `FORCE ROW
+LEVEL SECURITY` binds the owner, so a backfill's UPDATE would touch
+nothing. A data migration wraps its statements in `NO FORCE ROW LEVEL
+SECURITY` and `FORCE ROW LEVEL SECURITY` in the same transaction. It
+asserts that the row count it touched equals the count it meant to
+touch, and fails otherwise. A migration test runs a backfill over
+seeded rows of two tenants and checks the count.
+
+**Source.** The Storage Layer, Migrations; The Second Fence.
+
+**Look for.** Every migration that updates, inserts, or deletes rows:
+the `ALTER TABLE` pair around its statements and whether both sit in
+one transaction, and the count it asserts; the migration test that
+seeds two tenants and runs the backfill.
+
+**Violation.** A backfill that runs under `FORCE` and reports success
+while it touched no row; a `NO FORCE` whose `FORCE` runs in a later
+transaction, or never, so the owner walks past the policy; a data
+migration with no count check, or no test over two tenants.
+
+**Severity.** high
+
+## STO-34 Payloads carry ids; erasure redacts the audit
+
+**Principle.** Outbox payloads and events carry ids, never the values
+of personal fields, so erasing a person never has to rewrite them.
+Audit entries may carry values. Erasure redacts the personal fields of
+an erased subject's audit entries, which is the one write an
+append-only record takes, and the erasure sweep states that write.
+
+**Source.** The Storage Layer, Database Roles; The Network Layer,
+Realtime at the Edge.
+
+**Look for.** The payload of every outbox row kind and every event
+kind, and which fields it copies from the entity; the erasure sweep,
+the audit entries it reads for an erased subject, and the fields it
+redacts.
+
+**Violation.** An outbox payload or an event that carries a name, an
+email, an address, or another personal value instead of the id that
+reads it; an erasure that leaves an erased subject's values in the
+audit; a write to an audit entry other than the erasure's redaction,
+or a redaction the erasure sweep does not state.
 
 **Severity.** medium
