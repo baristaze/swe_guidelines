@@ -3161,7 +3161,15 @@ supporter's agent present an **operator token** instead:
     permission that the identity's entry grants.
 -   It expires within one hour.
 -   It is stored as its digest and shown once, like every credential
-    the tenancy namespace issues.
+    the tenancy namespace issues. The row is a session of kind
+    `operator`, found by `read_session_by_digest` like every session.
+
+An operator mints one through `POST /v1/admin/me/tokens`, which calls
+the tenancy manager's `issue_operator_token(octx, permission,
+expires_in)`. The route refuses unless the operator stage came from a
+sign-in with a verified second factor, so a token never mints a token.
+The grant job calls `grant_operator_token(rctx, email, expires_in)`
+instead, an operation on the request stage.
 
 `admit_operator` admits an operator token as the one named exception
 to "a password alone never admits". It is not a password, and a second
