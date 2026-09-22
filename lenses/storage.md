@@ -700,11 +700,11 @@ every engine a storage impl builds; the rest is judged.
 ## STO-28 Every table declares its tenancy scope and the policy matches
 
 **Principle.** Every table declares its tenancy scope in one map, and
-the database carries the policy that scope implies. A `system` table
-has no policy and no row-level security; every other table has one,
-enabled and forced. Three logins, none superuser or `BYPASSRLS`; only
-the system login is admitted to the system scope, by the `org` and
-`identity` policies alike.
+the database carries the policy that scope implies: none on a `system`
+table, and on every other one, enabled and forced. Three logins, none
+superuser or `BYPASSRLS`. The policies admit the system scope to the
+system login alone, and on an `identity` table only for the enumerated
+methods (CTX-12).
 
 **Source.** The Storage Layer, The Second Fence; Database Roles;
 Migrations.
@@ -712,21 +712,25 @@ Migrations.
 **Look for.** The scope map beside the role map, and a scope for every
 table; the policy in each table's migration, its expression against
 the one its scope names, and the `ENABLE` and `FORCE` statements; the
-test that reads `pg_class` and `pg_policies` against the map, and the
-ones that assert on each live connection that `current_user` is
-neither superuser nor `BYPASSRLS`, that the runtime login owns no
-table, and that the runtime login naming the system scope reads
-nothing.
+system-login clause in the `org` and `identity` expressions, `OR
+(current_setting('app.org_id', true) = '<EMPTY_UUID>' AND current_user
+= '<system_login>')`; the test that reads `pg_class` and
+`pg_policies` against the map, and the ones that assert on each live
+connection that `current_user` is neither superuser nor `BYPASSRLS`,
+that the runtime login owns no table, and that the runtime login
+naming the system scope reads nothing.
 
 **Violation.** A table missing from the scope map, or a migrated policy
 that does not match the scope declared: a `system` table with
 row-level security, or an `org`, `identity`, or `both` table without
 it or without `FORCE ROW LEVEL SECURITY`, so the owner walks past it;
 an `identity` policy with no system-login clause, so the sign-in
-lookups by email or credential digest find nothing, or a system-scope
-clause any login's setting can satisfy; a login that is a superuser or
-carries `BYPASSRLS`; a runtime login that owns a table, so an injected
-statement can drop a policy or turn `FORCE` off.
+lookups by email or credential digest find nothing and the purges
+remove nothing, or a system-scope clause any login's setting can
+satisfy; a read of an `identity` table under the system scope by a
+method the enumeration does not name (CTX-12); a login that is a
+superuser or carries `BYPASSRLS`; a runtime login that owns a table,
+so an injected statement can drop a policy or turn `FORCE` off.
 
 **Severity.** high
 

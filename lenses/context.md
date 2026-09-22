@@ -296,29 +296,34 @@ the same tenant.
 
 ## CTX-12 Exceptions to tenant-first are enumerated
 
-**Principle.** Global tables, cross-tenant sweeps, and the lookups by
-credential digest that sign a person in are the exceptions to the
-tenant-first rule. A global method takes no tenant and its docstring
-says why; a bookkeeping sweep gets the tenant back with each row; a
-lookup by digest runs in the system scope. `arch-check` enumerates
-them, reading signatures alone (CTX-30).
+**Principle.** Global tables, cross-tenant sweeps, and the lookups that
+run before an identity is known are the exceptions to the tenant-first
+rule. A global method takes no tenant and its docstring says why; a
+bookkeeping sweep gets the tenant back with each row; the four lookups
+run in the system scope. `arch-check` enumerates them (CTX-30).
 
 **Source.** The Storage Layer, Namespace Shape; The Second Fence; The
 Business Layer, Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the list the
 checker holds; each step of the sweep and whether it is bookkeeping with
-no principal (relaying the outbox, expiring a lease) or a tenant
-operation (CTX-17); what each cross-tenant read returns, as
-`tuple[UUID, Entity]` or an entity carrying `org_id`; the sign-in by
-email digest and the lookups by API key, session token, and socket
-ticket digest.
+no principal (relaying the outbox, expiring a lease, purging ended
+sessions and redeemed or expired socket tickets) or a tenant operation
+(CTX-17); what each cross-tenant read returns, as `tuple[UUID, Entity]`
+or an entity carrying `org_id`; the four lookups by name,
+`read_identity_by_email_digest`, `read_api_key_by_digest`,
+`read_session_by_digest`, and `redeem_socket_ticket`; every call that
+passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
+calls are the one caller that takes `org_id` and is handed
+`EMPTY_UUID`, by the operator gate alone.
 
 **Violation.** A tenant-less storage method whose interface docstring
 does not justify it; a sweep that returns entities without their
 tenant; a new tenant-less method that the enumeration does not know
 about, or no enumeration at all; a lookup by digest that the
-enumeration does not name, or one that runs outside the system scope.
+enumeration does not name, or one that runs outside the system scope;
+`EMPTY_UUID` passed as the `org_id` by a method outside the three kinds
+the enumeration names.
 
 **Severity.** medium
 
