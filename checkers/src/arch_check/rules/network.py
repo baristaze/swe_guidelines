@@ -387,13 +387,38 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
     """
     tail = project.option("NET-09", "module", "gateway.idempotency", {"module"})
 
-    def idem_names(file: SourceFile) -> set[str]:
-        return {
-            local
-            for local, full in imported_names(project, file).items()
-            # a name imported from the module, or the module itself (`from acme.gateway import idempotency`)
-            if any(m == tail or m.endswith("." + tail) for m in (full, full.rpartition(".")[0]))
-        }
+    def from_module(full: str) -> bool:
+        # a name imported from the module, or the module itself (`from acme.gateway import idempotency`)
+        return any(m == tail or m.endswith("." + tail) for m in (full, full.rpartition(".")[0]))
+
+    def idem_names(file: SourceFile, seen: frozenset[str] = frozenset()) -> set[str]:
+        """The names of a file that carry the dependency: imported from the module, or an alias of one
+        (`IdemKey = Annotated[str, Depends(idem)]`), declared here or imported from another module of the project."""
+        names = imported_names(project, file)
+        out = {local for local, full in names.items() if from_module(full)}
+        for local, full in names.items():
+            owner, _, attr = full.rpartition(".")
+            source = project.module(owner)
+            if local not in out and source is not None and source.module not in seen:
+                if attr in idem_names(source, seen | {file.module}):
+                    out.add(local)
+        tree = project.tree(file)
+        aliases: list[tuple[str, ast.expr]] = []
+        for node in tree.body if tree is not None else []:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                aliases.append((node.targets[0].id, node.value))
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+                aliases.append((node.target.id, node.value))
+            elif type(node).__name__ == "TypeAlias":  # `type IdemKey = ...`, Python 3.12 and later
+                aliases.append((node.name.id, node.value))  # type: ignore[attr-defined]
+        grew = True
+        while grew:
+            grew = False
+            for name, value in aliases:
+                if name not in out and heads(value) & out:
+                    out.add(name)
+                    grew = True
+        return out
 
     def heads(node: ast.expr | None) -> set[str]:
         return {n.split(".")[0] for n in dotted_names_in(node)}
