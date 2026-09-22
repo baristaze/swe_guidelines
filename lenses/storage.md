@@ -526,30 +526,21 @@ idempotent, so relaying a row twice duplicates an event.
 **Check.** `arch-check` decides storage signatures outside the outbox's
 own storage that take a single outbox row; the rest is judged.
 
-## STO-21 Analytics reads a mirror; roles are backed up and retained
+## STO-21 Analytics across tenants reads a mirror
 
-**Principle.** Cross-tenant analytics reads a mirror, never a request
-path. Every database is backed up and its restore rehearsed, per
-instance until a role has its own; a role restored early is reconciled
-from the outbox. A done outbox row outlives the backups, a soft-deleted
-row is purged after its retention, and personal data lives in named
-fields.
+**Principle.** Analytics across tenants never runs in the request path
+of any role. When reporting is needed, it reads a mirror fed by change
+data capture or a periodic copy, never a role the application writes
+to.
 
 **Source.** The Storage Layer, Database Roles.
 
-**Look for.** Reporting queries that scan across tenants inside a
-request. The backup schedule per role and the runbook that records the
-restore rehearsal and the outbox reconciliation, read as documentation;
-the retention period of a done outbox row against the backup schedule
-of the roles it feeds. The retention period per entity that the purge
-reads, and the fields that hold personal data.
+**Look for.** Reporting queries that scan across tenants, and where
+they run; the mirror a report reads and what feeds it.
 
 **Violation.** A cross-tenant analytical query runs against the `core`
-role in a request handler. A role with no backup schedule, or no
-runbook recording a restore rehearsal; a done outbox row deleted on
-done, or kept shorter than the backup schedule. A soft-deletable entity with
-no retention period, a hard delete outside the purge, or personal data
-spread over unnamed fields, so erasing a person is a hunt.
+role in a request handler; a report that reads a role the application
+writes to.
 
 **Severity.** medium
 
@@ -770,3 +761,44 @@ every key under a prefix.
 
 **Check.** `arch-check` decides the `limit` of every list read and
 bucket listing; the rest is judged.
+
+## STO-31 Backups, a rehearsed restore, and reconciliation from the outbox
+
+**Principle.** Every database is backed up on its own schedule, and a
+restore is rehearsed, not assumed: per instance while the roles share
+one. A role restored to an earlier point than its siblings is
+reconciled from the outbox. So a done outbox row is kept for a
+retention period that outlives the backups of the roles it feeds.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The backup schedule per database and the runbook that
+records the restore rehearsal and the outbox reconciliation, read as
+documentation; the retention period of a done outbox row against the
+backup schedule of the roles it feeds.
+
+**Violation.** A database with no backup schedule, or no runbook
+recording a restore rehearsal; a role restored early and reconciled by
+hand; a done outbox row deleted on done, or kept shorter than the
+backup schedule.
+
+**Severity.** medium
+
+## STO-32 Soft-deleted rows are purged; personal data lives in named fields
+
+**Principle.** A soft-deleted row is purged by the maintenance sweep
+after its entity's retention period, and the purge is the one hard
+delete. Personal data lives in named fields, so erasing a person is a
+sweep over a list, not a hunt.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The retention period per entity that the purge reads;
+every hard delete and where it runs; the fields that hold personal
+data.
+
+**Violation.** A soft-deletable entity with no retention period; a hard
+delete outside the purge; personal data spread over unnamed fields, so
+erasing a person is a hunt.
+
+**Severity.** medium
