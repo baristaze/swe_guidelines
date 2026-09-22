@@ -5161,6 +5161,13 @@ freed name can be claimed by someone else. Where a cloud cannot
 condition on those claims, a customized subject template on the
 repository host carries them in the subject.
 
+The subject the trust expects is the one the repository host issues,
+spelled exactly. A host that issues an immutable subject carries the
+ids beside the names in it, `repo:<owner>@<owner id>/<name>@<repo
+id>:environment:<environment>`, and a trust written for the name-only
+form refuses every job. So the trust builds the subject from the same
+ids it conditions on, never from a name typed beside them.
+
 Each repository-host environment also carries a deployment-branch
 policy, so staging deploys from `main` alone, and production's plan
 and apply from `release` alone. A branch pushed with a workflow that

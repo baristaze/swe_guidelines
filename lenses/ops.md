@@ -705,7 +705,8 @@ key is stored.
 each, and their deployment-branch policies; the variables each holds and
 their names; the trust of each deployer role, the environment its
 subject names, the ref it requires, and whether it matches the
-repository by `repository_id` and its owner's id; any cloud key stored
+repository by `repository_id` and its owner's id; whether the subject
+it expects is spelled the way the host issues it; any cloud key stored
 as a secret.
 
 **Violation.** One environment shared by two credentials, or a reviewer
