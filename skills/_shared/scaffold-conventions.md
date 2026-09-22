@@ -100,7 +100,8 @@ the order the guideline presents them, never by number.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps, and the four lookups that run before an identity is known),
+  sweeps, the four lookups that run before an identity is known, and
+  the operator plane's size read),
   each documented in its docstring and listed as `Class.method` under
   `[tool.arch-check.options.CTX-12] tenantless` in the root
   `pyproject.toml`, which `arch-check` holds both ways. The manager
@@ -131,7 +132,7 @@ the order the guideline presents them, never by number.
   four lookups that run before an identity is known,
   `read_identity_by_email_digest`, `read_api_key_by_digest`,
   `read_session_by_digest`, and `redeem_socket_ticket`; and the
-  operator plane's marker calls. Everything after such a lookup runs
+  operator plane's marker calls and its size read. Everything after such a lookup runs
   under the scope it found. Nothing in a manager or an impl assumes the
   policy is there.
 - Three logins reach the database, as The Storage Layer (The Second

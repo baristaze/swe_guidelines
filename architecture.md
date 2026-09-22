@@ -2074,7 +2074,9 @@ The third kind is the operator plane's idempotency-marker methods:
 has no tenant, so its marker is keyed under `EMPTY_UUID` as the
 `org_id`, with the operator's identity id as the user id (see [The
 Gateway](#the-gateway)). These methods take `org_id` like any other.
-The operator gate is the one caller that hands them `EMPTY_UUID`.
+The operator gate is the one caller that hands them `EMPTY_UUID`. The
+operator plane's size read, which counts users and rows across
+tenants, is of this kind too.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
