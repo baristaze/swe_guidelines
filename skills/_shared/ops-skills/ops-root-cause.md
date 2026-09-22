@@ -53,7 +53,10 @@ repository: `ACME_API_URL`, `ACME_OPERATOR_EMAIL`,
 writes, the twins
 `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`. The identity's allowlist
 entry is `READ`; a `WRITE` identity is refused by this skill even when
-the file holds one. Never print the password or the token.
+the file holds one. The operator signs in with its password and a
+TOTP code derived from `ACME_OPERATOR_TOTP_SECRET`, the secret
+`acme-ops enrol` wrote into the same file when the operator enrolled.
+Never print the password, the secret, a code, or the token.
 
 ## Procedure
 
@@ -65,8 +68,11 @@ and a worker added since is one more name.
    file. Sign the operator in through `POST /v1/auth/login`, the route the
    service scaffold declares, at `$ACME_API_URL` with `curl` (the identity stage is what the operator
    plane admits; no tenant session is exchanged), keep the bearer in a
-   shell variable (the login body is `{"email": ..., "password": ...}`
-   and the answer's `token` is the bearer), read `GET /v1/admin/me`,
+   shell variable (the login body is `{"email": ..., "password": ...,
+   "totp_code": ...}`, the code captured into a shell variable from
+   `uv run acme-ops totp --env <env> --identity operator` and never
+   printed, since the operator gate admits no sign-in without it; the
+   answer's `token` is the bearer), read `GET /v1/admin/me`,
    and check the answer names `operator_role: read`; stop on `write`.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:

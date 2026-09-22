@@ -41,7 +41,13 @@ repository, gives the generator its provisioner identity
 `ACME_API_URL`, the file's one `write` entry, which creates the run's
 own tenants),
 and the signals their URLs and token; `local.env` is the one
-`make seed` writes. Never print the password or the token.
+`make seed` writes. The provisioner signs in with its password and a
+TOTP code, which `acme-ops` derives from
+`ACME_PROVISIONER_TOTP_SECRET`, the secret `acme-ops enrol` wrote
+into the same file. In production the provisioner's entry is
+disabled between runs; the person enables it and disables it again
+by dispatching `grant-operator.yml`, as `ops-simulate-traffic`
+states. Never print the password, the secret, a code, or the token.
 
 ## Procedure
 
@@ -87,8 +93,9 @@ and the signals their URLs and token; `local.env` is the one
    ```
 
    The worker outcomes are `sum by (subsystem, outcome)
-   (increase(acme_outcomes_total[<window>]))`; queue age has no metric
-   locally. Locally the log leg needs `--log-file`, and an empty trace
+   (increase(acme_outcomes_total[<window>]))`, and the queue's age is
+   `max_over_time(acme_queue_oldest_age_seconds[<window>])`, the
+   gauge the worker's sweep sets. Locally the log leg needs `--log-file`, and an empty trace
    store means the process ran with no `ACME_OTEL_ENDPOINT`: report
    the leg as not read, and do not fail the run on it.
 
@@ -109,8 +116,9 @@ and the signals their URLs and token; `local.env` is the one
 
 - No run without the person's word, and none against production
   without it in this session.
-- No write outside the generator's own tenants; no scaling, no apply,
-  no change to the scenario.
+- No write outside the generator's own tenants, and none left behind:
+  the generator removes them when the run ends, and the report names
+  any it could not; no scaling, no apply, no change to the scenario.
 - No secret value printed.
 - No verdict from the generator's numbers alone: the platform's own
   signals decide.

@@ -134,10 +134,10 @@ record.
 
 **Look for.** `integrations/` and provider selection in settings: one
 interface per external service, the impls behind it, provenance fields
-on records the provider produces, the guard that refuses a twin off
-loopback, the workflow that exercises real clients. The short list of
-services that cannot be twinned faithfully and use a shared
-development tenant instead.
+on records the provider produces, the guard that refuses a twin
+outside a local environment, the workflow that exercises real
+clients. The short list of services that cannot be twinned faithfully
+and use a shared development tenant instead.
 
 **Violation.** A test suite that needs a live account or network to
 pass; a twin that can be selected in a production-named environment;
@@ -159,7 +159,7 @@ every backend it chose.
 
 **Look for.** Boot code and settings validation: checks pairing the
 environment name with the secrets backend, twin selection with the
-origin, the development seed with a local database; the start-up
+environment, the development seed with a local database; the start-up
 inventory log line.
 
 **Violation.** A staging or production environment that can start on
@@ -1022,7 +1022,7 @@ a shared root for both environments; production trusting a staging
 principal for anything but the replication writes (DEL-31), or for
 those writes beyond their repositories and their prefix; a staging
 write into production's state bucket; staging reading production at
-all; a resource with no environment tag.
+all. (The environment tag on every resource is OPS-18.)
 
 **Severity.** high
 
@@ -1039,14 +1039,13 @@ provider pins its own.
 
 **Look for.** The roots under `deployment/terraform/` and who applies
 each; the environments' file and every script and root that reads it;
-the account pin on every provider block; whether a deploy role can
-write the bootstrap root's state or resources.
+the account pin on every provider block. (What the deploy role may
+change of its own trust and the bootstrap's state is DEL-47.)
 
 **Violation.** A resource the pipeline needs declared in no bootstrap
 root, or made by hand; an account id or region typed into a script or
 workflow instead of read from the file; a provider with no account
-pin; a deploy role that can change its own trust, the registry
-settings, or the bootstrap root's state.
+pin.
 
 **Severity.** medium
 
@@ -1096,21 +1095,22 @@ dependency.
 **Principle.** A deployed database is migrated by the deploy: a one-off
 task on the new image, inside the apply and before the rollout, in
 production after the approval. A revert never removes an applied
-migration. A deployed environment's first operator is granted by the
-same kind of task, run by the pipeline.
+migration. A deployed environment's operators are granted and disabled
+by the same kind of task, run by the pipeline.
 
 **Source.** Deployment, Migrating a Deployed Database.
 
 **Look for.** Where each environment root runs the migration, what it
 runs on and under, and what the rollout depends on; how production
-orders it against the approval; how the first allowlist entry of a
-deployed environment is made.
+orders it against the approval; how an allowlist entry of a deployed
+environment is made or disabled.
 
 **Violation.** A migration run by hand against a deployed database; a
 migration after the rollout, or outside the apply, so new tasks serve
-an old schema; a production migration before the approval; a first
+an old schema; a production migration before the approval; an
 operator inserted by a database login from a laptop, or granted by the
-administrator outside the pipeline; a revert that deletes a migration
+administrator outside the pipeline; an operator-plane route that
+writes the allowlist; a revert that deletes a migration
 a deployed version table names.
 
 **Severity.** medium
@@ -1163,9 +1163,8 @@ state.
 **Principle.** Every environment takes the security defaults: private
 subnets with a named egress, encryption at rest and TLS to every store,
 a trail per account, a stated web-firewall position, a production
-database that survives a zone and restores to a point in time, a second
-factor at sign-in, a protected `main`, a scan on push, and pinned
-Terraform.
+database that survives a zone and restores to a point in time, a
+protected `main`, a scan on push, and pinned Terraform.
 
 **Source.** Deployment, Security Defaults; Technology Choices and How
 to Override Them, Versions.
@@ -1182,8 +1181,28 @@ and the committed `.terraform.lock.hcl` of every root.
 unencrypted at rest, or a database that accepts a connection without
 TLS; an account with no trail; a production edge with no firewall and
 no record of the choice; a production database in one zone with
-customers on it, or with no point-in-time recovery; a sign-in with a
-password alone; a `main` that merges without review; a root with no
-lock file or an unpinned provider.
+customers on it, or with no point-in-time recovery; a `main` that
+merges without review; a root with no lock file or an unpinned
+provider. (The second factor at sign-in is OPS-07.)
 
 **Severity.** medium
+
+## DEL-49 An error event carries no secret
+
+**Principle.** An event carries no secret. The SDK is initialized with
+local variables off and default personal data off, and a scrubber
+removes the authorization header, cookies, and every field a request
+names as a credential before an event leaves the process.
+
+**Source.** Telemetry, Error Tracking.
+
+**Look for.** The SDK's initialization in every process: the local
+variables and personal data options; the scrubber it is handed, and
+the headers, cookies, and credential fields it removes.
+
+**Violation.** An SDK initialized with local variables or default
+personal data on; a process that sends events with no scrubber; a
+scrubber that leaves the authorization header, a cookie, or a field a
+request names as a credential in the event.
+
+**Severity.** high

@@ -15,7 +15,7 @@ the prescribed shape.
   grows by deployment changes alone, and ends with a pointer to a
   reference implementation that applies the whole document to one
   small project.
-- **[`lenses/`](lenses/README.md)**: 243 lenses in eight groups. Each
+- **[`lenses/`](lenses/README.md)**: 252 lenses in eight groups. Each
   restates one rule as something a reviewer can check against code and
   cites the section it comes from, by title.
 - **[`skills/`](skills/)**: Claude Code skills. Eight group reviews, one
@@ -129,10 +129,11 @@ make gen-toc      # regenerate the table of contents of architecture.md
 Requirements: Python 3.10 or newer, and Node 24, the current LTS.
 CI runs the checks on Python 3.10, the floor `pyproject.toml`
 declares, and on 3.14, the latest stable release. The scripts need
-nothing past the standard library; `make check` also needs `pytest`, for the scripts' own tests; `npx`, for
-markdownlint (`make lint` fetches `markdownlint-cli2` through `npx` at
-a pinned version); and `uv`, for ruff and mypy (`make ruff` and `make
-mypy` fetch them through `uvx` at pinned versions). The pins follow
+nothing past the standard library. `make check` also needs `npx` and
+`uv`, and fetches the rest itself at pinned versions. `make lint`
+fetches `markdownlint-cli2` through `npx`. `make test` runs the tests
+with `pytest`, `pyyaml`, and `jsonschema` brought by `uv`. `make ruff`
+and `make mypy` fetch ruff and mypy through `uvx`. The pins follow
 the guideline's own latest-stable rule on purpose. CI runs `make check`
 on every pull request.
 

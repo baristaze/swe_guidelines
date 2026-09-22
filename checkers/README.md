@@ -48,7 +48,7 @@ The flags:
 - `0`: clean.
 - `1`: findings.
 - `2`: a configuration or usage error. Bad TOML, an ADR that does not
-  exist, an unknown rule id or option key, a `src` or `exclude` glob
+  exist or is not a Markdown file under `docs/adr/`, an unknown rule id or option key, a `src` or `exclude` glob
   that is empty, absolute, or climbs out of the root, a local rule
   that fails to load, an option value that is not a name or a
   non-empty list of names.
@@ -113,8 +113,8 @@ never adopted it.
 
 Turning a rule off, or letting one file break it, is a deviation from
 the guideline. A deviation is written down as an ADR before the checker
-accepts it. Each entry names an ADR file, and that file must exist, or
-the run exits 2.
+accepts it. Each entry's `adr` names a Markdown file under `docs/adr/`,
+and that file must exist. Any other path, or a missing file, exits 2.
 
 ```toml
 [[tool.arch-check.disable]]

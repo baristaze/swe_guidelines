@@ -41,12 +41,12 @@ async manager and storage operations; the rest is judged.
 ## CON-02 Interfaces are abstract classes with empty bodies, impls subclass them
 
 **Principle.** An interface is an `ABC` whose methods are
-`@abstractmethod` with `...` bodies, and an impl subclasses it. The
-interpreter refuses an impl that forgot a method, the type checker
-holds every impl to the signature, and the interface still reads as
-documentation.
+`@abstractmethod` with `...` bodies, and an impl subclasses it, so an
+impl that forgot a method will not instantiate. The interface lists
+the operations its scope supports, and callers never know which impl
+they are holding.
 
-**Source.** Interfaces.
+**Source.** Interfaces; Multiple impls per interface.
 
 **Look for.** Interface declarations; the base list of every impl
 class; method bodies inside interface classes.
@@ -55,8 +55,9 @@ class; method bodies inside interface classes.
 impl instantiates and returns `None`; an interface method carries
 logic, a fallback body, or side effects (a keyword parameter's default
 value is what CTX-10 requires, not a breach); an impl does not
-subclass the interface it claims to implement; an impl adds public
-methods the interface does not declare and callers use them.
+subclass the interface it claims to implement; a caller that uses a
+public method the interface does not declare, so it knows which impl
+it holds.
 
 **Severity.** medium
 
@@ -528,7 +529,7 @@ retried request creates twice or fails; a create that checks for the
 id and then writes, leaving a window; a create that returns the
 caller's entity instead of the row as stored.
 
-**Severity.** medium
+**Severity.** high
 
 ## CON-22 A partial update is the service impl's translation
 

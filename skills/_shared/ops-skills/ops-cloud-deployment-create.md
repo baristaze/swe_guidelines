@@ -70,8 +70,9 @@ the repository's environments and their variables.
 
 No env file is read. The script writes one: `~/.config/acme/ops/<env>.env`,
 owner-only, with the API's URL and the operator, provisioner, and
-tracker lines empty: no operator exists until the pipeline's
-first-operator job has run. It writes the investigate profile into
+tracker lines empty, the TOTP secret lines among them: no operator
+exists until the pipeline's first-operator job has run and the
+operator has enrolled a second factor. It writes the investigate profile into
 `~/.aws/config`. The skill prints the names of what was written and
 never a value.
 
@@ -111,9 +112,14 @@ never a value.
      and applies no environment root itself. For staging it dispatches
      the deploy workflow. For production it names the next steps of
      Order instead.
-   - The smoke test: the telemetry round trip against the deployed
-     base, one traffic session read back by request id through
-     CloudWatch, X-Ray, and the error tracker.
+   - The smoke test, printed as the step after the first operator
+     and never run by this skill: the telemetry round trip against
+     the deployed base, one traffic session read back by request id
+     through CloudWatch, X-Ray, and the error tracker. It signs in
+     through the operator plane, so it cannot pass before
+     `grant-operator.yml` has put an identity on the allowlist, that
+     identity has enrolled with `uv run acme-ops enrol --env <env>
+     --identity operator`, and the env file's lines are filled.
 4. Check the result with the investigate profile the script wrote,
    because that is the profile every later skill holds:
 
@@ -158,10 +164,11 @@ never a value.
 - Profile written: acme-<env>-investigate from <sso_profile> (~/.aws/config)
 - Env file written: ~/.config/acme/ops/<env>.env
 - First deploy: workflow run <url>, <status> | production: waits for Order
-- Smoke test: <passed | failed | not yet>, request id <id>
+- Smoke test: not yet; it follows the first-operator grant and the enrolment
 
 ## Next
 
 - <the next run of Order, or nothing>
+- Dispatch `grant-operator.yml` for the first operator, enrol its second factor, fill the env file, then run the smoke test
 - Put <admin_profile> away; every later skill runs under acme-<env>-investigate.
 ```

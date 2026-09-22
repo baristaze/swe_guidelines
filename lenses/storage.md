@@ -363,8 +363,9 @@ creation) carrying `Index(org_id, id)` and queries ordering by `id`.
 Any `DESC` index on an id column, or a single-column index on `org_id`
 next to a compound index that starts with `org_id`. Indexes on columns
 no query filters on, or missing on columns every list query filters
-on, and a compound index no real query asks for; the fourth rule, the
-partial unique index on a soft-deletable table, is STO-26.
+on, and a compound index no real query asks for; the fourth rule, a
+tenant-supplied unique key, is STO-30, and the fifth, the partial
+unique index on a soft-deletable table, is STO-26.
 
 **Violation.** A feed orders by `created_at` with its own index instead
 of by `id`. Both `ix_<table>_org_id` and `ix_<table>_org_id_id` exist
@@ -422,8 +423,8 @@ Hand-rolled insert-or-update logic repeated across impls.
 **Violation.** A namespace impl performs its own select-then-insert-
 or-update sequence instead of calling the base primitive; a create
 that goes through the upsert, so a retry overwrites the row and
-announces it twice, or a check-then-insert with a window between the
-two; a key collision that escapes as a driver error.
+announces it twice; a key collision that escapes as a driver error.
+(A check before the insert, with its window, is CON-21.)
 
 **Severity.** medium
 
@@ -526,30 +527,21 @@ idempotent, so relaying a row twice duplicates an event.
 **Check.** `arch-check` decides storage signatures outside the outbox's
 own storage that take a single outbox row; the rest is judged.
 
-## STO-21 Analytics reads a mirror; roles are backed up and retained
+## STO-21 Analytics across tenants reads a mirror
 
-**Principle.** Cross-tenant analytics reads a mirror, never a request
-path. Every database is backed up and its restore rehearsed, per
-instance until a role has its own; a role restored early is reconciled
-from the outbox. A done outbox row outlives the backups, a soft-deleted
-row is purged after its retention, and personal data lives in named
-fields.
+**Principle.** Analytics across tenants never runs in the request path
+of any role. When reporting is needed, it reads a mirror fed by change
+data capture or a periodic copy, never a role the application writes
+to.
 
 **Source.** The Storage Layer, Database Roles.
 
-**Look for.** Reporting queries that scan across tenants inside a
-request. The backup schedule per role and the runbook that records the
-restore rehearsal and the outbox reconciliation, read as documentation;
-the retention period of a done outbox row against the backup schedule
-of the roles it feeds. The retention period per entity that the purge
-reads, and the fields that hold personal data.
+**Look for.** Reporting queries that scan across tenants, and where
+they run; the mirror a report reads and what feeds it.
 
 **Violation.** A cross-tenant analytical query runs against the `core`
-role in a request handler. A role with no backup schedule, or no
-runbook recording a restore rehearsal; a done outbox row deleted on
-done, or kept shorter than the backup schedule. A soft-deletable entity with
-no retention period, a hard delete outside the purge, or personal data
-spread over unnamed fields, so erasing a person is a hunt.
+role in a request handler; a report that reads a role the application
+writes to.
 
 **Severity.** medium
 
@@ -575,13 +567,13 @@ compare-and-set that returns quietly instead of raising `Conflict`; a
 
 **Severity.** medium
 
-## STO-23 The minute stamp is the revision id, and a collision waits
+## STO-23 The minute stamp is the revision id, and a collision takes a suffix
 
 **Principle.** The minute stamp is the file's sort key and the revision
 id, so two authors never negotiate a counter. Two migrations of one
-role in the same minute collide on the stamp, and the later one waits
-a minute or takes a suffix; two migrations naming the same parent are
-a real conflict the tool reports on purpose.
+role in the same minute collide on the stamp, and the later one takes
+a suffix; two migrations naming the same parent are a real conflict
+the tool reports on purpose.
 
 **Source.** The Storage Layer, Migrations.
 
@@ -636,8 +628,9 @@ changes.
 **Source.** The Storage Layer, Translation; The Storage Layer,
 Migrations.
 
-**Look for.** Every value object dumped into a JSON column and the
-history of its fields; for an added field, the release that began
+**Look for.** Every value object dumped into a JSON column, the
+work-item and event payload shapes among them, and the history of its
+fields; for an added field, the release that began
 writing it and whether the release before it could read it, and
 whether the release that only reads it names it in its dump's
 `exclude`; for a
@@ -708,29 +701,37 @@ every engine a storage impl builds; the rest is judged.
 ## STO-28 Every table declares its tenancy scope and the policy matches
 
 **Principle.** Every table declares its tenancy scope in one map, and
-the database carries the policy it implies, row-level security enabled
-and forced. Three logins, none superuser or `BYPASSRLS`: the migration
-login owns the schema, the runtime login holds DML only, and only the
-system login is admitted to the system scope.
+the database carries the policy that scope implies: none on a `system`
+table, and on every other one, enabled and forced. Three logins, none
+superuser or `BYPASSRLS`. The policies admit the system scope to the
+system login alone, and on an `identity` table only for the enumerated
+methods (CTX-12).
 
 **Source.** The Storage Layer, The Second Fence; Database Roles;
 Migrations.
 
 **Look for.** The scope map beside the role map, and a scope for every
-table; the policy in each table's migration, its expression, and the
-`ENABLE` and `FORCE` statements; the test that reads `pg_class` and
+table; the policy in each table's migration, its expression against
+the one its scope names, and the `ENABLE` and `FORCE` statements; the
+system-login clause in the `org` and `identity` expressions, `OR
+(current_setting('app.org_id', true) = '<EMPTY_UUID>' AND current_user
+= '<system_login>')`; the test that reads `pg_class` and
 `pg_policies` against the map, and the ones that assert on each live
 connection that `current_user` is neither superuser nor `BYPASSRLS`,
 that the runtime login owns no table, and that the runtime login
 naming the system scope reads nothing.
 
 **Violation.** A table missing from the scope map, or a migrated policy
-that does not match the scope declared; a policy without `FORCE ROW
-LEVEL SECURITY`, so the owner the application connects as walks past
-it; a login that is a superuser or carries `BYPASSRLS`, which no test
-on the live connection would catch; a runtime login that owns a table,
-so an injected statement can drop a policy or turn `FORCE` off; a
-system-scope clause any login's setting can satisfy.
+that does not match the scope declared: a `system` table with
+row-level security, or an `org`, `identity`, or `both` table without
+it or without `FORCE ROW LEVEL SECURITY`, so the owner walks past it;
+an `identity` policy with no system-login clause, so the sign-in
+lookups by email or credential digest find nothing and the purges
+remove nothing, or a system-scope clause any login's setting can
+satisfy; a read of an `identity` table under the system scope by a
+method the enumeration does not name (CTX-12); a login that is a
+superuser or carries `BYPASSRLS`; a runtime login that owns a table,
+so an injected statement can drop a policy or turn `FORCE` off.
 
 **Severity.** high
 
@@ -766,3 +767,65 @@ every key under a prefix.
 
 **Check.** `arch-check` decides the `limit` of every list read and
 bucket listing; the rest is judged.
+
+## STO-30 A tenant-supplied unique key leads with `org_id`
+
+**Principle.** A unique key a tenant's caller supplies is unique within
+the tenant: its index leads with `org_id`, so one tenant cannot hold a
+value another needs and a conflict tells a caller nothing about another
+tenant. A handle global by design, an org's slug or an identity's
+email, answers a taken value as a conflict, never naming who holds it.
+
+**Source.** The Storage Layer, Defining ORM Classes.
+
+**Look for.** Every unique index or constraint on a column a caller
+supplies, and whether it leads with `org_id`; the global handles, and
+the conflict each answers with when a value is taken.
+
+**Violation.** A unique index on a tenant's caller-supplied key that
+does not lead with `org_id`, so a value one tenant holds is refused to
+another; a conflict on a global handle whose message or payload names
+the org or identity that holds it.
+
+**Severity.** high
+
+## STO-31 Backups, a rehearsed restore, and reconciliation from the outbox
+
+**Principle.** Every database is backed up on its own schedule, and a
+restore is rehearsed, not assumed: per instance while the roles share
+one. A role restored to an earlier point than its siblings is
+reconciled from the outbox. So a done outbox row is kept for a
+retention period that outlives the backups of the roles it feeds.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The backup schedule per database and the runbook that
+records the restore rehearsal and the outbox reconciliation, read as
+documentation; the retention period of a done outbox row against the
+backup schedule of the roles it feeds.
+
+**Violation.** A database with no backup schedule, or no runbook
+recording a restore rehearsal; a role restored early and reconciled by
+hand; a done outbox row deleted on done, or kept shorter than the
+backup schedule.
+
+**Severity.** medium
+
+## STO-32 Soft-deleted rows are purged; personal data lives in named fields
+
+**Principle.** A soft-deleted row is purged by the maintenance sweep
+after its entity's retention period, and the purge is the one hard
+delete. Personal data lives in named fields, so erasing a person is a
+sweep over a list, not a hunt.
+
+**Source.** The Storage Layer, Database Roles.
+
+**Look for.** The retention period per entity that the purge reads;
+every hard delete and where it runs; the fields that hold personal
+data.
+
+**Violation.** A soft-deletable entity with no retention period; a hard
+delete outside the purge; personal data spread over unnamed fields, so
+erasing a person is a hunt.
+
+**Severity.** medium

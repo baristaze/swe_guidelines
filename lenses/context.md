@@ -2,14 +2,15 @@
 
 Group id: `context`. Covers OpContext (with Stages, Scopes, and The
 Operator Context), the authorization and tenancy split of Separation
-of Layers, the
-authorization step and parameter order of The Business Layer and its
-"Operations Without a Principal", the tenancy rules of The Storage
-Layer, the tenant keying of Infrastructure, the credential and
-operator concerns of The Gateway in The Network Layer, the worker
-context provenance of Worker Roles, the causing request a handoff's
-stage names in Telemetry, and the tenant isolation suite and its
-negative control in the Tests of Cross-Cutting Conventions.
+of Layers, the authorization step and parameter order of The Business
+Layer and its "Operations Without a Principal", the tenancy rules of
+The Storage Layer, the tenant keying of Infrastructure and a cached
+read's place below authorization, the credential and operator concerns
+of The Gateway and of Auth in The Network Layer, the worker context
+provenance and the enqueue permission of Worker Roles, the causing
+request a handoff's stage names in Telemetry, and the tenant isolation
+suite and its negative control in the Tests of Cross-Cutting
+Conventions.
 
 This group judges one question: does every operation know who is
 acting, for which tenant, with what authority, and is that knowledge
@@ -67,7 +68,7 @@ identity, tenant, or app information; the audit record type.
 **Violation.** A `User` or `Org` entity embedded in the context, so a
 role change waits for a new session and the context module imports
 the tenancy types; a context with no credential id, so rate limits
-and socket tickets key on something else; identity or tenant data
+key on something else; identity or tenant data
 passed beside the context as extra parameters; a second ad-hoc
 "current user" object; app type derived from headers below the
 gateway; a request id threaded by hand; an audit row written without
@@ -295,25 +296,34 @@ the same tenant.
 
 ## CTX-12 Exceptions to tenant-first are enumerated
 
-**Principle.** Global tables and cross-tenant sweeps are the exceptions
-to the tenant-first rule: a global method takes no tenant and its
-interface docstring says why; a bookkeeping sweep with no principal
-gets the tenant back with each row, as `tuple[UUID, Entity]` or on an
-entity carrying `org_id` itself; `arch-check` enumerates them,
-reading signatures and nothing more (CTX-30).
+**Principle.** Global tables, cross-tenant sweeps, and the lookups that
+run before an identity is known are the exceptions to the tenant-first
+rule. A global method takes no tenant and its docstring says why; a
+bookkeeping sweep gets the tenant back with each row; the four lookups
+run in the system scope. `arch-check` enumerates them (CTX-30).
 
-**Source.** The Storage Layer, Namespace Shape; The Business Layer,
-Operations Without a Principal.
+**Source.** The Storage Layer, Namespace Shape; The Second Fence; The
+Business Layer, Operations Without a Principal.
 
 **Look for.** Storage methods without a tenant parameter; the list the
 checker holds; each step of the sweep and whether it is bookkeeping with
-no principal (relaying the outbox, expiring a lease) or a tenant
-operation (CTX-17); what each cross-tenant read returns.
+no principal (relaying the outbox, expiring a lease, purging ended
+sessions and redeemed or expired socket tickets) or a tenant operation
+(CTX-17); what each cross-tenant read returns, as `tuple[UUID, Entity]`
+or an entity carrying `org_id`; the four lookups by name,
+`read_identity_by_email_digest`, `read_api_key_by_digest`,
+`read_session_by_digest`, and `redeem_socket_ticket`; every call that
+passes `EMPTY_UUID` as the `org_id`, where the operator plane's marker
+calls are the one caller that takes `org_id` and is handed
+`EMPTY_UUID`, by the operator gate alone.
 
 **Violation.** A tenant-less storage method whose interface docstring
 does not justify it; a sweep that returns entities without their
 tenant; a new tenant-less method that the enumeration does not know
-about, or no enumeration at all.
+about, or no enumeration at all; a lookup by digest that the
+enumeration does not name, or one that runs outside the system scope;
+`EMPTY_UUID` passed as the `org_id` by a method outside the three kinds
+the enumeration names.
 
 **Severity.** medium
 
@@ -506,7 +516,8 @@ flag (operator screens in the portal's bundle are DEL-16); an
 read-only allowlist entry reaches; a manager method that accepts either
 context type; an operator route that reaches a tenant manager; an API
 key or a session admitted to the operator plane, since the operator
-gate admits only the person's own sign-in.
+gate admits only the person's own sign-in. (The second factor that
+sign-in needs is OPS-07.)
 
 **Severity.** high
 
@@ -667,16 +678,17 @@ code; the rest is judged.
 **Principle.** A stage lives no longer than its request. A socket holds
 the `OpContext` its ticket produced, so the session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
-a membership's end travels on the topic bus, and every process holding
-a socket for that session or user closes it on the frame.
+a membership's end travels on the topic bus as `SESSION_REVOKED`, and
+every process holding a socket for that session closes it on the
+message.
 
 **Source.** OpContext, Stages.
 
 **Look for.** The socket handler and what bounds its life: the deadline
 it sets from the session's expiry when the ticket is redeemed, and the
 subscription on the topic bus that every process with sockets holds
-for the revocation and membership-end frames; what a process does with
-a frame naming a session or a user it holds a socket for; what the
+for `SESSION_REVOKED`; what a process does with a message naming a
+session it holds a socket for; what the
 socket carries meanwhile, hints only.
 
 **Violation.** A socket that outlives its session's expiry because the
@@ -804,5 +816,95 @@ outlives its transaction, so a pooled connection hands one caller's
 tenant to the next; a funnel with a default `org_id`, so a forgotten
 argument reads across tenants; a cross-tenant call the enumeration
 does not know about.
+
+**Severity.** high
+
+## CTX-33 A cached read sits below authorization
+
+**Principle.** Within a tenant, what one member may read another may
+not, so a cached read sits below authorization, never above it. The
+manager caches the tenant's data and applies the caller's visibility to
+what it read, from the cache or from storage, on every call. A read
+cached another way carries every input its visibility depends on in the
+key.
+
+**Source.** Infrastructure, Cache.
+
+**Look for.** Every manager read that consults the cache: whether the
+visibility check runs after the read on every call, hit or miss, and
+what the key carries when it does not (the role, the team, the user).
+
+**Violation.** A manager that caches a filtered view and returns a hit
+without applying the caller's visibility; a cached view keyed on the
+tenant alone, or missing the role or the team it was filtered by, so
+one member's view is served to another.
+
+**Severity.** high
+
+## CTX-34 The permission to enqueue a kind covers its handler's calls
+
+**Principle.** The person authorizes work once, at enqueue, so that
+authorization is as wide as the run. The permission that enqueues a
+kind covers every operation its handler composes: a role may enqueue a
+kind only if it may call each of those operations itself. A test holds
+each kind's enqueue permission to its handler's calls.
+
+**Source.** Worker Roles, The Work Queue.
+
+**Look for.** The permission each work kind's enqueue requires, and the
+manager operations its handler calls with the permission each needs;
+the test that holds the two together; a handler that reads the live
+membership before a sensitive step, and the decision recorded for it.
+
+**Violation.** A kind whose enqueue permission is narrower than one of
+its handler's calls, so a role reaches through the queue what it could
+not do directly; no test holding each kind's enqueue permission to its
+handler's calls; a handler that asks again without a recorded decision.
+
+**Severity.** high
+
+## CTX-35 A secret is a tenant's, under its own prefix, named by the manager
+
+**Principle.** A secret belongs to a tenant: every call takes the
+`org_id` first, and the impl keeps each tenant's secrets under a
+prefix of its own, so a name one tenant presents never resolves to
+another tenant's secret or the platform's. The manager sets
+`credential_ref` when it puts the secret; every create and update a
+caller shapes excludes it.
+
+**Source.** Infrastructure, Secrets.
+
+**Look for.** The secrets interface and whether each method takes
+`org_id` first; the key each impl builds from the tenant and the name;
+where `credential_ref` is set, and whether any request or create shape
+a caller fills carries it.
+
+**Violation.** A secrets method with no tenant, or an impl that stores
+names unprefixed, so a name can reach another tenant's secret or the
+platform's own; a `credential_ref` a caller can write, so a caller
+points an integration at a secret it does not own.
+
+**Severity.** high
+
+## CTX-36 Failed sign-ins are throttled in storage; sessions have two lifetimes
+
+**Principle.** Sign-in has a defense that does not fail open: the
+tenancy manager counts failed sign-ins per identity in its own storage
+and answers a run of them with a growing delay before the next attempt
+is checked. Every session has an idle and an absolute lifetime, both
+settings, and every API key an expiry.
+
+**Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
+Domain Owns.
+
+**Look for.** The sign-in transition and where it records a failure;
+the delay it applies and what it grows with; the session's idle and
+absolute lifetimes in settings and where each is checked; the expiry
+on an API key.
+
+**Violation.** A sign-in whose only defense is the per-address rate
+limit on the cache, which fails open; a failure count kept in the
+cache instead of the tenancy manager's storage; a session with no idle
+or no absolute lifetime; an API key with no expiry.
 
 **Severity.** high

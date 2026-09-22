@@ -11,9 +11,12 @@ and picked up, how a worker behaves over its life, and what a
 long-running record does when it cannot continue. It owns the sweep's
 duties (requeue expired leases, resume parked records, relay what a
 crash left in the outbox, purge done outbox rows and soft-deleted rows
-past retention) and the whole work queue, its table and statements
-included. It leaves the `org_id` and `EMPTY_UUID` keying rules and the
-provenance of a worker's context to `context`, database roles, the
+past retention, idempotency markers past theirs, socket tickets
+redeemed or expired, and sessions ended or past their lifetime) and
+the whole work queue, its table and statements included. It leaves the
+`org_id` and `EMPTY_UUID` keying rules, a tenant's secret among them,
+the provenance of a worker's context, and the permission that enqueues
+a kind to `context`, database roles, the
 retention periods, and the life of an outbox row to `storage`, and the
 realtime edge with its wait-versus-notify patterns to `network`.
 
@@ -169,14 +172,18 @@ development and tests.
 
 **Source.** Infrastructure, Buckets.
 
-**Look for.** The `Buckets` enum; the bucket interface; how uploads
-and downloads reach clients; the local impl.
+**Look for.** The `Buckets` enum; the bucket interface, and
+`presign_put` taking the content type and `max_bytes`; how uploads and
+downloads reach clients, and what a caller does when a presign returns
+`None`; the local impl.
 
 **Violation.** A large blob (a document, an upload, an export) stored
 in a column or on a service's disk; a bucket name passed as a free
 string; a route that streams a large upload through the process
-instead of handing out a presigned URL; a local setup that needs the
-cloud object store to run tests.
+instead of handing out a presigned URL; an upload URL that names no
+content type or no maximum length; a `None` from a presign that the
+caller does not answer by moving the bytes itself under the same
+bounds; a local setup that needs the cloud object store to run tests.
 
 **Severity.** medium
 
@@ -270,24 +277,27 @@ handler that does the whole job inline.
 
 ## ASY-13 Secrets are references in the model, values at the point of use
 
-**Principle.** A secret store holds values; the object model holds only
-references. A value is resolved for exactly one operation and
-discarded. It never enters an entity, a log line, an audit payload, an
-error message, or a subprocess environment. An error names the secret
-and the store it was looked up in, never a value.
+**Principle.** The object model holds only references to secrets. A
+tenant's secret is resolved at the point of use, for one operation,
+and discarded. The process's own credentials come from the runtime's
+injection and never pass through the tenant capability. No value
+enters an entity, a log line, an audit payload, an error message, or a
+subprocess environment.
 
 **Source.** Infrastructure, Secrets.
 
 **Look for.** Entity fields that hold credentials; where `get(name)` is
-called and how long the value lives; log and audit calls near secret
-resolution; the text of the not-found error; subprocess environment
-construction.
+called and how long a tenant's value lives; how the database URL and
+the internal signing key reach the process; log and audit calls near
+secret resolution, the text of the not-found error, and subprocess
+environment construction.
 
-**Violation.** An entity with a token or password field; a secret
-resolved at boot and kept on an object; a value in a log line, an
-error string, or an audit payload; a not-found error that omits the
-secret name or the store; a subprocess inheriting the parent's full
-environment.
+**Violation.** An entity with a token or password field; a tenant's
+secret resolved at boot and kept on an object; a process credential
+read through the tenant capability, or under a tenant's name; a value
+in a log line, an error string, or an audit payload; a not-found error
+that omits the secret name or the store; a subprocess inheriting the
+parent's full environment.
 
 **Severity.** high
 
@@ -310,8 +320,10 @@ together; the key on every message the handler forwards.
 a duplicate on redelivery; a dedupe marker committed separately from
 the effect it guards, so a crash between them suppresses the work for
 good; a key minted by the consumer instead of the producer; a
-downstream message that drops the incoming key and mints a new one; a
-webhook handler that ignores the provider's delivery id.
+downstream message that drops the incoming key and mints a new one; an
+inbound webhook route whose key is not a UUID v5 over the provider's
+name and its delivery id, so a provider's retry arrives under a new
+key.
 
 **Severity.** high
 
@@ -341,22 +353,25 @@ in service code off the socket edge; the rest is judged.
 
 ## ASY-16 Durable work is a row with the queue's shape
 
-**Principle.** A work item names its kind and target, carries a unique
-idempotency key, a `lane` routing string, a status, an `available_at`,
-its claim (`claimed_by` for an operator, `claim_token` the fence,
-`lease_expires_at`), and its attempts; payload shapes are fixed per
-kind by `WORK_PAYLOADS`. The lane is the routing:
+**Principle.** A work item names its kind and target, carries an
+idempotency key unique per tenant, a `lane` routing string, a status,
+an `available_at`, its claim (`claimed_by` for an operator,
+`claim_token` the fence, `lease_expires_at`), and its attempts; payload
+shapes are fixed per kind by `WORK_PAYLOADS`. The lane is the routing:
 one table serves a shared pool and any dedicated lane.
 
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The work item type and its fields; `WORK_PAYLOADS`; the
-table and the index on `idempotency_key`; how routing is expressed.
+table and its unique index on `(org_id, idempotency_key)`; how routing
+is expressed.
 
 **Violation.** A row with no lease, no claim token, or no attempt
 count; a payload with no shape fixed for its kind; no unique index on
 the idempotency key; a second table or topic invented for routing when
-the `lane` string would do.
+the `lane` string would do; a unique index on the key alone, so a key
+another tenant holds answers `KEY_EXISTS` and the read-back under this
+tenant finds nothing.
 
 **Severity.** medium
 
@@ -408,23 +423,24 @@ deploy.
 
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
-leader, no lock, and no scheduler: requeue items whose lease expired,
-expire leases, resume parked records, roll periods, relay what a crash
-left in the outbox, purge done outbox and soft-deleted rows past
-retention. Resumes are staggered.
+leader, lock, or scheduler. It requeues expired items, expires leases,
+resumes parked records (staggered), rolls periods, relays the outbox,
+and purges done outbox rows, soft-deleted rows, idempotency markers,
+redeemed or expired socket tickets, and ended sessions.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
 
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
-the sweep relays the outbox and purges.
+the sweep relays the outbox and runs every purge.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
-so a crash between the core write and its handoff is never repaired,
-or with no purge, so done rows outlive their retention; every parked
+so a crash between the core write and its handoff is never repaired;
+a purge missing, so done rows, idempotency markers, socket tickets, or
+sessions outlive their retention or their lifetime; every parked
 record resumed in the same instant.
 
 **Severity.** medium
@@ -598,27 +614,29 @@ its to run failed or handed back with an attempt spent.
 
 **Severity.** high
 
-## ASY-27 A cross-service chain expires its first step or is a saga
+## ASY-27 A cross-service chain carries its key; a durable one is a saga
 
-**Principle.** A synchronous chain across services carries its
-idempotency key forward, so a retry reruns a step instead of repeating
-it, and a step that reserves something bounds it with an expiry. A
-chain that must survive a crash between steps is a durable record
-advanced by workers: the irreversible step last, a compensating step
-for each one before it.
+**Principle.** A synchronous chain across services carries the
+idempotency key forward, so a retry finds what an earlier step made,
+and a reservation is a record with an expiry. A chain that must
+survive a crash between steps is a durable record advanced by a
+worker: the irreversible step last, a compensating step for each one
+before it.
 
-**Source.** The Network Layer, Long-Running Orchestrations; Direction
-of Calls.
+**Source.** The Network Layer, Direction of Calls; Long-Running
+Orchestrations.
 
 **Look for.** Every service impl that sequences calls across services;
-the key each step is called under and whether a retry reruns it; the
-expiry on anything a step reserves; the compensation of each step
-before the irreversible one.
+the key each step is called under and whether a retry finds the
+earlier result; the expiry on a reservation; in a durable chain, the
+place of the irreversible step and the compensation of each step
+before it.
 
-**Violation.** A step that reserves something with no expiry, so a
-failed later step leaks it; a step called under no key, so a retry
-repeats it; an irreversible step followed by one that can fail; a
-chain that must outlive a crash held only in the service's memory.
+**Violation.** A step called under no key, so a retry repeats it; a
+reservation with no expiry, so a failed later step leaks it; a durable
+chain whose irreversible step is not last, or a step before it with
+no compensation; a chain that must outlive a crash held only in the
+service's memory.
 
 **Severity.** high
 
@@ -690,3 +708,25 @@ the manager that owns the cost of a stale read cannot see it; a caller
 with no way to tell a degraded answer from a fresh one.
 
 **Severity.** medium
+
+## ASY-31 An inbound webhook is authenticated by its signature
+
+**Principle.** An inbound webhook is authenticated by what the provider
+signs, never by its URL. The route checks the provider's signature over
+the body and a timestamp inside a replay window, and refuses a delivery
+that fails either before anything is enqueued. A token in the path only
+routes to the integration that owns it, and the access log masks it.
+
+**Source.** Infrastructure, Queues.
+
+**Look for.** Every inbound webhook route: the signature check, what it
+signs over, the timestamp and the window it is held to, and where the
+check sits against the enqueue; what the path token is used for; how
+the access log writes the path.
+
+**Violation.** A webhook accepted on its URL or its path token alone; a
+signature check with no timestamp or no replay window, so a captured
+delivery can be sent again; a delivery enqueued before its check; a
+path token written to the access log in the clear.
+
+**Severity.** high

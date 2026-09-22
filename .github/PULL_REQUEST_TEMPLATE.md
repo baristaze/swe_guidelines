@@ -11,5 +11,7 @@ skill that changes and why.
 - [ ] The description names the level (major, minor, or patch) and a
       reversal as one. `CHANGELOG.md` is not edited; the release pull
       request writes it.
-- [ ] No product or hardware vocabulary entered the guideline or the
-      lenses.
+- [ ] No product or hardware vocabulary entered any Markdown
+      `make leaks` scans: the guideline, the lenses, the skills, the
+      agents, the docs, the checkers, the benchmark, the `.github/`
+      templates, and the root guides.

@@ -9,8 +9,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(date:*)
 A project that follows the guideline may still need to diverge from a
 rule. The divergence is recorded, not argued about in review threads:
 one ADR quotes the rule, states the decision, and names what the
-project accepts in exchange. Reviews then treat the deviation as a
-documented exception when the ADR is cited next to the code.
+project accepts in exchange. A breach whose ADR is cited next to the
+code is a documented exception. A review reports it on one line under
+Deviations. It is not a finding, and it never lowers a severity.
 
 ## Input
 
@@ -55,12 +56,13 @@ has a condition for ending.
    it has a `[tool.arch-check]` table, and print it otherwise. Print
    the inline comment and never place it: which line it goes on is the
    person's call. The checker resolves an inline comment only to
-   `docs/adr/NNNN-*.md` with a four-digit number. When the ADR lives
-   elsewhere or is numbered otherwise, give only the table entry,
-   whose `adr` takes any path, and say why.
+   `docs/adr/NNNN-*.md` with a four-digit number. When the folder's
+   records are numbered otherwise, give only the table entry, and say
+   why. Its `adr` still names a Markdown file under `docs/adr/`: the
+   checker refuses any other path.
 7. Whatever the lens, tell the person to cite `ADR-NNNN` in a comment
-   beside the code that deviates. A review treats the code as an
-   exception only when the ADR is cited there.
+   beside the code that deviates. A review reports the code under
+   Deviations, and not as a finding, only when the ADR is cited there.
 
 Do not commit. Do not edit the guideline or the lenses; a deviation
 belongs to the project, not to the rule. Edit nothing but the ADR

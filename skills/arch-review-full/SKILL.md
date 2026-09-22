@@ -34,8 +34,9 @@ cheaper question whenever the change is narrower than the tree.
    repository under review:
    `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --format json`.
    Keep its output. Each reviewer gets the part of it that belongs to
-   its group (the rules run and the findings whose `group` is its
-   own), so no reviewer runs it again. The findings whose `group` is
+   its group (the rules run, the findings, and the `exceptions_applied`
+   entries whose rule is one of its lenses), so no reviewer runs it
+   again. The findings whose `group` is
    `framework` (`PARSE`, `IGNORE`) go to every reviewer, because a file
    that does not parse was read by no rule of any group; the merge
    keeps one copy of each. When the checker cannot run,
@@ -76,6 +77,9 @@ cheaper question whenever the change is narrower than the tree.
    - Two findings whose fix names the same symbol (the same class,
      method, or setting) merge into one line the same way, whatever
      their `path:line`; the line named is the higher-severity one's.
+   - Concatenate every group's Deviations lines under Deviations, in
+     lens id order, or `None.` when there are none. They are not
+     findings and count nowhere.
    - Count applied, passed, findings, unverified, and not-applicable
      lenses across groups. Applied is passed plus findings plus
      unverified; applied plus not applicable is the size of the
@@ -100,6 +104,10 @@ The group report shape, plus a `Groups` line and a per-group table:
 ## Findings
 
 - **<LENS-ID>[, <LENS-ID>] <severity>** `<path>:<line>` <what breaks the rule>. Fix: <one sentence>.
+
+## Deviations
+
+- **<LENS-ID>** `<path>:<line>` ADR-NNNN <what the ADR accepts, a few words>.
 
 ## By group
 

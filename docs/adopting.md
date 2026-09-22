@@ -194,8 +194,9 @@ a deviation, and a substitute is not one.
 `/swe-guidelines:arch-deviate STO-02 "the ledger needs one transaction
 per posting"` writes an ADR in `docs/adr/` in the project's own
 numbering, quoting the rule verbatim and naming what the project
-accepts in exchange. Review skills treat a deviation recorded this way
-as a documented exception when its ADR is cited next to the code.
+accepts in exchange. A breach whose ADR is cited next to the code is a
+documented exception. A review reports it on one line under
+Deviations. It is not a finding, and it never lowers a severity.
 
 ## Operate with the built-in skills
 

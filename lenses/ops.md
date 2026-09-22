@@ -19,25 +19,29 @@ platform's own secrets, the ones the secret store holds, to `async`
 ## OPS-01 Every task is a skill, and the credential is the boundary
 
 **Principle.** Every operational task is a skill a person runs with an
-agent. The safety boundary is the credential the skill holds, never
-the prompt. A cloud credential a person or an agent holds reads and
-never writes; one that writes is held by a pipeline, or by the
-administrator for its two named steps, creating and destroying an
-environment.
+agent, and the boundary is the credential it holds, never the prompt.
+A cloud credential that writes is held by a pipeline, or by the
+administrator for creating and destroying an environment. On the
+platform, the one writing identity an agent runs under is the traffic
+generator's.
 
-**Source.** Operations.
+**Source.** Operations; Operational Skills; Traffic and Stress.
 
 **Look for.** The operational tasks the tree holds (investigating an
 alarm, tracing a complaint, planning an infrastructure change, driving
-traffic) and whether each is a skill; the credential each skill runs
-under and whether it can write; what stands between an agent and a
-write, a prompt or a credential.
+traffic) and whether each is a skill; the cloud credential each skill
+runs under and whether it can write, and the operator-plane identity
+it holds; what stands between an agent and a write, a prompt or a
+credential.
 
 **Violation.** An operational task done by hand from a runbook with no
-skill; a skill an agent runs under a credential that writes; a prompt's
-instruction ("do not apply") as the only thing keeping an agent from a
-write; a writing cloud credential held by a person for anything but the
-administrator's two steps.
+skill; a skill an agent runs under a cloud credential that writes, or
+under a writing operator-plane identity other than the provisioner, the
+traffic generator's own (OPS-20); a prompt's instruction ("do not
+apply") as the only thing keeping an agent from a write; a writing
+cloud credential a person holds outside the administrator's two steps.
+A smaller environment's everyday set, widened for hands-on work as a
+named choice that no skill runs under, is the one exception.
 
 **Severity.** high
 
@@ -50,23 +54,26 @@ administrator is a role a person holds, granted for the run: it creates
 and destroys an environment and is the break-glass, recorded and
 time-bound, and no other skill runs under it.
 
-**Source.** Operations, Operator Roles.
+**Source.** Operations, Operator Roles; Operational Skills.
 
 **Look for.** The roles each bootstrap root declares and the profiles
 that hold them; the permissions of the administrator permission set;
 which skills name an administrator profile.
 
-**Violation.** A fifth operator role, or a role with no profile (a
-person's everyday permission set is not one: no skill runs under it);
-a person's everyday profile holding the administrator role; an
+**Violation.** A fifth operator role, or a role with no profile; a
+person's everyday profile holding the administrator role; an
 administrator permission set held between runs; a skill other than
 the create and destroy runs that names the administrator profile; an
 administrator role assumed by a pipeline; a break-glass grant with
 no record, no time bound, or no reconciling pull request after it.
+A person's everyday permission set is not a fifth role, since no skill
+runs under it. Neither is the provisioner, an identity of the operator
+plane that holds no cloud role, nor the smoke test's read grant, which
+writes nothing.
 
 **Severity.** high
 
-## OPS-03 The deployer is the pipeline, and the only role that writes
+## OPS-03 The deployer is the pipeline and applies every cloud change
 
 **Principle.** The deployer is the pipeline: one per environment,
 assumed by the workflow through the repository host's identity
@@ -159,26 +166,31 @@ tag; a staging role that lists a production resource.
 
 **Severity.** medium
 
-## OPS-07 People sign in through the identity center; agents chain from it
+## OPS-07 Every cloud and operator sign-in carries a second factor
 
-**Principle.** People sign in through the identity center, with a second
-factor and short-lived credentials: no cloud user, no long-lived key.
-The investigator trusts its account's everyday role by pattern, and an
-agent chains from the person's session, holding no more than the person.
-In production the everyday set writes nothing.
+**Principle.** People sign in through the identity center with a second
+factor: no cloud user, no long-lived key. The investigator trusts the
+everyday role by pattern, which in production writes nothing, and an
+agent chains from the person's session. The operator gate admits an
+operator's sign-in only with a second factor, a TOTP code enrolled per
+operator identity.
 
-**Source.** Operations, Operator Roles.
+**Source.** Operations, Operator Roles; The Network Layer, The Gateway;
+OpContext, The Operator Context; Deployment, Security Defaults.
 
 **Look for.** Any cloud user or access key in the roots, the scripts,
 or the cloud tool's configuration; the trust policy of each
-investigator role and the principal pattern it matches; the profile
-chain from the signed-in profile to each investigator role.
+investigator role and the principal pattern it matches, and the
+profile chain to it; the operator gate, where `admit_operator` sits,
+and the second factor it checks and where each operator enrolls it.
 
 **Violation.** A cloud user, or an access key minted for a person or an
 agent; an investigator role that trusts another account, or a
 principal by a copied generated name; an agent profile holding a key
 of its own instead of chaining from a person's session; a production
-everyday permission set that writes; a sign-in with no second factor.
+everyday permission set that writes; a sign-in to the identity center
+with no second factor; an operator admitted to the plane on a password
+alone, or with a factor no operator identity enrolled.
 
 **Severity.** high
 
@@ -288,7 +300,7 @@ invoking agent spawns another to run it. It batches per interval, caps
 what it reports, never reads a window twice, and reads its profile each
 interval, stopping when the person's session ends.
 
-**Source.** Operations, Operational Skills.
+**Source.** Operations, Operational Skills; Operator Roles.
 
 **Look for.** The `ops-watch` skill's statement that it is a loop and
 how it is launched; the interval, the batch, the cap, and the cursor
@@ -357,7 +369,7 @@ shape.
 **Source.** Operations, Dashboards and Alarms as Code.
 
 **Look for.** The alarm resources in the environment's Terraform, the
-topic they publish to, and the subscription on it; the three areas the
+topic they publish to, and the subscription on it; the four areas the
 set covers (the error ratio, the latency, and the unhealthy targets at
 the load balancer, a service below its desired count, the database's
 processor and free storage, the oldest waiting item's age, parked and
@@ -438,7 +450,7 @@ anomaly monitor; a resource with no environment tag, so its cost
 lands in no environment's column. (Retention on every log group is
 DEL-32.)
 
-**Severity.** medium
+**Severity.** high
 
 ## OPS-19 Create and destroy are scripted, narrated, and dry-runnable
 

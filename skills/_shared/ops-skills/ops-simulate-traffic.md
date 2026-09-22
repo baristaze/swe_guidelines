@@ -47,16 +47,30 @@ repository, whose provisioner identity (`ACME_PROVISIONER_EMAIL`,
 the sessions run in; that identity's allowlist entry is `write`, it is
 the one write entry the file holds, and only this generator uses it.
 The tenants it creates are the generator's own, named with the run
-id, so no real tenant is touched. With `--orgs 0` the run drives the
-seeded people and needs no provisioner. Never print the password or the
-token.
+id, so no real tenant is touched, and removed when the run ends. The
+provisioner signs in with its password and a TOTP code, which
+`acme-ops` derives from `ACME_PROVISIONER_TOTP_SECRET`, the secret
+`acme-ops enrol` wrote into the same file. With `--orgs 0` the run
+drives the seeded people and needs no provisioner. Never print the
+password, the secret, a code, or the token.
+
+In production the provisioner's allowlist entry is disabled between
+runs, so no standing writing credential waits there. A run with
+`--orgs` above `0` against production needs the person to enable it
+first, by dispatching `grant-operator.yml` on `release` with the
+provisioner's email and `write`, and to disable it after, by
+dispatching it again with `disable`; this skill holds no role that
+does either, and says which dispatch is due.
 
 ## Procedure
 
 1. Verify the credential as Role and credential states. Read the env
    file. Against `production`, ask before running anything above
    `light`; the generator's tenants are real rows in the real
-   database, and the choice is the platform developer's.
+   database, and the choice is the platform developer's. Against
+   `production` with `--orgs` above `0`, a generator whose
+   provisioner the operator plane refuses stops before its first
+   session; the skill then names the dispatch that enables it.
 2. Run the generator:
 
    ```bash
@@ -84,12 +98,19 @@ token.
    the log leg needs the file the API was started with, and the trace
    leg needs `ACME_OTEL_ENDPOINT` set on that process; report either as
    not read otherwise.
-5. Write the report.
+5. Check that the run removed its tenants: the generator deletes
+   each through `DELETE /v1/admin/orgs/{org_id}` when it ends, and
+   names any it could not remove, which the report lists. Against
+   `production`, name the dispatch that disables the provisioner
+   again.
+6. Write the report.
 
 ## What it never does
 
-- No write outside the generator's own tenants; it never signs in as
-  a real user.
+- No write outside the generator's own tenants, and no tenant of its
+  own left behind; it never signs in as a real user.
+- No provisioner left enabled in production after a run: the report
+  names the dispatch that disables it.
 - No write to the cloud's resources, no scaling, no apply.
 - No secret value printed.
 - No run above `light` against production without the person saying
@@ -112,6 +133,8 @@ token.
 | <route> | <status> | <n> | <ms> | <ms> | <ms> |
 
 **Total.** <n> requests, error ratio <ratio>
+**Run tenants.** <n> created, <n> removed, <ids left behind, or none>
+**Provisioner.** <local | staging | production: disable dispatch due>
 
 ## Signal
 

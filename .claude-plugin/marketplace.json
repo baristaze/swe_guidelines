@@ -9,7 +9,7 @@
     {
       "name": "swe-guidelines",
       "source": "./",
-      "description": "Lens-based architecture review skills and Python scaffolding skills backed by the guideline",
+      "description": "Lens-based architecture review skills and scaffolding skills for Python services and TypeScript or Python clients, backed by the guideline",
       "version": "0.29.0",
       "category": "development",
       "tags": ["architecture", "review", "scaffold", "python"]

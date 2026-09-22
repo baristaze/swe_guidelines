@@ -536,15 +536,15 @@ writes.
 
 **Principle.** Inside `/v1` a view only gains fields and a request only
 gains optional ones; a removal or a rename is a new prefix. A reader
-ignores a field it does not know, and a payload or an envelope only
-gains optional, defaulted fields, so producer and consumer roll out
-in either order. A service rolls out before its apps.
+ignores unknown fields. A wire-only payload or an envelope gains only
+optional, defaulted fields, so both ends roll out in either order; a
+stored payload is STO-25. A service rolls out before its apps.
 
 **Source.** The Network Layer, Public Types.
 
-**Look for.** The diff of every `types/` module, payload class (topic,
-work item), and envelope against the committed OpenAPI document; the
-model config of payload and envelope bases; whether a consumer fails
+**Look for.** The diff of every `types/` module, topic payload class,
+and envelope against the committed OpenAPI document; the model config
+of payload and envelope bases; whether a consumer fails
 on an unknown field; whether a field added to a payload has a default,
 since a new reader in front of an old writer holds only then; the
 order in which a service and its apps are deployed, since a request
@@ -554,8 +554,8 @@ forbids what it does not know.
 field added to a request, under the same prefix; an envelope consumer
 that rejects an unknown field, so producer and consumer must deploy
 together (the topic payload base's own config is ASY-09); a required
-field added to a payload or an envelope, so a row written before the
-deploy or an old producer's message fails to parse; an app that sends
+field added to a topic payload or an envelope, so an old producer's
+message fails to parse; an app that sends
 a new request field before the service that accepts it is deployed.
 
 **Severity.** medium
@@ -653,23 +653,26 @@ holds its connection until the engine gives up.
 
 ## NET-27 A service-to-service call carries a short-lived internal credential
 
-**Principle.** A service-to-service call carries a short-lived internal
-credential minted by the caller: a token naming the principal, the
-tenant, the request id, and an expiry minutes out, signed with a key
-from the secret store and verified by the callee. The callee's gateway
-rebuilds the context from it like any other credential kind, and no
-service trusts a bare header.
+**Principle.** A service-to-service call carries a short-lived token
+the caller mints with a key from the secret store. It names the
+principal, the tenant, the request id, the callee as its audience, the
+key's id, and an expiry minutes out. The callee refuses a token meant
+for another service and rebuilds the context from it; no service
+trusts a bare header.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
-**Look for.** The `internal` credential kind, who mints it, where the
-signing key comes from, and how the callee rebuilds a context from it;
-the remote impl of every service interface.
+**Look for.** The `internal` credential kind, who mints it, what the
+token names, where the signing key comes from, and how the callee
+rebuilds a context from it; the audience check and the key lookup by
+id on the callee; the remote impl of every service interface.
 
 **Violation.** A callee that trusts a tenant or user id in a header
 from a peer service; an internal token with no expiry, or one signed
-with a key held in settings instead of the secret store; a peer call
-that reaches a router without the gateway's dependencies.
+with a key held in settings instead of the secret store; a token with
+no audience, or a callee that accepts one meant for another service; a
+token with no key id, so a key cannot rotate without an outage; a peer
+call that reaches a router without the gateway's dependencies.
 
 **Severity.** high
 

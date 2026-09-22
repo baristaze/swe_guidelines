@@ -89,15 +89,20 @@ the order the guideline presents them, never by number.
 - Every manager and service operation takes a context first: `ctx:
   OpContext` for a tenant operation, `rctx: RequestContext` for the
   transitions that produce a stronger stage (sign-up, sign-in, claim,
-  sweep), `ictx: IdentityContext` for the memberships read, the
-  exchange, and the operator admission,
+  sweep), `ictx: IdentityContext` for the operations of an identity
+  before any tenant (the memberships read, the exchange, and the
+  sign-out), the stage it refines for every other transition (the
+  operator admission takes `ictx` because it refines it, not because
+  it acts for the identity),
   `OperatorContext` for an operation on the operator plane,
   a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
   `CredentialScope`) for a helper or an edge concern that needs less.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps), each documented in its docstring and listed under
+  sweeps, the four lookups that run before an identity is known, and
+  the operator plane's size read),
+  each documented in its docstring and listed as `Class.method` under
   `[tool.arch-check.options.CTX-12] tenantless` in the root
   `pyproject.toml`, which `arch-check` holds both ways. The manager
   methods that take the request stage are listed in the repository's
@@ -109,18 +114,43 @@ the order the guideline presents them, never by number.
   `TABLE_SCOPES`, beside the role map, `TABLE_ROLES` (the names
   `arch-check` reads by default); the migration that creates the
   table creates its policy, with `ENABLE` and `FORCE ROW LEVEL
-  SECURITY`; and the Postgres base
-  opens every session through one funnel that takes `org_id` and an
-  optional `user_id` and sets `app.org_id`, `app.user_id`, and
+  SECURITY`, the `org` and `identity` expressions each carrying the
+  one system-login clause, `OR (current_setting('app.org_id', true) =
+  '<EMPTY_UUID>' AND current_user = '<system_login>')`; and the
+  Postgres base
+  opens every session through one funnel, `_session_for(stmt, *,
+  org_id=None, user_id=None, identity_id=None)`, which takes the scope
+  of the call by keyword and sets `app.org_id`, `app.user_id`, and
   `app.identity_id` with `set_config(..., true)`, so the settings die
-  with the transaction. `EMPTY_UUID` as the `org_id` is the system
-  scope, passed explicitly and never a default, by the methods the
-  `tenantless` list enumerates. Nothing in a manager or an impl assumes
-  the policy is there. The login the application connects with is
-  never a superuser and never carries `BYPASSRLS`, and an integration
-  test asserts that on the live connection, beside the one that reads
-  `pg_class` and `pg_policies` for every table in the scope map, as
-  The Storage Layer (The Second Fence) states.
+  with the transaction and a setting the call does not name stays
+  unset. The base's `_upsert` and `_insert` take the same keyword-only
+  scope arguments. `EMPTY_UUID` as the `org_id` is the system scope,
+  passed explicitly and never a default, by the enumerated
+  system-scope methods of The Storage Layer (The Second Fence), and by
+  nothing else. They are the cross-tenant sweeps, the purges of ended
+  sessions and of redeemed or expired socket tickets among them; the
+  four lookups that run before an identity is known,
+  `read_identity_by_email_digest`, `read_api_key_by_digest`,
+  `read_session_by_digest`, and `redeem_socket_ticket`; and the
+  operator plane's marker calls and its size read. Everything after such a lookup runs
+  under the scope it found. Nothing in a manager or an impl assumes the
+  policy is there.
+- Three logins reach the database, as The Storage Layer (The Second
+  Fence) names them, and each has its own URL in settings, in the
+  local compose file, and among the Terraform secrets: the migration
+  login, which owns the schema and runs the migrations and nothing
+  else; the runtime login, which every request's connection uses and
+  which holds `SELECT`, `INSERT`, `UPDATE`, and `DELETE` and owns
+  nothing; and the system login, the runtime login's twin for the
+  system scope, which the `org` and `identity` policies admit to the
+  system scope and nothing else does. The funnel selects the system
+  login's engine when the call names the system scope, and the
+  runtime login's engine otherwise; no caller picks an engine. None of
+  the three is a superuser or carries `BYPASSRLS`. An integration
+  test asserts that on each live connection, and that the runtime
+  login owns no table and reads nothing when it names the system
+  scope, beside the test that reads `pg_class` and `pg_policies` for
+  every table in the scope map.
 - Every interface is an `ABC` whose methods are `@abstractmethod` with
   `...` bodies; every impl subclasses it; every dependency is a
   constructor parameter typed by interface.
@@ -165,18 +195,39 @@ the order the guideline presents them, never by number.
   `ctx.require(<permission>)` as the first line of every mutating
   manager operation, before any read, the ones a worker calls
   included (complete, fail, defer, release, extend the lease), as The
-  Business Layer (Shape of an Operation) states. A `core`-role write
+  Business Layer (Shape of an Operation) states. An operator operation
+  opens with `octx.require(...)` the same way. The one exemption is an
+  operation whose stage carries no permissions: one on the request
+  stage (`sign_up`, `grant_operator`, `disable_operator`, `seed_totp`,
+  the sweep's purges), one on the identity stage (the exchange, the
+  sign-out), and the outbox handoff that takes `(org_id, row)`
+  (`enqueue_relayed`). Its authority is the stage it takes, and the
+  request-stage test names each one on the request stage, so it opens
+  with no `require`. A `core`-role write
   lands the core row and its `OutboxRow`s in one storage method,
   `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
-  once; a tenant write's row comes from `outbox_row(ctx, kind,
-  target_id, payload)`, so it carries the actor, the request id, the
-  trace context, and the app of the write. An operator write's row
-  never does: the operator managers stamp it from the identity id and
-  the request id their stage carries, through a helper of the operator
-  plane, as Stages and Scopes states, and an operator route's
-  idempotency marker is keyed on the operator's identity with no
-  tenant, since `OperatorContext` carries no `org_id`. The caller constructs the entity whole and hands it to
-  `create_<entity>`; the one exception is an entity that carries a
+  once. A relay in the request path never raises: the write has
+  committed by then, so a failure to relay is logged and left to the
+  sweep, and the request answers as the success it was, as The Storage
+  Layer (Database Roles) states. A tenant write's row comes from
+  `outbox_row(ctx, kind, target_id, payload)`, so it carries the
+  actor, the request id, the trace context, and the app of the write.
+  An operator write's row never does: the operator managers stamp it
+  from the identity id and the request id their stage carries, through
+  a helper of the operator plane, as Stages and Scopes states. An
+  operator route's idempotency marker fills the marker's own fields:
+  its `org_id` is `EMPTY_UUID`, since `OperatorContext` carries none,
+  and its `user_id` is the operator's identity id, so its storage
+  calls run under the system scope, on the system login, among the
+  enumerated system-scope methods. The caller constructs the entity
+  whole and hands it to `create_<entity>`. A create that can collide on more than one key
+  (the id and a unique key the table declares) returns an
+  `InsertOutcome`, `INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, and the
+  manager reads the row back by the key that collided; a create with
+  the id as its only key returns `bool`, `True` when the base's
+  `_insert`, which always reports an `InsertOutcome`, answered
+  `INSERTED`. The one exception to the
+  whole entity is an entity that carries a
   server-minted secret (an API key), whose `create_` takes the fields
   and returns an `Issued...` shape once, and whose rerun finds the
   row, re-mints the secret on it in the same named atomic write, its
@@ -244,7 +295,12 @@ the order the guideline presents them, never by number.
   investigate profile of their environment and read the owner-only
   env file `~/.config/<root>/ops/<env>.env`, except
   `ops-infra-as-code`, which plans against the cloud and reads no env
-  file. `make seed` writes `local.env`. Create and nuke hold the
+  file. `make seed` writes `local.env`. Every sign-in of an operator
+  identity from the env file sends its password and a TOTP code. The
+  code is derived by `<root>-ops totp` from that identity's TOTP
+  secret, which the enrolment answered once and `<root>-ops enrol`
+  wrote into the same owner-only file; no template and no repository
+  file holds a secret's value. Create and nuke hold the
   environment's administrator profile alone, the one
   `deployment/cloud/environments.json` names beside its account id. The traffic and stress skills have no
   role: `ops-simulate-traffic` and `stress-test-run` read the env
