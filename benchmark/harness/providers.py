@@ -41,7 +41,6 @@ KEY_NAMES: dict[Provider, tuple[str, ...]] = {
 JUDGE_KEY_NAMES: tuple[str, ...] = (*(n for names in KEY_NAMES.values() for n in names), "GOOGLE_API_KEY")
 
 
-
 def name(provider: Provider) -> str:
     """The lowercase name used in files, flags, and results.
 

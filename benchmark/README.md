@@ -287,6 +287,12 @@ tails the frame folder. There is no
 subscriber to register and no cost to watching: the files are written
 either way, so watching late loses nothing.
 
+`serve.py` listens on `127.0.0.1` unless `--host` says otherwise, and
+answers only a request that names it. Bound to `0.0.0.0`, it answers
+any address of this machine and the machine's own name. It refuses
+every other name, so a page on a name that resolves here gets nothing.
+
+
 ## The words
 
 - "benchmark", always the whole word.

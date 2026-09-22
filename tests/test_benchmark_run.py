@@ -223,8 +223,6 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
 def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")  # the built-in matrix, no pyyaml needed
 
-
-
     # What a subject can read: the staged plugin payload and the staged
     # target. The fixtures' answer keys, the benchmark folder, and every
     # CLAUDE.md up the tree are out of reach.

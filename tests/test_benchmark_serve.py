@@ -211,3 +211,28 @@ def test_the_frame_stream_serves_only_frames_inside_its_folder(client, runs, tmp
     assert status == 200
     assert b"FRAME-INSIDE" in body
     assert b"SECRET-OUTSIDE" not in body and b"NOT-A-FRAME" not in body
+
+
+def test_a_server_bound_to_every_address_answers_its_addresses_and_refuses_names(serve_module, runs):
+    server = serve_module.RunsServer(("0.0.0.0", 0), runs)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        for host, status in (
+            (f"127.0.0.1:{port}", 200),
+            (f"localhost:{port}", 200),
+            (f"192.0.2.7:{port}", 200),  # the machine's address on its network
+            (f"[::1]:{port}", 200),
+            ("192.0.2.7:1", 421),  # another port
+            (f"attacker.example:{port}", 421),  # a name that could rebind to this machine
+        ):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            connection.request("GET", "/runs", headers={"Host": host})
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            assert response.status == status, host
+    finally:
+        server.shutdown()
+        server.server_close()
