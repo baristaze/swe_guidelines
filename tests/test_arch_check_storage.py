@@ -1217,3 +1217,135 @@ def test_sto_17_a_role_it_cannot_read_is_reported(tmp_path):
         "write the role as a string or a StrEnum member"
         for t in ("catalog", "widgets")
     ]
+
+
+# --- a table swapped in by a rename, the search path, and quoted names
+
+SWAP = (
+    "CREATE TABLE core.widgets_v2 (id uuid PRIMARY KEY, org_id uuid NOT NULL, code text, deleted_at timestamptz);\n"
+    "ALTER TABLE core.widgets_v2 ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;\n"
+    "CREATE POLICY tenant_fence ON core.widgets_v2 FOR ALL USING (true);\n"
+    "DROP TABLE core.widgets;\n"
+    "ALTER TABLE core.widgets_v2 RENAME TO widgets;\n"
+)
+
+
+def test_sto_28_a_table_swapped_in_by_a_rename_passes(tmp_path):
+    code, report = run(tmp_path, "STO-28", {"om/migrations/sql/core/202601020000_swap.up.sql": SWAP})
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_sto_06_and_26_follow_a_table_through_its_rename(tmp_path):
+    later = "om/migrations/sql/core/202601030000_after.up.sql"
+    files = {
+        "om/migrations/sql/core/202601020000_swap.up.sql": SWAP,
+        later: (
+            "ALTER TABLE core.widgets ALTER COLUMN id SET DEFAULT gen_random_uuid();\n"
+            "CREATE UNIQUE INDEX uq_widgets_code ON core.widgets (org_id, code);\n"
+        ),
+    }
+    code, report = run(tmp_path, "STO-06", files)
+    assert (code, rules_found(report)) == (1, [("STO-06", later, 1)])
+    assert messages(report) == ["core.widgets.id has a DEFAULT in the migrations; an id is minted above storage"]
+    code, report = run(tmp_path, "STO-26", files)
+    assert (code, rules_found(report)) == (1, [("STO-26", later, 2)])
+
+
+MORE_UP = "om/migrations/sql/core/202601020000_more.up.sql"
+MORE_DOWN = "om/migrations/sql/core/202601020000_more.down.sql"
+
+
+def more(up, down="DROP TABLE core.parts;\n"):
+    return {
+        MORE_UP: up,
+        MORE_DOWN: down,
+        "om/migrations/versions/core/202601020000_more.py": GOOD[WRAPPER].replace("202601010000_initial", "202601020000_more"),
+    }
+
+
+def test_sto_18_a_table_named_without_its_schema(tmp_path):
+    files = more(
+        "SET search_path TO activity;\n"
+        "CREATE TABLE events (id uuid PRIMARY KEY);\n"
+        "CREATE TEMP TABLE scratch (id uuid);\n"
+        "CREATE INDEX ix_events_id ON events (id);\n"
+        "ALTER TABLE core.widgets ADD COLUMN part_id uuid REFERENCES parts (id);\n"
+    )
+    code, report = run(tmp_path, "STO-18", files)
+    assert code == 1
+    assert rules_found(report) == [("STO-18", MORE_UP, 1), ("STO-18", MORE_UP, 2), ("STO-18", MORE_UP, 4), ("STO-18", MORE_UP, 5)]
+    assert messages(report) == [
+        "the migration sets search_path; every table it names is schema-qualified",
+        "events is not schema-qualified; name it core.events",
+        "events is not schema-qualified; name it core.events",
+        "parts is not schema-qualified; name it core.parts",
+    ]
+    code, report = run(tmp_path, "STO-18", more("CREATE TABLE core.parts (id uuid PRIMARY KEY);\n"))
+    assert report["findings"] == []
+    assert code == 0
+
+
+def test_sql_code_keeps_quoted_identifiers_and_blanks_doubled_quotes():
+    from arch_check.rules._storage_util import sql_code
+
+    text = "CREATE TABLE core.t (\"it's\" text, \"a--b\" text, note text DEFAULT 'it''s', id uuid DEFAULT x());\n"
+    code = sql_code(text)
+    assert len(code) == len(text)
+    assert '"it\'s" text, "a--b" text' in code
+    assert "it''s" not in code
+    assert "id uuid DEFAULT x()" in code
+
+
+def test_sto_06_a_default_after_a_quoted_identifier(tmp_path):
+    later = "om/migrations/sql/core/202601020000_parts.up.sql"
+    files = {later: "CREATE TABLE core.parts (\"it's\" text, note text DEFAULT 'it''s', id uuid PRIMARY KEY DEFAULT x());\n"}
+    code, report = run(tmp_path, "STO-06", files)
+    assert code == 1
+    assert messages(report) == ["core.parts.id has a DEFAULT in the migrations; an id is minted above storage"]
+
+
+def test_sto_26_names_an_unnamed_index_the_way_postgres_does(tmp_path):
+    later = "om/migrations/sql/core/202601020000_codes.up.sql"
+    files = {
+        later: "CREATE UNIQUE INDEX ON core.widgets (org_id, code);\nCREATE UNIQUE INDEX ON core.widgets (lower(slug));\n",
+    }
+    code, report = run(tmp_path, "STO-26", files)
+    assert code == 1
+    assert messages(report) == [
+        "core.widgets is soft-deletable and widgets_org_id_code_idx holds the dead too; add WHERE deleted_at IS NULL",
+        "core.widgets is soft-deletable and widgets_lower_idx holds the dead too; add WHERE deleted_at IS NULL",
+    ]
+    files["om/migrations/sql/core/202601030000_drop.up.sql"] = (
+        "DROP INDEX core.widgets_org_id_code_idx, core.widgets_lower_idx;\n"
+    )
+    code, report = run(tmp_path, "STO-26", files)
+    assert report["findings"] == []
+    assert code == 0
+
+
+@pytest.mark.parametrize(
+    ("where", "living"),
+    [
+        ("deleted_at IS NULL", True),
+        ("(deleted_at IS NULL) AND code IS NOT NULL", True),
+        ("code IS NOT NULL AND (deleted_at IS NULL)", True),
+        ("deleted_at IS NULL OR code IS NULL", False),
+        ("(deleted_at IS NULL OR archived)", False),
+        ("NOT deleted_at IS NULL", False),
+    ],
+)
+def test_sto_26_a_where_holds_the_living_only_when_it_implies_deleted_at_is_null(tmp_path, where, living):
+    later = "om/migrations/sql/core/202601020000_codes.up.sql"
+    files = {later: f"CREATE UNIQUE INDEX uq_widgets_code ON core.widgets (org_id, code) WHERE {where};\n"}
+    code, report = run(tmp_path, "STO-26", files)
+    assert (code, len(report["findings"])) == ((0, 0) if living else (1, 1))
+
+
+@pytest.mark.parametrize(
+    "where", ['text("deleted_at IS NULL OR slug IS NULL")', "or_(Widget.deleted_at.is_(None), Widget.slug.is_(None))"]
+)
+def test_sto_26_a_table_class_where_that_lets_the_dead_in(tmp_path, where):
+    files = edit(WIDGETS, 'postgresql_where=text("deleted_at IS NULL")', f"postgresql_where={where}")
+    code, report = run(tmp_path, "STO-26", files)
+    assert (code, [p for _, p, _ in rules_found(report)]) == (1, [WIDGETS])

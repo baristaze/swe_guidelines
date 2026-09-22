@@ -15,11 +15,13 @@ import ast
 import itertools
 import re
 from collections.abc import Callable, Iterator
+from typing import TypeVar
 
 from arch_check.model import Violation
 from arch_check.project import Project, SourceFile, base_names, classes, dotted, is_under, keywords, last, parameters
 from arch_check.registry import rule
 from arch_check.rules._storage_util import (
+    DROP_TABLES,
     MIXIN_RANK,
     NAME,
     ROLE_MAP,
@@ -27,6 +29,7 @@ from arch_check.rules._storage_util import (
     SQL_DIR,
     VERSIONS_DIR,
     WRAPPER_FILE,
+    SqlFile,
     call_name,
     class_value,
     column_call,
@@ -43,6 +46,7 @@ from arch_check.rules._storage_util import (
     is_true,
     kwarg,
     line_of,
+    living,
     manager_impl_files,
     mixin_columns,
     mixins,
@@ -54,6 +58,7 @@ from arch_check.rules._storage_util import (
     om_tables,
     own_columns,
     public_methods,
+    renamed,
     role_names,
     role_value,
     roles_of,
@@ -70,6 +75,8 @@ from arch_check.rules._storage_util import (
     tables,
     up_chain,
 )
+
+T = TypeVar("T")
 
 # --- STO-01
 
@@ -810,6 +817,50 @@ def wrapper_call(fn: ast.FunctionDef) -> ast.Call | None:
     return None
 
 
+SEARCH_PATH = re.compile(r"\bSET\s+(?:LOCAL\s+|SESSION\s+)?search_path\b|\bset_config\s*\(\s*'", re.IGNORECASE)
+"""A statement that moves the search path. `set_config('search_path', ...)` is read by its call, the string blanked."""
+TEMP_TABLE = re.compile(
+    r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?(?:TEMP|TEMPORARY)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>" + NAME + ")",
+    re.IGNORECASE,
+)
+TABLE_REFERENCES = [
+    re.compile(p + r"(?P<table>" + NAME + ")", re.IGNORECASE)
+    for p in (
+        r"\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?",
+        r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?",
+        r"\bINDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?(?:" + NAME + r"\s+)?ON\s+(?:ONLY\s+)?",
+        r"\bPOLICY\s+(?:IF\s+EXISTS\s+)?" + NAME + r"\s+ON\s+(?:ONLY\s+)?",
+        r"\bREFERENCES\s+",
+        r"\bINSERT\s+INTO\s+",
+        r"\bDELETE\s+FROM\s+(?:ONLY\s+)?",
+        r"(?<!\bON\s)\bUPDATE\s+(?:ONLY\s+)?(?=" + NAME + r"\s+(?:AS\s+\w+\s+)?SET\b)",
+    )
+]
+"""Where a statement names a table: what it creates, alters, indexes, fences, references, or writes."""
+
+
+def unqualified(f: SqlFile, code: str) -> Iterator[Violation]:
+    """Every table a migration names without its schema, and every move of the search path.
+
+    A temporary table lives in no role's schema and is named bare.
+    """
+    for m in SEARCH_PATH.finditer(code):
+        yield Violation(
+            f.rel, line_of(code, m.start()), 1, "the migration sets search_path; every table it names is schema-qualified"
+        )
+    temporary = {ident(m.group("table")) for m in TEMP_TABLE.finditer(code)}
+    names: list[tuple[int, str]] = []
+    for pattern in TABLE_REFERENCES:
+        names += [(m.start("table"), m.group("table")) for m in pattern.finditer(code)]
+    for m in DROP_TABLES.finditer(code):
+        tail = statement_tail(code, m.end())
+        names += [(m.end() + tail.find(n), n) for n in name_list(tail)]
+    for offset, name in sorted(names):
+        bare = ident(name)
+        if "." not in bare and bare not in temporary:
+            yield Violation(f.rel, line_of(code, offset), 1, f"{bare} is not schema-qualified; name it {f.role}.{bare}")
+
+
 @rule(
     "STO-18",
     options=("sql_dir", "versions_dir", "runner", "map"),
@@ -821,6 +872,7 @@ def migration_layout(project: Project) -> Iterator[Violation]:
     (`om/migrations/sql` and `om/migrations/versions`); `runner`, the function a wrapper calls (`run_sql`);
     and `map`, the table-to-role map (`TABLE_ROLES`).
 
+    Every table a migration names is schema-qualified (`core.widgets`), and no migration sets `search_path`.
     A wrapper passes the role and the SQL file, by position or by keyword. A file named by a string is its own
     `<stem>.<up|down>.sql`, alone or at the end of a path; a file built by an expression is left to the review.
     """
@@ -862,6 +914,8 @@ def migration_layout(project: Project) -> Iterator[Violation]:
                         1,
                         f"{ref.group(1)}.{ref.group(2)} is in role {ref.group(1)}; this file is {f.role}'s",
                     )
+    for f in good:
+        yield from unqualified(f, sql_code(project.read(f.rel) or ""))
     enums = enum_values(project)
     for rel in project.files(f"{versions_dir}/*/*.py"):
         role, fname = rel.split("/")[-2:]
@@ -1004,10 +1058,21 @@ def one_chain_per_role(project: Project) -> Iterator[Violation]:
 
 
 def living_only(where: ast.AST | None) -> bool:
+    """Whether a table class's index predicate holds only the living.
+
+    A predicate written as SQL (`text("deleted_at IS NULL")`) is read
+    the way the migrations are. One written as an expression holds the
+    living when it tests `deleted_at` against None and joins no `or_`.
+    """
     if where is None:
         return False
+    literal = next((n.value for n in ast.walk(where) if isinstance(n, ast.Constant) and isinstance(n.value, str)), None)
+    if literal is not None:
+        return living(literal)
     text = ast.unparse(where)
-    return "deleted_at" in text and bool(re.search(r"IS\s+NULL|is_\(None\)|== *None|is None", text, re.IGNORECASE))
+    if re.search(r"\bor_\(|\|", text):
+        return False
+    return "deleted_at" in text and bool(re.search(r"is_\(None\)|== *None|is None", text))
 
 
 @rule(
@@ -1125,6 +1190,12 @@ DROP_POLICY = re.compile(
 DROP_TABLE = re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?", re.IGNORECASE)
 
 
+def moved(state: dict[str, T], old: str, new: str) -> None:
+    """Carry what a replay knows of a table to the name a rename gives it."""
+    if old in state:
+        state[new] = state.pop(old)
+
+
 def is_system(value: ast.AST) -> bool:
     for node in ast.walk(value):
         if isinstance(node, ast.Attribute) and node.attr.lower() == "system":
@@ -1186,6 +1257,12 @@ def scopes_match_policies(project: Project) -> Iterator[Violation]:
             for _, kind, m in sorted(events, key=lambda e: e[0]):
                 if kind == "alter":
                     table = ident(m.group("table"))
+                    new = renamed(table, statement_tail(code, m.end()))
+                    if new is not None:
+                        moved(enabled, table, new)
+                        moved(forced, table, new)
+                        moved(policies, table, new)
+                        continue
                     for action in RLS_ACTION.finditer(statement_tail(code, m.end())):
                         what = re.sub(r"\s+", " ", action.group("what").upper())
                         if what in ("ENABLE", "DISABLE"):
