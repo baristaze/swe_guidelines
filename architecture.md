@@ -2360,7 +2360,9 @@ class BucketsInterface(ABC):
     @abstractmethod
     async def presign_get(self, org_id: UUID, bucket: Buckets, key: str, ttl: timedelta) -> str | None: ...
     @abstractmethod
-    async def presign_put(self, org_id: UUID, bucket: Buckets, key: str, content_type: str, ttl: timedelta) -> str | None: ...
+    async def presign_put(
+        self, org_id: UUID, bucket: Buckets, key: str, content_type: str, max_bytes: int, ttl: timedelta
+    ) -> str | None: ...
 ```
 
 A listing is bounded like any read that returns a list. Keys come back
@@ -2381,10 +2383,15 @@ One tenant's blobs cannot be read or listed by another.
 
 Presigned URLs let a browser or a remote process move bytes directly to
 and from the store, with a short expiry. The service never proxies a
-large upload through its own memory. A presigned upload is bounded: it
-names its content type and a maximum length, and the store refuses a
-body that exceeds either, so a URL handed to a browser cannot fill the
-bucket.
+large upload through its own memory.
+
+A presigned upload is bounded. It names its content type and a maximum
+length, `max_bytes`. The store refuses a body of another type or a
+longer one, so a URL handed to a browser cannot fill the bucket.
+
+Either presign returns `None` when its backend cannot sign a URL. The
+caller then moves the bytes through `put` and `get` itself, and holds
+them to the same bounds.
 
 A local filesystem impl with the same layout serves development and
 tests. It refuses a key that is absolute or climbs out of its root with
