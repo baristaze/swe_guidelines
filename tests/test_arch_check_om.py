@@ -320,6 +320,23 @@ def test_a_new_trait_is_not_ordered_by_om_04(tmp_path):
     assert found(report) == [("OM-04", TASK)]
 
 
+def test_a_class_nested_or_under_a_block_is_on_the_chain(tmp_path):
+    source = TASK_SOURCE + (
+        "\n\nclass Views:\n    class Base(Trackable, Identifiable):\n        pass\n\n"
+        "    class Summary(Base):\n        title: str\n\n\n"
+        "try:\n    class Legacy(Trackable, Identifiable):\n        title: str\nexcept ImportError:\n    pass\n"
+    )
+    code, report = run(tmp_path, "OM-04", {TASK: source})
+    assert code == 1
+    assert messages(report) == [
+        "Base(Trackable, Identifiable): mixins go identity, label, lifecycle, then cross-cutting traits",
+        "Legacy(Trackable, Identifiable): mixins go identity, label, lifecycle, then cross-cutting traits",
+    ]
+    code, report = run(tmp_path, "OM-03", {TASK: source.replace("        title: str\n\n\ntry", "        id: UUID\n\n\ntry")})
+    assert code == 1
+    assert [m for m in messages(report) if "Summary" in m] == ["Summary redeclares id, which Identifiable already declares"]
+
+
 # --- OM-05
 
 
