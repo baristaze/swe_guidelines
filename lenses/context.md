@@ -510,7 +510,8 @@ flag (operator screens in the portal's bundle are DEL-16); an
 read-only allowlist entry reaches; a manager method that accepts either
 context type; an operator route that reaches a tenant manager; an API
 key or a session admitted to the operator plane, since the operator
-gate admits only the person's own sign-in.
+gate admits only the person's own sign-in. (The second factor that
+sign-in needs is OPS-07.)
 
 **Severity.** high
 

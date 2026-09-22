@@ -165,26 +165,31 @@ tag; a staging role that lists a production resource.
 
 **Severity.** medium
 
-## OPS-07 People sign in through the identity center; agents chain from it
+## OPS-07 Every person and every operator signs in with a second factor
 
-**Principle.** People sign in through the identity center, with a second
-factor and short-lived credentials: no cloud user, no long-lived key.
-The investigator trusts its account's everyday role by pattern, and an
-agent chains from the person's session, holding no more than the person.
-In production the everyday set writes nothing.
+**Principle.** People sign in through the identity center with a second
+factor: no cloud user, no long-lived key. The investigator trusts the
+everyday role by pattern, which in production writes nothing, and an
+agent chains from the person's session. The operator gate admits an
+operator's sign-in only with a second factor, a TOTP code enrolled per
+operator identity.
 
-**Source.** Operations, Operator Roles.
+**Source.** Operations, Operator Roles; The Network Layer, The Gateway;
+Deployment, Security Defaults.
 
 **Look for.** Any cloud user or access key in the roots, the scripts,
 or the cloud tool's configuration; the trust policy of each
-investigator role and the principal pattern it matches; the profile
-chain from the signed-in profile to each investigator role.
+investigator role and the principal pattern it matches, and the
+profile chain to it; the operator gate, where `admit_operator` sits,
+and the second factor it checks and where each operator enrolls it.
 
 **Violation.** A cloud user, or an access key minted for a person or an
 agent; an investigator role that trusts another account, or a
 principal by a copied generated name; an agent profile holding a key
 of its own instead of chaining from a person's session; a production
-everyday permission set that writes; a sign-in with no second factor.
+everyday permission set that writes; a sign-in to the identity center
+with no second factor; an operator admitted to the plane on a password
+alone, or with a factor no operator identity enrolled.
 
 **Severity.** high
 

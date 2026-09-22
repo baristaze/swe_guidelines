@@ -1163,9 +1163,8 @@ state.
 **Principle.** Every environment takes the security defaults: private
 subnets with a named egress, encryption at rest and TLS to every store,
 a trail per account, a stated web-firewall position, a production
-database that survives a zone and restores to a point in time, a second
-factor at sign-in, a protected `main`, a scan on push, and pinned
-Terraform.
+database that survives a zone and restores to a point in time, a
+protected `main`, a scan on push, and pinned Terraform.
 
 **Source.** Deployment, Security Defaults; Technology Choices and How
 to Override Them, Versions.
@@ -1182,8 +1181,8 @@ and the committed `.terraform.lock.hcl` of every root.
 unencrypted at rest, or a database that accepts a connection without
 TLS; an account with no trail; a production edge with no firewall and
 no record of the choice; a production database in one zone with
-customers on it, or with no point-in-time recovery; a sign-in with a
-password alone; a `main` that merges without review; a root with no
-lock file or an unpinned provider.
+customers on it, or with no point-in-time recovery; a `main` that
+merges without review; a root with no lock file or an unpinned
+provider. (The second factor at sign-in is OPS-07.)
 
 **Severity.** medium
