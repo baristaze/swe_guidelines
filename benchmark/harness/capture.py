@@ -24,13 +24,16 @@ class CliStream:
 
     Two reader threads write here at once, so every write holds a lock and
     flushes. A tail of the file is therefore always whole lines.
+
+    The file is created, never reopened: a stream file that is already
+    there belongs to another run, and writing into it would mix the two.
     """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._fh = self.path.open("a", encoding="utf-8")
+        self._fh = self.path.open("x", encoding="utf-8")
         self.count = 0
 
     def write(self, stream: str, line: str, t: float | None = None) -> None:
@@ -60,9 +63,14 @@ class CliStream:
 
     @staticmethod
     def read(path: str | Path) -> list[dict]:
-        """Every whole record of a stream file; a torn last line is left out."""
+        """Every whole record of a stream file; a torn last line is left out.
+
+        Records are split on `\\n` alone. A line may hold U+2028 or another
+        character `str.splitlines` would break on, written raw because the
+        records keep non-ASCII text as it is.
+        """
         out: list[dict] = []
-        for line in Path(path).read_text(encoding="utf-8").splitlines():
+        for line in Path(path).read_text(encoding="utf-8", errors="replace").split("\n"):
             line = line.strip()
             if not line:
                 continue

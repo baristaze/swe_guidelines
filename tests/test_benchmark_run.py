@@ -331,3 +331,95 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
 def test_the_workflow_runs_every_scenario_strict():
     workflow = (RUN.parent.parent / ".github" / "workflows" / "benchmark.yml").read_text(encoding="utf-8")
     assert "--strict" in workflow
+
+
+def test_two_runs_in_the_same_second_get_two_folders(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    monkeypatch.setattr(run.time, "strftime", lambda *args: "20260101-000000")  # one second for both
+    scenario = {
+        "name": "twice",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", "import uuid; print(uuid.uuid4().hex)"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "twice.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    out = str(tmp_path / "runs")
+    assert run.main(["--scenario", str(path), "--out", out]) == 0
+    assert run.main(["--scenario", str(path), "--out", out]) == 0
+    first, second = sorted((tmp_path / "runs").iterdir())
+    answers = [(d / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") for d in (first, second)]
+    assert answers[0] != answers[1] and answers[0].count("\n") == answers[1].count("\n") == 1
+    for folder in (first, second):
+        results = json.loads((folder / "results.json").read_text(encoding="utf-8"))
+        assert results["run_id"] == folder.name
+
+
+def test_an_answer_with_a_unicode_line_separator_is_kept_whole(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    script = "import sys; sys.stdout.buffer.write('one\\u2028two\\u2029three\\n'.encode())"
+    scenario = {"name": "sep", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    path = tmp_path / "sep.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "one\u2028two\u2029three\n"
+
+
+def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    prompts: list[str] = []
+
+    def judge_all(flags, prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    read_from: list[Path] = []
+    source = run.E.source
+
+    def spy(target, globs, *args, **kwargs):
+        read_from.append(Path(target))
+        return source(target, globs, *args, **kwargs)
+
+    monkeypatch.setattr(run.E, "source", spy)
+    target = tmp_path / "target"
+    (target / "src").mkdir(parents=True)
+    (target / "tests").mkdir()
+    (target / "src" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (target / "tests" / "test_a.py").write_text("def test_a(): ...\n", encoding="utf-8")
+    probe = (
+        "import pathlib, sys; root = pathlib.Path(sys.argv[1]); "
+        "print(sorted(p.relative_to(root).as_posix() for p in root.rglob('*.py')))"
+    )
+    scenario = {
+        "name": "seen",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", probe, "{target}"], "target": str(target)},
+        "evidence": {"files": ["**/*.py"]},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "seen.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs")]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
+    assert answer == "['src/a.py', 'tests/test_a.py']\n"  # the subject saw the tests
+    assert "### Source: tests/test_a.py" in prompts[0] and "### Source: src/a.py" in prompts[0]
+    (staged,) = read_from
+    assert staged != target and staged.name == "target"  # the staged copy, not the original
+
+
+def test_the_workflow_runs_the_subject_in_the_container_built_before_the_keys():
+    # On the host the subject could read the harness's environment and the
+    # answer files; in the container it reaches its mounts and its one key.
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "--runtime container" in workflow_step("run every scenario")
+    build = workflow.index("      - name: build the subject's image")
+    run_step = workflow.index("      - name: run every scenario")
+    assert build < run_step and "docker build -t swe-guidelines-benchmark:latest" in workflow[build:run_step]
+    assert "_API_KEY" not in workflow[:run_step]  # no key is in reach while anything is installed

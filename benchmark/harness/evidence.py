@@ -45,7 +45,9 @@ def source(target: Path, globs: list[str], limit: int = SOURCE_LIMIT) -> str:
             found.add(path)
     parts: list[str] = []
     for path in sorted(found):
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        # Split on the newline alone, as an editor and `grep -n` count lines.
+        body = path.read_text(encoding="utf-8", errors="replace").removesuffix("\n")
+        lines = body.split("\n") if body else []
         width = len(str(len(lines)))
         numbered = "\n".join(f"{n:>{width}} | {line}" for n, line in enumerate(lines, 1))
         parts.append(f"### Source: {path.relative_to(target).as_posix()}\n\n```text\n{numbered}\n```")

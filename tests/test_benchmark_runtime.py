@@ -32,6 +32,24 @@ def test_the_host_writes_both_streams_and_the_exit_status(tmp_path):
     assert "err line" in [r["line"] for r in records if r["s"] == "err"]
 
 
+def test_a_byte_that_is_not_utf8_is_replaced_and_the_reader_goes_on(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    script = (
+        "import sys\n"
+        "for fh in (sys.stdout.buffer, sys.stderr.buffer):\n"
+        "    fh.write(b'bad \\xff byte\\n' + 'one\\u2028two\\n'.encode() + b'after\\n')\n"
+        "    fh.flush()\n"
+    )
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run([sys.executable, "-c", script], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream)
+    records = CliStream.read(tmp_path / "cli.jsonl")
+    assert status.ok
+    for name in ("out", "err"):
+        lines = [r["line"] for r in records if r["s"] == name and not r["line"].startswith("[host]")]
+        assert lines == ["bad \ufffd byte", "one\u2028two", "after"], lines
+
+
 def test_a_subject_that_runs_too_long_is_killed_and_marked(tmp_path):
     rt = RT.build("host", tmp_path)
     rt.prepare()
@@ -93,6 +111,18 @@ def test_the_sandbox_holds_only_the_payload_and_goes_at_teardown(tmp_path):
     assert not sandbox.exists()
 
 
+def test_the_staged_target_keeps_its_tests(tmp_path):
+    # The subject reviews the whole target, tests included, as the judges do.
+    target = tmp_path / "target"
+    (target / "tests").mkdir(parents=True)
+    (target / "tests" / "test_a.py").write_text("def test_a(): ...", encoding="utf-8")
+    (target / "__pycache__").mkdir()
+    (target / "__pycache__" / "a.cpython-314.pyc").write_bytes(b"")
+    staged = RT.stage_target(target, tmp_path / "staged")
+    assert (staged / "tests" / "test_a.py").is_file()
+    assert not (staged / "__pycache__").exists()
+
+
 def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
     target = tmp_path / "checkout"
     target.mkdir()
@@ -105,6 +135,14 @@ def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
     assert command[command.index("-e") + 1] == "ANTHROPIC_API_KEY"
     assert command[-3:] == ["claude", "-p", "hi"]
     assert command[command.index("img:1") + 1] == "claude"
+
+
+def test_the_container_user_can_write_the_workspace_whatever_its_uid(tmp_path):
+    # A bind mount keeps this machine's owner, and the image's user is not
+    # this machine's user on a Linux runner, so the workspace is opened to it.
+    rt = RT.build("container", tmp_path / "run", sandbox=tmp_path / "sandbox")
+    workspace = rt.prepare_repeat(0)
+    assert workspace.stat().st_mode & 0o777 == 0o777
 
 
 def test_the_container_build_command_names_the_dockerfile(tmp_path):

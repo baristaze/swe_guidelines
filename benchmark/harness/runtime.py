@@ -17,21 +17,29 @@ sandbox is removed when the run ends.
 Isolation is a choice, and the choice is named:
 
 - `host` isolates by convention only. A private `HOME` and a private
-  `TMPDIR` under the run folder keep a subject from writing into the
+  `TMPDIR` in the sandbox keep a subject from writing into the
   operator's account by accident. Nothing stops a subject that means to.
+  The subject runs as the harness's own user, so it can read what that
+  user reads: the harness's environment, the judges' keys in it (on
+  Linux, through `/proc/<pid>/environ` of the harness), and the answer
+  files at their fixed paths in the checkout. The sandbox keeps those out
+  of the paths the subject is given, not out of its reach. A run whose
+  subject must not reach them uses `container`.
 - `container` isolates with Docker: the plugin checkout and the target
   read-only, the workspace read-write, the keys passed one by one, every
   capability dropped, and memory, processor, and process count bounded.
+  Nothing of the harness's machine is in the container but the three
+  mounts, so the judges' keys and the answer files are out of reach.
+- `vm` runs the command on another machine through a configured prefix.
+  The harness provisions nothing; it composes the prefix and the sync
+  command, and the tests cover that composition with a fake prefix.
 
 A subject is stopped whole, however it ends: past its timeout, on a clean
 exit that left children behind, or when the harness itself is
 interrupted. The host runtime starts it in a process group of its own and
-kills the group every time. The
-container runtime names its container and kills the container, because
-killing the `docker run` client leaves the container running and paying.
-- `vm` runs the command on another machine through a configured prefix.
-  The harness provisions nothing; it composes the prefix and the sync
-  command, and the tests cover that composition with a fake prefix.
+kills the group every time. The container runtime names its container
+and kills the container, because killing the `docker run` client leaves
+the container running and paying.
 
 A path on this machine means nothing inside a container or on another
 machine. So a runtime also answers where the plugin checkout and the
@@ -65,7 +73,8 @@ CONTAINER_TARGET = "/target"
 # reference, and nothing else. The benchmark, its fixtures and their
 # answer keys, the docs, and the repository's own CLAUDE.md stay out.
 PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
-STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tests")
+# What no staged copy carries: the caches a tool leaves behind.
+STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 
 
 def new_sandbox() -> Path:
@@ -86,7 +95,12 @@ def stage_plugin(root: Path, dest: Path) -> Path:
 
 
 def stage_target(target: Path, dest: Path) -> Path:
-    """Copy the target folder alone into `dest`, so no sibling of it is in reach."""
+    """Copy the target folder alone into `dest`, so no sibling of it is in reach.
+
+    The copy is the whole target, its tests included, less the caches: the
+    subject reviews what the judges read as evidence, and the judges read
+    this copy.
+    """
     shutil.copytree(target, dest, symlinks=True, ignore=STAGE_IGNORE, dirs_exist_ok=True)
     return dest
 
@@ -208,7 +222,11 @@ class BaseRuntime:
                 env=self.environment(env),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                # UTF-8 whatever the locale says, and a byte that is not
+                # UTF-8 becomes U+FFFD: a decode error would end the reader
+                # and leave the pipe full, with the subject blocked on it.
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 # A group of its own, so a timeout reaches every process the
                 # subject started, not only the first.
@@ -298,7 +316,13 @@ def _pipe(handle, stream: str, streams: CliStream) -> None:
 
 
 class HostRuntime(BaseRuntime):
-    """This machine, with a private HOME and TMPDIR under the run folder."""
+    """This machine, with a private HOME and TMPDIR in the sandbox.
+
+    No boundary: the subject runs as the harness's user and can read what
+    that user reads, the harness's environment with the judges' keys and
+    the answer files in the checkout among it. `container` is the runtime
+    that keeps them out of reach.
+    """
 
     name = "host"
 
@@ -353,7 +377,7 @@ class ContainerRuntime(BaseRuntime):
         command = self.build_command()
         started = time.monotonic()
         try:
-            proc = subprocess.run(command, capture_output=True, text=True)
+            proc = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace")
         except OSError as exc:
             # No container engine: the build failed, recorded as the shell records it.
             if streams is not None:
@@ -363,6 +387,18 @@ class ContainerRuntime(BaseRuntime):
             for line in (proc.stdout + proc.stderr).splitlines():
                 streams.write("err", line)
         return ExitStatus(code=proc.returncode, duration_s=time.monotonic() - started)
+
+    def prepare(self, workspace: Path | None = None) -> Path:
+        """The workspace, open to the image's user.
+
+        A bind mount keeps this machine's owner and mode, and the image's
+        user is not this machine's user on a Linux runner. The workspace
+        is the one folder the subject writes, so it is opened to every
+        user; the sandbox around it stays private to this one.
+        """
+        path = super().prepare(workspace)
+        path.chmod(0o777)
+        return path
 
     def plugin_path(self) -> str | None:
         return CONTAINER_PLUGIN if self.plugin else None

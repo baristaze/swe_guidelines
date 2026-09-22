@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,24 @@ SUBJECT_KEYS = ["ANTHROPIC_API_KEY"]
 def subject_keys(scn: S.Scenario) -> list[str]:
     """The key names the subject's command needs. A `qa` subject runs no command."""
     return [] if scn.kind == "qa" else list(SUBJECT_KEYS)
+
+
+def new_run_dir(out: Path, scenario: str) -> tuple[str, Path]:
+    """A run folder no other run has, and its name.
+
+    The name starts with the second and the scenario, so the folders sort
+    by time. A random suffix tells apart two runs of one scenario started
+    in the same second, and the folder is created only when it is not
+    there yet, so no run ever writes into another's.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    while True:
+        run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scenario}-{uuid.uuid4().hex[:8]}"
+        try:
+            (out / run_id).mkdir()
+        except FileExistsError:
+            continue
+        return run_id, out / run_id
 
 
 def git_sha(path: Path) -> str:
@@ -187,7 +206,7 @@ def run_subject_qa(
     except Exception as exc:
         streams.note(f"[qa] {type(exc).__name__}: {exc}")
         return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), ""
-    for line in text.splitlines():
+    for line in text.split("\n"):
         streams.write("out", line)
     streams.note(f"[qa] usage {json.dumps(usage)}")
     return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text
@@ -292,9 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"the target {target} is not a folder", file=sys.stderr)
         return 2
 
-    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scn.name}"
-    run_dir = out / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_id, run_dir = new_run_dir(out, scn.name)
 
     config: dict = {}
     if args.runtime_config:
@@ -321,10 +338,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(exc, file=sys.stderr)
         return 2
 
-    # The evidence the judges get. The expected findings describe the
+    # The evidence the judges get. The source is read from the target as
+    # the runtime staged it, the copy the subject reads, so the judges and
+    # the subject see the same files. The expected findings describe the
     # scenario's own target; on any other target they would be wrong, so
     # they are dropped and the run says so. The source goes either way.
-    source_text = E.source(target, scn.evidence.files) if target and scn.evidence.files else ""
+    source_text = E.source(rt.target, scn.evidence.files) if rt.target and scn.evidence.files else ""
     expected_path = scn.resolve(scn.evidence.expected)
     expected_note = None
     if expected_path and target != own_target:

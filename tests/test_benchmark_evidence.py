@@ -102,3 +102,11 @@ def test_the_source_never_leaves_the_target(tmp_path):
     text = E.source(target, ["om/*.py", "../*.py"])
     assert "inside" in text
     assert "OUTSIDE" not in text
+
+
+def test_a_line_is_numbered_as_an_editor_numbers_it(tmp_path):
+    # Only a newline ends a line: a form feed or U+2028 inside one does not
+    # shift the numbers a finding is checked against.
+    (tmp_path / "a.py").write_bytes("one\x0cstill one\ntwo\u2028still two\nthree\n".encode())
+    text = E.source(tmp_path, ["*.py"])
+    assert "1 | one\x0cstill one\n2 | two\u2028still two\n3 | three\n```" in text
