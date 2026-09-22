@@ -3,14 +3,20 @@ SHELL := /bin/bash
 # The scripts run through uv, so they run on the Python uv selects: the
 # one UV_PYTHON names (CI sets it per leg), else the one on PATH.
 PYTHON := uv run --no-project python
+# Every tool runs at the version .github/pins/ names, one file per
+# ecosystem, so dependabot can propose the next release of each.
+PINS := .github/pins
+pin = $(shell sed -n 's|^$(1)==||p' $(PINS)/requirements.txt)
+npm_pin = $(shell sed -n 's|^ *"$(1)": *"\([^"]*\)".*|\1|p' $(PINS)/package.json)
 # The tests need pytest, pyyaml, and jsonschema, which a system python3 may
 # not carry; uv brings them at pinned versions, locally and in CI alike.
-PYTEST := uv run --no-project --with pytest==9.1.1 --with pyyaml==6.0.3 --with jsonschema==4.26.0 python -m pytest
+PYTEST := uv run --no-project --with pytest==$(call pin,pytest) --with pyyaml==$(call pin,pyyaml) \
+  --with jsonschema==$(call pin,jsonschema) python -m pytest
 NPX := npx --yes
-MARKDOWNLINT := $(NPX) markdownlint-cli2@0.23.2
+MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 # ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
-RUFF := uvx ruff@0.16.8
-MYPY := uvx --with pytest==9.1.1 mypy@2.3.1
+RUFF := uvx ruff@$(call pin,ruff)
+MYPY := uvx --with pytest==$(call pin,pytest) mypy@$(call pin,mypy)
 
 .PHONY: help check lint ruff mypy lenses leaks links toc version skills agents test plugin gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 

@@ -21,9 +21,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # The uv version lives in .github/pins/, where dependabot updates it.
+      - name: read the uv pin
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
-          version: "0.12.17"
+          version: ${{ steps.pins.outputs.uv }}
           python-version: "3.14"
       # An adopter pins git#vX.Y.Z, so a tag names a commit main already has:
       # never one made on a side branch or pushed ahead of its merge.

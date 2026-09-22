@@ -1,8 +1,13 @@
-# Dependabot keeps the actions current, and the benchmark image's base. Actions are pinned by commit with
+# Dependabot keeps the actions current, the benchmark image's base, and
+# the tool pins under .github/pins/. Actions are pinned by commit with
 # the tag in a trailing comment; an update moves the commit and the
-# comment together. One weekly pull request carries every action update.
-# A release waits a week before it is proposed: the guideline adopts a
-# release once a patch sits behind it, never the day it ships.
+# comment together. The Makefile and the workflows read every tool
+# version from .github/pins/, one file per ecosystem, so an update there
+# moves the version wherever it runs: uv, pytest, pyyaml, jsonschema,
+# ruff, and mypy in requirements.txt, and Claude Code and markdownlint
+# in package.json. Each ecosystem's updates arrive as one weekly pull
+# request. A release waits a week before it is proposed: the guideline
+# adopts a release once a patch sits behind it, never the day it ships.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -20,3 +25,21 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+  - package-ecosystem: pip
+    directory: /.github/pins
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      python-tools:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /.github/pins
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm-tools:
+        patterns: ["*"]
