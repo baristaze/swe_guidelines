@@ -596,3 +596,32 @@ def test_del_26_a_commit_id_tag_is_no_pre_release(tmp_path, tag):
 def test_del_26_a_pre_release_tag_still_fails(tmp_path, tag):
     files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": f"FROM python:3.11 AS b\nFROM acme/base:{tag}\n"}
     assert found(tmp_path, "DEL-26", files) == (1, [("DEL-26", "deployment/docker/api.Dockerfile", 2)])
+
+
+# --- a file saved with a byte order mark
+
+BOM = "﻿"
+
+
+def test_del_08_a_conftest_saved_with_a_bom_is_read(tmp_path):
+    files = workspace(**{"om/tests/conftest.py": BOM + "import sys\n\nsys.path.insert(0, 'src')\n"})
+    assert found(tmp_path, "DEL-08", files) == (1, [("DEL-08", "om/tests/conftest.py", 3)])
+
+
+def test_del_10_a_dockerfile_saved_with_a_bom_is_read(tmp_path):
+    assert found(tmp_path / "good", "DEL-10", {"deployment/docker/api.Dockerfile": BOM + GOOD_IMAGE}) == (0, [])
+    rooted = BOM + GOOD_IMAGE.replace("USER acme", "USER root", 1)
+    assert found(tmp_path / "bad", "DEL-10", {"deployment/docker/api.Dockerfile": rooted}) == (
+        1,
+        [("DEL-10", "deployment/docker/api.Dockerfile", 5)],
+    )
+
+
+def test_del_11_a_makefile_saved_with_a_bom_is_read(tmp_path):
+    files = workspace(**{"ruff.toml": "", "Makefile": BOM + "check: lint test\n\ttrue\n"})
+    assert found(tmp_path, "DEL-11", files) == (0, [])
+
+
+def test_del_26_a_dockerfile_saved_with_a_bom_is_read(tmp_path):
+    files = {".python-version": "3.11\n", "deployment/docker/api.Dockerfile": BOM + "FROM acme/base:1.2.0-rc.1 AS b\nFROM python:3.11\n"}
+    assert found(tmp_path, "DEL-26", files) == (1, [("DEL-26", "deployment/docker/api.Dockerfile", 1)])

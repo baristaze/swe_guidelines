@@ -267,11 +267,12 @@ class Project:
 
         A byte that is not UTF-8 is replaced, never a reason to read the file
         as empty: every token a rule looks for is ASCII, and a Dockerfile with a
-        Latin-1 comment is still a Dockerfile.
+        Latin-1 comment is still a Dockerfile. A leading byte order mark is
+        dropped, as some editors save UTF-8 with one.
         """
         path = self.root / rel
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
         except OSError:
             return None
         with contextlib.suppress(ValueError):  # a path that climbs out of the root has no ignores to settle
