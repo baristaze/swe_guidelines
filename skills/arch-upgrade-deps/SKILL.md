@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-deps
 description: "Upgrade every dependency of the repository to its latest stable or LTS release (runtimes, tools, images, CI, Terraform, libraries), then run the gates and hold back what breaks."
-allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(uv tree:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(pnpm outdated:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(uv tree:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(pnpm outdated:*), Bash(terraform init:*), Bash(git status:*), Bash(git restore:*)
 ---
 
 # arch-upgrade-deps
@@ -20,7 +20,7 @@ leaves the working tree for a person to review.
 `[<dependency> ...] [--plan] [--reset-local-data]`
 
 Examples: empty (every dependency), `python node postgres`, `--plan`,
-`postgres --reset-local-data`. Names limit the upgrade to those
+`valkey --reset-local-data`. Names limit the upgrade to those
 dependencies. `--plan` stops after the plan table and edits nothing.
 `--reset-local-data` lets the validation remove the local dependency
 volumes when a backing service moves a major; without it the skill
@@ -39,7 +39,9 @@ never removes them. Nothing else is asked for.
    `pyproject.toml`; `.nvmrc`; `packageManager` and `engines` in every
    `package.json`; the `FROM` lines of every Dockerfile; the image tags
    of every compose file; runtime versions and action references in
-   every CI workflow; engine and runtime versions in Terraform. One
+   every CI workflow; engine and runtime versions in Terraform;
+   `required_version` and the provider constraints of every Terraform
+   root, and the Terraform version the CI steps install. One
    dependency declared in several places is one row with every place
    listed. The `arch-check` tag in the `Makefile` is not a row: it
    moves with the guideline pin in `specs/architecture.md`, when the
@@ -60,7 +62,8 @@ never removes them. Nothing else is asked for.
    plan table says so in its Line column. A target that cannot be
    confirmed from a source is marked unconfirmed and left unchanged.
 5. Print the plan table (see Output). A backing service in the local
-   compose stack that moves a major (Postgres 17 to 18, say) keeps its
+   compose stack that moves a major (the cache's engine, say, from one
+   major to the next) keeps its
    data files in a volume the new engine cannot open, and validating
    the move means removing that volume. The local data may be worth
    keeping: `make seed` rebuilds the seeded org, not what a developer
@@ -80,6 +83,22 @@ never removes them. Nothing else is asked for.
    suffix (`-alpine`, `-slim`). A managed-service engine in Terraform
    moves only to a version the provider offers; when that is not
    confirmable, the row is unconfirmed.
+
+   The deployed database engine keeps its major version. A new minor
+   within that major moves; a new major is held back, in Terraform
+   and in the local compose image alike, so the local stack keeps
+   running the engine the environments run. A major upgrade of a
+   deployed database is a planned change with its own snapshot and
+   its own rehearsal, never a line in a dependency bump. The row
+   stays in the plan table with `held back: deployed major` in its
+   Line column, and the report names it under Held back.
+
+   After the provider constraints and `required_version` move, run
+   `terraform init -upgrade -backend=false` in every Terraform root,
+   each bootstrap root and each environment root, so each root's
+   `.terraform.lock.hcl` resolves the new providers. The lock files
+   are part of the change; a constraint moved without its lock file
+   plans one thing in CI and another on a laptop.
 7. Upgrade the libraries in two passes, when the repository has those
    workspaces.
 
@@ -109,8 +128,8 @@ never removes them. Nothing else is asked for.
    it under Held back with "no patch behind it" in place of a failing
    check.
 8. Validate: `make check`; then, when Docker is available,
-   `make infra-up` (`make infra-reset` in its place when a database
-   moved a major in this run, which only `--reset-local-data` allows;
+   `make infra-up` (`make infra-reset` in its place when a backing
+   service moved a major in this run, which only `--reset-local-data` allows;
    it recreates the dependency volumes and starts nothing else; `make reset` runs `make up`, which also seeds
    and starts the application on the host), `make migrate`,
    `make migrate-check`, and
@@ -121,7 +140,9 @@ never removes them. Nothing else is asked for.
    fix is mechanical and named in that release's upgrade notes (a
    renamed setting, a moved import, a new required field in a config
    file). When the fix would change what the application does, revert
-   that row's edits and its lock changes, mark it held back with the
+   that row's edits and its lock changes with `git restore` on the
+   files the row touched (`git restore <file> ...`), mark it held
+   back with the
    failing output, and run step 8 again. Stop after every remaining row
    passes.
 
@@ -139,11 +160,12 @@ A short report, and nothing else:
 | Dependency | Declared in | From | To | Line | Source |
 |------------|-------------|------|----|------|--------|
 | Node | `.nvmrc`, `.github/workflows/ci.yml` | 22.11.0 | 24.21.0 | active LTS | nodejs.org release index |
-| Postgres | `deployment/local/docker-compose.yml` | 16 | 18 | stable, `make infra-reset` | endoflife.date |
+| Valkey | `deployment/local/docker-compose.yml` | 8 | 9 | stable, `make infra-reset` | endoflife.date |
+| Postgres | `deployment/local/docker-compose.yml`, `deployment/terraform/modules/database/` | 17.5 | 17.6 | held back: deployed major (18 exists) | endoflife.date |
 
 **Libraries.** <count of Python and npm packages moved, and every major-version move by name, in the order the caps were raised>
 **Fixed.** <mechanical fixes made for an upgrade, one per line with the file>, or none
-**Held back.** <dependency, target, and the failing check, "no patch behind it", or "moves a major; rerun with --reset-local-data">, or none
+**Held back.** <dependency, target, and the failing check, "no patch behind it", "deployed major", or "moves a major; rerun with --reset-local-data">, or none
 **Unconfirmed.** <dependency and why no source confirmed a target>, or none
 **Gates.** `make check` <passed | failed: what>; integration <passed | failed: what | skipped: no Docker>
 ```
