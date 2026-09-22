@@ -732,3 +732,22 @@ def test_a_stage_that_refines_through_an_intermediate_class_passes_ctx_20_and_ct
         "OpContext subclasses IdentityContext; it does not refine it",
         "OperatorContext does not subclass IdentityContext",
     ]
+
+
+ALIASED = (
+    "from typing import Annotated, TypeAlias\n\n"
+    "from acme.om.opcontext import OpContext as Ctx\n"
+    "from acme.om.opcontext import OperatorContext\n\n"
+    "OperatorDep: TypeAlias = Annotated[OperatorContext, Depends(operator)]\n"
+    "CtxDep = Annotated[Ctx, Depends(context)]\n\n\n"
+    "def narrow(ctx: Annotated[OpContext, Depends(context)]):\n    return ctx.model_copy(update={'role': 'owner'})\n\n\n"
+    "def rename(ctx: Ctx):\n    ctx.trace_id = 'x'\n\n\n"
+    "def widen(ctx: CtxDep):\n    return ctx.model_copy()\n\n\n"
+    "async def create_org(ctx: OperatorDep, org):\n    return outbox_row(ctx, 'org.created', org.id)\n"
+)
+
+
+@pytest.mark.parametrize(("rule_id", "lines"), [("CTX-06", [11, 15, 19]), ("CTX-24", [23]), ("CTX-26", [11, 19])])
+def test_an_annotated_or_aliased_context_is_the_stage_it_names(tmp_path, rule_id, lines):
+    code, found, _ = run(tmp_path, rule_id, {f"{API}/impl/tasks.py": ALIASED})
+    assert (code, [line for _, _, line in found]) == (1, lines)

@@ -74,10 +74,36 @@ def scope_names(project: Project) -> set[str]:
     return {name for name in stage_classes(project) if name.endswith("Scope")}
 
 
-def stage_of(arg: ast.arg) -> str | None:
-    """The stage a parameter is typed with, alone or in a union with None."""
-    members = [m for m in union_members(arg.annotation) if m != "None"]
+def stage_names(project: Project, file: SourceFile, tree: ast.Module) -> dict[str, str]:
+    """The names a module spells a stage with, beside the stage's own: an import under another name, and a
+    module-level alias of one stage (`CtxDep = Annotated[OpContext, Depends(context)]`)."""
+    out = {local: real for local, full in imported_names(project, file).items() if (real := last(full) or "") in STAGES}
+    for node in tree.body:
+        target: ast.expr | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign):
+            target, value = node.target, node.value
+        elif type(node).__name__ == "TypeAlias":  # `type CtxDep = ...`, Python 3.12 and later
+            target, value = getattr(node, "name", None), getattr(node, "value", None)
+        if isinstance(target, ast.Name) and value is not None:
+            stage = one_stage(value, out)
+            if stage is not None:
+                out[target.id] = stage
+    return out
+
+
+def one_stage(annotation: ast.AST | None, names: dict[str, str] | None = None) -> str | None:
+    """The stage an annotation is, alone or in a union with None, read through `names` (`stage_names`)."""
+    names = names or {}
+    members = [names.get(m, m) for m in union_members(annotation) if m != "None"]
     return members[0] if len(members) == 1 and members[0] in STAGES else None
+
+
+def stage_of(arg: ast.arg, names: dict[str, str] | None = None) -> str | None:
+    """The stage a parameter is typed with, alone or in a union with None."""
+    return one_stage(arg.annotation, names)
 
 
 def operations(project: Project) -> Iterator[tuple[SourceFile, ast.ClassDef, Function]]:
@@ -245,7 +271,7 @@ def own_nodes(fn: Function) -> Iterator[ast.AST]:
             todo.extend(ast.iter_child_nodes(node))
 
 
-def stage_bindings(fn: Function, inherited: dict[str, str]) -> dict[str, str]:
+def stage_bindings(fn: Function, inherited: dict[str, str], names: dict[str, str]) -> dict[str, str]:
     """Names bound in a function to a stage above the request stage: its parameters and annotated locals.
 
     A name the enclosing function bound keeps its stage here unless this
@@ -256,24 +282,27 @@ def stage_bindings(fn: Function, inherited: dict[str, str]) -> dict[str, str]:
     rebound |= {n.id for n in own_nodes(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
     out = {k: v for k, v in inherited.items() if k not in rebound}
     for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
-        stage = stage_of(arg)
+        stage = stage_of(arg, names)
         if stage in ABOVE_REQUEST:
             out[arg.arg] = stage
     for node in own_nodes(fn):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            members = [m for m in union_members(node.annotation) if m != "None"]
-            if len(members) == 1 and members[0] in ABOVE_REQUEST:
-                out[node.target.id] = members[0]
+            stage = one_stage(node.annotation, names)
+            if stage in ABOVE_REQUEST:
+                out[node.target.id] = stage
     return out
 
 
-def scoped_functions(tree: ast.Module) -> Iterator[tuple[Function, dict[str, str]]]:
-    """Every function with the stage bindings it sees: its own, and those of the functions around it."""
+def scoped_functions(tree: ast.Module, names: dict[str, str]) -> Iterator[tuple[Function, dict[str, str]]]:
+    """Every function with the stage bindings it sees: its own, and those of the functions around it.
+
+    `names` is the module's other spellings of a stage (`stage_names`).
+    """
     todo: list[tuple[ast.AST, dict[str, str]]] = [(tree, {})]
     while todo:
         node, inherited = todo.pop()
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            bound = stage_bindings(node, inherited)
+            bound = stage_bindings(node, inherited, names)
             yield node, bound
             nested = (n for n in own_nodes(node) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef))
             todo.extend((n, bound) for n in nested)
@@ -300,7 +329,8 @@ def context_is_immutable(project: Project) -> Iterator[Violation]:
     module = stage_module(project)
     prefixes = (project.sub("om"), project.sub("gateway"), project.sub("services"), project.sub("workers"))
     for file, tree in project.trees(*prefixes):
-        for fn, bound in sorted(scoped_functions(tree), key=lambda e: (e[0].lineno, e[0].col_offset)):
+        names = stage_names(project, file, tree)
+        for fn, bound in sorted(scoped_functions(tree, names), key=lambda e: (e[0].lineno, e[0].col_offset)):
             if fn.name.startswith(("with_", "override")) and returns_stage(fn) and file != module:
                 yield Violation.at(file.rel, fn, f"{fn.name} returns a stage; narrowing is an argument, not a new context")
             if not bound:
@@ -686,11 +716,12 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
     Who the operator row names is judged or run as a test."""
     for file, tree in project.trees():
         aliases = imported_names(project, file)
+        names = stage_names(project, file, tree)
         for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
             args = [*fn.args.posonlyargs, *fn.args.args]
             if args and args[0].arg in {"self", "cls"}:
                 args = args[1:]
-            if not args or stage_of(args[0]) != "OperatorContext":
+            if not args or stage_of(args[0], names) != "OperatorContext":
                 continue
             for call in calls(fn):
                 name = called_name(call)
@@ -712,10 +743,10 @@ def site_matches(entry: str, rel: str, qualname: str) -> bool:
     return glob_match(path, rel) and (not where or qualname == where or qualname.startswith(where + "."))
 
 
-def stage_copies(tree: ast.Module) -> dict[ast.Call, str]:
+def stage_copies(tree: ast.Module, names: dict[str, str]) -> dict[ast.Call, str]:
     """Every `<name>.model_copy(...)` of a module whose name is bound to a stage above the request stage."""
     out: dict[ast.Call, str] = {}
-    for fn, bound in scoped_functions(tree):
+    for fn, bound in scoped_functions(tree, names):
         for node in own_nodes(fn):
             if (
                 isinstance(node, ast.Call)
@@ -757,7 +788,7 @@ def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
     used: set[str] = set()
     for file, tree in project.trees():
         scope = enclosing(tree)
-        copies = stage_copies(tree)
+        copies = stage_copies(tree, stage_names(project, file, tree))
         aliases = imported_names(project, file)
         for call in calls(tree):
             name = constructed(call, names, aliases) or copies.get(call)
