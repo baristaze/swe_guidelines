@@ -2164,9 +2164,11 @@ is a drawing.
 
 -   The **migration login** owns the schema. It runs the migrations,
     in the deploy's one-off task, and no process of a deployed
-    environment holds it otherwise. The step of the negative control
-    in [Tests](#tests) that turns a policy off runs under it too,
-    because only the owner can alter a table.
+    environment holds it otherwise. `FORCE` binds it like any other
+    login, so a data migration lifts the fence for its own statements
+    and puts it back (see [Migrations](#migrations)). The step of the
+    negative control in [Tests](#tests) that turns a policy off runs
+    under it too, because only the owner can alter a table.
 -   The **runtime login** is what every request's connection uses. It
     owns nothing and holds only `SELECT`, `INSERT`, `UPDATE`, and
     `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
@@ -2223,6 +2225,29 @@ runs both at once. Add and backfill in one release, switch the code,
 drop in a later one: expand and contract. A field added to a stored
 JSON shape is staged the same way, one release apart, because the shape
 forbids what it does not know (see [Translation](#translation)).
+
+A backfill is a data migration, and it runs under the fence. The
+migration login owns the tables, and `FORCE ROW LEVEL SECURITY` binds
+the owner (see [The Second Fence](#the-second-fence)). A migration
+names no tenant, so its `UPDATE` would match no row and succeed. So a
+data migration lifts the fence for its own statements and puts it
+back, in the same transaction:
+
+``` sql
+ALTER TABLE core.warehouses NO FORCE ROW LEVEL SECURITY;
+UPDATE core.warehouses SET timezone = 'UTC' WHERE timezone IS NULL;
+ALTER TABLE core.warehouses FORCE ROW LEVEL SECURITY;
+```
+
+A backfill that touched nothing looks like one that had nothing to do.
+So a data migration counts the rows it means to touch before it
+starts, and compares that count with the rows the statement reports.
+It fails on a difference, and the whole transaction rolls back, the
+fence included.
+
+A migration test holds that. It seeds rows of two tenants, runs the
+backfill against the migrated database, and asserts that the count
+covers both tenants' rows.
 
 A check that the ORM metadata and the migrated schema agree, for every
 role, needs a migrated database. So it is a target of its own,
