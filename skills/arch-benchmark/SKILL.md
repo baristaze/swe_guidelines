@@ -41,18 +41,22 @@ never run the harness from there.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
    their kind and default judges, and each provider with its flag and
    whether its key is present. Report an absent key as absent; it is a
-   provider that will be skipped, not a failure.
+   provider that will be skipped, not a failure. It also shows whether
+   the subject's own key, `SUBJECT_ANTHROPIC_API_KEY`, is present; a
+   skill scenario needs it, and without it a `--strict` run refuses.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
-   `high`. `--repeat N` runs the subject N times. `--runtime` is
+   `high`. `--repeat N` runs the subject N times, 3 by default.
+   `--subject-model` pins the subject's model. `--runtime` is
    `host`, `container`, or `vm`. When the prompt names something with
    no flag behind it, say so and run without it.
 4. Run the scenario, for example
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges or how many repeats, use the
-   scenario's own defaults and say which they were.
+   scenario's default judges and the default of 3 repeats, and say
+   which they were.
 5. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
    `run.json`, and calls nothing. A dry run leaves `run.json` and
