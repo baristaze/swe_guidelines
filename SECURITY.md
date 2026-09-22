@@ -21,9 +21,11 @@ version so the manifests are validated there.
 If you believe you have found a security issue in this repository (for
 example a script that could be made to execute untrusted input, or a
 skill that instructs an assistant to take an unsafe action), please do
-not open a public issue. Use the repository's private vulnerability
-reporting ("Report a vulnerability" under the Security tab) so the
-report reaches the maintainer directly.
+not open a public issue. Report it through the repository's private
+vulnerability reporting, so the report reaches the maintainer directly:
+open <https://github.com/baristaze/swe_guidelines/security/advisories/new>,
+or "Report a vulnerability" under the Security tab. The new-issue page
+links to the same form.
 
 You can expect an acknowledgement within a week and a fix or a written
 assessment within thirty days.

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/baristaze/swe_guidelines/security/advisories/new
+    about: Report it privately, never in a public issue. SECURITY.md says what is in scope.
