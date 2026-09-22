@@ -835,3 +835,28 @@ def test_asy_28_a_mode_check_on_the_open_handle_before_its_first_read(tmp_path, 
     code, report = run(tmp_path, "ASY-28", {SECRETS_LOCAL: source.replace(read, late)})
     assert code == 1
     assert messages(report) == ["_read reads a file with no owner-only mode check before it"]
+
+
+def test_asy_15_the_gateway_is_part_of_every_web_service(tmp_path):
+    spawn = "import asyncio\n\n\ndef f(c):\n    return asyncio.create_task(c)\n"
+    files = {
+        "gateway/src/acme/gateway/__init__.py": "",
+        "gateway/src/acme/gateway/ratelimit.py": spawn,
+        f"{API}/gateway/audit.py": spawn,
+        "gateway/src/acme/gateway/realtime/hub.py": spawn,
+    }
+    code, report = run(tmp_path, "ASY-15", files)
+    assert code == 1
+    assert sorted(f["path"] for f in report["findings"]) == [
+        "gateway/src/acme/gateway/ratelimit.py",
+        f"{API}/gateway/audit.py",
+    ]
+
+
+def test_asy_29_an_outbox_row_outside_a_types_package_is_read(tmp_path):
+    row = GOOD[OUTBOX].replace("    traceparent: str | None = None\n", "")
+    assert row != GOOD[OUTBOX]
+    files = {OUTBOX: None, "om/src/acme/om/outbox/rows.py": row}
+    code, report = run(tmp_path, "ASY-29", files)
+    assert code == 1
+    assert messages(report) == ["OutboxRow declares no traceparent"]

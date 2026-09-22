@@ -12,9 +12,10 @@ manager. A callback handed down is judged by the review. A bare
 `TaxServiceInterface` from `<pkg>.integrations` is a lower dependency.
 
 CON-10 (upper layers depend on lower layers): nothing under
-`<pkg>.infra` imports `<pkg>.om`; a router or a service module imports
-no storage impl, table, or manager impl; a manager impl imports no
-storage impl or table. A session read through an interface is judged.
+`<pkg>.infra` imports `<pkg>.om`; a router, a service module, a gateway
+module, or a worker module imports no storage impl, table, or manager
+impl; a manager impl imports no storage impl or table. A session read
+through an interface is judged.
 """
 
 from __future__ import annotations
@@ -88,20 +89,24 @@ EXEMPT_SERVICE_MODULES = frozenset({"root", "container"})
 @rule(
     "CON-10",
     coverage="partial",
-    summary="Infra imports no OM; routers and services import no storage internals or manager impl; managers no storage impl.",
+    summary="Infra imports no OM; routers, services, the gateway, and workers import no storage internals or manager impl; "
+    "managers no storage impl.",
 )
 def infra_never_imports_the_om(project: Project) -> Iterator[Violation]:
     """Nothing under `<pkg>.infra` imports `<pkg>.om`. Modules under
-    `<pkg>.services.<process>.routers`, `.services`, and `.impl` (the
-    services root and the container left out) import no storage impl,
-    no table module, and no `<pkg>.om.<ns>.impl`. Modules under
-    `<pkg>.om.<ns>.impl` import no storage impl and no table module."""
+    `<pkg>.services.<process>.routers`, `.services`, `.impl`, and
+    `.gateway`, under `<pkg>.gateway`, and under `<pkg>.workers` (the
+    services root and each container left out, as they wire the impls)
+    import no storage impl, no table module, and no
+    `<pkg>.om.<ns>.impl`. Modules under `<pkg>.om.<ns>.impl` import no
+    storage impl and no table module."""
     om = (project.sub("om"),)
     for file in project.modules_under(project.sub("infra")):
         for imp, hit in offending(project, file, om):
             yield Violation.at(file.rel, imp.node, f"{file.module} imports {hit}; infra imports nothing from the OM")
-    for file in project.modules_under(project.sub("services")):
-        if service_part(project, file.module) not in {"routers", "services", "impl"}:
+    for file in project.modules_under(project.sub("services"), project.sub("gateway"), project.sub("workers")):
+        in_service = is_under(file.module, project.sub("services"))
+        if in_service and service_part(project, file.module) not in {"routers", "services", "impl", "gateway"}:
             continue
         if file.module.rpartition(".")[2] in EXEMPT_SERVICE_MODULES:
             continue
@@ -112,7 +117,7 @@ def infra_never_imports_the_om(project: Project) -> Iterator[Violation]:
             )
             if internal is not None:
                 yield Violation.at(
-                    file.rel, imp.node, f"{file.module} imports {internal}; the network layer depends on interfaces only"
+                    file.rel, imp.node, f"{file.module} imports {internal}; the layers above the OM depend on interfaces only"
                 )
     for file in project.modules_under(project.sub("om")):
         if not in_manager_impl(project, file.module):

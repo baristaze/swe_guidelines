@@ -104,7 +104,10 @@ def test_a_definition_inside_fenced_code_is_not_a_link(repo, links):
     assert links.main() == 0
 
 
-@pytest.mark.parametrize("line", ["See section 4 for the details.", "## 2.1 The storage layer"])
+@pytest.mark.parametrize(
+    "line",
+    ["See section 4 for the details.", "## 2.1 The storage layer", "As subsection 3.2 says.", "See §4.", "See § 4.1."],
+)
 def test_a_section_by_number_fails_outside_the_lenses_too(repo, links, capsys, line):
     repo.write("skills/extra.md", f"# Extra\n\n{line}\n")
     assert links.main() == 1

@@ -66,7 +66,12 @@ lenses (`skills/`), and the checkers that keep the three consistent
   checker that resolves them use the same function. It also holds the
   one list of the repository's Markdown (`markdown_files`), which
   every script that scans Markdown reads, and the argument parser
-  every script uses. `tests/` holds one
+  every script uses, and the one fence rule
+  (`fenced_lines`) every script that skips code blocks uses.
+- `scripts/check_lenses.py` also holds every identifier a lens quotes
+  to the section the lens cites: a backticked name the guideline uses
+  must appear in that section. `CROSS_REFERENCES` lists the few
+  deliberate exceptions. `tests/` holds one
   pytest module per script, each on a small fixture tree, with a pass
   and a fail path per rule; `make test` runs them.
 

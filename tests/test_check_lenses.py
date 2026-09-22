@@ -79,10 +79,10 @@ def test_stated_count_must_equal_the_catalog(repo, lenses, capsys):
     assert "lenses/README.md" in capsys.readouterr().out
 
 
-def test_principle_over_sixty_words_fails(repo, lenses, capsys):
-    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 61)
+def test_principle_over_a_hundred_and_twenty_words_fails(repo, lenses, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** " + "word " * 121)
     assert lenses.main() == 1
-    assert "Principle is 61 words, limit 60" in capsys.readouterr().out
+    assert "Principle is 121 words, limit 120" in capsys.readouterr().out
 
 
 def test_four_sentences_in_look_for_or_violation_fail(repo, lenses, capsys):
@@ -100,10 +100,12 @@ def test_line_wider_than_eighty_columns_fails(repo, lenses, capsys):
 
 
 def test_list_continuation_lines_count_toward_the_principle(repo, lenses, capsys):
-    items = "\n".join(f"{marker} {' '.join(['word'] * 10)}" for marker in ["-", "*", "**", "-", "*", "-"])
+    items = "\n".join(
+        f"{marker} {' '.join(['word'] * 10)}" for marker in ["-", "*", "**", "-", "*", "-", "-", "*", "**", "-", "*", "-"]
+    )
     repo.edit("lenses/om.md", "**Principle.** One table per entity.\n", f"**Principle.** One table per entity.\n{items}\n")
     assert lenses.main() == 1
-    assert "Principle is 65 words, limit 60" in capsys.readouterr().out
+    assert "Principle is 126 words, limit 120" in capsys.readouterr().out
 
 
 def test_a_new_field_line_still_ends_the_value_before_it(repo, lenses):
@@ -230,3 +232,80 @@ def test_labels_on_a_whole_section_are_refused(repo, lenses, labelled, capsys):
     repo.edit("lenses/om.md", "The Storage Layer, Tables; Principles.", "The Storage Layer (Keys).")
     assert lenses.main() == 1
     assert "'The Storage Layer' names no subsection, so it takes no labels" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("cite", ["subsection 3.2", "Subsection 3", "§4", "§ 4.1"])
+def test_a_subsection_or_a_section_sign_by_number_fails(repo, lenses, capsys, cite):
+    repo.edit("lenses/om.md", "Tables holding two entities.", f"Tables holding two entities, as in {cite}.")
+    assert lenses.main() == 1
+    assert "om.md:24: refers to a section by number" in capsys.readouterr().out
+
+
+def test_a_heading_inside_a_tilde_fence_is_no_section_to_cite(repo, lenses, capsys):
+    repo.edit("architecture.md", "One table per entity.\n", "One table per entity.\n\n~~~\n## Phantom\n~~~\n")
+    repo.edit("lenses/om.md", "**Source.** Interfaces, Principles.", "**Source.** Phantom.")
+    assert lenses.main() == 1
+    assert "'Phantom' is not a section of architecture.md" in capsys.readouterr().out
+
+
+def test_lens_syntax_inside_a_tilde_fence_is_an_example(repo, lenses, capsys):
+    example = "~~~markdown\n## OM-09 An example lens\n\n**Principle.** Shown, not counted.\n~~~\n"
+    repo.edit(
+        "lenses/om.md",
+        "**Violation.** A table with a discriminator column.\n",
+        f"**Violation.** A table with a discriminator column, like this:\n\n{example}",
+    )
+    assert lenses.main() == 0, capsys.readouterr().out
+
+
+# --- an identifier a lens quotes stays in the section it cites
+
+
+@pytest.fixture
+def named(repo):
+    """The Storage Layer names `table_name` and `get_rows()`; Interfaces names `OpContext` in a code block."""
+    repo.edit("architecture.md", "One table per entity.\n", "One table per entity, keyed by `table_name`.\n")
+    repo.edit(
+        "architecture.md",
+        "Storage is behind an interface.\n",
+        "Storage is behind an interface.\n\n#### Reads\n\nA read calls `repo.get_rows(limit)`.\n",
+    )
+    repo.edit("architecture.md", "# not a heading: fenced code\n", "# not a heading: fenced code\nctx: OpContext\n")
+
+
+def test_an_identifier_the_cited_section_holds_passes(repo, lenses, named, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** One table per `table_name`.")
+    repo.edit("lenses/om.md", "**Look for.** Tables holding two entities.", "**Look for.** Calls of `get_rows()`.")
+    repo.edit("lenses/om.md", "Direct calls across a layer boundary.", "An `OpContext` crossing a layer boundary.")
+    assert lenses.main() == 0, capsys.readouterr().out
+
+
+def test_an_identifier_the_cited_section_does_not_hold_fails(repo, lenses, named, capsys):
+    repo.edit(
+        "lenses/om.md",
+        "**Principle.** Every layer talks to the next through an interface.",
+        "**Principle.** Every layer talks to the next through `table_name`.",
+    )
+    assert lenses.main() == 1
+    assert "om.md:7: OM-01 quotes `table_name`, which Interfaces does not hold" in capsys.readouterr().out
+
+
+def test_a_renamed_identifier_in_a_principle_fails(repo, lenses, named, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** One table per `table_key`.")
+    assert lenses.main() == 1
+    assert "OM-02 quotes `table_key`, which The Storage Layer does not hold" in capsys.readouterr().out
+
+
+def test_a_guideline_identifier_in_a_violation_is_held_to_the_cited_section(repo, lenses, named, capsys):
+    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.", "**Violation.** An `OpContext` in a row.")
+    assert lenses.main() == 1
+    assert "OM-02 quotes `OpContext`, which The Storage Layer does not hold" in capsys.readouterr().out
+
+
+def test_a_breach_the_guideline_never_names_and_words_that_are_no_identifier_pass(repo, lenses, named, capsys):
+    repo.edit(
+        "lenses/om.md",
+        "**Violation.** A table with a discriminator column.",
+        "**Violation.** An id from `uuid4()` or `os.environ`,\nin `base.py`, marked `high`.",
+    )
+    assert lenses.main() == 0, capsys.readouterr().out

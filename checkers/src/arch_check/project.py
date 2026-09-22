@@ -31,6 +31,12 @@ SKIP_DIRS = frozenset(
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
 
+MAX_DEPTH = 2500
+"""The deepest syntax tree the rules walk. A rule walks a tree by
+recursion (`ast.unparse`, a `NodeVisitor`), and the runner raises the
+recursion limit to cover this depth; a file that nests deeper is a
+`PARSE` finding, never a rule that fails on it."""
+
 
 @dataclass(frozen=True)
 class SourceFile:
@@ -94,7 +100,8 @@ class Project:
 
         `allowed` is every key the rule reads; any other key under the rule's
         table is a `ConfigError`, so a misspelt option never silently falls
-        back to the default. The value must have the default's type.
+        back to the default. The value must have the default's type, and a
+        table's entries are each a name or a non-empty list of names.
         """
         table = self.config.options.get(rule, {})
         unknown = sorted(set(table) - set(allowed))
@@ -105,6 +112,12 @@ class Project:
         value = table[key]
         if not isinstance(value, type(default)) or (isinstance(value, list) and not all(isinstance(v, str) for v in value)):
             raise ConfigError(f"[tool.arch-check.options.{rule}] `{key}` must be a {type(default).__name__}")
+        if isinstance(value, dict):
+            for name, item in value.items():
+                if not names(item):
+                    raise ConfigError(
+                        f"[tool.arch-check.options.{rule}] `{key}`: {name} must be a name or a non-empty list of names"
+                    )
         return value
 
     # --- names
@@ -183,9 +196,15 @@ class Project:
             except SyntaxError as e:
                 self._trees[file.rel] = None
                 self.parse_errors[file.rel] = (e.lineno or 1, e.msg)
-            except (OSError, ValueError, RecursionError) as e:
+            except (OSError, ValueError, RecursionError, MemoryError) as e:
+                # a source that exhausts the parser's stack is this file's defect, not a crash of the run
                 self._trees[file.rel] = None
-                self.parse_errors[file.rel] = (1, str(e))
+                self.parse_errors[file.rel] = (1, str(e) or type(e).__name__)
+            else:
+                tree = self._trees[file.rel]
+                if tree is not None and depth(tree) > MAX_DEPTH:
+                    self._trees[file.rel] = None
+                    self.parse_errors[file.rel] = (1, f"nests deeper than the {MAX_DEPTH} levels arch-check walks")
         return self._trees[file.rel]
 
     def trees(self, *prefixes: str) -> Iterator[tuple[SourceFile, ast.Module]]:
@@ -255,11 +274,12 @@ class Project:
 
         A byte that is not UTF-8 is replaced, never a reason to read the file
         as empty: every token a rule looks for is ASCII, and a Dockerfile with a
-        Latin-1 comment is still a Dockerfile.
+        Latin-1 comment is still a Dockerfile. A leading byte order mark is
+        dropped, as some editors save UTF-8 with one.
         """
         path = self.root / rel
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
         except OSError:
             return None
         with contextlib.suppress(ValueError):  # a path that climbs out of the root has no ignores to settle
@@ -271,7 +291,25 @@ class Project:
         return text.splitlines() if text is not None else []
 
 
+def names(value: object) -> bool:
+    """Whether an option's table entry is a name or a non-empty list of names, the one shape a table option takes."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    return isinstance(value, list) and bool(value) and all(isinstance(v, str) and v.strip() for v in value)
+
+
 # --- ast helpers
+
+
+def depth(tree: ast.AST) -> int:
+    """How deep a syntax tree nests, counted with a stack so a deep tree cannot exhaust it."""
+    deepest = 0
+    stack = [(tree, 1)]
+    while stack:
+        node, level = stack.pop()
+        deepest = max(deepest, level)
+        stack.extend((child, level + 1) for child in ast.iter_child_nodes(node))
+    return deepest
 
 
 def is_under(name: str, prefix: str) -> bool:

@@ -270,7 +270,7 @@ def instruction(buffer: str, line: int) -> Instruction:
 
 def dockerfile(project: Project, rel: str) -> list[Instruction]:
     """The instructions of a Dockerfile: comments dropped, `\\` continuations joined across a blank line, and
-    a heredoc body (`RUN <<EOF ... EOF`) carried as the rest of its instruction."""
+    a heredoc body (`RUN <<EOF ... EOF`) carried as the rest of its instruction, one line per command."""
     out: list[Instruction] = []
     buffer = ""
     start = 0
@@ -280,8 +280,11 @@ def dockerfile(project: Project, rel: str) -> list[Instruction]:
             if raw.strip() == terminator:
                 out.append(instruction(buffer, start))
                 buffer, terminator = "", None
+            elif buffer.endswith("\\"):
+                buffer = buffer[:-1] + " " + raw.strip()
             else:
-                buffer += " " + raw.strip()
+                # each line of a heredoc is a command of its own, as the shell runs it
+                buffer += "\n" + raw.strip()
             continue
         text = raw.strip()
         if not text or text.startswith("#"):

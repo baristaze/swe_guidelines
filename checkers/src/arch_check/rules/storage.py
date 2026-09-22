@@ -752,6 +752,14 @@ def one_role_per_table(project: Project) -> Iterator[Violation]:
             )
         return
     rmap, roles = read
+    for e in rmap.entries:
+        if e.table not in roles:
+            yield Violation.at(
+                rmap.file.rel,
+                e.value,
+                f"{name} gives {e.table} the role {ast.unparse(e.value)}, whose value arch-check cannot read; "
+                "write the role as a string or a StrEnum member",
+            )
     names = {t.name for t in found}
     keys = {e.table for e in rmap.entries}
     for t in found:

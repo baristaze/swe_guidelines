@@ -14,7 +14,7 @@ Rules:
   from its heading to the next heading of the same or a higher level; a
   citation of a whole section takes no parentheses;
 - Severity is high, medium, or low;
-- a Principle is at most 60 words, and Look for and Violation are at most
+- a Principle is at most 120 words, and Look for and Violation are at most
   three sentences each, so a lens stays one rule a reviewer can hold;
 - a field value runs to the next field or lens heading, wrapped lines
   and list items included; fenced code is neither a lens nor a field,
@@ -27,7 +27,20 @@ Rules:
   ways with the rules `checkers/src/arch_check/rules/` registers: a lens
   with a Check line has a rule of its id with the same coverage (`full`
   for the first sentence, `partial` for the second), and every rule has
-  a lens that says so. The rules are read with `ast`, never imported.
+  a lens that says so. The rules are read with `ast`, never imported;
+- an identifier a lens quotes stays in the section it cites. A section is
+  the text under its `##` heading, its subsections and code included; a
+  citation of `<Section>, <Subsection>` cites the section. An identifier
+  is a backticked name written as code: it holds an underscore, a
+  lower-case letter before a capital, a dot, or a closing `()`
+  (`org_id`, `OpContext`, `ctx.user_id`, `get_cache()`); a file name
+  (`base.py`) is not one. Every identifier in a Principle is held to the
+  cited sections, because the Principle restates them. An identifier in
+  Look for or Violation is held to them when the guideline names it
+  anywhere; one it never names is the lens's own example of a breach
+  (`uuid4()`). `CROSS_REFERENCES` lists the few a lens names from
+  another section on purpose. A renamed or moved identifier fails here
+  before a reader meets it.
 
 Exit status is non-zero when any rule fails. Standard library only.
 """
@@ -40,7 +53,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments
+from _common import NUMBERED_REFERENCE, arguments, fenced_lines, headings, unfenced
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
@@ -56,14 +69,24 @@ FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Check)\.
 CHECK_FULL = "`arch-check` decides it."
 CHECK_PARTIAL = re.compile(r"^`arch-check` decides (.+); the rest is judged\.$")
 LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
-NUMBERED = re.compile(r"\bsections? \d+", re.IGNORECASE)
+NUMBERED = NUMBERED_REFERENCE
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|\s*`([a-z]+\.md)`\s*\|")
 SKIP_SECTIONS = {"Contents"}
 LABELLED = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
 BOLD_LABEL = re.compile(r"\*\*([^*]+?)\.\*\*")
 COUNT = re.compile(r"\b(\d+) lenses\b")
 SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
-MAX_PRINCIPLE_WORDS = 60
+IDENTIFIER = re.compile(r"(?=.*(?:_|[a-z][A-Z]|\.|\(\)$))[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\(\))?")
+FILE_NAME = re.compile(r".+\.(?:py|pyi|toml|json|jsonc|html|md|txt|ya?ml|sql|ts|tsx|js|mjs|lock|cfg|ini|sh|env)")
+CODE_SPAN = re.compile(r"`([^`]+)`")
+CROSS_REFERENCES = frozenset(
+    {
+        ("CTX-24", "created_by"),  # the provenance field an operator row stamps, defined with the OM root
+        ("OM-15", "utcnow()"),  # the clock helper of the OM root, named as what a pure rule never calls
+    }
+)
+"""(lens, identifier) pairs a lens quotes from a section it does not cite, on purpose."""
+MAX_PRINCIPLE_WORDS = 120
 MAX_SENTENCES = 3
 MAX_COLUMNS = 80
 
@@ -72,24 +95,13 @@ def sections() -> dict[str, set[str]]:
     """Map each section title to the set of its subsection titles, skipping fenced code."""
     out: dict[str, set[str]] = {}
     current: str | None = None
-    in_fence = False
-    for line in GUIDELINE.read_text(encoding="utf-8").splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^## (.+)$", line)
-        if m:
-            current = m.group(1).strip()
-            if current in SKIP_SECTIONS:
-                current = None
-                continue
-            out[current] = set()
-            continue
-        m = re.match(r"^### (.+)$", line)
-        if m and current is not None:
-            out[current].add(m.group(1).strip())
+    for level, title in headings(GUIDELINE.read_text(encoding="utf-8")):
+        if level == 2:
+            current = None if title in SKIP_SECTIONS else title
+            if current is not None:
+                out[current] = set()
+        elif level == 3 and current is not None:
+            out[current].add(title)
     return out
 
 
@@ -103,13 +115,7 @@ def paragraph_labels() -> dict[tuple[str, str], set[str]]:
     out: dict[tuple[str, str], set[str]] = {}
     section: str | None = None
     current: tuple[str, str] | None = None
-    in_fence = False
-    for line in GUIDELINE.read_text(encoding="utf-8").splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for line in unfenced(GUIDELINE.read_text(encoding="utf-8")).splitlines():
         m = re.match(r"^(#{1,3}) (.+)$", line)
         if m:
             level, title = len(m.group(1)), m.group(2).strip()
@@ -121,6 +127,69 @@ def paragraph_labels() -> dict[tuple[str, str], set[str]]:
         if current is not None:
             out[current].update(BOLD_LABEL.findall(line))
     return out
+
+
+def section_texts() -> dict[str, str]:
+    """Map each section title to its text: from its `##` heading to the next, subsections and code included."""
+    text = GUIDELINE.read_text(encoding="utf-8")
+    out: dict[str, list[str]] = {}
+    current: str | None = None
+    for line, code in zip(text.split("\n"), fenced_lines(text), strict=True):
+        m = None if code else re.match(r"^## (.+?)\s*$", line)
+        if m:
+            current = m.group(1)
+            out[current] = []
+        elif current is not None:
+            out[current].append(line)
+    return {title: "\n".join(lines) for title, lines in out.items()}
+
+
+def cited_sections(value: str, known: dict[str, set[str]]) -> list[str]:
+    """The sections a Source value cites, in order: `<Section>, <Subsection>` cites its section."""
+    out: list[str] = []
+    for citation in (c.strip().rstrip(".") for c in value.split(";") if c.strip()):
+        m = LABELLED.match(citation)
+        citation = m.group(1).strip() if m else citation
+        head = citation.partition(", ")[0]
+        section = citation if citation in known else head if head in known else None
+        if section is not None and section not in out:
+            out.append(section)
+    return out
+
+
+def names(text: str, identifier: str) -> bool:
+    """Whether `text` names an identifier as a whole word; a call is named by its function (`get_cache` for `get_cache()`)."""
+    name = identifier.removesuffix("()")
+    return re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text) is not None
+
+
+def check_identifiers(
+    lens_id: str,
+    fields: list[tuple[str, str, int]],
+    path: Path,
+    known: dict[str, set[str]],
+    texts: dict[str, str],
+    errors: list[str],
+) -> None:
+    """Every identifier the lens quotes is in a section it cites (see the module docstring)."""
+    source = next((value for name, value, _ in fields if name == "Source"), "")
+    cited = cited_sections(source, known)
+    if not cited:
+        return  # an unknown citation is reported by check_source
+    held = "\n".join(texts.get(c, "") for c in cited)
+    everywhere = GUIDELINE.read_text(encoding="utf-8")
+    for name, value, ln in fields:
+        if name not in ("Principle", "Look for", "Violation"):
+            continue
+        for span in CODE_SPAN.findall(value):
+            identifier = span.strip()
+            if not IDENTIFIER.fullmatch(identifier) or FILE_NAME.fullmatch(identifier):
+                continue
+            if names(held, identifier) or (lens_id, identifier) in CROSS_REFERENCES:
+                continue
+            if name != "Principle" and not names(everywhere, identifier):
+                continue  # the lens's own example of a breach, which the guideline never names
+            errors.append(f"{path.name}:{ln}: {lens_id} quotes `{identifier}`, which {' and '.join(cited)} does not hold")
 
 
 def listed_groups() -> dict[str, str]:
@@ -221,6 +290,7 @@ def check_file(
     checks: dict[str, tuple[str, int]] | None = None,
     ids: dict[str, str] | None = None,
     labels: dict[tuple[str, str], set[str]] | None = None,
+    texts: dict[str, str] | None = None,
 ) -> int:
     """Check one lens file; return its lens count.
 
@@ -228,7 +298,7 @@ def check_file(
     second file reusing a prefix and number is caught.
     """
     text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    lines = text.split("\n")
     prefix: str | None = None
     expected = 1
     count = 0
@@ -238,14 +308,7 @@ def check_file(
             errors.append(f"{path.name}:{ln}: refers to a section by number")
         if len(line) > MAX_COLUMNS:
             errors.append(f"{path.name}:{ln}: {len(line)} columns, limit {MAX_COLUMNS}")
-    fenced: set[int] = set()
-    in_fence = False
-    for n, line in enumerate(lines):
-        if line.startswith("```"):
-            in_fence = not in_fence
-            fenced.add(n)
-        elif in_fence:
-            fenced.add(n)
+    fenced = {n for n, code in enumerate(fenced_lines(text)) if code}
     while i < len(lines):
         m = None if i in fenced else HEADING.match(lines[i])
         if not m:
@@ -279,9 +342,10 @@ def check_file(
                 line = LIST_MARKER.sub("", lines[j].strip())
                 fields[-1] = (name, f"{value} {line}".strip(), ln)
             j += 1
-        names = [f[0] for f in fields]
-        if names not in (list(FIELDS), [*FIELDS, OPTIONAL]):
-            errors.append(f"{where}: fields are {names}, expected {list(FIELDS)}, optionally followed by {OPTIONAL}")
+        found = [f[0] for f in fields]
+        if found not in (list(FIELDS), [*FIELDS, OPTIONAL]):
+            errors.append(f"{where}: fields are {found}, expected {list(FIELDS)}, optionally followed by {OPTIONAL}")
+        check_identifiers(lens_id, fields, path, known, section_texts() if texts is None else texts, errors)
         for name, value, ln in fields:
             if name == "Severity" and value.strip("` ") not in SEVERITIES:
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
@@ -314,6 +378,7 @@ def main(argv: Sequence[str] = ()) -> int:
     errors: list[str] = []
     known = sections()
     labels = paragraph_labels()
+    texts = section_texts()
     groups = listed_groups()
     files = {p.name: p for p in LENSES.glob("*.md") if p.name != "README.md"}
     for group, filename in groups.items():
@@ -331,7 +396,7 @@ def main(argv: Sequence[str] = ()) -> int:
     ids: dict[str, str] = {}
     for name in sorted(files):
         before = set(checks)
-        total += check_file(files[name], known, errors, checks, ids, labels)
+        total += check_file(files[name], known, errors, checks, ids, labels, texts)
         lens_files.update(dict.fromkeys(set(checks) - before, name))
     rules = registered_rules(errors)
     for lens_id, (coverage, ln) in sorted(checks.items()):

@@ -143,3 +143,8 @@ def test_ops_26_a_fourth_section_a_bare_link_and_a_dangling_target_fail(tmp_path
     code, where = found(tmp_path, "OPS-26", files)
     assert code == 1
     assert sorted(line for _, _, line in where) == [18, 20, 22]
+
+
+def test_ops_26_a_map_saved_with_a_bom_is_read(tmp_path):
+    files = {"llms.txt": "﻿" + MAP, "README.md": "", "ops/README.md": "", "om/README.md": ""}
+    assert found(tmp_path, "OPS-26", files) == (0, [])

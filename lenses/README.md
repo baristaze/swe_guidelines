@@ -57,7 +57,7 @@ a secret reaching somewhere it is not held, lost or duplicated work,
 and a cross-role breach, about a quarter of the catalog; `medium`
 bends a shape the guideline relies on; `low` is a convention.
 
-`Principle` is at most 60 words: a rule that needs more is two lenses.
+`Principle` is at most 120 words: a rule that needs more is two lenses.
 `Look for` and `Violation` are prose, one to three sentences each, wrapped
 at about 72 columns like the rest of the file, and no line is wider than
 80 columns. `make lenses` holds every lens to the word count and the

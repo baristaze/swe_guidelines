@@ -1,5 +1,7 @@
 """checkers/src/arch_check/rules/network.py: the gateway's edge, errors, idempotency, the prefix, wire types, the document."""
 
+import sys
+
 import pytest
 
 pytest.importorskip("tomllib")
@@ -433,3 +435,43 @@ def test_net_14_a_missing_target_is_reported_once(tmp_path):
     code, where, msgs = found(tmp_path, "NET-14", {ROUTER: "", "Makefile": "check:\n\techo\n"})
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
     assert "no `openapi` target" in msgs[0]
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        {
+            ROUTER: "from typing import Annotated\n\nfrom fastapi import Depends\n\n"
+            "from acme.services.api.gateway.idempotency import idem\n\n"
+            "IdemKey = Annotated[str, Depends(idem)]\n\n"
+            "@router.post('', status_code=201)\nasync def create(ctx: Ctx, key: IdemKey): ...\n",
+        },
+        pytest.param(
+            {
+                ROUTER: "from acme.services.api.gateway.idempotency import idem\n\n"
+                "type IdemKey = Annotated[str, Depends(idem)]\n\n"
+                "@router.post('', status_code=201)\nasync def create(ctx: Ctx, key: IdemKey): ...\n",
+            },
+            marks=pytest.mark.skipif(sys.version_info < (3, 12), reason="a type statement parses on 3.12 and later"),
+        ),
+        {
+            f"{SVC}/deps.py": "from acme.services.api.gateway.idempotency import idem\n\n"
+            "IdemKey = Annotated[str, Depends(idem)]\n",
+            ROUTER: "from acme.services.api.deps import IdemKey\n\n"
+            "@router.post('', status_code=201)\nasync def create(ctx: Ctx, key: IdemKey): ...\n",
+        },
+    ],
+)
+def test_net_09_a_key_behind_an_annotated_alias_passes(tmp_path, files):
+    code, where, _ = found(tmp_path, "NET-09", {IDEM: "def idem(): ...\n", **files})
+    assert (code, where) == (0, [])
+
+
+def test_net_09_an_alias_of_something_else_is_no_key(tmp_path):
+    source = (
+        "from acme.services.api.gateway.auth import user\n\n"
+        "Caller = Annotated[str, Depends(user)]\n\n"
+        "@router.post('', status_code=201)\nasync def create(ctx: Ctx, who: Caller): ...\n"
+    )
+    code, where, _ = found(tmp_path, "NET-09", {IDEM: "def idem(): ...\n", ROUTER: source})
+    assert (code, where) == (1, [("NET-09", ROUTER, 6)])

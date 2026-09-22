@@ -414,22 +414,27 @@ def table_map(project: Project, name: str) -> TableMap | None:
 
 
 def enum_values(project: Project) -> dict[str, dict[str, str]]:
-    """Every enum-like class of the OM: class name to member name to its string value."""
+    """Every enum-like class of the OM: class name to member name to its string value.
+
+    A member is a string literal, or `auto()` in a `StrEnum`, whose value
+    is the member's name in lower case. `auto()` in any other enum is not
+    a string the checker can know, so that member is left out.
+    """
     out: dict[str, dict[str, str]] = {}
     for _, tree in project.trees(project.sub("om")):
         for cls in classes(tree):
-            if not any((last(b) or "").endswith("Enum") for b in base_names(cls)):
+            bases = [last(b) or "" for b in base_names(cls)]
+            if not any(b.endswith("Enum") for b in bases):
                 continue
+            lowers = "StrEnum" in bases
             members: dict[str, str] = {}
             for node in cls.body:
-                if (
-                    isinstance(node, ast.Assign)
-                    and len(node.targets) == 1
-                    and isinstance(node.targets[0], ast.Name)
-                    and isinstance(node.value, ast.Constant)
-                    and isinstance(node.value.value, str)
-                ):
+                if not (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)):
+                    continue
+                if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
                     members[node.targets[0].id] = node.value.value
+                elif lowers and isinstance(node.value, ast.Call) and last(dotted(node.value.func)) == "auto":
+                    members[node.targets[0].id] = node.targets[0].id.lower()
             out.setdefault(cls.name, members)
     return out
 

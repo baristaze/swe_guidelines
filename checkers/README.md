@@ -50,10 +50,15 @@ The flags:
 - `2`: a configuration or usage error. Bad TOML, an ADR that does not
   exist, an unknown rule id or option key, a `src` or `exclude` glob
   that is empty, absolute, or climbs out of the root, a local rule
-  that fails to load.
+  that fails to load, an option value that is not a name or a
+  non-empty list of names.
+- `2` also when a rule raises. The rule's findings are missing, so the
+  run reports an `ERROR` finding that names the rule, and every other
+  rule still runs.
 
-A file that does not parse is a `PARSE` finding, never a crash. A
-broken inline ignore is an `IGNORE` finding.
+A file that does not parse is a `PARSE` finding, never a crash. So is
+a file nested deeper than 2500 levels, or one that exhausts the
+parser. A broken inline ignore is an `IGNORE` finding.
 
 ## Rules and lenses
 

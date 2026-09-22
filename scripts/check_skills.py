@@ -4,9 +4,12 @@
 Rules:
 - every skills/<name>/SKILL.md has YAML frontmatter with `name` equal to the
   folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
-  of at most 350 characters, written as one double-quoted string; the
-  descriptions together stay under 4000 characters, because the host lists
-  every skill's description in one budget and drops what overflows it;
+  of at most 500 characters, written as one double-quoted string; the
+  descriptions together stay under 6000 characters. Each description is
+  listed in a budget the host shares across every installed skill. The
+  host truncates one entry at 1,536 characters, and when the listing
+  overflows it drops the descriptions of the least-used skills. So this
+  plugin keeps its share small;
 - the frontmatter holds only keys the host reads (`name`, `description`,
   `allowed-tools`, `argument-hint`, `model`, `disable-model-invocation`), so
   a misspelled key, `allowed_tools` for one, is an error and never a skill
@@ -28,14 +31,17 @@ Rules:
   parentheses or the `Bash(cmd *)` spelling; a Bash rule is the
   `Bash(cmd:*)` prefix form, with no other `*`, or an exact
   `Bash(make <target>)`, and anything else (`Bash(*)`, `Bash(curl*)`, an
-  exact command that is not make) is refused; a make entry names a target,
-  so `Bash(make:*)` and `Bash(make -C dir:*)` are refused;
+  exact command that is not make) is refused, as is a rule with a shell
+  operator (`;`, `&`, `|`, a redirect, a substitution, a quote) that would
+  chain a second command; a make entry names a target, so `Bash(make:*)`
+  and `Bash(make -C dir:*)` are refused;
 - allowed-tools names only what the body runs; the checker holds the make
   targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
   `make <target>`, as whole words, appears inside a backticked span of the
   skill body, or of `skills/_shared/scaffold-conventions.md` when the body
   references that file. Git, uv, and pnpm entries are checked by hand;
-- frontmatter is flat `key: value` lines, one per key, no key repeated;
+- frontmatter is flat `key: value` lines, one per key, no key repeated,
+  and a space follows each key's colon (`name:foo` is one string to YAML);
 - a double-quoted value is one complete YAML double-quoted scalar: it
   closes, its inner quotes are escaped, its escapes are ones YAML defines,
   and nothing but a comment follows the closing quote;
@@ -43,7 +49,8 @@ Rules:
   YAML indicator character, so strict YAML loaders accept it;
 - every arch-scaffold-* skill has the five scaffold sections, `## Input`,
   `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
-  a heading inside fenced code is not a section;
+  a heading inside fenced code is not a section, and a fence of backticks
+  or tildes is read by the one rule in `_common.py`;
 - every ops-skill template under `skills/_shared/ops-skills/`, which a
   scaffold copies into a new tree as a real skill, has the frontmatter a
   skill has: its name is its file name, its description one
@@ -60,7 +67,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments, headings
+from _common import arguments, fenced_lines, headings
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
@@ -71,15 +78,17 @@ REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
 TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[a-z0-9-]+__[a-z0-9_]+)(\([^()]*\))?$")
 BASH_RULE = re.compile(r"^Bash\((.*)\)$")
-PREFIX_RULE = re.compile(r"^[^*:]+:\*$")  # `cmd:*`: a command, then the one `*`
-EXACT_MAKE = re.compile(r"^make [^*:]+$")  # `make <target>`, arguments allowed, no wildcard
+# A rule names one command: no shell operator (`;`, `&`, `|`, a redirect, a
+# substitution, a quote) may chain a second one behind the first.
+PREFIX_RULE = re.compile(r"^[^*:;&|<>`$()'\"\\\n]+:\*$")  # `cmd:*`: a command, then the one `*`
+EXACT_MAKE = re.compile(r"^make [^*:;&|<>`$()'\"\\\n]+$")  # `make <target>`, arguments allowed, no wildcard
 MAKE_TARGET = re.compile(r"^make [^\s-]")  # a make entry names a target first, not an option
 QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
 PARENS = re.compile(r"\([^()]*\)")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
-DESCRIPTION_LIMIT = 350
-DESCRIPTIONS_TOTAL = 4000
+DESCRIPTION_LIMIT = 500
+DESCRIPTIONS_TOTAL = 6000
 KNOWN_KEYS = frozenset({"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation"})
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
@@ -137,7 +146,8 @@ def frontmatter(text: str, errors: list[str], rel: str) -> dict[str, str]:
             errors.append(f"{rel}: frontmatter line is indented; values are one line each: {line!r}")
             continue
         key, sep, value = line.partition(":")
-        if not sep or not key.strip() or not KEY.match(key.strip()):
+        # YAML reads `name:foo` as one plain string, never a key: a colon ends a key only before a space
+        if not sep or not key.strip() or not KEY.match(key.strip()) or (value and value[0] not in " \t"):
             errors.append(f"{rel}: frontmatter line is not `key: value`: {line!r}")
             continue
         key, value = key.strip(), value.strip()
@@ -166,12 +176,8 @@ def code_spans(text: str) -> list[str]:
     only inline spans count as the body running something.
     """
     out: list[str] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if not in_fence:
+    for line, code in zip(text.split("\n"), fenced_lines(text), strict=True):
+        if not code:
             out.extend(CODE_SPAN.findall(line))
     return out
 

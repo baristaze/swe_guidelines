@@ -1182,3 +1182,38 @@ def test_sto_26_a_key_the_table_class_reports_is_reported_once(tmp_path):
     code, report = run(tmp_path, "STO-26", files)
     assert code == 1
     assert [p for _, p, _ in rules_found(report)] == [WIDGETS]
+
+
+STR_AUTO = "from enum import StrEnum, auto\n\n\nclass DatabaseRole(StrEnum):\n    CORE = auto()\n    ACTIVITY = auto()\n"
+
+
+def roles_with(header):
+    text = GOOD[ROLES]
+    return {ROLES: header + text[text.index("\n\nTABLE_ROLES") :]}
+
+
+def test_sto_17_reads_a_role_written_with_auto(tmp_path):
+    files = roles_with(STR_AUTO)
+    files[ROLES] = files[ROLES].replace('"catalog": DatabaseRole.CORE,', '"catalog": DatabaseRole.ACTIVITY,')
+    code, report = run(tmp_path, "STO-17", files)
+    assert code == 1
+    assert messages(report) == ["Widgets has a foreign key into role activity; it is in core"]
+
+
+def test_sto_28_reads_a_role_written_with_auto(tmp_path):
+    files = roles_with(STR_AUTO)
+    files["om/migrations/sql/core/202601020000_loosen.up.sql"] = "ALTER TABLE core.widgets NO FORCE ROW LEVEL SECURITY;\n"
+    code, report = run(tmp_path, "STO-28", files)
+    assert code == 1
+    assert messages(report) == ["core.widgets is a tenant table and the chain leaves it without FORCE ROW LEVEL SECURITY"]
+
+
+def test_sto_17_a_role_it_cannot_read_is_reported(tmp_path):
+    files = roles_with("from enum import Enum, auto\n\n\nclass DatabaseRole(Enum):\n    CORE = auto()\n    ACTIVITY = auto()\n")
+    code, report = run(tmp_path, "STO-17", files)
+    assert code == 1
+    assert sorted(messages(report)) == [
+        f"TABLE_ROLES gives {t} the role DatabaseRole.CORE, whose value arch-check cannot read; "
+        "write the role as a string or a StrEnum member"
+        for t in ("catalog", "widgets")
+    ]
