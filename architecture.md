@@ -800,6 +800,12 @@ permission set: a role is at most another when its permissions are a
 subset of the other's. Where a rank exists for comparison, it is derived
 from the permission table or held to it by a unit test.
 
+That cap holds at every use, not only at issue. An API key's effective
+role is the lower of the role it was issued with and its issuer's
+current role. `authenticate` computes it each time the key is
+presented, so a demoted issuer's keys are demoted with it. Removing the
+issuer's membership revokes every key the issuer minted in that tenant.
+
 A role reserved for services is not a rung on that ladder. No
 credential a person mints carries it, and every operation that issues a
 credential refuses it by name, whatever the rank says.
@@ -2958,9 +2964,10 @@ The gateway owns a short list of edge concerns, each done once:
 
 -   **Credentials.** Every credential kind has a distinct prefix: an
     API key, a session token, a login credential, a single-use socket
-    ticket, an invitation link. The prefix decides which dependency
-    will accept it. An agent presents an API key that is
-    membership-scoped, expiring, and role-capped at its issuer's role.
+    ticket, an invitation link, an operator token. The prefix decides
+    which dependency will accept it. An agent presents an API key that
+    is membership-scoped, expiring, and role-capped at its issuer's
+    current role (see [OpContext](#opcontext)).
     A person signs in with a credential that carries no tenant, then
     exchanges it for a tenant-scoped session token. So the same person
     in two tenants is one identity with two memberships. A switch
