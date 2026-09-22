@@ -224,19 +224,22 @@ base, and the `publish` and `subscribe` signatures; the rest is judged.
 
 **Principle.** A topic is best effort: a published event reaches the
 processes subscribed at the time, at most once, and a bus hiccup may
-lose it. Durable work is a row in the work queue, and a missed
-notification degrades to polling latency, never to lost work. A bus
-backed by the database connects to the queue role.
+lose it. So an effect that must happen is never sent only on a topic.
+It rides an outbox row or a work item, and a topic carries hints only.
+A missed notification degrades to polling latency, never to lost work.
+A bus backed by the database connects to the queue role.
 
 **Source.** Infrastructure, Topics; The Storage Layer, Database Roles.
 
 **Look for.** What each topic handler does with a message; whether any
-handler is the only path by which some work gets done; which database
-URL the database-backed topic impl opens.
+handler is the only path by which some work gets done, or whether an
+outbox row or a work item carries it too; which database URL the
+database-backed topic impl opens.
 
-**Violation.** A handler that performs the work itself with no backing
-row; a producer that publishes a task and writes nothing durable; a
-consumer that assumes it will see every message ever published; a
+**Violation.** A handler whose effect must happen (a charge, an email,
+a record written) and that no outbox row or work item backs; a
+producer that publishes a task and writes nothing durable; a consumer
+that assumes it will see every message ever published, or a
 database-backed bus pointed at a role other than the queue role.
 
 **Severity.** high
@@ -430,23 +433,26 @@ deploy.
 its own timer, idempotent and serialized by the database, with no
 leader, lock, or scheduler. It requeues expired items, expires leases,
 resumes parked records (staggered), rolls periods, relays the outbox,
-and purges done outbox rows, soft-deleted rows, idempotency markers,
-redeemed or expired socket tickets, and ended sessions.
+and purges done outbox rows, done and failed work items past a
+retention setting (`purge_items(before)`), soft-deleted rows,
+idempotency markers, redeemed or expired socket tickets, and ended
+sessions.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
 
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
-the sweep relays the outbox and runs every purge.
+the sweep relays the outbox and runs every purge, the work queue's
+`purge_items` and its retention setting among them.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
 so a crash between the core write and its handoff is never repaired;
-a purge missing, so done rows, idempotency markers, socket tickets, or
-sessions outlive their retention or their lifetime; every parked
-record resumed in the same instant.
+a purge missing, so done rows, done or failed work items, idempotency
+markers, socket tickets, or sessions outlive their retention or their
+lifetime; every parked record resumed in the same instant.
 
 **Severity.** medium
 
