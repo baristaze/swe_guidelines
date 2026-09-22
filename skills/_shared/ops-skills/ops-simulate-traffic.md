@@ -40,7 +40,7 @@ to read the signals back, verified with
 aws sts get-caller-identity --profile acme-<env>-investigate
 ```
 
-and refused under any other identity, `acme-admin` above all. And the
+and refused under any other identity, an administrator profile above all. And the
 env file `~/.config/acme/ops/<env>.env`, owner-only and outside the
 repository, whose provisioner identity (`ACME_PROVISIONER_EMAIL`,
 `ACME_PROVISIONER_PASSWORD` against `ACME_API_URL`) creates the tenants

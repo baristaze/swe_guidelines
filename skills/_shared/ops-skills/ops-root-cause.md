@@ -36,10 +36,10 @@ of that environment, `acme-<env>-investigate`, which assumes the role
 aws sts get-caller-identity --profile acme-<env>-investigate
 ```
 
-and check that `Arn` reads
+and check that `Account` is the environment's `account_id` in
+`deployment/cloud/environments.json` and that `Arn` reads
 `arn:aws:sts::<account>:assumed-role/acme-investigate-<env>/...`.
-Refuse any other identity, the administrator profile `acme-admin`
-above all. Every `aws` command below carries
+Refuse any other identity, an administrator profile above all. Every `aws` command below carries
 `--profile acme-<env>-investigate`.
 
 The tenant's rows come through the operator plane, never through a

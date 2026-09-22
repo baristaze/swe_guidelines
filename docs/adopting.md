@@ -210,9 +210,11 @@ namespaced under the plugin, because they belong to the project:
 Each one names what it needs. The reads (investigate, watch, root
 cause, the plan in infra-as-code, the signals a traffic or stress run
 reads back) hold the read-only investigate profile of the
-environment, `<root>-<env>-investigate` in `~/.aws/config`, and
-refuse to run under a wider one. Create and nuke hold the
-administrator profile `<root>-admin` and refuse anything else. The
+environment, `<root>-<env>-investigate` in `~/.aws/config`, chained
+from the person's identity center sign-in, and refuse to run under a
+wider one. Create and nuke hold the environment's administrator
+profile, the one `deployment/cloud/environments.json` names beside its
+account id, and refuse anything else. The
 application side (the operator identity, the error tracker's URL and
 token) comes from one owner-only env file per environment,
 `~/.config/<root>/ops/<env>.env`, outside the repository; a skill

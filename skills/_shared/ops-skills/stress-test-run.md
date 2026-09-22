@@ -34,7 +34,7 @@ back, verified before anything else with
 aws sts get-caller-identity --profile acme-<env>-investigate
 ```
 
-and refused under any other identity, `acme-admin` above all. The env
+and refused under any other identity, an administrator profile above all. The env
 file `~/.config/acme/ops/<env>.env`, owner-only and outside the
 repository, gives the generator its provisioner identity
 (`ACME_PROVISIONER_EMAIL`, `ACME_PROVISIONER_PASSWORD` against

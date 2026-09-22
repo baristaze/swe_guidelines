@@ -78,18 +78,18 @@ a container.
 **Principle.** Networks, services, databases, topics, buckets, and IAM
 are all defined in Terraform that lives in the same monorepo. An
 environment change is a pull request. Formatting and validation of
-every environment run in CI.
+every root, bootstrap and environment alike, run in CI.
 
 **Source.** Deployment, Infrastructure as Code.
 
 **Look for.** `deployment/terraform/` coverage of every resource the
 application names in its settings; the CI workflow's Terraform
-formatting and validation jobs across every environment.
+formatting and validation jobs across every root.
 
 **Violation.** A resource referenced by settings or runbooks that no
 Terraform file declares; a runbook step that says "create in the
-console"; a CI pipeline that validates one environment and not the
-others.
+console"; a CI pipeline that validates one root and not the others.
+(Which root holds what is DEL-42.)
 
 **Severity.** medium
 
@@ -746,25 +746,27 @@ distribution.
 ## DEL-31 Production promotes, it never rebuilds
 
 **Principle.** Production does not rebuild: it promotes what staging
-already ran, images by the digest staging built for that commit,
-browser bundles by build id, and a release commit staging never built
-is refused. A bundle is built once and reads what differs between
-environments (the API origin, the DSN, the environment name) from a
-`config.json` deployed next to it.
+already ran, images by digest and bundles by build id, and refuses a
+commit staging never built. It promotes the copies replicated into its
+own account and never reads staging's. A bundle is built once and
+reads what differs between environments from a `config.json` deployed
+next to it.
 
 **Source.** Deployment, Cloud: AWS.
 
 **Look for.** The production workflow: how it obtains its images and
-bundles (a lookup by the release commit, never a build), the plan it
-writes as an artifact, and the approval step between the plan and the
-apply; the `config.json` each environment's deploy writes next to the
-bundle, and what the bundle reads at start.
+bundles (a lookup by the release commit in its own account, never a
+build), the plan it writes, and the approval between the plan and the
+apply. The replication of the registry and of the kept bundles into
+production's account, and the one write production grants each; the
+`config.json` each deploy writes next to the bundle.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
-with no digest from staging that is deployed instead of refused; an
-API origin or DSN compiled into a bundle (the approval on the plan is
-DEL-38).
+with no digest from staging that is deployed instead of refused; a
+production job or task that reads staging's registry or bucket, or a
+replication that may create a repository; an API origin or DSN compiled
+into a bundle (the approval on the plan is DEL-38).
 
 **Severity.** medium
 
@@ -977,3 +979,70 @@ switch; two sessions held at once, or the sign-in credential kept
 after the exchange. (A picker in the console is DEL-16.)
 
 **Severity.** high
+
+## DEL-41 One cloud account per environment, and nothing spans two
+
+**Principle.** Every environment has a cloud account of its own, and
+the account is the boundary between environments. No root spans two
+environments: each account holds its own state, registry, trust, and
+budget. The environment tag on every resource stays as a second
+fence, for a root applied in the wrong account.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The account each root applies in, and whether any two
+environments share one; a root, a bucket, a registry, or a trust that
+serves two environments; any policy in one account that names a
+principal of the other, and what it grants.
+
+**Violation.** Two environments in one account, fenced by tags alone;
+a shared root for both environments; production trusting a staging
+principal for anything but the replication writes (DEL-31), or staging
+reading production at all; a resource with no environment tag.
+
+**Severity.** high
+
+## DEL-42 A bootstrap root and an environment root; one file names the accounts
+
+**Principle.** Each environment has two roots. The bootstrap root,
+applied by the administrator, holds what the pipeline needs first: the
+state bucket, the federation trust, the deploy and investigator
+roles, the budget, the registry, the zones. The environment root holds
+the rest, applied by the pipeline. One file names each account, and
+every provider pins its own.
+
+**Source.** Deployment, Infrastructure as Code.
+
+**Look for.** The roots under `deployment/terraform/` and who applies
+each; the environments' file and every script and root that reads it;
+the account pin on every provider block; whether a deploy role can
+write the bootstrap root's state or resources.
+
+**Violation.** A resource the pipeline needs declared in no bootstrap
+root, or made by hand; an account id or region typed into a script or
+workflow instead of read from the file; a provider with no account
+pin; a deploy role that can change its own trust, the registry
+settings, or the bootstrap root's state.
+
+**Severity.** medium
+
+## DEL-43 Each public name is delegated to a zone in its environment's account
+
+**Principle.** Each public name an environment serves has a hosted
+zone of its own in that environment's account, with the name's records
+at its apex. The domain's zone stays where the domain is hosted and
+delegates each name with NS records, written once by the create run. A
+deploy writes only its own account's zones.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The zones each bootstrap root declares and the names they
+carry; where the delegation records are written, and by what; the
+record-name condition on each deploy role's DNS writes.
+
+**Violation.** One zone both environments write into; a delegation
+added by hand in a console; a deploy role that can write the domain's
+zone, another environment's name, or any record outside its own two
+names and their validation records.
+
+**Severity.** medium
