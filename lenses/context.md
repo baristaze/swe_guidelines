@@ -346,7 +346,7 @@ tenant's id; a made-up sentinel other than `EMPTY_UUID`; an impl that
 treats the system scope like any tenant and lets a tenant caller reach
 it.
 
-**Severity.** medium
+**Severity.** high
 
 ## CTX-14 Cache and bucket calls take the tenant first
 
