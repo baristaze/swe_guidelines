@@ -5431,7 +5431,7 @@ Starts and Where It Goes](#how-it-starts-and-where-it-goes) describes.
         ├── ci.yml
         ├── deploy-staging.yml              # every push to main
         ├── deploy-production.yml           # every push to release, behind the approval
-        └── release.yml                     # fast-forwards release to main on dispatch
+        └── release.yml                     # on dispatch, fast-forwards release to the last good staging deploy
 ```
 
 ### Layout Conventions
