@@ -11,9 +11,12 @@ and picked up, how a worker behaves over its life, and what a
 long-running record does when it cannot continue. It owns the sweep's
 duties (requeue expired leases, resume parked records, relay what a
 crash left in the outbox, purge done outbox rows and soft-deleted rows
-past retention) and the whole work queue, its table and statements
-included. It leaves the `org_id` and `EMPTY_UUID` keying rules and the
-provenance of a worker's context to `context`, database roles, the
+past retention, idempotency markers past theirs, socket tickets
+redeemed or expired, and sessions ended or past their lifetime) and
+the whole work queue, its table and statements included. It leaves the
+`org_id` and `EMPTY_UUID` keying rules, a tenant's secret among them,
+the provenance of a worker's context, and the permission that enqueues
+a kind to `context`, database roles, the
 retention periods, and the life of an outbox row to `storage`, and the
 realtime edge with its wait-versus-notify patterns to `network`.
 
@@ -411,23 +414,24 @@ deploy.
 
 **Principle.** Recurring housekeeping is a sweep every worker runs on
 its own timer, idempotent and serialized by the database, with no
-leader, no lock, and no scheduler: requeue items whose lease expired,
-expire leases, resume parked records, roll periods, relay what a crash
-left in the outbox, purge done outbox and soft-deleted rows past
-retention. Resumes are staggered.
+leader, lock, or scheduler. It requeues expired items, expires leases,
+resumes parked records (staggered), rolls periods, relays the outbox,
+and purges done outbox rows, soft-deleted rows, idempotency markers,
+redeemed or expired socket tickets, and ended sessions.
 
 **Source.** Worker Roles, Maintenance Without a Scheduler; The Storage
 Layer, Database Roles.
 
 **Look for.** Where housekeeping runs; any leader election, cron
 component, or scheduled task; how parked records are resumed; whether
-the sweep relays the outbox and purges.
+the sweep relays the outbox and runs every purge.
 
 **Violation.** A dedicated scheduler process or cron job for
 housekeeping; a sweep that is not safe to run twice concurrently; a
 sweep only one elected instance runs; a sweep with no outbox relay,
-so a crash between the core write and its handoff is never repaired,
-or with no purge, so done rows outlive their retention; every parked
+so a crash between the core write and its handoff is never repaired;
+a purge missing, so done rows, idempotency markers, socket tickets, or
+sessions outlive their retention or their lifetime; every parked
 record resumed in the same instant.
 
 **Severity.** medium
