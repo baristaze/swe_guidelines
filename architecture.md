@@ -2457,6 +2457,12 @@ and a timestamp inside a replay window, and refuses a delivery that
 fails either, before anything is enqueued. A token in the path only
 routes to the integration that owns it, and the access log masks it.
 
+The provider does not set our key, so the route is the producer of the
+message it enqueues. It derives the message's `idempotency_key` from
+the delivery, deterministically: a UUID v5 over the provider's name and
+its delivery id. A provider's retry of one delivery then carries the
+same key.
+
 This is the inbound queue for outside producers. Durable internal work
 is the work table of [The Work Queue](#the-work-queue).
 
@@ -3345,8 +3351,9 @@ operator may replay a backlog to recover from a bad deploy. Message
 handlers must be safe to run more than once with the same payload.
 
 The recipe is independent of the implementation. Every message carries
-a producer-generated idempotency key: a `uuid_v7` is natural, or an
-outside system's delivery id when the message came from outside. The
+a producer-generated idempotency key: a `uuid_v7` is natural. A
+message that came from outside carries a UUID v5 derived from the
+outside system's delivery id (see [Queues](#queues)). The
 handler dedupes before doing work, through a unique index on the key
 or a storage-level upsert keyed on it. Each pipeline stage forwards
 the key and applies the same check. [Topics](#topics) shows this on
