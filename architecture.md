@@ -1533,6 +1533,13 @@ outbox row and the `Event` of [Realtime at the
 Edge](#realtime-at-the-edge) do. Such a row already names its tenant and
 is returned alone.
 
+The lookups that run before an identity is known are the third
+exception. Sign-in presents an email, and every other credential is
+looked up by its digest. Neither names a tenant or an identity. They are
+`read_identity_by_email_digest`, `read_api_key_by_digest`,
+`read_session_by_digest`, and `redeem_socket_ticket`, and they run in
+the system scope (see [The Second Fence](#the-second-fence)).
+
 These are the documented exceptions to the `org_id`-first rule, and
 `arch-check` enumerates them (see [Records of
 Decisions](#records-of-decisions)).
@@ -1884,7 +1891,9 @@ runs more work at once than its pool serves spends the difference
 waiting on a checkout. A role with a URL of its own has a pool of its
 own, and then the role is the bulkhead between load profiles and the
 size is how wide it is. Until then every role shares one pool, sized
-for their sum, and the bulkhead is one URL away.
+for their sum, and the bulkhead is one URL away. The system login has a
+pool of its own beside it, since its URL names another login (see [The
+Second Fence](#the-second-fence)).
 
 Rules that make the move safe:
 
@@ -1997,12 +2006,22 @@ because `SET LOCAL` takes no bind parameters.
 
 `EMPTY_UUID` as the `org_id` is the **system scope**: the transaction
 reads across tenants. The system scope is never a default. It is passed
-explicitly, it runs on a connection of the system login (below), and
-the methods that pass it are the ones `arch-check` already enumerates (see [Records of
-Decisions](#records-of-decisions)): the cross-tenant sweeps, and the
-lookups by credential digest that sign a person in, which read tenant
-rows before any tenant is known. An `identity` table is not among
-them: its policy has no bypass, so a lookup on it names the identity.
+explicitly, and it runs on a connection of the system login (below).
+
+The methods that pass it are the ones `arch-check` already enumerates
+(see [Namespace Shape](#namespace-shape) and [Records of
+Decisions](#records-of-decisions)). They are of two kinds. The first is
+the cross-tenant sweeps. The second is the lookups that run before an
+identity is known:
+
+-   `read_identity_by_email_digest`, the sign-in lookup;
+-   `read_api_key_by_digest`;
+-   `read_session_by_digest`;
+-   `redeem_socket_ticket`, which finds the ticket by its digest.
+
+Each of these reads rows before any tenant or identity is known, so it
+cannot name one. Everything after the lookup runs under the identity
+it found, or under the tenant and the principal the credential names.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
 the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
@@ -2030,6 +2049,8 @@ org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
 
 -- identity
 <identity_col> = NULLIF(current_setting('app.identity_id', true), '')::uuid
+  OR (current_setting('app.org_id', true) = '<EMPTY_UUID>'
+      AND current_user = '<system_login>')
 
 -- system: no policy, and row-level security is not enabled
 ```
@@ -2041,28 +2062,37 @@ once that transaction ends, and `''::uuid` is an error, not a miss.
 policy treats as a refusal. So a transaction that named no tenant fails
 closed: a read returns nothing and a write is refused. The `both`
 narrowing applies when the transaction names a person and is absent when
-it does not. The system-scope clause is the one deliberate bypass. It is
-spelled out in the `org` expression, which `both` includes, so that it
-can be grepped, and it holds only for the system login. The runtime
-login can write the setting, as any session can, and the clause still
-admits nothing to it, so a statement injected into a request cannot
-read across tenants by naming the system scope. An `identity` policy has no bypass: its rows are read
-under the identity they belong to.
+it does not.
+
+The system-scope clause is the one deliberate bypass. It is spelled out
+in the `org` expression, which `both` includes, and in the `identity`
+expression, so that it can be grepped. It holds only for the system
+login. The runtime login can write the setting, as any session can, and
+the clause still admits nothing to it. So a statement injected into a
+request cannot read across tenants or identities by naming the system
+scope.
+
+An `identity` table is read under the identity its rows belong to. The
+one exception is the lookups that run before an identity is known,
+which run on the system login. Nothing else bypasses its policy.
 
 Three logins reach the database, and none is a superuser or carries
 `BYPASSRLS`. A superuser bypasses every policy, so a fence behind one
 is a drawing.
 
 -   The **migration login** owns the schema. It runs the migrations,
-    in the deploy's one-off task, and nothing else holds it.
+    in the deploy's one-off task, and no process of a deployed
+    environment holds it otherwise. The step of the negative control
+    in [Tests](#tests) that turns a policy off runs under it too,
+    because only the owner can alter a table.
 -   The **runtime login** is what every request's connection uses. It
     owns nothing and holds only `SELECT`, `INSERT`, `UPDATE`, and
     `DELETE` on the tables, so it cannot drop a policy, turn `FORCE`
     off, or alter a table, whatever statement reaches it.
 -   The **system login** is the runtime login's twin for the system
-    scope: the sweeps and the lookups by credential digest run on a
-    connection of their own under it, and the `org` policy admits the
-    system scope to it alone.
+    scope. The sweeps and the lookups that run before an identity is
+    known run under it, on a pool of their own. The `org` and
+    `identity` policies admit the system scope to it alone.
 
 A test asserts on each live connection that `current_user` is neither
 superuser nor `BYPASSRLS`, that the runtime login owns no table, and
@@ -2966,9 +2996,15 @@ the presented value and reads the row by the digest, and the secret's
 entropy is the defense.
 
 The identity, its credentials, and its password hash live in the
-tenancy role's own tables, under the `identity` scope (see [The
-Storage Layer](#the-storage-layer)), never in a system table. So
-sign-up writes one role, in one transaction.
+tenancy namespace's own tables in the `core` role, under the
+`identity` scope (see [The Second Fence](#the-second-fence)), never in
+a system table. So sign-up writes one role, in one transaction.
+
+Sign-in cannot name the identity it is looking for, because finding it
+is the point. So the lookup by email digest, and each lookup by a
+credential's digest, is a system-scope method on the system login.
+Everything after the lookup runs under the scope it found: the
+identity, or the tenant and the principal a credential names.
 
 Sign-in has a defense that does not fail open. The per-address rate
 limit rides the cache and fails open, so beside it the tenancy manager
@@ -5791,6 +5827,11 @@ the second fence holding the query whose predicate went missing.
 Run two turns the policy off for that table, and the suite fails. That
 is what proves the suite would see the breach. A control that only
 runs with the policy live proves nothing about the suite.
+
+The step that turns the policy off, `ALTER TABLE ... DISABLE ROW LEVEL
+SECURITY`, runs as the migration login. The runtime login owns no
+table, so it cannot (see [The Second Fence](#the-second-fence)). The
+suite itself runs as the runtime login in both runs.
 
 Both runs are recorded: the query they were run against, and what the
 suite reported each time. A negative control nobody ran is a claim, not
