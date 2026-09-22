@@ -44,6 +44,7 @@ if str(BENCHMARK) not in sys.path:
 from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
 from harness import providers as P  # noqa: E402
+from harness import redact as X  # noqa: E402
 from harness import results as R  # noqa: E402
 from harness import runtime as RT  # noqa: E402
 from harness import scenario as S  # noqa: E402
@@ -290,7 +291,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="benchmark/run.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "command", nargs="?", default="run", choices=["run", "list"], help="run a scenario, or list what there is"
+        "command",
+        nargs="?",
+        default="run",
+        choices=["run", "list", "redact"],
+        help="run a scenario, list what there is, or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
@@ -334,11 +339,22 @@ def command_list(out: Path) -> int:
     return 0
 
 
+def command_redact(out: Path) -> int:
+    """Redact every key value and every key-shaped string from the run folders, in place."""
+    found = X.redact_folder(out, X.key_values())
+    for path, count in found.items():
+        print(f"redacted {count} key(s) in {path.relative_to(out)}")
+    print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     out = Path(args.out).resolve()
     if args.command == "list":
         return command_list(out)
+    if args.command == "redact":
+        return command_redact(out)
     if not args.scenario:
         print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
         return 2

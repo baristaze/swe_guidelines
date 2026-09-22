@@ -338,7 +338,33 @@ every other name, so a page on a name that resolves here gets nothing.
 `scripts/check_leaks.py` refuses the rest of the list in every Markdown
 file here.
 
+## The workflow
+
+`.github/workflows/benchmark.yml` runs every scenario on demand, in the
+container runtime. Its job runs in a GitHub environment named
+`benchmark`, and the workflow does not create it. Create it under the
+repository's Settings, Environments, with these rules:
+
+- Deployment branches: selected branches, `main` only. A dispatch from
+  any other branch never reaches the keys.
+- Required reviewers: at least one. A dispatch waits until a reviewer
+  approves it, because a run spends money and hands a subject a key.
+- Secrets: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `XAI_API_KEY`, and `SUBJECT_ANTHROPIC_API_KEY`, as secrets of the
+  environment, never of the repository.
+
+Without the environment, the job does not start.
+
+A subject can print anything it can read. So before the workflow
+writes the summary or uploads the run folders, it runs
+`uv run benchmark/run.py redact --out benchmark/runs`. That scans every
+file of every run folder as bytes, frames included, and replaces two
+things with `[redacted]`: the value of every provider key the harness
+knows by name, and anything shaped like a provider, GitHub, or AWS key.
+The summary and the upload run only when the redaction succeeded.
+
 ## Tests
+
 
 The harness logic is tested from the repository root, in
 `tests/test_benchmark_*.py`, with the standard library and fake judges,

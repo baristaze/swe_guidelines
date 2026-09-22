@@ -539,3 +539,28 @@ def test_the_model_the_envelope_reports_is_recorded_beside_the_pin(tmp_path, mon
     assert results["subject"]["model"] == "claude-opus-5"
     assert results["repeats"][0]["subject_models"] == ["claude-sonnet-5"]
     assert any("claude-opus-5" in note and "claude-sonnet-5" in note for note in results["notes"])
+
+
+def test_the_workflow_redacts_the_run_folders_before_it_shows_or_uploads_them():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    run_step = workflow.index("      - name: run every scenario")
+    redact = workflow.index("      - name: redact every run folder")
+    summary = workflow.index("      - name: write the summary")
+    upload = workflow.index("      - name: keep every run as evidence")
+    assert run_step < redact < summary < upload
+    assert "benchmark/run.py redact --out benchmark/runs" in workflow[redact:summary]
+    for step in (workflow[summary:upload], workflow[upload:]):
+        assert "steps.redact.outcome == 'success'" in step
+
+
+def test_the_workflow_runs_behind_the_benchmark_environment():
+    assert "    environment: benchmark\n" in WORKFLOW.read_text(encoding="utf-8")
+
+
+def test_the_redact_command_scrubs_a_runs_folder(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-openai-value")
+    (tmp_path / "one").mkdir()
+    (tmp_path / "one" / "answer.md").write_text("judge-openai-value\n", encoding="utf-8")
+    assert run.main(["redact", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "one" / "answer.md").read_text(encoding="utf-8") == "[redacted]\n"
+    assert "answer.md" in capsys.readouterr().out
