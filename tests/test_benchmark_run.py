@@ -121,7 +121,8 @@ def scenario_step(tmp_path):
     (bin_dir / "claude").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     # the stub records each scenario and fails the one named `broken`
     (bin_dir / "uv").write_text(
-        '#!/bin/sh\necho "$@" > "$ARGV_LOG"\nshift 2\necho "$2" >> "$UV_LOG"\n[ "$2" != broken ]\n',
+        # `uv run --locked benchmark/run.py --scenario <name>`: three words, then the script.
+        '#!/bin/sh\necho "$@" > "$ARGV_LOG"\nshift 3\necho "$2" >> "$UV_LOG"\n[ "$2" != broken ]\n',
         encoding="utf-8",
     )
     for stub in bin_dir.iterdir():
@@ -215,7 +216,46 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
             f"artifacts/{index}/workspace/answer.md",
             f"artifacts/{index}/workspace/b/notes.md",
         ]
-    assert (run_dir / "home" / "1").is_dir() and (run_dir / "workspace" / "1").is_dir()
+    # The subject lived in a sandbox outside the run folder, removed after the run.
+    assert not (run_dir / "home").exists() and not (run_dir / "workspace").exists()
+
+
+def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch):
+    # What a subject can read: the staged plugin payload and the staged
+    # target. The fixtures' answer keys, the benchmark folder, and every
+    # CLAUDE.md up the tree are out of reach.
+    probe = (
+        "import pathlib, sys\n"
+        "plugin, target = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])\n"
+        "cwd = pathlib.Path.cwd()\n"
+        "seen = [str(p) for p in plugin.rglob('*.expected.yaml')]\n"
+        "seen += [str(p) for p in target.parent.glob('*.expected.yaml')]\n"
+        "seen += [str(d / 'CLAUDE.md') for d in [cwd, *cwd.parents] if (d / 'CLAUDE.md').exists()]\n"
+        "seen += ['benchmark'] if (plugin / 'benchmark').exists() else []\n"
+        "print('skills' if (plugin / 'skills').is_dir() else 'no skills')\n"
+        "print('target' if any(target.iterdir()) else 'no target')\n"
+        "print('seen:' + ','.join(seen))\n"
+    )
+    scenario = {
+        "name": "reach",
+        "kind": "command",
+        "subject": {
+            "argv": [sys.executable, "-c", probe, "{plugin}", "{target}"],
+            "target": str(run.ROOT / "benchmark" / "fixtures" / "review-om"),
+        },
+        "artifact": {"stdout": True},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "reach.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    run.main(["--scenario", str(path), "--out", "runs"])
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
+    assert "skills" in answer and "no skills" not in answer
+    assert "target" in answer and "no target" not in answer
+    assert "seen:\n" in answer, answer
 
 
 def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tmp_path):
