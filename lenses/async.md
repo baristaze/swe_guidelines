@@ -176,8 +176,9 @@ enforces the same bound and refuses a key with `..`.
 **Source.** Infrastructure, Buckets.
 
 **Look for.** The `Buckets` enum; the bucket interface, and
-`presign_post` taking the content type and `max_bytes` and returning a
-`PresignedPost` of a URL and its fields; how uploads and downloads
+`presign_post(org_id, bucket, key, content_type, max_bytes, ttl) ->
+PresignedPost | None`, a `PresignedPost` being a URL and its fields;
+how uploads and downloads
 reach clients, and what a caller does when a presign returns `None`;
 the local impl, its size check, and its key check.
 
@@ -287,8 +288,9 @@ handler that does the whole job inline.
 
 **Principle.** The object model holds only references to secrets. A
 tenant's secret is resolved at the point of use, for one operation,
-and discarded. The process's own credentials come from the runtime's
-injection and never pass through the tenant capability. No value
+and discarded. The process's own credentials, the database URL and
+the internal signing key, are injected by the runtime at start and
+never pass through the tenant capability. No value
 enters an entity, a log line, an audit payload, an error message, or a
 subprocess environment.
 

@@ -656,11 +656,13 @@ holds its connection until the engine gives up.
 ## NET-27 A service-to-service call carries a short-lived internal credential
 
 **Principle.** A service-to-service call carries a short-lived token
-the caller mints with a key from the secret store. It names the
+the caller mints with the internal signing key. It names the
 principal, the tenant, the request id, the callee as its audience, the
-key's id, and an expiry minutes out. The callee refuses a token meant
-for another service and rebuilds the context from it; no service
-trusts a bare header.
+key's id, and an expiry minutes out. The signing key is a process
+credential: the runtime injects it at start, like the database URL,
+and it is never read through the tenant capability. The callee refuses
+a token meant for another service and rebuilds the context from it; no
+service trusts a bare header.
 
 **Source.** The Network Layer, Intra-Service Communication.
 
@@ -670,8 +672,9 @@ rebuilds a context from it; the audience check and the key lookup by
 id on the callee; the remote impl of every service interface.
 
 **Violation.** A callee that trusts a tenant or user id in a header
-from a peer service; an internal token with no expiry, or one signed
-with a key held in settings instead of the secret store; a token with
+from a peer service; an internal token with no expiry; a signing key
+read through the tenant capability, or written into a settings file
+instead of injected at start; a token with
 no audience, or a callee that accepts one meant for another service; a
 token with no key id, so a key cannot rotate without an outage; a peer
 call that reaches a router without the gateway's dependencies.
