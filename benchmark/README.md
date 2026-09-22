@@ -240,7 +240,11 @@ not answer.
 
 `streams/cli.jsonl` holds one record per output line,
 `{"t": <unix>, "s": "out"|"err", "line": ...}`, flushed as the subject
-runs. Frame folders hold `NNNNNN.jpg` files and an `index.jsonl` of
+runs. The subject's output is read as UTF-8, and a byte that is not
+UTF-8 becomes U+FFFD, so the reader never stops early. A record ends at
+a newline and nowhere else, so a U+2028 in an answer stays in it.
+
+Frame folders hold `NNNNNN.jpg` files and an `index.jsonl` of
 `{"t", "frame"}`; `CdpScreencast` fills one from a headless Chrome's
 DevTools endpoint.
 

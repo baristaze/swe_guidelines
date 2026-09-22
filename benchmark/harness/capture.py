@@ -63,9 +63,14 @@ class CliStream:
 
     @staticmethod
     def read(path: str | Path) -> list[dict]:
-        """Every whole record of a stream file; a torn last line is left out."""
+        """Every whole record of a stream file; a torn last line is left out.
+
+        Records are split on `\\n` alone. A line may hold U+2028 or another
+        character `str.splitlines` would break on, written raw because the
+        records keep non-ASCII text as it is.
+        """
         out: list[dict] = []
-        for line in Path(path).read_text(encoding="utf-8").splitlines():
+        for line in Path(path).read_text(encoding="utf-8", errors="replace").split("\n"):
             line = line.strip()
             if not line:
                 continue

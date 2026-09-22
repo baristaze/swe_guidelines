@@ -355,3 +355,15 @@ def test_two_runs_in_the_same_second_get_two_folders(tmp_path, monkeypatch):
     for folder in (first, second):
         results = json.loads((folder / "results.json").read_text(encoding="utf-8"))
         assert results["run_id"] == folder.name
+
+
+def test_an_answer_with_a_unicode_line_separator_is_kept_whole(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    script = "import sys; sys.stdout.buffer.write('one\\u2028two\\u2029three\\n'.encode())"
+    scenario = {"name": "sep", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    path = tmp_path / "sep.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "one\u2028two\u2029three\n"

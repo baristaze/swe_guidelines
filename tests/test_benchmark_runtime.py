@@ -32,6 +32,24 @@ def test_the_host_writes_both_streams_and_the_exit_status(tmp_path):
     assert "err line" in [r["line"] for r in records if r["s"] == "err"]
 
 
+def test_a_byte_that_is_not_utf8_is_replaced_and_the_reader_goes_on(tmp_path):
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    script = (
+        "import sys\n"
+        "for fh in (sys.stdout.buffer, sys.stderr.buffer):\n"
+        "    fh.write(b'bad \\xff byte\\n' + 'one\\u2028two\\n'.encode() + b'after\\n')\n"
+        "    fh.flush()\n"
+    )
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run([sys.executable, "-c", script], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream)
+    records = CliStream.read(tmp_path / "cli.jsonl")
+    assert status.ok
+    for name in ("out", "err"):
+        lines = [r["line"] for r in records if r["s"] == name and not r["line"].startswith("[host]")]
+        assert lines == ["bad \ufffd byte", "one\u2028two", "after"], lines
+
+
 def test_a_subject_that_runs_too_long_is_killed_and_marked(tmp_path):
     rt = RT.build("host", tmp_path)
     rt.prepare()

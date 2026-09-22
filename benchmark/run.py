@@ -206,7 +206,7 @@ def run_subject_qa(
     except Exception as exc:
         streams.note(f"[qa] {type(exc).__name__}: {exc}")
         return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), ""
-    for line in text.splitlines():
+    for line in text.split("\n"):
         streams.write("out", line)
     streams.note(f"[qa] usage {json.dumps(usage)}")
     return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text

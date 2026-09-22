@@ -208,7 +208,11 @@ class BaseRuntime:
                 env=self.environment(env),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                # UTF-8 whatever the locale says, and a byte that is not
+                # UTF-8 becomes U+FFFD: a decode error would end the reader
+                # and leave the pipe full, with the subject blocked on it.
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 # A group of its own, so a timeout reaches every process the
                 # subject started, not only the first.
@@ -353,7 +357,7 @@ class ContainerRuntime(BaseRuntime):
         command = self.build_command()
         started = time.monotonic()
         try:
-            proc = subprocess.run(command, capture_output=True, text=True)
+            proc = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace")
         except OSError as exc:
             # No container engine: the build failed, recorded as the shell records it.
             if streams is not None:
