@@ -31,13 +31,13 @@ has a condition for ending.
 1. Resolve the rule: find the lens in `${CLAUDE_SKILL_DIR}/../../lenses/`
    and the section in `${CLAUDE_SKILL_DIR}/../../architecture.md`. Quote
    the principle verbatim.
-2. Find the project's ADR folder: `docs/adr/` when it exists; otherwise
-   ask where ADRs live and write nothing until answered. Number the new
-   record as one more than the highest numeric prefix present
+2. The ADR goes under `docs/adr/`, created when it does not exist:
+   `arch-check` refuses a deviation whose `adr` is anywhere else. Number
+   the new record as one more than the highest numeric prefix present
    (`NNNN-<slug>.md`). Refuse to write a path that already exists.
 3. Take the date from `date +%F`: the ADR records the day the decision
    is made, which is today, not the day of the last commit.
-4. Write the ADR with the template below, under the ADR folder only.
+4. Write the ADR with the template below, under `docs/adr/` only.
    Keep it under one page.
 5. When `specs/architecture.md` exists and has a `## Deviations` table,
    append one row: the ADR number, the rule, and a one-line summary.
