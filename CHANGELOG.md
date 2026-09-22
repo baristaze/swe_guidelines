@@ -4,6 +4,102 @@ All notable changes to this repository are listed here. Releases are
 tagged `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps
 which number.
 
+## 0.29.0 (2026-09-22)
+
+What production releases is held to what staging built, the deployer
+cannot widen itself, a deployment runs on three database logins, and a
+set of security defaults joins Deployment. The scaffolds pass their own
+gate, the benchmark sandboxes its subject, and `arch-check` reads the
+spellings it missed. Minor: rules are added and sharpened, and two are
+reversed, which before 1.0.0 bumps the minor number.
+
+### Changed
+
+- **Reversed.** "Row-Level Security", lens `STO-28`: the runtime login
+  no longer owns the tables. A migration login owns the schema, the
+  runtime login has DML only and owns nothing, and the system scope is
+  admitted to a system login alone, never to a setting the runtime login
+  can write.
+- **Reversed.** "Operational Skills", lens `OPS-13`: no alarm is
+  suppressed in production. Outside production an alarm is suppressed
+  only when the traffic behind it is the team's own, and every
+  suppression is recorded. How an alarm reaches the agent is named.
+- "Cloud: AWS", lens `DEL-31`: tags are immutable in every repository,
+  production's bundle prefix refuses an overwrite, and staging records
+  the digests it deployed outside its own account, which production
+  compares with its replicated copy before it plans. The build holds a
+  push-only credential, never the one that applies.
+- "Cloud: AWS", lens `DEL-38`: the release push is made by the
+  repository host's app, the one bypass actor of `release`'s ruleset,
+  from a `release` environment that admits `main` alone; the fallback
+  a locked `release` cannot take is gone. The production workflow takes
+  a guarded redeploy of an earlier release.
+- "Operator Roles", lens `OPS-28`: the trust matches the repository and
+  its owner by their immutable ids, beside the environment and the ref.
+  `OPS-02`, `OPS-07`: the administrator is recorded, time-bound
+  break-glass; production's everyday permission set writes nothing; a
+  second factor at every sign-in, and short-lived operator tokens.
+- "Migrating a Deployed Database", lens `DEL-45`: a revert never removes
+  an applied migration, and the first-operator grant is a pipeline job.
+- "Creating and Destroying an Environment", lens `OPS-19`: the destroy
+  applies from the exact origin commit in a clean worktree. The DNS
+  host's token is named as the create run's one outside credential. A
+  password rotation rolls the services.
+- The rest of Deployment and Operations: one pending deploy run per
+  concurrency group; the edge serves the API and its probes, answers
+  `/metrics` with a 404, and serves no API docs; CloudFront's SPA
+  fallback, cache rules, and headers; retention in both accounts;
+  `ignore_changes` on the desired count; a bootstrap change needs a
+  create run; the twin refusal is by environment (`DEL-05`); no secrets
+  recovery window outside production; the watch rereads its profile
+  (`OPS-12`); the queue joins the alarm set (`OPS-15`); the deployed
+  smoke test's runner is named (`OPS-22`).
+- Tenant boundaries and credentials: `SecretsInterface` takes `org_id`
+  and `credential_ref` is never written by a caller; a cached read sits
+  below authorization; unique keys lead with `org_id`; webhooks are
+  checked by signature within a replay window; sign-in has a
+  per-identity defense and sessions have stated lifetimes; the internal
+  token carries an audience and a key id; the enqueue permission covers
+  the handler's calls; every operator read of a tenant is recorded; the
+  sweep purges markers, tickets, and sessions; the error tracker is
+  scrubbed; presigned uploads are bounded; `DateTime(timezone=True)`
+  and `StrEnum` in the snippets. `CTX-01`, `NET-34`, `STO-21` follow.
+- The scaffolds agree with their gate: `AuditEntry` carries no `org_id`,
+  the outbox relay takes the work manager as a callable, an operator
+  write never goes through `outbox_row`, and an ADR goes under
+  `docs/adr/`. Long scaffold cells become a summary and a list.
+
+### Added
+
+- "Security Defaults", a new subsection of Deployment, lens `DEL-48`:
+  egress through a named NAT or endpoints, encryption at rest and TLS
+  required by the database, a CloudTrail trail per account, production's
+  database availability and recovery, MFA, a protected `main` with code
+  owners, scan on push, pinned Terraform with a committed lock file, and
+  named positions on a WAF and on threat detection. Terraform joins
+  Versions.
+- "Infrastructure as Code", lens `DEL-47`: every role the deployer
+  creates carries a named permissions boundary, and the deployer is
+  denied changes to it, to the bootstrap roles and trust, and to the
+  bootstrap state. 243 lenses.
+
+### Fixed
+
+- The benchmark sandboxes its subject: a copy of the plugin payload and
+  the target, outside every checkout, with no answer key in reach. Every
+  way a subject ends stops its process group. Evidence never follows a
+  symlink out of the target. Dependencies are locked and installed
+  before a key is in reach. The overall mean is the providers' mean.
+- `arch-check`: a tree whose globs match no file is an error; `NET-06`,
+  `NET-09`, `NET-14`, `ASY-15`, and `DEL-10` read the spellings they
+  missed; `OM-07` is marked partial; `CON-18` and `CTX-22` report the
+  right file; build output is skipped only where it is build output.
+- The checks: `make test` brings its own pytest; `make plugin` validates
+  `plugin.json`; fenced code is not read for links or headings; the leak
+  scan covers `CLAUDE.md` and `SECURITY.md`; skill descriptions have a
+  budget and unknown frontmatter keys are refused; every CI job has a
+  timeout.
+
 ## 0.28.0 (2026-09-22)
 
 The state bucket holds state alone, no secret value
