@@ -167,23 +167,28 @@ the storage layer; the rest is judged.
 **Principle.** Large blobs live in buckets named by an enum, laid out
 under keys the manager chooses, with presigned URLs for direct upload
 and download so the service never proxies a large transfer through its
-own memory. A local filesystem impl with the same layout serves
-development and tests.
+own memory. An upload is a presigned POST, `presign_post`, because a
+presigned PUT cannot bound the size: its policy carries the content
+type and a `content-length-range` up to `max_bytes`. A local
+filesystem impl with the same layout serves development and tests. It
+enforces the same bound and refuses a key with `..`.
 
 **Source.** Infrastructure, Buckets.
 
 **Look for.** The `Buckets` enum; the bucket interface, and
-`presign_put` taking the content type and `max_bytes`; how uploads and
-downloads reach clients, and what a caller does when a presign returns
-`None`; the local impl.
+`presign_post` taking the content type and `max_bytes` and returning a
+`PresignedPost` of a URL and its fields; how uploads and downloads
+reach clients, and what a caller does when a presign returns `None`;
+the local impl, its size check, and its key check.
 
-**Violation.** A large blob (a document, an upload, an export) stored
-in a column or on a service's disk; a bucket name passed as a free
-string; a route that streams a large upload through the process
-instead of handing out a presigned URL; an upload URL that names no
-content type or no maximum length; a `None` from a presign that the
-caller does not answer by moving the bytes itself under the same
-bounds; a local setup that needs the cloud object store to run tests.
+**Violation.** A large blob stored in a column or on a service's disk,
+a bucket name passed as a free string, or a route that streams a large
+upload through the process instead of handing out a presigned URL; an
+upload through a presigned PUT, or a POST policy with no content type
+or no `content-length-range`; a `None` from a presign that the caller
+does not answer by moving the bytes itself under the same bounds, or a
+local impl that accepts a longer body, a key with `..`, or needs the
+cloud object store to run tests.
 
 **Severity.** medium
 
