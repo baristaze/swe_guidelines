@@ -465,8 +465,12 @@ Names follow the namespace:
     `get_inventory_storage()`, `get_order_storage()`.
 -   A namespace with several aggregates may add one storage interface
     per aggregate, named after the aggregate.
--   Operations are named after the entity: `write_warehouse`,
-    `read_warehouses`.
+-   Operations are named after the entity, a verb first. A storage
+    operation reads or writes: `read_warehouses`, `create_warehouse`,
+    `write_warehouse`. A manager or service operation names what the
+    caller asks for: `get_warehouses`, `create_warehouse`,
+    `update_warehouse`. An operation with a verb of its domain uses
+    that verb: `place_order`.
 -   A work handler impl is `<Kind>HandlerImpl`, the work kind in
     CamelCase: `NotifyShipmentHandlerImpl` (see [Shape of a
     Worker](#shape-of-a-worker)).
@@ -855,7 +859,7 @@ class IdentityContext(RequestContext):
 
 class OperatorContext(IdentityContext):
     """The operator plane. No org_id, on purpose."""
-    permissions: frozenset[OperatorPermission]  # what the allowlist entry grants
+    permissions: tuple[OperatorPermission, ...]  # what the allowlist entry grants
 ```
 
 Each stage in that tree is a frozen type that subclasses the stage it
@@ -3849,7 +3853,7 @@ class NotifyShipmentHandlerImpl(WorkHandlerInterface):  # handles WorkKind.NOTIF
         self._topics = topics
 
     async def handle(self, ctx: OpContext, item: WorkItem) -> None:
-        # the unique index on idempotency_key deduped the enqueue; the claim is exclusive by lease
+        # the unique index on idempotency_key deduped the enqueue; the claim token fences every write
         summary = await self._order_manager.get_shipment_summary(ctx, item.target_id)
         await self._topics.publish(Topics.SHIPMENT_UPDATED, summary.to_payload(ctx.org_id, item.idempotency_key))
 ```
@@ -4460,8 +4464,10 @@ inside its own account's zones, and never touches the domain's.
 
 Every commit staging builds leaves images and a bundle in both
 accounts, so both carry a retention. Each registry keeps a bounded
-number of images and never expires one production runs, which the
-production deploy tags when it promotes it. Each artifacts bucket
+number of images and never expires one production runs. The production
+deploy marks such an image when it promotes it: it adds a new tag,
+under a prefix the retention spares. Tags are immutable, so the deploy
+adds a tag and never moves one. Each artifacts bucket
 expires bundles after a retention that outlasts the last few releases,
 so a redeploy of the previous release always finds its copies.
 
