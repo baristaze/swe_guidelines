@@ -1185,3 +1185,23 @@ merges without review; a root with no lock file or an unpinned
 provider. (The second factor at sign-in is OPS-07.)
 
 **Severity.** medium
+
+## DEL-49 An error event carries no secret
+
+**Principle.** An event carries no secret. The SDK is initialized with
+local variables off and default personal data off, and a scrubber
+removes the authorization header, cookies, and every field a request
+names as a credential before an event leaves the process.
+
+**Source.** Telemetry, Error Tracking.
+
+**Look for.** The SDK's initialization in every process: the local
+variables and personal data options; the scrubber it is handed, and
+the headers, cookies, and credential fields it removes.
+
+**Violation.** An SDK initialized with local variables or default
+personal data on; a process that sends events with no scrubber; a
+scrubber that leaves the authorization header, a cookie, or a field a
+request names as a credential in the event.
+
+**Severity.** high

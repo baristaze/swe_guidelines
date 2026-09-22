@@ -699,3 +699,25 @@ the manager that owns the cost of a stale read cannot see it; a caller
 with no way to tell a degraded answer from a fresh one.
 
 **Severity.** medium
+
+## ASY-31 An inbound webhook is authenticated by its signature
+
+**Principle.** An inbound webhook is authenticated by what the provider
+signs, never by its URL. The route checks the provider's signature over
+the body and a timestamp inside a replay window, and refuses a delivery
+that fails either before anything is enqueued. A token in the path only
+routes to the integration that owns it, and the access log masks it.
+
+**Source.** Infrastructure, Queues.
+
+**Look for.** Every inbound webhook route: the signature check, what it
+signs over, the timestamp and the window it is held to, and where the
+check sits against the enqueue; what the path token is used for; how
+the access log writes the path.
+
+**Violation.** A webhook accepted on its URL or its path token alone; a
+signature check with no timestamp or no replay window, so a captured
+delivery can be sent again; a delivery enqueued before its check; a
+path token written to the access log in the clear.
+
+**Severity.** high

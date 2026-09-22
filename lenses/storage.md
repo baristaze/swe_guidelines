@@ -363,8 +363,9 @@ creation) carrying `Index(org_id, id)` and queries ordering by `id`.
 Any `DESC` index on an id column, or a single-column index on `org_id`
 next to a compound index that starts with `org_id`. Indexes on columns
 no query filters on, or missing on columns every list query filters
-on, and a compound index no real query asks for; the fourth rule, the
-partial unique index on a soft-deletable table, is STO-26.
+on, and a compound index no real query asks for; the fourth rule, a
+tenant-supplied unique key, is STO-30, and the fifth, the partial
+unique index on a soft-deletable table, is STO-26.
 
 **Violation.** A feed orders by `created_at` with its own index instead
 of by `id`. Both `ix_<table>_org_id` and `ix_<table>_org_id_id` exist
@@ -761,6 +762,27 @@ every key under a prefix.
 
 **Check.** `arch-check` decides the `limit` of every list read and
 bucket listing; the rest is judged.
+
+## STO-30 A tenant-supplied unique key leads with `org_id`
+
+**Principle.** A unique key a tenant's caller supplies is unique within
+the tenant: its index leads with `org_id`, so one tenant cannot hold a
+value another needs and a conflict tells a caller nothing about another
+tenant. A handle global by design, an org's slug or an identity's
+email, answers a taken value as a conflict, never naming who holds it.
+
+**Source.** The Storage Layer, Defining ORM Classes.
+
+**Look for.** Every unique index or constraint on a column a caller
+supplies, and whether it leads with `org_id`; the global handles, and
+the conflict each answers with when a value is taken.
+
+**Violation.** A unique index on a tenant's caller-supplied key that
+does not lead with `org_id`, so a value one tenant holds is refused to
+another; a conflict on a global handle whose message or payload names
+the org or identity that holds it.
+
+**Severity.** high
 
 ## STO-31 Backups, a rehearsed restore, and reconciliation from the outbox
 

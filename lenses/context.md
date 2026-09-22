@@ -2,14 +2,15 @@
 
 Group id: `context`. Covers OpContext (with Stages, Scopes, and The
 Operator Context), the authorization and tenancy split of Separation
-of Layers, the
-authorization step and parameter order of The Business Layer and its
-"Operations Without a Principal", the tenancy rules of The Storage
-Layer, the tenant keying of Infrastructure, the credential and
-operator concerns of The Gateway in The Network Layer, the worker
-context provenance of Worker Roles, the causing request a handoff's
-stage names in Telemetry, and the tenant isolation suite and its
-negative control in the Tests of Cross-Cutting Conventions.
+of Layers, the authorization step and parameter order of The Business
+Layer and its "Operations Without a Principal", the tenancy rules of
+The Storage Layer, the tenant keying of Infrastructure and a cached
+read's place below authorization, the credential and operator concerns
+of The Gateway and of Auth in The Network Layer, the worker context
+provenance and the enqueue permission of Worker Roles, the causing
+request a handoff's stage names in Telemetry, and the tenant isolation
+suite and its negative control in the Tests of Cross-Cutting
+Conventions.
 
 This group judges one question: does every operation know who is
 acting, for which tenant, with what authority, and is that knowledge
@@ -809,5 +810,95 @@ outlives its transaction, so a pooled connection hands one caller's
 tenant to the next; a funnel with a default `org_id`, so a forgotten
 argument reads across tenants; a cross-tenant call the enumeration
 does not know about.
+
+**Severity.** high
+
+## CTX-33 A cached read sits below authorization
+
+**Principle.** Within a tenant, what one member may read another may
+not, so a cached read sits below authorization, never above it. The
+manager caches the tenant's data and applies the caller's visibility to
+what it read, from the cache or from storage, on every call. A read
+cached another way carries every input its visibility depends on in the
+key.
+
+**Source.** Infrastructure, Cache.
+
+**Look for.** Every manager read that consults the cache: whether the
+visibility check runs after the read on every call, hit or miss, and
+what the key carries when it does not (the role, the team, the user).
+
+**Violation.** A manager that caches a filtered view and returns a hit
+without applying the caller's visibility; a cached view keyed on the
+tenant alone, or missing the role or the team it was filtered by, so
+one member's view is served to another.
+
+**Severity.** high
+
+## CTX-34 The permission to enqueue a kind covers its handler's calls
+
+**Principle.** The person authorizes work once, at enqueue, so that
+authorization is as wide as the run. The permission that enqueues a
+kind covers every operation its handler composes: a role may enqueue a
+kind only if it may call each of those operations itself. A test holds
+each kind's enqueue permission to its handler's calls.
+
+**Source.** Worker Roles, The Work Queue.
+
+**Look for.** The permission each work kind's enqueue requires, and the
+manager operations its handler calls with the permission each needs;
+the test that holds the two together; a handler that reads the live
+membership before a sensitive step, and the decision recorded for it.
+
+**Violation.** A kind whose enqueue permission is narrower than one of
+its handler's calls, so a role reaches through the queue what it could
+not do directly; no test holding each kind's enqueue permission to its
+handler's calls; a handler that asks again without a recorded decision.
+
+**Severity.** high
+
+## CTX-35 A secret is a tenant's, under its own prefix, named by the manager
+
+**Principle.** A secret belongs to a tenant: every call takes the
+`org_id` first, and the impl keeps each tenant's secrets under a
+prefix of its own, so a name one tenant presents never resolves to
+another tenant's secret or the platform's. The manager sets
+`credential_ref` when it puts the secret; every create and update a
+caller shapes excludes it.
+
+**Source.** Infrastructure, Secrets.
+
+**Look for.** The secrets interface and whether each method takes
+`org_id` first; the key each impl builds from the tenant and the name;
+where `credential_ref` is set, and whether any request or create shape
+a caller fills carries it.
+
+**Violation.** A secrets method with no tenant, or an impl that stores
+names unprefixed, so a name can reach another tenant's secret or the
+platform's own; a `credential_ref` a caller can write, so a caller
+points an integration at a secret it does not own.
+
+**Severity.** high
+
+## CTX-36 Failed sign-ins are throttled in storage; sessions have two lifetimes
+
+**Principle.** Sign-in has a defense that does not fail open: the
+tenancy manager counts failed sign-ins per identity in its own storage
+and answers a run of them with a growing delay before the next attempt
+is checked. Every session has an idle and an absolute lifetime, both
+settings, and every API key an expiry.
+
+**Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
+Domain Owns.
+
+**Look for.** The sign-in transition and where it records a failure;
+the delay it applies and what it grows with; the session's idle and
+absolute lifetimes in settings and where each is checked; the expiry
+on an API key.
+
+**Violation.** A sign-in whose only defense is the per-address rate
+limit on the cache, which fails open; a failure count kept in the
+cache instead of the tenancy manager's storage; a session with no idle
+or no absolute lifetime; an API key with no expiry.
 
 **Severity.** high
