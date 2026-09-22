@@ -245,7 +245,8 @@ the order the guideline presents them, never by number.
   Business Layer (Shape of an Operation) states. An operator operation
   opens with `octx.require(...)` the same way. The one exemption is an
   operation whose stage carries no permissions: one on the request
-  stage (`sign_up`, `grant_operator`, `disable_operator`, `seed_totp`,
+  stage (`sign_up`, `grant_operator`, `disable_operator`,
+  `grant_operator_token`,
   the sweep's purges), one on the identity stage (the exchange, the
   sign-out), and the outbox handoff that takes `(org_id, row)`
   (`enqueue_relayed`). Its authority is the stage it takes, and the
