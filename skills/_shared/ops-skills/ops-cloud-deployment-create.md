@@ -25,7 +25,9 @@ only, and the local stack has no administrator.
 The script also needs `OWNER_EMAIL` and `ALARM_EMAIL` (as environment
 variables or as `--owner-email` and `--alarm-email`), and the token
 that writes the delegation at the domain's DNS host, as an environment
-variable only, so it never lands in shell history. It refuses without
+variable only, so it never lands in shell history. That token is the
+run's one credential outside the account: scoped to the domain's zone,
+short-lived where the host allows it, and held only for the run. It refuses without
 them; ask for any that is missing, and never for the token's value in
 the conversation.
 
@@ -67,7 +69,9 @@ The GitHub login is `gh auth status`; it names a user who can write
 the repository's environments and their variables.
 
 No env file is read. The script writes one: `~/.config/acme/ops/<env>.env`,
-owner-only, and it writes the investigate profile into
+owner-only, with the API's URL and the operator, provisioner, and
+tracker lines empty: no operator exists until the pipeline's
+first-operator job has run. It writes the investigate profile into
 `~/.aws/config`. The skill prints the names of what was written and
 never a value.
 

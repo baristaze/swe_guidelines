@@ -46,8 +46,9 @@ administrator's two steps.
 **Principle.** Four roles operate a platform. The administrator,
 deployer, and investigator are cloud roles under named profiles; the
 supporter is the investigator's plus an operator-plane identity. The
-administrator is a person, granted for the run: it creates and
-destroys an environment, and no other skill runs under it.
+administrator is a role a person holds, granted for the run: it creates
+and destroys an environment and is the break-glass, recorded and
+time-bound, and no other skill runs under it.
 
 **Source.** Operations, Operator Roles.
 
@@ -60,7 +61,8 @@ person's everyday permission set is not one: no skill runs under it);
 a person's everyday profile holding the administrator role; an
 administrator permission set held between runs; a skill other than
 the create and destroy runs that names the administrator profile; an
-administrator role assumed by a pipeline.
+administrator role assumed by a pipeline; a break-glass grant with
+no record, no time bound, or no reconciling pull request after it.
 
 **Severity.** high
 
@@ -159,12 +161,11 @@ tag; a staging role that lists a production resource.
 
 ## OPS-07 People sign in through the identity center; agents chain from it
 
-**Principle.** A person signs in through the cloud's identity center,
-with short-lived credentials: no cloud user and no long-lived key.
-The investigator role trusts the identity center's everyday role of
-its own account, matched by pattern. An agent's profile chains from
-the person's signed-in session, so it works inside a session a person
-opened and holds less than the person.
+**Principle.** People sign in through the identity center, with a second
+factor and short-lived credentials: no cloud user, no long-lived key.
+The investigator trusts its account's everyday role by pattern, and an
+agent chains from the person's session, holding no more than the person.
+In production the everyday set writes nothing.
 
 **Source.** Operations, Operator Roles.
 
@@ -176,7 +177,8 @@ chain from the signed-in profile to each investigator role.
 **Violation.** A cloud user, or an access key minted for a person or an
 agent; an investigator role that trusts another account, or a
 principal by a copied generated name; an agent profile holding a key
-of its own instead of chaining from a person's session.
+of its own instead of chaining from a person's session; a production
+everyday permission set that writes; a sign-in with no second factor.
 
 **Severity.** high
 
@@ -281,11 +283,10 @@ judged.
 
 ## OPS-12 A watch outlives its conversation and is written for a burst
 
-**Principle.** A watch is a loop that outlives the conversation that
-started it. The skill says so, and the agent that invokes it spawns
-another to run it. A watch is written for a burst: it batches what
-arrives per interval, caps what it reports, and never reads the same
-window twice.
+**Principle.** A watch outlives the conversation that started it, so the
+invoking agent spawns another to run it. It batches per interval, caps
+what it reports, never reads a window twice, and reads its profile each
+interval, stopping when the person's session ends.
 
 **Source.** Operations, Operational Skills.
 
@@ -295,17 +296,18 @@ that moves the window.
 
 **Violation.** A watch run in the conversation that started it; a
 watch that reports every line of a burst; a watch that re-reads a
-window it already reported, so an alarm repeats.
+window it already reported, so an alarm repeats; a watch that retries
+on an expired session instead of ending and saying so.
 
 **Severity.** low
 
-## OPS-13 The first responder reads the platform's size before it escalates
+## OPS-13 The first responder reads whose traffic it was before it escalates
 
 **Principle.** The first responder to an alarm is an agent. Before it
-escalates, it reads the platform's size: tenants, users, the last
-day's traffic. An alarm on a platform of one tenant and one user is
-the developer at work, and the agent suppresses it with that reason.
-What it cannot explain, it escalates with everything it read.
+escalates, it reads the platform's size and whose traffic raised the
+alarm. Outside production, the team's own traffic may be suppressed,
+recorded with its reason; in production nothing is. What it cannot
+explain, it escalates with everything it read.
 
 **Source.** Operations, Operational Skills.
 
@@ -313,8 +315,9 @@ What it cannot explain, it escalates with everything it read.
 the reason a suppressed alarm carries; what an escalation carries.
 
 **Violation.** An agent that escalates without reading the tenant, user,
-and traffic counts; a suppression with no reason; an escalation that
-names the alarm and nothing the agent read.
+and traffic counts; a suppression in production, or one by size alone;
+a suppression with no reason or no record; an escalation that names
+the alarm and nothing the agent read.
 
 **Severity.** medium
 
@@ -346,7 +349,8 @@ that holds the titles equal.
 
 **Principle.** A small default set of alarms goes to one topic per
 environment, and a person's address subscribes to it. The set covers
-the edge, the processes, and the database. The thresholds are numbers,
+the edge, the processes, the database, and, in a system with a queue,
+the queue. The thresholds are numbers,
 and the numbers are the system's; the set and the topic are the
 shape.
 
@@ -356,11 +360,13 @@ shape.
 topic they publish to, and the subscription on it; the three areas the
 set covers (the error ratio, the latency, and the unhealthy targets at
 the load balancer, a service below its desired count, the database's
-processor and free storage); where the thresholds come from.
+processor and free storage, the oldest waiting item's age, parked and
+failed work, and the outbox's lag); where the thresholds come from.
 
 **Violation.** An environment with no alarm, or alarms that reach no
 topic and no person; an edge, a process, or a database with no alarm
-on it; a second topic per environment; a threshold copied from another
+on it; a queue with no alarm on its oldest item or its failed work; a
+second topic per environment; a threshold copied from another
 system with no reading of this one.
 
 **Severity.** medium
@@ -452,7 +458,8 @@ branch policies and variables, staging's first deploy and production's
 run ending at its bootstrap, and the order across accounts. The
 destroy script: the word staging goes on, production's typed name, the
 branch and the state it reads deletion protection from, the final
-snapshot and the backups it keeps, and the report of what remains.
+snapshot and the backups it keeps, the exact origin commit it applies
+from in a clean worktree, and the report of what remains.
 
 **Violation.** A step of creation done by hand in the console; a run
 that executes a command it did not print, or has no dry run; a
@@ -460,7 +467,8 @@ production destroy that goes on a word, or one where the same run
 turns deletion protection off; a protection check read on `main`
 instead of `release` and the applied state; a production destroy that
 skips the final snapshot or deletes the automated backups; a destroy
-that ends without naming what remains, the snapshot among it.
+that ends without naming what remains, the snapshot among it; a
+destroy applied from the working tree it was started in.
 
 **Severity.** high
 
@@ -535,7 +543,9 @@ response, and the four reads; the reader interface, the local impl
 over the `devx` stores, and the cloud impl over the cloud's; whether
 the same test is what runs against a deployed environment, and how
 that run differs: no deliberate failure, the investigator's profile for
-the reads, and an identity and a tenant named for the smoke test.
+the reads when a person runs it, a read-only grant of the pipeline's
+when a deploy runs it, and an identity and a tenant named for the
+smoke test.
 
 **Violation.** A signal that is emitted and never read back by a test;
 a test that asserts on the exporter's mock instead of the store; a
@@ -670,19 +680,21 @@ document served to a tenant.
 
 ## OPS-28 One repository-host environment per deployer credential
 
-**Principle.** Each deployer credential has an environment of its own
-on the repository host: staging's, production's plan with no
-reviewer, production's apply with the required reviewer, each
-deploying from its branch alone. A deployer role trusts the
-environment and the branch. Each environment holds its own variables
-under the same names. The federation replaces every cloud key.
+**Principle.** Each deployer credential has its own repository-host
+environment, deploying from its branch alone: staging's, production's
+plan with no reviewer, production's apply with the reviewer. The trust
+names the environment, the ref, and the repository's immutable id. Each
+environment holds its own variables under the same names, and no cloud
+key is stored.
 
 **Source.** Operations, Operator Roles.
 
 **Look for.** The environments on the repository host, the rules on
 each, and their deployment-branch policies; the variables each holds and
 their names; the trust of each deployer role, the environment its
-subject names and the ref it requires; any cloud key stored as a secret.
+subject names, the ref it requires, and whether it matches the
+repository by `repository_id` and its owner's id; any cloud key stored
+as a secret.
 
 **Violation.** One environment shared by two credentials, or a reviewer
 on the plan's environment, so the plan waits on its own approval; a
@@ -690,6 +702,7 @@ production value in a repository-wide variable a staging job can read; a
 cloud access key stored as a secret; an environment with no
 deployment-branch policy, so a pushed branch declaring `staging` gets
 staging's role; a deployer trust that names the environment and not the
-branch. (The approval itself is DEL-38.)
+branch, or the repository by its mutable name alone. (The approval
+itself is DEL-38.)
 
 **Severity.** high
