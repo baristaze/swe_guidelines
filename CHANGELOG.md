@@ -6,8 +6,7 @@ which number.
 
 ## 0.28.0 (2026-09-22)
 
-An outside review of delivery and of the guideline's seams, applied in
-full where it held. The state bucket holds state alone, no secret value
+The state bucket holds state alone, no secret value
 reaches state or a plan, a deployer is bound to its branch, and the
 deploy migrates the database. The tooling stops what it starts and reads
 the spellings it missed. Minor: rules are added and sharpened, and one is
