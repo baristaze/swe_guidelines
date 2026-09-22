@@ -83,9 +83,11 @@ def test_description_limits(repo, skills, capsys):
     set_description(repo, '""')
     assert skills.main() == 1
     assert "empty description" in capsys.readouterr().out
-    set_description(repo, '"' + "x" * 351 + '"')
+    set_description(repo, '"' + "x" * 500 + '"')
+    assert skills.main() == 0
+    set_description(repo, '"' + "x" * 501 + '"')
     assert skills.main() == 1
-    assert "limit 350" in capsys.readouterr().out
+    assert "limit 500" in capsys.readouterr().out
 
 
 def test_the_descriptions_together_have_a_budget(repo, skills, capsys, monkeypatch):
@@ -297,6 +299,10 @@ def test_an_ops_skill_template_is_held_to_the_skill_frontmatter(repo, skills, ca
     assert "differs from the file name 'ops-watch'" in out
     assert "description must be one double-quoted string" in out
     assert "allowed-tools must be comma-separated" in out
+
+
+def test_the_description_limits_leave_room_in_the_hosts_listing(skills):
+    assert (skills.DESCRIPTION_LIMIT, skills.DESCRIPTIONS_TOTAL) == (500, 5000)
 
 
 @pytest.mark.parametrize("line", ["name:arch-review-full", "description:\"Full review.\""])
