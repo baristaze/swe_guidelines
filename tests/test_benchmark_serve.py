@@ -177,3 +177,19 @@ def test_the_tail_ends_when_an_unfinished_run_has_gone_quiet(serve_module, tmp_p
     lines = serve_module.tail(path, stop_after_s=5, finished=tmp_path / "results.json", idle_s=0.05)
     assert list(lines) == ["one", "last"]  # ended by the idle cutoff, well before the time limit
     assert list(serve_module.tail(tmp_path / "never.jsonl", stop_after_s=5, idle_s=0.05)) == []
+
+
+def test_every_answer_carries_the_security_headers(client):
+    client.request("GET", "/")
+    response = client.getresponse()
+    response.read()
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "sandbox" in response.headers["Content-Security-Policy"]
+    assert "script-src" not in response.headers["Content-Security-Policy"]  # default-src 'none' holds scripts off
+
+
+def test_a_request_for_another_host_name_is_refused(client):
+    client.request("GET", "/runs", headers={"Host": "attacker.example:8765"})
+    response = client.getresponse()
+    response.read()
+    assert response.status == 421

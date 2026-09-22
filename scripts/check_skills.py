@@ -35,7 +35,12 @@ Rules:
   YAML indicator character, so strict YAML loaders accept it;
 - every arch-scaffold-* skill has the five scaffold sections, `## Input`,
   `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
-  a heading inside fenced code is not a section.
+  a heading inside fenced code is not a section;
+- every ops-skill template under `skills/_shared/ops-skills/`, which a
+  scaffold copies into a new tree as a real skill, has the frontmatter a
+  skill has: its name is its file name, its description one
+  double-quoted string, and its allowed-tools entries each a Name or a
+  `Bash(cmd:*)` prefix, comma-separated.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -188,6 +193,43 @@ def lens_groups() -> set[str]:
     return groups
 
 
+OPS_TEMPLATES = SKILLS / "_shared" / "ops-skills"
+"""The operational skills a scaffold copies into a new tree, where their frontmatter becomes a real skill's."""
+
+
+def check_template(path: Path, errors: list[str]) -> None:
+    """An ops-skill template's frontmatter holds to the rules a skill's does: the name is the file's, the
+    description one double-quoted string, and every allowed-tools entry a Name or a Bash(cmd:*) prefix."""
+    rel = path.relative_to(ROOT)
+    text = path.read_text(encoding="utf-8")
+    fm = frontmatter(text, errors, str(rel))
+    if not fm:
+        errors.append(f"{rel}: missing frontmatter")
+        return
+    if fm.get("name", "") != path.stem:
+        errors.append(f"{rel}: name '{fm.get('name', '')}' differs from the file name '{path.stem}'")
+    desc = fm.get("description", "")
+    head = FRONTMATTER.match(text)
+    if not desc:
+        errors.append(f"{rel}: empty description")
+    elif len(desc) > 1024:
+        errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
+    elif head and not QUOTED_DESCRIPTION.search(head.group(1)):
+        errors.append(f"{rel}: description must be one double-quoted string")
+    tools = fm.get("allowed-tools", "")
+    if any(" " in PARENS.sub("", t.strip()) for t in tools.split(",")):
+        errors.append(f"{rel}: allowed-tools must be comma-separated")
+    for tool in (t.strip() for t in tools.split(",") if t.strip()):
+        if not TOOL.match(tool):
+            errors.append(f"{rel}: allowed-tools entry {tool!r} is not Name or Name(rule)")
+        elif tool == "Bash":
+            errors.append(f"{rel}: a bare Bash is refused; name the command, Bash(cmd:*)")
+        elif bash_command(tool) is not None:
+            rule = tool[len("Bash(") : -1]
+            if " *" in rule or not (PREFIX_RULE.match(rule.strip()) or EXACT_MAKE.match(rule.strip())):
+                errors.append(f"{rel}: {tool!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)")
+
+
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
@@ -276,6 +318,9 @@ def main(argv: Sequence[str] = ()) -> int:
             review_groups.add(group)
             if f"lenses/{group}.md" not in text:
                 errors.append(f"{rel}: does not reference lenses/{group}.md")
+    templates = sorted(OPS_TEMPLATES.glob("*.md")) if OPS_TEMPLATES.is_dir() else []
+    for template in templates:
+        check_template(template, errors)
     for group in sorted(groups - review_groups):
         errors.append(f"skills/: no arch-review-{group} skill for lens group '{group}'")
     full = SKILLS / "arch-review-full" / "SKILL.md"
@@ -290,7 +335,7 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(skills)} skill(s)")
         return 1
-    print(f"skills ok: {len(skills)} skills, {len(review_groups)} review groups")
+    print(f"skills ok: {len(skills)} skills, {len(review_groups)} review groups, {len(templates)} ops-skill templates")
     return 0
 
 

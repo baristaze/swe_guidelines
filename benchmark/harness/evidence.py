@@ -65,7 +65,9 @@ def _names(artifact: str, lens: str, basename: str) -> bool:
 
     Near means on the same line, or between that mention and the next
     lens id: a table row, a bullet, or a heading and the paragraphs
-    under it.
+    under it. `basename` is whatever names the file unambiguously: its
+    base name, or a longer tail of its path when two planted files share
+    a base name.
     """
     mentions = list(LENS_ID.finditer(artifact))
     for i, m in enumerate(mentions):
@@ -80,6 +82,16 @@ def _names(artifact: str, lens: str, basename: str) -> bool:
     return False
 
 
+def shortest_name(path: str, paths: set[str]) -> str:
+    """The shortest tail of a path no other planted path ends with: `task.py`, or `tasks/impl/__init__.py`."""
+    parts = Path(path).parts
+    for n in range(1, len(parts) + 1):
+        tail = "/".join(parts[-n:])
+        if not any(other != path and (other == tail or other.endswith("/" + tail)) for other in paths):
+            return tail
+    return path
+
+
 def named(expected: dict[str, Any] | None, artifact: str) -> dict[str, Any] | None:
     """Which planted findings the artifact names by lens id and file, and which it misses."""
     findings = planted(expected)
@@ -87,9 +99,9 @@ def named(expected: dict[str, Any] | None, artifact: str) -> dict[str, Any] | No
         return None
     hit: list[str] = []
     miss: list[str] = []
+    paths = {str(f["file"]) for f in findings}
     for f in findings:
-        basename = Path(str(f["file"])).name
-        (hit if _names(artifact, str(f["lens"]), basename) else miss).append(str(f["id"]))
+        (hit if _names(artifact, str(f["lens"]), shortest_name(str(f["file"]), paths)) else miss).append(str(f["id"]))
     return {"expected": len(findings), "named": hit, "missed": miss}
 
 

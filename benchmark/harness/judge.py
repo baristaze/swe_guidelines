@@ -18,6 +18,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -164,7 +165,7 @@ class Verdict:
             else:
                 findings.append(Finding(severity="low", note=str(raw)))
         return Verdict(
-            score=max(0, min(100, round(number))),
+            score=max(0, min(100, int(half_up(number)))),
             verdict=word,
             findings=findings,
             strengths=[str(s) for s in (data.get("strengths") or [])],
@@ -197,6 +198,12 @@ class Judgement:
             "error": self.error,
             "verdict": self.verdict.as_dict() if self.verdict else None,
         }
+
+
+def half_up(value: float, places: int = 0) -> float:
+    """A number rounded with halves away from zero, as a reader rounds: 72.5 is 73, never Python's 72."""
+    step = Decimal(1).scaleb(-places)
+    return float(Decimal(str(value)).quantize(step, rounding=ROUND_HALF_UP))
 
 
 def is_transient(exc: Exception) -> bool:

@@ -26,6 +26,8 @@ jobs:
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Both setup actions cache their downloads between runs. The npm cache
       # holds Claude Code and markdownlint; the uv cache holds Python, pytest,
       # pyyaml, jsonschema, ruff, and mypy. Each key is the file that pins the versions.

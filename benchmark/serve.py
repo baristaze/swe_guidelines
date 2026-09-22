@@ -37,6 +37,17 @@ POLL_S = 0.5
 # answers.
 IDLE_S = 3600.0
 BOUNDARY = "benchmarkframe"
+# A subject's artifact may be HTML the subject wrote. It is served as data:
+# never sniffed into another type, never allowed to run a script, and never
+# framed by another page.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": (
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox"
+    ),
+    "Referrer-Policy": "no-referrer",
+}
 
 
 def runs_of(folder: Path) -> list[dict]:
@@ -96,12 +107,20 @@ def tail(path: Path, stop_after_s: float | None = None, finished: Path | None = 
         time.sleep(POLL_S)
 
 
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
 class RunsServer(ThreadingHTTPServer):
     """The server, holding the runs folder its handlers serve."""
 
     def __init__(self, address: tuple[str, int], runs: Path) -> None:
         super().__init__(address, Handler)
         self.runs_folder = Path(runs)
+        host, port = self.server_address[:2]
+        # The names a browser may use for this server. A page on another
+        # name that resolves here (DNS rebinding) is refused.
+        names = {str(host), "localhost", "127.0.0.1", "[::1]"} if str(host) in LOOPBACK else {str(host)}
+        self.hosts = {f"{n}:{port}" for n in names} | ({"localhost", "127.0.0.1"} if port == 80 else set())
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -117,8 +136,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # quieter than the default
         print(f"{self.address_string()} {fmt % args}")
 
+    def _secure(self) -> None:
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
+
     def _send(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
+        self._secure()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -132,6 +156,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.runs / name
 
     def do_GET(self) -> None:
+        assert isinstance(self.server, RunsServer)
+        if (self.headers.get("Host") or "") not in self.server.hosts:
+            return self._send(421, b"this server answers to its own address only\n", "text/plain; charset=utf-8")
         path = unquote(urlparse(self.path).path)
         parts = [p for p in path.split("/") if p]
         try:
@@ -184,6 +211,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _sse(self, path: Path, finished: Path) -> None:
         self.send_response(200)
+        self._secure()
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -193,6 +221,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _mjpeg(self, folder: Path, finished: Path) -> None:
         self.send_response(200)
+        self._secure()
         self.send_header("Content-Type", f"multipart/x-mixed-replace; boundary={BOUNDARY}")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

@@ -35,14 +35,14 @@ jobs:
     name: every scenario, judged
     runs-on: ubuntu-26.04
     timeout-minutes: 180
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+    # The provider keys are the run step's alone: no install step, and no
+    # package lifecycle script it runs, ever sees them.
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
+      # No token left in .git/config for the subject to find.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.21.0"
@@ -60,6 +60,10 @@ jobs:
         # into the script. A failing scenario is recorded and the rest
         # still run; the step fails at the end if any of them did.
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SCENARIOS: ${{ inputs.scenarios }}
           PROVIDERS: ${{ inputs.providers }}
           EFFORT: ${{ inputs.effort }}

@@ -229,11 +229,8 @@ def test_a_timeout_kills_the_whole_process_group(tmp_path):
     rt.prepare()
     marker = tmp_path / "child-alive"
     # The subject starts a child that outlives it unless its group is killed.
-    script = (
-        "import subprocess, sys, time; "
-        f"subprocess.Popen([sys.executable, '-c', 'import time, pathlib; time.sleep(3); pathlib.Path(r\"{marker}\").write_text(\"x\")']); "
-        "time.sleep(30)"
-    )
+    child = f"import time, pathlib; time.sleep(3); pathlib.Path(r'{marker}').write_text('x')"
+    script = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)"
     with CliStream(tmp_path / "cli.jsonl") as stream:
         status = rt.run([sys.executable, "-c", script], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream, timeout_s=1)
     assert status.timed_out
@@ -248,13 +245,12 @@ def test_the_container_is_named_bounded_and_killed_by_name_on_a_timeout(tmp_path
     fake = tmp_path / "docker"
     # `run` sleeps like a subject that never ends; `kill` records its name.
     fake.write_text(
-        "#!/bin/sh\n"
-        f'echo "$@" >> {log}\n'
-        'if [ "$1" = run ]; then exec sleep 30; fi\n',
+        f'#!/bin/sh\necho "$@" >> {log}\nif [ "$1" = run ]; then exec sleep 30; fi\n',
         encoding="utf-8",
     )
     fake.chmod(0o755)
     rt = RT.build("container", tmp_path, None, {"docker": str(fake), "image": "img:1", "memory": "1g"})
+    assert isinstance(rt, RT.ContainerRuntime)
     rt.prepare()
     command = rt.command(["claude"], rt.workspace)
     for flag in ("--init", "--name", "--pids-limit", "--cpus"):

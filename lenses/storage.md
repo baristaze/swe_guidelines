@@ -231,7 +231,8 @@ table class lives outside `storage/tables/`.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides it.
+**Check.** `arch-check` decides the shape and the tables it can read;
+the rest is judged.
 
 ## STO-10 One storage root, two impls, every dependency wired there
 

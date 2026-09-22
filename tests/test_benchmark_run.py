@@ -262,7 +262,12 @@ def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
 def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     judged: list[str] = []
-    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: judged.append("called") or [])
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
     scenario = {
         "name": "missing",
         "kind": "command",

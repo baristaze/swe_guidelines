@@ -81,3 +81,36 @@ def test_caches_and_benchmark_runs_are_not_scanned(repo, links):
 def test_external_links_are_not_fetched(repo, links):
     repo.write("docs/extra.md", "# Extra\n\n[x](https://example.invalid/none) [m](mailto:a@b.c)\n")
     assert links.main() == 0
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "[the guide](../missing.md 'single-quoted title')",
+        "[the guide](<../missing.md>)",
+        "[see [the note]](../missing.md)",
+        "[the guide][ref]\n\n[ref]: ../missing.md",
+        "[the guide](../missing.md (a parenthesised title))",
+    ],
+)
+def test_every_link_form_is_checked(repo, links, capsys, link):
+    repo.write("docs/extra.md", f"# Extra\n\n{link}\n")
+    assert links.main() == 1
+    assert "missing file ../missing.md" in capsys.readouterr().out
+
+
+def test_a_definition_inside_fenced_code_is_not_a_link(repo, links):
+    repo.write("docs/extra.md", "# Extra\n\n```text\n[ref]: ../missing.md\n```\n")
+    assert links.main() == 0
+
+
+@pytest.mark.parametrize("line", ["See section 4 for the details.", "## 2.1 The storage layer"])
+def test_a_section_by_number_fails_outside_the_lenses_too(repo, links, capsys, line):
+    repo.write("skills/extra.md", f"# Extra\n\n{line}\n")
+    assert links.main() == 1
+    assert "skills/extra.md:3:" in capsys.readouterr().out
+
+
+def test_a_release_heading_in_the_changelog_is_a_version_not_a_section(repo, links):
+    repo.write("CHANGELOG.md", "# Changelog\n\n## 0.27.0 (2026-09-21)\n")
+    assert links.main() == 0

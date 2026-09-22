@@ -260,3 +260,17 @@ def test_a_single_allowed_tools_entry_with_a_space_in_its_rule_passes(repo, skil
     repo.edit(path, "allowed-tools: Bash(make check)", "allowed-tools: Read Bash(make check)")
     assert skills.main() == 1
     assert "allowed-tools must be comma-separated" in capsys.readouterr().out
+
+
+def test_an_ops_skill_template_is_held_to_the_skill_frontmatter(repo, skills, capsys):
+    good = '---\nname: ops-watch\ndescription: "Watch an environment."\nallowed-tools: Read, Bash(aws:*)\n---\n\n# ops-watch\n'
+    repo.write("skills/_shared/ops-skills/ops-watch.md", good)
+    assert skills.main() == 0
+    assert "1 ops-skill templates" in capsys.readouterr().out
+    bad = "---\nname: ops-wach\ndescription: Watch an environment.\nallowed-tools: Read Bash\n---\n"
+    repo.write("skills/_shared/ops-skills/ops-watch.md", bad)
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert "differs from the file name 'ops-watch'" in out
+    assert "description must be one double-quoted string" in out
+    assert "allowed-tools must be comma-separated" in out

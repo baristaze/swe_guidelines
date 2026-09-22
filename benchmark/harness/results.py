@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .judge import Judgement
+from .judge import Judgement, half_up
 
 SCHEMA_VERSION = 1
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -98,7 +98,7 @@ def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
                 skipped.setdefault(j.provider, j.error or j.status)
     per_provider = {
         provider: {
-            "mean": round(statistics.fmean(values), 1),
+            "mean": half_up(statistics.fmean(values), 1),
             "min": min(values),
             "max": max(values),
             "n": len(values),
@@ -108,7 +108,7 @@ def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
     every = [v for values in scores.values() for v in values]
     return {
         "per_provider": per_provider,
-        "overall_mean": round(statistics.fmean(every), 1) if every else None,
+        "overall_mean": half_up(statistics.fmean(every), 1) if every else None,
         "skipped": [{"provider": p, "reason": r} for p, r in sorted(skipped.items())],
     }
 

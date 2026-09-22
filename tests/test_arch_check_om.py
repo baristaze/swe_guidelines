@@ -380,7 +380,8 @@ def test_a_merged_config_or_a_nested_config_relaxing_extras_is_om_07(tmp_path):
     )
     code, report = run(tmp_path, "OM-07", {TASK: merged})
     assert (code, found(report)) == (1, [("OM-07", TASK)])
-    nested = TASK_SOURCE.replace("class Priority(Platform):\n", 'class Priority(Platform):\n    class Config:\n        extra = "allow"\n\n')
+    nested_config = 'class Priority(Platform):\n    class Config:\n        extra = "allow"\n\n'
+    nested = TASK_SOURCE.replace("class Priority(Platform):\n", nested_config)
     code, report = run(tmp_path, "OM-07", {TASK: nested})
     assert (code, found(report)) == (1, [("OM-07", TASK)])
 
@@ -396,7 +397,8 @@ def test_a_class_on_the_chain_through_a_star_import_is_still_read_by_om_07(tmp_p
 
 
 def test_a_nested_config_unfreezing_is_om_11(tmp_path):
-    source = TASK_SOURCE.replace("class Priority(Platform):\n", "class Priority(Platform):\n    class Config:\n        frozen = False\n\n")
+    unfrozen = "class Priority(Platform):\n    class Config:\n        frozen = False\n\n"
+    source = TASK_SOURCE.replace("class Priority(Platform):\n", unfrozen)
     code, report = run(tmp_path, "OM-11", {TASK: source})
     assert (code, found(report)) == (1, [("OM-11", TASK)])
 
@@ -541,7 +543,11 @@ def test_a_root_that_is_not_frozen_is_om_11(tmp_path):
     [
         (SERVICE, "from uuid import uuid4\n"),
         (SERVICE, "import uuid\n\nx = uuid.uuid4()\n"),
-        (SERVICE, "import uuid\nfrom pydantic import BaseModel, Field\n\nclass B(BaseModel):\n    id: str = Field(default_factory=uuid.uuid4)\n"),
+        (
+            SERVICE,
+            "import uuid\nfrom pydantic import BaseModel, Field\n\n"
+            "class B(BaseModel):\n    id: str = Field(default_factory=uuid.uuid4)\n",
+        ),
         (TASK_IMPL, "from uuid import uuid7\n"),
         ("workers/maintenance/src/acme/workers/maintenance/__init__.py", "import ulid\n"),
     ],

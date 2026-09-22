@@ -34,9 +34,9 @@ import os
 import shutil
 import signal as signals
 import subprocess
-import uuid
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -287,10 +287,26 @@ class ContainerRuntime(BaseRuntime):
         # A name per run, so a timeout can kill this container and no other.
         self.container_name = f"swe-guidelines-benchmark-{uuid.uuid4().hex[:12]}"
         out = [
-            self.docker, "run", "--rm", "--name", self.container_name, "--init",
-            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-            "--memory", self.memory, "--cpus", self.cpus, "--pids-limit", self.pids,
-            "-v", f"{self.workspace}:/workspace:rw", "-w", "/workspace",
+            self.docker,
+            "run",
+            "--rm",
+            "--name",
+            self.container_name,
+            "--init",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--memory",
+            self.memory,
+            "--cpus",
+            self.cpus,
+            "--pids-limit",
+            self.pids,
+            "-v",
+            f"{self.workspace}:/workspace:rw",
+            "-w",
+            "/workspace",
         ]
         if self.plugin:
             out += ["-v", f"{self.plugin}:{CONTAINER_PLUGIN}:ro"]
