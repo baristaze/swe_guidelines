@@ -2867,9 +2867,10 @@ The gateway owns a short list of edge concerns, each done once:
     after this list, owns the retry. Creating is what the request
     leaves behind, not what it answers with. So a `POST` that writes a
     durable row declares the header whether it answers `201` with the
-    row or `202` with the id of work now running (see [Push-First
-    Apps](#push-first-apps)); a client that never saw the answer
-    retries both alike.
+    row or `202` with the id of work now running (see
+    [Wait-for-Response vs
+    Fire-and-Forget](#wait-for-response-vs-fire-and-forget)). A client
+    that never saw the answer retries both alike.
 
     The protocol runs in order. `begin` writes the marker pending, per
     tenant and principal, under the key. The marker carries a digest of
@@ -2882,11 +2883,11 @@ The gateway owns a short list of edge concerns, each done once:
     another digest is refused. And only an outcome the client cannot
     change by retrying is stored: a refusal (a `4xx`) is replayed,
     while a failure (a `5xx`) and a `429` release the marker. A `429`
-    is the one refusal a retry can change, by waiting. A release keeps the
-    digest and the id and clears only the attempt, so the retry reruns
-    on the same id and finds the row a failed attempt left instead of
-    creating a second one. The table after this list is the whole
-    protocol.
+    is the one refusal a retry can change, by waiting. A release keeps
+    the digest and the id and clears only the attempt. So the retry
+    reruns on the same id and finds the row a failed attempt left,
+    instead of creating a second one. The table after this list is the
+    whole protocol.
 -   **Health.** `/healthz` answers liveness with the version and no
     I/O. `/readyz` awaits the storage healthcheck under a deadline of
     its own, shorter than the timeout of whatever polls it. A probe that
@@ -2914,29 +2915,30 @@ class IdempotencyMarker(Identifiable, Created):  # one per tenant, principal, an
     body: str | None = None
 ```
 
+A pending marker holds a **lease**, an option of the idempotency
+manager. The lease runs from the attempt, never from the marker. The
+attempt token is a `uuid_v7`, so it carries the time the attempt
+began. An attempt older than the lease has either crashed between the
+marker and its outcome, or is still running past the lease. Either
+way, the next retry takes it over, and the token that retry stamps
+starts the lease again. Staleness is measured from the current
+attempt, never from when the marker was first written. A released
+marker holds no attempt and is taken over at once.
+
 The marker moves through four states. Every move is one conditional
 write whose guard is in the statement itself:
 
 | Marker            | Event                                   | Guard                          | Then                                              |
 |-------------------|-----------------------------------------|--------------------------------|---------------------------------------------------|
 | none              | `begin`                                 |                                | pending under attempt A, id minted; the request runs |
-| pending           | `finish` by A with a `2xx`, or a `4xx` but a `429` | the attempt is A    | finished; the outcome stored                      |
-| pending           | a `5xx` in A                            | the attempt is A               | released; digest and id kept, no attempt          |
+| pending           | `finish` by A with a `2xx`, or a `4xx` other than `429` | the attempt is A | finished; the outcome stored                 |
+| pending           | a `5xx` or a `429` in A                 | the attempt is A               | released; digest and id kept, no attempt          |
 | pending           | `finish` or release by an attempt not A | the attempt is not the caller's | unchanged; the caller is refused                  |
 | pending, lease live | a retry's `begin`                     | key and digest match           | unchanged; refused as `Conflict`, the first attempt still running |
 | pending, lease expired | a retry's `begin`                  | key and digest match           | pending under attempt B, same id; the request reruns |
 | released          | a retry's `begin`                       | key and digest match           | pending under attempt B, same id; the request reruns |
 | finished          | a retry's `begin`                       | key and digest match           | finished; the outcome replayed, the header says so |
 | any               | `begin` under another digest            |                                | unchanged; refused                                |
-
-The pending lease is an option of the idempotency manager. It runs from
-the attempt, never from the marker. The attempt token is a `uuid_v7`,
-so it carries the time the attempt began. An attempt older than the
-lease has either crashed between the marker and its outcome, or is
-still running past the lease. Either way, the next retry takes it over, and the token that retry stamps starts the
-lease again. Staleness is measured from the current attempt, never from
-when the marker was first written. A released marker holds no attempt
-and is taken over at once.
 
 Two facts make the takeover safe.
 
