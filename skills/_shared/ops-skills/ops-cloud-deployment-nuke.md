@@ -77,9 +77,12 @@ and a worker added since is one more name.
      working tree. The script also reads `deletion_protection` from
      the database in the applied state and refuses while it is on.
      Stop and name the release that is still to come. The script
-     applies from a clean worktree of `origin/release` (staging's of
-     `origin/main`), never from the working tree it was started in,
-     so nothing unreleased reaches production on the way down.
+     applies from a clean worktree of `origin/release`, never from
+     the working tree it was started in, so nothing unreleased reaches
+     production on the way down. Staging's destroy applies the same
+     way from the commit of staging's last successful deploy, read
+     from its deployment record, never from the tip of `main`, which
+     may hold a merge staging never ran.
 3. Read what the environment holds, so the report can say what is
    gone and what stays:
 
@@ -142,7 +145,7 @@ and a worker added since is one more name.
 **Credential.** <admin_profile>, <Arn>, account <id> (expected <id>)
 **Confirmation.** <the person's word after the dry run; typed --confirm production (production)>
 **Deletion protection on release.** <false, PR <url>, applied | not needed (staging)>
-**Applied from.** <origin/release | origin/main> at <sha>, a clean worktree
+**Applied from.** <origin/release | staging's last successful deploy> at <sha>, a clean worktree
 
 ## Gone
 

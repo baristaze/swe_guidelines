@@ -85,7 +85,7 @@ the order the guideline presents them, never by number.
   alone; a row the platform writes for itself (the outbox row, the
   marker, the socket ticket) is `Created`, its later stamp a field
   named for what happened. A table scoped to an identity composes
-  `IdentityScopedMixin`, which carries `id` and `identity_id` and no
+  `IdentityScopedMixin` from `storage/tables/base.py`, which carries `id` and `identity_id` and no
   `org_id`. Ids come from `new_id()`, timestamps from
   `utcnow()`. Entity fields are tuples and frozen models, never `list`
   or `dict`; a mapping field is the base module's `FrozenMapping`,
@@ -111,7 +111,8 @@ the order the guideline presents them, never by number.
   Every storage call takes `org_id: UUID` first. The exceptions are the
   ones The Business Layer and The Storage Layer name (the outbox
   handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps, the five lookups that run before an identity is known, and
+  sweeps (the work queue's `purge_items` among them), the five
+  lookups that run before an identity is known, and
   the operator plane's size read),
   each documented in its docstring and listed as `Class.method` under
   `[tool.arch-check.options.CTX-12] tenantless` in the root
@@ -227,14 +228,15 @@ the order the guideline presents them, never by number.
   over the two dumps and sets `updated_at` and `updated_by`, so no
   caller rewrites who made a row, brings a deleted one back, or sets
   a field the manager owns; every entity declares
-  `MANAGER_OWNED_FIELDS`, a tuple, empty when the manager owns
-  nothing, naming the fields the manager sets and a caller never
+  `MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]]`, even when
+  empty, naming the fields the manager sets and a caller never
   writes (a `credential_ref`, a status its transitions own, a
   position); an entity whose concurrent edits matter carries a
   `version`, the expected version comes from the caller (an
   `If-Match` header on the `PATCH`, or an `expected_version` field)
   and is never re-read inside the update, the write is a
-  compare-and-set against it, and a mismatch is `412`; a create sets
+  compare-and-set against it, and a mismatch raises
+  `PreconditionFailed` (412, code `precondition_failed`); a create sets
   what the manager
   decides, the actor from the context and the initial state, and
   leaves the id and the timestamps as constructed), write, and
@@ -258,7 +260,9 @@ the order the guideline presents them, never by number.
   committed by then, so a failure to relay is logged and left to the
   sweep, and the request answers as the success it was, as The Storage
   Layer (Database Roles) states. A tenant write's row comes from
-  `outbox_row(ctx, kind, target_id, payload)`, so it carries the
+  `outbox_row(ctx, kind, target_id, payload)`, its payload ids only
+  and never a personal field's value (`{}` for an entity change), so
+  it carries the
   actor, the request id, the trace context, and the app of the write.
   An operator write's row never does: the operator managers stamp it
   from the identity id and the request id their stage carries, through
