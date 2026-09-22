@@ -1022,7 +1022,7 @@ a shared root for both environments; production trusting a staging
 principal for anything but the replication writes (DEL-31), or for
 those writes beyond their repositories and their prefix; a staging
 write into production's state bucket; staging reading production at
-all; a resource with no environment tag.
+all. (The environment tag on every resource is OPS-18.)
 
 **Severity.** high
 
@@ -1039,14 +1039,13 @@ provider pins its own.
 
 **Look for.** The roots under `deployment/terraform/` and who applies
 each; the environments' file and every script and root that reads it;
-the account pin on every provider block; whether a deploy role can
-write the bootstrap root's state or resources.
+the account pin on every provider block. (What the deploy role may
+change of its own trust and the bootstrap's state is DEL-47.)
 
 **Violation.** A resource the pipeline needs declared in no bootstrap
 root, or made by hand; an account id or region typed into a script or
 workflow instead of read from the file; a provider with no account
-pin; a deploy role that can change its own trust, the registry
-settings, or the bootstrap root's state.
+pin.
 
 **Severity.** medium
 

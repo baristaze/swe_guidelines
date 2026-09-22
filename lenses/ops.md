@@ -449,7 +449,7 @@ anomaly monitor; a resource with no environment tag, so its cost
 lands in no environment's column. (Retention on every log group is
 DEL-32.)
 
-**Severity.** medium
+**Severity.** high
 
 ## OPS-19 Create and destroy are scripted, narrated, and dry-runnable
 

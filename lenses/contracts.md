@@ -528,7 +528,7 @@ retried request creates twice or fails; a create that checks for the
 id and then writes, leaving a window; a create that returns the
 caller's entity instead of the row as stored.
 
-**Severity.** medium
+**Severity.** high
 
 ## CON-22 A partial update is the service impl's translation
 

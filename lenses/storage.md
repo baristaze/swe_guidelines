@@ -422,8 +422,8 @@ Hand-rolled insert-or-update logic repeated across impls.
 **Violation.** A namespace impl performs its own select-then-insert-
 or-update sequence instead of calling the base primitive; a create
 that goes through the upsert, so a retry overwrites the row and
-announces it twice, or a check-then-insert with a window between the
-two; a key collision that escapes as a driver error.
+announces it twice; a key collision that escapes as a driver error.
+(A check before the insert, with its window, is CON-21.)
 
 **Severity.** medium
 
