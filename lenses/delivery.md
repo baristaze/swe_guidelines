@@ -939,8 +939,8 @@ environment protection that holds the apply until a person approves;
 the `release` workflow, the commit it fast-forwards to, the app token
 it pushes with and the environment that holds the app's key, and the
 ruleset that lets nothing else push to `release`; the concurrency group
-on each deploy workflow; where the saved production plan is kept; the
-guarded redeploy of a previous release commit.
+on each deploy workflow; where the saved production plan is kept.
+(The fast rollback to the previous release is DEL-50.)
 
 **Violation.** A staging deploy behind an approval, or one triggered by
 anything but `main`; a commit made on `release` or a merge into it; a
@@ -952,8 +952,7 @@ last successful staging deploy; a push to `release` made with a deploy
 key or a repository-wide secret, or an app key held outside an
 environment that admits `main` alone; a deploy workflow with no
 concurrency group, or one that cancels a run in progress; a saved plan
-uploaded as a workflow artifact; a redeploy that accepts a commit
-production never ran, skips the approval, or moves `release` back.
+uploaded as a workflow artifact.
 
 **Severity.** medium
 
@@ -1206,3 +1205,25 @@ scrubber that leaves the authorization header, a cookie, or a field a
 request names as a credential in the event.
 
 **Severity.** high
+
+## DEL-50 The fast rollback goes one release back and changes nothing else
+
+**Principle.** The fast rollback goes to the previous release only. It
+swaps the image digests and the portal bundle, runs no migration, and
+plans no Terraform. The previous release runs on the current schema,
+because every migration is compatible with the release before it.
+Anything older rolls forward through a revert.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The rollback path of the production workflow: the commit
+it accepts, what it changes (the digests in the task definitions, the
+bundle the distribution serves), and whether it runs the migration
+task or a Terraform plan; what it does to `release`.
+
+**Violation.** A rollback that accepts a commit older than the previous
+release, or one production never ran; a rollback that migrates, down
+or up, or plans or applies Terraform; a rollback that moves `release`
+back.
+
+**Severity.** medium
