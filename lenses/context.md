@@ -952,22 +952,33 @@ traffic generator, the deployed smoke test, and a supporter agent use
 an operator token. An operator signed in with the second factor mints
 it, or the grant job does for the provisioner and the smoke identity.
 It carries one operator permission, expires within one hour, and is
-stored as its digest and shown once. `admit_operator` admits it as the
-one named exception to "a password alone never admits". The ops env
-file holds `<ROOT>_OPERATOR_TOKEN`, never a password or a TOTP secret.
+a session of kind `operator`, stored as its digest and shown once.
+The mint route is `POST /v1/admin/me/tokens`; the grant job writes its
+tokens into the secret store. `admit_operator` admits it as the one
+named exception to "a password alone never admits". The ops env file
+holds `<ROOT>_OPERATOR_TOKEN`, a `read` token, and
+`<ROOT>_PROVISIONER_TOKEN`, a `write` token, and no password or TOTP
+secret.
 
 **Source.** OpContext, The Operator Context; The Network Layer, The
-Gateway; Operations, Operator Credentials.
+Gateway; Deployment, Migrating a Deployed Database; Operations,
+Operator Credentials.
 
 **Look for.** How the traffic generator, the smoke test, and each
 agent skill authenticate to the operator plane; where an operator
-token is minted, its permission, its expiry, and how it is stored;
-what `admit_operator` accepts; the keys in each ops env file.
+token is minted (`issue_operator_token`, `grant_operator_token`), its
+permission, its expiry, and how it is stored and found
+(`read_session_by_digest`);
+the mint route and whether it refuses a stage that came from a
+token; where the grant job puts the token it mints; what
+`admit_operator` accepts; the keys in each ops env file.
 
 **Violation.** An agent or a pipeline that signs in with a password or
 holds a TOTP secret; an operator token with more than one permission,
 an expiry past one hour, or a value stored in the clear; a token
-minted by a sign-in with no second factor, or a gate that admits some
-other credential without one.
+minted by a sign-in with no second factor, or by another token; a
+grant job that prints a token instead of writing it into the secret
+store; a gate that admits some other credential without a second
+factor.
 
 **Severity.** high
