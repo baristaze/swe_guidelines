@@ -42,6 +42,57 @@ def test_a_subject_that_runs_too_long_is_killed_and_marked(tmp_path):
     assert status.timed_out and not status.ok
 
 
+def test_a_child_that_outlives_a_clean_exit_is_stopped(tmp_path):
+    # The subject exits 0 and leaves a child running; the run stops it.
+    import os
+    import time
+
+    rt = RT.build("host", tmp_path)
+    rt.prepare()
+    pidfile = tmp_path / "child.pid"
+    script = (
+        "import subprocess, sys; "
+        "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        f"open({str(pidfile)!r}, 'w').write(str(c.pid))"
+    )
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run([sys.executable, "-c", script], rt.workspace, {"PATH": "/usr/bin:/bin"}, stream)
+    assert status.ok
+    child = int(pidfile.read_text())
+    for _ in range(50):
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail(f"the child {child} is still running")
+
+
+def test_the_sandbox_holds_only_the_payload_and_goes_at_teardown(tmp_path):
+    root = tmp_path / "checkout"
+    for name in ("skills/a", "lenses", "benchmark/fixtures", "docs"):
+        (root / name).mkdir(parents=True)
+    (root / "architecture.md").write_text("g", encoding="utf-8")
+    (root / "CLAUDE.md").write_text("c", encoding="utf-8")
+    (root / "benchmark" / "fixtures" / "x.expected.yaml").write_text("k", encoding="utf-8")
+    target = root / "benchmark" / "fixtures" / "x"
+    target.mkdir()
+    (target / "a.py").write_text("print()", encoding="utf-8")
+    sandbox = RT.new_sandbox()
+    rt = RT.build("host", tmp_path / "run", target, plugin=root, sandbox=sandbox)
+    rt.stage()
+    plugin_path, target_path = rt.plugin_path(), rt.target_path()
+    assert plugin_path is not None and target_path is not None
+    staged = Path(plugin_path)
+    assert staged.is_relative_to(sandbox) and (staged / "skills" / "a").is_dir() and (staged / "architecture.md").exists()
+    assert not (staged / "benchmark").exists() and not (staged / "CLAUDE.md").exists() and not (staged / "docs").exists()
+    staged_target = Path(target_path)
+    assert (staged_target / "a.py").exists() and not list(staged_target.parent.glob("*.expected.yaml"))
+    rt.teardown()
+    assert not sandbox.exists()
+
+
 def test_the_container_mounts_the_target_read_only_and_names_the_keys(tmp_path):
     target = tmp_path / "checkout"
     target.mkdir()

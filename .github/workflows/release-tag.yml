@@ -14,6 +14,7 @@ jobs:
   tag:
     name: the tag matches plugin.json
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

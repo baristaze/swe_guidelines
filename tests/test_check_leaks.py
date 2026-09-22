@@ -19,6 +19,13 @@ def test_product_term_in_guideline_fails(repo, leaks, capsys):
     assert "architecture.md:32: product term 'robot'" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("name", ["CLAUDE.md", "SECURITY.md"])
+def test_the_contributor_files_are_scanned_for_product_terms(repo, leaks, capsys, name):
+    repo.write(name, "# Notes\n\nOne table per robot.\n")
+    assert leaks.main() == 1
+    assert name in capsys.readouterr().out
+
+
 def test_agent_vocabulary_is_allowed_everywhere(repo, leaks):
     repo.edit("skills/arch-review-om/SKILL.md", "Never edit", "The agent never edits")
     repo.edit("lenses/om.md", "Tables holding two entities.", "Tables an agent holds.")

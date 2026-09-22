@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-service
-description: "Create a web service the way the Software Design and Architecture Guidelines prescribe, either the first API process of a system or a domain or app-specific service split out of it: the app factory, container, gateway, per-namespace routers and wire types, service interfaces, health endpoints, the ops CLI entry point, the image, and tests. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
+description: "Create a web service: the app factory, container, gateway, routers and wire types, service interfaces, health endpoints, the ops CLI, the image, and tests. Python (FastAPI)."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openapi), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 

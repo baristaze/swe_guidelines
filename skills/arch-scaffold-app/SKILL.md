@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-app
-description: "Create a client app the way the Software Design and Architecture Guidelines prescribe: a browser app (portal or operator console) with generated API types behind a facade, one shared transport client, TanStack Query and Zustand, a single realtime channel with typed envelopes, and the view, view-model, model split; or a Python CLI over REST with idempotency keys and exit codes. Stack: TypeScript (React, Vite) or Python."
+description: "Create a client app: a browser app (portal or operator console) with generated types, one transport, and one realtime channel; or a Python CLI over REST. TypeScript or Python."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make check), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 

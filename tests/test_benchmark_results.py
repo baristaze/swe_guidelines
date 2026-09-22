@@ -79,6 +79,20 @@ def test_a_provider_that_did_not_answer_is_named_with_its_reason():
     assert summary["skipped"] == [{"provider": "xai", "reason": "403 from the account"}]
 
 
+def test_each_provider_weighs_once_in_the_overall_mean():
+    # One provider answered three times, the other once: pooled, the mean
+    # would be 42.5; per provider, it is the mean of 30 and 80.
+    repeats = [
+        R.RepeatResult(0, {"code": 0}, [], [judgement("gemini", 30), judgement("openai", 80)]),
+        R.RepeatResult(1, {"code": 0}, [], [judgement("gemini", 30), judgement("openai", status="error", error="429")]),
+        R.RepeatResult(2, {"code": 0}, [], [judgement("gemini", 30), judgement("openai", status="error", error="timeout")]),
+    ]
+    summary = R.summarize(repeats)
+    assert summary["overall_mean"] == 55.0
+    assert summary["skipped"] == []
+    assert summary["missed"] == [{"provider": "openai", "count": 2, "reason": "429"}]
+
+
 def test_findings_come_back_most_severe_first():
     repeats = [
         R.RepeatResult(

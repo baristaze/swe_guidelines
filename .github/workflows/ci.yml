@@ -18,6 +18,7 @@ jobs:
   check:
     name: make check on Python ${{ matrix.python }}
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -49,4 +50,4 @@ jobs:
         # `claude plugin validate` needs no account, so `make plugin` runs here too.
         run: npm install -g @anthropic-ai/claude-code@2.1.276
       - name: make check
-        run: make check PYTHON="uv run --no-project --with pytest==9.1.1 --with pyyaml==6.0.3 --with jsonschema==4.26.0 python"
+        run: make check

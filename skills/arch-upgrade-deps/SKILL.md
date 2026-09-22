@@ -1,6 +1,6 @@
 ---
 name: arch-upgrade-deps
-description: "Upgrade every dependency of the current repository to its latest stable release, the current active LTS line where one exists, as the Software Design and Architecture Guidelines prescribe: runtimes, workspace tools, container images, CI steps, Terraform engine versions, and locked libraries; then run the repository's gates and hold back any upgrade that breaks them. Use periodically, or when a review raises DEL-26."
+description: "Upgrade every dependency of the repository to its latest stable or LTS release (runtimes, tools, images, CI, Terraform, libraries), then run the gates and hold back what breaks."
 allowed-tools: Read, Grep, Glob, Edit, WebFetch, Bash(make check), Bash(make infra-reset), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv lock:*), Bash(uv sync:*), Bash(uv tree:*), Bash(pnpm update:*), Bash(pnpm install:*), Bash(pnpm view:*), Bash(pnpm outdated:*), Bash(git status:*)
 ---
 

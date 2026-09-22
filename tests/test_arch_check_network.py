@@ -31,6 +31,11 @@ def test_net_06_a_router_that_reads_no_header_passes(tmp_path):
         "def f(request):\n    return request.headers\n",
         "from fastapi import Header\n\ndef f(token: str = Header()):\n    ...\n",
         'def f(r):\n    return r.get("Authorization")\n',
+        (
+            "from fastapi import Depends\nfrom fastapi.security import HTTPBearer\n\n"
+            "bearer = HTTPBearer()\n\ndef f(t=Depends(bearer)):\n    ...\n"
+        ),
+        "from fastapi.security import OAuth2PasswordBearer as O\n\nscheme = O(tokenUrl='t')\n",
     ],
 )
 def test_net_06_a_router_that_reads_a_header_fails(tmp_path, source):
@@ -77,6 +82,12 @@ def test_net_06_cors_origins_from_settings_pass_and_a_literal_fails(tmp_path):
     code, where, _ = found(tmp_path, "NET-06", {app: 'app.add_middleware(CORSMiddleware, allow_origins=["*"])\n'})
     assert (code, where) == (1, [("NET-06", app, 1)])
     code, _, _ = found(tmp_path, "NET-06", {app: "app.add_middleware(CORSMiddleware, allow_origins=[settings.portal])\n"})
+    assert code == 0
+    code, where, _ = found(tmp_path, "NET-06", {app: 'app.add_middleware(CORSMiddleware, allow_origin_regex="https://.*")\n'})
+    assert (code, where) == (1, [("NET-06", app, 1)])
+    code, _, _ = found(
+        tmp_path, "NET-06", {app: "app.add_middleware(CORSMiddleware, allow_origin_regex=settings.origin_regex)\n"}
+    )
     assert code == 0
     code, where, _ = found(tmp_path, "NET-06", {app: 'app.add_middleware(CORSMiddleware, allow_origins=["https://a"])\n'})
     assert (code, where) == (1, [("NET-06", app, 1)])
@@ -156,6 +167,19 @@ def test_net_09_a_creating_post_without_the_key_fails(tmp_path):
     code, where, msgs = found(tmp_path, "NET-09", {ROUTER: source})
     assert (code, where) == (1, [("NET-09", ROUTER, 2)])
     assert msgs[0].startswith("submit answers 201 or 202")
+
+
+def test_net_09_a_creating_post_added_with_add_api_route_is_read(tmp_path):
+    bare = 'async def submit(ctx: Ctx): ...\n\nrouter.add_api_route("", submit, methods=["POST"], status_code=201)\n'
+    code, where, _ = found(tmp_path, "NET-09", {ROUTER: bare})
+    assert (code, where) == (1, [("NET-09", ROUTER, 1)])
+    keyed = (
+        "from acme.services.api.gateway.idempotency import Idem\n\n"
+        "async def submit(ctx: Ctx, idem: Idem): ...\n\n"
+        'router.add_api_route("", submit, methods=["POST"], status_code=201)\n'
+    )
+    code, _, _ = found(tmp_path / "keyed", "NET-09", {IDEM: "Idem = 1\n", ROUTER: keyed})
+    assert code == 0
 
 
 def test_net_09_the_module_is_an_option(tmp_path):
@@ -306,6 +330,21 @@ def test_net_14_no_diff_in_ci_fails(tmp_path):
     )
     assert (code, where) == (1, [("NET-14", "Makefile", 1)])
     assert "failing `git diff`" in msgs[0]
+
+
+def test_net_14_a_commented_out_step_runs_nothing(tmp_path):
+    code, where, _ = found(
+        tmp_path,
+        "NET-14",
+        {
+            ROUTER: "",
+            "Makefile": "openapi:\n\techo\n",
+            WORKFLOW: (
+                "jobs:\n  check:\n    steps:\n      # - run: make openapi && git diff --exit-code\n      - run: make check\n"
+            ),
+        },
+    )
+    assert (code, where) == (1, [("NET-14", "Makefile", 1)])
 
 
 def test_net_14_a_tree_with_no_router_is_not_judged(tmp_path):

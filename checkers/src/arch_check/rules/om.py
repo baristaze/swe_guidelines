@@ -407,13 +407,17 @@ def mixins_carry_no_behavior(project: Project) -> Iterator[Violation]:
 
 @rule(
     "OM-07",
-    coverage="full",
+    coverage="partial",
     summary='The OM root sets extra="forbid" and no class on the chain relaxes it.',
 )
 def root_forbids_extras(project: Project) -> Iterator[Violation]:
     """The root's model config sets `extra="forbid"`, and no class on the
     chain sets `extra` to anything else, in `model_config` or as a class
-    keyword. An OM with no root at all, no `base` module or none of its
+    keyword. The config is read where it is spelled in the class: a
+    `ConfigDict(...)` or a dict, the two joined with `|`, a nested
+    `class Config`, and class keywords. A config built elsewhere (a
+    module constant, `ConfigDict(**options)`, a function's result) is not
+    read, so the rule is partial and such a config is judged. An OM with no root at all, no `base` module or none of its
     classes on `BaseModel`, is one finding: the rest of the chain rules
     read nothing then."""
     idx = index(project)

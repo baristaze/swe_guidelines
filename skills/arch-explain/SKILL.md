@@ -1,6 +1,6 @@
 ---
 name: arch-explain
-description: "Explain how the Software Design and Architecture Guidelines apply to a question, a file, or a proposed change, citing the sections and lenses that govern it. Use when onboarding, before a cross-layer change, or when unsure where a piece of code belongs."
+description: "Explain how the guideline applies to a question, a file, or a change, citing the sections and lenses that govern it. Use when onboarding or before a cross-layer change."
 allowed-tools: Read, Grep, Glob
 ---
 

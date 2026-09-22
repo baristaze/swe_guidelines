@@ -671,7 +671,7 @@ def scopes_are_protocols(project: Project) -> Iterator[Violation]:
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is not a Protocol; a scope is satisfied structurally")
         extra = [n for n in body_without_docstring(cls.body) if not is_property_member(n)]
         if extra:
-            yield Violation.at(file.rel, extra[0], f"{name} holds more than read-only properties")
+            yield Violation.at(stage_rel(project, cls, file), extra[0], f"{name} holds more than read-only properties")
         if name not in used:
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} is declared by no consumer and built on by no scope")
 

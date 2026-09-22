@@ -472,6 +472,24 @@ def test_asy_15_an_annotated_background_task_a_process_or_sched(tmp_path):
     assert len(report["findings"]) == 4
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from fastapi.background import BackgroundTasks\n\nasync def f(tasks: BackgroundTasks): ...\n",
+        "from fastapi import BackgroundTasks\n\nasync def f(tasks: BackgroundTasks | None = None): ...\n",
+        (
+            "from typing import Optional\nfrom fastapi import BackgroundTasks\n\n"
+            "async def f(tasks: Optional[BackgroundTasks] = None): ...\n"
+        ),
+        "from fastapi import BackgroundTasks\n\nasync def f(tasks: 'BackgroundTasks'): ...\n",
+    ],
+)
+def test_asy_15_background_tasks_however_the_annotation_spells_it(tmp_path, source):
+    code, report = run(tmp_path, "ASY-15", {f"{API}/routers/export.py": source})
+    assert code == 1
+    assert len(report["findings"]) == 1
+
+
 def test_asy_15_the_edge_comes_from_the_options(tmp_path):
     files = {f"{API}/sockets/hub.py": "import asyncio\n\n\ndef f(c):\n    return asyncio.create_task(c)\n"}
     code, _ = run(tmp_path, "ASY-15", files)

@@ -2,15 +2,17 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "pyyaml>=6.0",
-#   "jsonschema>=4.23",
-#   "pydantic>=2.9",
-#   "anthropic>=0.75",
-#   "openai>=2.0",
-#   "google-genai>=2.0",
-#   "websockets>=13.0",
+#   "pyyaml==6.0.3",
+#   "jsonschema==4.26.0",
+#   "pydantic==2.13.5",
+#   "anthropic==1.7.0",
+#   "openai==3.17.0",
+#   "google-genai==2.24.0",
+#   "websockets==16.1.1",
 # ]
 # ///
+# Pinned exactly: the harness installs in a step that holds no key, and the
+# step that holds the keys runs what was installed there, never a newer one.
 """Run one scenario and have the frontier models judge what came out.
 
     uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1
@@ -300,7 +302,19 @@ def main(argv: list[str] | None = None) -> int:
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
     if args.runtime == "container":
         config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(n)])
-    rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None)
+    # The subject lives outside the checkout, with copies of the plugin
+    # payload and of the target, so neither an answer key nor the
+    # repository's CLAUDE.md is in its reach.
+    rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
+    try:
+        return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
+    finally:
+        rt.teardown()
+
+
+def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix) -> int:
+    """Everything after the runtime exists: the caller tears the runtime down whatever happens here."""
+    rt.stage()
     try:
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude)
     except (S.ScenarioError, ValueError) as exc:

@@ -87,15 +87,22 @@ class RunResult:
 
 
 def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
-    """Scores per provider over every repeat, and who did not answer."""
+    """Scores per provider over every repeat, who did not answer, and who missed some.
+
+    The overall mean is the mean of the providers' means, so each provider
+    weighs once: a provider that answered more repeats does not outweigh one
+    that answered fewer. A provider that answered no judgement is skipped; one
+    that answered some and missed others is named under `missed`, with the
+    count and the first reason, and is not a failure of the run by itself.
+    """
     scores: dict[str, list[int]] = {}
-    skipped: dict[str, str] = {}
+    misses: dict[str, list[str]] = {}
     for repeat in repeats:
         for j in repeat.judgements:
             if j.status == "ok" and j.verdict is not None:
                 scores.setdefault(j.provider, []).append(j.verdict.score)
             else:
-                skipped.setdefault(j.provider, j.error or j.status)
+                misses.setdefault(j.provider, []).append(j.error or j.status)
     per_provider = {
         provider: {
             "mean": half_up(statistics.fmean(values), 1),
@@ -105,11 +112,12 @@ def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
         }
         for provider, values in sorted(scores.items())
     }
-    every = [v for values in scores.values() for v in values]
+    means = [statistics.fmean(values) for values in scores.values()]
     return {
         "per_provider": per_provider,
-        "overall_mean": half_up(statistics.fmean(every), 1) if every else None,
-        "skipped": [{"provider": p, "reason": r} for p, r in sorted(skipped.items())],
+        "overall_mean": half_up(statistics.fmean(means), 1) if means else None,
+        "skipped": [{"provider": p, "reason": r[0]} for p, r in sorted(misses.items()) if p not in scores],
+        "missed": [{"provider": p, "count": len(r), "reason": r[0]} for p, r in sorted(misses.items()) if p in scores],
     }
 
 
@@ -197,6 +205,10 @@ def report_text(run: RunResult) -> str:
     if summary["skipped"]:
         lines += ["### Not answered", ""]
         lines += [f"- `{s['provider']}`: {s['reason']}" for s in summary["skipped"]]
+        lines += [""]
+    if summary.get("missed"):
+        lines += ["### Answered in part", ""]
+        lines += [f"- `{m['provider']}`: {m['count']} judgement(s) missed, first: {m['reason']}" for m in summary["missed"]]
         lines += [""]
     checked = [(r.index, r.expected) for r in run.repeats if r.expected is not None]
     if checked:

@@ -4,7 +4,15 @@
 Rules:
 - every skills/<name>/SKILL.md has YAML frontmatter with `name` equal to the
   folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
-  under 1024 characters, written as one double-quoted string;
+  of at most 350 characters, written as one double-quoted string; the
+  descriptions together stay under 4000 characters, because the host lists
+  every skill's description in one budget and drops what overflows it;
+- the frontmatter holds only keys the host reads (`name`, `description`,
+  `allowed-tools`, `argument-hint`, `model`, `disable-model-invocation`), so
+  a misspelled key, `allowed_tools` for one, is an error and never a skill
+  that silently runs with no tool limits;
+- every arch-scaffold-* skill references `skills/_shared/scaffold-conventions.md`
+  when that file exists;
 - every `${CLAUDE_SKILL_DIR}/...` reference in a skill body resolves to a file
   or directory that exists inside this repository; a reference inside
   `skills/_shared/scaffold-conventions.md` is resolved from the folder of
@@ -70,6 +78,9 @@ QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
 PARENS = re.compile(r"\([^()]*\)")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
+DESCRIPTION_LIMIT = 350
+DESCRIPTIONS_TOTAL = 4000
+KNOWN_KEYS = frozenset({"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation"})
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
@@ -236,6 +247,7 @@ def main(argv: Sequence[str] = ()) -> int:
     groups = lens_groups()
     review_groups: set[str] = set()
     skills = sorted(p for p in SKILLS.iterdir() if p.is_dir() and not p.name.startswith("_"))
+    total = 0
     for folder in skills:
         skill = folder / "SKILL.md"
         rel = skill.relative_to(ROOT)
@@ -252,11 +264,14 @@ def main(argv: Sequence[str] = ()) -> int:
             errors.append(f"{rel}: name '{name}' differs from folder '{folder.name}'")
         if not NAME.match(name):
             errors.append(f"{rel}: name '{name}' must match {NAME.pattern}")
+        for key in sorted(set(fm) - KNOWN_KEYS):
+            errors.append(f"{rel}: frontmatter key {key!r} is not one the host reads ({', '.join(sorted(KNOWN_KEYS))})")
         desc = fm.get("description", "")
+        total += len(desc)
         if not desc:
             errors.append(f"{rel}: empty description")
-        elif len(desc) > 1024:
-            errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
+        elif len(desc) > DESCRIPTION_LIMIT:
+            errors.append(f"{rel}: description is {len(desc)} characters, limit {DESCRIPTION_LIMIT}")
         head = FRONTMATTER.match(text)
         if desc and head and not QUOTED_DESCRIPTION.search(head.group(1)):
             errors.append(f"{rel}: description must be one double-quoted string")
@@ -305,6 +320,8 @@ def main(argv: Sequence[str] = ()) -> int:
                 errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} resolves outside the repository")
             elif not target.exists():
                 errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
+        if name.startswith("arch-scaffold-") and (SKILLS / CONVENTIONS).exists() and CONVENTIONS not in body_of(text):
+            errors.append(f"{rel}: a scaffold skill references skills/{CONVENTIONS}")
         if name.startswith("arch-scaffold-"):
             found = [t for level, t in headings(body_of(text)) if level == 2 and t in SCAFFOLD_SECTIONS]
             if found != list(SCAFFOLD_SECTIONS):
@@ -318,6 +335,8 @@ def main(argv: Sequence[str] = ()) -> int:
             review_groups.add(group)
             if f"lenses/{group}.md" not in text:
                 errors.append(f"{rel}: does not reference lenses/{group}.md")
+    if total > DESCRIPTIONS_TOTAL:
+        errors.append(f"skills/: the descriptions total {total} characters, limit {DESCRIPTIONS_TOTAL}")
     templates = sorted(OPS_TEMPLATES.glob("*.md")) if OPS_TEMPLATES.is_dir() else []
     for template in templates:
         check_template(template, errors)

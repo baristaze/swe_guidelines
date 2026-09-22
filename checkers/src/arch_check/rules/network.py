@@ -90,6 +90,24 @@ def is_fastapi_header(name: str | None) -> bool:
     return bool(name) and is_under(name or "", "fastapi") and last(name) == "Header"
 
 
+SECURITY_SCHEMES = frozenset(
+    {
+        "HTTPBearer",
+        "HTTPBasic",
+        "HTTPDigest",
+        "OAuth2PasswordBearer",
+        "OAuth2AuthorizationCodeBearer",
+        "APIKeyHeader",
+        "APIKeyCookie",
+    }
+)
+"""FastAPI's security schemes: each reads the Authorization header, a key header, or a cookie."""
+
+
+def is_fastapi_security(name: str | None) -> bool:
+    return bool(name) and is_under(name or "", "fastapi") and last(name) in SECURITY_SCHEMES
+
+
 REQUEST_TYPES = frozenset({"Request", "HTTPConnection", "WebSocket"})
 CLIENT_LIBRARIES = ("httpx", "requests", "aiohttp", "urllib3")
 """Outbound clients whose `Request` is what this process sends, never what it received."""
@@ -166,11 +184,15 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
     no read of `.headers` on an inbound request (a parameter annotated
     `Request`, `HTTPConnection`, or `WebSocket`, or an unannotated
     `request`), and no FastAPI `Header(...)`. In
-    `<pkg>.services.<svc>.routers`, no string that is `authorization`.
+    `<pkg>.services.<svc>.routers`, no string that is `authorization`, and
+    below the gateway no FastAPI security scheme (`HTTPBearer`,
+    `OAuth2PasswordBearer`, `APIKeyHeader`, and the rest), each of which
+    reads a header.
     An outbound client's headers, and a header written on a response,
     are not a read. Anywhere under `<pkg>.services` and
     `<pkg>.gateway`, `CORSMiddleware` never gets `allow_origins` as
-    `"*"`, a string, or a list of string literals. A second path to the
+    `"*"`, a string, or a list of string literals, nor a literal
+    `allow_origin_regex`. A second path to the
     internet is judged.
     """
     routers = {f.rel for f in service_files(project, "routers")}
@@ -185,6 +207,12 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and is_fastapi_header(call_name(node, names)):
                 yield Violation.at(file.rel, node, "takes a `Header(...)` parameter; the gateway parses headers")
+            elif isinstance(node, ast.Call) and is_fastapi_security(call_name(node, names)):
+                yield Violation.at(
+                    file.rel,
+                    node,
+                    f"builds `{last(call_name(node, names) or '')}`, which reads a header; the gateway reads the credential",
+                )
             elif (
                 file.rel in routers
                 and isinstance(node, ast.Constant)
@@ -203,6 +231,11 @@ def no_headers_below_the_gateway(project: Project) -> Iterator[Violation]:
             if literal_origins(origins):
                 yield Violation.at(
                     file.rel, origins, "allow_origins is a literal; the browser apps' origins are read from settings"
+                )
+            pattern = kwarg(node, "allow_origin_regex")
+            if const_str(pattern) is not None:
+                yield Violation.at(
+                    file.rel, pattern, "allow_origin_regex is a literal; the browser apps' origins are read from settings"
                 )
 
 
@@ -300,17 +333,31 @@ def creates(call: ast.Call) -> bool:
     return bool(name and (re.match(r"^HTTP_20[12]_", name) or name in {"CREATED", "ACCEPTED"}))
 
 
+def names_post(call: ast.Call) -> bool:
+    """Whether a route's `methods=` names POST."""
+    methods = kwarg(call, "methods")
+    return isinstance(methods, ast.List | ast.Tuple | ast.Set) and any(
+        isinstance(m, ast.Constant) and str(m.value).upper() == "POST" for m in methods.elts
+    )
+
+
 def posts(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.Call]]:
-    """Every `@<router>.post(...)`, and every `@<router>.api_route(..., methods=[..., "POST", ...])`."""
+    """Every `@<router>.post(...)`, every `@<router>.api_route(..., methods=[..., "POST", ...])`,
+    and every `<router>.add_api_route(path, endpoint, methods=[..., "POST", ...])` whose
+    endpoint is a function of the module."""
     for fn, call, verb in routes(tree):
-        if verb == "post":
+        if verb == "post" or (verb == "api_route" and names_post(call)):
             yield fn, call
-        elif verb == "api_route":
-            methods = kwarg(call, "methods")
-            if isinstance(methods, ast.List | ast.Tuple | ast.Set) and any(
-                isinstance(m, ast.Constant) and str(m.value).upper() == "POST" for m in methods.elts
-            ):
-                yield fn, call
+    functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add_api_route"):
+            continue
+        if not names_post(node):
+            continue
+        endpoint = node.args[1] if len(node.args) > 1 else kwarg(node, "endpoint")
+        handler = functions.get(endpoint.id) if isinstance(endpoint, ast.Name) else None
+        if handler is not None:
+            yield handler, node
 
 
 @rule(
@@ -323,7 +370,9 @@ def creating_posts_take_a_key(project: Project) -> Iterator[Violation]:
     """Every creating `POST` in a router takes the idempotency dependency.
 
     A function in `<pkg>.services.<svc>.routers` decorated
-    `@<router>.post(..., status_code=201 or 202)` takes something
+    `@<router>.post(..., status_code=201 or 202)`, or registered with
+    `<router>.add_api_route(..., methods=["POST"], status_code=201 or 202)`,
+    takes something
     imported from the gateway's idempotency module: in a parameter's
     annotation or default (`key = Depends(idempotency_key)`), in the
     route's `dependencies=`, in the `dependencies=` of the
@@ -517,9 +566,9 @@ def openapi_is_diffed(project: Project) -> Iterator[Violation]:
         return
     targets = make_targets(project)
     for rel in project.files(".github/workflows/*.yml", ".github/workflows/*.yaml"):
-        text = project.read(rel) or ""
+        text = uncommented(project.read(rel) or "")
         reached = reachable(targets, made(text))
-        recipes = [line for name in reached for line in targets[name].recipe]
+        recipes = [line for name in reached for line in targets[name].recipe if not line.lstrip().startswith("#")]
         if target in reached and any(DIFF.search(line) for line in [*text.splitlines(), *recipes]):
             return
     yield Violation(
@@ -529,6 +578,11 @@ def openapi_is_diffed(project: Project) -> Iterator[Violation]:
 
 DIFF = re.compile(r"\bgit\s+diff\b[^\n#]*\s--(exit-code|quiet)\b")
 MAKE = re.compile(r"(?:\bmake|\$\(MAKE\)|\$\{MAKE\})((?:\s+[^\s&|;#)]+)+)")
+
+
+def uncommented(text: str) -> str:
+    """The text without its comment lines: a step commented out runs nothing."""
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
 
 
 def made(text: str) -> set[str]:

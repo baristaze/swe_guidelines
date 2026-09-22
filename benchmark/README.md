@@ -44,6 +44,13 @@ A provider whose key is absent is skipped, named in the results, and
 does not fail the run. That is a choice: a run with three judges is
 worth more than no run at all. `--strict` reverses it.
 
+A provider that answers some judgements and misses others, to a
+timeout or a `429`, is named under `missed` with the count and the
+first reason, and does not fail the run, `--strict` or not: one flaky
+answer is a note, not a lost run. `--strict` fails on a provider that
+answered none. The overall mean is the mean of the providers' means,
+so each provider weighs once, however many judgements it answered.
+
 Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client
 is handed `GEMINI_API_KEY` and the ambient `GOOGLE_API_KEY` is taken
@@ -66,12 +73,26 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>/
   judgements/<repeat>-<provider>.json
   results.json             the record, in schema/result.schema.json
   report.md                the same run for a person
+```
+
+The subject never works in the run folder. It lives in a sandbox
+outside the checkout, a fresh temporary folder per run:
+
+```text
+<sandbox>/
+  plugin/                  a copy of the plugin payload only: the manifest,
+                           skills, agents, lenses, architecture.md, checkers
+  target/                  a copy of the target folder, without its siblings
   workspace/<repeat>/      what the subject worked in, empty at the start
   home/<repeat>/, tmp/<repeat>/  the host runtime's private HOME and TMPDIR
 ```
 
-Every repeat starts in an empty workspace of its own, so no repeat
-sees what an earlier one wrote.
+So no answer key, no earlier repeat's judge prompt, and no
+`CLAUDE.md` of the checkout is in the subject's reach. What a scenario
+collects from the workspace is copied into `artifacts/`, and the
+sandbox is removed when the run ends, however it ends. Every repeat
+starts in an empty workspace of its own, so no repeat sees what an
+earlier one wrote.
 
 Nothing there is checked in. The manual is the repository; a run is a
 measurement.
@@ -79,12 +100,14 @@ measurement.
 ## Runtimes
 
 - `host` runs the subject on this machine with a private `HOME` and a
-  private `TMPDIR` under the run folder. The isolation is a convention,
-  not a boundary: it keeps a subject from writing into the operator's
-  account by accident, and stops nothing that means to.
+  private `TMPDIR` in the sandbox. The isolation is a convention, not a
+  boundary: it keeps a subject from writing into the operator's account
+  by accident, and stops nothing that means to. The subject runs in a
+  process group of its own, and the group is killed when the subject
+  ends, on a timeout, a clean exit that left children, or an interrupt.
 - `container` runs `docker run --rm` from the image
-  `runtime/Dockerfile` builds. The plugin checkout is mounted
-  read-only at `/plugin`, the target read-only at `/target`, and the
+  `runtime/Dockerfile` builds. The staged plugin is mounted read-only
+  at `/plugin`, the staged target read-only at `/target`, and the
   workspace read-write at `/workspace`.
 - `vm` runs the command on another machine through a configured
   prefix, for example `["limactl", "shell", "default", "--"]`, with a
@@ -171,7 +194,8 @@ scenario can give the judges evidence:
 - `evidence.expected`: the defects planted in the scenario's own
   target, one per entry with a lens, a file, and a line, and what the
   target does right. The file lives beside the target, never inside
-  it, so the subject cannot read the answers. On any other target the
+  it, and the subject gets a copy of the target alone and a copy of
+  the plugin that holds no fixture, so it cannot read the answers. On any other target the
   list would be wrong, so a run with `--target` drops it and says so;
   the source still goes to the judges.
 

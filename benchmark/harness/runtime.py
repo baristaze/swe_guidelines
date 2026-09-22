@@ -5,6 +5,15 @@ either way. A runtime decides two things: the command this machine
 actually executes, and the environment that command sees. Everything
 else, the workspace and the collected artifact, is the same.
 
+Everything a subject can reach lives in a sandbox outside the checkout:
+the workspace, the private HOME and TMPDIR, and a staged copy of the
+plugin and of the target. The staged plugin carries the payload a skill
+reads (the manifest, the skills, the agents, the lenses, the guideline,
+the checker) and nothing of the benchmark, so no answer key and no
+earlier repeat's judge prompt is in reach, and no parent folder holds a
+CLAUDE.md for the subject to load. The run folder keeps the record; the
+sandbox is removed when the run ends.
+
 Isolation is a choice, and the choice is named:
 
 - `host` isolates by convention only. A private `HOME` and a private
@@ -14,8 +23,10 @@ Isolation is a choice, and the choice is named:
   read-only, the workspace read-write, the keys passed one by one, every
   capability dropped, and memory, processor, and process count bounded.
 
-A subject that runs past its timeout is stopped whole. The host runtime
-starts it in a process group of its own and kills the group. The
+A subject is stopped whole, however it ends: past its timeout, on a clean
+exit that left children behind, or when the harness itself is
+interrupted. The host runtime starts it in a process group of its own and
+kills the group every time. The
 container runtime names its container and kills the container, because
 killing the `docker run` client leaves the container running and paying.
 - `vm` runs the command on another machine through a configured prefix.
@@ -30,10 +41,12 @@ paths, never the ones on this machine.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import signal as signals
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -48,6 +61,34 @@ DEFAULT_IMAGE = "swe-guidelines-benchmark:latest"
 # Where the container mounts what it is given. Both are read-only.
 CONTAINER_PLUGIN = "/plugin"
 CONTAINER_TARGET = "/target"
+# What a subject may read of the plugin checkout: the payload the skills
+# reference, and nothing else. The benchmark, its fixtures and their
+# answer keys, the docs, and the repository's own CLAUDE.md stay out.
+PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
+STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tests")
+
+
+def new_sandbox() -> Path:
+    """A fresh folder outside every checkout, for one run."""
+    return Path(tempfile.mkdtemp(prefix="swe-guidelines-benchmark-")).resolve()
+
+
+def stage_plugin(root: Path, dest: Path) -> Path:
+    """Copy the plugin payload of `root` into `dest` and return `dest`."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in PLUGIN_PAYLOAD:
+        source = root / name
+        if source.is_dir():
+            shutil.copytree(source, dest / name, symlinks=False, ignore=STAGE_IGNORE, dirs_exist_ok=True)
+        elif source.is_file():
+            shutil.copy2(source, dest / name)
+    return dest
+
+
+def stage_target(target: Path, dest: Path) -> Path:
+    """Copy the target folder alone into `dest`, so no sibling of it is in reach."""
+    shutil.copytree(target, dest, symlinks=True, ignore=STAGE_IGNORE, dirs_exist_ok=True)
+    return dest
 
 
 @dataclass(frozen=True)
@@ -95,16 +136,37 @@ class BaseRuntime:
 
     name = "base"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
+    def __init__(
+        self,
+        run_dir: Path,
+        target: Path | None = None,
+        config: dict | None = None,
+        plugin: Path | None = None,
+        sandbox: Path | None = None,
+    ) -> None:
         # Absolute, because the subject's working directory is the workspace:
         # a relative HOME, TMPDIR, or mount source would be read from there.
         self.run_dir = Path(run_dir).resolve()
+        # Where the subject lives. The harness passes a fresh folder outside
+        # the checkout; a caller that passes none keeps it in the run folder.
+        self.sandbox = Path(sandbox).resolve() if sandbox else self.run_dir
+        self.owns_sandbox = sandbox is not None
         self.target = Path(target).resolve() if target else None
         self.plugin = Path(plugin).resolve() if plugin else None
         self.config = dict(config or {})
-        self.workspace = self.run_dir / "workspace"
+        self.workspace = self.sandbox / "workspace"
         self.slot: str | None = None
         self.prepared = False
+        self.live: set[int] = set()
+
+    def stage(self) -> None:
+        """Replace the plugin and the target with copies in the sandbox."""
+        if not self.owns_sandbox:
+            return
+        if self.plugin:
+            self.plugin = stage_plugin(self.plugin, self.sandbox / "plugin")
+        if self.target:
+            self.target = stage_target(self.target, self.sandbox / "target")
 
     def plugin_path(self) -> str | None:
         """The plugin checkout as the subject sees it. On this machine, where it is."""
@@ -124,7 +186,7 @@ class BaseRuntime:
     def prepare_repeat(self, index: int) -> Path:
         """A fresh workspace for one repeat, so no repeat sees another's files."""
         self.slot = str(index)
-        return self.prepare(self.run_dir / "workspace" / self.slot)
+        return self.prepare(self.sandbox / "workspace" / self.slot)
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
@@ -157,6 +219,7 @@ class BaseRuntime:
             # the shell records it, never a run that leaves no results.
             streams.note(f"[{self.name}] could not start: {type(exc).__name__}: {exc}")
             return ExitStatus(code=127, duration_s=time.monotonic() - started)
+        self.live.add(proc.pid)
         readers = [
             threading.Thread(target=_pipe, args=(proc.stdout, "out", streams), daemon=True),
             threading.Thread(target=_pipe, args=(proc.stderr, "err", streams), daemon=True),
@@ -169,8 +232,12 @@ class BaseRuntime:
         except subprocess.TimeoutExpired:
             timed_out = True
             streams.note(f"[{self.name}] timed out after {timeout_s}s; stopping the subject")
+        finally:
+            # Every way out stops the whole group: a timeout, a clean exit
+            # that left a child running, and an interrupt of the harness.
             self.stop(proc)
             proc.wait()
+            self.live.discard(proc.pid)
         for r in readers:
             r.join(timeout=5)
         code = proc.returncode or 0
@@ -183,10 +250,9 @@ class BaseRuntime:
         )
 
     def stop(self, proc: subprocess.Popen) -> None:
-        """Kill the subject's whole process group."""
-        try:
-            os.killpg(proc.pid, signals.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+        """Kill the subject's whole process group; a group already gone is no error."""
+        kill_group(proc.pid)
+        if proc.poll() is None:
             proc.kill()
 
     def collect(self, globs: list[str]) -> list[Path]:
@@ -204,8 +270,22 @@ class BaseRuntime:
         return sorted(found)
 
     def teardown(self) -> None:
-        """Nothing by default: the run folder is the record and it stays."""
-        return None
+        """Stop whatever is still running, then remove the sandbox the harness made.
+
+        The run folder is the record and it stays; the sandbox held the
+        subject's copies and its workspace, whose files were collected.
+        """
+        for pgid in list(self.live):
+            kill_group(pgid)
+            self.live.discard(pgid)
+        if self.owns_sandbox and self.sandbox != self.run_dir:
+            shutil.rmtree(self.sandbox, ignore_errors=True)
+
+
+def kill_group(pgid: int) -> None:
+    """SIGKILL a process group, quietly when it is already gone."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pgid, signals.SIGKILL)
 
 
 def _pipe(handle, stream: str, streams: CliStream) -> None:
@@ -224,7 +304,7 @@ class HostRuntime(BaseRuntime):
 
     def private(self, name: str) -> Path:
         """The private HOME or TMPDIR, one per repeat once a repeat is prepared."""
-        base = self.run_dir / name
+        base = self.sandbox / name
         return base / self.slot if self.slot is not None else base
 
     def prepare(self, workspace: Path | None = None) -> Path:
@@ -245,8 +325,15 @@ class ContainerRuntime(BaseRuntime):
 
     name = "container"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
-        super().__init__(run_dir, target, config, plugin)
+    def __init__(
+        self,
+        run_dir: Path,
+        target: Path | None = None,
+        config: dict | None = None,
+        plugin: Path | None = None,
+        sandbox: Path | None = None,
+    ) -> None:
+        super().__init__(run_dir, target, config, plugin, sandbox)
         self.image = self.config.get("image", DEFAULT_IMAGE)
         self.dockerfile = Path(self.config.get("dockerfile", Path(__file__).resolve().parent.parent / "runtime" / "Dockerfile"))
         self.docker = self.config.get("docker", "docker")
@@ -359,8 +446,15 @@ class VmRuntime(BaseRuntime):
 
     name = "vm"
 
-    def __init__(self, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None) -> None:
-        super().__init__(run_dir, target, config, plugin)
+    def __init__(
+        self,
+        run_dir: Path,
+        target: Path | None = None,
+        config: dict | None = None,
+        plugin: Path | None = None,
+        sandbox: Path | None = None,
+    ) -> None:
+        super().__init__(run_dir, target, config, plugin, sandbox)
         raw = self.config
         self.vm = VmConfig(
             exec_prefix=list(raw.get("exec_prefix", [])),
@@ -370,6 +464,10 @@ class VmRuntime(BaseRuntime):
             remote_plugin=raw.get("remote_plugin"),
             remote_target=raw.get("remote_target"),
         )
+
+    def stage(self) -> None:
+        """Nothing to copy here: the operator placed the plugin and the target on the other machine."""
+        return None
 
     def plugin_path(self) -> str | None:
         if not self.plugin:
@@ -428,15 +526,20 @@ class VmRuntime(BaseRuntime):
 
 
 def build(
-    name: str, run_dir: Path, target: Path | None = None, config: dict | None = None, plugin: Path | None = None
+    name: str,
+    run_dir: Path,
+    target: Path | None = None,
+    config: dict | None = None,
+    plugin: Path | None = None,
+    sandbox: Path | None = None,
 ) -> BaseRuntime:
     """The runtime one of the three names asks for."""
     if name == "host":
-        return HostRuntime(run_dir, target, config, plugin)
+        return HostRuntime(run_dir, target, config, plugin, sandbox)
     if name == "container":
-        return ContainerRuntime(run_dir, target, config, plugin)
+        return ContainerRuntime(run_dir, target, config, plugin, sandbox)
     if name == "vm":
-        return VmRuntime(run_dir, target, config, plugin)
+        return VmRuntime(run_dir, target, config, plugin, sandbox)
     raise ValueError(f"runtime {name!r} is not one of {', '.join(NAMES)}")
 
 

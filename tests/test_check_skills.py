@@ -83,9 +83,31 @@ def test_description_limits(repo, skills, capsys):
     set_description(repo, '""')
     assert skills.main() == 1
     assert "empty description" in capsys.readouterr().out
-    set_description(repo, '"' + "x" * 1025 + '"')
+    set_description(repo, '"' + "x" * 351 + '"')
     assert skills.main() == 1
-    assert "limit 1024" in capsys.readouterr().out
+    assert "limit 350" in capsys.readouterr().out
+
+
+def test_the_descriptions_together_have_a_budget(repo, skills, capsys, monkeypatch):
+    monkeypatch.setattr(skills, "DESCRIPTIONS_TOTAL", 100)
+    assert skills.main() == 1
+    assert "the descriptions total" in capsys.readouterr().out
+
+
+def test_an_unknown_frontmatter_key_fails(repo, skills, capsys):
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent", "allowed_tools: Read, Agent")
+    assert skills.main() == 1
+    assert "frontmatter key 'allowed_tools' is not one the host reads" in capsys.readouterr().out
+
+
+def test_a_scaffold_skill_references_the_conventions(repo, skills, capsys):
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n")
+    assert skills.main() == 1
+    assert "a scaffold skill references skills/_shared/scaffold-conventions.md" in capsys.readouterr().out
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md", "## Input\n", "It follows skills/_shared/scaffold-conventions.md.\n\n## Input\n"
+    )
+    assert skills.main() == 0
 
 
 def test_allowed_tools_form(repo, skills, capsys):
@@ -205,7 +227,8 @@ def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):
 
 def test_a_reference_in_the_scaffold_conventions_resolves_from_each_including_skill(repo, skills, capsys):
     repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `${CLAUDE_SKILL_DIR}/../../missing.json`.\n")
-    assert skills.main() == 0  # no skill references the conventions file yet
+    assert skills.main() == 1  # the scaffold does not reference the conventions file yet
+    assert "a scaffold skill references skills/_shared/scaffold-conventions.md" in capsys.readouterr().out
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",

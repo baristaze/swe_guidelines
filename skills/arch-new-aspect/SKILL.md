@@ -1,6 +1,6 @@
 ---
 name: arch-new-aspect
-description: "Incorporate a new aspect into the Software Design and Architecture Guidelines and cascade it through the lenses, skills, docs, and README, naming the release level. Runs in a checkout of the guideline repository."
+description: "Incorporate a new aspect into the guideline and cascade it through the lenses, skills, docs, and README, naming the release level. Runs in a checkout of the guideline repository."
 disable-model-invocation: true
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make gen-skills), Bash(make gen-toc), Bash(git diff:*)
 ---

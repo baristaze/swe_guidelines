@@ -1,6 +1,6 @@
 ---
 name: arch-review-delivery
-description: "Review code or a change through the Delivery lenses of the Software Design and Architecture Guidelines. Covers Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions. Use for a change that touches this area, or as one leg of arch-review-full."
+description: "Architecture review through the Delivery lenses: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions. For a change in this area, or as one leg of arch-review-full."
 allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
@@ -13,6 +13,8 @@ a lens in this file does not name. The guideline itself is at
 `${CLAUDE_SKILL_DIR}/../../architecture.md` when a lens needs its
 source read in full. If either file is missing, stop and say the
 installation is incomplete.
+
+This pass covers Apps, Deployment, Monorepo Folder Structure, Client App Architecture, Telemetry, Cross-Cutting Conventions, Technology Choices: apps, deployment, repo layout, client architecture, logs and telemetry, conventions, substitutions.
 
 ## Input
 

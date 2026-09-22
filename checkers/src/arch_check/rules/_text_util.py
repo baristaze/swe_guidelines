@@ -15,6 +15,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+from pathlib import Path
 from typing import Any
 
 import tomllib
@@ -22,8 +23,21 @@ import tomllib
 from arch_check.config import relative_glob
 from arch_check.project import SKIP_DIRS, Project, dotted
 
-WALK_SKIP = SKIP_DIRS | {"dist", "build", ".terraform", ".venv", "coverage", ".next", ".turbo"}
-"""Directory names a tree walk never enters: tool caches, installs, and build output."""
+WALK_SKIP = SKIP_DIRS | {".terraform", ".venv"}
+"""Directory names a tree walk never enters: tool caches and installs."""
+OUTPUT_DIRS = frozenset({"dist", "build", "coverage", ".next", ".turbo"})
+"""Build output, skipped only where a tool writes it: at the root, or beside a
+`pyproject.toml` or `package.json`. Anywhere else a folder of that name is the
+project's own, a package called `build` for one, and is walked."""
+MANIFESTS = ("pyproject.toml", "package.json")
+
+
+def is_output(project: Project, entry: Path) -> bool:
+    """Whether a directory is build output: an output name, beside a manifest or at the root."""
+    if entry.name not in OUTPUT_DIRS:
+        return False
+    parent = entry.parent
+    return parent == project.root or any((parent / m).is_file() for m in MANIFESTS)
 
 
 def walk(project: Project, start: str = "", *, names: tuple[str, ...] = ("*",)) -> Iterator[str]:
@@ -48,7 +62,7 @@ def walk(project: Project, start: str = "", *, names: tuple[str, ...] = ("*",)) 
             continue
         for entry in entries:
             if entry.is_dir():
-                if entry.is_symlink() or entry.name in WALK_SKIP or entry.name.startswith("."):
+                if entry.is_symlink() or entry.name in WALK_SKIP or entry.name.startswith(".") or is_output(project, entry):
                     continue
                 stack.append(entry)
             elif entry.is_file() and any(fnmatchcase(entry.name, n) for n in names):
@@ -66,7 +80,11 @@ def subdirs(project: Project, rel: str) -> list[str]:
     return sorted(
         p.relative_to(project.root).as_posix()
         for p in base.iterdir()
-        if p.is_dir() and not p.is_symlink() and not p.name.startswith(".") and p.name not in WALK_SKIP
+        if p.is_dir()
+        and not p.is_symlink()
+        and not p.name.startswith(".")
+        and p.name not in WALK_SKIP
+        and not is_output(project, p)
     )
 
 

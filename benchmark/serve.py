@@ -230,8 +230,10 @@ class Handler(BaseHTTPRequestHandler):
                 frame = json.loads(line)["frame"]
             except (json.JSONDecodeError, KeyError):
                 continue
-            file = folder / frame
-            if not file.is_file():
+            # The index is written by whatever captured the frames; a name in
+            # it that leaves the frame folder, or is not a JPEG, is not served.
+            file = (folder / str(frame)).resolve()
+            if not file.is_relative_to(folder.resolve()) or file.suffix.lower() not in (".jpg", ".jpeg") or not file.is_file():
                 continue
             data = file.read_bytes()
             self.wfile.write(f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: {len(data)}\r\n\r\n".encode())

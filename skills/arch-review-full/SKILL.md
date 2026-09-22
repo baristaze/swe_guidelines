@@ -1,6 +1,6 @@
 ---
 name: arch-review-full
-description: "Full architecture review of code or a change against every lens group of the Software Design and Architecture Guidelines: eight parallel reviews (om, contracts, context, storage, async, network, delivery, ops) merged into one report. Use before a pull request or when a change crosses layers."
+description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
 allowed-tools: Read, Grep, Glob, Agent, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 

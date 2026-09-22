@@ -130,3 +130,8 @@ def test_anchors_number_repeats_the_way_github_does():
         "principles-1",
         "principles-2",
     ]
+
+
+def test_a_heading_inside_a_tilde_or_long_fence_is_not_a_heading():
+    text = "# Top\n\n~~~\n# not a heading\n~~~\n\n````md\n```\n# still code\n```\n````\n\n## After\n"
+    assert headings(text) == [(1, "Top"), (2, "After")]

@@ -1,6 +1,6 @@
 ---
 name: arch-deviate
-description: "Record a deliberate deviation from the Software Design and Architecture Guidelines as an architecture decision record (ADR) in the current repository, quoting the rule, stating the decision, and naming the consequences. Use when a review finding is accepted as intentional or when a project needs to diverge from a section."
+description: "Record a deliberate deviation from the guideline as an ADR under docs/adr/: the rule quoted, the decision, the consequences. Use when a finding is accepted as intentional."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(date:*)
 ---
 

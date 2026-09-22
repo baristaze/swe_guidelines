@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-worker
-description: "Create a worker role the way the Software Design and Architecture Guidelines prescribe: a claim, handle, complete loop over the table-backed work queue, a handler impl calling managers through the container, lease renewal and self-fencing, a liveness heartbeat, drain-first shutdown, the maintenance sweep, the console entry point, the image, and tests. Creates the work namespace when the repository has none. Stack: Python (FastAPI, Pydantic, SQLAlchemy)."
+description: "Create a worker role: the claim, handle, complete loop over the work queue, lease renewal and self-fencing, liveness, drain-first shutdown, the sweep, the image, and tests. Python."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 

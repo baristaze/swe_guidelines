@@ -1,6 +1,6 @@
 ---
 name: arch-review-async
-description: "Review code or a change through the Async lenses of the Software Design and Architecture Guidelines. Covers Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, park vs fail. Use for a change that touches this area, or as one leg of arch-review-full."
+description: "Architecture review through the Async lenses: infra, queues, workers, park vs fail. For a change in this area, or as one leg of arch-review-full."
 allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
@@ -13,6 +13,8 @@ a lens in this file does not name. The guideline itself is at
 `${CLAUDE_SKILL_DIR}/../../architecture.md` when a lens needs its
 source read in full. If either file is missing, stop and say the
 installation is incomplete.
+
+This pass covers Infrastructure, Worker Roles, The Network Layer (Idempotency on the Consumer Side, Long-Running Orchestrations), Telemetry (Correlation Across a Handoff): infra, queues, workers, park vs fail.
 
 ## Input
 

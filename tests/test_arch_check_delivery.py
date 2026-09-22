@@ -152,6 +152,51 @@ def test_del_10_a_tab_a_blank_continuation_and_a_documented_dockerfile_pass(tmp_
     assert found(tmp_path, "DEL-10", files) == (0, [])
 
 
+@pytest.mark.parametrize(
+    "run",
+    [
+        "RUN npm install",
+        "RUN yarn install",
+        "RUN pip install -r requirements.txt",
+        "RUN pip install fastapi",
+        "RUN uv pip install httpx",
+    ],
+)
+def test_del_10_an_install_that_reads_no_lock_fails(tmp_path, run):
+    image = GOOD_IMAGE.replace("FROM python:3.14-slim\nUSER", f"FROM python:3.14-slim\n{run}\nUSER", 1)
+    code, where = found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image})
+    assert (code, [line for _, _, line in where]) == (1, [5])
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "RUN npm ci",
+        "RUN npm install -g @anthropic-ai/claude-code@2.1.276",
+        "RUN yarn install --immutable",
+        "RUN pip install --require-hashes -r requirements.txt",
+        "RUN pip install uv==0.12.17",
+    ],
+)
+def test_del_10_a_locked_or_pinned_install_passes(tmp_path, run):
+    image = GOOD_IMAGE.replace("FROM python:3.14-slim\nUSER", f"FROM python:3.14-slim\n{run}\nUSER", 1)
+    assert found(tmp_path, "DEL-10", {"deployment/docker/api.Dockerfile": image}) == (0, [])
+
+
+def test_del_10_a_build_folder_of_the_projects_own_is_walked(tmp_path):
+    # `build/` beside a manifest is output and skipped; a `build/` anywhere
+    # else is the project's own folder, and its Dockerfile is read.
+    image = GOOD_IMAGE.replace("USER acme", "USER root", 1)
+    files = {
+        "deployment/docker/build/api.Dockerfile": image,
+        "apps/portal/package.json": "{}",
+        "apps/portal/build/Dockerfile": image,
+    }
+    code, where = found(tmp_path, "DEL-10", files)
+    assert code == 1
+    assert {p for _, p, _ in where} == {"deployment/docker/build/api.Dockerfile"}
+
+
 def test_del_10_an_unlocked_install_inside_a_heredoc_fails(tmp_path):
     image = GOOD_IMAGE.replace(
         "RUN uv sync --frozen --no-dev \\\n    --package acme-api", "RUN <<EOF\nuv sync --no-dev --package acme-api\nEOF", 1
