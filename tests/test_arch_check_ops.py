@@ -99,18 +99,27 @@ def test_ops_25_namespace_readmes_and_a_plain_om_readme_pass(tmp_path):
 
 def test_ops_25_a_namespace_without_a_readme_and_commands_in_om_readme_fail(tmp_path):
     files = {NS: None, "om/README.md": "# Acme\n\n```bash\nmake test\n```\n\nRun `uv run pytest` first.\n"}
-    code, where = found(tmp_path, "OPS-25", files)
+    write_project(tmp_path, files)
+    code, report = check_json(tmp_path, "--rule", "OPS-25")
     assert code == 1
-    assert where == [
-        ("OPS-25", "om/README.md", 3),
-        ("OPS-25", "om/README.md", 7),
-        ("OPS-25", NS, 1),
+    assert [(f["path"], f["line"], f["message"]) for f in report["findings"]] == [
+        ("om/README.md", 3, "a shell block in om/README.md; it carries no developer instruction"),
+        ("om/README.md", 7, "a command in om/README.md; it carries no developer instruction"),
+        (NS, 1, "namespace tasks has no README.md; om/README.md points to one"),
     ]
 
 
 def test_ops_25_a_diagram_of_the_nouns_passes(tmp_path):
     readme = "# Acme\n\n```mermaid\nerDiagram\n    ORDER ||--|{ ORDER_LINE : holds\n```\n"
     assert found(tmp_path, "OPS-25", {"om/README.md": readme}) == (0, [])
+
+
+def test_ops_25_finds_the_om_package_wherever_the_source_root_puts_it(tmp_path):
+    files = {"om/acme/om/__init__.py": "", "om/acme/om/orders/__init__.py": "", "om/acme/om/storage/__init__.py": ""}
+    write_project(tmp_path, files, pyproject='[tool.arch-check]\npackage = "acme"\nsrc = ["om"]\n')
+    code, report = check_json(tmp_path, "--rule", "OPS-25")
+    assert (code, rules_found(report)) == (1, [("OPS-25", "om/acme/om/orders/README.md", 1)])
+    assert report["findings"][0]["message"] == "namespace orders has no README.md; om/README.md points to one"
 
 
 # --- OPS-26
