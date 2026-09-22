@@ -295,7 +295,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
-    parser.add_argument("--repeat", type=int, default=1, help="how many times the subject runs")
+    parser.add_argument(
+        "--repeat", type=int, default=3, help="how many times the subject runs; one run is an anecdote, so 3 by default"
+    )
     parser.add_argument("--runtime", default="host", choices=list(RT.NAMES), help="where the subject runs")
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
@@ -572,7 +574,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     summary = data["summary"]
     for provider, stats in summary["per_provider"].items():
-        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s)")
+        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
+    if summary["self_judged"]:
+        print(f"note: {summary['self_judged']}")
+    for fallback in summary["fallbacks"]:
+        print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
+
     for skipped in summary["skipped"]:
         print(f"{skipped['provider']:10} not answered: {skipped['reason']}")
     print(f"report: {run_dir / 'report.md'}")

@@ -28,7 +28,7 @@ imported inside the functions that call them.
 | `--scenario` | a scenario name from `scenarios/`, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
-| `--repeat` | how many times the subject runs; every repeat is judged by every provider |
+| `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
 | `--runtime` | `host` (the default), `container`, or `vm` |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
@@ -51,6 +51,21 @@ first reason, and does not fail the run, `--strict` or not: one flaky
 answer is a note, not a lost run. `--strict` fails on a provider that
 answered none. The overall mean is the mean of the providers' means,
 so each provider weighs once, however many judgements it answered.
+
+A repeat whose subject failed is not judged, and it is not dropped
+either. It counts as a failure: it scores 0 in every provider's mean,
+and a run whose every repeat failed scores 0. A subject fails on a
+nonzero exit, a timeout, or `is_error` in its envelope. Dropping the
+failures would let a subject that fails one time in three keep the
+score of the two times it did not.
+
+One run of a subject is an anecdote, so `--repeat` is 3 by default.
+The summary reports the spread: each provider's standard deviation,
+and each repeat's mean over its providers with their range and
+standard deviation. A Claude subject judged by a panel that includes
+Claude is named in the summary under `self_judged`. A model may favor
+its own kind, so read the Anthropic score beside the others.
+
 
 Keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and
 `XAI_API_KEY` with `GROK_API_KEY` as a second name. The Gemini client

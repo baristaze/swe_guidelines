@@ -156,17 +156,45 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["mean", "min", "max", "n"],
+            "required": ["mean", "min", "max", "n", "stdev"],
             "additionalProperties": false,
             "properties": {
               "mean": { "type": "number" },
               "min": { "type": "integer" },
               "max": { "type": "integer" },
-              "n": { "type": "integer", "minimum": 0 }
+              "n": { "type": "integer", "minimum": 0 },
+              "stdev": { "type": ["number", "null"] }
             }
           }
         },
         "overall_mean": { "type": ["number", "null"] },
+        "failed_repeats": {
+          "description": "The repeats whose subject failed; each scores 0 in every provider's mean.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "spread": {
+          "description": "Each scored repeat's mean over its providers, a failed repeat as 0, and their range and standard deviation.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["repeat_means", "min", "max", "stdev"],
+              "additionalProperties": false,
+              "properties": {
+                "repeat_means": { "type": "array", "items": { "type": "number" } },
+                "min": { "type": "number" },
+                "max": { "type": "number" },
+                "stdev": { "type": ["number", "null"] }
+              }
+            }
+          ]
+        },
+        "self_judged": {
+          "description": "Set when a Claude subject is judged by a panel that scores with Claude.",
+          "type": ["string", "null"]
+        },
+
         "skipped": {
           "type": "array",
           "items": {

@@ -18,7 +18,8 @@ on:
         type: string
       repeat:
         description: "how many times each subject runs"
-        default: "1"
+        default: "3"
+
         type: string
 
 permissions:

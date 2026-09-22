@@ -356,8 +356,16 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
     assert all(r["judgements"] == [] for r in results["repeats"])
-    assert results["summary"]["overall_mean"] is None
+    assert results["summary"]["overall_mean"] == 0.0  # a failed repeat is a failure, never a gap in the mean
+    assert results["summary"]["failed_repeats"] == [0, 1]
     assert any("not judged" in note for note in results["notes"])
+
+
+def test_a_run_repeats_three_times_unless_told_otherwise():
+    assert run.build_parser().parse_args([]).repeat == 3
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    repeat = workflow[workflow.index("      repeat:") :]
+    assert 'default: "3"' in repeat.split("\n\n")[0]
 
 
 def test_the_workflow_runs_every_scenario_strict():

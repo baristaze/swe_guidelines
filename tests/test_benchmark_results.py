@@ -66,7 +66,8 @@ def test_the_summary_averages_per_provider_over_every_repeat():
         R.RepeatResult(1, {"code": 0}, [], [judgement("anthropic", 90), judgement("openai", 70)]),
     ]
     summary = R.summarize(repeats)
-    assert summary["per_provider"]["anthropic"] == {"mean": 85.0, "min": 80, "max": 90, "n": 2}
+    assert summary["per_provider"]["anthropic"] == {"mean": 85.0, "min": 80, "max": 90, "n": 2, "stdev": 7.1}
+
     assert summary["overall_mean"] == 75.0
     assert summary["skipped"] == []
 
@@ -160,7 +161,8 @@ def test_the_report_names_the_scores_the_findings_and_the_paths(tmp_path):
 
 
 def test_the_report_says_so_when_no_one_scored(tmp_path):
-    run = a_run([R.RepeatResult(0, {"code": 1}, [], [judgement("xai", status="error", error="403")])])
+    run = a_run([R.RepeatResult(0, {"code": 0}, [], [judgement("xai", status="error", error="403")])])
+
     text = R.report_text(run)
     assert "Overall mean: no score." in text
     assert "No judge raised a finding." in text
@@ -224,4 +226,45 @@ def test_a_fallback_is_recorded_in_the_result_and_named_in_the_summary():
         {"provider": "anthropic", "from": "claude-opus-5", "to": "claude-sonnet-5", "count": 1, "reason": fell.fallback["reason"]}
     ]
     assert "- `anthropic`: `claude-sonnet-5` answered in place of `claude-opus-5` in 1 judgement(s)" in R.report_text(run)
+    assert R.validate(data, SCHEMA) in ([], ["jsonschema is not installed; results.json was written unvalidated"])
+
+
+def test_a_failed_repeat_scores_zero_and_stays_in_the_mean():
+    repeats = [
+        R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 80), judgement("openai", 60)]),
+        R.RepeatResult(1, {"code": 1}, [], []),
+        R.RepeatResult(2, {"code": 0, "timed_out": True}, [], []),
+        R.RepeatResult(3, {"code": 0, "is_error": True}, [], []),
+    ]
+    summary = R.summarize(repeats)
+    assert summary["failed_repeats"] == [1, 2, 3]
+    assert summary["per_provider"]["anthropic"]["mean"] == 20.0
+    assert summary["per_provider"]["anthropic"]["n"] == 4 and summary["per_provider"]["anthropic"]["min"] == 0
+    assert summary["overall_mean"] == 17.5
+    assert summary["spread"] == {"repeat_means": [70.0, 0.0, 0.0, 0.0], "min": 0.0, "max": 70.0, "stdev": 35.0}
+
+
+def test_a_run_whose_every_repeat_failed_scores_zero():
+    summary = R.summarize([R.RepeatResult(0, {"code": 127}, [], []), R.RepeatResult(1, {"code": 127}, [], [])])
+    assert summary["overall_mean"] == 0.0 and summary["failed_repeats"] == [0, 1]
+
+
+def test_one_repeat_has_no_spread_to_report():
+    summary = R.summarize([R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 80)])])
+    assert summary["per_provider"]["anthropic"]["stdev"] is None
+    assert summary["spread"] == {"repeat_means": [80.0], "min": 80.0, "max": 80.0, "stdev": None}
+
+
+def test_a_claude_subject_judged_by_a_panel_with_claude_is_named():
+    judged = [R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 80), judgement("openai", 60)])]
+    assert "anthropic" in (R.summarize(judged, {"kind": "skill"})["self_judged"] or "")
+    assert "anthropic" in (R.summarize(judged, {"kind": "qa", "provider": None})["self_judged"] or "")
+    assert R.summarize(judged, {"kind": "qa", "provider": "openai"})["self_judged"] is None
+    assert R.summarize(judged, {"kind": "command", "model": None})["self_judged"] is None
+    others = [R.RepeatResult(0, {"code": 0}, [], [judgement("openai", 60)])]
+    assert R.summarize(others, {"kind": "skill"})["self_judged"] is None
+    run = a_run(judged)
+    data = run.as_dict()
+    assert data["summary"]["self_judged"]
+    assert data["summary"]["self_judged"] in R.report_text(run)
     assert R.validate(data, SCHEMA) in ([], ["jsonschema is not installed; results.json was written unvalidated"])
