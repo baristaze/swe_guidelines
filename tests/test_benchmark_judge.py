@@ -86,6 +86,19 @@ def test_a_refused_model_falls_back_and_the_result_names_what_answered():
     )
     assert judgement.status == "ok"
     assert judgement.model == "claude-sonnet-5"
+    assert judgement.fallback == {"from": "claude-opus-5", "reason": "claude-opus-5: RuntimeError: out of quota"}
+    assert judgement.as_dict()["fallback"] == judgement.fallback
+
+
+def test_the_first_model_answering_is_no_fallback():
+    judgement = J.judge_one(P.Provider.ANTHROPIC, "p", "high", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=fake_call)
+    assert judgement.fallback is None and judgement.as_dict()["fallback"] is None
+
+
+@pytest.mark.parametrize("message", ["Request timed out.", "read timeout", "503 Service Unavailable", "model overloaded"])
+def test_a_timeout_is_transient_and_asked_again(message):
+    assert J.is_transient(RuntimeError(message))
+    assert not J.is_transient(RuntimeError("429 quota exceeded"))
 
 
 def test_every_model_failing_is_an_error_that_keeps_what_each_said():

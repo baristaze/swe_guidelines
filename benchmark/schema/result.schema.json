@@ -91,6 +91,21 @@
                   "additionalProperties": { "type": "integer" }
                 },
                 "error": { "type": ["string", "null"] },
+                "fallback": {
+                  "description": "The model the matrix put first and why it did not answer, when a later model answered in its place.",
+                  "oneOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "required": ["from", "reason"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "from": { "type": "string" },
+                        "reason": { "type": "string" }
+                      }
+                    }
+                  ]
+                },
                 "verdict": {
                   "oneOf": [
                     { "type": "null" },
@@ -157,8 +172,24 @@
             }
           }
         },
+        "fallbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["provider", "from", "to", "count", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "provider": { "type": "string" },
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "count": { "type": "integer", "minimum": 1 },
+              "reason": { "type": "string" }
+            }
+          }
+        },
         "missed": {
           "type": "array",
+
           "items": {
             "type": "object",
             "required": ["provider", "count", "reason"],

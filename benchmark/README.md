@@ -270,8 +270,13 @@ word each SDK expects. The file is a snapshot a monthly run redefines,
 not a rule. The results name whichever model answered.
 
 A model under load answers with a transient error, and the harness asks
-it again. A model out of quota is not asked again; the next model in
-the matrix is. A provider that never answers is recorded with what it
+it again: a `503`, an overload, and a timeout are transient. A model out
+of quota is not asked again; the next model in the matrix is. A
+judgement a later model answered records `fallback`: the model the
+matrix put first and the reason it did not answer. The summary names
+every fallback, because a score from a fallback model is not a score
+from the model the matrix names.
+ A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
 

@@ -113,9 +113,25 @@ def summarize(repeats: list[RepeatResult]) -> dict[str, Any]:
         for provider, values in sorted(scores.items())
     }
     means = [statistics.fmean(values) for values in scores.values()]
+    fallbacks: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for repeat in repeats:
+        for j in repeat.judgements:
+            if j.status == "ok" and j.fallback:
+                entry = fallbacks.setdefault(
+                    (j.provider, j.fallback["from"], j.model),
+                    {
+                        "provider": j.provider,
+                        "from": j.fallback["from"],
+                        "to": j.model,
+                        "count": 0,
+                        "reason": j.fallback["reason"],
+                    },
+                )
+                entry["count"] += 1
     return {
         "per_provider": per_provider,
         "overall_mean": half_up(statistics.fmean(means), 1) if means else None,
+        "fallbacks": [fallbacks[k] for k in sorted(fallbacks)],
         "skipped": [{"provider": p, "reason": r[0]} for p, r in sorted(misses.items()) if p not in scores],
         "missed": [{"provider": p, "count": len(r), "reason": r[0]} for p, r in sorted(misses.items()) if p in scores],
     }
@@ -205,6 +221,14 @@ def report_text(run: RunResult) -> str:
     if summary["skipped"]:
         lines += ["### Not answered", ""]
         lines += [f"- `{s['provider']}`: {s['reason']}" for s in summary["skipped"]]
+        lines += [""]
+    if summary.get("fallbacks"):
+        lines += ["### Fallbacks", "", "A model answered in place of the one the matrix put first.", ""]
+        lines += [
+            f"- `{f['provider']}`: `{f['to']}` answered in place of `{f['from']}` in {f['count']} judgement(s); "
+            f"first reason: {f['reason']}"
+            for f in summary["fallbacks"]
+        ]
         lines += [""]
     if summary.get("missed"):
         lines += ["### Answered in part", ""]

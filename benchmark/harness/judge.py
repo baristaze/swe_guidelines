@@ -32,7 +32,7 @@ MAX_OUTPUT_TOKENS = 16_000
 # A model under load answers 503 and means "ask again"; a model out of quota
 # answers 429 and means "ask something else". The first is retried here, the
 # second falls through to the next model in the matrix.
-TRANSIENT = ("503", "unavailable", "overloaded", "high demand", "timeout", "temporarily")
+TRANSIENT = ("503", "unavailable", "overloaded", "high demand", "timeout", "timed out", "temporarily")
 RETRIES = 2
 RETRY_WAIT_S = 4.0
 
@@ -193,6 +193,9 @@ class Judgement:
     raw: str = ""
     error: str | None = None
     verdict: Verdict | None = None
+    # The model the matrix put first and why it did not answer, when a
+    # later model answered in its place; None when the first one answered.
+    fallback: dict[str, str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -203,6 +206,7 @@ class Judgement:
             "latency_s": round(self.latency_s, 3),
             "usage": dict(self.usage),
             "error": self.error,
+            "fallback": dict(self.fallback) if self.fallback else None,
             "verdict": self.verdict.as_dict() if self.verdict else None,
         }
 
@@ -465,7 +469,9 @@ def judge_one(
             usage=usage,
             raw=raw,
             verdict=verdict,
+            fallback={"from": models[0], "reason": errors[0] if errors else ""} if model != models[0] else None,
         )
+
     return Judgement(
         provider=name,
         model=models[0] if models else "",

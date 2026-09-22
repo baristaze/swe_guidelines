@@ -125,7 +125,7 @@ def test_the_results_file_has_every_required_key(tmp_path):
     for key in REQUIRED:
         assert key in data
     judged = data["repeats"][0]["judgements"][0]
-    assert set(judged) == {"provider", "model", "effort", "status", "latency_s", "usage", "error", "verdict"}
+    assert set(judged) == {"provider", "model", "effort", "status", "latency_s", "usage", "error", "fallback", "verdict"}
     assert judged["verdict"]["score"] == 88
 
 
@@ -208,3 +208,20 @@ def test_a_mean_and_a_score_round_halves_up():
     from harness.judge import half_up
 
     assert half_up(72.5) == 73.0 and half_up(0.25, 1) == 0.3 and half_up(80.45, 1) == 80.5
+
+
+def test_a_fallback_is_recorded_in_the_result_and_named_in_the_summary():
+    fell = judgement("anthropic", 80, model="claude-sonnet-5")
+    fell.fallback = {"from": "claude-opus-5", "reason": "claude-opus-5: RuntimeError: out of quota"}
+    repeats = [
+        R.RepeatResult(0, {"code": 0}, [], [fell, judgement("openai", 60)]),
+        R.RepeatResult(1, {"code": 0}, [], [judgement("anthropic", 90, model="claude-opus-5")]),
+    ]
+    run = a_run(repeats)
+    data = run.as_dict()
+    assert data["repeats"][0]["judgements"][0]["fallback"]["from"] == "claude-opus-5"
+    assert data["summary"]["fallbacks"] == [
+        {"provider": "anthropic", "from": "claude-opus-5", "to": "claude-sonnet-5", "count": 1, "reason": fell.fallback["reason"]}
+    ]
+    assert "- `anthropic`: `claude-sonnet-5` answered in place of `claude-opus-5` in 1 judgement(s)" in R.report_text(run)
+    assert R.validate(data, SCHEMA) in ([], ["jsonschema is not installed; results.json was written unvalidated"])
