@@ -203,9 +203,9 @@ that fails closed anywhere else is ASY-06.)
 **Principle.** A `POST` that writes a durable row, answering `201` or
 `202`, accepts an `Idempotency-Key` header; the first response is
 stored per tenant and principal under the key and replayed on a
-retry, using the same storage primitive the queue handlers use. Only
+retry, on the queue handlers' storage primitive. Only
 an outcome a retry cannot change is stored: a refusal is replayed, a
-failure releases the marker.
+failure and a `429` release the marker.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
@@ -218,8 +218,9 @@ is scoped to the tenant and the principal.
 retried request; a `202` submission that starts the work twice
 because the header was read only on the routes answering `201`; a key
 stored without the tenant and the principal in its scope; a
-`5xx` stored and replayed, so a transient failure is the answer for
-good and the client's only exit is a new key and a second row; a
+`5xx` or a `429` stored and replayed, so a transient answer is the
+answer for good and the client's only exit is a new key and a second
+row; a
 bespoke replay mechanism for one route that differs from the shared
 primitive. (What a create that issued a secret stores is NET-31. A
 sign-up has no tenant or principal to hold a marker, and is NET-35.)
@@ -233,7 +234,7 @@ answering 201 or 202; the rest is judged.
 
 **Principle.** `/healthz` answers liveness with the version and no I/O,
 `/readyz` awaits the storage healthcheck under a deadline shorter than
-its poll interval and counts a timeout as a negative answer,
+its prober's timeout and counts a timeout as a negative answer,
 `/metrics` exposes counters and histograms and is answered with a 404
 at the load balancer, and the API prefix is applied once where routers
 are mounted.
@@ -242,8 +243,8 @@ are mounted.
 
 **Look for.** The three operational endpoints and what each does; the
 load balancer's listener rules; whether liveness touches a dependency;
-the deadline readiness applies to its healthcheck and the poll
-interval configured against it; where the version prefix is declared.
+the deadline readiness applies to its healthcheck and the timeout of
+each prober configured against it; where the version prefix is declared.
 
 **Violation.** A liveness check that queries the database; a load
 balancer rule that forwards `/metrics`; readiness
@@ -701,8 +702,8 @@ splits by role, never by service.
 Storage Layer, Database Roles.
 
 **Look for.** Which database URLs and schemas each service's settings
-name; whether a table's role comes from the OM's role map or is
-implied by the service that writes it. (The shape of a migration is STO-18.)
+name; whether a table's role comes from the OM's role map or is implied
+by the service that writes it. (The shape of a migration is STO-18.)
 
 **Violation.** A database or a schema per service; a table class or a
 migration under a service or a worker; a table owned by a service rather

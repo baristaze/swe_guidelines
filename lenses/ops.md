@@ -43,11 +43,11 @@ administrator's two steps.
 
 ## OPS-02 Four roles; the administrator creates, destroys, and nothing else
 
-**Principle.** Four roles operate a platform: administrator, deployer,
-investigator, supporter. Each is a cloud role with a permission set,
-held under a named profile. The administrator is a person. It creates
-an environment and it destroys one, it does nothing else, and no skill
-but those two runs under it.
+**Principle.** Four roles operate a platform. The administrator,
+deployer, and investigator are cloud roles under named profiles; the
+supporter is the investigator's plus an operator-plane identity. The
+administrator is a person, granted for the run: it creates and
+destroys an environment, and no other skill runs under it.
 
 **Source.** Operations, Operator Roles.
 
@@ -55,8 +55,10 @@ but those two runs under it.
 that hold them; the permissions of the administrator permission set;
 which skills name an administrator profile.
 
-**Violation.** A fifth role, or a role with no profile; a person's
-everyday profile holding the administrator role; a skill other than
+**Violation.** A fifth operator role, or a role with no profile (a
+person's everyday permission set is not one: no skill runs under it);
+a person's everyday profile holding the administrator role; an
+administrator permission set held between runs; a skill other than
 the create and destroy runs that names the administrator profile; an
 administrator role assumed by a pipeline.
 
@@ -90,9 +92,9 @@ itself is DEL-38.)
 
 **Principle.** The investigator, one per environment, reads everything
 and writes nothing: every log group, metric, trace, error, alarm, the
-description of every resource, and the state of the infrastructure, so
-it can plan a change. It cannot read a secret's value, a data bucket's
-objects, or a database row, and it cannot assume any other role.
+description of every resource, and the state of the infrastructure,
+which holds no secret (DEL-46). It cannot read a secret's value, a data
+bucket's objects, or a database row, or assume any other role.
 
 **Source.** Operations, Operator Roles.
 
@@ -118,24 +120,25 @@ read. Every such read is logged with the tenant and the operator.
 
 **Source.** Operations, Operator Roles; Operational Skills.
 
-**Look for.** The supporter role's permission set against the
+**Look for.** The cloud role the supporter's skill holds, which is the
 investigator's; the allowlist entry the supporter's identity holds and
 what it says; the tenant parameter on every operator read route the
 skill calls; the log line the operator plane writes on a tenant read.
 
-**Violation.** A supporter role with a permission the investigator
-lacks, a database login above all; an allowlist entry that says write;
-an operator read with no tenant parameter, or one that reads across
-tenants; a tenant read that leaves no line naming the tenant and the
-operator. (The gate and the context of the operator plane are
+**Violation.** A cloud role for the supporter with a permission the
+investigator lacks, a database login above all; an allowlist entry that
+says write; an operator read with no tenant parameter, or one that reads
+across tenants; a tenant read that leaves no line naming the tenant and
+the operator. (The gate and the context of the operator plane are
 CTX-20.)
 
 **Severity.** high
 
-## OPS-06 Roles are named `<product>-<role>-<environment>`, fenced by tag
+## OPS-06 Roles are named `<product>-<verb>-<environment>`, fenced by tag
 
-**Principle.** Roles are named `<product>-<role>-<environment>`, so the
-name says what it is and where it reaches. A role lives in its
+**Principle.** Roles are named `<product>-<verb>-<environment>`, the
+verb `deploy`, `plan`, or `investigate`, so the name says what it is
+and where it reaches. A role lives in its
 environment's account and its permissions stop there. Its fences also
 deny every other environment by tag, which holds if a root is ever
 applied in the wrong account.
@@ -146,10 +149,11 @@ applied in the wrong account.
 role lives in; the deny on the other environment's tag in each role's
 fences; whether a staging role reaches a production resource.
 
-**Violation.** A role whose name lacks the product, the role, or the
-environment; a role in an account that is not its environment's; a
-role with no deny on the other environment's tag; a staging role that
-lists a production resource.
+**Violation.** A role whose name lacks the product, the verb, or the
+environment, or puts them in another order; an investigator profile not
+named `<product>-<environment>-investigate`; a role in an account that
+is not its environment's; a role with no deny on the other environment's
+tag; a staging role that lists a production resource.
 
 **Severity.** medium
 
@@ -215,8 +219,9 @@ operator plane's identity, and the base URL of its environment; the
 file's path and permission bits; the tree, the skill texts, the log
 lines, and the reports for a token, a key, or a profile's secret.
 
-**Violation.** A token or a base URL in a skill's text or in a file the
-repository tracks; a credentials file readable by the group or the
+**Violation.** A token in a skill's text or in a file the repository
+tracks (a public name or an account id in the environments' file is no
+credential, DEL-42); a credentials file readable by the group or the
 world; a report or a log line that prints what the file holds; a skill
 that reads a profile's key from anywhere but the cloud tool's
 configuration. (The platform's own secrets are ASY-13 and ASY-28.)
@@ -349,9 +354,9 @@ shape.
 
 **Look for.** The alarm resources in the environment's Terraform, the
 topic they publish to, and the subscription on it; the three areas the
-set covers (the error ratio and the latency at the load balancer, a
-service below its desired count, the database's processor and free
-storage); where the thresholds come from.
+set covers (the error ratio, the latency, and the unhealthy targets at
+the load balancer, a service below its desired count, the database's
+processor and free storage); where the thresholds come from.
 
 **Violation.** An environment with no alarm, or alarms that reach no
 topic and no person; an edge, a process, or a database with no alarm
@@ -407,19 +412,19 @@ made outside a pull request; a database with a fixed disk.
 
 ## OPS-18 A budget and an anomaly monitor from the first apply
 
-**Principle.** Every environment's account has a budget from its
-first apply. It names
-a monthly amount and alerts the owner at half of it, at nine-tenths of it,
-at all of it, and when the forecast crosses it. An anomaly monitor
-watches each service's spend and reports a jump. Every resource
-carries the environment tag through the provider's default tags.
+**Principle.** Every environment's account has a budget from its first
+apply. It names a monthly amount and alerts the owner at half of it, at
+nine-tenths of it, at all of it, and when the forecast crosses it. An
+anomaly monitor watches each service's spend and reports a jump. Every
+resource carries the environment tag through the provider's default
+tags.
 
 **Source.** Operations, Cost Boundaries.
 
-**Look for.** The budget resource in each bootstrap root, its amount, its
-four thresholds, and the address they alert; the anomaly monitor and
-its subscription; the provider's default tags block and the
-environment tag in it.
+**Look for.** The budget resource in each bootstrap root, its amount,
+its four thresholds, and the address they alert; the anomaly monitor and
+its subscription; the provider's default tags block and the environment
+tag in it.
 
 **Violation.** An account with no budget, or a budget added after the
 first apply; a budget with one threshold and no forecast alert; no
@@ -434,25 +439,28 @@ DEL-32.)
 **Principle.** Creating and destroying an environment are the
 administrator's two runs: scripts the repository holds, run by the
 skills that narrate them. Each prints every command before running
-it, and a dry run prints them without running anything. Production is
-destroyed only behind a typed name and a merged change that turned its
-deletion protection off.
+it; a dry run prints them without running anything. Production is
+destroyed only behind a typed name and a released change that turned
+its deletion protection off, and leaves a final snapshot.
 
 **Source.** Operations, Creating and Destroying an Environment.
 
 **Look for.** The create script: one account per run, the bootstrap
 root and its state moved into its bucket, the delegation, the
-investigator's profile, the repository host's environments and their
-variables from the outputs, the first deploy, and the order across
-accounts. The destroy script: the word staging goes on, production's
-typed name and deletion protection check, and the report of what
-remains.
+investigator's profile, the repository host's environments with their
+branch policies and variables, staging's first deploy and production's
+run ending at its bootstrap, and the order across accounts. The
+destroy script: the word staging goes on, production's typed name, the
+branch and the state it reads deletion protection from, the final
+snapshot and the backups it keeps, and the report of what remains.
 
 **Violation.** A step of creation done by hand in the console; a run
 that executes a command it did not print, or has no dry run; a
 production destroy that goes on a word, or one where the same run
-turns deletion protection off; a destroy that ends without naming
-what remains.
+turns deletion protection off; a protection check read on `main`
+instead of `release` and the applied state; a production destroy that
+skips the final snapshot or deletes the automated backups; a destroy
+that ends without naming what remains, the snapshot among it.
 
 **Severity.** high
 
@@ -525,13 +533,17 @@ local and cloud.
 configures, the session it drives, the request id it takes from the
 response, and the four reads; the reader interface, the local impl
 over the `devx` stores, and the cloud impl over the cloud's; whether
-the same test is what runs against a deployed environment.
+the same test is what runs against a deployed environment, and how
+that run differs: no deliberate failure, the investigator's profile for
+the reads, and an identity and a tenant named for the smoke test.
 
 **Violation.** A signal that is emitted and never read back by a test;
 a test that asserts on the exporter's mock instead of the store; a
 reader written once for the local stack with no cloud impl, or two
 tests instead of one interface; a deployed smoke test that is a
-different test from the local round trip. (The deployed run's place
+different test from the local round trip; a deployed run that fails a
+call on purpose in production, or signs in as a real tenant's user.
+(The deployed run's place
 beside the in-process suite is DEL-36.)
 
 **Severity.** medium
@@ -649,9 +661,10 @@ hostnames, tokens, account ids, internal ticket references, and
 workarounds in it; the map for a narrower line the team drew.
 
 **Violation.** A real environment's hostname or an account id in a
-document; a token in a runbook; a note that only a team member could
-act on; a deployment workaround written into a document served to a
-tenant.
+document (the environments' file, which the scripts and roots read, is
+configuration and not a document); a token in a runbook; a note that
+only a team member could act on; a deployment workaround written into a
+document served to a tenant.
 
 **Severity.** high
 
@@ -659,22 +672,24 @@ tenant.
 
 **Principle.** Each deployer credential has an environment of its own
 on the repository host: staging's, production's plan with no
-reviewer, production's apply with the required reviewer. Each holds
-its own variables under the same names, so a job reads the value of
-the environment it declared. The federation replaces every cloud key,
-so the repository holds no cloud secret.
+reviewer, production's apply with the required reviewer, each
+deploying from its branch alone. A deployer role trusts the
+environment and the branch. Each environment holds its own variables
+under the same names. The federation replaces every cloud key.
 
 **Source.** Operations, Operator Roles.
 
-**Look for.** The environments on the repository host and the rules
-on each; the variables each holds and their names; the trust of each
-deployer role and the environment its subject names; any cloud key
-stored as a secret.
+**Look for.** The environments on the repository host, the rules on
+each, and their deployment-branch policies; the variables each holds and
+their names; the trust of each deployer role, the environment its
+subject names and the ref it requires; any cloud key stored as a secret.
 
-**Violation.** One environment shared by two credentials, or a
-reviewer on the plan's environment, so the plan waits on its own
-approval; a production value in a repository-wide variable a staging
-job can read; a cloud access key stored as a secret. (The approval
-itself is DEL-38.)
+**Violation.** One environment shared by two credentials, or a reviewer
+on the plan's environment, so the plan waits on its own approval; a
+production value in a repository-wide variable a staging job can read; a
+cloud access key stored as a secret; an environment with no
+deployment-branch policy, so a pushed branch declaring `staging` gets
+staging's role; a deployer trust that names the environment and not the
+branch. (The approval itself is DEL-38.)
 
 **Severity.** high

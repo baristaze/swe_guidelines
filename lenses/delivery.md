@@ -50,10 +50,10 @@ share belongs is CON-13.)
 
 **Principle.** Cloud deployments target AWS. Services and workers run
 on the container runtime; each browser app ships from a private S3
-bucket served through CloudFront. Every environment has the same
-module graph, and everything that differs between two environments is
-a variable, the base domain included, under which `api.` is the
-gateway, `app.` the portal, and `admin.` the operator console.
+bucket served through CloudFront. Every environment root has the same
+module graph, and everything that differs between two is a variable,
+the base domain included, under which `api.` is the gateway, `app.`
+the portal, and `admin.` the operator console.
 
 **Source.** Deployment, Cloud: AWS.
 
@@ -65,7 +65,8 @@ another. A bucket and a distribution for each browser app under
 `api.`, `app.`, and `admin.` records.
 
 **Violation.** A module, resource, or wiring present only in
-production; environment-specific branches in module code instead of
+production's environment root (the bootstrap roots differ by design,
+DEL-42); environment-specific branches in module code instead of
 variables; a hostname hard-coded in a module instead of derived from
 the base domain. A browser app with no bucket and distribution in some
 environment; a public bucket or website endpoint; a bundle served from
@@ -250,7 +251,8 @@ console entry point.
 **Principle.** Dockerfiles live together under `deployment/docker/`,
 one per image, sharing an entrypoint. An image builds in two stages,
 installs one workspace package with locked dependencies, runs as a
-non-root user, and declares a healthcheck against `/healthz`.
+non-root user, and declares a healthcheck against `/healthz`, which
+the local stack reads; a task definition declares its own (DEL-44).
 
 **Source.** Monorepo Folder Structure, Layout Conventions.
 
@@ -756,16 +758,19 @@ next to it.
 
 **Look for.** The production workflow: how it obtains its images and
 bundles (a lookup by the release commit in its own account, never a
-build), the plan it writes, and the approval between the plan and the
-apply. The replication of the registry and of the kept bundles into
-production's account, and the one write production grants each; the
-`config.json` each deploy writes next to the bundle.
+build, that waits a bounded time for the copy), the plan it writes,
+and the approval between the plan and the apply. The replication of
+the registry and of the kept bundles into production's artifacts
+bucket, and the one write production grants each; the `config.json`
+each deploy writes next to the bundle.
 
 **Violation.** A production job that builds an image or a bundle; a
 task definition pinned to a tag rather than a digest; a release commit
 with no digest from staging that is deployed instead of refused; a
 production job or task that reads staging's registry or bucket, or a
-replication that may create a repository; an API origin or DSN compiled
+replication that may create a repository; a bundle kept in a state
+bucket, or replicated into one; a lookup that refuses at once while the
+copy is still in flight; an API origin or DSN compiled
 into a bundle (the approval on the plan is DEL-38).
 
 **Severity.** medium
@@ -796,9 +801,9 @@ identifier copied into metric dimensions.
 
 **Principle.** Developer dashboards live in an optional compose profile
 named `devx`, started by the developer's own commands and never by CI:
-one browser per backing service the stack runs (pgweb for Postgres, Valkey
-Admin for the cache, the consoles the local images ship, Jaeger for
-traces, GlitchTip for errors) and the metrics view, each on a host
+one browser per backing service the stack runs (pgweb for Postgres,
+Valkey Admin for the cache, the consoles the local images ship, Jaeger
+for traces, GlitchTip for errors) and the metrics view, each on a host
 port read from `.env`.
 
 **Source.** Deployment, Local: Docker Compose.
@@ -910,12 +915,12 @@ is assumed; a race that asserts both callers succeed.
 
 ## DEL-38 Staging is main, production is release, moved by a fast-forward
 
-**Principle.** The smaller environment, staging, is `main`: every merge
-deploys it with no approval. Production is the `release` branch, moved
-only by a fast-forward from `main`, never by a commit of its own; a
-push to `release` plans production, waits for a person's approval on
-that plan, and applies it, after checking that `release` is an
-ancestor of `main`.
+**Principle.** Staging is `main`: every merge deploys it with no
+approval. Production is `release`, moved only by a fast-forward to the
+last commit staging deployed successfully, and pushed by the one actor
+its ruleset admits. A push to `release` plans production, waits for a
+person's approval on that plan, and applies it, after checking that
+`release` is an ancestor of `main`.
 
 **Source.** Deployment, Cloud: AWS.
 
@@ -923,16 +928,21 @@ ancestor of `main`.
 absence of an approval on it; the production workflow's trigger (a
 push to `release`), its ancestor check before the plan, and the
 environment protection that holds the apply until a person approves;
-the `release` workflow that fast-forwards `release` to `main` on
-dispatch, and the branch protection that lets nothing else push to
-`release`.
+the `release` workflow, the commit it fast-forwards to and the key it
+pushes with, and the ruleset that lets nothing else push to
+`release`; the concurrency group on each deploy workflow; where the
+saved production plan is kept.
 
 **Violation.** A staging deploy behind an approval, or one triggered by
 anything but `main`; a commit made on `release` or a merge into it; a
 production apply with no plan approved first; a deploy of production
 that plans without checking that `release` is an ancestor of `main`;
 a person or a job that can push to `release` other than the
-fast-forward.
+fast-forward; a fast-forward to the tip of `main` rather than to the
+last successful staging deploy; a push with the workflow's own token
+that starts no production run and is not followed by a dispatch; a
+deploy workflow with no concurrency group, or one that cancels a run
+in progress; a saved plan uploaded as a workflow artifact.
 
 **Severity.** medium
 
@@ -983,10 +993,11 @@ after the exchange. (A picker in the console is DEL-16.)
 ## DEL-41 One cloud account per environment, and nothing spans two
 
 **Principle.** Every environment has a cloud account of its own, and
-the account is the boundary between environments. No root spans two
-environments: each account holds its own state, registry, trust, and
-budget. The environment tag on every resource stays as a second
-fence, for a root applied in the wrong account.
+the account is the boundary between environments. No root spans two:
+each account holds its own state, artifacts, registry, trust, and
+budget. Production trusts staging for two scoped writes, the
+replication into its registry and its artifacts bucket, and nothing
+else. The environment tag stays as a second fence.
 
 **Source.** Deployment, Cloud: AWS.
 
@@ -997,8 +1008,10 @@ principal of the other, and what it grants.
 
 **Violation.** Two environments in one account, fenced by tags alone;
 a shared root for both environments; production trusting a staging
-principal for anything but the replication writes (DEL-31), or staging
-reading production at all; a resource with no environment tag.
+principal for anything but the replication writes (DEL-31), or for
+those writes beyond their repositories and their prefix; a staging
+write into production's state bucket; staging reading production at
+all; a resource with no environment tag.
 
 **Severity.** high
 
@@ -1006,10 +1019,10 @@ reading production at all; a resource with no environment tag.
 
 **Principle.** Each environment has two roots. The bootstrap root,
 applied by the administrator, holds what the pipeline needs first: the
-state bucket, the federation trust, the deploy and investigator
-roles, the budget, the registry, the zones. The environment root holds
-the rest, applied by the pipeline. One file names each account, and
-every provider pins its own.
+state and artifacts buckets, the federation trust, the deploy and
+investigator roles, the budget, the registry, the zones. The pipeline
+applies the environment root. One file names each account, and every
+provider pins its own.
 
 **Source.** Deployment, Infrastructure as Code.
 
@@ -1042,7 +1055,70 @@ record-name condition on each deploy role's DNS writes.
 
 **Violation.** One zone both environments write into; a delegation
 added by hand in a console; a deploy role that can write the domain's
-zone, another environment's name, or any record outside its own two
-names and their validation records.
+zone, another environment's name, or any record outside its own
+public names and their validation records.
 
 **Severity.** medium
+
+## DEL-44 The target group and the task probe `/healthz`, never `/readyz`
+
+**Principle.** The load balancer's target group probes `/healthz`, and
+each task definition declares its own health check against it, since
+the runtime never reads an image's. `/readyz` is read by the deploy
+after a rollout and by an operator, never by a check that replaces a
+task, so a dependency's blip cannot replace every task at once.
+
+**Source.** Deployment, Cloud: AWS.
+
+**Look for.** The target group's health check path; the health check
+in each task definition; what reads `/readyz`.
+
+**Violation.** A target group or a task health check on `/readyz`; a
+task definition with no health check of its own, relying on the
+image's `HEALTHCHECK`; a check that replaces tasks and waits on a
+dependency.
+
+**Severity.** medium
+
+## DEL-45 The deploy migrates, as a one-off task before the rollout
+
+**Principle.** A deployed database is migrated by the deploy, never by
+a person: a one-off task on the new image, with the service's network
+and secret, inside the same apply and before the rollout that depends
+on it. Production migrates after the approval. A deployed
+environment's first operator is granted by the same kind of task.
+
+**Source.** Deployment, Migrating a Deployed Database.
+
+**Look for.** Where each environment root runs the migration, what it
+runs on and under, and what the rollout depends on; how production
+orders it against the approval; how the first allowlist entry of a
+deployed environment is made.
+
+**Violation.** A migration run by hand against a deployed database; a
+migration after the rollout, or outside the apply, so new tasks serve
+an old schema; a production migration before the approval; a first
+operator inserted by a database login from a laptop.
+
+**Severity.** medium
+
+## DEL-46 No secret value lands in state or in a plan
+
+**Principle.** No secret value is in Terraform state or a plan: a
+generated password comes from an ephemeral generator through a
+write-only attribute, or the database service manages it, and a
+secret's value is written write-only. A reader of state or of a plan,
+the investigator included, then sees no secret.
+
+**Source.** Deployment, Infrastructure as Code.
+
+**Look for.** Every generated password and how it reaches the database;
+every secret version and how its value is written; every output that
+builds a connection string; what a plan of each root prints.
+
+**Violation.** A secret value in state or in a plan: a generated
+password as a plain resource attribute, a secret written through a
+readable value, a connection URL with its password computed as an
+output or a module input.
+
+**Severity.** high

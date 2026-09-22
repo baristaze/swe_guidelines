@@ -165,8 +165,8 @@ for it.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides defaults, sequences and identities on the
-`id` column and writes that return a `UUID`; the rest is judged.
+**Check.** `arch-check` decides defaults, sequences and identities on
+the `id` column and writes that return a `UUID`; the rest is judged.
 
 ## STO-07 Defaults live in the object model
 
@@ -637,14 +637,17 @@ Migrations.
 
 **Look for.** Every value object dumped into a JSON column and the
 history of its fields; for an added field, the release that began
-writing it and whether the release before it could read it; for a
+writing it and whether the release before it could read it, and
+whether the release that only reads it names it in its dump's
+`exclude`; for a
 field renamed or removed, the migration that rewrote the stored rows;
 whether the value object keeps `extra="forbid"`.
 
 **Violation.** A field of a stored value object renamed or removed
 with no migration of the column, so rows written before the change
-fail to read; a field added and written in one release, so the
-release beside it fails to read the rows it writes; a value object
+fail to read; a field added and written in one release, or added and
+dumped as `null` with no exclusion, so the release beside it fails to
+read the rows it writes; a value object
 relaxed to `extra="ignore"` to make old rows load; a new field
 without a default.
 

@@ -42,7 +42,7 @@ that.
 
 Everything this skill checks against comes from
 `deployment/cloud/environments.json`: the environment's `account_id`,
-its `admin_profile`, its `sso_profile`, the region, and its two public
+its `admin_profile`, its `sso_profile`, the region, and its public
 names. Read them first:
 
 ```bash
@@ -86,7 +86,8 @@ never a value.
 3. Narrate each step as the script reaches it, in one line each, so
    the person can stop it between two:
    - The bootstrap root, applied with local state and then moved into
-     the state bucket it made: the registry, the OIDC trust, the deploy
+     the state bucket it made: the artifacts bucket, the registry, the
+     OIDC trust, the deploy
      roles (staging's one, production's plan and apply), the investigate
      role `acme-investigate-<env>` with its fences, the permission
      boundary, the budget and the anomaly monitor, and one hosted zone
@@ -99,8 +100,9 @@ never a value.
      `<sso_profile>`. No key is minted anywhere.
    - The GitHub environments (staging's `staging`; production's
      `production-plan` with no reviewer and `production` with the
-     required reviewer) and each one's variables from the root's
-     outputs, under the same names in each.
+     required reviewer), each with its deployment-branch policy
+     (staging's `main`, production's `release`), and each one's
+     variables from the root's outputs, under the same names in each.
    - The first deploy, through the pipeline: the script pushes nothing
      and applies no environment root itself. For staging it dispatches
      the deploy workflow. For production it names the next steps of

@@ -54,14 +54,21 @@ is read; this skill touches no application credential.
      modules; what differs is a variable in that environment's
      `terraform.tfvars`, never a resource that exists in one root and
      not the other.
+   - No secret value in state or in a plan. A generated password
+     comes from an ephemeral generator through a write-only
+     attribute, or the database service manages it; a secret's value
+     is written write-only. The plan this skill pastes then shows no
+     secret.
    - Variables, not clicks. A resource a person made in the console
      is imported or recreated here; nothing is left untracked.
    - The autoscaling switch. `autoscaling_enabled` at the root,
      default `false`; every service passes `{ max, target_cpu }` with
      `enabled = true`, so the root switch is the one flip.
    - The destroyable switch. `destroyable` at the root, default
-     `false`: buckets `force_destroy` and the database
-     `skip_final_snapshot`, under the one variable. The database's
+     `false`: buckets `force_destroy`, and outside production the
+     database `skip_final_snapshot`, under the one variable.
+     Production's database always leaves a final snapshot and keeps
+     its automated backups. The database's
      deletion protection is a variable of its own,
      `database_deletion_protection`, `true` in production, so only a
      merged change turns it off.
@@ -69,7 +76,7 @@ is read; this skill touches no application credential.
      `monthly_budget_usd`, the four notifications, the anomaly
      monitor, to `owner_email`. A change there is the
      administrator's run, never the pipeline's.
-   - The alarm topic `acme-<env>-alarms` and the six alarms, the
+   - The alarm topic `acme-<env>-alarms` and the default alarm set, the
      dashboard `acme-<env>`, the log retention on every group, and
      `default_tags` with `environment` on the provider.
 2. Write the change in the module that owns the resource, then wire
