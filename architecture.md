@@ -4884,7 +4884,10 @@ allowlist.
 
 The same job mints the operator tokens of the two identities no person
 signs in as: the provisioner's, for a traffic run, and the smoke
-identity's, for the smoke test (see [The Gateway](#the-gateway)).
+identity's, for the smoke test (see [The Gateway](#the-gateway)). It
+writes each into the secret store, as
+`<root-slug>-<env>-provisioner-token` and
+`<root-slug>-<env>-smoke-token`, and never prints one.
 Until the grant has run, nothing holds an operator credential for that
 environment: the create run writes the operator's file with its token
 line empty.
