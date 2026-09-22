@@ -5265,8 +5265,11 @@ The credentials an operator holds are of two kinds, and both are
 first-class. The cloud profiles live in the cloud tool's own
 configuration, one per role per environment. Everything else an
 operator reaches lives in one owner-only file per environment outside
-the repository: the error tracker's token, and the operator token,
-`<ROOT>_OPERATOR_TOKEN`, with `<ROOT>` the product's settings prefix.
+the repository: the error tracker's token and two operator tokens,
+with `<ROOT>` the product's settings prefix. `<ROOT>_OPERATOR_TOKEN`
+is a `read` token, for the investigator and the supporter.
+`<ROOT>_PROVISIONER_TOKEN` is the provisioner's `write` token, for the
+traffic generator.
 The file never holds an operator's password or TOTP secret, since
 agents do not sign in with them (see [The Gateway](#the-gateway)). The
 file also names the environment's base URL, which is no secret: the
