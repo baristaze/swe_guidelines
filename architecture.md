@@ -916,8 +916,8 @@ identity stage is established from the sign-in credential or from a
 live session, as the session's own identity. A revoked or expired
 session is refused. That is what lets a signed-in app list its
 memberships and switch tenants with the one bearer it holds. The
-operator plane is narrower, and admits only the sign-in (see [The
-Gateway](#the-gateway)).
+operator plane is narrower. It admits only the sign-in, or the operator
+token an agent presents (see [The Gateway](#the-gateway)).
 
 Switching tenants is a second exchange. The app presents its session
 and the new org, and gets a new session. An exchange presented with a
@@ -3042,10 +3042,10 @@ refused, like a worker whose lease has passed, and whatever it wrote is
 the row the retry found.
 
 The operator plane has its own gate. It authenticates the bearer into
-the identity stage, and that stage admits only the person's own
-sign-in. It never admits an API key. It never admits a session either.
-That holds whether the person exchanged the session or an invitation
-someone else issued minted it.
+the identity stage, and that stage admits only two credentials: the
+person's own sign-in, and an operator token. It never admits an API
+key. It never admits a session either. That holds whether the person
+exchanged the session or an invitation someone else issued minted it.
 
 An operator's sign-in is admitted only with a second factor: a TOTP
 code (RFC 6238) from an authenticator enrolled for that operator
@@ -3055,13 +3055,32 @@ before admission, and refuses a sign-in that carries none. A tenant's
 sign-in does not require a second factor. The operator plane reads
 across tenants, so a password alone never admits to it.
 
-An operator enrols a TOTP secret once: one call mints it, and a
-first code confirms it. The secret is enrolled once it is confirmed.
-It is stored encrypted, under a key from the secret store (see
+An operator enrols a TOTP secret once: one call mints it, and a first
+code confirms it. The secret is enrolled once it is confirmed. It is
+stored encrypted, under a key from the secret store (see
 [Secrets](#secrets)). Until it is confirmed, the gate admits the
 sign-in with `OperatorPermission.ENROL` alone, and the two enrolment
-calls are all that permission reaches. A code
-that was already used is refused, even inside its time step.
+calls are all that permission reaches. A code that was already used is
+refused, even inside its time step.
+
+An agent or a pipeline never signs in to the operator plane with a
+password. The traffic generator, the deployed smoke test, and a
+supporter's agent present an **operator token** instead:
+
+-   It is minted by an operator signed in with the second factor, or
+    by the grant job for the provisioner and the smoke identity (see
+    [Migrating a Deployed Database](#migrating-a-deployed-database)).
+-   It names one identity on the allowlist and carries one operator
+    permission that the identity's entry grants.
+-   It expires within one hour.
+-   It is stored as its digest and shown once, like every credential
+    the tenancy namespace issues.
+
+`admit_operator` admits an operator token as the one named exception
+to "a password alone never admits". It is not a password, and a second
+factor or an approved pipeline job stood behind its minting. The
+`OperatorContext` it produces carries the token's one permission. A
+person still signs in with a password and a TOTP code.
 
 The gate then asks the tenancy manager to admit that identity as an
 operator. That produces an `OperatorContext` when the identity is on
@@ -4717,9 +4736,14 @@ environment's branch and run under the deployer, never an
 administrator step, so production's grant waits behind the same
 approval as its apply. The same job grants every later entry and
 disables one, so no identity on the operator plane widens the
-allowlist. Until the grant has run, nothing holds an operator
-password for that environment: the create run writes the operator's
-file with those lines empty.
+allowlist.
+
+The same job mints the operator tokens of the two identities no person
+signs in as: the provisioner's, for a traffic run, and the smoke
+identity's, for the smoke test (see [The Gateway](#the-gateway)).
+Until the grant has run, nothing holds an operator credential for that
+environment: the create run writes the operator's file with its token
+line empty.
 
 > **Principle:** The deploy migrates, as a one-off task on the new
 > image before the rollout, inside the apply. The first operator is
@@ -5002,8 +5026,11 @@ named tenant's rows through the platform's own operator plane (see
 [The Operator Context](#the-operator-context)). The tenant is a
 parameter of every read. The credential that reads it is an identity
 on the operator allowlist whose entry grants read and nothing more
-(see [The Operator Context](#the-operator-context)). Its cloud role is
-the investigator's, unchanged.
+(see [The Operator Context](#the-operator-context)). The supporter's
+agent presents an operator token with that read, which the supporter
+minted after signing in with the second factor (see [The
+Gateway](#the-gateway)). Its cloud role is the investigator's,
+unchanged.
 
 No operator role a person or an agent holds writes to the cloud, except
 the administrator's two steps. The widening a smaller environment may
@@ -5050,8 +5077,9 @@ saying so, when the person's session behind it has ended.
 A person signs in to the identity center with a second factor. An
 operator of the plane does too, checked at the operator gate (see [The
 Gateway](#the-gateway)). The operator plane reads across tenants, so a
-password alone never admits to it. An operator's token is short-lived,
-and every tenant it reads is recorded.
+password alone never admits to it. An agent presents an operator
+token, which expires within an hour, and every tenant it reads is
+recorded.
 
 > **Principle:** Administrator, deployer, investigator, supporter.
 > A person or an agent holds a read-only role; the pipeline holds the
@@ -5083,11 +5111,14 @@ cloud tools, so a script clears them before it runs anything.
 The credentials an operator holds are of two kinds, and both are
 first-class. The cloud profiles live in the cloud tool's own
 configuration, one per role per environment. Everything else an
-operator reaches, the error tracker's token and the operator plane's
-identity, lives in one owner-only file per environment outside the
-repository. The file also names the environment's base URL, which is
-no secret: the environments' file names the same public names. A skill
-reads the file for the environment it was given.
+operator reaches lives in one owner-only file per environment outside
+the repository: the error tracker's token, and the operator token,
+`<ROOT>_OPERATOR_TOKEN`, with `<ROOT>` the product's settings prefix.
+The file never holds an operator's password or TOTP secret, since
+agents do not sign in with them (see [The Gateway](#the-gateway)). The
+file also names the environment's base URL, which is no secret: the
+environments' file names the same public names. A skill reads the file
+for the environment it was given.
 
 The platform's own secrets are the ones [Secrets](#secrets) describes,
 held in the secret store and resolved at the point of use. An
@@ -5123,7 +5154,8 @@ they read the product's own documents for what is specific to it.
 
 The provisioner is the traffic generator's identity on the operator
 plane, whose entry writes (see [Traffic and
-Stress](#traffic-and-stress)); it holds no cloud role. A run that reads
+Stress](#traffic-and-stress)); it presents an operator token and holds
+no cloud role. A run that reads
 signals back holds the investigator for the reads.
 
 Every skill takes the environment it acts on, and `local` is one of
@@ -5330,12 +5362,15 @@ and stress.
 It runs against any environment, the local stack included, through
 the operator plane for the tenants it needs and through the public
 routes for everything else. It creates those tenants under an operator
-identity of its own, whose allowlist entry writes. Only the generator
-uses that identity, and the tenants it creates are named for the run,
-so no real tenant is touched. The run removes them when it ends, and
-the size an agent reads before it escalates leaves them out. In
-production the identity is disabled until a run needs it, and
-disabled again after, so no standing writing credential waits there.
+identity of its own, the provisioner, whose allowlist entry writes.
+The generator presents an operator token for it, never a password (see
+[The Gateway](#the-gateway)). Only the generator uses that identity,
+and the tenants it creates are named for the run, so no real tenant is
+touched. The run removes them when it ends. The count of tenants,
+users, and traffic an agent reads before it escalates an alarm (see
+[Operational Skills](#operational-skills)) leaves them out. In
+production the identity is disabled until a run needs it, and disabled
+again after, so no standing writing credential waits there.
 It reports what an operator reads: requests by route and status, the
 p50, p95, and p99, and the error ratio.
 
@@ -5381,10 +5416,11 @@ nothing staged. The readers hold the investigator's profile, the one
 credential that reads every signal, when a person runs it after a
 create run. On a routine deploy the pipeline runs it as a job after
 the rollout, under a read grant of its own that reads the signals and
-writes nothing. And a session that signs in does
-so as an identity named for the smoke test, in a tenant named for it,
-which the operator plane created the way it creates the traffic
-generator's.
+writes nothing. And its session runs in a tenant named for the smoke
+test, which the operator plane created the way it creates the traffic
+generator's. The test reaches the operator plane with the smoke
+identity's operator token, which the grant job minted, never with a
+password.
 
 > **Principle:** One test drives real traffic and reads every signal
 > back by request id, through one reader interface with a local and a
