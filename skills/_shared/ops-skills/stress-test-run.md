@@ -107,7 +107,8 @@ identity-center sign-in.
    The worker outcomes are `sum by (subsystem, outcome)
    (increase(acme_outcomes_total[<window>]))`, and the queue's age is
    `max_over_time(acme_queue_oldest_age_seconds[<window>])`, the
-   gauge the worker's sweep sets. Locally the log leg needs `--log-file`, and an empty trace
+   gauge the worker's sweep sets, absent from a tree built with
+   `--no-worker`. Locally the log leg needs `--log-file`, and an empty trace
    store means the process ran with no `ACME_OTEL_ENDPOINT`: report
    the leg as not read, and do not fail the run on it.
 

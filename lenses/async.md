@@ -577,29 +577,32 @@ so an outage of the cache halts every worker.
 id, so a retried enqueue never resets a claim, and a duplicate
 `idempotency_key` is reported, never a driver error. The manager's
 copy stamps actor, status, and attempts, clears every claim field, and
-keeps the id and the timestamps. Enqueue then publishes the wake-up;
-claim stamps claim and lease together.
+keeps the id and the timestamps. Enqueue then publishes the wake-up
+when its insert won, and a worker polls besides, so a dropped wake
+costs one poll interval; claim stamps claim and lease together.
 
 **Source.** Worker Roles, The Work Queue.
 
 **Look for.** The enqueue path: the insert primitive it uses, what the
-manager's copy overwrites, and the order of write and publish; its two
-callers, the outbox relay for a work item that follows a core write,
-which presents the row's id as the item's `idempotency_key`, and a
-holder of a context for one that follows none; the claim,
-complete, defer, requeue, and fail methods and what each does to
-`attempts`.
+manager's copy overwrites, the order of write and publish, and the
+worker's poll interval; its two callers, the outbox relay for a work
+item that follows a core write, which presents the row's id as the
+item's `idempotency_key`, and a holder of a context for one that
+follows none; the claim, complete, defer, requeue, and fail methods and
+what each does to `attempts`.
 
 **Violation.** An enqueue that upserts, so a retry resets a claim or
 announces twice; a read-back by id after a collision on the key, which
 finds nothing and answers `Conflict`; a caller-supplied status, attempt
 count, or claim field written as sent, or a timestamp the copy resets; a
-publish before the row exists; a manager that enqueues in a second
-statement after its own core write instead of riding the second outbox
-row of that write (STO-20); a relayed enqueue whose key changes between
-runs, so a second relay lands a second item; a failed attempt requeued
-with no delay; an item that fails its last attempt with no audit entry
-and no metric (the hand-back that spends no attempt is ASY-26).
+publish before the row exists; a worker that claims only on the
+wake-up, so a dropped wake strands an item; a manager that enqueues in
+a second statement after its own core write instead of riding the
+second outbox row of that write (STO-20); a relayed enqueue whose key
+changes between runs, so a second relay lands a second item; a failed
+attempt requeued with no delay; an item that fails its last attempt
+with no audit entry and no metric (the hand-back that spends no attempt
+is ASY-26).
 
 **Severity.** high
 

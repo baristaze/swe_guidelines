@@ -82,22 +82,23 @@ stage module and its id fields; the rest is judged.
 ## CTX-03 Permissions derive from role; a credential never outranks its issuer
 
 **Principle.** Permissions derive from role through one table in the
-tenancy namespace. A credential never carries a role above its
-issuer's, where above means the permission set: a role is at most
-another when its permissions are a subset of the other's, and a rank
-used for comparison is derived from the table or held to it by a unit
-test.
+tenancy namespace's rules module, `rules.py`. A credential never
+carries a role above its issuer's, where above means the permission
+set: a role is at most another when its permissions are a subset of the
+other's, and a rank used for comparison is derived from the table or
+held to it by a unit test.
 
 **Source.** OpContext.
 
-**Look for.** The role-to-permission table, credential issuing paths
-(API keys, invitations, session tokens), the comparison each issuing
-path makes and the test that holds a rank to the table, and any code
-that assigns permissions.
+**Look for.** The role-to-permission table and the module it lives in,
+credential issuing paths (API keys, invitations, session tokens), the
+comparison each issuing path makes and the test that holds a rank to
+the table, and any code that assigns permissions.
 
 **Violation.** Permissions stored per user or per credential
-independently of role; a second mapping elsewhere; an issuing path that
-does not cap the new credential's role at the issuer's; a rank declared
+independently of role; a second mapping elsewhere; the table declared
+outside the rules module, beside the types; an issuing path that does
+not cap the new credential's role at the issuer's; a rank declared
 apart from the permission table with no test tying the two.
 
 **Severity.** high

@@ -115,12 +115,17 @@ leave `maintenance` out of every command below.
    - running processes: the `up` targets again, one per process
    - the database's CPU and free storage: no local exporter; report
      them as not read
-   - the queue, in a system with a worker, from the gauges its sweep
-     sets: `max(acme_queue_oldest_age_seconds)` (the oldest waiting
-     item), `max(acme_work_failed)` (failed work),
-     `max(acme_records_parked)` (parked records), and
-     `max(acme_outbox_lag_seconds)` (the outbox's lag), each against
-     the threshold its cloud alarm declares
+   - the outbox's lag, `max(acme_outbox_lag_seconds)`, from the gauge
+     the sweep sets in every tree, against the threshold its cloud
+     alarm declares
+   - the queue, from the gauges the worker's sweep sets, each against
+     the threshold its cloud alarm declares:
+     `max(acme_queue_oldest_age_seconds)` (the oldest waiting item),
+     `max(acme_work_failed)` (failed work), and
+     `max(acme_records_parked)` (parked records). The three exist only
+     where there is a worker. A tree built with `--no-worker` has no
+     queue: report them as absent, and never read their silence as a
+     signal
    With `--alarm <name>`, start here and apply the first responder
    rule of step 10 before reading anything else.
 4. Request rate, error ratio, p95, by route. Cloud, one query per

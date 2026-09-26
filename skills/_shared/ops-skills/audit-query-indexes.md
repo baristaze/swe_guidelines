@@ -24,7 +24,7 @@ commit that has `ops/audit/`. Every command runs from the repository root.
 
 ## Role and credential
 
-Investigator, local only. The skill runs on the local stack (`make
+None, local only. The skill runs on the local stack (`make
 infra-up`, with `make migrate` run once), in a database it makes, seeds,
 and drops. It holds no cloud credential and reads no environment.
 
