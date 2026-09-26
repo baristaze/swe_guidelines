@@ -612,13 +612,15 @@ head run in CI's integration job.
 
 **Look for.** A migration file that changed after the commit that
 added it, per `git log --follow`. A migration that drops or renames a
-column the release before it still reads. The integration job running
+column the release before it still reads, or still maps (a deferred
+column is still written by every insert). The integration job running
 the metadata-vs-schema check per role and the downgrade-then-upgrade
 of the head.
 
 **Violation.** An applied `.up.sql` is modified rather than followed
 by a new migration. A column dropped or renamed in the same release
-that stops reading it, so a rollout that runs both versions breaks.
+that stops reading it, or while the release before it still maps it,
+so a rollout that runs both versions breaks.
 The check step or the roundtrip is missing from the integration job.
 
 **Severity.** medium

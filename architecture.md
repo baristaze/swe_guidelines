@@ -2291,7 +2291,11 @@ names no role migrates every role, never a subset.
 
 A migration is compatible with the release before it, because a rollout
 runs both at once. Add and backfill in one release, switch the code,
-drop in a later one: expand and contract. A field added to a stored
+drop in a later one: expand and contract. Switching the code means the
+release before the drop no longer maps the column at all. Keeping it
+out of reads is not enough: the ORM names every mapped column in each
+insert, so a column that is only deferred is still written, and the
+drop breaks that release while it serves. A field added to a stored
 JSON shape is staged the same way, one release apart, because the shape
 forbids what it does not know (see [Translation](#translation)).
 
