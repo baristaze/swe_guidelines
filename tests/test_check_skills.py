@@ -533,5 +533,5 @@ def test_the_work_row_rule_is_said_in_the_text_the_lens_and_both_scaffolds(repo,
     assert skills.main() == 1
     assert (
         "skills/arch-scaffold-new/references/object-model.md: does not say 'a work row is done once its item is queued'; "
-        "the text, STO-20, and the relay's two scaffolds each do" in capsys.readouterr().out
+        "the text, STO-20, and the relay's two scaffolds must each say it" in capsys.readouterr().out
     )

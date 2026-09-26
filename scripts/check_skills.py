@@ -423,7 +423,9 @@ def check_work_row(errors: list[str]) -> None:
         path = ROOT / rel
         said = " ".join(path.read_text(encoding="utf-8").split()).lower() if path.exists() else ""
         if WORK_ROW_DONE not in said:
-            errors.append(f"{rel}: does not say {WORK_ROW_DONE!r}; the text, STO-20, and the relay's two scaffolds each do")
+            errors.append(
+                f"{rel}: does not say {WORK_ROW_DONE!r}; the text, STO-20, and the relay's two scaffolds must each say it"
+            )
 
 
 def main(argv: Sequence[str] = ()) -> int:
