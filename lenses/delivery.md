@@ -330,12 +330,13 @@ components.
 
 **Look for.** `src/queries/` and the key factory; store modules;
 realtime handlers and what they write to; server data held in stores
-or component state.
+or component state; what a hint and a successful write cost in reads.
 
 **Violation.** Server data copied into a store and kept in sync by
 hand; query keys spelled inline in several places; a realtime handler
 that sets component state or calls a component callback; a third state
-library.
+library; a router that invalidates whole collections on every hint, or
+a mutation that re-reads collections its own answer already covers.
 
 **Severity.** medium
 

@@ -4420,6 +4420,15 @@ an invalidation or a direct cache write in TanStack Query, so the UI
 reacts as it would to a fresh fetch. A purely UI-side push, a transient
 banner or a connection state, becomes a store entry.
 
+The default is the cache write, because a change costs one entity and
+not one collection per open tab. A write puts its own answer into the
+cache, and does not re-read the collections that answer covers. A hint
+reads the one entity its `target_id` names, through the authorized
+read, and places it; a read that finds nothing removes it. A collection
+is read again only where placement cannot decide: at the edge of a
+loaded page, or when a burst names more entities than single reads are
+worth. A read that answers late never overwrites a newer version.
+
 The envelope router dispatches into these handlers, never directly into
 components.
 
@@ -4488,7 +4497,9 @@ old session ends in the same write.
 
 Before the new session is used, the app drops every cache and store
 entry of the old tenant, and reopens its realtime socket. The socket
-was bounded by the session that ended anyway.
+was bounded by the session that ended anyway. Every screen then starts
+again in the new tenant: dropping a cache does not make a mounted
+screen read, so the signed-in tree is mounted afresh per tenant.
 
 The bearer rules of [API Access](#api-access) do not change.
 
