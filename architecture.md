@@ -5086,7 +5086,10 @@ by a named choice.
     require one.
 -   **The branch that deploys.** `main` is protected: a merge needs a
     review and every required check, run on the merge with the current
-    `main`, and the files under `deployment/`
+    `main`. The scaffold sets the rule that a branch is up to date with
+    `main` before it merges, because every repository can set it. A merge
+    queue does the same with less waiting, but only an organization's
+    repository can turn it on. The files under `deployment/`
     and `.github/` carry code owners, since a merge to `main` is a
     staging deploy under a role that writes infrastructure. `release`
     has a ruleset of its own: no push, no force push, no deletion, and
