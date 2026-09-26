@@ -274,7 +274,8 @@ the product's own documents. Every skill states its role, the
 credential check, what it reads, what it never does, and the shape of
 its report. Two audits are optional, `audit-credential-lifetimes` and
 `audit-provider-calls`: a tree may leave them out. An audit of calls
-removes, folds, and defers a call before it runs calls in parallel.
+removes, folds, defers, and caches a call before it runs calls in
+parallel.
 
 **Source.** Operations, Operational Skills.
 
@@ -289,13 +290,14 @@ reads what is specific to the product; for an audit, the database it
 builds and drops, the report it writes, and the order of its fixes.
 
 **Violation.** A repeating task with no skill, or a listed skill
-missing from the tree; a skill that names no role or no credential
-check; a skill that says what it does and not what it never does; a
-skill with the product's specifics written into the template instead
-of read from the product's documents; an audit that writes to a shared
-database or an environment, or one that fixes what it finds; an audit
-of calls that proposes parallel calls before removing, folding, or
-deferring them.
+missing from the tree; a skill that names no role, a role other than
+the one the guideline's table gives it, or no credential check; a skill
+that says what it does and not what it never does; a skill with the
+product's specifics written into the template instead of read from the
+product's documents; an audit that writes to a shared database or an
+environment, or one that fixes what it finds; an audit of calls that
+proposes parallel calls before removing, folding, deferring, or caching
+them.
 
 **Severity.** medium
 

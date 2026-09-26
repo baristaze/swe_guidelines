@@ -367,16 +367,18 @@ judged.
 ## OM-15 Business rules are pure functions in one module
 
 **Principle.** The pure part of a namespace's logic (pricing, window
-arithmetic, eligibility, aggregation rules) lives in a module of plain
-functions that read no storage, consult no clock, and open no
-settings. Storage impls and manager impls call them; a rule the engine
-must evaluate inside a statement is spelled there once more (OM-18).
+arithmetic, eligibility, aggregation rules, a table a decision reads)
+lives in a module of plain functions that read no storage, consult no
+clock, and open no settings. Storage impls and manager impls call them;
+a rule the engine must evaluate inside a statement is spelled there
+once more (OM-18).
 
 **Source.** Namespaces as Swimlanes, Pure Rules.
 
 **Look for.** Arithmetic and eligibility logic inside manager or
-storage impls; the same rule implemented twice for two storage
-backends; a rules module that imports storage, settings, or a clock.
+storage impls; a table a decision reads declared beside the types; the
+same rule implemented twice for two storage backends; a rules module
+that imports storage, settings, or a clock.
 
 **Violation.** A relational impl aggregating in SQL and an in-memory
 impl aggregating with different arithmetic; a rules function calling

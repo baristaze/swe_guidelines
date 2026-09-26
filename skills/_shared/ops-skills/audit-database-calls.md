@@ -24,7 +24,7 @@ audit another commit, run it from a checkout of that commit that has
 
 ## Role and credential
 
-Investigator, local only. The skill runs on the local stack (`make
+None, local only. The skill runs on the local stack (`make
 infra-up`, with `make migrate` run once), in a database it makes and
 drops, with the provider twins in place of the providers. It holds no
 cloud credential and reads no environment.
@@ -70,10 +70,11 @@ cloud credential and reads no environment.
    transaction, every run of transactions on one role that one would
    serve.
 
-   Rank each fix: remove the call, fold it into another, or defer it off
-   the request path, before running reads in parallel. Concurrent reads
-   on a bounded pool hold more connections at once, and can make the
-   tail worse for every other request.
+   Rank each fix in this order, and propose the first that applies:
+   remove the call; fold it into another; defer it off the request path;
+   cache its answer; and only then run reads in parallel. Concurrent
+   reads on a bounded pool hold more connections at once, and can make
+   the tail worse for every other request.
 5. Drop the run's database, whatever happened before:
 
    ```bash

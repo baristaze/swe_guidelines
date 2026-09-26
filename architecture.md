@@ -493,8 +493,8 @@ off the root.
 
 A namespace that carries real business logic keeps the pure part of it
 in one module of plain functions, next to the interface. Pricing,
-window arithmetic, eligibility checks, aggregation rules: all of it
-goes there.
+window arithmetic, eligibility checks, aggregation rules, a table a
+decision reads: all of it goes there.
 
 These functions take values and return values. They read no storage,
 consult no clock, and open no settings. That buys two things. They are
@@ -790,10 +790,12 @@ class OpContext(RequestContext):
     def in_team(self, team_id: UUID) -> bool: ...
 ```
 
-Permissions are a pure function of role. One table in the tenancy
-namespace declares that function. The operator plane has a table of
-its own: an allowlist entry's role grants `OperatorPermission.READ`,
-or read and `OperatorPermission.WRITE`.
+Permissions are a pure function of role. One table declares that
+function, in the tenancy namespace's rules module, `rules.py`. A table
+a decision reads is a rule like any other (see [Pure
+Rules](#pure-rules)). The operator plane has a table of its own: an
+allowlist entry's role grants `OperatorPermission.READ`, or read and
+`OperatorPermission.WRITE`.
 
 A credential never carries a role above its issuer's. Above means the
 permission set: a role is at most another when its permissions are a
@@ -2043,12 +2045,19 @@ Rules that make the move safe:
     the row's key, so relaying twice is harmless (the transactional
     outbox pattern).
 
-    The relay marks a row done only when its side effect happened: the
-    destination row written and the publish taken by the bus, which
-    `publish()` answers (see [Topics](#topics)). A publish the bus
-    dropped leaves the row pending, and the sweep relays it again. One
-    rule holds for every kind of row that publishes, an entity change
-    and a request for work alike.
+    The relay marks a row done only when its side effect happened. For
+    an entity change, that is the event appended and the publish taken
+    by the bus, which `publish()` answers (see [Topics](#topics)). A
+    publish the bus dropped leaves the row pending, and the sweep
+    relays it again, so the push a subscriber waits for goes out.
+
+    A work row is done once its item is queued. The item is the side
+    effect of a `work.<kind>` row. Its `WORK_AVAILABLE` publish is a
+    wake-up, a hint and nothing more: a worker also polls the queue,
+    so a dropped wake delays the item by one poll interval at most (see
+    [The Work Queue](#the-work-queue)). Keeping the row pending would
+    buy nothing. The enqueue a rerun makes finds the item by its key
+    and publishes nothing, so no wake would come back.
 -   The topic bus (see [Topics](#topics)), when it is backed by the
     database, connects to the queue role. The processes that enqueue
     work and the workers they wake must share it.
@@ -2715,7 +2724,8 @@ technology through the interface.
 did not. That is no broker id, so nothing leaks. It lets a caller that
 publishes on behalf of a side effect keep that effect pending when the
 bus refused it (see [Database Roles](#database-roles)). A caller that
-publishes a mere hint ignores the answer.
+publishes a mere hint ignores the answer, as an enqueue does with its
+`WORK_AVAILABLE` wake-up.
 
 > **Python tip:** a database-backed bus caps the payload size (about
 > 8 KB on Postgres). The impl trims what would not fit and marks it
@@ -4056,7 +4066,15 @@ The manager's copy stamps the actor, the status, and the attempts. It
 clears every claim field. It leaves the id and the timestamps as
 constructed, whatever the caller sent.
 
-Enqueue then publishes `WORK_AVAILABLE` on the topic bus.
+Enqueue then publishes `WORK_AVAILABLE` on the topic bus, when its
+insert won. An enqueue that meets its row already there publishes
+nothing: the item was announced when it landed.
+
+That publish is a wake-up and nothing more (see [Topics](#topics)).
+A worker also polls the queue on an interval from its settings. So a
+wake the bus dropped delays an item by one poll interval at most, and
+never loses it. That is why the relay marks a work row done once its
+item is queued (see [Database Roles](#database-roles)).
 
 Payload shapes are fixed per `WorkKind` by a payload map,
 `WORK_PAYLOADS`, the way `TOPIC_PAYLOADS` fixes them per topic. The row
@@ -5457,6 +5475,10 @@ plane, whose entry writes (see [Traffic and
 Stress](#traffic-and-stress)); it presents an operator token and holds
 no cloud role. A run that reads
 signals back holds the investigator for the reads.
+
+A skill whose role is `none` holds no operator credential at all. An
+audit that runs on the local stack alone is one. The database it reads
+is a database of its own, and the investigator reads no database row.
 
 Every skill takes the environment it acts on, and `local` is one of
 them for every skill but the administrator's two and the deploy audit,

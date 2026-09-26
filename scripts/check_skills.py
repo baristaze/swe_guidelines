@@ -65,6 +65,18 @@ Rules:
   reference file no step names is an orphan: nothing opens it, so it is an
   error. A `${CLAUDE_SKILL_DIR}/...` reference inside a reference file
   resolves from the skill's folder, the same way the body's does;
+- every audit template (`audit-*`) agrees with Operations (Operational
+  Skills) of architecture.md: the first words of its `## Role and
+  credential` section, up to a comma or a period, are the role the
+  section's table gives it, every audit in the table has a template, and
+  every paragraph or list item of the template or the section that names
+  parallel calls ranks remove, fold, defer, cache, and parallel, first
+  named in that order. An adopter copies the template, so a template that
+  disagrees with the text puts the disagreement in every tree;
+- when the guideline has work rows (`work.<kind>`), the text, STO-20, and
+  the two scaffolds that write the outbox relay each say "a work row is
+  done once its item is queued", in those words, so the rule cannot
+  change in one of them alone;
 - a skill body stays under `BODY_WORDS` words. The body is loaded in full
   every time the skill runs, so its length is a cost paid per run, and the
   fix a failure names is the split: move the long per-step material into the
@@ -299,6 +311,123 @@ def check_template(path: Path, errors: list[str]) -> None:
                 errors.append(f"{rel}: {tool!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)")
 
 
+GUIDELINE = ROOT / "architecture.md"
+OPS_SECTION = "Operational Skills"
+OPS_ROW = re.compile(r"^\|\s*`([a-z0-9-]+)`\s*\|\s*([^|]*?)\s*\|")
+ROLE_SECTION = "Role and credential"
+ANY_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+FIX_ORDER = ("remove", "fold", "defer", "cache", "parallel")
+"""The order in which an audit of calls ranks its fixes, as Operations (Operational Skills) states it."""
+WORK_ROW_DONE = "a work row is done once its item is queued"
+"""The relay's rule for a `work.<kind>` outbox row, as The Storage Layer (Database Roles) states it."""
+WORK_ROW_DONE_IN = (
+    "architecture.md",
+    "lenses/storage.md",
+    "skills/arch-scaffold-worker/SKILL.md",
+    "skills/arch-scaffold-new/references/object-model.md",
+)
+"""The text, STO-20, and the two scaffolds that write the relay: each states the rule in the same words."""
+
+
+def section(text: str, title: str) -> str | None:
+    """The text under the heading `title`, to the next heading of its level or higher; None when there is none."""
+    lines = text.split("\n")
+    start: int | None = None
+    level = 0
+    for i, (line, code) in enumerate(zip(lines, fenced_lines(text), strict=True)):
+        m = None if code else ANY_HEADING.match(line)
+        if not m:
+            continue
+        if start is None:
+            if m.group(2) == title:
+                start, level = i + 1, len(m.group(1))
+        elif len(m.group(1)) <= level:
+            return "\n".join(lines[start:i])
+    return None if start is None else "\n".join(lines[start:])
+
+
+LIST_ITEM = re.compile(r"^\s*(?:\d+\.|[-*])\s")
+
+
+def blocks(text: str) -> list[str]:
+    """The paragraphs and list items of a text, in order, each on one line with its whitespace collapsed.
+
+    A blank line ends a block and a list marker starts one, so a numbered step
+    is a block of its own even when no blank line sets it apart."""
+    found: list[list[str]] = [[]]
+    for line in text.split("\n"):
+        if not line.strip() or LIST_ITEM.match(line):
+            found.append([])
+        if line.strip():
+            found[-1].append(line)
+    return [" ".join(" ".join(b).split()) for b in found if b]
+
+
+def ranks_in_order(block: str) -> bool:
+    """Whether a block names every step of FIX_ORDER, each first named after the one before it."""
+    found = [re.search(rf"\b{word}", block, re.IGNORECASE) for word in FIX_ORDER]
+    starts = [m.start() for m in found if m]
+    return len(starts) == len(FIX_ORDER) and starts == sorted(starts)
+
+
+def misranked(text: str) -> bool:
+    """Whether a block of the text names parallel calls without ranking FIX_ORDER in it, in that order."""
+    return any(re.search(r"\bparallel", b, re.IGNORECASE) and not ranks_in_order(b) for b in blocks(text))
+
+
+def ops_roles(text: str) -> dict[str, str] | None:
+    """Skill name to role, from the table of the guideline's Operational Skills; None when it has no such section."""
+    table = section(text, OPS_SECTION)
+    if table is None:
+        return None
+    return {m.group(1): m.group(2).lower() for m in map(OPS_ROW.match, table.splitlines()) if m}
+
+
+def check_audits(templates: list[Path], errors: list[str]) -> None:
+    """Every audit template agrees with Operations (Operational Skills): its Role and credential section opens with the
+    role the table gives it, and a paragraph or list item that names parallel calls ranks FIX_ORDER first, as the text
+    does. An adopter copies the template, so a template that disagrees with the text makes every copy disagree too."""
+    audits = {t.stem: t for t in templates if t.stem.startswith("audit-")}
+    if not audits:
+        return
+    text = GUIDELINE.read_text(encoding="utf-8") if GUIDELINE.exists() else ""
+    roles = ops_roles(text)
+    if roles is None:
+        errors.append(f"architecture.md: no {OPS_SECTION} section to hold the audit templates to")
+        return
+    order = ", ".join(FIX_ORDER)
+    if misranked(section(text, OPS_SECTION) or ""):
+        errors.append(f"architecture.md: {OPS_SECTION} names parallel calls without ranking {order} first, in that order")
+    for name in sorted(n for n in roles if n.startswith("audit-") and n not in audits):
+        errors.append(f"architecture.md: the {OPS_SECTION} table lists {name}, which has no template")
+    for name, template in sorted(audits.items()):
+        rel = template.relative_to(ROOT)
+        body = body_of(template.read_text(encoding="utf-8"))
+        first = next(iter(blocks(section(body, ROLE_SECTION) or "")), "")
+        said = re.split(r"[,.]", first, maxsplit=1)[0].strip().lower()
+        if name not in roles:
+            errors.append(f"{rel}: the {OPS_SECTION} table of architecture.md gives it no role")
+        elif said != roles[name]:
+            errors.append(f"{rel}: {ROLE_SECTION} opens with the role {said!r}; the {OPS_SECTION} table gives {roles[name]!r}")
+        if misranked(template.read_text(encoding="utf-8")):
+            errors.append(f"{rel}: names parallel calls without ranking {order} first, in that order")
+
+
+def check_work_row(errors: list[str]) -> None:
+    """When the guideline has work rows, the text, STO-20, and both scaffolds that write the relay each state
+    WORK_ROW_DONE in those words, so a change to the rule in one place fails here until the others follow."""
+    text = GUIDELINE.read_text(encoding="utf-8") if GUIDELINE.exists() else ""
+    if "`work.<kind>`" not in text:
+        return
+    for rel in WORK_ROW_DONE_IN:
+        path = ROOT / rel
+        said = " ".join(path.read_text(encoding="utf-8").split()).lower() if path.exists() else ""
+        if WORK_ROW_DONE not in said:
+            errors.append(
+                f"{rel}: does not say {WORK_ROW_DONE!r}; the text, STO-20, and the relay's two scaffolds must each say it"
+            )
+
+
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
@@ -417,6 +546,8 @@ def main(argv: Sequence[str] = ()) -> int:
     templates = sorted(OPS_TEMPLATES.glob("*.md")) if OPS_TEMPLATES.is_dir() else []
     for template in templates:
         check_template(template, errors)
+    check_audits(templates, errors)
+    check_work_row(errors)
     for group in sorted(groups - review_groups):
         errors.append(f"skills/: no arch-review-{group} skill for lens group '{group}'")
     full = SKILLS / "arch-review-full" / "SKILL.md"
