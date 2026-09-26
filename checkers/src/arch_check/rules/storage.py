@@ -718,7 +718,9 @@ def index_rules(project: Project) -> Iterator[Violation]:
     for t in om_tables(project):
         indexes = index_calls(t.node)
         compound = [i for i in indexes if len(string_args(i)) > 1 and string_args(i)[0] == "org_id"]
-        single = [i for i in indexes if string_args(i) == ["org_id"]]
+        # A unique index on org_id alone enforces a rule (one row per tenant), which no
+        # compound index can; it is not a second lookup index.
+        single = [i for i in indexes if string_args(i) == ["org_id"] and not is_true(kwarg(i, "unique"))]
         if compound and (single or org_id_indexed(t.node, known)):
             yield Violation.at(t.file.rel, t.node, f"{t.node.name} indexes org_id alone and leads a compound index with it")
         for i in indexes:

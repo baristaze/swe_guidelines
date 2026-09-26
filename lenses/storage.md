@@ -361,7 +361,8 @@ Identifiers.
 **Look for.** Feed tables (events, audit, streams, lists ordered by
 creation) carrying `Index(org_id, id)` and queries ordering by `id`.
 Any `DESC` index on an id column, or a single-column index on `org_id`
-next to a compound index that starts with `org_id`. Indexes on columns
+next to a compound index that starts with `org_id` (a unique one is a
+rule, one row per tenant, and not a second lookup). Indexes on columns
 no query filters on, or missing on columns every list query filters
 on, and a compound index no real query asks for; the fourth rule, a
 tenant-supplied unique key, is STO-30, and the fifth, the partial
