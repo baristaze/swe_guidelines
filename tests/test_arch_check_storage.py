@@ -639,6 +639,29 @@ def test_sto_14_a_feed_mixin_or_a_flag_turns_the_single_index_off(tmp_path):
     assert code == 0
 
 
+def test_sto_14_a_unique_org_id_index_beside_a_compound_one_is_a_rule_not_a_lookup(tmp_path):
+    compound = (
+        'postgresql_where=text("deleted_at IS NULL")),\n'
+        '        Index("ix_widgets_org_id_deleted_at", "org_id", "deleted_at"),\n'
+        '        Index("uq_widgets_org_id", "org_id", unique=True, postgresql_where=text("deleted_at IS NULL")),'
+    )
+    files = edit(WIDGETS, 'postgresql_where=text("deleted_at IS NULL")),', compound)
+    files[WIDGETS] = (
+        files[WIDGETS]
+        .replace("(IdentifiableMixin,", "(FeedIdentifiableMixin,")
+        .replace("import Base, IdentifiableMixin", "import Base, FeedIdentifiableMixin")
+    )
+    code, report = run(tmp_path, "STO-14", files)
+    assert code == 0, messages(report)
+    files[WIDGETS] = files[WIDGETS].replace(
+        'Index("uq_widgets_org_id", "org_id", unique=True, postgresql_where=text("deleted_at IS NULL")),',
+        'Index("ix_widgets_org_id", "org_id"),',
+    )
+    code, report = run(tmp_path, "STO-14", files)
+    assert code == 1
+    assert messages(report) == ["Widgets indexes org_id alone and leads a compound index with it"]
+
+
 def test_sto_14_a_descending_id_index(tmp_path):
     code, report = run(tmp_path, "STO-14", edit(WIDGETS, '"slug", unique=True', 'text("id DESC"), unique=True'))
     assert code == 1
