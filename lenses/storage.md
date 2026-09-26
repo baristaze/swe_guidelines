@@ -729,7 +729,11 @@ system-login clause in the `org` and `identity` expressions, `OR
 `pg_policies` against the map, and the ones that assert on each live
 connection that `current_user` is neither superuser nor `BYPASSRLS`,
 that the runtime login owns no table, and that the runtime login
-naming the system scope reads nothing.
+naming the system scope reads nothing. On a table split by login, the
+tenant policy granted to the runtime login alone, the system policy
+granted to the system login alone and naming the system scope alone,
+the measurement recorded in the migration that makes the split, and
+the policy check test and the negative control covering both policies.
 
 **Violation.** A table missing from the scope map, or a migrated policy
 that does not match the scope declared: a `system` table with
@@ -741,7 +745,10 @@ remove nothing, or a system-scope clause any login's setting can
 satisfy; a read of an `identity` table under the system scope by a
 method the enumeration does not name (CTX-12); a login that is a
 superuser or carries `BYPASSRLS`; a runtime login that owns a table,
-so an injected statement can drop a policy or turn `FORCE` off.
+so an injected statement can drop a policy or turn `FORCE` off; a
+split by login whose system policy is granted to the runtime login, or
+whose tenant policy is missing, so the runtime login reads across
+tenants or reads nothing; a split with no measurement recorded.
 
 **Severity.** high
 

@@ -2174,7 +2174,8 @@ other. The operator gate is the one caller that hands them
 `EMPTY_UUID`.
 
 Each table gets one policy, `FOR ALL`, with `USING` and `WITH CHECK`
-the same expression. The table carries `ENABLE ROW LEVEL SECURITY` and
+the same expression. A table that plans badly under it may split it
+by login (below). The table carries `ENABLE ROW LEVEL SECURITY` and
 `FORCE ROW LEVEL SECURITY`, so the owner is held by the policy too:
 
 ``` sql
@@ -2251,6 +2252,45 @@ A test asserts on each live connection that `current_user` is neither
 superuser nor `BYPASSRLS`, that the runtime login owns no table, and
 that the runtime login naming the system scope reads nothing. Those
 tests are what make the fence real instead of a claim.
+
+The system-scope clause is an `OR` inside the one policy, so the
+planner prices every statement against the tenant arm too. It expects
+a tenant's handful of rows, and a statement in the system scope, a
+queue's claim across tenants say, can get a plan built for that
+handful. A table whose system-scope statement plans badly under the
+one policy may carry one policy per login instead:
+
+``` sql
+CREATE POLICY tenant_fence ON queue.work_items
+    FOR ALL TO <runtime_login>
+    USING (<expression without the system-scope clause>)
+    WITH CHECK (<expression without the system-scope clause>);
+CREATE POLICY system_fence ON queue.work_items
+    FOR ALL TO <system_login>
+    USING (current_setting('app.org_id', true) = '<EMPTY_UUID>')
+    WITH CHECK (current_setting('app.org_id', true) = '<EMPTY_UUID>');
+```
+
+The tenant policy is the table's expression with the system-scope
+clause taken out, granted to the runtime login only. The system policy
+is the system scope alone, granted to the system login only. Neither
+policy carries an `OR` across logins, so each statement is planned
+for the rows its login can see.
+
+Every guarantee of the fence holds. The runtime login sees only its
+tenant, and naming the system scope still reads nothing. The system
+login sees rows only under the explicit system scope. Every other
+login, the migration login included, sees nothing while `FORCE` is on,
+because no policy names it. The table keeps `ENABLE` and `FORCE`.
+
+The split is a choice made per table, and it is kept only where a
+measurement shows it: the plan and the time of the system-scope
+statement under the one policy and under the split, recorded in the
+migration that makes the split. Every other table keeps the one
+policy. The policy check test below asserts both policies and the
+login each is granted to. The negative control of [Tests](#tests)
+runs against each of them: emptying either policy, or granting the
+system policy to the runtime login, turns the suite red.
 
 A policy ships in the [migration](#migrations) that creates its table,
 in the same role. The check that the ORM metadata and the migrated
