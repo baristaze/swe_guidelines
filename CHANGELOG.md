@@ -5,34 +5,39 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.34.0 (2026-09-26)
+## 0.35.0 (2026-09-26)
 
-A hint reads the entity it names, and a switch mounts every screen
-afresh. The client text allowed an invalidation or a cache write with
-no default, and the app scaffold invalidated whole collections on every
-hint and re-read them after every write. A change then cost one
-collection per open tab. The cache write is now the default. Minor: a
-rule is added.
+Checks run on the merge with the current `main`, and a table may carry
+one fence policy per login where planning needs it. Two changes that
+were each green alone could land a conflict together, because a pull
+request's checks ran against `main` as it was when the branch was last
+updated. And one combined policy made the planner misjudge a
+system-scope statement on a busy table. Minor: two rules are added, and
+one check is fixed.
 
 ### Changed
 
-- "Client App Architecture, State and Data": a write puts its own
-  answer into the cache and does not re-read the collections that
-  answer covers. A hint reads the one entity its `target_id` names,
-  through the authorized read, and places it; a read that finds nothing
-  removes it. A collection is read again only where placement cannot
-  decide: at the edge of a loaded page, or past a burst of hints. A
-  read that answers late never overwrites a newer version.
-- "Client App Architecture, One Tenant at a Time": after a switch every
-  screen starts again in the new tenant. Dropping a cache does not make
-  a mounted screen read, so the signed-in tree is mounted afresh per
-  tenant.
-- Lens DEL-13 (TanStack Query for server state, Zustand for client
-  state): **Look for** adds what a hint and a successful write cost in
-  reads; **Violation** adds a router that invalidates whole collections
-  on every hint, and a mutation that re-reads collections its own
-  answer already covers. The Principle and the severity are unchanged;
-  258 lenses.
-- `arch-scaffold-app`: the router reads the entity a hint names and
-  places it, and a successful mutation writes its answer into the
-  cache, instead of invalidating by name.
+- "Layout Conventions": a pull request's checks run on its merge with
+  the current `main` before it lands, through a merge queue or a
+  required up-to-date branch. Numbers that must be unique across
+  changes are settled there: the later change takes the next free ADR
+  number and re-points its migration's parent; the earlier change is
+  never renumbered. "Migrations", "Records of Decisions", and "Security
+  Defaults" say the same where they apply. Lens DEL-11 judges it.
+- `arch-scaffold-new`: the generated CI runs on `merge_group` as well,
+  and the `main` ruleset requires checks on an up-to-date branch, which
+  every repository can enable (a merge queue needs an organization).
+- "The Second Fence": a table whose system-scope statement plans badly
+  under the one combined policy may carry one policy per login instead:
+  a tenant policy granted to the runtime login, a system policy granted
+  to the system login, under the system scope only. It is kept only
+  where a measurement shows it, recorded in the migration that makes
+  it, and every guarantee of the fence holds; the policy check test and
+  the negative control cover both policies. Lens STO-28 names the
+  split's shape.
+
+### Fixed
+
+- STO-14 no longer flags a unique index on `org_id` beside a compound
+  index that starts with it: a unique index enforces a rule, one row
+  per tenant, and is not a second lookup index.
