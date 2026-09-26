@@ -5476,6 +5476,10 @@ signals back holds the investigator for the reads.
 
 Every skill takes the environment it acts on, and `local` is one of
 them for every skill but the administrator's two and the deploy audit,
+A skill whose role is `none` holds no operator credential at all. An
+audit that runs on the local stack alone is one. The database it reads
+is a database of its own, and the investigator reads no database row.
+
 which act on a cloud. Every skill states its role, the credential check,
 what it reads, what it never does, and the shape of its report.
 
