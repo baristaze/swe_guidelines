@@ -731,20 +731,24 @@ service or a worker; the rest is judged.
 **Principle.** Contiguity is per tenant, so the stream travels whole
 and a client filters by kind after ordering, never before. A frame and
 a replayed record carry the identity of the change and no field of the
-entity; the client reads the entity through the authorized read, so
-the hint is metadata every member of the tenant may see.
+entity but its compare-and-set `version`, which lets a client that
+holds it skip the read; the client reads the entity through the
+authorized read, so the hint is metadata every member of the tenant
+may see.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
 **Look for.** Whether the stream topic filters by kind before the
 client; what a frame and a replayed record carry (`seq`, `kind`,
-`target_id`, `actor_id`); how a client obtains the entity after a hint;
+`target_id`, `actor_id`, and `version` where the entity has one); how
+a client obtains the entity after a hint;
 whether a product where existence itself is restricted keeps one
 stream per visibility scope, with a cursor per stream.
 
 **Violation.** A server-side filter by kind on the sequenced stream,
-so a legitimate gap reads as a loss; an entity field on a frame or in
-the replay, so the stream leaks what the read would have refused; a
+so a legitimate gap reads as a loss; an entity field other than its
+`version` on a frame or in the replay, so the stream leaks what the
+read would have refused; a
 consumer that rebuilds a record's state from events.
 
 **Severity.** high

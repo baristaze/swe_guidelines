@@ -990,7 +990,8 @@ that session closes it on the message. The expiry covers a frame that
 was missed.
 
 What a socket carries in the meantime is hints, never a field of an
-entity. So the window a missed frame opens is one of metadata, and it
+entity but its version (see [Realtime at the
+Edge](#realtime-at-the-edge)). So the window a missed frame opens is one of metadata, and it
 is bounded by the expiry.
 
 Work that runs later than the request that asked for it runs on an
@@ -3766,10 +3767,19 @@ entity through the authorized read, which applies the visibility rules
 of [OpContext](#opcontext). A user learns that some id changed, who
 changed it, and when, and nothing else.
 
+A push may carry one thing more: the entity's `version`, when the
+entity carries one (the compare-and-set version of [Shape of an
+Operation](#shape-of-an-operation)). A client that already holds that
+version skips the read. The version tells a member only that the
+entity changed again, which the hint already told. The write's outbox
+row carries it in its payload, and the relay copies it onto the
+`Event` and the publish. Nothing else of the entity rides a push.
+
 On the bus, `ENTITY_CHANGED` carries the tenant's `org_id` and the
 `actor_id` beside the hint's `kind`, `target_id`, and `seq`. A process
 routes it by `org_id` to the sockets of that tenant. The frame it sends
-carries `seq`, `kind`, `target_id`, and `actor_id`.
+carries `seq`, `kind`, `target_id`, and `actor_id`, and the `version`
+when the entity has one.
 
 A session's revocation rides the same topic as a control message of its
 own kind, `SESSION_REVOKED`. Its `target_id` is the session id, its
