@@ -275,17 +275,24 @@ its user, its healthcheck, and its locked install; the rest is judged.
 `package.json` with `pnpm-workspace.yaml` declares the TypeScript
 members. Lint, format, and type-check config live at the root.
 `make check` runs lint, format, types, and unit tests; CI runs it plus
-the integration, migration, image, and infrastructure jobs.
+the integration, migration, image, and infrastructure jobs. A pull
+request's checks run on its merge with the current `main` before it
+lands; the later of two changes takes the next free ADR number and
+re-points its migration's parent.
 
 **Source.** Monorepo Folder Structure, Layout Conventions.
 
 **Look for.** Root config files and the `check` target; per-package
 lint or type configs that diverge from the root; CI jobs beyond the
-fast gate.
+fast gate; what a pull request's checks run on: its merge with the
+current `main` (a merge queue, or a required up-to-date branch), or
+only the branch's own base.
 
 **Violation.** A package with its own lint rules that contradict the
 root's; a `check` target that skips types or format; CI that runs only
-the fast gate and never the integration or migration jobs.
+the fast gate and never the integration or migration jobs; pull-request
+checks that run only against the branch's own base; two changes landing
+the same ADR number, or two migration heads in one role.
 
 **Severity.** low
 

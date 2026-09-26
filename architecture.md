@@ -2323,7 +2323,10 @@ The minute stamp is the file's sort key and the revision id, so two
 authors never negotiate a counter. Two migrations of one role in the
 same minute collide on the stamp, and the later one takes a suffix.
 Two migrations that name the same parent are a real conflict, and the
-tool reporting it is the point.
+tool reporting it is the point. It reports before the merge, because
+the checks run on the merge with the current `main`, and the later
+change re-points its parent (see [Layout
+Conventions](#layout-conventions)).
 
 A migration file is never edited once it has been applied anywhere. The
 runner refuses a file that names a table of another role. A run that
@@ -5122,7 +5125,11 @@ by a named choice.
     (see [The Gateway](#the-gateway)). A tenant's sign-in does not
     require one.
 -   **The branch that deploys.** `main` is protected: a merge needs a
-    review and every required check, and the files under `deployment/`
+    review and every required check, run on the merge with the current
+    `main`. The scaffold sets the rule that a branch is up to date with
+    `main` before it merges, because every repository can set it. A merge
+    queue does the same with less waiting, but only an organization's
+    repository can turn it on. The files under `deployment/`
     and `.github/` carry code owners, since a merge to `main` is a
     staging deploy under a role that writes infrastructure. `release`
     has a ruleset of its own: no push, no force push, no deletion, and
@@ -5892,6 +5899,20 @@ pin the runtimes at the releases [Versions](#versions) sets.
 CI runs it plus the integration, migration, image, and infrastructure
 jobs.
 
+A pull request's checks run on its merge with the current `main`
+before it lands, never only on the base the branch last saw. A merge
+queue does this, or a rule that a branch is up to date with `main`
+before it merges. Two changes can each be green alone and conflict
+together: two ADRs with one number, or two migrations of one role on
+one parent. Checked against its own base, each passes, and `main`
+fails its own gate once both land. Checked on the merge, the second
+fails before it lands.
+
+A number that must be unique across changes is settled at that point.
+The later change takes the next free ADR number and re-points its
+migration's parent to the new head. The earlier change, already on
+`main`, is never renumbered.
+
 > **Python tip:** a top-level package named `platform` shadows the
 > standard-library module of the same name. Pick a product-specific
 > root package name; the layout is what matters, not the word.
@@ -6255,6 +6276,9 @@ the managers build once for any number of requests.
 A decision that constrains future work is recorded as an architecture
 decision record under `docs/adr/`. It carries the context, the
 decision, and the consequences, in that order, dated and numbered.
+Two changes that take the same next number meet at the merge, and the
+later one takes the next free number (see [Layout
+Conventions](#layout-conventions)).
 Code and comments cite the ADR by number, so the reason stays attached
 to the line.
 
