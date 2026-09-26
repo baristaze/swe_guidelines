@@ -66,7 +66,7 @@ In a project, pinned at the guideline's tag, in the `Makefile`'s fast
 gate:
 
 ```make
-ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.33.0\#subdirectory=checkers" arch-check
+ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.34.0\#subdirectory=checkers" arch-check
 
 arch-check: ## the guideline's static checks
 	$(ARCH_CHECK)
