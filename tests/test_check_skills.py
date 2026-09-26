@@ -2,10 +2,35 @@
 
 import pytest
 
+from conftest import SCAFFOLD
+
 
 @pytest.fixture
 def skills(repo):
     return repo.script("check_skills")
+
+
+RANKED = "remove the call, fold it into another, defer it, cache its answer, and only then run calls in parallel"
+
+
+def operational_skills(repo, roles: dict[str, str], ranked: str = RANKED) -> None:
+    """Append the guideline's Operational Skills section: its table of roles, and the order an audit of calls ranks."""
+    rows = "".join(f"| `{name}` | {role} | what it answers |\n" for name, role in roles.items())
+    repo.write(
+        "architecture.md",
+        repo.read("architecture.md")
+        + f"\n## Operations\n\n### Operational Skills\n\n| Skill | Role | Answers |\n|---|---|---|\n{rows}"
+        + f"\nAn audit of calls ranks its fixes: {ranked}.\n",
+    )
+
+
+def audit(name: str, role: str = "None", ranked: str = RANKED) -> str:
+    """An audit template with a role section and a step that ranks its fixes."""
+    return (
+        f'---\nname: {name}\ndescription: "Audit {name}."\nallowed-tools: Read, Grep\n---\n\n# {name}\n\n'
+        f"## Role and credential\n\n{role}, local only. It holds no credential.\n\n"
+        f"## Procedure\n\n1. Make the evidence folder.\n2. Rank each fix: {ranked}.\n"
+    )
 
 
 def set_description(repo, value: str) -> None:
@@ -289,7 +314,8 @@ def test_a_single_allowed_tools_entry_with_a_space_in_its_rule_passes(repo, skil
 
 def test_an_optional_audit_template_is_held_like_the_others(repo, skills, capsys):
     name = "audit-provider-calls"
-    good = f'---\nname: {name}\ndescription: "Audit provider calls."\nallowed-tools: Read, Grep, Bash(git:*)\n---\n\n# {name}\n'
+    good = audit(name).replace("allowed-tools: Read, Grep", "allowed-tools: Read, Grep, Bash(git:*)")
+    operational_skills(repo, {name: "none"})
     repo.write(f"skills/_shared/ops-skills/{name}.md", good)
     assert skills.main() == 0
     assert "1 ops-skill templates" in capsys.readouterr().out
@@ -409,4 +435,103 @@ def test_a_body_over_the_word_bound_fails(repo, skills, capsys):
         "skills/arch-scaffold-thing/SKILL.md: the body is 3007 words, limit 3000; "
         "move the long per-step material into skills/arch-scaffold-thing/references/ "
         "and have the step that reads it name the file" in capsys.readouterr().out
+    )
+
+
+def test_an_audit_states_the_role_the_operational_skills_table_gives_it(repo, skills, capsys):
+    operational_skills(repo, {"audit-database-calls": "none", "audit-retention": "investigator"})
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    repo.write("skills/_shared/ops-skills/audit-retention.md", audit("audit-retention", role="Investigator, read-only"))
+    assert skills.main() == 0
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls", role="Investigator"))
+    assert skills.main() == 1
+    assert (
+        "skills/_shared/ops-skills/audit-database-calls.md: Role and credential opens with the role 'investigator'; "
+        "the Operational Skills table gives 'none'" in capsys.readouterr().out
+    )
+
+
+def test_an_audit_missing_from_either_side_fails(repo, skills, capsys):
+    operational_skills(repo, {"audit-retention": "investigator"})
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert "architecture.md: the Operational Skills table lists audit-retention, which has no template" in out
+    assert (
+        "skills/_shared/ops-skills/audit-database-calls.md: the Operational Skills table of architecture.md gives it no role"
+        in out
+    )
+
+
+def test_an_audit_with_no_operational_skills_section_fails(repo, skills, capsys):
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    assert skills.main() == 1
+    assert "architecture.md: no Operational Skills section to hold the audit templates to" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "ranked",
+    [
+        "remove the call, fold it into another, or defer it, before running reads in parallel",
+        "remove the call, cache its answer, fold it into another, defer it, and only then run calls in parallel",
+    ],
+)
+def test_an_audit_that_ranks_parallel_calls_out_of_order_fails(repo, skills, capsys, ranked):
+    operational_skills(repo, {"audit-database-calls": "none"})
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls", ranked=ranked))
+    assert skills.main() == 1
+    assert (
+        "skills/_shared/ops-skills/audit-database-calls.md: names parallel calls without ranking "
+        "remove, fold, defer, cache, parallel first, in that order" in capsys.readouterr().out
+    )
+
+
+def test_a_numbered_step_is_read_on_its_own_so_a_folder_is_no_fold(repo, skills):
+    operational_skills(repo, {"audit-database-calls": "none"})
+    template = audit("audit-database-calls").replace(
+        "1. Make the evidence folder.", "1. Make the evidence folder and\n   write in it."
+    )
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", template)
+    assert skills.main() == 0
+
+
+def test_the_operational_skills_text_is_held_to_the_same_order(repo, skills, capsys):
+    operational_skills(
+        repo, {"audit-database-calls": "none"}, ranked="remove, fold, and defer a call before running calls in parallel"
+    )
+    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    assert skills.main() == 1
+    assert "architecture.md: Operational Skills names parallel calls without ranking" in capsys.readouterr().out
+
+
+RULE = "A work row is done once its\nitem is queued."
+
+
+def test_the_work_row_rule_is_said_in_the_text_the_lens_and_both_scaffolds(repo, skills, capsys):
+    repo.edit("architecture.md", "One table per entity.\n", f"One table per entity.\n\n{RULE}\n")
+    assert skills.main() == 0  # no `work.<kind>` row in the guideline, so no rule to hold the others to
+    repo.edit("architecture.md", RULE, f"A `work.<kind>` row starts work. {RULE}")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    for rel in (
+        "lenses/storage.md",
+        "skills/arch-scaffold-worker/SKILL.md",
+        "skills/arch-scaffold-new/references/object-model.md",
+    ):
+        assert f"{rel}: does not say 'a work row is done once its item is queued'" in out
+    repo.write("lenses/storage.md", f"## STO-20 A handoff\n\n{RULE}\n")
+    for name, reference in (("arch-scaffold-worker", ""), ("arch-scaffold-new", "references/object-model.md")):
+        body = SCAFFOLD.replace("arch-scaffold-thing", name)
+        if reference:
+            repo.write(f"skills/{name}/{reference}", f"# The relay\n\n- {RULE}\n")
+            body = body.replace("1. Write the thing.", f"1. Read `${{CLAUDE_SKILL_DIR}}/{reference}`, then write it.")
+        else:
+            body = body.replace("One line.\n", f"One line.\n\n- {RULE}\n")
+        repo.write(f"skills/{name}/SKILL.md", body)
+    assert skills.main() == 0
+    repo.edit("skills/arch-scaffold-new/references/object-model.md", "once its\nitem is queued", "once its wake is taken")
+    assert skills.main() == 1
+    assert (
+        "skills/arch-scaffold-new/references/object-model.md: does not say 'a work row is done once its item is queued'; "
+        "the text, STO-20, and the relay's two scaffolds each do" in capsys.readouterr().out
     )

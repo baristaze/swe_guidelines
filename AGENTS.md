@@ -24,13 +24,20 @@ lenses (`skills/`), and the checkers that keep the three consistent
   file each, with `acme` for the product; `arch-scaffold-new` copies
   them into a new tree, and `make leaks`, `make links`, and `make lint`
   hold them. They are not skills of this plugin, but a new tree runs
-  them as skills, so `scripts/check_skills.py` reads their frontmatter
-  and nothing else. It holds the same flat `key: value` lines a
+  them as skills, so `scripts/check_skills.py` reads their frontmatter.
+  It holds the same flat `key: value` lines a
   skill's frontmatter has. The name equals the file name. The
   description is one double-quoted string of at most 1024 characters,
   outside the plugin's description budget. `allowed-tools` is
   comma-separated, with no bare `Bash`, and each Bash entry is the
-  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`.
+  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`. For an
+  audit it reads two things more, and holds each to Operations
+  (Operational Skills). Its `## Role and credential` section opens
+  with the role the section's table gives it. Its fixes rank remove,
+  fold, defer, cache, and only then parallel. The script also holds
+  one sentence the text states and three files restate, "a work row
+  is done once its item is queued": the text, STO-20, and the two
+  scaffolds that write the outbox relay each say it.
   `skills/arch-new-aspect`
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,
