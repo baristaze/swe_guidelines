@@ -493,8 +493,8 @@ off the root.
 
 A namespace that carries real business logic keeps the pure part of it
 in one module of plain functions, next to the interface. Pricing,
-window arithmetic, eligibility checks, aggregation rules: all of it
-goes there.
+window arithmetic, eligibility checks, aggregation rules, a table a
+decision reads: all of it goes there.
 
 These functions take values and return values. They read no storage,
 consult no clock, and open no settings. That buys two things. They are
@@ -790,10 +790,12 @@ class OpContext(RequestContext):
     def in_team(self, team_id: UUID) -> bool: ...
 ```
 
-Permissions are a pure function of role. One table in the tenancy
-namespace declares that function. The operator plane has a table of
-its own: an allowlist entry's role grants `OperatorPermission.READ`,
-or read and `OperatorPermission.WRITE`.
+Permissions are a pure function of role. One table declares that
+function, in the tenancy namespace's rules module, `rules.py`. A table
+a decision reads is a rule like any other (see [Pure
+Rules](#pure-rules)). The operator plane has a table of its own: an
+allowlist entry's role grants `OperatorPermission.READ`, or read and
+`OperatorPermission.WRITE`.
 
 A credential never carries a role above its issuer's. Above means the
 permission set: a role is at most another when its permissions are a
@@ -5474,12 +5476,12 @@ Stress](#traffic-and-stress)); it presents an operator token and holds
 no cloud role. A run that reads
 signals back holds the investigator for the reads.
 
-Every skill takes the environment it acts on, and `local` is one of
-them for every skill but the administrator's two and the deploy audit,
 A skill whose role is `none` holds no operator credential at all. An
 audit that runs on the local stack alone is one. The database it reads
 is a database of its own, and the investigator reads no database row.
 
+Every skill takes the environment it acts on, and `local` is one of
+them for every skill but the administrator's two and the deploy audit,
 which act on a cloud. Every skill states its role, the credential check,
 what it reads, what it never does, and the shape of its report.
 
