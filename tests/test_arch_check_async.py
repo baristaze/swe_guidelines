@@ -447,7 +447,7 @@ def test_asy_09_every_shape_of_the_topics_package(tmp_path):
         'TopicPayload does not set extra="ignore"; an old consumer must read a new payload',
         "WorkAvailablePayload does not extend TopicPayload",
         "a topic published by its string name; publish a Topics member",
-        "publish is not annotated `-> None`; it returns None",
+        "publish is not annotated `-> None` or `-> bool`; it returns no id",
         "subscribe returns no unsubscribe callable",
         "subscribe takes no consumer name",
     ]
@@ -467,6 +467,12 @@ def test_asy_09_the_payload_config_as_class_keywords_passes(tmp_path):
     )
     assert text != GOOD[TOPICS]
     code, _ = run(tmp_path, "ASY-09", {TOPICS: text})
+    assert code == 0
+
+
+def test_asy_09_a_publish_that_answers_a_boolean_passes(tmp_path):
+    code, report = run(tmp_path, "ASY-09", edit(TOPICS, "payload: TopicPayload) -> None", "payload: TopicPayload) -> bool"))
+    assert report["findings"] == []
     assert code == 0
 
 

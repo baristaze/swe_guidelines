@@ -2642,7 +2642,7 @@ TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {
 
 class TopicsInterface(ABC):
     @abstractmethod
-    async def publish(self, topic: Topics, payload: TopicPayload) -> None: ...
+    async def publish(self, topic: Topics, payload: TopicPayload) -> bool: ...  # the bus took it or not
     @abstractmethod
     def subscribe(
         self,
@@ -2677,9 +2677,15 @@ The producer sets `idempotency_key` at construction time, so that key
 is the observable id throughout the pipeline. Producers and consumers
 both log it.
 
-That is why `publish()` returns `None`. A broker-assigned id carries no
+That is why `publish()` returns no id. A broker-assigned id carries no
 durable meaning across retries and replays, and surfacing it would leak
 technology through the interface.
+
+`publish()` answers one boolean instead: the bus took the event, or it
+did not. That is no broker id, so nothing leaks. It lets a caller that
+publishes on behalf of a side effect keep that effect pending when the
+bus refused it (see [Database Roles](#database-roles)). A caller that
+publishes a mere hint ignores the answer.
 
 > **Python tip:** a database-backed bus caps the payload size (about
 > 8 KB on Postgres). The impl trims what would not fit and marks it
@@ -2729,10 +2735,10 @@ class QueuesInterface(ABC):
     async def depth(self, queue: Queues) -> QueueDepth: ...  # visible, in flight, dead-lettered
 ```
 
-`send()` returns `None` for the reason `publish()` does. The observable
-id is the producer-set `idempotency_key` that the body carries (see
-[Idempotency](#idempotency)), and a broker-assigned id carries no
-durable meaning across retries and replays.
+`send()` returns `None`, for the reason `publish()` returns no id. The
+observable id is the producer-set `idempotency_key` that the body
+carries (see [Idempotency](#idempotency)), and a broker-assigned id
+carries no durable meaning across retries and replays.
 
 The `receipt` on a `QueueMessage` is not that id. It is the handle of
 one delivery, and it is what `delete` and `change_visibility` take.

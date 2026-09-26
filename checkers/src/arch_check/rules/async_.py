@@ -574,8 +574,12 @@ def topics_are_fixed(project: Project) -> Iterator[Violation]:
         where, cls = iface
         by_method = {m.name: m for m in methods(cls)}
         publish = by_method.get("publish")
-        if publish is not None and not (isinstance(publish.returns, ast.Constant) and publish.returns.value is None):
-            yield Violation.at(where.rel, publish, "publish is not annotated `-> None`; it returns None")
+        returns = publish.returns if publish is not None else None
+        if publish is not None and not (
+            (isinstance(returns, ast.Constant) and returns.value is None)
+            or (isinstance(returns, ast.Name) and returns.id == "bool")
+        ):
+            yield Violation.at(where.rel, publish, "publish is not annotated `-> None` or `-> bool`; it returns no id")
         subscribe = by_method.get("subscribe")
         if subscribe is not None:
             if "consumer" not in {p.name for p in parameters(subscribe)}:

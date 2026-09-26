@@ -201,8 +201,9 @@ parameters, and the local impl; the rest is judged.
 **Principle.** Topic names are fixed by enum, payload types are fixed
 by a payload map, and every payload extends `TopicPayload`, a frozen
 base infra declares that ignores unknown fields, with a producer-set
-`idempotency_key` and `produced_at`. `publish` returns `None`;
-`subscribe` returns an unsubscribe callable.
+`idempotency_key` and `produced_at`. `publish` returns no id: `None`,
+or a boolean that says the bus took the event; `subscribe` returns an
+unsubscribe callable.
 
 **Source.** Infrastructure, Topics.
 
