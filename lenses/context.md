@@ -682,7 +682,11 @@ the `OpContext` its ticket produced, so the session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
 a membership's end travels on the topic bus as `SESSION_REVOKED`, and
 every process holding a socket for that session closes it on the
-message.
+message. The bus is at most once, so every socket also rechecks its
+session and membership on `session_recheck_interval`, five minutes by
+default, without moving `last_seen_at`. A connection's lifetime is
+apart from the session's, and closing or pausing one never ends the
+session.
 
 **Source.** OpContext, Stages.
 
@@ -691,14 +695,16 @@ it sets from the session's expiry when the ticket is redeemed, and the
 subscription on the topic bus that every process with sockets holds
 for `SESSION_REVOKED`; what a process does with a message naming a
 session it holds a socket for; what the
-socket carries meanwhile, hints only.
+socket carries meanwhile, hints only; the recheck, its interval, and
+what it writes.
 
 **Violation.** A socket that outlives its session's expiry because the
 client keeps pinging; a revocation that reaches a socket only at its
 next reconnect; a process that closes the sockets it revoked itself
 and ignores the frame from another; a socket whose context is
 refreshed in place instead of closed; a frame missed with no expiry to
-cover it.
+cover it, or with no recheck to bound it; a recheck that renews the
+session's idle window; a paused connection that ends the session.
 
 **Severity.** high
 

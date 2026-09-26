@@ -989,6 +989,28 @@ Edge](#realtime-at-the-edge)). Every process that holds a socket for
 that session closes it on the message. The expiry covers a frame that
 was missed.
 
+The expiry is a long bound, and the bus delivers at most once. So a
+trust decision that reaches a socket by push, a revocation or a role
+change, has a pull behind it. Every socket rechecks its evidence on an
+interval: it reads its session and its membership, and closes when
+either has ended or the role is no longer the one it holds. The
+interval is a setting, `session_recheck_interval`, five minutes by
+default. It is the stated bound on how long a dropped push keeps a
+socket open on stale trust.
+
+The recheck is not activity. It never moves the session's
+`last_seen_at`, so an open socket does not renew the session's idle
+window.
+
+A session's lifetime and a connection's lifetime are separate. The
+session's idle and absolute lifetimes bound trust: how long a
+credential is honoured. A connection's lifetime bounds resources: how
+long a process holds one socket, its buffer, and its subscription. The
+server does not cap a connection's life; the recheck bounds its trust.
+A client may pause a connection it does not need, such as a hidden
+tab's, and resume later with a fresh ticket and a replay after its
+cursor. Closing or pausing a connection never ends the session.
+
 What a socket carries in the meantime is hints, never a field of an
 entity but its version (see [Realtime at the
 Edge](#realtime-at-the-edge)). So the window a missed frame opens is one of metadata, and it
@@ -4582,6 +4604,11 @@ the portal.
 One provider component owns the socket for the whole app. Envelopes are
 parsed by a discriminated union on their `type` and routed into the
 query cache or the client store, never into components.
+
+The provider may pause the socket while the app is hidden and resume it
+when the app is shown again, with a fresh ticket and a replay after its
+cursor. A paused socket is a closed connection, not an ended session
+(see [Stages](#stages)).
 
 > **Principle:** One realtime channel per app. A new kind of push is an
 > envelope type, not a separate channel.
