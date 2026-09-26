@@ -21,12 +21,17 @@ def skills(*missing):
 # --- OPS-11
 
 
-def test_ops_11_the_nine_skills_pass(tmp_path):
+def test_ops_11_the_thirteen_skills_pass(tmp_path):
     assert found(tmp_path, "OPS-11", skills()) == (0, [])
 
 
 def test_ops_11_a_skill_with_no_frontmatter_passes(tmp_path):
     assert found(tmp_path, "OPS-11", {".claude/skills/stress-test-run/SKILL.md": "# Stress test\n"}) == (0, [])
+
+
+def test_ops_11_a_missing_audit_fails(tmp_path):
+    code, where = found(tmp_path, "OPS-11", {".claude/skills/audit-retention/SKILL.md": None})
+    assert (code, where) == (1, [("OPS-11", ".claude/skills/audit-retention/SKILL.md", 1)])
 
 
 def test_ops_11_a_missing_skill_fails(tmp_path):

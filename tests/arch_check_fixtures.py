@@ -4,7 +4,7 @@
 a product named `acme`: the uv workspace, `om` with one namespace in
 the full namespace shape, `infra` with its exception root, one service
 and one worker with their entry points and containers, one ADR, the
-Makefile and CI gate, the nine operational skills, the READMEs, and
+Makefile and CI gate, the thirteen built-in skills, the READMEs, and
 `llms.txt`. Every shipped rule passes on it. Each test adds, overrides,
 or drops the files its rule reads. `check` runs `arch_check.cli.main` on the tree
 and returns the exit status and what it printed.

@@ -36,24 +36,29 @@ SKILLS = (
     "ops-simulate-traffic",
     "stress-test-create-or-update",
     "stress-test-run",
+    "audit-retention",
+    "audit-query-indexes",
+    "audit-database-calls",
+    "audit-deploy-time",
 )
 
 
 @rule(
     "OPS-11",
     coverage="partial",
-    summary="The nine operational skills exist, each a SKILL.md under .claude/skills.",
+    summary="The thirteen built-in skills exist, each a SKILL.md under .claude/skills.",
 )
 def the_skill_set(project: Project) -> Iterator[Violation]:
-    """Every system ships the nine operational skills the guideline lists.
+    """Every system ships the thirteen built-in skills the guideline lists:
+    the nine operational skills and the four audits.
 
-    Each of `.claude/skills/<name>/SKILL.md` exists for the nine names.
+    Each of `.claude/skills/<name>/SKILL.md` exists for the thirteen names.
     The five statements each skill makes are judged.
     """
     for name in SKILLS:
         rel = f".claude/skills/{name}/SKILL.md"
         if not is_file(project, rel):
-            yield Violation(rel, 1, 1, f"no {name} skill; every system ships the nine operational skills")
+            yield Violation(rel, 1, 1, f"no {name} skill; every system ships the thirteen built-in skills")
 
 
 LOAD_TOOLS_PY = frozenset({"locust", "molotov", "bzt"})

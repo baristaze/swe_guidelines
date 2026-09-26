@@ -248,7 +248,8 @@ configuration. (The platform's own secrets are ASY-13 and ASY-28.)
 the compose stack and the developer dashboards of the `devx` profile,
 so every skill runs against the developer's machine with no cloud at
 all. Every skill takes the environment it acts on, and `local` is one
-of them for every skill but the administrator's two.
+of them for every skill but the administrator's two and the deploy
+audit, which act on a cloud.
 
 **Source.** Operations, Operator Credentials; Operational Skills.
 
@@ -275,23 +276,27 @@ its report.
 
 **Source.** Operations, Operational Skills.
 
-**Look for.** The skill folder of the tree against the nine names the
-guideline lists: `ops-investigate`, `ops-watch`, `ops-root-cause`,
+**Look for.** The skill folder of the tree against the thirteen names
+the guideline lists: `ops-investigate`, `ops-watch`, `ops-root-cause`,
 `ops-infra-as-code`, `ops-cloud-deployment-create`,
 `ops-cloud-deployment-nuke`, `ops-simulate-traffic`,
-`stress-test-create-or-update`, `stress-test-run`; the five statements
-at the top of each; where each reads what is specific to the product.
+`stress-test-create-or-update`, `stress-test-run`, and the four audits,
+`audit-retention`, `audit-query-indexes`, `audit-database-calls`,
+`audit-deploy-time`; the five statements at the top of each; where each
+reads what is specific to the product; for an audit, the database it
+builds and drops, and the report it writes.
 
 **Violation.** A repeating task with no skill, or a listed skill
 missing from the tree; a skill that names no role or no credential
 check; a skill that says what it does and not what it never does; a
 skill with the product's specifics written into the template instead
-of read from the product's documents.
+of read from the product's documents; an audit that writes to a shared
+database or an environment, or one that fixes what it finds.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides that the nine skills exist; the rest is
-judged.
+**Check.** `arch-check` decides that the thirteen skills exist; the
+rest is judged.
 
 ## OPS-12 A watch outlives its conversation and is written for a burst
 

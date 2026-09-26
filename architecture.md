@@ -5395,6 +5395,10 @@ they read the product's own documents for what is specific to it.
 | `ops-simulate-traffic`           | provisioner   | realistic traffic at the edge, at a chosen profile          |
 | `stress-test-create-or-update`   | none          | a stress scenario, with its target stated before the run    |
 | `stress-test-run`                | provisioner, investigator | a run against the scenario, pass or fail against the target |
+| `audit-retention`                | investigator  | which stores grow without bound, and what trims each        |
+| `audit-query-indexes`            | none          | whether the indexes fit the queries, and what breaks first under load |
+| `audit-database-calls`           | none          | how many database calls each endpoint and flow makes, at least and at most |
+| `audit-deploy-time`              | investigator  | where a deploy's minutes go, and what would shorten it      |
 
 The provisioner is the traffic generator's identity on the operator
 plane, whose entry writes (see [Traffic and
@@ -5403,9 +5407,19 @@ no cloud role. A run that reads
 signals back holds the investigator for the reads.
 
 Every skill takes the environment it acts on, and `local` is one of
-them for every skill but the administrator's two, which act on a
-cloud. Every skill states its role, the credential check, what it
-reads, what it never does, and the shape of its report.
+them for every skill but the administrator's two and the deploy audit,
+which act on a cloud. Every skill states its role, the credential check,
+what it reads, what it never does, and the shape of its report.
+
+An audit answers a question about the system that repeats: after a
+large change, before a release, as the product grows. It is read-only.
+An audit of the database builds its own: a database of the run's own on
+the local stack, migrated, seeded at a scale the run states, and dropped
+when the run ends, so it never logs in to a shared one. Its report puts
+the answer first, then a table with a verdict per row, the findings by
+impact with a fix and an effort each, and what it could not verify. It
+proposes tickets and never fixes: a fix is a change of its own, reviewed
+like any other.
 
 A skill keeps its spine and names its detail. Its body is loaded in
 full every time it runs, so it carries the input, the procedure as an
@@ -5440,8 +5454,9 @@ tenant's rows by an operator is logged with the tenant and the
 operator, so support access has a trail.
 
 > **Principle:** The operational skills are built in, one per task
-> that repeats, and every one but the administrator's two runs against
-> the local stack. The first responder is an agent that reads whose
+> that repeats, and every one but the administrator's two and the
+> deploy audit runs against the local stack. An audit reads, reports,
+> and proposes tickets; it never fixes. The first responder is an agent that reads whose
 > traffic raised an alarm before it escalates, and it never suppresses
 > one in production.
 
