@@ -200,11 +200,13 @@ Deviations. It is not a finding, and it never lowers a severity.
 
 ## Operate with the built-in skills
 
-A scaffolded tree carries nine project-local skills under
+A scaffolded tree carries thirteen project-local skills under
 `.claude/skills/`, one folder each: `ops-investigate`, `ops-watch`,
 `ops-root-cause`, `ops-infra-as-code`, `ops-cloud-deployment-create`,
 `ops-cloud-deployment-nuke`, `ops-simulate-traffic`,
-`stress-test-create-or-update`, and `stress-test-run`. They are not
+`stress-test-create-or-update`, and `stress-test-run`, and the four
+audits, `audit-retention`, `audit-query-indexes`,
+`audit-database-calls`, and `audit-deploy-time`. They are not
 namespaced under the plugin, because they belong to the project:
 `/ops-investigate --env staging`.
 
@@ -221,18 +223,27 @@ token) comes from one owner-only env file per environment,
 `~/.config/<root>/ops/<env>.env`, outside the repository; a skill
 reads it and never prints a secret from it.
 
-Every skill but `ops-cloud-deployment-create` and
+Every operational skill but `ops-cloud-deployment-create` and
 `ops-cloud-deployment-nuke`, which act on a cloud only, takes
 `--env local|staging|production`, and `local` runs against the compose
 stack's `devx` twins with no cloud and no account, so a skill is tested on the developer's machine before it
 is trusted with an environment.
+
+An audit answers a question that repeats: which stores grow without
+bound, whether the indexes fit the queries, how many database calls
+each endpoint makes, where a deploy's minutes go. It reads and reports,
+and proposes tickets; it never fixes. The three about the database make
+a database of their own on the local stack, seed it at a scale the run
+states, measure it, and drop it, with the tools under `ops/audit/`, so
+they never log in to a shared one. Each writes its report to
+`~/Downloads/<root>_<audit>_<date>.md`.
 
 An existing tree copies the templates from
 `skills/_shared/ops-skills/` in this repository into
 `.claude/skills/<name>/SKILL.md` and substitutes its root package for
 `acme` (`ACME` and `Acme` for the upper and capitalized spellings),
 and changes nothing else. The skills assume the roles, the profiles,
-the env file, the `<root>-ops` binary, and the operator plane's read
+the env file, the `<root>-ops` binary, the tools under `ops/audit/`, and the operator plane's read
 routes that `arch-scaffold-new` writes; a tree without them adds
 them first.
 
