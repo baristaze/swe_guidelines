@@ -287,6 +287,17 @@ def test_a_single_allowed_tools_entry_with_a_space_in_its_rule_passes(repo, skil
     assert "allowed-tools must be comma-separated" in capsys.readouterr().out
 
 
+def test_an_optional_audit_template_is_held_like_the_others(repo, skills, capsys):
+    name = "audit-provider-calls"
+    good = f'---\nname: {name}\ndescription: "Audit provider calls."\nallowed-tools: Read, Grep, Bash(git:*)\n---\n\n# {name}\n'
+    repo.write(f"skills/_shared/ops-skills/{name}.md", good)
+    assert skills.main() == 0
+    assert "1 ops-skill templates" in capsys.readouterr().out
+    repo.write(f"skills/_shared/ops-skills/{name}.md", good.replace("Bash(git:*)", "Bash"))
+    assert skills.main() == 1
+    assert "a bare Bash is refused" in capsys.readouterr().out
+
+
 def test_an_ops_skill_template_is_held_to_the_skill_frontmatter(repo, skills, capsys):
     good = '---\nname: ops-watch\ndescription: "Watch an environment."\nallowed-tools: Read, Bash(aws:*)\n---\n\n# ops-watch\n'
     repo.write("skills/_shared/ops-skills/ops-watch.md", good)

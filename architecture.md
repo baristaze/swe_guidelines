@@ -989,8 +989,31 @@ Edge](#realtime-at-the-edge)). Every process that holds a socket for
 that session closes it on the message. The expiry covers a frame that
 was missed.
 
+The expiry is a long bound, and the bus delivers at most once. So a
+trust decision that reaches a socket by push, a revocation or a role
+change, has a pull behind it. Every socket rechecks its evidence on an
+interval: it reads its session and its membership, and closes when
+either has ended or the role is no longer the one it holds. The
+interval is a setting, `session_recheck_interval`, five minutes by
+default. It is the stated bound on how long a dropped push keeps a
+socket open on stale trust.
+
+The recheck is not activity. It never moves the session's
+`last_seen_at`, so an open socket does not renew the session's idle
+window.
+
+A session's lifetime and a connection's lifetime are separate. The
+session's idle and absolute lifetimes bound trust: how long a
+credential is honoured. A connection's lifetime bounds resources: how
+long a process holds one socket, its buffer, and its subscription. The
+server does not cap a connection's life; the recheck bounds its trust.
+A client may pause a connection it does not need, such as a hidden
+tab's, and resume later with a fresh ticket and a replay after its
+cursor. Closing or pausing a connection never ends the session.
+
 What a socket carries in the meantime is hints, never a field of an
-entity. So the window a missed frame opens is one of metadata, and it
+entity but its version (see [Realtime at the
+Edge](#realtime-at-the-edge)). So the window a missed frame opens is one of metadata, and it
 is bounded by the expiry.
 
 Work that runs later than the request that asked for it runs on an
@@ -2019,6 +2042,13 @@ Rules that make the move safe:
     (see [The Work Queue](#the-work-queue)). The relay is idempotent on
     the row's key, so relaying twice is harmless (the transactional
     outbox pattern).
+
+    The relay marks a row done only when its side effect happened: the
+    destination row written and the publish taken by the bus, which
+    `publish()` answers (see [Topics](#topics)). A publish the bus
+    dropped leaves the row pending, and the sweep relays it again. One
+    rule holds for every kind of row that publishes, an entity change
+    and a request for work alike.
 -   The topic bus (see [Topics](#topics)), when it is backed by the
     database, connects to the queue role. The processes that enqueue
     work and the workers they wake must share it.
@@ -2642,7 +2672,7 @@ TOPIC_PAYLOADS: dict[Topics, type[TopicPayload]] = {
 
 class TopicsInterface(ABC):
     @abstractmethod
-    async def publish(self, topic: Topics, payload: TopicPayload) -> None: ...
+    async def publish(self, topic: Topics, payload: TopicPayload) -> bool: ...  # the bus took it or not
     @abstractmethod
     def subscribe(
         self,
@@ -2677,9 +2707,15 @@ The producer sets `idempotency_key` at construction time, so that key
 is the observable id throughout the pipeline. Producers and consumers
 both log it.
 
-That is why `publish()` returns `None`. A broker-assigned id carries no
+That is why `publish()` returns no id. A broker-assigned id carries no
 durable meaning across retries and replays, and surfacing it would leak
 technology through the interface.
+
+`publish()` answers one boolean instead: the bus took the event, or it
+did not. That is no broker id, so nothing leaks. It lets a caller that
+publishes on behalf of a side effect keep that effect pending when the
+bus refused it (see [Database Roles](#database-roles)). A caller that
+publishes a mere hint ignores the answer.
 
 > **Python tip:** a database-backed bus caps the payload size (about
 > 8 KB on Postgres). The impl trims what would not fit and marks it
@@ -2729,10 +2765,10 @@ class QueuesInterface(ABC):
     async def depth(self, queue: Queues) -> QueueDepth: ...  # visible, in flight, dead-lettered
 ```
 
-`send()` returns `None` for the reason `publish()` does. The observable
-id is the producer-set `idempotency_key` that the body carries (see
-[Idempotency](#idempotency)), and a broker-assigned id carries no
-durable meaning across retries and replays.
+`send()` returns `None`, for the reason `publish()` returns no id. The
+observable id is the producer-set `idempotency_key` that the body
+carries (see [Idempotency](#idempotency)), and a broker-assigned id
+carries no durable meaning across retries and replays.
 
 The `receipt` on a `QueueMessage` is not that id. It is the handle of
 one delivery, and it is what `delete` and `change_visibility` take.
@@ -3753,10 +3789,19 @@ entity through the authorized read, which applies the visibility rules
 of [OpContext](#opcontext). A user learns that some id changed, who
 changed it, and when, and nothing else.
 
+A push may carry one thing more: the entity's `version`, when the
+entity carries one (the compare-and-set version of [Shape of an
+Operation](#shape-of-an-operation)). A client that already holds that
+version skips the read. The version tells a member only that the
+entity changed again, which the hint already told. The write's outbox
+row carries it in its payload, and the relay copies it onto the
+`Event` and the publish. Nothing else of the entity rides a push.
+
 On the bus, `ENTITY_CHANGED` carries the tenant's `org_id` and the
 `actor_id` beside the hint's `kind`, `target_id`, and `seq`. A process
 routes it by `org_id` to the sockets of that tenant. The frame it sends
-carries `seq`, `kind`, `target_id`, and `actor_id`.
+carries `seq`, `kind`, `target_id`, and `actor_id`, and the `version`
+when the entity has one.
 
 A session's revocation rides the same topic as a control message of its
 own kind, `SESSION_REVOKED`. Its `target_id` is the session id, its
@@ -4559,6 +4604,11 @@ the portal.
 One provider component owns the socket for the whole app. Envelopes are
 parsed by a discriminated union on their `type` and routed into the
 query cache or the client store, never into components.
+
+The provider may pause the socket while the app is hidden and resume it
+when the app is shown again, with a fresh ticket and a replay after its
+cursor. A paused socket is a closed connection, not an ended session
+(see [Stages](#stages)).
 
 > **Principle:** One realtime channel per app. A new kind of push is an
 > envelope type, not a separate channel.
@@ -5399,6 +5449,8 @@ they read the product's own documents for what is specific to it.
 | `audit-query-indexes`            | none          | whether the indexes fit the queries, and what breaks first under load |
 | `audit-database-calls`           | none          | how many database calls each endpoint and flow makes, at least and at most |
 | `audit-deploy-time`              | investigator  | where a deploy's minutes go, and what would shorten it      |
+| `audit-credential-lifetimes`     | none          | optional: how long each credential keeps working on each channel after it should not |
+| `audit-provider-calls`           | none          | optional: which external calls each flow makes, and what they cost it |
 
 The provisioner is the traffic generator's identity on the operator
 plane, whose entry writes (see [Traffic and
@@ -5420,6 +5472,25 @@ the answer first, then a table with a verdict per row, the findings by
 impact with a fix and an effort each, and what it could not verify. It
 proposes tickets and never fixes: a fix is a change of its own, reviewed
 like any other.
+
+The last two audits are optional. A system keeps them when their
+question is worth asking, and nothing requires them. Both read the
+code and the settings, and nothing else. The credential audit states,
+for every credential kind on every channel it opens, where it is
+checked, how often, what a check costs, the longest a revoked
+credential keeps working, how a role change reaches it, its rate
+limit, and whether its check fails open or closed. The provider audit
+states, for every flow, the external calls it makes, how often, and
+whether they repeat, depend on each other, or sit in the request path;
+whether the client is reused; the timeout times the retries; and the
+request's own deadline.
+
+An audit of calls ranks its fixes: remove a call, fold it into another,
+defer it off the request path, cache its answer, and only then run
+calls in parallel. Parallel calls still spend the same pool, the same
+rate limit, and the same deadline. Concurrent reads on a bounded pool
+hold more connections at once, and can make the tail worse for every
+other request.
 
 A skill keeps its spine and names its detail. Its body is loaded in
 full every time it runs, so it carries the input, the procedure as an

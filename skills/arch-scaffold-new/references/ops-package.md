@@ -12,7 +12,7 @@ never be missed is in the skill's `Created` section, not here.
 |---------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `clients/python/`                                 | the Python client, `<root>-client`, in the shape `arch-scaffold-app` defines it, generated from the OpenAPI document step 3's `make openapi` emits, whether or not `--no-portal`, so its operator-plane calls exist before `ops/` is written; the ops package and a remote service impl import it, and the app skill finds it present and skips its row |
 | `ops/` | the workspace member `<root>-ops`; the full list is below the table |
-| `ops/README.md`, `ops/stress/README.md`           | how the platform is operated: the roles and profiles, the env file, the thirteen skills and what each needs, what an audit is, the generator and its profiles; and, under `stress/`, what a scenario holds (profile, duration, ramp, soak, the target p95 and error ratio, the weighted session steps) and that the numbers are the team's |
+| `ops/README.md`, `ops/stress/README.md`           | how the platform is operated: the roles and profiles, the env file, the fifteen skills and what each needs, what an audit is, the generator and its profiles; and, under `stress/`, what a scenario holds (profile, duration, ramp, soak, the target p95 and error ratio, the weighted session steps) and that the numbers are the team's |
 
 ## `ops/`
 

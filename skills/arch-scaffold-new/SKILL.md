@@ -57,7 +57,7 @@ step that names it, when that step runs and not before.
 
 | Reference                                          | Holds                                                                                                                                                                                                                   | Read by |
 |----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `${CLAUDE_SKILL_DIR}/references/skeleton.md`       | the workspace and tool config, the `Makefile`, the README, the docs, the two ADRs and the runbooks, the local compose stack, the Terraform modules and roots with the environments' file, the two cloud scripts, the six workflows, and the thirteen built-in skills | step 1  |
+| `${CLAUDE_SKILL_DIR}/references/skeleton.md`       | the workspace and tool config, the `Makefile`, the README, the docs, the two ADRs and the runbooks, the local compose stack, the Terraform modules and roots with the environments' file, the two cloud scripts, the six workflows, and the fifteen built-in skills | step 1  |
 | `${CLAUDE_SKILL_DIR}/references/object-model.md`   | the OM distribution under `om/`: the base module, the context stages and scopes, the exceptions, the storage layer with its roles, tables, translation, impls, and migrations, and the `tenancy`, `events`, `audit`, `outbox`, and `idempotency` namespaces with their tests | step 1  |
 | `${CLAUDE_SKILL_DIR}/references/infrastructure.md` | the infra distribution under `infra/`: the cache, buckets, topics, queues, and secrets capabilities, observability and the trust store, and the configured and local roots                                                   | step 1  |
 | `${CLAUDE_SKILL_DIR}/references/ops-package.md`    | `clients/python/`, the Python client generated from the API's document, and `ops/`, the `<root>-ops` member with the traffic generator, the stress runner, the signals interface, and the telemetry round trip, and the audit tools under `ops/audit/` | step 3  |
@@ -111,7 +111,7 @@ so they stay here:
    infra distribution, reading
    `${CLAUDE_SKILL_DIR}/references/infrastructure.md` before it; then
    run `make setup`. The fast gate runs from
-   step 2 on. The thirteen built-in skills are part of the skeleton:
+   step 2 on. The fifteen built-in skills are part of the skeleton:
    copy each template under `${CLAUDE_SKILL_DIR}/../_shared/ops-skills/` to
    `.claude/skills/<name>/SKILL.md` with `acme` substituted, as the
    skeleton reference states, and change nothing else in them.

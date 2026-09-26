@@ -507,7 +507,10 @@ before the copy is current, or with no rehearsal.
 statement: the core row and its outbox rows land in one named atomic
 method in the `core` role, an entity change one row and the work that
 follows a second, relayed at once or by the sweep. The relay is
-idempotent on the row's key (the transactional outbox).
+idempotent on the row's key (the transactional outbox). It marks a row
+done only when its side effect happened, the destination row written
+and the publish taken by the bus; a dropped publish leaves the row
+pending for the sweep.
 
 **Source.** The Storage Layer, Database Roles.
 
@@ -522,7 +525,8 @@ The row left pending, with `done_at` unset, for the sweep that
 statement, the event row or the work item; a storage signature that
 takes one outbox row, so a write that also starts work has nowhere to
 put the second. A relay that is not
-idempotent, so relaying a row twice duplicates an event.
+idempotent, so relaying a row twice duplicates an event; a relay that
+marks a row done when the bus refused its publish.
 
 **Severity.** high
 
