@@ -363,7 +363,7 @@ list is short keeps it inline, as a table with the columns `File` and
   a manager, so it is written after the client exists. The signals it reads back go through one interface with
   a local impl over the `devx` twins and a cloud impl over the
   cloud's own APIs, so a run against `local` proves the same path
-  the cloud runs. The thirteen project-local skills under
+  the cloud runs. The fifteen project-local skills under
   `.claude/skills/` are copied from
   `skills/_shared/ops-skills/` with the product's name substituted:
   `acme-ops`, the binary, becomes `<root>-ops`; every other `acme`
@@ -376,7 +376,8 @@ list is short keeps it inline, as a table with the columns `File` and
   local stack alone, in a database each makes and drops with the tools
   under `ops/audit/`; `audit-retention` also reads a cloud's retention
   settings, and `audit-deploy-time` takes `--env staging|production`.
-  Each holds the
+  The two optional audits read the checkout alone and hold no
+  credential. Each holds the
   credential of the role Operations (Operational Skills) gives it.
   The investigator and supporter skills hold the read-only
   investigate profile of their environment and read the owner-only

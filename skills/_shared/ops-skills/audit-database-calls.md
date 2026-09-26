@@ -69,6 +69,11 @@ cloud credential and reads no environment.
    every N+1, every read repeated within one flow, every empty
    transaction, every run of transactions on one role that one would
    serve.
+
+   Rank each fix: remove the call, fold it into another, or defer it off
+   the request path, before running reads in parallel. Concurrent reads
+   on a bounded pool hold more connections at once, and can make the
+   tail worse for every other request.
 5. Drop the run's database, whatever happened before:
 
    ```bash

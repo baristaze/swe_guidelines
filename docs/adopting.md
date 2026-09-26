@@ -200,13 +200,15 @@ Deviations. It is not a finding, and it never lowers a severity.
 
 ## Operate with the built-in skills
 
-A scaffolded tree carries thirteen project-local skills under
+A scaffolded tree carries fifteen project-local skills under
 `.claude/skills/`, one folder each: `ops-investigate`, `ops-watch`,
 `ops-root-cause`, `ops-infra-as-code`, `ops-cloud-deployment-create`,
 `ops-cloud-deployment-nuke`, `ops-simulate-traffic`,
 `stress-test-create-or-update`, and `stress-test-run`, and the four
 audits, `audit-retention`, `audit-query-indexes`,
-`audit-database-calls`, and `audit-deploy-time`. They are not
+`audit-database-calls`, and `audit-deploy-time`, and the two optional
+audits, `audit-credential-lifetimes` and `audit-provider-calls`, which
+read the code alone and which a tree may delete. They are not
 namespaced under the plugin, because they belong to the project:
 `/ops-investigate --env staging`.
 

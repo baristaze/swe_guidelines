@@ -5449,6 +5449,8 @@ they read the product's own documents for what is specific to it.
 | `audit-query-indexes`            | none          | whether the indexes fit the queries, and what breaks first under load |
 | `audit-database-calls`           | none          | how many database calls each endpoint and flow makes, at least and at most |
 | `audit-deploy-time`              | investigator  | where a deploy's minutes go, and what would shorten it      |
+| `audit-credential-lifetimes`     | none          | optional: how long each credential keeps working on each channel after it should not |
+| `audit-provider-calls`           | none          | optional: which external calls each flow makes, and what they cost it |
 
 The provisioner is the traffic generator's identity on the operator
 plane, whose entry writes (see [Traffic and
@@ -5470,6 +5472,25 @@ the answer first, then a table with a verdict per row, the findings by
 impact with a fix and an effort each, and what it could not verify. It
 proposes tickets and never fixes: a fix is a change of its own, reviewed
 like any other.
+
+The last two audits are optional. A system keeps them when their
+question is worth asking, and nothing requires them. Both read the
+code and the settings, and nothing else. The credential audit states,
+for every credential kind on every channel it opens, where it is
+checked, how often, what a check costs, the longest a revoked
+credential keeps working, how a role change reaches it, its rate
+limit, and whether its check fails open or closed. The provider audit
+states, for every flow, the external calls it makes, how often, and
+whether they repeat, depend on each other, or sit in the request path;
+whether the client is reused; the timeout times the retries; and the
+request's own deadline.
+
+An audit of calls ranks its fixes: remove a call, fold it into another,
+defer it off the request path, cache its answer, and only then run
+calls in parallel. Parallel calls still spend the same pool, the same
+rate limit, and the same deadline. Concurrent reads on a bounded pool
+hold more connections at once, and can make the tail worse for every
+other request.
 
 A skill keeps its spine and names its detail. Its body is loaded in
 full every time it runs, so it carries the input, the procedure as an

@@ -25,6 +25,13 @@ def test_ops_11_the_thirteen_skills_pass(tmp_path):
     assert found(tmp_path, "OPS-11", skills()) == (0, [])
 
 
+def test_ops_11_the_optional_audits_are_not_required_and_are_accepted(tmp_path):
+    optional = ("audit-credential-lifetimes", "audit-provider-calls")
+    assert not set(optional) & set(SKILLS)
+    extra = {f".claude/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in optional}
+    assert found(tmp_path, "OPS-11", skills() | extra) == (0, [])
+
+
 def test_ops_11_a_skill_with_no_frontmatter_passes(tmp_path):
     assert found(tmp_path, "OPS-11", {".claude/skills/stress-test-run/SKILL.md": "# Stress test\n"}) == (0, [])
 

@@ -19,8 +19,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
   `make gen-skills`. The other skills are hand-written. The six
   scaffold skills share `skills/_shared/scaffold-conventions.md`; the
   other hand-written skills do not. `skills/_shared/ops-skills/` holds
-  the thirteen project-local skills, the nine operational skills and
-  the four audits, as flat templates, one
+  the fifteen project-local skills, the nine operational skills, the
+  four audits, and the two optional audits, as flat templates, one
   file each, with `acme` for the product; `arch-scaffold-new` copies
   them into a new tree, and `make leaks`, `make links`, and `make lint`
   hold them. They are not skills of this plugin, but a new tree runs
