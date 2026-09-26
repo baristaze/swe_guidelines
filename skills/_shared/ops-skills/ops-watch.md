@@ -144,8 +144,9 @@ ask for either in the conversation.
    (`OK` to `ALARM`, `ALARM` to `OK`) is.
 5. Each interval, read one number per signal for that interval and
    nothing more: the request count, the 5xx count, the p95, the
-   worker failures, the oldest waiting item's age, and the outbox's
-   lag, through `get-metric-data` with `--period` equal
+   worker failures and the oldest waiting item's age (where there is a
+   worker; a tree built with `--no-worker` has no queue), and the
+   outbox's lag, through `get-metric-data` with `--period` equal
    to the interval, or the same as a Prometheus range query. A burst
    is a count in the batch, never a line per event: the batch's lines
    over `--cap` are counted by level and dropped.
