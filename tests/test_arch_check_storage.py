@@ -841,6 +841,19 @@ def test_sto_28_a_policy_restored_by_a_later_migration_passes(tmp_path):
     assert code == 0
 
 
+def test_sto_28_a_policy_split_by_login_passes(tmp_path):
+    files = edit(
+        UP,
+        "CREATE POLICY tenant_fence ON core.widgets FOR ALL USING (org_id = current_setting('app.org_id')::uuid);",
+        "CREATE POLICY tenant_fence ON core.widgets FOR ALL TO acme_runtime"
+        " USING (org_id = current_setting('app.org_id')::uuid);\n"
+        "CREATE POLICY system_fence ON core.widgets FOR ALL TO acme_system"
+        " USING (current_setting('app.org_id') = '00000000-0000-0000-0000-000000000000');",
+    )
+    code, _ = run(tmp_path, "STO-28", files)
+    assert code == 0
+
+
 def test_sto_28_rls_on_a_system_table(tmp_path):
     files = edit(
         UP,
