@@ -2019,6 +2019,13 @@ Rules that make the move safe:
     (see [The Work Queue](#the-work-queue)). The relay is idempotent on
     the row's key, so relaying twice is harmless (the transactional
     outbox pattern).
+
+    The relay marks a row done only when its side effect happened: the
+    destination row written and the publish taken by the bus, which
+    `publish()` answers (see [Topics](#topics)). A publish the bus
+    dropped leaves the row pending, and the sweep relays it again. One
+    rule holds for every kind of row that publishes, an entity change
+    and a request for work alike.
 -   The topic bus (see [Topics](#topics)), when it is backed by the
     database, connects to the queue role. The processes that enqueue
     work and the workers they wake must share it.
