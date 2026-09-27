@@ -294,9 +294,10 @@ structured-output path: `score` from 0 to 100, `verdict` of `pass`,
 short `rationale`.
 
 `models.yaml` holds the matrix: one model per provider, the fallbacks
-tried in order when a model is refused or out of quota, and the effort
-word each SDK expects. The file is a snapshot a monthly run redefines,
-not a rule. The results name whichever model answered.
+tried in order when a model is refused or out of quota, the effort word
+each SDK expects, and each model's list price. The file is a snapshot a
+monthly run redefines, not a rule. The results name whichever model
+answered.
 
 A model under load answers with a transient error, and the harness asks
 it again: a `503`, an overload, and a timeout are transient. A model out
@@ -308,6 +309,37 @@ from the model the matrix names.
  A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
+
+## Spend
+
+A run records what it spent, in tokens and in US dollars, for every
+judgement and for the subject.
+
+A judgement's `usage` holds `input_tokens` and `output_tokens`, and
+`reasoning_tokens` when the provider reports them. The output is what
+the provider bills as output, and every provider bills reasoning as
+output. Anthropic and OpenAI count the reasoning inside their output
+count. Gemini and xAI report it beside it, so the harness adds it in.
+
+`models.yaml` gives each model a price in US dollars per million input
+and output tokens, under `prices`. The prices are read from each
+provider's pricing page, and they move with the matrix: a model that
+joins the matrix joins the prices. They are the standard tier's, below
+each provider's long-context threshold, where every prompt of the
+shipped scenarios falls. Every input token is priced as uncached input,
+so a provider's cache discount makes the true bill lower, never higher.
+A judgement's `cost_usd` is its usage at those prices.
+
+The subject's spend is on each repeat, as `subject_usage` and
+`subject_cost_usd`. A skill's figures come from the `claude -p`
+envelope, and its cost is the one Claude Code reports, caching
+included. A `qa` answer is priced like a judgement.
+
+`results.json` totals it all under `spend`: each judge's tokens and
+cost, the subject's, and `total_usd`. `report.md` shows the same in its
+Spend section. A model with no price keeps its tokens, and is named
+under `unpriced`. Its cost is in no figure, so a total with anything
+unpriced is a lower bound. No price is invented for it.
 
 ## Streams
 
