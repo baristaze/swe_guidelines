@@ -1,5 +1,10 @@
-"""benchmark/harness/redact.py: no key leaves a run folder."""
+"""benchmark/harness/redact.py: no key leaves a run folder, a zip's members included."""
 
+import io
+import json
+import zipfile
+
+from harness import archive as A
 from harness import redact as X
 
 ANTHROPIC = "sk-ant-api03-" + "a1B2" * 12
@@ -44,3 +49,107 @@ def test_the_values_come_from_every_key_name_the_harness_knows():
 
 def test_a_short_value_is_not_taken_for_a_key():
     assert X.key_values({"OPENAI_API_KEY": "x"}) == set()
+
+
+def a_zipped_run(tmp_path, members):
+    """A run folder whose repeat 0 kept an output zip of these members, with its manifest and record."""
+    run = tmp_path / "runs" / "one"
+    art = run / "artifacts" / "0"
+    art.mkdir(parents=True)
+    with zipfile.ZipFile(art / A.ZIP, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.comment = b"0123abcd"
+        for name, data in members.items():
+            info = zipfile.ZipInfo(name, date_time=(2026, 9, 27, 12, 0, 0))
+            info.external_attr = 0o755 << 16
+            zf.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
+    A.write_manifest(art / A.ZIP)
+    results = {"repeats": [{"index": 0, "archive": A.record(art / A.ZIP, run)}]}
+    (run / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    return run, art / A.ZIP
+
+
+def test_a_key_inside_a_zip_member_is_redacted_and_the_zip_written_again(tmp_path):
+    run, zipped = a_zipped_run(tmp_path, {"app/.env": f"KEY={ANTHROPIC}\n", "README.md": "clean\n"})
+    assert ANTHROPIC.encode() not in zipped.read_bytes()  # compressed: a scan of the zip's bytes misses it
+    before = json.loads((run / "results.json").read_text(encoding="utf-8"))["repeats"][0]["archive"]["sha256"]
+    found = X.redact_folder(tmp_path / "runs", set())
+    assert found == {zipped: 1}
+    with zipfile.ZipFile(zipped) as zf:
+        assert zf.read("app/.env") == b"KEY=[redacted]\n" and zf.read("README.md") == b"clean\n"
+        info = zf.getinfo("app/.env")
+        assert info.date_time == (2026, 9, 27, 12, 0, 0) and info.external_attr == 0o755 << 16
+        assert info.compress_type == zipfile.ZIP_DEFLATED and zf.comment == b"0123abcd"
+    assert X.zip_keys(zipped) == []
+    # The manifest and the record describe the zip that is published now.
+    assert (run / "artifacts" / "0" / A.MANIFEST).read_text(encoding="utf-8") == A.manifest_text(zipped)
+    archive = json.loads((run / "results.json").read_text(encoding="utf-8"))["repeats"][0]["archive"]
+    assert archive["sha256"] == A.digest(zipped) != before and archive["bytes"] == zipped.stat().st_size
+
+
+def test_a_zip_with_no_key_is_left_as_it_is(tmp_path):
+    _, zipped = a_zipped_run(tmp_path, {"README.md": "clean\n"})
+    before = zipped.read_bytes()
+    assert X.redact_folder(tmp_path / "runs", set()) == {}
+    assert zipped.read_bytes() == before
+
+
+def test_a_key_in_a_member_s_name_is_found_and_redacted(tmp_path):
+    _, zipped = a_zipped_run(tmp_path, {f"keys/{GITHUB}.txt": "x"})
+    assert X.zip_keys(zipped) == [f"keys/{GITHUB}.txt"]
+    assert X.redact_zip(zipped, set()) == 1
+    with zipfile.ZipFile(zipped) as zf:
+        assert zf.namelist() == ["keys/[redacted].txt"]
+
+
+def zip_bytes(members, compression=zipfile.ZIP_DEFLATED):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", compression=compression) as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+    return out.getvalue()
+
+
+def test_a_key_inside_a_zip_inside_the_zip_is_redacted(tmp_path):
+    inner = zip_bytes({"secrets/.env": f"KEY={OPENAI}\n"})
+    _, zipped = a_zipped_run(tmp_path, {"fixtures/bundle.zip": inner, "README.md": "clean\n"})
+    assert X.zip_keys(zipped) == ["fixtures/bundle.zip!secrets/.env"]
+    assert X.redact_folder(tmp_path / "runs", set()) == {zipped: 1}
+    with zipfile.ZipFile(zipped) as zf, zipfile.ZipFile(io.BytesIO(zf.read("fixtures/bundle.zip"))) as nested:
+        assert nested.read("secrets/.env") == b"KEY=[redacted]\n"
+    assert X.zip_keys(zipped) == []
+
+
+def test_a_file_that_only_looks_like_a_zip_is_scanned_as_bytes(tmp_path):
+    folder = tmp_path / "runs" / "one"
+    folder.mkdir(parents=True)
+    # A key, then the record that ends a zip: a reader could take the file for an empty zip.
+    fake = folder / "notes.md"
+    fake.write_bytes(f"{GEMINI}\n".encode() + b"PK\x05\x06" + b"\x00" * 18)
+    assert X.redact_folder(tmp_path / "runs", set()) == {fake: 1}
+    assert GEMINI.encode() not in fake.read_bytes()
+
+
+def test_a_key_outside_a_zip_s_members_is_redacted_from_its_bytes():
+    data = f"{XAI}\n".encode() + zip_bytes({"README.md": "clean\n"})
+    clean, count = X.redact_blob(data, set())
+    assert count == 1 and XAI.encode() not in clean
+
+
+def test_a_zip_too_deep_to_unpack_is_replaced_by_a_line_that_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(X, "ZIP_DEPTH", 2)
+    deepest = zip_bytes({"a.zip": zip_bytes({"b.txt": "clean\n"})})
+    _, zipped = a_zipped_run(tmp_path, {"deep.zip": deepest})
+    assert X.zip_keys(zipped) == ["deep.zip!a.zip!(not scanned: a zip inside 2 others)"]
+    assert X.redact_zip(zipped, set()) == 1
+    with zipfile.ZipFile(zipped) as zf, zipfile.ZipFile(io.BytesIO(zf.read("deep.zip"))) as nested:
+        assert nested.read("a.zip") == X.UNREADABLE
+
+
+def test_a_zip_redaction_could_not_scan_leaves_an_empty_manifest_and_no_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(X, "ZIP_BYTES", 4)
+    run, zipped = a_zipped_run(tmp_path, {"README.md": "more than four bytes\n"})
+    assert X.redact_folder(tmp_path / "runs", set()) == {zipped: 1}
+    assert zipped.read_bytes() == X.UNREADABLE
+    assert (run / "artifacts" / "0" / A.MANIFEST).read_text(encoding="utf-8") == ""
+    archive = json.loads((run / "results.json").read_text(encoding="utf-8"))["repeats"][0]["archive"]
+    assert archive["files"] == 0 and archive["sha256"] == A.digest(zipped)

@@ -1,6 +1,8 @@
 """scripts/check_runs.py: the index of the benchmark runs names every run folder once, in its scenario's section."""
 
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -323,3 +325,55 @@ def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, 
     assert f"benchmark/runs/{ONE_A}: no scenario alpha in benchmark/scenarios says where it runs" in out
     assert f"benchmark/runs/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
     assert "2 run index mismatch(es)" in out
+
+
+def a_zip(repo, name, members):
+    path = repo.root / "benchmark" / "runs" / name / "artifacts" / "0" / "output.zip"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for member, data in members.items():
+            zf.writestr(member, data)
+    return path
+
+
+def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_run(repo, ONE_B, "2026-01-01T07:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n", "app/.env": "KEY=sk-ant-api03-" + "a1B2" * 12 + "\n"})
+    a_zip(repo, ONE_B, {"README.md": "clean\n"})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, ONE_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/{ONE_A}/artifacts/0/output.zip: app/.env holds a string shaped like a key" in out
+    assert "1 run index mismatch(es)" in out  # the clean zip passes
+
+
+def test_a_checked_in_zip_that_does_not_open_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n"}).write_bytes(b"not a zip")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "output.zip: does not open as a zip, so no one can say it holds no key" in capsys.readouterr().out
+
+
+def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n"})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 0
+    assert "no key in a zip" in capsys.readouterr().out
+
+
+def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as zf:
+        zf.writestr(".env", "KEY=ghp_" + "k" * 36)
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"bundle.zip": inner.getvalue()})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "output.zip: bundle.zip!.env holds a string shaped like a key" in capsys.readouterr().out

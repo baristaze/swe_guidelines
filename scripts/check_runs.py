@@ -28,7 +28,11 @@ and the run folders together:
   is now: a run on a runtime the scenario no longer lists measured
   something the scenario no longer stands behind. A run of a scenario
   with no file there, or with one that does not load, fails too, since
-  nothing says where it runs.
+  nothing says where it runs;
+- no zip in a run folder holds a string shaped like a key, in a member's
+  content or name or in its comment, and every zip opens. A member is
+  compressed, so the scan of a run folder's bytes that `run.py redact`
+  makes would not see a key in it; this scan reads each member.
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. Its section is the nearest `## `
@@ -48,6 +52,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import zipfile
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
@@ -57,6 +62,7 @@ from _common import CLOSING, HEADING, ROOT, parser, unfenced
 # here are the ones run.py admits.
 if str(ROOT / "benchmark") not in sys.path:
     sys.path.insert(0, str(ROOT / "benchmark"))
+from harness import redact as X
 from harness import scenario as S
 
 RUNS = ROOT / "benchmark" / "runs"
@@ -175,6 +181,20 @@ def unclean(name: str) -> str | None:
     return f"ran on changes no commit holds ({paths})"
 
 
+def zipped_keys(name: str) -> list[str]:
+    """Why each zip in a run folder fails: a member shaped like a key, or a zip that does not open."""
+    out = []
+    for path in sorted((RUNS / name).rglob("*.zip")):
+        shown = path.relative_to(ROOT)
+        try:
+            members = X.zip_keys(path)
+        except (OSError, zipfile.BadZipFile) as exc:
+            out.append(f"{shown}: does not open as a zip, so no one can say it holds no key ({exc})")
+            continue
+        out += [f"{shown}: {member} holds a string shaped like a key; run `run.py redact`" for member in members]
+    return out
+
+
 def check(errors: list[str]) -> int:
     """Add every mismatch to `errors` and return the number of run folders."""
     folders = sorted(p.name for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
@@ -203,6 +223,7 @@ def check(errors: list[str]) -> int:
         reason = unlisted(name, ran[name], declared)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}")
+        errors.extend(zipped_keys(name))
         if ran[name] and ran[name] not in headed:
             unheaded[ran[name]].append(name)
     for missing in sorted(unheaded):
@@ -245,7 +266,7 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         print(f"\n{len(errors)} run index mismatch(es)")
         return 1
-    print(f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists")
+    print(f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists, no key in a zip")
     return 0
 
 
