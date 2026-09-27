@@ -139,23 +139,31 @@ def declared() -> dict[str, list[str] | str]:
     A run records the scenario's `name`, which need not be its file's
     stem, so each file under `SCENARIOS` is loaded and keyed by its name.
     A file that does not load has no name to read, so it is keyed by its
-    stem, the name it takes when it sets none. Two files of one name leave
+    stem, the name it takes when it sets none. Two files of one name, or
+    a file of that name and one that does not load with that stem, leave
     no way to tell which one a run ran.
     """
     loaded: dict[str, list[tuple[str, list[str]]]] = defaultdict(list)
     out: dict[str, list[str] | str] = {}
+    broken: dict[str, str] = {}
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
         except S.ScenarioError as exc:
             out[path.stem] = f"its scenario does not load, so nothing says where it runs: {exc}"
+            broken[path.stem] = path.name
         else:
             loaded[scn.name].append((path.name, scn.runtimes))
     for name, found in loaded.items():
         files = ", ".join(file for file, _ in found)
-        out[name] = (
-            found[0][1] if len(found) == 1 else f"the scenario files {files} are all named {name}, so none says where it runs"
-        )
+        if name in broken:
+            out[name] = (
+                f"{name} is the name of {files} and the stem of {broken[name]}, which does not load, so none says where it runs"
+            )
+        elif len(found) > 1:
+            out[name] = f"the scenario files {files} are all named {name}, so none says where it runs"
+        else:
+            out[name] = found[0][1]
     return out
 
 

@@ -358,3 +358,13 @@ def test_a_scenario_file_no_run_names_is_not_held_to_loading(repo, runs, capsys)
     a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 0  # beta does not load, and no run is held to it
+
+
+def test_a_name_a_loaded_file_bears_and_a_broken_file_s_stem_shares_fails(repo, runs, capsys):
+    repo.write("benchmark/scenarios/alpha.json", '{"name": "alpha",\n')  # does not parse
+    a_scenario(repo, "alpha", ["host"], file="beta")  # named alpha, in beta.json
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "host")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert "alpha is the name of beta.json and the stem of alpha.json, which does not load, so none says where it runs" in out
