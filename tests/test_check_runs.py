@@ -26,9 +26,9 @@ def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario=None, runtime=Non
     repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
 
 
-def a_scenario(repo, name, runtimes):
+def a_scenario(repo, name, runtimes, file=None):
     scenario = {"name": name, "kind": "qa", "subject": {"prompt": "Why?"}, "rubric": "r", "runtimes": runtimes}
-    repo.write(f"benchmark/scenarios/{name}.json", json.dumps(scenario) + "\n")
+    repo.write(f"benchmark/scenarios/{file or name}.json", json.dumps(scenario) + "\n")
 
 
 def test_no_runs_and_no_index_pass(runs, capsys):
@@ -323,8 +323,29 @@ def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, 
     repo.write("benchmark/runs/README.md", "# Runs\n" + index)
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/{ONE_A}: no scenario alpha in benchmark/scenarios says where it runs" in out
+    assert f"benchmark/runs/{ONE_A}: no scenario named alpha in benchmark/scenarios says where it runs" in out
     assert f"benchmark/runs/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
     assert "benchmark/runs/20260101-000000-gamma-ee: its scenario does not load" in out
     assert "gamma.json: does not parse as JSON" in out
     assert "3 run index mismatch(es)" in out
+
+
+def test_a_run_s_scenario_is_the_file_that_bears_its_name_not_its_stem(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["container"], file="first")  # named alpha, in first.json
+    a_scenario(repo, "first", ["host"], file="second")  # named first, in second.json
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 0
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "first", "container")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("first", ONE_A))
+    assert runs.main() == 1
+    assert f"{ONE_A}: ran on container, and first runs on host" in capsys.readouterr().out
+
+
+def test_a_run_of_a_name_two_scenario_files_bear_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["container"], file="one")
+    a_scenario(repo, "alpha", ["container"], file="two")
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "the scenario files one.json, two.json are all named alpha, so none says where it runs" in capsys.readouterr().out

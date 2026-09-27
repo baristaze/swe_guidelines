@@ -24,11 +24,12 @@ and the run folders together:
   changes names a commit that does not hold what ran. A run recorded
   before the harness kept its versions has none to check;
 - every run that records its runtime ran on one its scenario lists. The
-  scenario is the file of that name under `benchmark/scenarios/`, as it
-  is now: a run on a runtime the scenario no longer lists measured
-  something the scenario no longer stands behind. A run of a scenario
-  with no file there, or with one that does not load, fails too, since
-  nothing says where it runs.
+  scenario is the file under `benchmark/scenarios/` whose `name` is the
+  one the run records, as the file is now: a run on a runtime the
+  scenario no longer lists measured something the scenario no longer
+  stands behind. A run of a scenario no file there names, or whose file
+  does not load, or that two files name, fails too, since nothing says
+  where it runs.
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. Its section is the nearest `## `
@@ -132,26 +133,40 @@ def runtime(name: str) -> str:
     return resolved if isinstance(resolved, str) else ""
 
 
-def runtimes(scenario_name: str, cache: dict[str, list[str] | str]) -> list[str] | str:
-    """The runtimes a scenario lists, or why none can be read: its file under `SCENARIOS` is missing or does not load."""
-    if scenario_name not in cache:
-        files = {path.stem: path for path in S.catalog(SCENARIOS)}
-        if scenario_name not in files:
-            cache[scenario_name] = f"no scenario {scenario_name} in {SCENARIOS.relative_to(ROOT)} says where it runs"
+def declared() -> dict[str, list[str] | str]:
+    """Every scenario's runtimes by the name a run records, or why they cannot be read.
+
+    A run records the scenario's `name`, which need not be its file's
+    stem, so each file under `SCENARIOS` is loaded and keyed by its name.
+    A file that does not load has no name to read, so it is keyed by its
+    stem, the name it takes when it sets none. Two files of one name leave
+    no way to tell which one a run ran.
+    """
+    loaded: dict[str, list[tuple[str, list[str]]]] = defaultdict(list)
+    out: dict[str, list[str] | str] = {}
+    for path in S.catalog(SCENARIOS):
+        try:
+            scn = S.load(path)
+        except S.ScenarioError as exc:
+            out[path.stem] = f"its scenario does not load, so nothing says where it runs: {exc}"
         else:
-            try:
-                cache[scenario_name] = S.load(files[scenario_name]).runtimes
-            except S.ScenarioError as exc:
-                cache[scenario_name] = f"its scenario does not load, so nothing says where it runs: {exc}"
-    return cache[scenario_name]
+            loaded[scn.name].append((path.name, scn.runtimes))
+    for name, found in loaded.items():
+        files = ", ".join(file for file, _ in found)
+        out[name] = (
+            found[0][1] if len(found) == 1 else f"the scenario files {files} are all named {name}, so none says where it runs"
+        )
+    return out
 
 
-def unlisted(name: str, scenario_name: str, cache: dict[str, list[str] | str]) -> str | None:
+def unlisted(name: str, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
     """Why a run's runtime is not one its scenario lists, or None when it is or the run records no runtime or no scenario."""
     ran_on = runtime(name)
     if not ran_on or not scenario_name:
         return None
-    listed = runtimes(scenario_name, cache)
+    listed = scenarios.get(scenario_name)
+    if listed is None:
+        return f"no scenario named {scenario_name} in {SCENARIOS.relative_to(ROOT)} says where it runs"
     if isinstance(listed, str):
         return listed
     if ran_on in listed:
@@ -193,14 +208,14 @@ def check(errors: list[str]) -> int:
             errors.append(f"{index}:{ln}: a second section for {heading}; a scenario has one")
         headed.add(heading)
     unheaded: dict[str, list[str]] = defaultdict(list)
-    declared: dict[str, list[str] | str] = {}
+    scenarios = declared() if folders else {}
     for name in folders:
         if counts[name] == 0:
             errors.append(f"{index}: no row for the run folder {name}")
         reason = unclean(name)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}; a checked-in run names a commit that holds what ran")
-        reason = unlisted(name, ran[name], declared)
+        reason = unlisted(name, ran[name], scenarios)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}")
         if ran[name] and ran[name] not in headed:
