@@ -58,7 +58,7 @@ never run the harness from there.
    on another, and say so. When the prompt names something with no flag
    behind it, say so and run without it.
 4. Run the scenario, for example
-   `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1`.
+   `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges or how many repeats, use the
    scenario's default judges and the default of 3 repeats, and say
