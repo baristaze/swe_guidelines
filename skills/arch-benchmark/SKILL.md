@@ -30,7 +30,8 @@ never run the harness from there.
 `$ARGUMENTS` is one of:
 
 - a scenario name, with or without flags ("explain-tenancy",
-  "review-om with all four judges");
+  "review-om with all four judges"), or the path of a scenario file,
+  which `--scenario` takes as it is;
 - a question about what there is ("which scenarios are there?");
 - empty, which means: list the scenarios and the provider
   availability, and stop.
@@ -46,7 +47,10 @@ never run the harness from there.
    Report an absent key as absent; it is a provider that will be
    skipped, not a failure. It also shows whether the subject's own key,
    `SUBJECT_ANTHROPIC_API_KEY`, is present; a skill scenario needs it,
-   and without it a `--strict` run refuses.
+   and without it a `--strict` run refuses. `list` shows only the
+   scenarios under `benchmark/scenarios/`. For a scenario given by its
+   path, read its `kind`, `runtimes`, `requires`, and `judges` from the
+   file.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
@@ -113,10 +117,13 @@ never run the harness from there.
    which they were.
 6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
-   `run.json`, and calls nothing. A dry run leaves `run.json` and
+   `run.json`, and calls nothing. For agentic judges, it also copies
+   each reference and fetches each repository reference at its tag,
+   which spends nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
-   fallbacks each would use, the effort, the repeats, the run's spend
+   fallbacks each would use (`models` lists each provider's model
+   first, then its fallbacks in order), the effort, the repeats, the run's spend
    cap when one was given, and the subject's `max_usd`. For a scenario
    in phases, `run.json` lists each phase under `phases`, and the
    phases' bounds are the ones in effect: the subject's `max_usd` is
@@ -151,7 +158,9 @@ never run the harness from there.
 ## Output
 
 After a dry run: the resolved plan from `run.json`, in prose, and the
-sentence that nothing was executed and no provider was called.
+sentence that nothing was executed and no provider was called; for
+agentic judges, add that each repository reference was fetched at its
+tag.
 
 When the prompt names a runtime the scenario does not list: that
 runtime, the runtimes the scenario lists, and the sentence that nothing
