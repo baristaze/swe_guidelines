@@ -172,6 +172,13 @@ dry run asks the runtime nothing, so its `claude_code` and `image` are
 null. A runtime that does not answer leaves the field null and the run
 says so in its notes. It is never filled in from this machine.
 
+Every other path of the checkout that `run.json` and `results.json`
+record is relative to the repository too: the scenario file, the
+target, and the expected findings. A path outside the repository is
+recorded as it is. The subject's command is recorded as it ran, so on
+the `host` runtime it names the sandbox, a folder that is gone once
+the run ends.
+
 On the `vm` runtime, the plugin the subject reads is the one at
 `remote_plugin`. `checkout` describes this machine's, and the run's
 notes say so.
