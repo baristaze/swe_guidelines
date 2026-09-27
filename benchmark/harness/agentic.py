@@ -46,15 +46,20 @@ read before its other calls, and a valid one is taken before an invalid
 one counts against the budget, so the order of calls in one turn never
 decides the outcome.
 
-`Budget` bounds a judgement three ways: tool calls, input tokens summed
-over every call, and wall time. Each result tells the judge how many
-tool calls are left. A judge that asks for a read after it was told none
-are left is `missed`. So is a judgement whose wall time ran out, and one
-whose next call would pass the input-token budget: that call carries at
-least the last call's input, so it is never made. A call in flight gets
-the time left as its timeout, and the SDK's own retries are off, so one
-call cannot run past it. A `missed` judgement names the budget and the
-figures in `error`, and no answer is invented for it.
+`Budget` bounds a judgement four ways: tool calls, input tokens summed
+over every call, US dollars at the matrix's list price summed over every
+call, and wall time. Each result tells the judge how many tool calls are
+left. A judge that asks for a read after it was told none are left is
+`missed`. So is a judgement whose wall time ran out, and one whose next
+call would pass the input-token budget or the dollar budget: that call
+carries at least the last call's input, and costs at least that input
+at the model's input price, so it is never made. A model the matrix
+does not price is priced at the dearest model the matrix prices, so the
+dollar check errs high. A call in flight gets the time left as its
+timeout, and the SDK's own retries are off, so one call cannot run past
+it. A `missed` judgement names the budget and the figures in `error`,
+and no answer is invented for it. Every call on every provider carries
+the same output cap, `Budget.max_output_tokens`, reasoning included.
 
 A judgement's `status` is `ok`, `missed`, `error`, or `skipped`. It is
 `error` when the provider failed, the model refused, the model stopped
@@ -90,6 +95,7 @@ import re
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -129,12 +135,14 @@ NONE_LEFT = "No tool calls left: call submit with your answer now."
 
 @dataclass(frozen=True)
 class Budget:
-    """What one judgement may spend before it is recorded as missed."""
+    """What one judgement may spend before it is recorded as missed, and what one call may answer."""
 
     tool_calls: int = 40
     input_tokens: int = 500_000
     wall_s: float = 900.0
     submits: int = 3
+    max_usd: float = 3.0  # at the matrix's list price, over every call of the judgement
+    max_output_tokens: int = J.MAX_OUTPUT_TOKENS  # each call, reasoning included, on every provider
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -800,7 +808,7 @@ def make_call(call_id: Any, name: Any, raw_args: Any) -> Call:
 
 
 class Chat(Protocol):
-    """One model's side of the loop, in its provider's shape."""
+    """One model's side of the loop, in its provider's shape. Every call it sends carries the output cap it was built with."""
 
     model: str
 
@@ -814,15 +822,17 @@ class Chat(Protocol):
 class AnthropicChat:
     """Anthropic's Messages API: tools with an input schema, `tool_use` blocks, `tool_result` blocks."""
 
-    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
-        self.client, self.model, self.effort, self.system = client, model, effort, system
+    def __init__(
+        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
+    ) -> None:
+        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
         self.tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
         self.messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
     def send(self, timeout: float) -> Turn:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=J.MAX_OUTPUT_TOKENS,
+            max_tokens=self.max_output,
             system=self.system,
             messages=self.messages,
             tools=self.tools,
@@ -849,8 +859,10 @@ class AnthropicChat:
 class OpenAIChat:
     """OpenAI's Responses API: function tools, `function_call` items, `function_call_output` items."""
 
-    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
-        self.client, self.model, self.effort, self.system = client, model, effort, system
+    def __init__(
+        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
+    ) -> None:
+        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
         # Not strict: strict mode rewrites what a schema may say, and the answer is checked here instead.
         self.tools = [
             {
@@ -871,6 +883,7 @@ class OpenAIChat:
             input=self.input,
             tools=self.tools,
             reasoning={"effort": self.effort},
+            max_output_tokens=self.max_output,
             timeout=timeout,
         )
         items = list(response.output or [])
@@ -903,8 +916,10 @@ class GeminiChat:
 
     REFUSALS = frozenset({"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"})
 
-    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
-        self.client, self.model, self.effort, self.system = client, model, effort, system
+    def __init__(
+        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
+    ) -> None:
+        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
         declarations = [
             {"name": t["name"], "description": t["description"], "parameters_json_schema": t["parameters"]} for t in tools
         ]
@@ -919,6 +934,7 @@ class GeminiChat:
                 "system_instruction": self.system,
                 "tools": self.tools,
                 "thinking_config": {"thinking_level": self.effort},
+                "max_output_tokens": self.max_output,
                 "http_options": {"timeout": max(1, int(timeout * 1000))},
             },
         )
@@ -958,8 +974,10 @@ class GeminiChat:
 class XaiChat:
     """xAI through the OpenAI SDK's Chat Completions, as `judge.py` reaches it: tools, `tool_calls`, tool messages."""
 
-    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
-        self.client, self.model, self.effort = client, model, effort
+    def __init__(
+        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
+    ) -> None:
+        self.client, self.model, self.effort, self.max_output = client, model, effort, max_output
         self.tools = [
             {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
             for t in tools
@@ -972,6 +990,7 @@ class XaiChat:
             messages=self.messages,
             tools=self.tools,
             reasoning_effort=self.effort,
+            max_completion_tokens=self.max_output,
             timeout=timeout,
         )
         choice = response.choices[0]
@@ -1004,7 +1023,7 @@ class XaiChat:
         self.messages.append({"role": "user", "content": text})
 
 
-CHATS: dict[str, Callable[[Any, str, str, str, str, list[dict[str, Any]]], Chat]] = {
+CHATS: dict[str, Callable[[Any, str, str, str, str, list[dict[str, Any]], int], Chat]] = {
     "anthropic": AnthropicChat,
     "openai": OpenAIChat,
     "gemini": GeminiChat,
@@ -1091,16 +1110,21 @@ class Spent:
 
     usage: dict[str, int] = field(default_factory=dict)
     last_input: int = 0
+    # US dollars at the list price, and the price per million input tokens of the last call's model.
+    usd: float = 0.0
+    last_input_price: float = 0.0
     tool_calls: int = 0
     submits: int = 0
     reminders: int = 0
     turns: int = 0
     told: bool = False  # the judge has been told no tool calls are left
 
-    def add(self, usage: dict[str, int]) -> None:
+    def add(self, usage: dict[str, int], price: dict[str, float]) -> None:
         for name, count in usage.items():
             self.usage[name] = self.usage.get(name, 0) + count
         self.last_input = usage.get("input_tokens", 0)
+        self.last_input_price = price["input"]
+        self.usd += (usage.get("input_tokens", 0) * price["input"] + usage.get("output_tokens", 0) * price["output"]) / 1e6
 
 
 @dataclass
@@ -1124,8 +1148,11 @@ class Loop:
         log: Transcript,
         clock: Callable[[], float],
         sleep: Callable[[float], None],
+        price: Callable[[str], dict[str, float]],
     ) -> None:
+        """`price` gives a model's list price in US dollars per million input and output tokens."""
         self.tree, self.check, self.budget, self.log, self.clock, self.sleep = tree, check, budget, log, clock, sleep
+        self.price = price
         self.spent = Spent()
         self.started = clock()
 
@@ -1139,12 +1166,20 @@ class Loop:
             return f"input tokens: {spent} of {cap} spent, and the next call carries at least {self.spent.last_input} more"
         return None
 
+    def out_of_usd(self) -> str | None:
+        """Why the next call would pass the dollar budget, or None when it would not."""
+        spent, cap = self.spent.usd, self.budget.max_usd
+        least = self.spent.last_input * self.spent.last_input_price / 1e6
+        if self.spent.turns and spent + least > cap:
+            return f"spend: ${spent:.4f} of ${cap:g} spent, and the next call costs at least ${least:.4f} more"
+        return None
+
     def out_of_time(self) -> str:
         return f"wall time: the budget of {self.budget.wall_s:g} s is spent"
 
     def out_of_budget(self) -> str | None:
         """Why the loop cannot make another call, or None when it can."""
-        return self.out_of_time() if self.left_s() <= 0 else self.out_of_input()
+        return self.out_of_time() if self.left_s() <= 0 else self.out_of_input() or self.out_of_usd()
 
     def send(self, chat: Chat) -> Turn:
         """One call under the one retry policy, waiting on the loop's clock, and only while time is left."""
@@ -1172,7 +1207,7 @@ class Loop:
                 return Outcome("error", error, first_call_failed=not answered)
             answered = True
             spent.turns += 1
-            spent.add(turn.usage)
+            spent.add(turn.usage, self.price(chat.model))
             self.log.write(
                 "turn", usage=turn.usage, stop=turn.stop, calls=[c.name for c in turn.calls], **self.log.clip(turn.text)
             )
@@ -1303,7 +1338,7 @@ def judge_agentic(
     system = SYSTEM.format(count=count, roots=", ".join(tree.roots), tool_calls=budget.tool_calls, submits=budget.submits)
     log = Transcript(transcript, name, tree.caps.transcript_chars)
     result = AgenticJudgement(provider=name, model=models[0] if models else "", effort=wanted)
-    loop = Loop(tree, check, budget, log, clock, sleep)
+    loop = Loop(tree, check, budget, log, clock, sleep, partial(held_price, matrix, name))
     log.model = result.model
     try:
         log.write("start", effort=wanted, models=models, roots=list(tree.roots), budget=budget.as_dict(), schema=answer_schema)
@@ -1333,6 +1368,19 @@ def judge_agentic(
     finally:
         log.close()
     return result
+
+
+def held_price(matrix: dict[str, dict[str, Any]], provider: str, model: str) -> dict[str, float]:
+    """The price the dollar budget holds a model to: its own, or the dearest the matrix gives any model.
+
+    Each rate is the dearest on its own, so an unpriced model is held high on both. A
+    matrix that prices no model at all holds no dollar budget.
+    """
+    own = J.price_for(matrix, provider, model)
+    if own is not None:
+        return own
+    known = [p for name, spec in matrix.items() for m in spec.get("prices", {}) if (p := J.price_for(matrix, name, m))]
+    return {rate: max((p[rate] for p in known), default=0.0) for rate in ("input", "output")}
 
 
 def without_retries(client: Any) -> Any:
@@ -1368,7 +1416,8 @@ def _run(
     for model in models:
         loop.log.model = model
         try:
-            outcome = loop.converse(CHATS[name](client, model, result.effort, system, prompt, tools))
+            chat = CHATS[name](client, model, result.effort, system, prompt, tools, loop.budget.max_output_tokens)
+            outcome = loop.converse(chat)
         except Exception as exc:
             # A fault of the harness itself still ends in a judgement and an `end` record.
             outcome = Outcome("error", f"{model}: the loop failed: {type(exc).__name__}")

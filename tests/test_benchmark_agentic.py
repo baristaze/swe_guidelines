@@ -714,6 +714,76 @@ def test_every_submission_missing_the_schema_is_an_error_never_an_answer(provide
     assert judgement.error == "malformed answer, 2 submissions: (answer): 'score' is a required property"
 
 
+def sent_output_cap(name: str, request: dict[str, Any]) -> int:
+    """The output cap a request carries, in its provider's own field."""
+    if name == "anthropic":
+        return request["max_tokens"]
+    if name == "openai":
+        return request["max_output_tokens"]
+    if name == "gemini":
+        return request["config"]["max_output_tokens"]
+    return request["max_completion_tokens"]
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", PROVIDERS, ids=NAMES)
+def test_every_call_on_every_provider_carries_the_output_cap(provider, roots, tmp_path):
+    name = P.name(provider)
+    _, fake, _ = run(provider, READS, roots, tmp_path)
+    assert [sent_output_cap(name, r) for r in fake.requests] == [J.MAX_OUTPUT_TOKENS] * 3 == [A.Budget().max_output_tokens] * 3
+    _, fake, _ = run(provider, READS, roots, tmp_path, budget=A.Budget(max_output_tokens=1234))
+    assert [sent_output_cap(name, r) for r in fake.requests] == [1234] * 3
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", PROVIDERS, ids=NAMES)
+def test_a_judge_whose_next_call_would_pass_its_dollar_budget_is_missed(provider, roots, tmp_path):
+    name = P.name(provider)
+    model = J.models_for(J.DEFAULT_MATRIX, name)[0]
+    price = J.price_for(J.DEFAULT_MATRIX, name, model)
+    assert price is not None
+    # One scripted turn: 1000 input tokens, 50 output, 20 of reasoning, which Gemini and xAI report beside the output.
+    one = J.cost_usd(J.DEFAULT_MATRIX, name, model, J.usage_of(1000, 50, 20, reasoning_in_output=name in ("anthropic", "openai")))
+    assert one is not None
+    least = 1000 * price["input"] / 1e6  # the next call carries at least the last one's input
+    listing = ("list_dir", {"root": "output"})
+    judgement, fake, records = run(
+        provider, [step(listing), step(listing)], roots, tmp_path, budget=A.Budget(max_usd=one + least / 2)
+    )
+    assert judgement.status == "missed" and judgement.answer is None
+    cap = one + least / 2
+    assert judgement.error == f"spend: ${one:.4f} of ${cap:g} spent, and the next call costs at least ${least:.4f} more"
+    assert len(fake.requests) == 1 and judgement.tool_calls == 0  # the first answer's read waits on a call never made
+    assert judgement.cost_usd == one
+    assert records[-1]["kind"] == "end" and records[-1]["status"] == "missed"
+    judgement, fake, _ = run(provider, READS, roots, tmp_path, budget=A.Budget(max_usd=one * 3 + least))
+    assert judgement.status == "ok" and len(fake.requests) == 3
+
+
+def test_an_unpriced_model_is_held_to_the_dearest_price_the_matrix_gives():
+    dearest = {
+        "input": max(p["input"] for spec in J.DEFAULT_MATRIX.values() for p in spec["prices"].values()),
+        "output": max(p["output"] for spec in J.DEFAULT_MATRIX.values() for p in spec["prices"].values()),
+    }
+    assert A.held_price(J.DEFAULT_MATRIX, "anthropic", "claude-unknown") == dearest == {"input": 5.0, "output": 30.0}
+    assert A.held_price(J.DEFAULT_MATRIX, "anthropic", "claude-opus-5-5") == {"input": 4.0, "output": 20.0}
+    assert A.held_price({"anthropic": {"model": "m"}}, "anthropic", "m") == {"input": 0.0, "output": 0.0}
+
+
+@needs_jsonschema
+def test_an_unpriced_judge_spends_its_dollar_budget_at_the_dearest_price(roots, tmp_path):
+    matrix = copy.deepcopy(J.DEFAULT_MATRIX)
+    matrix["anthropic"].update(model="claude-unknown", fallbacks=[])
+    # At $5 and $30 per million, one turn of 1000 input and 50 output tokens costs $0.0065, and the next at least $0.005.
+    listing = ("list_dir", {"root": "output"})
+    judgement, fake, _ = run(
+        P.Provider.ANTHROPIC, [step(listing), step(listing)], roots, tmp_path, matrix=matrix, budget=A.Budget(max_usd=0.01)
+    )
+    assert judgement.status == "missed" and len(fake.requests) == 1
+    assert judgement.error == "spend: $0.0065 of $0.01 spent, and the next call costs at least $0.0050 more"
+    assert judgement.cost_usd is None  # no price is invented for the record
+
+
 # The answer is held to the schema the way a verdict is ------------------
 
 
