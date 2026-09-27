@@ -208,22 +208,22 @@ so they stay here:
     cap counting as a failure) is named in the output as not reviewed,
     with its error, and is not run again here. Close every high
     finding, within what After writing lets a fix change, then run
-    `make check` under the bound every gate here has: the first run
-    plus at most 3 reruns. List the rest of the findings in the
-    output for the person. A high
+    step 7's commands again, in order, under the same bound: the first
+    run plus at most 3 reruns. A high finding is closed once they pass
+    after its fix. One whose fix would need an exception stays open,
+    and the step goes on. List the rest of the findings in the output
+    for the person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
 
-A gate in these steps that fails on what this skill wrote is fixed
-and run again, under the bound the conventions set in After writing,
-and within what they let a fix change: the first run plus at most 3
-reruns. Run two of step 8 is meant to fail, and is no such failure.
-Stop at the first step whose gate still fails after its last rerun.
-The tree is new, so nothing in it is pre-existing: a gate that still
-fails on what this skill wrote is a defect of this skill, like a high
-finding. A gate that fails on the machine instead (no network, a port
-in use, Docker stopped) is no defect of the skill; the output names
-what failed.
+A gate in these steps that fails on what this skill wrote is fixed,
+and its step's commands run again from the first, in order, as After
+writing states: the first run plus at most 3 reruns, within what it
+lets a fix change. Step 8 is the exception: each of its runs states
+what runs again. The skill stops at the first stop After writing or
+step 8 orders. The tree is new, so nothing in it is pre-existing, and
+a gate that still fails when its count runs out is a defect of this
+skill.
 
 ## Output
 
