@@ -588,15 +588,16 @@ REMOVE = 'remove() { sudo -n rm -rf -- "$@" 2>/dev/null || rm -rf -- "$@"; }; '
 # in one step, and it names the run that holds it. Exit 3: another run
 # holds it.
 LOCK = 'umask 077 && mkdir -p "$1" || exit 2; mkdir "$1/.lock" 2>/dev/null || exit 3; printf "%s\n" "$2" > "$1/.lock/run"'
-# Before every repeat: the run's folder, private to that machine's user,
-# with nothing an earlier repeat left in the copies or in this repeat's
-# own folders, then the machine's check. Arguments: the run's folder, the
-# count of the repeat's folders, those folders, then the check's words.
-# Exit 3: something stayed. Exit 4: the check failed.
+# Before every repeat: the run's folder, removed whole and made again,
+# private to that machine's user, so nothing an earlier repeat left in it
+# reaches this one; a CLAUDE.md anywhere in it would, since Claude Code
+# loads every CLAUDE.md from its working folder up. The lock lives beside
+# it and stays. Fetch has already brought each earlier workspace back.
+# Then the machine's check. Arguments: the run's folder, then the check's
+# words. Exit 3: something stayed. Exit 4: the check failed.
 PREPARE = REMOVE + (
-    'run=$1 count=$2; shift 2; umask 077 && mkdir -p "$run" || exit 2; '
-    'set -- "$run/plugin" "$run/target" "$@"; count=$((count + 2)); i=0; '
-    'while [ "$i" -lt "$count" ]; do remove "$1"; [ ! -e "$1" ] || exit 3; shift; i=$((i + 1)); done; '
+    'run=$1; shift; remove "$run"; [ ! -e "$run" ] || exit 3; '
+    'umask 077 && mkdir -p "$run" || exit 2; '
     'if [ "$#" -gt 0 ]; then "$@" >/dev/null 2>&1 || exit 4; fi'
 )
 # A key goes through stdin into a file of the repeat's own that only that
@@ -646,10 +647,12 @@ class VmRuntime(BaseRuntime):
     own folder under `remote_workspace`, named after the run folder, made
     with mode 0700, and removed at the end. It mirrors the sandbox:
     `plugin/` and `target/` hold the staged copies, and `workspace/`,
-    `home/`, `tmp/`, and `keys/` hold one folder per repeat. The copy
-    command makes `plugin/` and `target/` afresh before every repeat, so
-    no repeat reads what an earlier one changed: `{local}` is the staged
-    folder here and `{remote}` the path its copy takes there. The sync
+    `home/`, `tmp/`, and `keys/` hold one folder per repeat. Before every
+    repeat the run's folder is removed whole and made again, and the copy
+    command makes `plugin/` and `target/` in it, so no repeat reads what
+    an earlier one left there: `{local}` is the staged folder here and
+    `{remote}` the path its copy takes there. The folders above it
+    outlast the repeat and the run. The sync
     and fetch commands take the repeat's workspace here and there.
     `remote_plugin` and `remote_target` override the copies with paths
     the operator placed on that machine, which nothing copies and no
@@ -839,8 +842,7 @@ class VmRuntime(BaseRuntime):
             if code != 0:
                 return code, f"the other machine did not answer: taking {self.remote_base()} failed with exit {code}"
             self.locked = True
-        own = [self.remote_part(n) for n in ("workspace", "home", "tmp", "keys", "group")]
-        code = self.helper(self.there(PREPARE, self.remote_run(), str(len(own)), *own, *self.vm.check))
+        code = self.helper(self.there(PREPARE, self.remote_run(), *self.vm.check))
         if code == 4:
             return code, f"the machine's check failed there: {' '.join(self.vm.check)}"
         if code != 0:

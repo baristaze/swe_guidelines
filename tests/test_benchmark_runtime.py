@@ -190,19 +190,17 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
     rt = RT.build("vm", tmp_path / "run-1", None, config)
     assert isinstance(rt, RT.VmRuntime)
     first = rt.prepare_repeat(0)
-    own = [f"/opt/work/run-1/{name}/0" for name in ("workspace", "home", "tmp", "keys", "group")]
     assert ran == [
         ["fake-shell", "--", "sh", "-c", RT.LOCK, "sh", "/opt/work", "run-1"],
-        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1", "5", *own],
+        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/0"],
         ["fake-copy", f"{first}/", "station:/opt/work/run-1/workspace/0/"],
     ]
     assert rt.command(["claude"], first)[-2:] == ["0", "claude"]
     assert "/opt/work/run-1/workspace/0" in rt.command(["claude"], first)
     second = rt.prepare_repeat(1)
-    own = [f"/opt/work/run-1/{name}/1" for name in ("workspace", "home", "tmp", "keys", "group")]
     assert ran[4:] == [  # the lock is taken once, for every repeat
-        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1", "5", *own],
+        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/1"],
         ["fake-copy", f"{second}/", "station:/opt/work/run-1/workspace/1/"],
     ]
@@ -384,15 +382,15 @@ def test_the_vm_hands_the_key_through_a_file_never_a_command_line_or_a_stream(tm
     remote = tmp_path / "remote"
     rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": [prefix], "remote_workspace": str(remote)})
     script = "import os; print(len(os.environ.get('ANTHROPIC_API_KEY', '')))"
+    keys = [remote / "run" / "keys" / str(index) / "ANTHROPIC_API_KEY" for index in (0, 1)]
     with CliStream(tmp_path / "cli.jsonl") as stream:
-        for index in (0, 1):
+        for index, key in enumerate(keys):
             rt.prepare_repeat(index)
             env = {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": KEY}
             assert rt.run([sys.executable, "-c", script], tmp_path, env, stream).ok
+            assert key.read_text(encoding="utf-8") == KEY and key.stat().st_mode & 0o777 == 0o600
+    assert not keys[0].exists()  # the next repeat's preparation removed it with the rest of the run's folder
     assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == [str(len(KEY))] * 2
-    keys = [remote / "run" / "keys" / str(index) / "ANTHROPIC_API_KEY" for index in (0, 1)]
-    for key in keys:
-        assert key.read_text(encoding="utf-8") == KEY and key.stat().st_mode & 0o777 == 0o600
     calls = logged(log)
     assert sum(c["argv"][-1] in map(str, keys) for c in calls) == 2  # written for each repeat, into its own folder
     assert all(KEY not in " ".join(c["argv"]) for c in calls)
@@ -426,26 +424,35 @@ def test_a_repeat_exports_only_the_keys_it_is_handed_whatever_an_earlier_one_lef
     assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == [f"{len(KEY)} False False"]
 
 
-def test_a_repeat_finds_nothing_an_earlier_one_left_in_its_home_or_workspace(tmp_path):
+def test_a_repeat_finds_nothing_an_earlier_one_left_anywhere_in_the_run_folder(tmp_path):
     remote = tmp_path / "remote"
     rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
     run = remote / "run"
-    # Repeat 0 plants settings in repeat 1's HOME and a CLAUDE.md in its workspace, as a subject there could.
+    # Repeat 0 plants what a later Claude Code would load: settings in repeat 1's HOME, and a CLAUDE.md in
+    # repeat 1's workspace, in the folder above every workspace, and in the run's folder.
     plant = (
         "import pathlib\n"
-        f"home = pathlib.Path({str(run / 'home' / '1' / '.claude')!r}); home.mkdir(parents=True)\n"
+        f"run = pathlib.Path({str(run)!r})\n"
+        "home = run / 'home' / '1' / '.claude'; home.mkdir(parents=True)\n"
         '(home / \'settings.json\').write_text(\'{"env": {"ANTHROPIC_BASE_URL": "http://planted"}}\')\n'
-        f"work = pathlib.Path({str(run / 'workspace' / '1')!r}); work.mkdir(parents=True)\n"
-        "(work / 'CLAUDE.md').write_text('planted')\n"
-        f"pathlib.Path({str(run / 'tmp' / '1')!r}).mkdir(parents=True)\n"
+        "(run / 'workspace' / '1').mkdir(parents=True)\n"
+        "for folder in (run / 'workspace' / '1', run / 'workspace', run):\n"
+        "    (folder / 'CLAUDE.md').write_text('planted')\n"
+        "(run / 'tmp' / '1').mkdir(parents=True)\n"
     )
-    show = "import os; print(sorted(os.listdir(os.environ['HOME'])), sorted(os.listdir('.')), os.listdir(os.environ['TMPDIR']))"
+    show = (
+        "import os, pathlib; here = pathlib.Path('.').resolve(); "
+        "print(sorted(os.listdir(os.environ['HOME'])), sorted(os.listdir('.')), os.listdir(os.environ['TMPDIR']), "
+        "[str(p.relative_to(here.parents[1])) for p in (here.parent, here.parents[1]) if (p / 'CLAUDE.md').exists()])"
+    )
     with CliStream(tmp_path / "cli.jsonl") as stream:
         rt.prepare_repeat(0)
         assert rt.run([sys.executable, "-c", plant], tmp_path, {"PATH": os.environ["PATH"]}, stream).ok
         rt.prepare_repeat(1)
+        assert run.stat().st_mode & 0o777 == 0o700 and (remote / ".lock").is_dir()  # made again, and the lock stays
         assert rt.run([sys.executable, "-c", show], tmp_path, {"PATH": os.environ["PATH"]}, stream).ok
-    assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == ["[] [] []"]
+    assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == ["[] [] [] []"]
+    rt.teardown()
 
 
 def test_a_repeat_whose_check_fails_there_runs_no_subject(tmp_path):
