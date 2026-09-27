@@ -16,7 +16,9 @@ and the run folders together:
 - within a section, the rows run from the newest run at the top to the
   oldest at the bottom, by the `started_at` each run's `results.json`
   records. The folder names carry the local time of the machine that
-  ran them, so they do not order runs from two machines;
+  ran them, so they do not order runs from two machines. A row of
+  another scenario's run is named as out of place, and it is left out
+  of the order of the section it sits in;
 - every run that records its versions ran on a clean checkout. The
   skills are staged from the working tree, so a run on uncommitted
   changes names a commit that does not hold what ran. A run recorded
@@ -151,8 +153,22 @@ def check(errors: list[str]) -> int:
             f"{index}: no section for the scenario {missing}, which {', '.join(unheaded[missing])} ran; "
             f"add `## {missing}` with one line on what it measures, and put its rows there"
         )
+    reported: set[str] = set()
     above: dict[str, tuple[str, str]] = {}
     for ln, name, section in found:
+        if not (RUNS / name / "report.md").is_file():
+            errors.append(f"{index}:{ln}: links {name}/report.md, and there is no such run")
+        elif counts[name] > 1 and name not in reported:
+            reported.add(name)
+            errors.append(f"{index}:{ln}: {name} has {counts[name]} rows; a run has one")
+        scenario_of = ran.get(name, "")
+        if scenario_of and scenario_of != section:
+            if scenario_of in headed:
+                where = f"under `## {section}`" if section else "above every section"
+                errors.append(
+                    f"{index}:{ln}: {name} is a run of {scenario_of}, and its row sits {where}; it goes under `## {scenario_of}`"
+                )
+            continue
         started = started_at(name)
         if started and section in above and started > above[section][1]:
             errors.append(
@@ -161,19 +177,6 @@ def check(errors: list[str]) -> int:
             )
         if started:
             above[section] = (name, started)
-    reported: set[str] = set()
-    for ln, name, section in found:
-        if not (RUNS / name / "report.md").is_file():
-            errors.append(f"{index}:{ln}: links {name}/report.md, and there is no such run")
-        elif counts[name] > 1 and name not in reported:
-            reported.add(name)
-            errors.append(f"{index}:{ln}: {name} has {counts[name]} rows; a run has one")
-        scenario_of = ran.get(name, "")
-        if scenario_of and scenario_of != section and scenario_of in headed:
-            where = f"under `## {section}`" if section else "above every section"
-            errors.append(
-                f"{index}:{ln}: {name} is a run of {scenario_of}, and its row sits {where}; it goes under `## {scenario_of}`"
-            )
     return len(folders)
 
 

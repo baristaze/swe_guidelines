@@ -265,3 +265,15 @@ def test_a_row_under_a_heading_with_a_closing_sequence_is_held_to_its_name(repo,
     repo.write("benchmark/runs/README.md", "# Runs\n\n## alpha ##\n\n## beta ##\n\n" + HEAD + row(ONE_A))
     assert runs.main() == 1
     assert f"{ONE_A} is a run of alpha, and its row sits under `## beta`; it goes under `## alpha`" in capsys.readouterr().out
+
+
+def test_a_row_of_another_scenario_is_left_out_of_the_sections_order(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
+    a_run(repo, ONE_B, "2026-01-01T09:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_B, TWO_A, ONE_A) + section("beta"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"{ONE_B} is a run of beta, and its row sits under `## alpha`; it goes under `## beta`" in out
+    assert TWO_A not in out
+    assert "1 run index mismatch(es)" in out
