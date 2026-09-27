@@ -56,11 +56,11 @@ never run the harness from there.
    together. It is not a hard ceiling: the harness checks it before each
    repeat and each phase and starts nothing more once it is reached, but
    what is running finishes, so a run can end above N. Each session of a
-   skill subject also has its own cap, the scenario's `max_usd`, which
-   Claude Code holds. Say both when the prompt asks for a cap. When it
-   asks what a run could spend, say that it can pass N by about the
-   largest session cap and one repeat's judges, which a dry run does not
-   price. When the prompt names something with no flag behind it, say
+   skill subject also has its own cap, which Claude Code holds: the
+   subject's `max_usd`, or for a scenario in phases each phase's. Say
+   both when the prompt asks for a cap. When it asks what a run could
+   spend, say that it can pass N by about the largest session cap and
+   one repeat's judges, which a dry run does not price. When the prompt names something with no flag behind it, say
    so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
@@ -124,11 +124,14 @@ never run the harness from there.
    folder), whether it keeps the handoff note (`hint`), its bounds
    (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
    backstop), what follows a bound (`on_cap`), and what its `argv` runs:
-   the prompt as written, and whether it gets `--add-dir` or `--resume`.
+   the prompt as the `argv` carries it, with the target's path and the
+   handoff sentence in it, and whether it gets `--add-dir` or `--resume`.
    Report the subject's `output` folder and its `gates`, which the
    harness runs on the final tree. `benchmark/README.md`, "A subject in
-   phases", says what each field means. There is no score to report,
-   and inventing one is the worst thing this skill could do.
+   phases", says what each field means and what follows when a phase
+   hits a bound or fails; answer from it when the prompt asks. There is
+   no score to report, and inventing one is the worst thing this skill
+   could do.
 7. List the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
    needs its source. A run that exits 4 leaves no `report.md`; the
