@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace as NS
 
 import pytest
 
@@ -206,3 +207,51 @@ def test_a_malformed_answer_falls_back_to_the_next_model():
     )
     assert judgement.status == "ok"
     assert judgement.model == "claude-opus-5"
+
+
+def test_gemini_and_xai_count_the_reasoning_in_the_billed_output():
+    gemini = J.gemini_usage(NS(prompt_token_count=12, candidates_token_count=2, thoughts_token_count=539))
+    assert gemini == {"input_tokens": 12, "output_tokens": 541, "reasoning_tokens": 539}
+    xai = J.xai_usage(NS(prompt_tokens=1252, completion_tokens=1, completion_tokens_details=NS(reasoning_tokens=330)))
+    assert xai == {"input_tokens": 1252, "output_tokens": 331, "reasoning_tokens": 330}
+
+
+def test_anthropic_and_openai_already_count_the_reasoning_in_the_output():
+    openai = J.openai_usage(NS(input_tokens=10, output_tokens=500, output_tokens_details=NS(reasoning_tokens=450)))
+    assert openai == {"input_tokens": 10, "output_tokens": 500, "reasoning_tokens": 450}
+    anthropic = J.anthropic_usage(NS(input_tokens=10, output_tokens=500))
+    assert anthropic == {"input_tokens": 10, "output_tokens": 500}
+
+
+def test_a_usage_the_provider_reports_nothing_for_is_zero_not_missing():
+    assert J.gemini_usage(NS(prompt_token_count=None, candidates_token_count=None, thoughts_token_count=None)) == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+
+
+def test_a_cost_is_the_usage_at_the_list_price_and_none_without_a_price():
+    matrix = {"openai": {"prices": {"m": {"input": 2, "output": 10}}}}
+    assert J.cost_usd(matrix, "openai", "m", {"input_tokens": 1_000_000, "output_tokens": 500_000}) == 7.0
+    assert J.cost_usd(matrix, "openai", "other", {"input_tokens": 1, "output_tokens": 1}) is None
+    assert J.cost_usd(matrix, "xai", "m", {"input_tokens": 1, "output_tokens": 1}) is None
+
+
+def test_every_model_the_matrix_can_reach_has_a_price():
+    for provider in P.members(P.ALL):
+        name = P.name(provider)
+        for model in J.models_for(J.DEFAULT_MATRIX, name):
+            assert J.price_for(J.DEFAULT_MATRIX, name, model) is not None, f"{name} {model} has no price"
+
+
+def test_an_answered_judgement_carries_its_cost():
+    def with_usage(*_args):
+        return VERDICT, json.dumps(VERDICT), {"input_tokens": 1_000_000, "output_tokens": 0}
+
+    matrix = json.loads(json.dumps(J.DEFAULT_MATRIX))
+    first = J.models_for(matrix, "anthropic")[0]
+    judgement = J.judge_one(P.Provider.ANTHROPIC, "p", "high", matrix, env={"ANTHROPIC_API_KEY": "k"}, call=with_usage)
+    price = J.price_for(matrix, "anthropic", first)
+    assert price is not None
+    assert judgement.cost_usd == price["input"]
+    assert judgement.as_dict()["cost_usd"] == judgement.cost_usd

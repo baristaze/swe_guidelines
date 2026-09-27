@@ -3,7 +3,8 @@
 `results.json` is the record a later run is compared against, so its
 shape is fixed by `schema/result.schema.json` and validated before it is
 written. `report.md` is the same data for a person: a table per repeat,
-the summary, the findings with the most severe first, and the paths.
+the summary, what the run spent, the findings with the most severe first,
+and the paths.
 
 Paths in the report are written as code spans, never as links: a run
 folder is served, uploaded, and checked in, and a link out of it would
@@ -43,6 +44,9 @@ class RepeatResult:
     expected: dict[str, Any] | None = None
     # The models the subject's envelope reports it ran on; empty when it reports none.
     subject_models: list[str] = field(default_factory=list)
+    # What the subject spent: its tokens, and their cost in US dollars, None when unknown.
+    subject_usage: dict[str, int] = field(default_factory=dict)
+    subject_cost_usd: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -50,6 +54,8 @@ class RepeatResult:
             "exit_status": self.exit_status,
             "artifact_paths": list(self.artifact_paths),
             "subject_models": list(self.subject_models),
+            "subject_usage": dict(self.subject_usage),
+            "subject_cost_usd": self.subject_cost_usd,
             "judgements": [j.as_dict() for j in self.judgements],
         }
         if self.expected is not None:
@@ -85,6 +91,7 @@ class RunResult:
             "subject": self.subject,
             "repeats": [r.as_dict() for r in self.repeats],
             "summary": summarize(self.repeats, self.subject),
+            "spend": spend(self.repeats),
             "notes": list(self.notes),
         }
 
@@ -200,6 +207,52 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
     }
 
 
+TOKENS = ("input_tokens", "output_tokens", "reasoning_tokens")
+
+
+def _add(total: dict[str, Any], usage: dict[str, int], cost: float | None, what: str) -> None:
+    """Add one call's tokens and cost to a total; a call with no cost is named under `unpriced`."""
+    for name in TOKENS:
+        total[name] += int(usage.get(name, 0))
+    if cost is None:
+        if what not in total["unpriced"]:
+            total["unpriced"].append(what)
+    else:
+        total["cost_usd"] += cost
+
+
+def _total() -> dict[str, Any]:
+    return {**{name: 0 for name in TOKENS}, "cost_usd": 0.0, "unpriced": []}
+
+
+def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
+    """What the run spent: tokens and US dollars per judge, for the subject, and in all.
+
+    Only a call that used tokens counts: a skipped judge and a subject that
+    reported no usage spent nothing the run can see. A call whose model has
+    no price adds its tokens and is named under `unpriced`, so `cost_usd` is
+    what the priced calls cost, and a total with anything unpriced is a
+    lower bound, never a guess.
+    """
+    judges: dict[str, dict[str, Any]] = {}
+    subject = _total()
+    for repeat in repeats:
+        if repeat.subject_usage or repeat.subject_cost_usd is not None:
+            _add(subject, repeat.subject_usage, repeat.subject_cost_usd, ", ".join(repeat.subject_models) or "subject")
+        for j in repeat.judgements:
+            if j.usage:
+                _add(judges.setdefault(j.provider, _total()), j.usage, j.cost_usd, j.model)
+    everything = [*judges.values(), subject]
+    for total in everything:
+        total["cost_usd"] = round(total["cost_usd"], 4)
+    return {
+        "judges": dict(sorted(judges.items())),
+        "subject": subject,
+        "total_usd": round(sum(t["cost_usd"] for t in everything), 4),
+        "unpriced": sorted({m for t in everything for m in t["unpriced"]}),
+    }
+
+
 def findings_by_severity(repeats: list[RepeatResult]) -> list[dict[str, Any]]:
     """Every finding, most severe first, each carrying who said it."""
     out: list[dict[str, Any]] = []
@@ -239,6 +292,34 @@ def write_results(run: RunResult, path: str | Path) -> dict[str, Any]:
 
 def _row(cells: list[str]) -> str:
     return "| " + " | ".join(cells) + " |"
+
+
+def _usd(value: float) -> str:
+    return f"${value:,.4f}"
+
+
+def spend_lines(spent: dict[str, Any]) -> list[str]:
+    """The report's section on what the run spent."""
+    lines = [
+        "## Spend",
+        "",
+        "Tokens as each provider billed them: the output includes the reasoning. Dollars at the list",
+        "prices in `models.yaml`, every input token priced as uncached input.",
+        "",
+        _row(["Who", "Input tokens", "Output tokens", "Of which reasoning", "Cost (USD)"]),
+        _row(["---"] * 5),
+    ]
+    rows = [(f"judge `{p}`", t) for p, t in spent["judges"].items()] + [("subject", spent["subject"])]
+    for who, t in rows:
+        cost = _usd(t["cost_usd"]) + (" + unpriced" if t["unpriced"] else "")
+        lines.append(_row([who, f"{t['input_tokens']:,}", f"{t['output_tokens']:,}", f"{t['reasoning_tokens']:,}", cost]))
+    total = _usd(spent["total_usd"])
+    if spent["unpriced"]:
+        unpriced = ", ".join(f"`{m}`" for m in spent["unpriced"])
+        lines += ["", f"Total: at least {total}. No price for {unpriced}, so its tokens are counted and its cost is not.", ""]
+    else:
+        lines += ["", f"Total: {total}.", ""]
+    return lines
 
 
 def report_text(run: RunResult) -> str:
@@ -309,6 +390,7 @@ def report_text(run: RunResult) -> str:
         lines += ["### Answered in part", ""]
         lines += [f"- `{m['provider']}`: {m['count']} judgement(s) missed, first: {m['reason']}" for m in summary["missed"]]
         lines += [""]
+    lines += spend_lines(data["spend"])
     checked = [(r.index, r.expected) for r in run.repeats if r.expected is not None]
     if checked:
         lines += [

@@ -496,6 +496,32 @@ def test_the_envelope_gives_the_answer_the_models_and_the_error():
     assert run.read_envelope(envelope) == ("the answer", ["claude-opus-5"], False)
     failed = json.dumps({"type": "result", "is_error": True, "result": "API Error: 401", "modelUsage": {}})
     assert run.read_envelope(failed) == ("API Error: 401", [], True)
+
+
+def test_the_envelope_gives_the_subject_tokens_and_claude_code_s_own_cost():
+    envelope = json.dumps(
+        {
+            "type": "result",
+            "result": "the answer",
+            "total_cost_usd": 0.4213,
+            "usage": {
+                "input_tokens": 20,
+                "cache_creation_input_tokens": 3000,
+                "cache_read_input_tokens": 40000,
+                "output_tokens": 1500,
+                "server_tool_use": {"web_search_requests": 0},
+            },
+        }
+    )
+    usage, cost = run.read_envelope_spend(envelope)
+    assert usage == {
+        "input_tokens": 43020,
+        "output_tokens": 1500,
+        "cache_read_input_tokens": 40000,
+        "cache_creation_input_tokens": 3000,
+    }
+    assert cost == 0.4213
+    assert run.read_envelope_spend("not an envelope") == ({}, None)
     assert run.read_envelope("plain text\n") == ("plain text\n", [], False)
 
 

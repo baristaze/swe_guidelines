@@ -28,6 +28,18 @@
     "guideline_sha": { "type": "string" },
     "target_sha": { "type": ["string", "null"] },
     "notes": { "type": "array", "items": { "type": "string" } },
+    "spend": {
+      "description": "What the run spent: tokens and US dollars per judge, for the subject, and in all. A model with no price is named under unpriced, and its cost is not in any figure.",
+      "type": "object",
+      "required": ["judges", "subject", "total_usd", "unpriced"],
+      "additionalProperties": false,
+      "properties": {
+        "judges": { "type": "object", "additionalProperties": { "$ref": "#/$defs/spent" } },
+        "subject": { "$ref": "#/$defs/spent" },
+        "total_usd": { "type": "number", "minimum": 0 },
+        "unpriced": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "subject": {
       "type": "object",
       "required": ["kind"],
@@ -69,6 +81,16 @@
             "type": "array",
             "items": { "type": "string" }
           },
+          "subject_usage": {
+            "description": "The subject's tokens: input_tokens counts every input token, cached or not; output_tokens includes the reasoning.",
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          },
+          "subject_cost_usd": {
+            "description": "The subject's cost in US dollars: Claude Code's own figure for a skill, the list price for a qa answer; null when unknown.",
+            "type": ["number", "null"],
+            "minimum": 0
+          },
           "expected": {
             "description": "Which planted findings the artifact names by lens id and file; present only when the scenario plants some.",
             "type": "object",
@@ -93,8 +115,14 @@
                 "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
                 "latency_s": { "type": "number", "minimum": 0 },
                 "usage": {
+                  "description": "input_tokens, output_tokens with the reasoning included, and reasoning_tokens when the provider reports it.",
                   "type": "object",
                   "additionalProperties": { "type": "integer" }
+                },
+                "cost_usd": {
+                  "description": "The usage at the matrix's list price; null when the model has no price.",
+                  "type": ["number", "null"],
+                  "minimum": 0
                 },
                 "error": { "type": ["string", "null"] },
                 "fallback": {
@@ -233,6 +261,20 @@
             }
           }
         }
+      }
+    }
+  },
+  "$defs": {
+    "spent": {
+      "type": "object",
+      "required": ["input_tokens", "output_tokens", "reasoning_tokens", "cost_usd", "unpriced"],
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "reasoning_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "unpriced": { "type": "array", "items": { "type": "string" } }
       }
     }
   }

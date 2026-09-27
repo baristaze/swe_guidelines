@@ -212,6 +212,37 @@ def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
     return data["result"], models, data.get("is_error") is True
 
 
+ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
+    """The tokens and the cost in US dollars of a `claude --output-format json` envelope.
+
+    Claude Code prices its own run, caching included, as `total_cost_usd`;
+    that figure is the subject's cost. `input_tokens` is every input token,
+    cached or not, with the cached ones also named on their own. Output that
+    is not an envelope spent nothing the run can see: no tokens, cost None.
+    """
+    try:
+        data = json.loads(stdout.strip())
+    except json.JSONDecodeError:
+        return {}, None
+    if not isinstance(data, dict):
+        return {}, None
+    raw = data.get("usage")
+    counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+    usage: dict[str, int] = {}
+    if counts:
+        usage = {
+            "input_tokens": sum(counts.get(k, 0) for k in ENVELOPE_TOKENS),
+            "output_tokens": counts.get("output_tokens", 0),
+            "cache_read_input_tokens": counts.get("cache_read_input_tokens", 0),
+            "cache_creation_input_tokens": counts.get("cache_creation_input_tokens", 0),
+        }
+    cost = data.get("total_cost_usd")
+    return usage, (round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None)
+
+
 def stdout_of(stream_path: Path) -> str:
     """Everything the subject wrote to stdout, in order."""
     return "\n".join(r["line"] for r in CliStream.read(stream_path) if r.get("s") == "out")
@@ -235,25 +266,28 @@ def context_text(scn: S.Scenario) -> str:
 
 def run_subject_qa(
     scn: S.Scenario, streams: CliStream, env: dict[str, str], matrix: dict[str, Any], effort: str, model: str
-) -> tuple[RT.ExitStatus, str]:
-    """A `qa` subject: one provider model answers the prompt itself, at the effort the run names."""
+) -> tuple[RT.ExitStatus, str, dict[str, int]]:
+    """A `qa` subject: one provider model answers the prompt itself, at the effort the run names.
+
+    Returns the exit status, the answer, and the answer's usage.
+    """
     provider = P.parse(scn.subject.provider or "anthropic")
     key = P.key(provider, env)
     started = time.monotonic()
     if not key:
         streams.note(f"[qa] no key for {P.name(provider)}")
-        return RT.ExitStatus(code=2, duration_s=time.monotonic() - started), ""
+        return RT.ExitStatus(code=2, duration_s=time.monotonic() - started), "", {}
     prompt = scn.subject.prompt + context_text(scn)
     streams.note(f"[qa] {P.name(provider)} {model}")
     try:
         text, usage = J.ask(provider, model, prompt, key, J.effort_for(matrix, P.name(provider), effort))
     except Exception as exc:
         streams.note(f"[qa] {type(exc).__name__}: {exc}")
-        return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), ""
+        return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), "", {}
     for line in text.split("\n"):
         streams.write("out", line)
     streams.note(f"[qa] usage {json.dumps(usage)}")
-    return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text
+    return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text, usage
 
 
 def collect_files(rt: RT.BaseRuntime, globs: list[str], art_dir: Path, index: int) -> tuple[list[str], list[str]]:
@@ -508,12 +542,15 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             streams.note(f"[repeat {index}] start")
             rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
             if scn.kind == "qa":
-                status, artifact = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
+                status, artifact, subject_usage = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
                 models = [model] if model else []
+                qa_provider = P.name(P.parse(scn.subject.provider or "anthropic"))
+                subject_cost = J.cost_usd(matrix, qa_provider, model or "", subject_usage) if subject_usage else None
             else:
                 status = rt.run(argv_subject, rt.workspace, env, streams, timeout_s=scn.subject.timeout_s)
                 lines = [r["line"] for r in CliStream.read(run_dir / "streams" / "cli.jsonl")[mark:] if r.get("s") == "out"]
                 artifact, models, is_error = read_envelope("\n".join(lines))
+                subject_usage, subject_cost = read_envelope_spend("\n".join(lines))
                 if is_error:
                     status = dataclasses.replace(status, is_error=True)
                 if model and models and not any(m.startswith(model) for m in models):
@@ -542,7 +579,14 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 reason = "timed out" if status.timed_out else "is_error" if status.is_error else f"exit {status.code}"
                 print(f"  repeat {index} subject failed ({reason}); not judged")
                 run.repeats.append(
-                    R.RepeatResult(index=index, exit_status=status.as_dict(), artifact_paths=paths, subject_models=models)
+                    R.RepeatResult(
+                        index=index,
+                        exit_status=status.as_dict(),
+                        artifact_paths=paths,
+                        subject_models=models,
+                        subject_usage=subject_usage,
+                        subject_cost_usd=subject_cost,
+                    )
                 )
                 continue
 
@@ -569,6 +613,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                     judgements=judgements,
                     expected=expected,
                     subject_models=models,
+                    subject_usage=subject_usage,
+                    subject_cost_usd=subject_cost,
                 )
             )
     finally:
@@ -596,6 +642,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
     if summary["self_judged"]:
         print(f"note: {summary['self_judged']}")
+    spent = data["spend"]
+    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
+    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
     for fallback in summary["fallbacks"]:
         print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
 
