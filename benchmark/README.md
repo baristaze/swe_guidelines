@@ -132,7 +132,11 @@ earlier one wrote.
 
 A run folder under `benchmark/runs/` is checked in, and only after
 `uv run benchmark/run.py redact --out benchmark/runs` has scanned it
-for keys (see The workflow).
+for keys (see The workflow). `runs/README.md` is the index: one row per
+run, newest first, linking to its report. The pull request that adds a
+run adds its row by hand; nothing generates it. `make runs`, part of
+`make check`, fails when a run folder has no row, has two, or a row
+names a run that is not there.
 
 ## Runtimes
 
