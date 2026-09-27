@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Check the published Markdown for vocabulary that must not appear.
 
-The guideline is generic on purpose. Product names and hardware nouns
-belong to the projects it was extracted from, never to the guideline or
-the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
+The guideline is generic on purpose. The `product` group holds the
+hardware vocabulary of the one origin the guideline was extracted from.
+That vocabulary never belongs in the guideline or the lenses.
+`REFUSED_TERMS` below holds every refused term, by group; `SCOPES` says
 which group applies to which files.
 
 It also refuses changelog phrasing in the guideline, and the one
@@ -15,8 +16,8 @@ reference implementation, whose name is refused in every tracked text
 file (a file holding a NUL byte or bytes that are not UTF-8 is binary
 and skipped) except the closing Next section of architecture.md, which links it
 on purpose, and the changelog, which is history.
-The product vocabulary is also refused in the published text that is
-not Markdown: the workflows and templates under `.github/`, the plugin
+The `product` group's terms are also refused in the published text that
+is not Markdown: the workflows and templates under `.github/`, the plugin
 manifests, the YAML and JSON of the skills, the agents, and the
 benchmark, and the docstrings of the Python under `scripts/`,
 `checkers/`, and `benchmark/`.
@@ -37,7 +38,7 @@ from _common import arguments, markdown_files, skipped
 ROOT = Path(__file__).resolve().parent.parent
 
 # The refused vocabulary, one regular expression per term, matched case-insensitively.
-# "product" is the vocabulary of the projects the guideline was extracted from and
+# "product" is the vocabulary of the one origin the guideline was extracted from and
 # must not flow back into it; a fork replaces that list with its own. "history" is
 # changelog phrasing, refused in the guideline only. "shape" is a spelling the
 # guideline forbids in code: a copy built from a dump must go through
