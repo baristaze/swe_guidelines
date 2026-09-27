@@ -1,0 +1,38 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 17.037,
+  "usage": {
+    "input_tokens": 1854,
+    "output_tokens": 998
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 80,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 1 filters by tenant and endpoint but does not use a failing request ID to correlate ingress, application, and downstream signals."
+      },
+      {
+        "severity": "medium",
+        "note": "Step 5 names unusual rows, large collections, and tenant flags without concrete checks for the offending row, a tenant-specific limit, or the flag state on a failing request."
+      },
+      {
+        "severity": "low",
+        "note": "Step 0 overstates rollback as a diagnostic: failures can persist after rollback because of a migration or data written by the new version."
+      }
+    ],
+    "strengths": [
+      "The answer recognizes that an unchanged handler can still fail because shared code, dependencies, configuration, or schema changed.",
+      "It moves from the exception and deploy timeline through rollout placement and deploy changes to tenant-specific data and configuration.",
+      "Most steps explain what their results would rule out, and the reproduction plan compares old and new builds with tenant-specific data."
+    ],
+    "rationale": "This is a useful on-call sequence with sensible mitigation and a strong deploy-to-tenant investigation path. It loses points because it does not anchor the investigation on a request ID and leaves some tenant-shaped hypotheses short of a direct confirmation test. The rollback claim is also more conclusive than the evidence supports."
+  },
+  "raw": "{\"score\":80,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Step 1 filters by tenant and endpoint but does not use a failing request ID to correlate ingress, application, and downstream signals.\"},{\"severity\":\"medium\",\"note\":\"Step 5 names unusual rows, large collections, and tenant flags without concrete checks for the offending row, a tenant-specific limit, or the flag state on a failing request.\"},{\"severity\":\"low\",\"note\":\"Step 0 overstates rollback as a diagnostic: failures can persist after rollback because of a migration or data written by the new version.\"}],\"strengths\":[\"The answer recognizes that an unchanged handler can still fail because shared code, dependencies, configuration, or schema changed.\",\"It moves from the exception and deploy timeline through rollout placement and deploy changes to tenant-specific data and configuration.\",\"Most steps explain what their results would rule out, and the reproduction plan compares old and new builds with tenant-specific data.\"],\"rationale\":\"This is a useful on-call sequence with sensible mitigation and a strong deploy-to-tenant investigation path. It loses points because it does not anchor the investigation on a request ID and leaves some tenant-shaped hypotheses short of a direct confirmation test. The rollback claim is also more conclusive than the evidence supports.\"}"
+}

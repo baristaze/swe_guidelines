@@ -2,7 +2,7 @@ name: support-turn
 kind: qa
 subject:
   provider: anthropic
-  model: claude-opus-5
+  model: claude-opus-5-5
   prompt: |
     A service returns 500 for one tenant only, on one endpoint, since a
     deploy an hour ago. Nothing changed in that endpoint's code. Answer

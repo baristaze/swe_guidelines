@@ -32,7 +32,7 @@ imported inside the functions that call them.
 | `--runtime` | `host` (the default), `container`, or `vm` |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
-| `--out` | where run folders go; `benchmark/runs/` by default, which git ignores |
+| `--out` | where run folders go; `benchmark/runs/` by default |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
@@ -130,8 +130,14 @@ sandbox is removed when the run ends, however it ends. Every repeat
 starts in an empty workspace of its own, so no repeat sees what an
 earlier one wrote.
 
-Nothing there is checked in. The manual is the repository; a run is a
-measurement.
+A run folder under `benchmark/runs/` is checked in, and only after
+`uv run benchmark/run.py redact --out benchmark/runs` has scanned it
+for keys (see The workflow). `runs/README.md` is the index: one row per
+run, newest first, linking to its report. The pull request that adds a
+run adds its row by hand; nothing generates it. `make runs`, part of
+`make check`, fails when a run folder has no row, has two, or a row
+names a run that is not there, and when a row sits above a run that
+started after it.
 
 ## Runtimes
 

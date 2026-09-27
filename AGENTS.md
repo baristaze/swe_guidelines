@@ -63,9 +63,12 @@ lenses (`skills/`), and the checkers that keep the three consistent
   `tests/test_benchmark_*.py` run with nothing installed; the provider
   clients, `pyyaml`, `jsonschema`, and `websockets` are imported inside
   the functions that use them. A run writes into `benchmark/runs/`,
-  which git ignores: the repository is the manual, a run is a
-  measurement. `make benchmark` runs the smoke scenario and is not part
-  of `make check`, because a run calls paid APIs.
+  and a run folder is checked in once `run.py redact` has scanned it
+  for keys. The pull request that adds one adds its row to
+  `benchmark/runs/README.md`, the index, by hand, and
+  `scripts/check_runs.py` holds every run folder to one row.
+  `make benchmark` runs the smoke scenario and is not part of
+  `make check`, because a run calls paid APIs.
 - `checkers/` holds `arch-check`, the static checker that decides the
   mechanical lenses. It is its own Python package
   (`checkers/src/arch_check/`, Python 3.11, standard library only).

@@ -1,0 +1,41 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 25.558,
+  "usage": {
+    "input_tokens": 5433,
+    "output_tokens": 1835
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 76,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The three OM-03 findings demanding MANAGER_OWNED_FIELDS in bin.py, stock_movement.py, and warehouse.py prescribe tuples the supplied evidence does not establish as required."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at impl/manager.py:16 demands tenancy and audit namespaces without support from the evidence; passing tenancy to storage is explicitly listed as correct."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding at stock_movement.py:6 says no manager method sets updated_at or updated_by, but record_movement sets both at impl/manager.py:63–65."
+      },
+      {
+        "severity": "low",
+        "note": "None of the findings quotes the rule it relies on, making the unsupported prescriptions harder to distinguish from guideline requirements."
+      }
+    ],
+    "strengths": [
+      "The review identifies all eight planted defects under their intended lens IDs, at the right files and near the right lines.",
+      "The findings generally give concrete fixes, and the review does not edit or stage files."
+    ],
+    "rationale": "Complete recall of the planted defects is the review’s strongest feature. Its precision suffers from three unsupported OM-03 prescriptions, an unsupported OM-16 finding, and a factual error in the additional OM-05 finding. Missing rule quotations also weaken its form."
+  },
+  "raw": "{\"score\":76,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"medium\",\"note\":\"The three OM-03 findings demanding MANAGER_OWNED_FIELDS in bin.py, stock_movement.py, and warehouse.py prescribe tuples the supplied evidence does not establish as required.\"},{\"severity\":\"medium\",\"note\":\"The OM-16 finding at impl/manager.py:16 demands tenancy and audit namespaces without support from the evidence; passing tenancy to storage is explicitly listed as correct.\"},{\"severity\":\"low\",\"note\":\"The OM-05 finding at stock_movement.py:6 says no manager method sets updated_at or updated_by, but record_movement sets both at impl/manager.py:63–65.\"},{\"severity\":\"low\",\"note\":\"None of the findings quotes the rule it relies on, making the unsupported prescriptions harder to distinguish from guideline requirements.\"}],\"strengths\":[\"The review identifies all eight planted defects under their intended lens IDs, at the right files and near the right lines.\",\"The findings generally give concrete fixes, and the review does not edit or stage files.\"],\"rationale\":\"Complete recall of the planted defects is the review’s strongest feature. Its precision suffers from three unsupported OM-03 prescriptions, an unsupported OM-16 finding, and a factual error in the additional OM-05 finding. Missing rule quotations also weaken its form.\"}"
+}

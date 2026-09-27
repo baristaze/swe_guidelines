@@ -33,7 +33,7 @@ WORKDIR /workspace
 # Pinned, and no script piped into a shell: uv comes from its release
 # image, Claude Code at the version the benchmark workflow installs.
 COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /uvx /usr/local/bin/
-RUN npm config set prefix /home/runner/.local && npm install -g @anthropic-ai/claude-code@2.1.276
+RUN npm config set prefix /home/runner/.local && npm install -g @anthropic-ai/claude-code@2.1.283
 
 ENTRYPOINT []
 CMD ["bash", "-lc", "claude --version"]

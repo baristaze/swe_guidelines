@@ -1,0 +1,38 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 36.363,
+  "usage": {
+    "input_tokens": 6089,
+    "output_tokens": 310
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 72,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The review hallucinates a requirement for a `MANAGER_OWNED_FIELDS` tuple, incorrectly penalizing `Bin`, `StockMovement`, and `Warehouse` under OM-03."
+      },
+      {
+        "severity": "medium",
+        "note": "The defect regarding `StockMovement` composing `Trackable` is reported twice, once under OM-05 and again under OM-06."
+      },
+      {
+        "severity": "low",
+        "note": "The findings omit quotes of the rules they rest on, missing a form requirement from the rubric."
+      }
+    ],
+    "strengths": [
+      "Successfully identifies all eight planted defects.",
+      "Correctly pinpoints the file and line number for every true finding.",
+      "Provides actionable and precise fixes for the identified issues."
+    ],
+    "rationale": "The review achieves perfect recall by finding all eight planted defects at the correct file and line numbers, earning the bulk of its points. However, its precision suffers significantly due to the fabrication of three findings regarding a non-existent `MANAGER_OWNED_FIELDS` rule. Deductions were also made for duplicate reporting of one defect and failing to quote the rules in the finding descriptions."
+  },
+  "raw": "{\n  \"score\": 72,\n  \"verdict\": \"weak\",\n  \"findings\": [\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review hallucinates a requirement for a `MANAGER_OWNED_FIELDS` tuple, incorrectly penalizing `Bin`, `StockMovement`, and `Warehouse` under OM-03.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The defect regarding `StockMovement` composing `Trackable` is reported twice, once under OM-05 and again under OM-06.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"note\": \"The findings omit quotes of the rules they rest on, missing a form requirement from the rubric.\"\n    }\n  ],\n  \"strengths\": [\n    \"Successfully identifies all eight planted defects.\",\n    \"Correctly pinpoints the file and line number for every true finding.\",\n    \"Provides actionable and precise fixes for the identified issues.\"\n  ],\n  \"rationale\": \"The review achieves perfect recall by finding all eight planted defects at the correct file and line numbers, earning the bulk of its points. However, its precision suffers significantly due to the fabrication of three findings regarding a non-existent `MANAGER_OWNED_FIELDS` rule. Deductions were also made for duplicate reporting of one defect and failing to quote the rules in the finding descriptions.\"\n}"
+}

@@ -78,6 +78,12 @@ def test_benchmark_runs_and_files_outside_every_scope_are_not_scanned(repo, leak
     assert leaks.main() == 0
 
 
+def test_the_index_of_the_benchmark_runs_is_scanned(repo, leaks, capsys):
+    repo.write("benchmark/runs/README.md", "# Benchmark runs\n\nThe firmware.\n")
+    assert leaks.main() == 1
+    assert "benchmark/runs/README.md:3: product term 'firmware'" in capsys.readouterr().out
+
+
 def test_product_term_fails_in_agents_md(repo, leaks, capsys):
     repo.write("AGENTS.md", "# Working here\n\nNo firmware talk.\n")
     assert leaks.main() == 1

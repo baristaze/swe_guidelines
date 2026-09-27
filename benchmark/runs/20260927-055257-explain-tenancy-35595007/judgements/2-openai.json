@@ -1,0 +1,30 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 11.97,
+  "usage": {
+    "input_tokens": 1683,
+    "output_tokens": 704
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 98,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The closing review-command sentence adds an action that does not help explain the fence or its proof."
+      }
+    ],
+    "strengths": [
+      "It identifies the query’s tenant predicate as the primary fence and locates it in the WHERE clause, with writes checked in storage.",
+      "It names cross-tenant cases as evidence and describes the recorded negative control: the suite stays green with row-level security on and fails with it off.",
+      "It cites section titles rather than numbers and names the reviewer lenses by id."
+    ],
+    "rationale": "The artifact meets the rubric’s substantive requirements and distinguishes the query predicate from the row-level security backstop. Its supporting detail is largely relevant; only the final instruction is unnecessary."
+  },
+  "raw": "{\n  \"score\": 98,\n  \"verdict\": \"pass\",\n  \"findings\": [\n    {\n      \"severity\": \"low\",\n      \"note\": \"The closing review-command sentence adds an action that does not help explain the fence or its proof.\"\n    }\n  ],\n  \"strengths\": [\n    \"It identifies the query’s tenant predicate as the primary fence and locates it in the WHERE clause, with writes checked in storage.\",\n    \"It names cross-tenant cases as evidence and describes the recorded negative control: the suite stays green with row-level security on and fails with it off.\",\n    \"It cites section titles rather than numbers and names the reviewer lenses by id.\"\n  ],\n  \"rationale\": \"The artifact meets the rubric’s substantive requirements and distinguishes the query predicate from the row-level security backstop. Its supporting detail is largely relevant; only the final instruction is unnecessary.\"\n}"
+}
