@@ -85,8 +85,10 @@ Facts that decide how the steps below go. Read them before the browser.
   contains "Claude finished the response". gemini.google.com shows the
   answer with the composer empty and no stop control. On these three,
   read that rather than the send button's shape.
-- grok.com announces nothing in text. Its answer is done when the page
-  text is the same on two polls a minute apart. The button at the
+- grok.com announces nothing in text. It writes "Worked for" above its
+  answer while the text is still revealing, so that line is not the
+  signal. Its answer is done when the page text is the same on two
+  polls a minute apart. The button at the
   right of the composer is a check, not the signal. Before sending,
   with the composer empty, it is "Enter voice mode", drawn as a blue
   waveform in a circle. A stop control in its place means the answer
@@ -178,8 +180,8 @@ Facts that decide how the steps below go. Read them before the browser.
    every poll: the finish time is the first of the two polls that
    matched. When an answer is already done at the first poll, the
    finish time is the send time plus the site's own "Worked for"
-   figure where it shows one, or else the first poll's time, and
-   `note` says which. After thirty polls or thirty minutes, record
+   figure where it shows one, except on grok.com, or else the first
+   poll's time, and `note` says which. After thirty polls or thirty minutes, record
    `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
    `tabs_context_mcp` and drop its query string. Read the answer with
