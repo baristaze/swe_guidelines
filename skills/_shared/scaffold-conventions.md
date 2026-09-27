@@ -439,7 +439,8 @@ container.
    its own count: the first run plus at most 3 reruns. When the count
    runs out, stop, and leave the tree as the last run left it, fixes
    kept. This bound holds for every gate a scaffold runs, the steps of
-   `arch-scaffold-new` included.
+   `arch-scaffold-new` included. A fix edits only files the scaffold
+   created or changed.
 
    Three other failures stop at once, with no fix and no retry: a
    pre-existing failure, reported and left alone; a command
