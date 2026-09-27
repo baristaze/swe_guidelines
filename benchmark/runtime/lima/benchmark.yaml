@@ -114,27 +114,34 @@ provision:
     echo "$pins" >/etc/swe-benchmark-pins
 - mode: system
   # This machine and its network are out of reach, on every boot. Lima's
-  # network answers host.lima.internal with this machine's loopback, and
-  # this machine's own address on its network is private too, so the VM
-  # and its containers may open nothing through the uplink to a
-  # loopback-alias, private, link-local, or shared (CGNAT) address, but
-  # DNS to the resolvers and DHCP. The rule matches the uplink only, so
-  # Docker's networks inside the VM work as they do anywhere. The
-  # public internet stays open: a subject needs it.
+  # network answers its gateway, host.lima.internal, with this machine's
+  # loopback, and this machine's own address on its network is private
+  # too. So the VM and its containers may open nothing through the
+  # uplink to the gateway or to a private, link-local, or shared (CGNAT)
+  # address, but DNS to the resolvers and DHCP. The rule matches the
+  # uplink only, so Docker's networks inside the VM work as they do
+  # anywhere. The public internet stays open: a subject needs it. The
+  # script reads the uplink, the gateway, and the resolvers from the
+  # routing table and resolved, waiting for them, because a name does
+  # not resolve yet this early in a boot.
   script: |
     #!/bin/bash
     set -eux -o pipefail
     nft list table inet swe_benchmark >/dev/null 2>&1 && exit 0
-    uplink=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
-    host=$(getent ahostsv4 host.lima.internal | awk 'NR == 1 { print $1 }')
-    resolvers=$(resolvectl dns "$uplink" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | paste -sd, -)
-    test -n "$uplink" && test -n "$host" && test -n "$resolvers"
+    for _ in $(seq 120); do
+      uplink=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
+      gateway=$(ip -4 route show default | awk 'NR == 1 { print $3 }')
+      resolvers=$(resolvectl dns "$uplink" 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | paste -sd, - || true)
+      if [ -n "$uplink" ] && [ -n "$gateway" ] && [ -n "$resolvers" ]; then break; fi
+      sleep 1
+    done
+    test -n "$uplink" && test -n "$gateway" && test -n "$resolvers"
     nft -f - <<EOF
     table inet swe_benchmark {
       chain uplink {
         ip daddr { $resolvers } meta l4proto { tcp, udp } th dport 53 accept
         udp dport 67 accept
-        ip daddr $host ct state new reject
+        ip daddr $gateway ct state new reject
         ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } ct state new reject
         ip6 daddr { fc00::/7, fe80::/10 } meta l4proto { tcp, udp } ct state new reject
       }

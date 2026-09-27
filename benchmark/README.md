@@ -330,11 +330,12 @@ pins, and pnpm and Terraform at pins of their own.
 Nothing of this machine is in it. It runs in Lima's plain mode, which
 mounts no folder, forwards no port, and runs no guest agent. SSH
 forwards no agent, and no proxy setting of this machine is written into
-it. A firewall rule in the VM refuses every connection that leaves
-through its uplink for a private address. That covers this machine's
-loopback, which Lima's network answers as `host.lima.internal`, this
-machine's address on its own network, and every other private,
-link-local, and shared (CGNAT) address. DNS to the resolvers and DHCP
+it. A firewall rule, loaded on every boot, refuses every connection
+that leaves the VM through its uplink for a private address. That
+covers this machine's loopback, which Lima's network answers at its
+gateway, `host.lima.internal`, this machine's address on its own
+network, and every other private, link-local, and shared (CGNAT)
+address. DNS to the resolvers and DHCP
 pass. Docker's networks inside the VM are not the uplink, so containers
 reach each other there as they do anywhere. The public internet stays
 open, because a subject needs it. The readiness probe checks the rule,
