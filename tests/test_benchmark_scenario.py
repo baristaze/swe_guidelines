@@ -111,9 +111,11 @@ def test_a_scenario_says_where_it_runs_and_has_no_default_for_it():
 def test_a_scenario_requires_only_what_each_of_its_runtimes_can_provide():
     scn = S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["docker"]))
     assert scn.runtimes == ["vm"] and scn.requires == ["docker"]
-    assert S.from_data(dict(MINIMAL, runtimes=["host", "vm"], requires=["docker"])).requires == ["docker"]
     with pytest.raises(S.ScenarioError, match="the container runtime cannot provide docker, which the scenario requires"):
         S.from_data(dict(MINIMAL, runtimes=["vm", "container"], requires=["docker"]))
+    # The host hands its subject no engine's settings, so it provides no engine either.
+    with pytest.raises(S.ScenarioError, match="the host runtime cannot provide docker, which the scenario requires"):
+        S.from_data(dict(MINIMAL, runtimes=["vm", "host"], requires=["docker"]))
     with pytest.raises(S.ScenarioError, match="requires: gpu is not one of docker"):
         S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["gpu"]))
     assert S.from_data(MINIMAL).requires == []

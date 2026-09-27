@@ -243,13 +243,19 @@ scenario that does not run there from one that failed.
 
 `requires` names what the runtime must provide. `docker` is the one
 requirement there is: a Docker engine the subject runs containers on.
-The container runtime cannot provide it, because it runs no engine and
-drops every capability. The host and the vm runtime hand on the engine
-their machine carries, and the Lima machine carries one. A scenario
-that lists a runtime unable to provide what it requires is refused when
-it loads. The check is against what a runtime can provide, not a probe
-of the machine: a host with no Docker engine fails the subject, not
-the start.
+Only the vm runtime provides it. The subject runs there as the
+machine's user, and the machine `runtime/lima/benchmark.yaml` makes
+runs its engine at the default socket, which that user reaches with no
+setting. The container runtime runs no engine and drops every
+capability. The host runtime hands the subject a private `HOME` and a
+few variables of the harness's environment. So an engine's settings,
+`DOCKER_HOST`, `DOCKER_CONTEXT`, or a context under `~/.docker`, never
+reach it, and an engine behind them is out of its reach.
+
+A scenario that lists a runtime unable to provide what it requires is
+refused when it loads. The check is against what a runtime provides by
+its design, not a probe of the machine: another machine with no engine
+at its default socket fails the subject, not the start.
 
 A checked-in run is held to the same. `make runs` fails on a run whose
 runtime its scenario, as its file is now, does not list, and on a run
