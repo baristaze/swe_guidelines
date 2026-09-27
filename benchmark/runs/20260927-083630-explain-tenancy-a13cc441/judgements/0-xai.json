@@ -1,0 +1,27 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 45.027,
+  "usage": {
+    "input_tokens": 2940,
+    "output_tokens": 3521,
+    "reasoning_tokens": 3320
+  },
+  "cost_usd": 0.027006,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 96,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "It names the query tenant predicate as the fence and places it in the storage WHERE clause, not in manager authorization or method signatures.",
+      "It treats cross-tenant breach cases as the proof the fence holds, and the recorded two-run negative control—predicate removed, green with The Second Fence policy live, failing with that policy off—as the check that the suite would catch a hole.",
+      "It cites guideline section titles only and names the reviewer lenses by id."
+    ],
+    "rationale": "The answer matches the rubric’s full bar: predicate as the applied fence, cross-tenant cases as evidence, and the deliberate two-run breach against The Second Fence, both runs recorded. Citations are section titles, not numbers, and the lenses are named by id rather than general multi-tenancy advice. Extra second-fence mechanics still answer how the fence is held, so they are not empty length."
+  },
+  "raw": "{\"score\":96,\"verdict\":\"pass\",\"findings\":[],\"strengths\":[\"It names the query tenant predicate as the fence and places it in the storage WHERE clause, not in manager authorization or method signatures.\",\"It treats cross-tenant breach cases as the proof the fence holds, and the recorded two-run negative control—predicate removed, green with The Second Fence policy live, failing with that policy off—as the check that the suite would catch a hole.\",\"It cites guideline section titles only and names the reviewer lenses by id.\"],\"rationale\":\"The answer matches the rubric’s full bar: predicate as the applied fence, cross-tenant cases as evidence, and the deliberate two-run breach against The Second Fence, both runs recorded. Citations are section titles, not numbers, and the lenses are named by id rather than general multi-tenancy advice. Extra second-fence mechanics still answer how the fence is held, so they are not empty length.\"}"
+}

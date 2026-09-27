@@ -1,0 +1,45 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 60.629,
+  "usage": {
+    "input_tokens": 3297,
+    "output_tokens": 4408,
+    "reasoning_tokens": 3986
+  },
+  "cost_usd": 0.033042,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 84,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 0 rolls back or flips a flag before any step says to capture a failing request, trace, and tenant id, so the later stack-trace and replay steps can lose their only evidence."
+      },
+      {
+        "severity": "medium",
+        "note": "Steps 1 and 5 name a size or pool limit only this tenant hits, but never say how to confirm it by comparing that tenant's volume or payload to a threshold introduced in the deploy."
+      },
+      {
+        "severity": "low",
+        "note": "Step 0 says to disable \"the relevant feature flag\" before any look has identified a flag only this tenant carries."
+      },
+      {
+        "severity": "low",
+        "note": "The incident-channel, support heads-up, and postmortem sections are generic process that do not rule out a cause and could have been written before the question."
+      }
+    ],
+    "strengths": [
+      "It opens from the tied signals with a shared-change times tenant-unique hypothesis instead of treating an unchanged handler as exonerating the deploy.",
+      "Each numbered step states what it rules out, including using rollback itself as a causal test.",
+      "It names the tenant-shaped triggers the question implies: a record only this tenant has, volume only the largest tenant reaches, and a flag, plan, or config only this tenant carries.",
+      "It moves from the full deploy diff into that tenant's data, shard migration state, and a new-versus-old reproduction."
+    ],
+    "rationale": "The note does what an on-call answer should: it starts from one tenant, one endpoint, a recent deploy, and an unchanged handler, then walks from the deploy into that tenant's data while saying what each step rules out. The three tenant-shaped causes are present, not just a generic outage checklist. Points come off because rollback is ordered before evidence capture, the limit cause has no compare-against-threshold check, and some trailing process does not diagnose anything. That is a pass, not an excellent note."
+  },
+  "raw": "{\"score\":84,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Step 0 rolls back or flips a flag before any step says to capture a failing request, trace, and tenant id, so the later stack-trace and replay steps can lose their only evidence.\"},{\"severity\":\"medium\",\"note\":\"Steps 1 and 5 name a size or pool limit only this tenant hits, but never say how to confirm it by comparing that tenant's volume or payload to a threshold introduced in the deploy.\"},{\"severity\":\"low\",\"note\":\"Step 0 says to disable \\\"the relevant feature flag\\\" before any look has identified a flag only this tenant carries.\"},{\"severity\":\"low\",\"note\":\"The incident-channel, support heads-up, and postmortem sections are generic process that do not rule out a cause and could have been written before the question.\"}],\"strengths\":[\"It opens from the tied signals with a shared-change times tenant-unique hypothesis instead of treating an unchanged handler as exonerating the deploy.\",\"Each numbered step states what it rules out, including using rollback itself as a causal test.\",\"It names the tenant-shaped triggers the question implies: a record only this tenant has, volume only the largest tenant reaches, and a flag, plan, or config only this tenant carries.\",\"It moves from the full deploy diff into that tenant's data, shard migration state, and a new-versus-old reproduction.\"],\"rationale\":\"The note does what an on-call answer should: it starts from one tenant, one endpoint, a recent deploy, and an unchanged handler, then walks from the deploy into that tenant's data while saying what each step rules out. The three tenant-shaped causes are present, not just a generic outage checklist. Points come off because rollback is ordered before evidence capture, the limit cause has no compare-against-threshold check, and some trailing process does not diagnose anything. That is a pass, not an excellent note.\"}"
+}
