@@ -429,12 +429,17 @@ container.
    migrated schema per role and needs Postgres. When a route was added, run
    `make openapi`, so the committed contract and the consuming apps'
    generated types carry it. A single tool runs through the workspace
-   (`uv run`, `pnpm run`), never through a global install. When a
-   gate fails on what the scaffold wrote, fix it and run that gate
-   again: the first run plus at most 3 reruns, then stop and say
-   which gate fails and why. This bound holds for every gate a
-   scaffold runs, the steps of `arch-scaffold-new` included. Report
-   pre-existing failures and stop; do not edit unrelated files.
+   (`uv run`, `pnpm run`), never through a global install.
+
+   When a gate fails on what the scaffold wrote, fix it, then run
+   every command of this step again, in order, and not only the gate
+   that failed: a fix made for one gate can break another. That is the
+   first run plus at most 3 reruns, then stop and say which gate fails
+   and why. The count belongs to the step that runs the gates, so a
+   gate that a skill's own step already ran starts a new count here.
+   This bound holds for every gate a scaffold runs, the steps of
+   `arch-scaffold-new` included. Report pre-existing failures and
+   stop; do not edit unrelated files.
 2. Print the guideline version the skill ran from (the release, or a
    later snapshot of main), then the list of files created and
    changed, one per line, followed by the commands that were run and
