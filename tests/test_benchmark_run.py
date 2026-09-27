@@ -158,8 +158,13 @@ def test_the_shipped_review_never_runs_on_the_host(tmp_path, capsys, monkeypatch
 def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run, "SCENARIOS", tmp_path)
     (tmp_path / "one.json").write_text(json.dumps(dict(SKILL, runtimes=["container", "host"])), encoding="utf-8")
+    (tmp_path / "two.json").write_text(
+        json.dumps(dict(SKILL, name="two", runtimes=["vm"], requires=["docker"])), encoding="utf-8"
+    )
     assert run.main(["list", "--out", str(tmp_path)]) == 0
-    assert "runtimes=container,host" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "runtimes=container,host\n" in out  # a scenario that requires nothing says nothing of it
+    assert "runtimes=vm requires=docker\n" in out
 
 
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "benchmark.yml"

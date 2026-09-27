@@ -451,9 +451,10 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
+            requires = f" requires={','.join(scn.requires)}" if scn.requires else ""
             print(
                 f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort} "
-                f"runtimes={','.join(scn.runtimes)}"
+                f"runtimes={','.join(scn.runtimes)}{requires}"
             )
         except S.ScenarioError as exc:
             print(f"  {path.stem:18} unreadable: {exc}")
