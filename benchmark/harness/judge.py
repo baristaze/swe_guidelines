@@ -13,6 +13,7 @@ invented for a provider that did not answer.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
@@ -20,8 +21,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from . import providers as P
 
@@ -35,6 +37,7 @@ MAX_OUTPUT_TOKENS = 16_000
 TRANSIENT = ("503", "unavailable", "overloaded", "high demand", "timeout", "timed out", "temporarily")
 RETRIES = 2
 RETRY_WAIT_S = 4.0
+T = TypeVar("T")
 
 # The matrix a monthly run redefines. `models.yaml` beside `run.py` is the
 # copy to edit; this is the fallback when the file is missing, and it is the
@@ -240,6 +243,48 @@ def is_transient(exc: Exception) -> bool:
     return any(word in text for word in TRANSIENT)
 
 
+def with_retries(
+    call: Callable[[], T],
+    on_error: Callable[[Exception], None] | None = None,
+    sleep: Callable[[float], None] | None = None,
+    may_wait: Callable[[], bool] | None = None,
+) -> T:
+    """One call, asked again when its error is transient: the one retry policy of every judge.
+
+    There are RETRIES attempts in all, RETRY_WAIT_S apart. `on_error` hears
+    every failed attempt, `sleep` does the waiting, and `may_wait` can turn
+    a wait down, as a deadline does. Raises the last error.
+    """
+    attempt = 1
+    while True:
+        try:
+            return call()
+        except Exception as exc:
+            if on_error is not None:
+                on_error(exc)
+            if attempt < RETRIES and is_transient(exc) and (may_wait is None or may_wait()):
+                attempt += 1
+                (sleep or time.sleep)(RETRY_WAIT_S)
+                continue
+            raise
+
+
+def timed_call(call: Callable[[str, str, str, str], tuple[dict, str, dict]], *args: str) -> tuple[dict, str, dict, float]:
+    """One judge call's data, raw text, and usage, and how long it took, in seconds.
+
+    The answer is unpacked here, inside the attempt, so an answer of the
+    wrong shape is that attempt's error and is recorded like any other.
+    """
+    started = time.monotonic()
+    data, raw, usage = call(*args)
+    return data, raw, usage, time.monotonic() - started
+
+
+def note_error(errors: list[str], model: str, exc: Exception) -> None:
+    """One failed call, as a judgement's error keeps it."""
+    errors.append(f"{model}: {type(exc).__name__}: {str(exc)[:400]}")
+
+
 def truncate(text: str, limit: int = ARTIFACT_LIMIT) -> str:
     """Cut long text and say so in the text itself, so the judge knows."""
     if len(text) <= limit:
@@ -389,41 +434,24 @@ def _verdict_model():
     return VerdictModel
 
 
-# Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
+# One client per provider, on the key given. Every caller builds its client
+# here: the one-shot judges, `ask`, and the agentic loop in `agentic.py`.
+XAI_BASE_URL = "https://api.x.ai/v1"
 
 
-def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+def anthropic_client(key: str) -> Any:
     from anthropic import Anthropic
 
-    client = Anthropic(api_key=key)
-    response = client.messages.parse(
-        model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=_verdict_model(),
-        output_config={"effort": effort},
-    )
-    parsed = response.parsed_output
-    data = parsed.model_dump() if parsed is not None else {}
-    return data, json.dumps(data), anthropic_usage(response.usage)
+    return Anthropic(api_key=key)
 
 
-def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+def openai_client(key: str) -> Any:
     from openai import OpenAI
 
-    client = OpenAI(api_key=key)
-    response = client.responses.parse(
-        model=model,
-        input=prompt,
-        text_format=_verdict_model(),
-        reasoning={"effort": effort},
-    )
-    parsed = response.output_parsed
-    data = parsed.model_dump() if parsed is not None else {}
-    return data, response.output_text or json.dumps(data), openai_usage(response.usage)
+    return OpenAI(api_key=key)
 
 
-def gemini_client(key: str):
+def gemini_client(key: str) -> Any:
     """A Gemini client on the key given, with the ambient Google key out of the way.
 
     `google-genai` reads `GOOGLE_API_KEY` from the environment and says so
@@ -440,6 +468,51 @@ def gemini_client(key: str):
     finally:
         if ambient is not None:
             _os.environ["GOOGLE_API_KEY"] = ambient
+
+
+def xai_client(key: str) -> Any:
+    """xAI answers the OpenAI API at its own address, so its client is OpenAI's."""
+    from openai import OpenAI
+
+    return OpenAI(api_key=key, base_url=XAI_BASE_URL)
+
+
+CLIENTS: dict[str, Callable[[str], Any]] = {
+    "anthropic": anthropic_client,
+    "openai": openai_client,
+    "gemini": gemini_client,
+    "xai": xai_client,
+}
+
+
+# Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
+
+
+def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+    client = anthropic_client(key)
+    response = client.messages.parse(
+        model=model,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        messages=[{"role": "user", "content": prompt}],
+        output_format=_verdict_model(),
+        output_config={"effort": effort},
+    )
+    parsed = response.parsed_output
+    data = parsed.model_dump() if parsed is not None else {}
+    return data, json.dumps(data), anthropic_usage(response.usage)
+
+
+def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+    client = openai_client(key)
+    response = client.responses.parse(
+        model=model,
+        input=prompt,
+        text_format=_verdict_model(),
+        reasoning={"effort": effort},
+    )
+    parsed = response.output_parsed
+    data = parsed.model_dump() if parsed is not None else {}
+    return data, response.output_text or json.dumps(data), openai_usage(response.usage)
 
 
 def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
@@ -459,9 +532,7 @@ def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
 
 
 def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
-    from openai import OpenAI
-
-    client = OpenAI(api_key=key, base_url="https://api.x.ai/v1")
+    client = xai_client(key)
     response = client.chat.completions.parse(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -509,19 +580,12 @@ def judge_one(
         data: dict = {}
         usage: dict[str, int] = {}
         raw, latency = "", 0.0
-        for attempt in range(RETRIES):
-            started = time.monotonic()
-            try:
-                data, raw, usage = dispatch(model, wanted, prompt, key)
-                latency = time.monotonic() - started
-                break
-            except Exception as exc:
-                message = f"{model}: {type(exc).__name__}: {str(exc)[:400]}"
-                errors.append(message)
-                if attempt + 1 < RETRIES and is_transient(exc):
-                    time.sleep(RETRY_WAIT_S)
-                    continue
-                break
+        # `note_error` records every failed attempt, an answer of the wrong shape
+        # included, so the suppressed error is never lost; `data` stays empty.
+        with contextlib.suppress(Exception):
+            data, raw, usage, latency = with_retries(
+                partial(timed_call, dispatch, model, wanted, prompt, key), on_error=partial(note_error, errors, model)
+            )
         if not data:
             errors.append(f"{model}: no parsed verdict")
             continue
@@ -568,9 +632,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
     """One free-text answer from a provider model: the subject of a `qa` scenario."""
     name = P.name(provider)
     if name == "anthropic":
-        from anthropic import Anthropic
-
-        client = Anthropic(api_key=key)
+        client = anthropic_client(key)
         with client.messages.stream(
             model=model,
             max_tokens=MAX_OUTPUT_TOKENS,
@@ -581,9 +643,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
         text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
         return text, anthropic_usage(message.usage)
     if name == "openai":
-        from openai import OpenAI
-
-        client = OpenAI(api_key=key)
+        client = openai_client(key)
         response = client.responses.create(model=model, input=prompt, reasoning={"effort": effort})
         return response.output_text or "", openai_usage(response.usage)
     if name == "gemini":
@@ -592,9 +652,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
             model=model, contents=prompt, config={"thinking_config": {"thinking_level": effort}}
         )
         return response.text or "", gemini_usage(response.usage_metadata)
-    from openai import OpenAI
-
-    client = OpenAI(api_key=key, base_url="https://api.x.ai/v1")
+    client = xai_client(key)
     response = client.chat.completions.create(
         model=model, messages=[{"role": "user", "content": prompt}], reasoning_effort=effort
     )
