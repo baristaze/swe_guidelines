@@ -1,0 +1,155 @@
+# The vm runtime's machine: Ubuntu LTS with Docker and the tools a
+# subject runs, and nothing of this machine in it.
+#
+#     limactl create --name swe-benchmark benchmark/runtime/lima/benchmark.yaml
+#     limactl start swe-benchmark
+#
+# `runtime-config.yaml` beside this file is the runtime config that
+# drives it:
+#
+#     uv run benchmark/run.py --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml ...
+#
+# Nothing of this machine is in the VM. Plain mode mounts no folder,
+# forwards no port, and runs no guest agent. SSH forwards no agent and
+# authorizes Lima's own key only. A firewall rule in the VM refuses
+# every connection to this machine but DNS. The harness reaches the VM
+# through `limactl shell` and `limactl copy`, which go over SSH.
+#
+# Docker runs rootful, and its socket belongs to the VM's user, so a
+# subject runs `docker` without sudo. The VM is the boundary, not the
+# daemon: the VM's user has sudo in a Lima machine either way.
+#
+# The tools are pinned. uv, Node's major, and Claude Code are at the
+# versions runtime/Dockerfile pins; pnpm, Terraform, and Docker are at
+# their own. uv and Terraform are checked against the release's SHA-256.
+# Lima keeps the copy of this file it read at create, so a changed pin
+# takes a new machine: `limactl delete swe-benchmark`, then create it
+# again.
+
+minimumLimaVersion: 2.0.0
+
+base:
+- template:_images/ubuntu-26.04
+
+cpus: 8
+memory: 32GiB
+disk: 100GiB
+
+plain: true
+mounts: []
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+  forwardX11: false
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    UV_VERSION=0.12.17
+    NODE_MAJOR=24
+    CLAUDE_CODE_VERSION=2.1.283
+    PNPM_VERSION=12.6.0
+    TERRAFORM_VERSION=1.16.4
+    DOCKER_VERSION=5:29.8.1-1~ubuntu.26.04~resolute
+    CONTAINERD_VERSION=2.3.6-1~ubuntu.26.04~resolute
+    BUILDX_VERSION=0.37.1-1~ubuntu.26.04~resolute
+    COMPOSE_VERSION=5.5.1-1~ubuntu.26.04~resolute
+    # The script runs on every boot; the pins file says it already ran.
+    pins="uv=$UV_VERSION node=$NODE_MAJOR claude-code=$CLAUDE_CODE_VERSION pnpm=$PNPM_VERSION terraform=$TERRAFORM_VERSION docker=$DOCKER_VERSION"
+    if [ "$(cat /etc/swe-benchmark-pins 2>/dev/null)" = "$pins" ]; then exit 0; fi
+    case "$(uname -m)" in
+      aarch64)
+        uv_triple=aarch64-unknown-linux-gnu
+        uv_sha256=d636d1b678e9e7f367ecb22b46bd1cabbed234d6bc3b4d96365d2b507f72f86c
+        terraform_arch=arm64
+        terraform_sha256=8263f301cb1a24489a4adeed147bf28504053f77237b3ea97a0ef2972659de30
+        ;;
+      x86_64)
+        uv_triple=x86_64-unknown-linux-gnu
+        uv_sha256=fa82fd8dde8e8eefdecada6aa0889666556cfceb690d06e0c3bca49eb3070a63
+        terraform_arch=amd64
+        terraform_sha256=dc94af0eef1147718ad7c8daea792ed199e3e0492eec180d0adafa2a65a879df
+        ;;
+      *)
+        echo >&2 "no pinned build for $(uname -m)"
+        exit 1
+        ;;
+    esac
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends ca-certificates curl git gnupg ripgrep rsync unzip
+    install -m 0755 -d /etc/apt/keyrings
+    # Node from NodeSource, as runtime/Dockerfile installs it.
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" >/etc/apt/sources.list.d/nodesource.list
+    # Docker from Docker's own repository, with the socket owned by the VM's user.
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" >/etc/apt/sources.list.d/docker.list
+    mkdir -p /etc/systemd/system/docker.socket.d
+    printf '[Socket]\nSocketUser=%s\n' "{{.User}}" >/etc/systemd/system/docker.socket.d/override.conf
+    apt-get update
+    apt-get install -y --no-install-recommends nodejs \
+      docker-ce="$DOCKER_VERSION" docker-ce-cli="$DOCKER_VERSION" containerd.io="$CONTAINERD_VERSION" \
+      docker-buildx-plugin="$BUILDX_VERSION" docker-compose-plugin="$COMPOSE_VERSION"
+    systemctl daemon-reload
+    systemctl restart docker.socket docker.service
+    # Claude Code and pnpm from npm, installed for every user and owned by root.
+    npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" "pnpm@$PNPM_VERSION"
+    # uv and Terraform from their releases, each checked against its hash.
+    work=$(mktemp -d)
+    curl -fsSL -o "$work/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$uv_triple.tar.gz"
+    echo "$uv_sha256  $work/uv.tar.gz" | sha256sum -c -
+    tar -xzf "$work/uv.tar.gz" -C "$work"
+    install -m 0755 "$work/uv-$uv_triple/uv" "$work/uv-$uv_triple/uvx" /usr/local/bin/
+    curl -fsSL -o "$work/terraform.zip" "https://releases.hashicorp.com/terraform/$TERRAFORM_VERSION/terraform_${TERRAFORM_VERSION}_linux_$terraform_arch.zip"
+    echo "$terraform_sha256  $work/terraform.zip" | sha256sum -c -
+    unzip -o -q "$work/terraform.zip" terraform -d /usr/local/bin/
+    rm -rf "$work"
+    echo "$pins" >/etc/swe-benchmark-pins
+- mode: system
+  # This machine is out of reach, on every boot. Lima's network answers
+  # host.lima.internal with this machine's loopback, where its own
+  # services listen, so the VM and its containers may open nothing
+  # there but DNS. The internet stays open: a subject needs it.
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    nft list table inet swe_benchmark >/dev/null 2>&1 && exit 0
+    host=$(getent ahostsv4 host.lima.internal | awk 'NR == 1 { print $1 }')
+    test -n "$host"
+    nft -f - <<EOF
+    table inet swe_benchmark {
+      chain host {
+        ip daddr $host udp dport 53 accept
+        ip daddr $host tcp dport 53 accept
+        ip daddr $host ct state new reject
+      }
+      chain output {
+        type filter hook output priority filter; policy accept;
+        jump host
+      }
+      chain forward {
+        type filter hook forward priority filter; policy accept;
+        jump host
+      }
+    }
+    EOF
+
+probes:
+- description: the pinned tools answer
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    if ! timeout 1200s bash -c "until test -f /etc/swe-benchmark-pins; do sleep 5; done"; then
+      echo >&2 "the tools are not installed yet"
+      exit 1
+    fi
+    claude --version
+    uv --version
+    node --version
+    pnpm --version
+    terraform version
+    docker version
+  hint: See "/var/log/cloud-init-output.log" in the guest.

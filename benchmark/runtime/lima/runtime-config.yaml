@@ -1,0 +1,19 @@
+# The runtime config that drives the VM `benchmark.yaml` makes:
+#
+#     uv run benchmark/run.py --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml ...
+#
+# `limactl shell` hands its words on as words. `--workdir /` keeps it
+# from looking for this machine's working folder in the VM, where there
+# is none.
+#
+# `limactl copy` over rsync reads a slash at the end of the destination
+# as "into this folder". With the slash, the copy keeps the folder's
+# name, which is what `copy` asks for. Without it, the folder's content
+# lands on the destination, which is what `fetch` asks for.
+#
+# The run folders live on the VM's disk, under /var/tmp, because /tmp
+# is held in memory there.
+exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
+copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}/"]
+fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
+remote_workspace: /var/tmp/swe-benchmark
