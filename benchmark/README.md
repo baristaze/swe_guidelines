@@ -246,8 +246,8 @@ anything.
 `requires` names what the runtime must provide. `docker` is the one
 requirement there is: a Docker engine the subject runs containers on.
 Only the vm runtime provides it. The subject runs there as the
-machine's user, and the machine `runtime/lima/benchmark.yaml` makes
-runs its engine at the default socket, which that user reaches with no
+machine's user. `runtime/lima/benchmark.yaml` makes a machine whose
+engine listens at the default socket, which that user reaches with no
 setting. The container runtime runs no engine and drops every
 capability. The host runtime hands the subject a private `HOME` and a
 few variables of the harness's environment. So an engine's settings,
