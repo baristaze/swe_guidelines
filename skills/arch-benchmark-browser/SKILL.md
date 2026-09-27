@@ -93,13 +93,13 @@ Facts that decide how the steps below go. Read them before the browser.
   with the composer empty, it is "Enter voice mode", drawn as a blue
   waveform in a circle. A stop control in its place means the answer
   is still coming.
-- The page text around an answer is chrome: the time worked, the echoed
-  prompt, the speaker label ("ChatGPT said:", "Claude responded:",
-  "Gemini said"), a tool count, and after the answer the chip's label
-  ("Fast") or a hover line ("Add to chat"). The score is the line that
-  matches `Score: NN/100`, wherever it is. gemini.google.com's page
-  text also holds the sidebar's conversation titles. They are the
-  person's: never copy them.
+- The page text before and after an answer is chrome: the time worked,
+  the echoed prompt, the speaker label ("ChatGPT said:", "Claude
+  responded:", "Gemini said"), a tool count, and after the answer the
+  chip's label ("Fast") or a hover line ("Add to chat"). The score is
+  the line that matches `Score: NN/100`, wherever it is.
+  gemini.google.com's page text also holds the sidebar's conversation
+  titles. They are the person's: never copy them.
 
 ## Procedure
 
@@ -175,14 +175,14 @@ Facts that decide how the steps below go. Read them before the browser.
      polling. A tab that was not in front for its waits is never called
      done.
 
-   Done is the signal named above. Record the finish time from
-   `date -u` when the signal is seen. On grok.com, run `date -u` at
-   every poll: the finish time is the first of the two polls that
-   matched. When an answer is already done at the first poll, the
-   finish time is the send time plus the site's own "Worked for"
-   figure where it shows one, except on grok.com, or else the first
-   poll's time, and `note` says which. After thirty polls or thirty minutes, record
-   `timed-out` with what the page shows so far.
+   Done is the signal named above. Record the finish time from `date -u`
+   when the signal is seen. On grok.com, run `date -u` at every poll:
+   the finish time is the first of the two polls that matched. When an
+   answer is already done at the first poll, the finish time is the send
+   time plus the site's own "Worked for" figure where it shows one,
+   except on grok.com, or else the first poll's time, and `note` says
+   which. After thirty polls or thirty minutes, record `timed-out` with
+   what the page shows so far.
 7. When a site is done, read the conversation URL from
    `tabs_context_mcp` and drop its query string. Read the answer with
    `get_page_text`, or from screenshots where that is refused. Find the
@@ -210,9 +210,9 @@ Facts that decide how the steps below go. Read them before the browser.
    ```
 
    The answer starts after the speaker label and ends at its own last
-   line. The chrome around it is left out; tool steps, citation chips
-   ("GitHub", "10 sources"), and image captions stay as the page gave
-   them. The statuses:
+   line. The chrome on either side is left out; tool steps, citation
+   chips ("GitHub", "10 sources"), and image captions stay as the page
+   gave them. The statuses:
    - `ok`: a score was found.
    - `smaller-mode`: in place of `ok`, when step 4 fell back from a
      locked model or mode.
