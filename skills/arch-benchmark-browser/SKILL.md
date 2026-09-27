@@ -18,7 +18,9 @@ If any is missing, stop and say the installation is incomplete.
 `$ARGUMENTS` names two sizes, `model=<size> effort=<size>`, each one of
 `xs`, `s`, `m`, `l`, `xl`. When one is missing, it is `m`. It may also
 name a subset of sites (`sites=claude.ai,gemini.google.com`); the
-default is all four.
+default is all four. It may ask for a comparison with earlier runs:
+`compare=<run_id>,<run_id>` names them, and `compare=all` means every
+earlier run. Without `compare=`, nothing is compared.
 
 ## What the pages are like
 
@@ -59,22 +61,28 @@ Facts that decide how the steps below go. Read them before the browser.
   current model and not a model of its own; the chip then reads
   "Flash Extended". The size map never asks for it. The chip shortens
   "3.1 Pro" to "Pro".
-- grok.com: the chip at the right of the composer shows the mode and
-  is named "Model select". It opens one list of modes: Fast, Build,
-  Auto, Expert, Heavy, and a "SuperGrok" row with an Upgrade button. There is no effort control;
+- grok.com: the chip at the right of the composer shows the mode. Its
+  accessible name is "Model select", the name to give `find`. It opens
+  one list of modes: Fast, Build, Auto, Expert, Heavy, and a
+  "SuperGrok" row with an Upgrade button. There is no effort control;
   the "+" at the left holds files, projects, skills, and connectors.
   Auto, Expert, and Heavy need a SuperGrok plan. On an account without
   one, clicking them opens a plan page (the URL ends in `#subscribe`)
   and the chip keeps its mode; the × at the page's top right closes it.
   Never click Upgrade, there or anywhere else, and never switch to
   "Private" at the top right.
-- A finished answer is announced in text: chatgpt.com writes "Worked
-  for" and a duration above it; claude.ai's page text contains "Claude
-  finished the response"; gemini.google.com shows the answer with the
-  composer empty and no stop control; grok.com's page text is the same
-  on two polls a minute apart, with no stop control beside the empty
-  composer, whose button then reads "Enter voice mode". Read that
-  rather than the send button's shape.
+- A finished answer is announced in text on three sites. chatgpt.com
+  writes "Worked for" and a duration above it. claude.ai's page text
+  contains "Claude finished the response". gemini.google.com shows the
+  answer with the composer empty and no stop control. On these three,
+  read that rather than the send button's shape.
+- grok.com announces nothing in text. Its answer is done when the page
+  text is the same on two polls a minute apart. The button at the
+  right of the composer is a check, not the signal. Before sending,
+  with the composer empty, it is "Enter voice mode", drawn as a blue
+  waveform in a circle; `find` or `read_page` names it, and where both
+  are refused, a `zoom` on it shows the waveform. A stop control in its
+  place means the answer is still coming.
 - The first line of a page's text is chrome (the time worked, the
   echoed prompt, a tool count), not the answer. The score is the line
   that matches `Score: NN/100`, wherever it is.
@@ -108,13 +116,15 @@ Facts that decide how the steps below go. Read them before the browser.
      model the size names. The chip must read the model's short name.
    - grok.com: open the chip, click the mode the size names. The chip
      must read the mode. When the plan page opens instead, close it,
-     open the chip again, and click Fast; record Fast, and say in
-     `note` that the mode the size asked for needs a SuperGrok plan. A
-     locked mode is not tried again.
-   Where the size map's effort is `none`, `effort_label` is `none`.
-   If the label does not match what the size asked for, try once more,
+     open the chip again, and click Fast. `model_label` is Fast, `note`
+     names the locked mode ("Expert needs a SuperGrok plan"), and step
+     7 records the session `smaller-mode`.
+
+   Where the size map's effort is `none`, `effort_label` is `none`. If
+   the label does not match what the size asked for, try once more,
    then record the label the page shows and go on: the results carry
-   what was actually used, never what was asked for.
+   what was actually used, never what was asked for. A locked mode on
+   grok.com is the exception: it is not tried again.
 5. Click the composer and type the prompt from `prompt.md`, a blank
    line, and the contract, line by line with `shift+Return` between
    lines and without the leading dash on the contract's items. Send
@@ -122,11 +132,19 @@ Facts that decide how the steps below go. Read them before the browser.
    screenshot showing the sent message and the chip.
 6. Do step 4 and step 5 for every site first, then poll. Poll each
    site with a batch of up to five ten-second waits and one scaled
-   (0.4) screenshot, no more often than once a minute per site. Done
-   is the text signal named above. Give a site up to thirty minutes;
-   past that, record `timed-out` with what the page shows so far.
-   Record the finish time from `date -u` when the signal is seen; when
-   it was missed and the page shows a relative time or a "Worked for"
+   (0.4) screenshot, no more often than once a minute per site. On
+   claude.ai and grok.com the signal is in the page text: end each
+   batch with one `get_page_text`, and keep it to four waits so the
+   batch stays inside its deadline. On grok.com, the text is the same
+   when its length and its last line match the previous poll's. Where
+   `get_page_text` is refused, compare the two polls' screenshots
+   instead: the same last visible line of the answer, and no stop
+   control. Done is the signal named above. Give a site up to thirty
+   minutes; past that, record `timed-out` with what the page shows so
+   far. Record the finish time from `date -u` when the signal is seen.
+   On grok.com, run `date -u` at every poll: the finish time is the
+   time of the first of the two polls that matched. When the signal
+   was missed and the page shows a relative time or a "Worked for"
    duration, compute it from that and say it is approximate.
 7. When a site is done: read the conversation URL from
    `tabs_context_mcp` (it changed from the new-chat URL to one with the
@@ -135,14 +153,16 @@ Facts that decide how the steps below go. Read them before the browser.
    line. Save `<site>.md` in the run folder: a header with the URL, the
    model label, the effort label, the sent and finished times, then the
    answer as the page gave it. Statuses: `ok` when a score was found;
-   `no-score` when there is an answer and no such line, with the number
-   the answer gives elsewhere in `note`; `refused` when the product
-   declined; `errored` when the product printed its own error in place
-   of an answer ("I seem to be encountering an error"), in which case
-   start a new chat on that site and send once more before recording
-   it; `timed-out` as in step 6. An answer cut short by a tool-use limit
-   that still satisfies the contract is `ok` with a `note`; do not
-   press Continue.
+   `smaller-mode` in place of `ok` when step 4 fell back from a locked
+   mode; `no-score` when there is an answer and no such line, with the
+   number the answer gives elsewhere in `note`; `refused` when the
+   product declined; `errored` when the product printed its own error in
+   place of an answer ("I seem to be encountering an error"), in which
+   case start a new chat on that site and send once more before
+   recording it; `timed-out` as in step 6. An answer cut short by a
+   tool-use limit that still satisfies the contract is `ok` with a
+   `note`; do not press Continue. `note` holds every remark on the
+   session, in the order they arose, separated by "; ".
 8. Write `results.json` in the run folder in the schema, with `python3`:
    `run_id` is the folder name, `started_at` from step 2 and
    `finished_at` from the moment of writing, `prompt` and `contract`
@@ -156,13 +176,21 @@ Facts that decide how the steps below go. Read them before the browser.
    request carries.
 10. Close the tabs you created; leave the ones you reused on the
     conversation pages unless the person asked otherwise.
+11. Only when `$ARGUMENTS` has `compare=`: find the earlier runs with
+    `python3`, a `glob` over
+    `~/Downloads/benchmark_browser/*/results.json`, since the tools
+    have no `ls`; with run ids named, read those runs only. Compare
+    only runs whose `prompt` and `contract` are both the same text as
+    this run's, and name each run left out for asking a different one.
+    Compare only `ok` sessions.
 
 ## Output
 
-In prose: the run folder path; per site, the model and effort labels
-the page showed, the score, and the conversation URL; any site that was
-not signed in, refused, errored, or timed out, with the page's own
-words; which sites were read from screenshots. Say what was measured.
-Do not compare the scores to an earlier run unless asked. When asked,
-compare only runs whose `results.json` holds the same `prompt`, and
-name each run left out for asking a different one.
+In prose: the run folder path; per site, the model and effort labels the
+page showed, the score, and the conversation URL; any site that was not
+signed in, refused, errored, or timed out, with the page's own words;
+which sites were read from screenshots. Say what was measured. A
+`smaller-mode` session is named with the mode its size asked for and the
+mode that ran, and it is left out of any comparison of like for like,
+across sites or across runs. Compare with earlier runs only as step 11
+says.
