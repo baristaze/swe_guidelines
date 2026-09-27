@@ -161,9 +161,12 @@ lenses (`skills/`), and the checkers that keep the three consistent
   `scripts/check_skills.py` holds a paragraph or list item under
   `skills/` that says fix beside a rerun, or beside a `make <target>`
   it runs, to an `at most <n> reruns` in the same paragraph or item.
-  It pairs a fix and a rerun only inside one paragraph or item, so a
-  fix in a step with its rerun in a nested bullet is not paired. That
-  loop, and a loop said in other words, is held by hand.
+  A rerun is `rerun`, or `run` with `again` anywhere after it: the
+  span is the whole paragraph or item, so a block that says fix, run,
+  and again without a loop is reworded so it does not. It pairs a fix
+  and a rerun only inside one paragraph or item, so a fix in a step
+  with its rerun in a nested bullet is not paired. That loop, and a
+  loop said in other words, is held by hand.
 - The release version is written once, in `.claude-plugin/plugin.json`;
   every other copy is checked against it.
 - Scaffold skills share `skills/_shared/scaffold-conventions.md`.
