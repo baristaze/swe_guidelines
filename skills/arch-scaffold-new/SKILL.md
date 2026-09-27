@@ -163,10 +163,10 @@ so they stay here:
    out of one query of a storage impl over Postgres (the first
    entity's list with `--first`, else a tenancy list). Run one: run
    `make test-integration` with the table's policy in place. It stays
-   green, the second fence holding. A failure in run one is fixed in
-   the table's policy or the migration that writes it, never by
-   putting the predicate back: the predicate stays out until run
-   three. Run two: turn the policy off for that table (`ALTER TABLE
+   green, the second fence holding. A failure in run one is fixed
+   without putting the predicate back, since it stays out until run
+   three: a failure of that method's cross-tenant case is fixed in the
+   table's policy or the migration that writes it. Run two: turn the policy off for that table (`ALTER TABLE
    ... NO FORCE ROW LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`,
    through `uv run` over the local migration login's URL, since only
    the owner alters a table), and run `make test-integration` again.
