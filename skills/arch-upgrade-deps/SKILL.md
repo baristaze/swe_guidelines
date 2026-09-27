@@ -144,19 +144,23 @@ never removes them. Nothing else is asked for.
    of step 8 where it first fails, even when another row's fix made it
    fail.
 
-   A row whose fix would change what the application does, or that
-   still fails after its second fix, is held back. Undo its edits and
-   the edits of its fixes. A file only the row and its fixes touched is
-   restored whole (`git restore <file> ...`). In a file other rows
-   share (`pyproject.toml`, `package.json`, a lock file, a CI
-   workflow, a compose file), edit back the row's lines alone, and pin
-   a library back to the release it had
-   (`uv lock --upgrade-package <name>==<release>`,
-   `pnpm update --recursive <name>@<release>`): restoring the whole
-   file would revert the other rows too. Reinstall before the next run
-   (`uv sync`, `pnpm install`, and
-   `terraform init -upgrade -backend=false` in each Terraform root the
-   row touched), so that run tests the release the row went back to.
+   A row with no such fix (one that fails only because another row
+   went back included), one whose fix would change what the
+   application does, or one that still fails after its second fix, is
+   held back. Undo its edits and the edits of its fixes. A file only
+   the row and its fixes touched is restored whole
+   (`git restore <file> ...`). In a file other rows share
+   (`pyproject.toml`, `package.json`, `.terraform.lock.hcl`, a CI
+   workflow, a compose file), edit back the row's lines alone:
+   restoring the whole file would revert the other rows too. `uv.lock`
+   and `pnpm-lock.yaml` are never edited by hand: the library goes back
+   to the release it had before the edit that moved it, through
+   `uv lock --upgrade-package <name>==<release>` or
+   `pnpm update --recursive <name>@<release>`, which rewrite the lock.
+   Then reinstall what the row touched (`uv sync` for a Python row,
+   `pnpm install` for an npm row, `terraform init -backend=false` in
+   each Terraform root it touched), so the next run tests the release
+   the row went back to.
 
    Mark the row held back with its failing output, and run step 8
    again. Then go on from where step 8 was run: within step 7, with the
