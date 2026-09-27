@@ -42,13 +42,13 @@ RETRY_WAIT_S = 4.0
 # model is refused or out of quota, and the effort word each SDK expects.
 DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
     "anthropic": {
-        "model": "claude-opus-5",
-        "fallbacks": ["claude-sonnet-5"],
+        "model": "claude-opus-5-5",
+        "fallbacks": ["claude-opus-5", "claude-sonnet-5"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
     },
     "openai": {
-        "model": "gpt-5.5",
-        "fallbacks": ["gpt-5.4", "gpt-5.1"],
+        "model": "gpt-6-sol",
+        "fallbacks": ["gpt-5.5", "gpt-5.4", "gpt-5.1"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
     },
     "gemini": {
@@ -57,8 +57,8 @@ DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
         "effort": {"low": "low", "medium": "medium", "high": "high"},
     },
     "xai": {
-        "model": "grok-4",
-        "fallbacks": [],
+        "model": "grok-4.7",
+        "fallbacks": ["grok-4"],
         "effort": {"low": "low", "medium": "high", "high": "high"},
     },
 }
