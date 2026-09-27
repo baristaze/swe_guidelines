@@ -10,10 +10,19 @@ answers compare.
 The tools are `list_dir`, `read_file`, `grep`, and `find`. Every path is
 relative to its root. A path with `..` in it, an absolute path, and a
 path whose resolved target leaves its root, through a symlink or
-otherwise, are refused. Every result is capped by `Caps`, and a result
-that was cut says so and says how to read on. `grep` and `find` do not
-descend into `.git`, `node_modules`, `.venv`, or `__pycache__`, and
-follow no symlinked folder; `list_dir` still shows them.
+otherwise, are refused. A refusal names the path as the judge wrote it,
+never a folder on this machine. Every result is capped by `Caps`, and a
+result that was cut says so and says how to read on. `grep` and `find`
+read regular files only, do not descend into `.git`, `node_modules`,
+`.venv`, or `__pycache__`, and follow no symlinked folder; `list_dir`
+still shows them. `read_file` and `grep` count lines the same way,
+splitting at `\\n`, `\\r`, and `\\r\\n` only, so a line number from one is a
+line number in the other. On a file larger than `Caps.file_bytes`,
+`read_file` stops reading once the range is served, and says the file
+has at least so many lines.
+
+A tool argument can be anything a model sends. Whatever it makes a tool
+do, the judge gets a refusal back and the loop goes on.
 
 Every tool result sits inside a fence of backticks longer than any run
 of backticks in it, as the one-shot judge fences the artifact. The
@@ -26,7 +35,9 @@ must be a mapping, every number in it must be finite, and it must pass
 the schema (`jsonschema`, draft 2020-12). A whole number sent as a
 float, as Gemini sends numbers, is read as the whole number. An answer
 that misses goes back to the judge with the problems, and the judge may
-submit again, `Budget.submits` times in all.
+submit again, `Budget.submits` times in all. A turn's submissions are
+read before its other calls, so the order of calls in one turn never
+decides the outcome.
 
 `Budget` bounds a judgement three ways: tool calls, input tokens summed
 over every call, and wall time. Each result tells the judge how many
@@ -34,8 +45,9 @@ tool calls are left. A judge that asks for a read after it was told none
 are left is `missed`. So is a judgement whose wall time ran out, and one
 whose next call would pass the input-token budget: that call carries at
 least the last call's input, so it is never made. A call in flight gets
-the time left as its timeout. A `missed` judgement names the budget and
-the figures in `error`, and no answer is invented for it.
+the time left as its timeout, and the SDK's own retries are off, so one
+call cannot run past it. A `missed` judgement names the budget and the
+figures in `error`, and no answer is invented for it.
 
 A judgement's `status` is `ok`, `missed`, `error`, or `skipped`. It is
 `error` when the provider failed, the model refused, the model stopped
@@ -44,16 +56,17 @@ schema. It is `skipped` when the provider has no key. A model that fails
 on its first call falls back to the next model in the matrix, as in
 `judge.py`. A model that fails after it has answered once ends the
 judgement as `error`, because starting over would spend the budget twice.
-A transient error is asked again, as in `judge.py`.
+A transient error is asked again under `judge.with_retries`, the policy
+every judge uses, with the wait on the loop's clock.
 
 Every step is appended to a JSONL transcript as it happens, and flushed.
 Each record carries the time, the provider, the model, and its kind:
 `start`, `turn` (one model answer: its usage, its stop reason, its text,
 and the tools it called), `tool` (the tool, its arguments, the result's
 size in characters, and its text up to `Caps.transcript_chars`),
-`submit`, `remind`, `retry`, `fallback`, and `end` (the status, the
-answer, the summed usage, and the cost). The transcript names the roots,
-never the folders they sit in on this machine.
+`submit`, `remind`, `error` (a failed call), `fallback`, and `end` (the
+status, the answer, the summed usage, and the cost). The transcript
+names the roots, never the folders they sit in on this machine.
 
 Usage is summed in the shape `judge.py` records, so spend reads it
 unchanged. Like every harness module, this one imports the standard
@@ -171,7 +184,10 @@ def glob_pattern(glob: str) -> re.Pattern[str]:
         else:
             out.append(re.escape(glob[i]))
             i += 1
-    return re.compile("".join(out) + r"\Z")
+    try:
+        return re.compile("".join(out) + r"\Z")
+    except re.error as exc:  # a class such as [a-Z] or [!]
+        raise ToolError(f"the glob has a class no path can match: {exc}") from None
 
 
 def whole(value: Any, name: str) -> int | None:
@@ -196,6 +212,17 @@ def text_arg(args: dict[str, Any], name: str, default: str | None = None) -> str
 def is_binary(path: Path) -> bool:
     with path.open("rb") as handle:
         return b"\0" in handle.read(BINARY_PROBE)
+
+
+def numbered_lines(path: Path) -> Iterator[tuple[int, str]]:
+    """A text file's lines, numbered from 1, the one way `read_file` and `grep` count them.
+
+    A line ends at `\\n`, `\\r`, or `\\r\\n`, and nowhere else: a form feed or a
+    Unicode line separator stays inside its line.
+    """
+    with path.open(encoding="utf-8", errors="replace", newline=None) as handle:
+        for number, line in enumerate(handle, 1):
+            yield number, line.rstrip("\n")
 
 
 @dataclass
@@ -235,13 +262,15 @@ class Tree:
             raise ToolError("a path holds no NUL byte")
         rel = PurePosixPath(path or ".")
         if rel.is_absolute():
-            raise ToolError(f"{path!r} is absolute; a path is relative to its root")
+            raise ToolError("an absolute path is refused; a path is relative to its root")
         if ".." in rel.parts:
             raise ToolError(f"{path!r} climbs with '..'; a path stays inside its root")
         try:
             target = (base / rel).resolve()
-        except (OSError, RuntimeError) as exc:  # a symlink loop
-            raise ToolError(f"{path!r} does not resolve: {exc}") from None
+        except (OSError, RuntimeError, ValueError):
+            # A symlink loop, or a name the file system cannot encode. The
+            # error's own text names the folder on this machine, so it stays out.
+            raise ToolError(f"{path!r} does not resolve: a link loop, or a name the file system refuses") from None
         if not target.is_relative_to(base):
             raise ToolError(f"{path!r} leads out of root {root!r}; a link out of a root is refused")
         return base, target
@@ -268,6 +297,8 @@ class Tree:
                 return f"{full.name} -> a link out of the root, refused"
         if full.is_dir():
             return f"{full.name}/"
+        if not full.is_file():
+            return f"{full.name}  not a regular file"
         try:
             return f"{full.name}  {full.stat().st_size} bytes"
         except OSError:
@@ -290,27 +321,42 @@ class Tree:
         if is_binary(target):
             return Result(f"{where}: a binary file of {target.stat().st_size} bytes, not shown")
         caps = self.caps
+        # A small file is read to its end, to say how many lines it has. A large
+        # one is read only as far as the range needs.
+        large = target.stat().st_size > caps.file_bytes
         rows: list[str] = []
         size = total = 0
         cut_at: int | None = None
-        with target.open(encoding="utf-8", errors="replace") as handle:
-            for number, line in enumerate(handle, 1):
-                total = number
-                if number < first or (last is not None and number > last) or cut_at is not None:
-                    continue
-                text = line.rstrip("\r\n")
-                if len(text) > caps.line_chars:
-                    text = text[: caps.line_chars] + f" [... line cut at {caps.line_chars} of {len(text)} characters]"
-                row = f"{number:>6}\t{text}"
-                if len(rows) >= caps.lines or size + len(row) + 1 > caps.chars:
-                    cut_at = number
-                    continue
-                rows.append(row)
-                size += len(row) + 1
+        stopped = cut_first = False
+        for number, text in numbered_lines(target):
+            total = number
+            if number < first:
+                continue
+            if (last is not None and number > last) or cut_at is not None:
+                if large:
+                    stopped = True
+                    break
+                continue
+            if len(text) > caps.line_chars:
+                text = text[: caps.line_chars] + f" [... line cut at {caps.line_chars} of {len(text)} characters]"
+            row = f"{number:>6}\t{text}"
+            if rows and (len(rows) >= caps.lines or size + len(row) + 1 > caps.chars):
+                cut_at = number
+                continue
+            if not rows and len(row) > caps.chars:
+                # The first line alone passes the result's cap: it is cut to fit.
+                marker = f" [... cut to fit {caps.chars} characters]"
+                row = row[: max(0, caps.chars - len(marker))] + marker
+                cut_first = True
+            rows.append(row)
+            size += len(row) + 1
+        of = f"at least {total}" if stopped else str(total)
         if not rows:
-            return Result(f"{where}: {total} lines; line {first} is past the end")
+            return Result(f"{where}: {of} lines; line {first} is past the end")
         shown_to = first + len(rows) - 1
-        result = Result(f"{where}, lines {first}-{shown_to} of {total}", "\n".join(rows))
+        result = Result(f"{where}, lines {first}-{shown_to} of {of}", "\n".join(rows))
+        if cut_first:
+            result.notes.append(f"Line {first} is longer than one result holds; it was cut.")
         if cut_at is not None:
             result.notes.append(f"Cut at {caps.lines} lines or {caps.chars} characters: read on with start={cut_at}.")
         return result
@@ -335,20 +381,19 @@ class Tree:
                 if full.stat().st_size > caps.file_bytes:
                     skipped["large"] += 1
                     continue
-                data = full.read_bytes()
+                if is_binary(full):
+                    skipped["binary"] += 1
+                    continue
+                for number, line in numbered_lines(full):
+                    searched = line[: caps.line_chars]
+                    if regex.search(searched):
+                        if len(matches) >= caps.matches:
+                            full_stop = True
+                            break
+                        shown = searched if len(searched) <= caps.match_chars else searched[: caps.match_chars] + " [...]"
+                        matches.append(f"{rel}:{number}: {shown}")
             except OSError:
                 continue
-            if b"\0" in data[:BINARY_PROBE]:
-                skipped["binary"] += 1
-                continue
-            for number, line in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
-                searched = line[: caps.line_chars]
-                if regex.search(searched):
-                    if len(matches) >= caps.matches:
-                        full_stop = True
-                        break
-                    shown = searched if len(searched) <= caps.match_chars else searched[: caps.match_chars] + " [...]"
-                    matches.append(f"{rel}:{number}: {shown}")
             if full_stop:
                 break
         result = Result(
@@ -383,10 +428,11 @@ class Tree:
         return result
 
     def _walk(self, base: Path, skipped: dict[str, int]) -> Iterator[tuple[str, Path, bool]]:
-        """Every file and folder under a root, as (relative path, full path, is a folder).
+        """Every regular file and folder under a root, as (relative path, full path, is a folder).
 
         A symlinked folder is not entered. A symlinked file is kept when it
         resolves inside the root, and counted in `skipped["links"]` when not.
+        A FIFO, a socket, or a device is left out: reading one can block.
         """
         for folder, dirs, files in os.walk(base):
             here = Path(folder)
@@ -403,6 +449,8 @@ class Tree:
                     if not inside:
                         skipped["links"] = skipped.get("links", 0) + 1
                         continue
+                if not full.is_file():
+                    continue
                 yield full.relative_to(base).as_posix(), full, False
 
     def run(self, name: str, args: Any) -> Result:
@@ -430,8 +478,8 @@ class Tree:
                 result = self.grep(root, text_arg(args, "pattern"), text_arg(args, "path_glob", "**"))
             else:
                 result = self.find(root, text_arg(args, "glob"))
-        except OSError as exc:
-            raise ToolError(f"{name} could not read: {exc.strerror or exc}") from None
+        except OSError as exc:  # its text can name a folder on this machine; its strerror does not
+            raise ToolError(f"{name} could not read: {exc.strerror or type(exc).__name__}") from None
         if len(result.body) > self.caps.chars:
             result.notes.insert(0, f"Cut at {self.caps.chars} of {len(result.body)} characters.")
             result.body = result.body[: self.caps.chars]
@@ -704,10 +752,19 @@ class OpenAIChat:
         # Passed back as they came, reasoning items included.
         self.input.extend(items)
         calls = [Call(i.call_id, i.name, *read_args(i.arguments)) for i in items if getattr(i, "type", "") == "function_call"]
+        # A refusal comes as a `refusal` part of a completed message, or as a content filter that cut the answer.
+        refusals = [
+            str(getattr(part, "refusal", "") or "")
+            for item in items
+            if getattr(item, "type", "") == "message"
+            for part in (getattr(item, "content", None) or [])
+            if getattr(part, "type", "") == "refusal"
+        ]
         reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
-        stop = str(reason or getattr(response, "status", "") or "")
-        text = getattr(response, "output_text", "") or ""
-        return Turn(calls, text, J.openai_usage(response.usage), stop, refused=reason == "content_filter")
+        stop = str(reason or ("refusal" if refusals else "") or getattr(response, "status", "") or "")
+        text = getattr(response, "output_text", "") or "\n".join(refusals)
+        refused = reason == "content_filter" or bool(refusals)
+        return Turn(calls, text, J.openai_usage(response.usage), stop, refused=refused)
 
     def answer(self, results: list[tuple[Call, str, bool]]) -> None:
         self.input.extend({"type": "function_call_output", "call_id": c.id, "output": text} for c, text, _ in results)
@@ -920,8 +977,9 @@ class Loop:
         budget: Budget,
         log: Transcript,
         clock: Callable[[], float],
+        sleep: Callable[[float], None],
     ) -> None:
-        self.tree, self.check, self.budget, self.log, self.clock = tree, check, budget, log, clock
+        self.tree, self.check, self.budget, self.log, self.clock, self.sleep = tree, check, budget, log, clock, sleep
         self.spent = Spent()
         self.started = clock()
 
@@ -943,18 +1001,13 @@ class Loop:
         return self.out_of_time() if self.left_s() <= 0 else self.out_of_input()
 
     def send(self, chat: Chat) -> Turn:
-        """One call, asked again when the error is transient and time is left, as in `judge.py`."""
-        attempt = 1
-        while True:
-            try:
-                return chat.send(timeout=max(self.left_s(), 0.001))
-            except Exception as exc:
-                if attempt < J.RETRIES and J.is_transient(exc) and self.left_s() > J.RETRY_WAIT_S:
-                    attempt += 1
-                    self.log.write("retry", error=f"{type(exc).__name__}: {str(exc)[:400]}")
-                    time.sleep(J.RETRY_WAIT_S)
-                    continue
-                raise
+        """One call under the one retry policy, waiting on the loop's clock, and only while time is left."""
+        return J.with_retries(
+            lambda: chat.send(timeout=max(self.left_s(), 0.001)),
+            on_error=lambda exc: self.log.write("error", error=f"{type(exc).__name__}: {str(exc)[:400]}"),
+            sleep=self.sleep,
+            may_wait=lambda: self.left_s() > J.RETRY_WAIT_S,
+        )
 
     def converse(self, chat: Chat) -> Outcome:
         """One model's loop, until it submits, fails, or the budget runs out."""
@@ -997,23 +1050,41 @@ class Loop:
             if outcome is not None:
                 return outcome
 
+    def problems_of(self, call: Call) -> list[str]:
+        """What is wrong with a submission; the checker's own failure is a problem too, never a crash."""
+        if call.problem:
+            return [call.problem]
+        try:
+            return self.check(call.args)
+        except Exception as exc:
+            return [f"the answer could not be checked: {type(exc).__name__}"]
+
     def run_calls(self, chat: Chat, turn: Turn) -> Outcome | None:
-        """Run a turn's calls and answer them; an Outcome when the loop ends here."""
+        """Run a turn's calls and answer them; an Outcome when the loop ends here.
+
+        Submissions are read first, whatever the budget, since their call is
+        paid for; so the order of calls in one turn never decides the outcome.
+        """
         spent, budget = self.spent, self.budget
         told_before = spent.told
+        answered: dict[int, tuple[str, bool]] = {}
+        for index, call in enumerate(turn.calls):
+            if call.name != SUBMIT:
+                continue
+            spent.submits += 1
+            problems = self.problems_of(call)
+            self.log.write("submit", answer=call.args, valid=not problems, problems=problems)
+            if not problems:
+                return Outcome("ok", answer=call.args)
+            if spent.submits >= budget.submits:
+                return Outcome("error", f"malformed answer, {spent.submits} submissions: {'; '.join(problems)[:400]}")
+            left = budget.submits - spent.submits
+            text = f"The answer misses the schema: {'; '.join(problems)}. Submit it again, fixed; {left} submissions left."
+            answered[index] = (text, True)
         results: list[tuple[Call, str, bool]] = []
-        for call in turn.calls:
-            if call.name == SUBMIT:
-                spent.submits += 1
-                problems = [call.problem] if call.problem else self.check(call.args)
-                self.log.write("submit", answer=call.args, valid=not problems, problems=problems)
-                if not problems:
-                    return Outcome("ok", answer=call.args)
-                if spent.submits >= budget.submits:
-                    return Outcome("error", f"malformed answer, {spent.submits} submissions: {'; '.join(problems)[:400]}")
-                left = budget.submits - spent.submits
-                text = f"The answer misses the schema: {'; '.join(problems)}. Submit it again, fixed; {left} submissions left."
-                results.append((call, text, True))
+        for index, call in enumerate(turn.calls):
+            if index in answered:
+                results.append((call, *answered[index]))
                 continue
             if spent.tool_calls >= budget.tool_calls:
                 if told_before:
@@ -1031,6 +1102,10 @@ class Loop:
                 text, error = fenced(self.tree.run(call.name, call.args), left), False
             except ToolError as exc:
                 text, error = f"{call.name} refused: {exc}\n{calls_left(left)}", True
+            except Exception as exc:
+                # Whatever an argument makes a tool do, the judge hears of it and the loop
+                # goes on. The error's text can name a folder on this machine, so only its kind is told.
+                text, error = f"{call.name} failed: {type(exc).__name__}\n{calls_left(left)}", True
             if left <= 0:
                 spent.told = True
             self.log.write("tool", tool=call.name, args=call.args, error=error, **self.log.clip(text))
@@ -1052,12 +1127,14 @@ def judge_agentic(
     env: dict[str, str] | None = None,
     client: Any = None,
     clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> AgenticJudgement:
     """One provider's agentic judgement, with every step in the transcript.
 
     `prompt` is the task: the rubric and what each root holds. `roots` names
     the folders the judge may read. `client` is the provider's SDK client;
-    when None it is built from the key, as `judge.py` builds it.
+    when None it is built from the key, as `judge.py` builds it. Either way
+    its own retries are turned off. `clock` and `sleep` are the loop's time.
 
     Raises ValueError before any call on what the caller got wrong: a root
     that is not a folder, an answer schema that is not a JSON schema of an
@@ -1077,7 +1154,7 @@ def judge_agentic(
     system = SYSTEM.format(count=count, roots=", ".join(tree.roots), tool_calls=budget.tool_calls, submits=budget.submits)
     log = Transcript(transcript, name, tree.caps.transcript_chars)
     result = AgenticJudgement(provider=name, model=models[0] if models else "", effort=wanted)
-    loop = Loop(tree, check, budget, log, clock)
+    loop = Loop(tree, check, budget, log, clock, sleep)
     log.model = result.model
     try:
         log.write("start", effort=wanted, models=models, roots=list(tree.roots), budget=budget.as_dict(), schema=answer_schema)
@@ -1109,6 +1186,18 @@ def judge_agentic(
     return result
 
 
+def without_retries(client: Any) -> Any:
+    """The client with its SDK's own retries off, so the wall-time budget bounds each call.
+
+    The Anthropic and OpenAI SDKs, and so xAI's client, retry a timeout and
+    a 5xx twice on their own, each with the whole timeout, on top of the
+    loop's policy. google-genai retries only when asked, and has no
+    `with_options`.
+    """
+    with_options = getattr(client, "with_options", None)
+    return with_options(max_retries=0) if callable(with_options) else client
+
+
 def _run(
     result: AgenticJudgement,
     loop: Loop,
@@ -1122,14 +1211,18 @@ def _run(
 ) -> None:
     """Try each model until one answers, and fill `result` in place."""
     try:
-        client = client if client is not None else J.CLIENTS[name](key)
+        client = without_retries(client if client is not None else J.CLIENTS[name](key))
     except Exception as exc:
         result.status, result.error = "error", f"no client: {type(exc).__name__}: {str(exc)[:400]}"
         return
     errors: list[str] = []
     for model in models:
         loop.log.model = model
-        outcome = loop.converse(CHATS[name](client, model, result.effort, system, prompt, tools))
+        try:
+            outcome = loop.converse(CHATS[name](client, model, result.effort, system, prompt, tools))
+        except Exception as exc:
+            # A fault of the harness itself still ends in a judgement and an `end` record.
+            outcome = Outcome("error", f"{model}: the loop failed: {type(exc).__name__}")
         if outcome.first_call_failed:
             errors.append(outcome.error or "")
             loop.log.write("fallback", error=outcome.error)

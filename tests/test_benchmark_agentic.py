@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace as NS
 from typing import Any
@@ -112,6 +113,9 @@ class FakeOpenAI(Fake):
     def create(self, **request: Any) -> Any:
         s = self.next(request)
         items: list[Any] = [NS(type="reasoning", id=f"rs_{len(self.requests)}", summary=[])]
+        if s["stop"] == "refusal part":
+            items.append(NS(type="message", content=[NS(type="refusal", refusal="I can't help with that.")]))
+            s = {**s, "stop": None}
         if s["text"]:
             items.append(NS(type="message", content=[NS(type="output_text", text=s["text"])]))
         for call_id, (name, args) in zip(self.call_ids(s), s["calls"], strict=True):
@@ -805,7 +809,7 @@ def test_a_transient_error_is_asked_again(roots, tmp_path, monkeypatch):
     judgement, fake, records = run(P.Provider.OPENAI, script, roots, tmp_path)
     assert judgement.status == "ok" and judgement.fallback is None
     assert len(fake.requests) == 2 and {r["model"] for r in fake.requests} == {judgement.model}
-    assert any(r["kind"] == "retry" for r in records)
+    assert [r["error"] for r in records if r["kind"] == "error"] == ["RuntimeError: 503 unavailable"]
 
 
 @needs_jsonschema
@@ -925,3 +929,219 @@ def test_the_module_imports_the_standard_library_only():
     root = Path(__file__).resolve().parent.parent
     out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "[]"
+
+
+# A tool argument can be anything; the judgement always comes back --------
+
+
+@pytest.mark.parametrize("glob", ["[a-Z]", "[!]", "src/[z-a].py"])
+def test_a_glob_with_a_class_no_path_can_match_is_refused(roots, glob):
+    with pytest.raises(A.ToolError, match="the glob has a class no path can match"):
+        A.Tree(roots).run("find", {"root": "output", "glob": glob})
+    with pytest.raises(A.ToolError, match="the glob has a class no path can match"):
+        A.Tree(roots).run("grep", {"root": "output", "pattern": "x", "path_glob": glob})
+
+
+def test_a_path_the_file_system_cannot_encode_is_refused(roots):
+    with pytest.raises(A.ToolError, match="does not resolve"):
+        A.Tree(roots).run("read_file", {"root": "output", "path": "\ud800"})
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", [P.Provider.OPENAI, P.Provider.XAI], ids=["openai", "xai"])
+def test_arguments_that_break_a_tool_are_refused_and_the_loop_goes_on(provider, roots, tmp_path):
+    name = P.name(provider)
+    script = [
+        step(("find", {"root": "output", "glob": "[a-Z]"}), ("read_file", '{"root": "output", "path": "\\ud800"}')),
+        step(("submit", ANSWER)),
+    ]
+    judgement, fake, records = run(provider, script, roots, tmp_path)
+    assert judgement.status == "ok" and judgement.tool_calls == 2
+    [(_, find), (_, read)] = sent_results(name, fake.requests[1])
+    assert find.startswith("find refused: the glob has a class no path can match")
+    assert read.startswith("read_file refused: '\\ud800' does not resolve")
+    assert records[-1]["kind"] == "end"
+
+
+@needs_jsonschema
+def test_a_tool_that_fails_in_any_way_is_a_refusal_not_the_end(roots, tmp_path, monkeypatch):
+    def broken(*_args, **_kwargs):
+        raise ZeroDivisionError(f"in {tmp_path}")
+
+    monkeypatch.setattr(A.Tree, "list_dir", broken)
+    script = [step(("list_dir", {"root": "output"})), step(("submit", ANSWER))]
+    judgement, fake, _ = run(P.Provider.ANTHROPIC, script, roots, tmp_path)
+    assert judgement.status == "ok"
+    [(_, text)] = sent_results("anthropic", fake.requests[1])
+    assert text == "list_dir failed: ZeroDivisionError\n39 tool calls left."
+    assert str(tmp_path) not in (tmp_path / "judgements" / "transcript.jsonl").read_text(encoding="utf-8")
+
+
+@needs_jsonschema
+def test_a_fault_in_the_loop_itself_still_ends_in_a_judgement_and_an_end_record(roots, tmp_path, monkeypatch):
+    def broken(*_args, **_kwargs):
+        raise KeyError("x")
+
+    monkeypatch.setattr(A.Loop, "run_calls", broken)
+    judgement, _, records = run(P.Provider.GEMINI, [step(("list_dir", {"root": "output"}))], roots, tmp_path)
+    first = J.models_for(J.DEFAULT_MATRIX, "gemini")[0]
+    assert judgement.status == "error" and judgement.error == f"{first}: the loop failed: KeyError"
+    assert records[-1]["kind"] == "end" and records[-1]["status"] == "error"
+
+
+def test_a_fifo_is_never_read_so_no_tool_blocks_on_it(roots):
+    os.mkfifo(roots["output"] / "pipe")
+    tree = A.Tree(roots)
+    done: dict[str, Any] = {}
+
+    def walk():
+        done["grep"] = tree.run("grep", {"root": "output", "pattern": "."})
+        done["find"] = tree.run("find", {"root": "output", "glob": "**"})
+
+    worker = threading.Thread(target=walk, daemon=True)
+    worker.start()
+    worker.join(timeout=10)
+    assert not worker.is_alive(), "a walk blocked on the FIFO"
+    assert "pipe" not in done["grep"].body and "pipe" not in done["find"].body
+    assert "pipe  not a regular file" in tree.run("list_dir", {"root": "output"}).body
+    with pytest.raises(A.ToolError, match="no file"):
+        tree.run("read_file", {"root": "output", "path": "pipe"})
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("submit_first", [True, False], ids=["submit-then-read", "read-then-submit"])
+def test_a_submission_is_read_first_so_the_order_of_calls_never_decides(submit_first, roots, tmp_path):
+    listing, submission = ("list_dir", {"root": "output"}), ("submit", ANSWER)
+    last = step(submission, listing) if submit_first else step(listing, submission)
+    judgement, _, _ = run(P.Provider.ANTHROPIC, [step(listing), last], roots, tmp_path, budget=A.Budget(tool_calls=1))
+    assert judgement.status == "ok" and judgement.answer == ANSWER and judgement.tool_calls == 1
+
+
+class WithOptions:
+    """A client that says how it was copied, as the Anthropic and OpenAI SDK clients can be."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+        self.options: dict[str, Any] = {}
+
+    def with_options(self, **options: Any) -> Any:
+        self.options = options
+        return self.inner
+
+
+def test_the_loop_turns_the_sdks_own_retries_off():
+    fake = FakeAnthropic([])
+    client = WithOptions(fake)
+    assert A.without_retries(client) is fake and client.options == {"max_retries": 0}
+    gemini = FakeGemini([])
+    assert A.without_retries(gemini) is gemini
+
+
+@needs_jsonschema
+def test_a_client_the_loop_builds_has_its_retries_off(roots, tmp_path, monkeypatch):
+    fake = FakeXai([step(("submit", ANSWER))])
+    built = WithOptions(fake)
+    monkeypatch.setitem(J.CLIENTS, "xai", lambda _key: built)
+    judgement = A.judge_agentic(P.Provider.XAI, "p", SCHEMA, roots, tmp_path / "t.jsonl", env=KEYS)
+    assert judgement.status == "ok" and built.options == {"max_retries": 0} and len(fake.requests) == 1
+
+
+@needs_jsonschema
+def test_a_transient_error_waits_on_the_loops_clock(roots, tmp_path):
+    now = [0.0]
+    waits: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    script = [RuntimeError("503 unavailable"), step(("submit", ANSWER))]
+    judgement, fake, _ = run(
+        P.Provider.ANTHROPIC, script, roots, tmp_path, budget=A.Budget(wall_s=100), clock=lambda: now[0], sleep=sleep
+    )
+    assert judgement.status == "ok" and judgement.fallback is None and waits == [J.RETRY_WAIT_S]
+    assert [sent_timeout("anthropic", r) for r in fake.requests] == [100, 100 - J.RETRY_WAIT_S]
+
+
+@needs_jsonschema
+def test_no_wait_is_taken_that_the_time_left_cannot_hold(roots, tmp_path):
+    waits: list[float] = []
+    script = [RuntimeError("503 unavailable"), step(("submit", ANSWER))]
+    judgement, _, _ = run(
+        P.Provider.ANTHROPIC, script, roots, tmp_path, budget=A.Budget(wall_s=3), clock=lambda: 0.0, sleep=waits.append
+    )
+    first, second = J.models_for(J.DEFAULT_MATRIX, "anthropic")[:2]
+    assert waits == [] and judgement.status == "ok" and judgement.model == second
+    assert judgement.fallback == {"from": first, "reason": f"{first}: RuntimeError: 503 unavailable"}
+
+
+@needs_jsonschema
+def test_an_openai_refusal_part_ends_the_judgement_without_reminders(roots, tmp_path):
+    judgement, fake, records = run(P.Provider.OPENAI, [step(stop="refusal part")], roots, tmp_path)
+    assert judgement.status == "error" and judgement.error is not None and judgement.error.endswith("refused (refusal)")
+    assert len(fake.requests) == 1 and records[1]["text"] == "I can't help with that."
+
+
+def test_grep_and_read_file_count_lines_the_same_way(roots):
+    (roots["output"] / "odd.txt").write_text("form\x0cfeed\nneedle\x85one\u2028two\nneedle\r\nend\rneedle\n", encoding="utf-8")
+    tree = A.Tree(roots)
+    grep = tree.run("grep", {"root": "output", "pattern": "needle", "path_glob": "odd.txt"}).body.split("\n")
+    assert [line.split(":")[1] for line in grep] == ["2", "3", "5"]
+    for number in (2, 3, 5):
+        read = tree.run("read_file", {"root": "output", "path": "odd.txt", "start": number, "end": number}).body
+        assert read.startswith(f"{number:>6}\tneedle")
+
+
+def test_a_first_line_longer_than_a_result_is_cut_to_fit(roots):
+    (roots["output"] / "min.js").write_text("x" * 5000 + "\nsecond\n", encoding="utf-8")
+    result = A.Tree(roots, A.Caps(chars=100)).run("read_file", {"root": "output", "path": "min.js"})
+    assert result.header.endswith("lines 1-1 of 2") and len(result.body) <= 100
+    assert result.body.endswith("[... cut to fit 100 characters]")
+    assert result.notes == [
+        "Line 1 is longer than one result holds; it was cut.",
+        "Cut at 400 lines or 100 characters: read on with start=2.",
+    ]
+
+
+def test_read_file_stops_early_on_a_large_file_and_says_at_least(roots):
+    (roots["output"] / "long.txt").write_text("".join(f"line {n}\n" for n in range(1, 11)), encoding="utf-8")
+    large = A.Tree(roots, A.Caps(lines=2, file_bytes=10)).run("read_file", {"root": "output", "path": "long.txt"})
+    assert large.header.endswith("lines 1-2 of at least 4")
+    ranged = A.Tree(roots, A.Caps(file_bytes=10)).run("read_file", {"root": "output", "path": "long.txt", "end": 3})
+    assert ranged.header.endswith("lines 1-3 of at least 4")
+    small = A.Tree(roots, A.Caps(lines=2)).run("read_file", {"root": "output", "path": "long.txt"})
+    assert small.header.endswith("lines 1-2 of 10")
+
+
+# No refusal names a folder on this machine -------------------------------
+
+
+@needs_jsonschema
+@pytest.mark.parametrize(
+    "path",
+    ["loop", "../outside.txt", "/etc/passwd", "leak.txt", "escape/outside.txt"],
+    ids=["a-link-loop", "dot-dot", "absolute", "a-file-link-out", "a-folder-link-out"],
+)
+def test_no_refusal_names_a_folder_on_this_machine(path, roots, tmp_path, monkeypatch):
+    output = roots["output"]
+    os.symlink(output / "loop", output / "loop")
+    os.symlink(tmp_path / "outside.txt", output / "leak.txt")
+    os.symlink(tmp_path, output / "escape")
+    real = Path.resolve
+
+    def resolve(self: Path, *args: Any, **kwargs: Any) -> Path:
+        # Python 3.10 to 3.12 raise on a link loop, naming the folder; 3.13 does not raise.
+        if self.name == "loop":
+            raise RuntimeError(f"Symlink loop from '{self}'")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    script = [step(("read_file", {"root": "output", "path": path})), step(("submit", ANSWER))]
+    _, fake, records = run(P.Provider.ANTHROPIC, script, roots, tmp_path)
+    [(_, text)] = sent_results("anthropic", fake.requests[1])
+    assert text.startswith("read_file refused:")
+    transcript = (tmp_path / "judgements" / "transcript.jsonl").read_text(encoding="utf-8")
+    for folder in {str(tmp_path), str(real(tmp_path))}:
+        assert folder not in transcript and folder not in text
+    tool = next(r for r in records if r["kind"] == "tool")
+    assert "/etc" not in tool["text"]
