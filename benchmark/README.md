@@ -239,7 +239,9 @@ A scenario says where it may run: `runtimes`, the runtimes it runs on,
 is required, and a scenario without it does not load. A run takes the
 first it lists when `--runtime` names none. `run.py` refuses any other
 runtime before it makes a run folder, and exits 7. So a caller tells a
-scenario that does not run there from one that failed.
+scenario that does not run there from one that failed. `run.py list`
+prints each scenario's runtimes, and what it requires when it requires
+anything.
 
 `requires` names what the runtime must provide. `docker` is the one
 requirement there is: a Docker engine the subject runs containers on.
