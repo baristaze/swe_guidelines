@@ -50,7 +50,10 @@ never run the harness from there.
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
    `high`. `--repeat N` runs the subject N times, 3 by default.
-   `--subject-model` pins the subject's model. `--runtime` is `host`,
+   `--subject-model` pins the subject's model. `--max-spend-usd N` caps
+   what the run spends on the subject and the judges together, in US
+   dollars: the harness checks it before each repeat and each phase, and
+   runs nothing more once it is reached. `--runtime` is `host`,
    `container`, or `vm`, and one the scenario lists: its first when the
    flag is not given. The harness refuses any other with exit 7 and
    runs nothing. So when the prompt names a runtime that `list` does
@@ -68,7 +71,10 @@ never run the harness from there.
    `run.json`, and calls nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
-   fallbacks each would use, the effort, and the repeats. There is no
+   fallbacks each would use, the effort, the repeats, and the spend cap
+   when one was given. For a scenario in phases, `run.json` lists each
+   phase under `phases`: report each with its session, its turn and
+   spend caps, and its command. There is no
    score to report, and inventing one is the worst thing this skill
    could do.
 6. The `container` runtime, named or the scenario's first, runs the
@@ -97,6 +103,8 @@ After a measurement, short, in prose:
 - the scenario, the runtime, the repeats, and the judges that answered,
   each with its model id;
 - the score per provider and the overall mean;
+- for a scenario in phases, how each phase ended and the cap that
+  stopped any, and which gates passed on the final tree;
 - the findings that matter, most severe first, in one line each;
 - any provider that did not answer, with the reason it gave;
 - the run folder path, and that it is checked in only once
