@@ -21,7 +21,7 @@ on:
         default: "3"
         type: string
       max_spend_usd:
-        description: "the most each scenario may spend, subject and judges, in whole US dollars from 1 to 50"
+        description: "once a scenario's run has spent this many US dollars, subject and judges, it starts no further repeat; a whole number from 1 to 50"
         default: "10"
         type: string
 

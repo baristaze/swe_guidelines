@@ -37,7 +37,7 @@ image first (see Where a scenario runs).
 | `--out` | where run folders go; `benchmark/runs/` by default |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
-| `--max-spend-usd` | the most the run may spend, on the subject and the judges together, in US dollars; checked before each repeat and each phase |
+| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running |
@@ -596,12 +596,17 @@ it passed under `gates`, beside the scores. The gates never cap a score
 and never fail the run. `streams/harness.jsonl` holds what the
 checkpoints, the archive, and the gates printed.
 
-**The run's spend.** `--max-spend-usd` caps what one run spends on the
+**The run's spend.** `--max-spend-usd` bounds what one run spends on the
 subject and the judges together. The harness checks it before each
-repeat and before each phase, and runs nothing more once the run has
-spent that much. The run's notes say where it stopped. A phase's spend
-is Claude Code's own figure, or the harness's estimate when the session
-wrote no result. A repeat's is the sum of its phases'.
+repeat and before each phase, and starts nothing more once the run has
+spent that much. It stops nothing that is running: a phase that starts
+below it can spend up to its own `max_usd`, and the judges of a repeat
+still judge it. So a run can end above it, by about what one phase and
+one repeat's judges spend. The run's notes say where it stopped. A
+phase's spend is Claude Code's own figure, or the harness's estimate
+when the session wrote no result. A resumed session's result carries
+the session's running total, so a resumed phase's spend is what it
+adds to that total. A repeat's is the sum of its phases'.
 
 `run.json` records every phase with the command it runs, so a dry run
 shows them. A resumed phase's command names the session it continues
@@ -759,7 +764,8 @@ lists the container runtime, in that runtime. It skips the rest and
 names them in a notice. Its `repeat` input is 1 to 5, and each scenario
 runs with `--max-spend-usd` at its `max_spend_usd` input, a whole number
 of US dollars from 1 to 50, 10 by default. Together they bound what one
-dispatch spends on a scenario.
+dispatch spends on a scenario: past that amount, no further repeat of it
+starts.
 
 Its job runs in a GitHub environment named `benchmark`, and the
 workflow does not create it. Create it under the repository's

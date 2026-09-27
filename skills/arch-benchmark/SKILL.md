@@ -50,10 +50,14 @@ never run the harness from there.
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
    `high`. `--repeat N` runs the subject N times, 3 by default.
-   `--subject-model` pins the subject's model. `--max-spend-usd N` caps
-   what the run spends on the subject and the judges together, in US
-   dollars: the harness checks it before each repeat and each phase, and
-   runs nothing more once it is reached. `--runtime` is `host`,
+   `--subject-model` pins the subject's model. `--max-spend-usd N` is
+   the run's spend cap in US dollars, over the subject and the judges
+   together. It is not a hard ceiling: the harness checks it before each
+   repeat and each phase and starts nothing more once it is reached, but
+   what is running finishes, so a run can end above N. Each session of a
+   skill subject also has its own cap, the scenario's `max_usd`, which
+   Claude Code holds. Say both when the prompt asks for a cap.
+   `--runtime` is `host`,
    `container`, or `vm`, and one the scenario lists: its first when the
    flag is not given. The harness refuses any other with exit 7 and
    runs nothing. So when the prompt names a runtime that `list` does
@@ -71,10 +75,18 @@ never run the harness from there.
    `run.json`, and calls nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
-   fallbacks each would use, the effort, the repeats, and the spend cap
-   when one was given. For a scenario in phases, `run.json` lists each
-   phase under `phases`: report each with its session, its turn and
-   spend caps, and its command. There is no
+   fallbacks each would use, the effort, the repeats, the run's spend
+   cap when one was given, and the subject's own `max_usd`. For a
+   scenario in phases, `run.json` lists each phase under `phases`, and
+   `subject_argv` is only the first phase's command. Report each phase
+   with the fields it holds: its `session` (`fresh`, or `resume` of the
+   phase before), where it starts (`cwd`: the workspace or the output
+   folder), whether it keeps the handoff note (`hint`), its bounds
+   (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
+   backstop), what follows a bound (`on_cap`), and its `argv`. Report the
+   subject's `output` folder and its `gates`, which the harness runs on
+   the final tree. `benchmark/README.md`, "A subject in phases", says
+   what each field means. There is no
    score to report, and inventing one is the worst thing this skill
    could do.
 6. The `container` runtime, named or the scenario's first, runs the
