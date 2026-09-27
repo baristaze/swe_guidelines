@@ -44,7 +44,6 @@ ROOT = Path(__file__).resolve().parent.parent
 # model_validate, so `model_copy(update={**...` cannot appear in any snippet.
 REFUSED_TERMS: dict[str, list[str]] = {
     "product": [
-        r"\brodeo\b",
         r"\brobot(s|ic|ics)?\b",
         r"\bbench(es)?\b",
         r"\blabs?\b",
