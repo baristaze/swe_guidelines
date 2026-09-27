@@ -333,12 +333,16 @@ class BaseRuntime:
                 errors="replace",
                 check=False,
                 timeout=timeout_s,
-                env=clean_env(),
+                env=self.probe_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return None
         lines = [line.strip() for line in out.stdout.splitlines() if line.strip()]
         return lines[0] if out.returncode == 0 and lines else None
+
+    def probe_env(self) -> dict[str, str]:
+        """The environment a probe runs in here: the harness's own less every judge key."""
+        return clean_env()
 
     def image_version(self) -> dict | None:
         """The image the subject runs in, by name and id; None where there is no image."""
@@ -569,6 +573,9 @@ class VmConfig:
     # How long a command other than the subject may take: a copy, a fetch,
     # a key, a kill, the removal.
     helper_timeout_s: int = 600
+    # A command run there before every repeat; a repeat whose check fails
+    # runs no subject. The Lima config checks that the firewall is there.
+    check: list[str] = field(default_factory=list)
 
 
 # The scripts below run there, with every path as an argument, never
@@ -582,10 +589,15 @@ REMOVE = 'remove() { sudo -n rm -rf -- "$@" 2>/dev/null || rm -rf -- "$@"; }; '
 # holds it.
 LOCK = 'umask 077 && mkdir -p "$1" || exit 2; mkdir "$1/.lock" 2>/dev/null || exit 3; printf "%s\n" "$2" > "$1/.lock/run"'
 # Before every repeat: the run's folder, private to that machine's user,
-# with no copy left by an earlier repeat. Exit 3: a copy did not go.
-PREPARE = (
-    REMOVE + 'umask 077 && mkdir -p "$1" || exit 2; '
-    'remove "$1/plugin" "$1/target"; [ ! -e "$1/plugin" ] && [ ! -e "$1/target" ] || exit 3'
+# with nothing an earlier repeat left in the copies or in this repeat's
+# own folders, then the machine's check. Arguments: the run's folder, the
+# count of the repeat's folders, those folders, then the check's words.
+# Exit 3: something stayed. Exit 4: the check failed.
+PREPARE = REMOVE + (
+    'run=$1 count=$2; shift 2; umask 077 && mkdir -p "$run" || exit 2; '
+    'set -- "$run/plugin" "$run/target" "$@"; count=$((count + 2)); i=0; '
+    'while [ "$i" -lt "$count" ]; do remove "$1"; [ ! -e "$1" ] || exit 3; shift; i=$((i + 1)); done; '
+    'if [ "$#" -gt 0 ]; then "$@" >/dev/null 2>&1 || exit 4; fi'
 )
 # A key goes through stdin into a file of the repeat's own that only that
 # user can read.
@@ -605,10 +617,11 @@ WRAPPER = (
     'ps -o pgid= -p "$$" | tr -d " " > "$group" && exec "$@"'
 )
 # A stop: kill the subject's process group, then wait for it to be gone.
+# `kill -0` takes no `--`: dash, Ubuntu's sh, reads it as a process id.
 KILL = (
     'group=$(cat "$1" 2>/dev/null) || exit 0; [ -n "$group" ] || exit 0; '
     'kill -s KILL -- "-$group" 2>/dev/null; n=0; '
-    'while kill -0 -- "-$group" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done; exit 0'
+    'while kill -0 "-$group" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done; exit 0'
 )
 # The end of a run: its folder goes, then the lock it holds.
 RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
@@ -679,6 +692,7 @@ class VmRuntime(BaseRuntime):
             remote_target=raw.get("remote_target"),
             prefix_env=list(raw.get("prefix_env", ["HOME"])),
             helper_timeout_s=int(raw.get("helper_timeout_s", 600)),
+            check=list(raw.get("check", [])),
         )
         self.locked = False
         self.released = False
@@ -688,6 +702,12 @@ class VmRuntime(BaseRuntime):
         self.names: list[str] = []
         # What went wrong outside a subject's stream, for the next note.
         self.notes: list[str] = []
+
+    def stage(self) -> None:
+        """Refuse a config that reaches no machine, then stage here as every runtime does."""
+        if not self.vm.exec_prefix:
+            raise ValueError("the vm runtime needs exec_prefix in its runtime config")
+        super().stage()
 
     def probe_command(self, argv: list[str]) -> list[str]:
         """A probe runs on the other machine, through the prefix, outside any workspace."""
@@ -759,6 +779,10 @@ class VmRuntime(BaseRuntime):
         names = ["PATH", *self.vm.prefix_env]
         return scrub({n: os.environ[n] for n in names if os.environ.get(n)})[0]
 
+    def probe_env(self) -> dict[str, str]:
+        """A probe's prefix runs with what the helpers get, nothing more of this machine's."""
+        return self.own_env()
+
     def helper(self, argv: list[str], stdin: str | None = None, timeout_s: int | None = None) -> int:
         """Run a command other than the subject here and return its exit code.
 
@@ -785,6 +809,12 @@ class VmRuntime(BaseRuntime):
             proc.wait()
             self.notes.append(f"[{self.name}] {' '.join(argv[:3])} ... did not finish in {limit}s and was stopped")
             return 124
+        except BaseException:
+            # An interrupt of the harness: the helper runs in a session of
+            # its own, so nothing else stops it.
+            kill_group(proc.pid)
+            proc.wait()
+            raise
         return proc.returncode
 
     def take_notes(self) -> list[str]:
@@ -809,7 +839,10 @@ class VmRuntime(BaseRuntime):
             if code != 0:
                 return code, f"the other machine did not answer: taking {self.remote_base()} failed with exit {code}"
             self.locked = True
-        code = self.helper(self.there(PREPARE, self.remote_run()))
+        own = [self.remote_part(n) for n in ("workspace", "home", "tmp", "keys", "group")]
+        code = self.helper(self.there(PREPARE, self.remote_run(), str(len(own)), *own, *self.vm.check))
+        if code == 4:
+            return code, f"the machine's check failed there: {' '.join(self.vm.check)}"
         if code != 0:
             return code, f"the run's folder there could not be made ready (exit {code})"
         for local, name in self.copies():

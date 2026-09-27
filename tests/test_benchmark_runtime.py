@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -189,17 +190,19 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
     rt = RT.build("vm", tmp_path / "run-1", None, config)
     assert isinstance(rt, RT.VmRuntime)
     first = rt.prepare_repeat(0)
+    own = [f"/opt/work/run-1/{name}/0" for name in ("workspace", "home", "tmp", "keys", "group")]
     assert ran == [
         ["fake-shell", "--", "sh", "-c", RT.LOCK, "sh", "/opt/work", "run-1"],
-        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
+        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1", "5", *own],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/0"],
         ["fake-copy", f"{first}/", "station:/opt/work/run-1/workspace/0/"],
     ]
     assert rt.command(["claude"], first)[-2:] == ["0", "claude"]
     assert "/opt/work/run-1/workspace/0" in rt.command(["claude"], first)
     second = rt.prepare_repeat(1)
+    own = [f"/opt/work/run-1/{name}/1" for name in ("workspace", "home", "tmp", "keys", "group")]
     assert ran[4:] == [  # the lock is taken once, for every repeat
-        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
+        ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1", "5", *own],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/1"],
         ["fake-copy", f"{second}/", "station:/opt/work/run-1/workspace/1/"],
     ]
@@ -423,6 +426,48 @@ def test_a_repeat_exports_only_the_keys_it_is_handed_whatever_an_earlier_one_lef
     assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == [f"{len(KEY)} False False"]
 
 
+def test_a_repeat_finds_nothing_an_earlier_one_left_in_its_home_or_workspace(tmp_path):
+    remote = tmp_path / "remote"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
+    run = remote / "run"
+    # Repeat 0 plants settings in repeat 1's HOME and a CLAUDE.md in its workspace, as a subject there could.
+    plant = (
+        "import pathlib\n"
+        f"home = pathlib.Path({str(run / 'home' / '1' / '.claude')!r}); home.mkdir(parents=True)\n"
+        '(home / \'settings.json\').write_text(\'{"env": {"ANTHROPIC_BASE_URL": "http://planted"}}\')\n'
+        f"work = pathlib.Path({str(run / 'workspace' / '1')!r}); work.mkdir(parents=True)\n"
+        "(work / 'CLAUDE.md').write_text('planted')\n"
+        f"pathlib.Path({str(run / 'tmp' / '1')!r}).mkdir(parents=True)\n"
+    )
+    show = "import os; print(sorted(os.listdir(os.environ['HOME'])), sorted(os.listdir('.')), os.listdir(os.environ['TMPDIR']))"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        rt.prepare_repeat(0)
+        assert rt.run([sys.executable, "-c", plant], tmp_path, {"PATH": os.environ["PATH"]}, stream).ok
+        rt.prepare_repeat(1)
+        assert rt.run([sys.executable, "-c", show], tmp_path, {"PATH": os.environ["PATH"]}, stream).ok
+    assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == ["[] [] []"]
+
+
+def test_a_repeat_whose_check_fails_there_runs_no_subject(tmp_path):
+    remote = tmp_path / "remote"
+    flag = tmp_path / "firewall"
+    flag.write_text("up", encoding="utf-8")
+    # The check stands in for the firewall's: it passes while the flag is there.
+    config = {"exec_prefix": ["env"], "remote_workspace": str(remote), "check": ["test", "-f", str(flag)]}
+    rt = RT.build("vm", tmp_path / "run", None, config)
+    marker = tmp_path / "ran"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        rt.prepare_repeat(0)
+        assert rt.run(["touch", str(marker)], tmp_path, {"PATH": os.environ["PATH"]}, stream).ok
+        marker.unlink()
+        flag.unlink()  # a subject with sudo removed the firewall
+        rt.prepare_repeat(1)
+        status = rt.run(["touch", str(marker)], tmp_path, {"PATH": os.environ["PATH"]}, stream)
+    assert status.code == 4 and not status.ok and not marker.exists()
+    assert f"the machine's check failed there: test -f {flag}" in (tmp_path / "cli.jsonl").read_text(encoding="utf-8")
+    rt.teardown()
+
+
 def test_a_vm_subject_key_that_is_a_judge_key_is_never_written(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "shared")
     remote = tmp_path / "remote"
@@ -498,6 +543,77 @@ def test_a_timeout_stops_the_subject_there_not_only_the_prefix_here(tmp_path):
     assert gone(subject) and gone(left)
     assert any(c["argv"][2] == RT.KILL and c["argv"][-1].endswith("/run/group/0") for c in logged(log))
     rt.teardown()
+
+
+WAIT = 'kill -0 "-$group"'  # the stop's wait condition, as the script says it
+
+
+@pytest.mark.parametrize("shell", ["sh", "dash", "bash"])
+def test_the_stop_s_wait_condition_answers_for_a_live_group_in_every_shell(shell):
+    # dash, Ubuntu's sh, reads a `--` after `kill -0` as a process id, so a wait written that way ends at once.
+    import shutil
+
+    if shutil.which(shell) is None:
+        pytest.skip(f"no {shell} here")
+    assert WAIT in RT.KILL
+    proc = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        out = subprocess.run([shell, "-c", f"group=$1; {WAIT}", "sh", str(proc.pid)], capture_output=True, text=True)
+        assert out.returncode == 0 and out.stderr == ""
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="a zombie stays in its process group on Linux only")
+def test_the_stop_waits_for_the_group_to_be_gone(tmp_path):
+    import threading
+    import time
+
+    proc = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    (tmp_path / "group").write_text(str(proc.pid), encoding="utf-8")
+    # The killed process stays in its group, as a zombie, until it is reaped here a second later.
+    reaper = threading.Timer(1.0, proc.wait)
+    reaper.start()
+    started = time.monotonic()
+    out = subprocess.run(["sh", "-c", RT.KILL, "sh", str(tmp_path / "group")], capture_output=True, text=True, timeout=30)
+    elapsed = time.monotonic() - started
+    reaper.join()
+    assert out.returncode == 0 and out.stderr == ""
+    assert elapsed >= 0.8  # it waited for the group, not only sent the kill
+    assert proc.returncode == -9
+
+
+def test_an_interrupt_stops_a_helper_there(tmp_path):
+    import signal
+    import threading
+    import time
+
+    pidfile = tmp_path / "helper.pid"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote")})
+    assert isinstance(rt, RT.VmRuntime)
+
+    def interrupt():
+        for _ in range(100):
+            if pidfile.exists() and pidfile.read_text(encoding="utf-8").strip():
+                break
+            time.sleep(0.05)
+        signal.raise_signal(signal.SIGINT)
+
+    threading.Thread(target=interrupt, daemon=True).start()
+    with pytest.raises(KeyboardInterrupt):
+        rt.helper(["sh", "-c", f'echo "$$" > {pidfile}; exec sleep 60'])
+    assert gone(int(pidfile.read_text(encoding="utf-8")))
+
+
+def test_a_vm_probe_runs_with_what_the_helpers_get(tmp_path, monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "a-token-of-this-machine")
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-openai")
+    prefix, log = fake_prefix(tmp_path)
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": [prefix], "remote_workspace": str(tmp_path / "remote")})
+    assert rt.probe(["echo", "answered"]) == "answered"
+    (call,) = logged(log)
+    assert "GH_TOKEN" not in call["env"] and "OPENAI_API_KEY" not in call["env"] and "HOME" in call["env"]
 
 
 def test_a_helper_past_its_timeout_is_stopped_and_noted(tmp_path):

@@ -808,6 +808,20 @@ def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp
     assert "the other machine did not answer" in (run_dir / "streams" / "cli.jsonl").read_text(encoding="utf-8")
 
 
+def test_a_vm_config_that_reaches_no_machine_is_refused_before_the_run_starts(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    scenario = {"name": "nowhere", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"}
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    config = tmp_path / "vm.json"
+    config.write_text(json.dumps({"remote_workspace": str(tmp_path / "remote")}), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime", "vm", "--runtime-config", str(config)]
+    assert run.main(argv) == 2
+    assert "needs exec_prefix" in capsys.readouterr().err
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert list(run_dir.iterdir()) == []  # refused before run.json, as a missing copy is
+
+
 def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monkeypatch):
     pytest.importorskip("yaml")
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")

@@ -512,9 +512,10 @@ def main(argv: list[str] | None = None) -> int:
 
 def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix) -> int:
     """Everything after the runtime exists: the caller tears the runtime down whatever happens here."""
-    rt.stage()
     model = subject_model(scn, args.subject_model, matrix)
     try:
+        # A runtime config that cannot run is refused here, before anything is spent.
+        rt.stage()
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
