@@ -1,0 +1,43 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 22.838,
+  "usage": {
+    "input_tokens": 8817,
+    "output_tokens": 2261
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 84,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) demand a MANAGER_OWNED_FIELDS tuple that appears nowhere in the checkout or the planted list; the source cannot confirm this is a guideline rule, and the three entries read as padding."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at impl/manager.py:16 tells an inventory OM to add whole tenancy and audit namespaces because it reads ctx.org_id; the source does not bear out that requirement, and the advice is heavy for what the evidence treats as correct tenancy passing (OM-02)."
+      },
+      {
+        "severity": "low",
+        "note": "No finding quotes the guideline rule it rests on, and the review never separates what the guideline requires from what the reviewer prefers; 'Deviations: None' does not do that job."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding on StockMovement repeats the planted OM-06 defect under a second lens with the same fix, which inflates the count of 10 finding lenses."
+      }
+    ],
+    "strengths": [
+      "It reports all eight planted defects at the right file and line under the right lens: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.",
+      "Every finding names a lens id, a path and a line, and gives a concrete fix; the fixes match the guideline intent, such as model_validate, new_id(), a tuple field, and now as a parameter.",
+      "The Passed section agrees with the evidence's clean list (OM-02, OM-07, OM-11, OM-14), and no clean item is flagged.",
+      "It reports that the checker failed and that each lens was judged by hand, and it is honest about the OM-01 scope limit."
+    ],
+    "rationale": "Recall is complete: all eight planted findings appear at the right location and lens, and no clean item is flagged. Precision loses a little to four speculative extras: three MANAGER_OWNED_FIELDS entries and the OM-16 tenancy/audit namespace demand, none of which the source confirms as rules. Form is mostly good, with a lens, a location and a fix on every finding, but no rule is quoted and required is not separated from preferred."
+  },
+  "raw": "{\"score\": 84, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) demand a MANAGER_OWNED_FIELDS tuple that appears nowhere in the checkout or the planted list; the source cannot confirm this is a guideline rule, and the three entries read as padding.\"}, {\"severity\": \"medium\", \"note\": \"The OM-16 finding at impl/manager.py:16 tells an inventory OM to add whole tenancy and audit namespaces because it reads ctx.org_id; the source does not bear out that requirement, and the advice is heavy for what the evidence treats as correct tenancy passing (OM-02).\"}, {\"severity\": \"low\", \"note\": \"No finding quotes the guideline rule it rests on, and the review never separates what the guideline requires from what the reviewer prefers; 'Deviations: None' does not do that job.\"}, {\"severity\": \"low\", \"note\": \"The OM-05 finding on StockMovement repeats the planted OM-06 defect under a second lens with the same fix, which inflates the count of 10 finding lenses.\"}], \"strengths\": [\"It reports all eight planted defects at the right file and line under the right lens: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.\", \"Every finding names a lens id, a path and a line, and gives a concrete fix; the fixes match the guideline intent, such as model_validate, new_id(), a tuple field, and now as a parameter.\", \"The Passed section agrees with the evidence's clean list (OM-02, OM-07, OM-11, OM-14), and no clean item is flagged.\", \"It reports that the checker failed and that each lens was judged by hand, and it is honest about the OM-01 scope limit.\"], \"rationale\": \"Recall is complete: all eight planted findings appear at the right location and lens, and no clean item is flagged. Precision loses a little to four speculative extras: three MANAGER_OWNED_FIELDS entries and the OM-16 tenancy/audit namespace demand, none of which the source confirms as rules. Form is mostly good, with a lens, a location and a fix on every finding, but no rule is quoted and required is not separated from preferred.\"}"
+}

@@ -1,0 +1,42 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 221.479,
+  "usage": {
+    "input_tokens": 7128,
+    "output_tokens": 443
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 67,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "Three OM-03 findings require a MANAGER_OWNED_FIELDS tuple (bin.py:9, stock_movement.py:6, warehouse.py:4 and the update at manager.py:21) that the source never defines and that OM-03 does not require; the only planted OM-03 defect is the redeclared created_at."
+      },
+      {
+        "severity": "high",
+        "note": "OM-16 at manager.py:16 treats reading ctx.org_id and ctx.user_id as a missing tenancy and audit namespace, but the evidence lists passing tenancy into storage as correct and the package is inventory-only on purpose."
+      },
+      {
+        "severity": "medium",
+        "note": "OM-05 at stock_movement.py:6 claims no manager method sets updated_at or updated_by, but record_movement sets both; the write-once Trackable issue is already reported correctly under OM-06."
+      },
+      {
+        "severity": "low",
+        "note": "The header counts 10 findings while the body lists 14, and the findings state rules as requirements without quoting them or separating preference from the guideline."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the right lens, at the right file and line, with fixes that match the expected correction.",
+      "Passed, unverified, and not-applicable calls match the source: frozen and extra=forbid, no org_id, package layout, WarehouseChanges with no id, and the model_validate paths are not flagged.",
+      "OM-13 covers both the second sentinel and the optional parent_bin_id default, and OM-10 correctly points at delete_warehouse's model_validate pattern."
+    ],
+    "rationale": "Recall is complete: every planted finding is named, located, and given the right fix. Precision is not: five of fourteen bullets are not borne out, including an invented MANAGER_OWNED_FIELDS rule repeated three times and an OM-16 flag on tenancy handling the evidence marks correct. Form is otherwise solid, so the review is useful but not acceptable as written."
+  },
+  "raw": "{\"score\":67,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"high\",\"note\":\"Three OM-03 findings require a MANAGER_OWNED_FIELDS tuple (bin.py:9, stock_movement.py:6, warehouse.py:4 and the update at manager.py:21) that the source never defines and that OM-03 does not require; the only planted OM-03 defect is the redeclared created_at.\"},{\"severity\":\"high\",\"note\":\"OM-16 at manager.py:16 treats reading ctx.org_id and ctx.user_id as a missing tenancy and audit namespace, but the evidence lists passing tenancy into storage as correct and the package is inventory-only on purpose.\"},{\"severity\":\"medium\",\"note\":\"OM-05 at stock_movement.py:6 claims no manager method sets updated_at or updated_by, but record_movement sets both; the write-once Trackable issue is already reported correctly under OM-06.\"},{\"severity\":\"low\",\"note\":\"The header counts 10 findings while the body lists 14, and the findings state rules as requirements without quoting them or separating preference from the guideline.\"}],\"strengths\":[\"All eight planted defects are reported under the right lens, at the right file and line, with fixes that match the expected correction.\",\"Passed, unverified, and not-applicable calls match the source: frozen and extra=forbid, no org_id, package layout, WarehouseChanges with no id, and the model_validate paths are not flagged.\",\"OM-13 covers both the second sentinel and the optional parent_bin_id default, and OM-10 correctly points at delete_warehouse's model_validate pattern.\"],\"rationale\":\"Recall is complete: every planted finding is named, located, and given the right fix. Precision is not: five of fourteen bullets are not borne out, including an invented MANAGER_OWNED_FIELDS rule repeated three times and an OM-16 flag on tenancy handling the evidence marks correct. Form is otherwise solid, so the review is useful but not acceptable as written.\"}"
+}

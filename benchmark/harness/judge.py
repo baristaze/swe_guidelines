@@ -43,8 +43,8 @@ RETRY_WAIT_S = 4.0
 # list price of each model in US dollars per million input and output tokens.
 DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
     "anthropic": {
-        "model": "claude-opus-5",
-        "fallbacks": ["claude-sonnet-5"],
+        "model": "claude-opus-5-5",
+        "fallbacks": ["claude-opus-5", "claude-sonnet-5"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
         "prices": {
             "claude-opus-5-5": {"input": 4, "output": 20},
@@ -53,8 +53,8 @@ DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
         },
     },
     "openai": {
-        "model": "gpt-5.5",
-        "fallbacks": ["gpt-5.4", "gpt-5.1"],
+        "model": "gpt-6-sol",
+        "fallbacks": ["gpt-5.5", "gpt-5.4", "gpt-5.1"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
         "prices": {
             "gpt-6-sol": {"input": 2, "output": 10},
@@ -70,8 +70,8 @@ DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
         "prices": {"gemini-3.1-pro-preview": {"input": 2, "output": 12}, "gemini-3.8-flash": {"input": 0.75, "output": 3.75}},
     },
     "xai": {
-        "model": "grok-4",
-        "fallbacks": [],
+        "model": "grok-4.7",
+        "fallbacks": ["grok-4"],
         "effort": {"low": "low", "medium": "high", "high": "high"},
         "prices": {"grok-4.7": {"input": 2, "output": 6}, "grok-4": {"input": 1.25, "output": 2.5}},
     },

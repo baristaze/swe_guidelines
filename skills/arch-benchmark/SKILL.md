@@ -88,6 +88,7 @@ After a measurement, short, in prose:
 - the score per provider and the overall mean;
 - the findings that matter, most severe first, in one line each;
 - any provider that did not answer, with the reason it gave;
-- the run folder path, and the fact that it is not checked in.
+- the run folder path, and that it is checked in only once
+  `run.py redact` has scanned it for keys.
 
 Say what was measured, not what it means for the roadmap.

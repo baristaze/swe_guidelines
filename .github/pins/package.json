@@ -2,7 +2,7 @@
   "private": true,
   "description": "The npm tools make and CI run, at the versions they run. The Makefile and the workflows read each pin from this file, and dependabot proposes the next release of each. Nothing installs it.",
   "devDependencies": {
-    "@anthropic-ai/claude-code": "2.1.276",
+    "@anthropic-ai/claude-code": "2.1.283",
     "markdownlint-cli2": "0.23.2"
   }
 }

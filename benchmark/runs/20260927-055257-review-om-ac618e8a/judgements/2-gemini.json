@@ -1,0 +1,42 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 31.461,
+  "usage": {
+    "input_tokens": 6104,
+    "output_tokens": 373
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 70,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The review incorrectly flags `Bin`, `StockMovement`, and `Warehouse` under OM-03 for lacking a `MANAGER_OWNED_FIELDS` tuple, which is not supported by the source or evidence."
+      },
+      {
+        "severity": "high",
+        "note": "The review invents a requirement under OM-16 to add `tenancy` and `audit` namespaces because context reads tenancy."
+      },
+      {
+        "severity": "medium",
+        "note": "The defect regarding `StockMovement` improperly composing `Trackable` is reported redundantly under both OM-05 and OM-06."
+      },
+      {
+        "severity": "low",
+        "note": "The findings explain the rationale and provide a fix but fail to explicitly quote the actual rule text they rest on."
+      }
+    ],
+    "strengths": [
+      "Achieves perfect recall by successfully identifying all eight planted defects.",
+      "Provides precise file paths, line numbers, and actionable fixes for every reported issue.",
+      "Correctly categorizes several valid aspects of the codebase as 'Passed' without raising false alarms on them."
+    ],
+    "rationale": "The artifact demonstrates excellent recall, finding every planted defect accurately with correct locations and clear fixes. The score is primarily penalized because the review suffers from precision issues, introducing five false positive findings based on invented rules (such as `MANAGER_OWNED_FIELDS` and mandatory namespaces), reporting a defect twice, and failing to quote the guidelines."
+  },
+  "raw": "{\n  \"score\": 70,\n  \"verdict\": \"weak\",\n  \"findings\": [\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review incorrectly flags `Bin`, `StockMovement`, and `Warehouse` under OM-03 for lacking a `MANAGER_OWNED_FIELDS` tuple, which is not supported by the source or evidence.\"\n    },\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review invents a requirement under OM-16 to add `tenancy` and `audit` namespaces because context reads tenancy.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The defect regarding `StockMovement` improperly composing `Trackable` is reported redundantly under both OM-05 and OM-06.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"note\": \"The findings explain the rationale and provide a fix but fail to explicitly quote the actual rule text they rest on.\"\n    }\n  ],\n  \"strengths\": [\n    \"Achieves perfect recall by successfully identifying all eight planted defects.\",\n    \"Provides precise file paths, line numbers, and actionable fixes for every reported issue.\",\n    \"Correctly categorizes several valid aspects of the codebase as 'Passed' without raising false alarms on them.\"\n  ],\n  \"rationale\": \"The artifact demonstrates excellent recall, finding every planted defect accurately with correct locations and clear fixes. The score is primarily penalized because the review suffers from precision issues, introducing five false positive findings based on invented rules (such as `MANAGER_OWNED_FIELDS` and mandatory namespaces), reporting a defect twice, and failing to quote the guidelines.\"\n}"
+}

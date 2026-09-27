@@ -1,0 +1,30 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 7.678,
+  "usage": {
+    "input_tokens": 1639,
+    "output_tokens": 543
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 94,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The policy implementation details and review-command advice make the artifact longer than needed to explain the fence and its proof."
+      }
+    ],
+    "strengths": [
+      "It identifies the tenant predicate in the query’s WHERE clause as the fence, rather than treating an `org_id` parameter as sufficient.",
+      "It names cross-tenant cases as evidence and describes the deliberate breach, both recorded runs, and their expected green and red results.",
+      "It cites sections by title and names the reviewer lenses by ID."
+    ],
+    "rationale": "The artifact satisfies every substantive requirement of the rubric, including the distinction between the query predicate and row-level security as a backstop. The only meaningful deduction is for detail that adds little to the requested explanation."
+  },
+  "raw": "{\"score\":94,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"low\",\"note\":\"The policy implementation details and review-command advice make the artifact longer than needed to explain the fence and its proof.\"}],\"strengths\":[\"It identifies the tenant predicate in the query’s WHERE clause as the fence, rather than treating an `org_id` parameter as sufficient.\",\"It names cross-tenant cases as evidence and describes the deliberate breach, both recorded runs, and their expected green and red results.\",\"It cites sections by title and names the reviewer lenses by ID.\"],\"rationale\":\"The artifact satisfies every substantive requirement of the rubric, including the distinction between the query predicate and row-level security as a backstop. The only meaningful deduction is for detail that adds little to the requested explanation.\"}"
+}

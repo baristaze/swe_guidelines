@@ -1,0 +1,43 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 20.083,
+  "usage": {
+    "input_tokens": 8795,
+    "output_tokens": 2003
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 85,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The three OM-03 findings asking for a `MANAGER_OWNED_FIELDS` tuple on Bin (bin.py:9), StockMovement (stock_movement.py:6) and Warehouse (warehouse.py:4) are not on the planted list, and nothing in the source uses that construct, so the source does not bear them out; the `()` tuple asked of StockMovement reads as padding."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding on stock_movement.py:6 reports the planted OM-06 defect a second time under another lens, which inflates the finding count without adding a new defect."
+      },
+      {
+        "severity": "low",
+        "note": "No finding quotes the guideline rule it rests on, and none separates what the guideline requires from what the reviewer prefers; each note states the defect and the fix only."
+      },
+      {
+        "severity": "low",
+        "note": "The header tallies 16 applied lenses and 9 findings, but the list holds 12 finding lines over 9 lenses, so the counts are hard to reconcile at a glance."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the correct lens, at the right file and exact line: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.",
+      "No item from the clean list is flagged: base.py's frozen and forbid config, Bin's base order, move_bin and delete_warehouse's model_validate, record_movement's new_id and free_capacity's purity all go unchallenged, and several are correctly named as passes.",
+      "Every fix is concrete and consistent with the codebase's own patterns, for example rebuilding with model_validate as delete_warehouse already does, and parent_bin_id: UUID | None = None.",
+      "It reports honestly that arch-check failed and why, keeps unverified and not-applicable lenses apart from passes, and edits nothing."
+    ],
+    "rationale": "Recall is complete: all eight planted findings appear at the right file, line and lens, and none of the clean items is flagged. Precision loses a little to three OM-03 MANAGER_OWNED_FIELDS findings that the source cannot confirm and to a duplicate OM-05 finding for the StockMovement defect. Form is good on lens ids, locations and fixes, but it never quotes the guideline's rules and never separates what the guideline requires from what the reviewer prefers."
+  },
+  "raw": "{\"score\": 85, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The three OM-03 findings asking for a `MANAGER_OWNED_FIELDS` tuple on Bin (bin.py:9), StockMovement (stock_movement.py:6) and Warehouse (warehouse.py:4) are not on the planted list, and nothing in the source uses that construct, so the source does not bear them out; the `()` tuple asked of StockMovement reads as padding.\"}, {\"severity\": \"low\", \"note\": \"The OM-05 finding on stock_movement.py:6 reports the planted OM-06 defect a second time under another lens, which inflates the finding count without adding a new defect.\"}, {\"severity\": \"low\", \"note\": \"No finding quotes the guideline rule it rests on, and none separates what the guideline requires from what the reviewer prefers; each note states the defect and the fix only.\"}, {\"severity\": \"low\", \"note\": \"The header tallies 16 applied lenses and 9 findings, but the list holds 12 finding lines over 9 lenses, so the counts are hard to reconcile at a glance.\"}], \"strengths\": [\"All eight planted defects are reported under the correct lens, at the right file and exact line: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.\", \"No item from the clean list is flagged: base.py's frozen and forbid config, Bin's base order, move_bin and delete_warehouse's model_validate, record_movement's new_id and free_capacity's purity all go unchallenged, and several are correctly named as passes.\", \"Every fix is concrete and consistent with the codebase's own patterns, for example rebuilding with model_validate as delete_warehouse already does, and parent_bin_id: UUID | None = None.\", \"It reports honestly that arch-check failed and why, keeps unverified and not-applicable lenses apart from passes, and edits nothing.\"], \"rationale\": \"Recall is complete: all eight planted findings appear at the right file, line and lens, and none of the clean items is flagged. Precision loses a little to three OM-03 MANAGER_OWNED_FIELDS findings that the source cannot confirm and to a duplicate OM-05 finding for the StockMovement defect. Form is good on lens ids, locations and fixes, but it never quotes the guideline's rules and never separates what the guideline requires from what the reviewer prefers.\"}"
+}

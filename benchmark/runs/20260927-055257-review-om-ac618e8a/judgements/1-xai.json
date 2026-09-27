@@ -1,0 +1,34 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 239.203,
+  "usage": {
+    "input_tokens": 7120,
+    "output_tokens": 376
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 74,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Three OM-03 notes (bin.py:9, stock_movement.py:6, warehouse.py:4) invent a MANAGER_OWNED_FIELDS tuple and an update exclusion the source never defines, and the warehouse note misstates manager.py:21, whose changes dump only has name and capacity and does not copy provenance fields."
+      },
+      {
+        "severity": "low",
+        "note": "Findings name a lens and a fix but never quote the lens rule, the Bin fix hedges with \"or whatever the manager owns,\" and the header's \"9 findings\" does not match the 12 bullets."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the correct lens at the right file and line, each with a concrete fix.",
+      "Nothing listed as correct is flagged, including root frozen/extra forbid, Bin's base order, model_validate on move_bin and delete_warehouse, new_id in record_movement, pure free_capacity, the inventory layout, and tenancy kept off entities.",
+      "Passed, unverified, and not-applicable calls match the checkout, including storage taking org_id and the absence of list filters and storage statements."
+    ],
+    "rationale": "Recall is complete: every planted finding is cited at the right file and line under the right lens, and the clean patterns are left alone. Precision is the gap: three OM-03 findings prescribe a MANAGER_OWNED_FIELDS contract and a provenance exclusion that the source and the clean update paths do not support. Form is mostly solid (lens, path, line, fix) but the findings do not quote the rules and the tally does not match the bullets. Full recall with that false-positive cluster is a weak review, not a pass."
+  },
+  "raw": "{\"score\":74,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Three OM-03 notes (bin.py:9, stock_movement.py:6, warehouse.py:4) invent a MANAGER_OWNED_FIELDS tuple and an update exclusion the source never defines, and the warehouse note misstates manager.py:21, whose changes dump only has name and capacity and does not copy provenance fields.\"},{\"severity\":\"low\",\"note\":\"Findings name a lens and a fix but never quote the lens rule, the Bin fix hedges with \\\"or whatever the manager owns,\\\" and the header's \\\"9 findings\\\" does not match the 12 bullets.\"}],\"strengths\":[\"All eight planted defects are reported under the correct lens at the right file and line, each with a concrete fix.\",\"Nothing listed as correct is flagged, including root frozen/extra forbid, Bin's base order, model_validate on move_bin and delete_warehouse, new_id in record_movement, pure free_capacity, the inventory layout, and tenancy kept off entities.\",\"Passed, unverified, and not-applicable calls match the checkout, including storage taking org_id and the absence of list filters and storage statements.\"],\"rationale\":\"Recall is complete: every planted finding is cited at the right file and line under the right lens, and the clean patterns are left alone. Precision is the gap: three OM-03 findings prescribe a MANAGER_OWNED_FIELDS contract and a provenance exclusion that the source and the clean update paths do not support. Form is mostly solid (lens, path, line, fix) but the findings do not quote the rules and the tally does not match the bullets. Full recall with that false-positive cluster is a weak review, not a pass.\"}"
+}

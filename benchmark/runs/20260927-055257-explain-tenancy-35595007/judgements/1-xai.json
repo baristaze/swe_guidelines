@@ -1,0 +1,30 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 56.891,
+  "usage": {
+    "input_tokens": 2959,
+    "output_tokens": 218
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 95,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The closing recommendation to run arch-review commands does not say how the fence is held or what proves it."
+      }
+    ],
+    "strengths": [
+      "It names the query predicate as the fence and places it in the WHERE clause, not in a signature that only receives org_id.",
+      "It states the negative control exactly: one predicate removed, the suite green with The Second Fence policy live and red with that policy off, both runs recorded.",
+      "It cites the guideline by section title only and names the reviewer lenses by id."
+    ],
+    "rationale": "The answer meets the full standard: the tenant predicate is the fence, applied in the query rather than hoped for on a signature, with cross-tenant cases as evidence and the recorded two-run breach as proof the suite would catch a hole. It stays on what the guideline says, quotes section titles rather than numbers, and names lenses by id. The only deduction is a trailing command suggestion that does not answer the question."
+  },
+  "raw": "{\"score\":95,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"low\",\"note\":\"The closing recommendation to run arch-review commands does not say how the fence is held or what proves it.\"}],\"strengths\":[\"It names the query predicate as the fence and places it in the WHERE clause, not in a signature that only receives org_id.\",\"It states the negative control exactly: one predicate removed, the suite green with The Second Fence policy live and red with that policy off, both runs recorded.\",\"It cites the guideline by section title only and names the reviewer lenses by id.\"],\"rationale\":\"The answer meets the full standard: the tenant predicate is the fence, applied in the query rather than hoped for on a signature, with cross-tenant cases as evidence and the recorded two-run breach as proof the suite would catch a hole. It stays on what the guideline says, quotes section titles rather than numbers, and names lenses by id. The only deduction is a trailing command suggestion that does not answer the question.\"}"
+}

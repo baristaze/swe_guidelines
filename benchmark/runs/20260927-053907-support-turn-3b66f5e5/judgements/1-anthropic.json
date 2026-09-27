@@ -1,0 +1,51 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 16.535,
+  "usage": {
+    "input_tokens": 3148,
+    "output_tokens": 1406
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 74,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 1 uses the request ID only to find a stack trace, and does not use it to join the pod version, flag evaluations, tenant resolution, and DB queries for that one request, which is where the signals should converge."
+      },
+      {
+        "severity": "medium",
+        "note": "Several causes in steps 6 and 7 have no stated way to confirm them: old-format cache entries, per-tenant rate limits, and unswallowed downstream errors are named without the log line, metric, or query that would prove or kill each one."
+      },
+      {
+        "severity": "medium",
+        "note": "Several steps assume access the answer never claims: replaying the tenant's requests against old and new builds, per-shard migration state, the tenant admin action history, and per-pod version tagging."
+      },
+      {
+        "severity": "low",
+        "note": "The step 3 dependency list (JSON, ORM, date/time, Unicode libraries) and the step 4 data-shape list read like a pre-written checklist rather than reasoning driven by this incident's signals."
+      },
+      {
+        "severity": "low",
+        "note": "Some rule-outs are not diagnostic: step 0 'rules out spending 40 minutes debugging' and step 3 'it's the endpoint vs. something the endpoint calls' do not eliminate a hypothesis."
+      },
+      {
+        "severity": "low",
+        "note": "Step 0 says to skip to 'steps 5–6 (tenant-side or data changes)', but the tenant data-shape analysis is step 4, so the cross-reference is off."
+      }
+    ],
+    "strengths": [
+      "It moves in a clear order: timing against the rollout, then the deploy diff including shared code, deps, config, flags and migrations, then tenant data and state.",
+      "It names all three tenant-shaped cause types: legacy rows and unhandled enum values, per-tenant quotas and connection limits, and feature flags or plan-tier config.",
+      "Step 4's replay against the new and old builds explicitly separates a data trigger from a config trigger, which is a real diagnostic split.",
+      "It treats rollback as diagnostic and notes that stored state such as caches or partial migrations may survive a rollback."
+    ],
+    "rationale": "The answer follows the rubric's arc from deploy to data, gives a rule-out for most steps, and covers row-, limit-, and flag-shaped tenant causes concretely. Points come off because the request ID is used only for a stack trace rather than as the join key across signals. Several late-stage causes lack a stated confirmation method, and the access the answer assumes is never stated. Parts of the diff and data lists read as generic checklist content, which keeps it out of the top band."
+  },
+  "raw": "{\"score\": 74, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"Step 1 uses the request ID only to find a stack trace, and does not use it to join the pod version, flag evaluations, tenant resolution, and DB queries for that one request, which is where the signals should converge.\"}, {\"severity\": \"medium\", \"note\": \"Several causes in steps 6 and 7 have no stated way to confirm them: old-format cache entries, per-tenant rate limits, and unswallowed downstream errors are named without the log line, metric, or query that would prove or kill each one.\"}, {\"severity\": \"medium\", \"note\": \"Several steps assume access the answer never claims: replaying the tenant's requests against old and new builds, per-shard migration state, the tenant admin action history, and per-pod version tagging.\"}, {\"severity\": \"low\", \"note\": \"The step 3 dependency list (JSON, ORM, date/time, Unicode libraries) and the step 4 data-shape list read like a pre-written checklist rather than reasoning driven by this incident's signals.\"}, {\"severity\": \"low\", \"note\": \"Some rule-outs are not diagnostic: step 0 'rules out spending 40 minutes debugging' and step 3 'it's the endpoint vs. something the endpoint calls' do not eliminate a hypothesis.\"}, {\"severity\": \"low\", \"note\": \"Step 0 says to skip to 'steps 5\\u20136 (tenant-side or data changes)', but the tenant data-shape analysis is step 4, so the cross-reference is off.\"}], \"strengths\": [\"It moves in a clear order: timing against the rollout, then the deploy diff including shared code, deps, config, flags and migrations, then tenant data and state.\", \"It names all three tenant-shaped cause types: legacy rows and unhandled enum values, per-tenant quotas and connection limits, and feature flags or plan-tier config.\", \"Step 4's replay against the new and old builds explicitly separates a data trigger from a config trigger, which is a real diagnostic split.\", \"It treats rollback as diagnostic and notes that stored state such as caches or partial migrations may survive a rollback.\"], \"rationale\": \"The answer follows the rubric's arc from deploy to data, gives a rule-out for most steps, and covers row-, limit-, and flag-shaped tenant causes concretely. Points come off because the request ID is used only for a stack trace rather than as the join key across signals. Several late-stage causes lack a stated confirmation method, and the access the answer assumes is never stated. Parts of the diff and data lists read as generic checklist content, which keeps it out of the top band.\"}"
+}

@@ -1,0 +1,504 @@
+{
+  "schema_version": 1,
+  "run_id": "20260927-055257-explain-tenancy-35595007",
+  "scenario": "explain-tenancy",
+  "runtime": "container",
+  "started_at": "2026-09-27T12:52:57Z",
+  "finished_at": "2026-09-27T13:00:03Z",
+  "guideline_sha": "00e773dd5df1cf9f35cee70f209fc86bc842d2b6",
+  "target_sha": null,
+  "subject": {
+    "kind": "skill",
+    "skill": "arch-explain",
+    "prompt": "How does the guideline hold the tenant fence, and what proves it?",
+    "argv": [
+      "claude",
+      "-p",
+      "/swe-guidelines:arch-explain How does the guideline hold the tenant fence, and what proves it?",
+      "--plugin-dir",
+      "/plugin",
+      "--output-format",
+      "json",
+      "--max-turns",
+      "14",
+      "--model",
+      "claude-opus-5-5",
+      "--allowedTools",
+      "Read,Grep,Glob"
+    ],
+    "model": "claude-opus-5-5",
+    "provider": null,
+    "target": null,
+    "plugin": "/plugin",
+    "max_turns": 14,
+    "allowed_tools": [
+      "Read",
+      "Grep",
+      "Glob"
+    ]
+  },
+  "repeats": [
+    {
+      "index": 0,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 35.342,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/0/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 11.614,
+          "usage": {
+            "input_tokens": 2437,
+            "output_tokens": 910
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 85,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The negative-control item (point 2) gives no section title for its source, although every other test kind is cited, so a reader cannot trace the deliberate-breach rule to its section."
+              },
+              {
+                "severity": "low",
+                "note": "The detailed RLS mechanics under 'The second fence' (the scope values, the `set_config` funnel, `NULLIF`, the three logins) go beyond what the question needs and add length without strengthening the answer about what holds and proves the fence."
+              },
+              {
+                "severity": "low",
+                "note": "The login tests and policy-check test are presented as co-equal proofs under a 'four kinds of test' framing, which dilutes the rubric's point that cross-tenant cases are the evidence and the deliberate breach is the verification."
+              }
+            ],
+            "strengths": [
+              "It names the tenant predicate in the query's `WHERE` clause as the fence the business layer relies on, and says where it is applied rather than where it is hoped for.",
+              "It identifies the cross-tenant contract cases as evidence and lists their required coverage over both memory and the engine.",
+              "It describes the deliberate breach correctly: one predicate is removed, the suite runs twice, it is green with The Second Fence's policy live and failing with the policy off, and both runs are recorded.",
+              "It cites sections by title only, with no section numbers, and names reviewer lenses by id."
+            ],
+            "rationale": "Every element the rubric requires is present and accurately framed: the predicate as the fence, where it is applied, cross-tenant cases as evidence, and the two-run breach verification with both runs recorded. Citations use titles and the lenses are named by id. Points come off for the uncited negative-control claim and for RLS and login detail that lengthens the answer without adding to the core question."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 9.75,
+          "usage": {
+            "input_tokens": 1444,
+            "output_tokens": 598
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 95,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The system-login and policy-catalog details add length beyond what is needed to answer how the tenant fence holds and how it is proved."
+              }
+            ],
+            "strengths": [
+              "Identifies the query’s tenant predicate as the fence and locates it in the WHERE clause.",
+              "Names cross-tenant contract cases as evidence and describes the deliberate breach, both suite runs, their expected outcomes, and the recorded results.",
+              "Cites sections by title without numbers and names reviewer lenses by ID."
+            ],
+            "rationale": "The artifact meets every central requirement of the rubric, including distinguishing the query predicate from the row-level security backstop. The only meaningful deduction is for ancillary detail that makes the answer longer than necessary."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 19.159,
+          "usage": {
+            "input_tokens": 1336,
+            "output_tokens": 142
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 100,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Clearly identifies the tenant predicate in the WHERE clause as the primary fence.",
+              "Accurately details the cross-tenant test cases and the two-run deliberate breach methodology exactly as requested.",
+              "Strictly adheres to citing by section title and avoids section numbers entirely.",
+              "Lists exact lens IDs without adding unnecessary filler text."
+            ],
+            "rationale": "The artifact perfectly fulfills all rubric requirements. It explicitly names the tenant predicate, cross-tenant test cases, and the deliberate breach verification process with exact expected outcomes. Citations rely exclusively on section titles and lens IDs, and the text remains highly focused without introducing generic advice or fluff."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 88.772,
+          "usage": {
+            "input_tokens": 2756,
+            "output_tokens": 228
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 96,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Names the query tenant predicate as the fence the business layer relies on and places it in the WHERE clause rather than in a method signature.",
+              "States the deliberate breach exactly: one query's tenant predicate removed, suite green with The Second Fence policy live and failing with that policy off, both runs recorded.",
+              "Cites guideline section titles only and names reviewer lenses by id, including CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, and STO-30."
+            ],
+            "rationale": "The answer meets every element of a full response: the applied tenant predicate, cross-tenant cases as evidence, the recorded two-run breach against The Second Fence, title citations, and lens ids. It stays inside this guideline's terms rather than giving generic multi-tenancy advice, and it never cites a section number. Extra session and policy particulars run a little long, but they still answer how the second fence is held, so the score stays near the top."
+          }
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 32.79,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/1/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 10.228,
+          "usage": {
+            "input_tokens": 2738,
+            "output_tokens": 866
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 85,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The Second Fence section spends many bullets on mechanics (set_config funnel, NULLIF, FOR ALL policy shape, three logins) that go well beyond what the question needs, adding length without sharpening the answer."
+              },
+              {
+                "severity": "low",
+                "note": "The framing 'The guideline asks for four pieces of evidence' may be the artifact's own tally rather than a count the guideline states, which risks reading as an invented rule."
+              },
+              {
+                "severity": "low",
+                "note": "Lens STO-33 (lifting FORCE during a data migration) is tangential to how the fence is held and proved, and pads the lens list."
+              }
+            ],
+            "strengths": [
+              "It names the query's tenant predicate as the fence and places it in the WHERE clause, noting that a signature taking org_id only shows the tenant was offered, not applied.",
+              "It names the cross-tenant cases from Tests as the fence's evidence and describes what they cover.",
+              "It states the negative control exactly: one predicate is removed, the suite is green with the policy live and red with it off, and both runs are recorded.",
+              "It cites sections only by title (Storage Principles, Namespace Shape, The Second Fence, Tests) and never by number.",
+              "It lists reviewer lenses by id, including CTX-30 and CTX-31 for the cross-tenant case and the deliberate breach."
+            ],
+            "rationale": "Every element the rubric requires is present and anchored in quoted guideline text, with no section numbers and no general multi-tenancy advice. The deliberate breach is described exactly as the rubric specifies, including both runs recorded. Points come off because the mechanics of the second fence and some peripheral evidence and lenses add length beyond what the question needs. The 'four pieces of evidence' framing may also be the artifact's own structure rather than something the guideline states."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 7.678,
+          "usage": {
+            "input_tokens": 1639,
+            "output_tokens": 543
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 94,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The policy implementation details and review-command advice make the artifact longer than needed to explain the fence and its proof."
+              }
+            ],
+            "strengths": [
+              "It identifies the tenant predicate in the query’s WHERE clause as the fence, rather than treating an `org_id` parameter as sufficient.",
+              "It names cross-tenant cases as evidence and describes the deliberate breach, both recorded runs, and their expected green and red results.",
+              "It cites sections by title and names the reviewer lenses by ID."
+            ],
+            "rationale": "The artifact satisfies every substantive requirement of the rubric, including the distinction between the query predicate and row-level security as a backstop. The only meaningful deduction is for detail that adds little to the requested explanation."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 13.751,
+          "usage": {
+            "input_tokens": 1535,
+            "output_tokens": 190
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 100,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Accurately names the tenant predicate as the primary fence and specifies it is applied in the WHERE clause.",
+              "Correctly identifies cross-tenant test cases and the deliberate breach (negative control) as the required evidence, noting the specific two suite runs.",
+              "Strictly adheres to citing the guideline by section title rather than number.",
+              "Clearly lists the appropriate reviewer lenses by their specific IDs."
+            ],
+            "rationale": "The artifact meets all the rubric's requirements perfectly. It clearly explains how the tenant fence is held using both predicates and policies, and correctly details the specific tests that prove it holds. The formatting rules regarding section citations and reviewer lenses were followed flawlessly, resulting in a comprehensive and highly professional response."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 56.891,
+          "usage": {
+            "input_tokens": 2959,
+            "output_tokens": 218
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 95,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The closing recommendation to run arch-review commands does not say how the fence is held or what proves it."
+              }
+            ],
+            "strengths": [
+              "It names the query predicate as the fence and places it in the WHERE clause, not in a signature that only receives org_id.",
+              "It states the negative control exactly: one predicate removed, the suite green with The Second Fence policy live and red with that policy off, both runs recorded.",
+              "It cites the guideline by section title only and names the reviewer lenses by id."
+            ],
+            "rationale": "The answer meets the full standard: the tenant predicate is the fence, applied in the query rather than hoped for on a signature, with cross-tenant cases as evidence and the recorded two-run breach as proof the suite would catch a hole. It stays on what the guideline says, quotes section titles rather than numbers, and names lenses by id. The only deduction is a trailing command suggestion that does not answer the question."
+          }
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 41.602,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/2/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 11.621,
+          "usage": {
+            "input_tokens": 2761,
+            "output_tokens": 984
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 88,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The six-bullet breakdown of the row-level security machinery under 'The second fence' (scope map, funnel, NULLIF, EMPTY_UUID, three logins) is detail that does not answer 'how is the fence held and what proves it' and roughly doubles the length."
+              },
+              {
+                "severity": "low",
+                "note": "Evidence items 3 and 4 (the policy check test and the connection assertions) go beyond the two proofs the question turns on, which dilutes the emphasis on the cross-tenant cases and the negative control."
+              },
+              {
+                "severity": "low",
+                "note": "The lens list glosses each id in a few words, but it does not say which lens covers the predicate-in-WHERE placement itself, so the fence and the lenses are only loosely linked."
+              }
+            ],
+            "strengths": [
+              "It names the tenant predicate as the fence and places it exactly: the `WHERE` clause of the query, cited to *The Storage Layer, Namespace Shape*, and it notes that a signature carrying `org_id` proves nothing.",
+              "It gives the cross-tenant cases as the evidence, with the breach-attempt framing and coverage of early-return and raise paths, cited to *Cross-Cutting Conventions, Tests*.",
+              "It states the negative control precisely: one predicate is removed, the suite runs green with the policy of The Second Fence on and red with it off, and both runs are recorded.",
+              "It cites every section by title with no section numbers, grounds its claims in quoted text rather than generic multi-tenancy advice, and lists reviewer lenses by id."
+            ],
+            "rationale": "Every element the rubric requires is present and correctly framed: the predicate as the fence, its location in the WHERE clause, the cross-tenant cases as evidence, and the two-run negative control with both runs recorded. Citations are by title, and the lenses are named by id. There is no generic advice and no invented rule is evident. Points come off mainly because the row-level security detail and the extra evidence categories add length beyond what the question needs."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 11.97,
+          "usage": {
+            "input_tokens": 1683,
+            "output_tokens": 704
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 98,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The closing review-command sentence adds an action that does not help explain the fence or its proof."
+              }
+            ],
+            "strengths": [
+              "It identifies the query’s tenant predicate as the primary fence and locates it in the WHERE clause, with writes checked in storage.",
+              "It names cross-tenant cases as evidence and describes the recorded negative control: the suite stays green with row-level security on and fails with it off.",
+              "It cites section titles rather than numbers and names the reviewer lenses by id."
+            ],
+            "rationale": "The artifact meets the rubric’s substantive requirements and distinguishes the query predicate from the row-level security backstop. Its supporting detail is largely relevant; only the final instruction is unnecessary."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 13.272,
+          "usage": {
+            "input_tokens": 1578,
+            "output_tokens": 193
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 100,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Accurately identifies the tenant predicate as the primary fence and specifies its concrete location in the WHERE clause.",
+              "Correctly describes the deliberate breach negative control test, detailing the two-run verification process with and without row-level security.",
+              "Strictly adheres to citation rules by referencing section titles exclusively and avoiding section numbers.",
+              "Explicitly and accurately lists the exact reviewer lens IDs as requested by the rubric."
+            ],
+            "rationale": "The artifact follows all instructions perfectly, meeting every specific requirement of the rubric. It directly addresses the prompt by explaining the mechanisms of the tenant fence and the evidence that proves it, without introducing extraneous general advice or forbidden numbering. The thoroughness of the explanation adds direct value rather than unnecessary length."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 61.628,
+          "usage": {
+            "input_tokens": 2995,
+            "output_tokens": 244
+          },
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 95,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The second-fence inventory (set_config, EMPTY_UUID, login ownership) runs longer than the question needs once the predicate’s place and the recorded negative control are stated."
+              }
+            ],
+            "strengths": [
+              "Names the tenant predicate in the query WHERE clause as the fence, and treats a signature that merely accepts org_id as not enforcement.",
+              "States cross-tenant breach cases as the proof the fence holds, and the deliberate predicate removal with both policy-on green and policy-off red runs recorded.",
+              "Cites guideline section titles rather than numbers and names the reviewer lenses by id."
+            ],
+            "rationale": "The answer names the tenant predicate as the fence and locates it in the WHERE clause rather than in signatures or authorization. It names the cross-tenant cases and the recorded double run—green with The Second Fence policy live, failing with it off—as what proves the suite would catch a hole. It cites section titles only and lists lenses by id. A little of the row-level security mechanics runs past what the question needs, which keeps it short of a perfect score."
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "per_provider": {
+      "anthropic": {
+        "mean": 86.0,
+        "min": 85,
+        "max": 88,
+        "n": 3,
+        "stdev": 1.7
+      },
+      "gemini": {
+        "mean": 100.0,
+        "min": 100,
+        "max": 100,
+        "n": 3,
+        "stdev": 0.0
+      },
+      "openai": {
+        "mean": 95.7,
+        "min": 94,
+        "max": 98,
+        "n": 3,
+        "stdev": 2.1
+      },
+      "xai": {
+        "mean": 95.3,
+        "min": 95,
+        "max": 96,
+        "n": 3,
+        "stdev": 0.6
+      }
+    },
+    "overall_mean": 94.3,
+    "failed_repeats": [],
+    "spread": {
+      "repeat_means": [
+        94.0,
+        93.5,
+        95.3
+      ],
+      "min": 93.5,
+      "max": 95.3,
+      "stdev": 0.9
+    },
+    "self_judged": "a Claude subject is judged by a panel that includes Claude (anthropic); read its score beside the other providers' before trusting the mean",
+    "fallbacks": [],
+    "skipped": [],
+    "missed": []
+  },
+  "notes": []
+}

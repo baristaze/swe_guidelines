@@ -1,0 +1,25 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 88.772,
+  "usage": {
+    "input_tokens": 2756,
+    "output_tokens": 228
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 96,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Names the query tenant predicate as the fence the business layer relies on and places it in the WHERE clause rather than in a method signature.",
+      "States the deliberate breach exactly: one query's tenant predicate removed, suite green with The Second Fence policy live and failing with that policy off, both runs recorded.",
+      "Cites guideline section titles only and names reviewer lenses by id, including CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, and STO-30."
+    ],
+    "rationale": "The answer meets every element of a full response: the applied tenant predicate, cross-tenant cases as evidence, the recorded two-run breach against The Second Fence, title citations, and lens ids. It stays inside this guideline's terms rather than giving generic multi-tenancy advice, and it never cites a section number. Extra session and policy particulars run a little long, but they still answer how the second fence is held, so the score stays near the top."
+  },
+  "raw": "{\"score\":96,\"verdict\":\"pass\",\"findings\":[],\"strengths\":[\"Names the query tenant predicate as the fence the business layer relies on and places it in the WHERE clause rather than in a method signature.\",\"States the deliberate breach exactly: one query's tenant predicate removed, suite green with The Second Fence policy live and failing with that policy off, both runs recorded.\",\"Cites guideline section titles only and names reviewer lenses by id, including CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, and STO-30.\"],\"rationale\":\"The answer meets every element of a full response: the applied tenant predicate, cross-tenant cases as evidence, the recorded two-run breach against The Second Fence, title citations, and lens ids. It stays inside this guideline's terms rather than giving generic multi-tenancy advice, and it never cites a section number. Extra session and policy particulars run a little long, but they still answer how the second fence is held, so the score stays near the top.\"}"
+}

@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from harness import judge as J
 from harness import results as R
 
@@ -354,3 +356,14 @@ def test_a_model_without_a_price_keeps_its_tokens_and_makes_the_total_a_lower_bo
     assert spent["unpriced"] == ["unknown-model"]
     assert spent["total_usd"] == 0.1
     assert "Total: at least $0.1000. No price for `unknown-model`" in R.report_text(run)
+
+
+RUNS = Path(__file__).resolve().parent.parent / "benchmark" / "runs"
+
+
+def test_every_checked_in_run_still_validates_against_the_schema():
+    """A later schema adds fields as optional, so a run recorded before them stays valid."""
+    pytest.importorskip("jsonschema")
+    for results in sorted(RUNS.glob("*/results.json")):
+        data = json.loads(results.read_text(encoding="utf-8"))
+        assert R.validate(data, SCHEMA) == [], results.parent.name

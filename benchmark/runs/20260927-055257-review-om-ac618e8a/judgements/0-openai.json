@@ -1,0 +1,46 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 27.355,
+  "usage": {
+    "input_tokens": 5348,
+    "output_tokens": 2046
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 76,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at `om/src/acme/om/base.py:1` does not establish why use of `ctx.org_id` and `ctx.user_id` requires separate tenancy and audit namespaces."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-14 finding at `om/src/acme/om/inventory/storage/__init__.py:23` does not substantiate a rule requiring `write_movement` to spell out the full entity name."
+      },
+      {
+        "severity": "medium",
+        "note": "The three OM-03 findings in `bin.py`, `stock_movement.py`, and `warehouse.py` assert a required `MANAGER_OWNED_FIELDS` tuple without support in the supplied evidence, and their advice to exclude provenance fields does not account for fields required to rebuild the models."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-05 finding at `om/src/acme/om/inventory/types/stock_movement.py:6` says no manager method sets `updated_at` or `updated_by`, but `record_movement` sets both at `impl/manager.py:63-65`."
+      },
+      {
+        "severity": "low",
+        "note": "The findings summary says 11 findings, while the artifact lists 16 bullets, and none of those bullets quotes the rule it relies on."
+      }
+    ],
+    "strengths": [
+      "The review reports all eight planted defects at the right files and near the right lines.",
+      "The OM-10, OM-12, and OM-15 findings give concrete changes that address the defects shown in the source.",
+      "It does not flag the listed correct behavior of warehouse deletion, bin movement, or movement ID generation."
+    ],
+    "rationale": "Complete recall earns substantial credit, including the correct OM-06 finding despite a contradictory OM-05 bullet about the same entity. Precision is weaker: several additional findings impose requirements the evidence does not support, and one makes a claim the manager implementation directly disproves. The inconsistent count and lack of rule quotations further reduce the score."
+  },
+  "raw": "{\n  \"score\": 76,\n  \"verdict\": \"weak\",\n  \"findings\": [\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The OM-16 finding at `om/src/acme/om/base.py:1` does not establish why use of `ctx.org_id` and `ctx.user_id` requires separate tenancy and audit namespaces.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The OM-14 finding at `om/src/acme/om/inventory/storage/__init__.py:23` does not substantiate a rule requiring `write_movement` to spell out the full entity name.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The three OM-03 findings in `bin.py`, `stock_movement.py`, and `warehouse.py` assert a required `MANAGER_OWNED_FIELDS` tuple without support in the supplied evidence, and their advice to exclude provenance fields does not account for fields required to rebuild the models.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The OM-05 finding at `om/src/acme/om/inventory/types/stock_movement.py:6` says no manager method sets `updated_at` or `updated_by`, but `record_movement` sets both at `impl/manager.py:63-65`.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"note\": \"The findings summary says 11 findings, while the artifact lists 16 bullets, and none of those bullets quotes the rule it relies on.\"\n    }\n  ],\n  \"strengths\": [\n    \"The review reports all eight planted defects at the right files and near the right lines.\",\n    \"The OM-10, OM-12, and OM-15 findings give concrete changes that address the defects shown in the source.\",\n    \"It does not flag the listed correct behavior of warehouse deletion, bin movement, or movement ID generation.\"\n  ],\n  \"rationale\": \"Complete recall earns substantial credit, including the correct OM-06 finding despite a contradictory OM-05 bullet about the same entity. Precision is weaker: several additional findings impose requirements the evidence does not support, and one makes a claim the manager implementation directly disproves. The inconsistent count and lack of rule quotations further reduce the score.\"\n}"
+}

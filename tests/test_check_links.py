@@ -78,6 +78,14 @@ def test_caches_and_benchmark_runs_are_not_scanned(repo, links):
     assert links.main() == 1
 
 
+def test_the_index_of_the_benchmark_runs_is_scanned(repo, links, capsys):
+    repo.write("benchmark/runs/one/report.md", "# Run\n")
+    repo.write("benchmark/runs/README.md", "# Runs\n\n[one](one/report.md) [two](two/report.md)\n")
+    assert links.main() == 1
+    out = capsys.readouterr().out
+    assert "two/report.md" in out and "one/report.md" not in out
+
+
 def test_external_links_are_not_fetched(repo, links):
     repo.write("docs/extra.md", "# Extra\n\n[x](https://example.invalid/none) [m](mailto:a@b.c)\n")
     assert links.main() == 0

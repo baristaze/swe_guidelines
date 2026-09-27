@@ -18,12 +18,12 @@ MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 RUFF := uvx ruff@$(call pin,ruff)
 MYPY := uvx --with pytest==$(call pin,pytest) mypy@$(call pin,mypy)
 
-.PHONY: help check lint ruff mypy lenses leaks links toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
+.PHONY: help check lint ruff mypy lenses leaks links runs toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: lint ruff mypy lenses leaks links toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
+check: lint ruff mypy lenses leaks links runs toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
@@ -43,6 +43,9 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
+
+runs:              ## the index of the benchmark runs has one row per run folder
+	$(PYTHON) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings
 	$(PYTHON) scripts/gen_toc.py --check

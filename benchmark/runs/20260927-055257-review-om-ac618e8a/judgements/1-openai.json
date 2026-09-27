@@ -1,0 +1,41 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 47.451,
+  "usage": {
+    "input_tokens": 5420,
+    "output_tokens": 3333
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 86,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-03 findings at bin.py:9 and stock_movement.py:6 treat missing MANAGER_OWNED_FIELDS tuples as mandatory without establishing a supporting rule, and move_bin has no update copy to filter."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-03 warning about provenance exclusion at impl/manager.py:21 is inapplicable because WarehouseChanges exposes only name and capacity."
+      },
+      {
+        "severity": "low",
+        "note": "The StockMovement fix at stock_movement.py:6 omits the necessary change to record_movement at impl/manager.py:58–65, which would still pass Trackable-only fields to an Identifiable-only model."
+      },
+      {
+        "severity": "low",
+        "note": "The findings identify lenses, locations, and fixes but do not quote the rules on which they rely."
+      }
+    ],
+    "strengths": [
+      "The review identifies all eight planted defects under their intended lens IDs and near the correct lines.",
+      "It recognizes the deliberately correct root configuration, tenant handling, and package layout without flagging them."
+    ],
+    "rationale": "Complete recall and accurate locations carry most of the score. The unsupported OM-03 requirements and inapplicable provenance warning reduce precision; the incomplete StockMovement fix and missing rule quotations reduce form and usefulness. The OM-05 StockMovement finding repeats the correctly reported OM-06 defect rather than adding a distinct issue."
+  },
+  "raw": "{\"score\":86,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"The OM-03 findings at bin.py:9 and stock_movement.py:6 treat missing MANAGER_OWNED_FIELDS tuples as mandatory without establishing a supporting rule, and move_bin has no update copy to filter.\"},{\"severity\":\"medium\",\"note\":\"The OM-03 warning about provenance exclusion at impl/manager.py:21 is inapplicable because WarehouseChanges exposes only name and capacity.\"},{\"severity\":\"low\",\"note\":\"The StockMovement fix at stock_movement.py:6 omits the necessary change to record_movement at impl/manager.py:58–65, which would still pass Trackable-only fields to an Identifiable-only model.\"},{\"severity\":\"low\",\"note\":\"The findings identify lenses, locations, and fixes but do not quote the rules on which they rely.\"}],\"strengths\":[\"The review identifies all eight planted defects under their intended lens IDs and near the correct lines.\",\"It recognizes the deliberately correct root configuration, tenant handling, and package layout without flagging them.\"],\"rationale\":\"Complete recall and accurate locations carry most of the score. The unsupported OM-03 requirements and inapplicable provenance warning reduce precision; the incomplete StockMovement fix and missing rule quotations reduce form and usefulness. The OM-05 StockMovement finding repeats the correctly reported OM-06 defect rather than adding a distinct issue.\"}"
+}

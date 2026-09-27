@@ -23,7 +23,7 @@ def fake_call(*_args):
 
 
 def failing_call(model, effort, prompt, key):
-    if model == "claude-opus-5":
+    if model == "claude-opus-5-5":
         raise RuntimeError("out of quota")
     return fake_call()
 
@@ -73,7 +73,7 @@ def test_a_provider_without_a_key_is_skipped_not_failed():
 def test_a_judgement_carries_the_model_the_effort_and_the_usage():
     judgement = J.judge_one(P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=fake_call)
     assert judgement.status == "ok"
-    assert judgement.model == "claude-opus-5"
+    assert judgement.model == "claude-opus-5-5"
     assert judgement.effort == "medium"
     assert judgement.usage == {"input_tokens": 10, "output_tokens": 20}
     assert judgement.verdict is not None
@@ -86,8 +86,8 @@ def test_a_refused_model_falls_back_and_the_result_names_what_answered():
         P.Provider.ANTHROPIC, "p", "high", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=failing_call
     )
     assert judgement.status == "ok"
-    assert judgement.model == "claude-sonnet-5"
-    assert judgement.fallback == {"from": "claude-opus-5", "reason": "claude-opus-5: RuntimeError: out of quota"}
+    assert judgement.model == "claude-opus-5"
+    assert judgement.fallback == {"from": "claude-opus-5-5", "reason": "claude-opus-5-5: RuntimeError: out of quota"}
     assert judgement.as_dict()["fallback"] == judgement.fallback
 
 
@@ -109,7 +109,7 @@ def test_every_model_failing_is_an_error_that_keeps_what_each_said():
     judgement = J.judge_one(P.Provider.XAI, "p", "low", J.DEFAULT_MATRIX, env={"GROK_API_KEY": "k"}, call=always_fails)
     assert judgement.status == "error"
     assert judgement.error is not None
-    assert "grok-4 said no" in judgement.error
+    assert "grok-4.7 said no" in judgement.error
     assert judgement.verdict is None
 
 
@@ -198,7 +198,7 @@ def test_a_malformed_answer_is_an_error_judgement_never_an_exception():
 
 def test_a_malformed_answer_falls_back_to_the_next_model():
     def first_malformed(model, effort, prompt, key):
-        if model == "claude-opus-5":
+        if model == "claude-opus-5-5":
             return {"score": "n/a", "verdict": "pass"}, "{}", {}
         return fake_call()
 
@@ -206,7 +206,7 @@ def test_a_malformed_answer_falls_back_to_the_next_model():
         P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=first_malformed
     )
     assert judgement.status == "ok"
-    assert judgement.model == "claude-sonnet-5"
+    assert judgement.model == "claude-opus-5"
 
 
 def test_gemini_and_xai_count_the_reasoning_in_the_billed_output():

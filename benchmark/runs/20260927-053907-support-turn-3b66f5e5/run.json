@@ -1,0 +1,83 @@
+{
+  "run_id": "20260927-053907-support-turn-3b66f5e5",
+  "scenario": {
+    "name": "support-turn",
+    "kind": "qa",
+    "subject": {
+      "skill": null,
+      "prompt": "A service returns 500 for one tenant only, on one endpoint, since a\ndeploy an hour ago. Nothing changed in that endpoint's code. Answer\nas the person on call: what you look at, in what order, and what\neach step would rule out.\n",
+      "argv": [],
+      "max_turns": 6,
+      "allowed_tools": [],
+      "target": null,
+      "model": "claude-opus-5-5",
+      "provider": "anthropic",
+      "context": [],
+      "timeout_s": 600
+    },
+    "artifact": {
+      "stdout": true,
+      "files": []
+    },
+    "rubric": "Score the answer 0 to 100 as an engineer on call would.\n\nA good answer starts from the signals the request id ties together,\nmoves from the deploy to the data, and says what each step rules out.\nIt names the tenant-shaped causes, a row that only that tenant has, a\nlimit only that tenant reaches, a flag only that tenant carries.\n\nTake points off for a checklist that could be written before reading\nthe question, for steps that need access the answer does not say it\nhas, and for a cause named with no way to confirm it.",
+    "judges": {
+      "providers": "7",
+      "effort": "medium"
+    },
+    "evidence": {
+      "files": [],
+      "expected": null
+    },
+    "path": "/Users/baris/code/swe-wt/benchmark-runs-checked-in/benchmark/scenarios/support-turn.yaml"
+  },
+  "runtime": {
+    "name": "container",
+    "config": {
+      "keys": []
+    },
+    "target": null
+  },
+  "providers": {
+    "flags": 15,
+    "names": [
+      "anthropic",
+      "openai",
+      "gemini",
+      "xai"
+    ]
+  },
+  "effort": "high",
+  "repeat": 3,
+  "models": {
+    "anthropic": [
+      "claude-opus-5-5",
+      "claude-opus-5",
+      "claude-sonnet-5"
+    ],
+    "openai": [
+      "gpt-6-sol",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.1"
+    ],
+    "gemini": [
+      "gemini-3.1-pro-preview",
+      "gemini-3.8-flash"
+    ],
+    "xai": [
+      "grok-4.7",
+      "grok-4"
+    ]
+  },
+  "subject_argv": [],
+  "subject_model": "claude-opus-5-5",
+  "guideline_sha": "00e773dd5df1cf9f35cee70f209fc86bc842d2b6",
+  "target_sha": null,
+  "evidence": {
+    "files": [],
+    "source_chars": 0,
+    "expected": null,
+    "note": null
+  },
+  "started_at": "2026-09-27T12:39:07Z"
+}
