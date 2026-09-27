@@ -269,10 +269,15 @@ def with_retries(
             raise
 
 
-def timed(call: Callable[..., T], *args: Any) -> tuple[T, float]:
-    """A call's answer and how long it took, in seconds."""
+def timed_call(call: Callable[[str, str, str, str], tuple[dict, str, dict]], *args: str) -> tuple[dict, str, dict, float]:
+    """One judge call's data, raw text, and usage, and how long it took, in seconds.
+
+    The answer is unpacked here, inside the attempt, so an answer of the
+    wrong shape is that attempt's error and is recorded like any other.
+    """
     started = time.monotonic()
-    return call(*args), time.monotonic() - started
+    data, raw, usage = call(*args)
+    return data, raw, usage, time.monotonic() - started
 
 
 def note_error(errors: list[str], model: str, exc: Exception) -> None:
@@ -575,10 +580,11 @@ def judge_one(
         data: dict = {}
         usage: dict[str, int] = {}
         raw, latency = "", 0.0
-        # Every failed attempt is in `errors`; a model that never answered leaves `data` empty.
+        # `note_error` records every failed attempt, an answer of the wrong shape
+        # included, so the suppressed error is never lost; `data` stays empty.
         with contextlib.suppress(Exception):
-            (data, raw, usage), latency = with_retries(
-                partial(timed, dispatch, model, wanted, prompt, key), on_error=partial(note_error, errors, model)
+            data, raw, usage, latency = with_retries(
+                partial(timed_call, dispatch, model, wanted, prompt, key), on_error=partial(note_error, errors, model)
             )
         if not data:
             errors.append(f"{model}: no parsed verdict")
