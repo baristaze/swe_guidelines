@@ -109,6 +109,8 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   artifacts/<repeat>/output.zip, MANIFEST.txt
                            the output's last commit, whole, and a line per file
   judgements/<repeat>-<provider>.json
+  judgements/<repeat>-<provider>.jsonl
+                           an agentic judge's transcript, one line per step
   results.json             the record, in schema/result.schema.json
   report.md                the same run for a person
 ```
@@ -171,6 +173,7 @@ path on that machine:
 | `image` | the container image by name and by the id the engine gives it |
 | `target` | the target by its path in the repository and a hash of the staged copy the subject read |
 | `expected` | the planted findings by their path in the repository and a hash of the file |
+| `references` | what agentic judges read beside the output: paths of the checkout and a hash of their copy, or a repository's URL, tag, commit, and the guideline release it pins (see Agentic judges) |
 
 The skills under test are staged from the working tree, not from a
 commit. So a run on uncommitted changes would name a commit that does
@@ -467,6 +470,7 @@ rubric: |
 judges:
   providers: 3
   effort: medium
+  mode: one-shot            # one-shot | agentic (see Agentic judges)
 ```
 
 `kind: skill` runs `claude -p "/<plugin>:<skill> <prompt>"` with
@@ -667,7 +671,8 @@ answers are in `fixtures/review-om.expected.yaml`.
 
 ## Judges
 
-Every provider gets the same prompt: the rubric, what produced the
+The judges are one-shot unless the scenario asks for agentic ones (see
+Agentic judges). Every one-shot provider gets the same prompt: the rubric, what produced the
 artifact, the artifact, and the evidence when the scenario gives some,
 each truncated at a stated limit so the judge knows whether it saw the
 whole thing. The artifact sits inside a fence of backticks longer than
@@ -696,6 +701,120 @@ from the model the matrix names.
  A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
+
+## Agentic judges
+
+A one-shot judge reads what fits in one prompt. A whole system does not
+fit, so a scenario can ask for agentic judges instead. Each one reads
+the subject's output and the scenario's references through read-only
+tools, `list_dir`, `read_file`, `grep`, and `find`, and answers by
+calling `submit` once. `harness/agentic.py` holds the loop and its
+tools. The loop is the same on all four providers, so their scores
+compare.
+
+```yaml
+judges:
+  providers: 15
+  effort: high
+  mode: agentic
+  budget:                     # optional; each key replaces its default
+    tool_calls: 40            # reads per judgement
+    input_tokens: 500000      # summed over every call
+    max_usd: 3                # at the list price, summed over every call
+    wall_s: 900
+    submits: 3                # answers that miss the shape, and are sent back
+    max_output_tokens: 16000  # each call, reasoning included, on every provider
+  references:
+    - name: guideline
+      weight: 0.4
+      paths: [architecture.md, lenses, skills]
+    - name: reference
+      weight: 0.6
+      repository: https://github.com/acme/acme-system
+      tag: v0.7.0
+```
+
+**The roots.** A judge reads each root under its name. `output` is what
+the subject produced. For a subject that builds an output folder, it is
+the tree the archive of its last commit holds. Otherwise it is the
+repeat's answer, `answer.md`, and the files the scenario collects,
+under `workspace/`. Each reference is a root of its own. A path out of
+a root is refused, and so is a link out of one.
+
+**The references.** A reference is one of two things:
+
+- Paths of this checkout, such as the guideline's `architecture.md`,
+  `lenses`, and `skills`. They are copied from the working tree the
+  plugin is staged from. A path the checkout does not hold is refused.
+- A public repository, by its `https` URL, pinned at a `tag`. The
+  harness fetches that tag alone, at depth 1, and removes the `.git`
+  folder, so the judge reads the tree at the tag. A branch of the same
+  name is not the tag, and is refused. Git runs with none of this
+  machine's git configuration and asks for no credential, so a
+  repository that needs one is not fetched.
+
+The weights are shares above 0, and they sum to 1. A reference named
+`output` is refused, and so is a name two references share. A reference
+that cannot be staged stops the run before the subject runs, with exit
+2.
+
+**The answer.** Every judge answers in one shape. For each reference, it
+gives a `score` from 0 to 100, the `gaps` behind it, and its
+`strengths`. A gap gives its `severity` (`high`, `medium`, or `low`),
+`what` is missing or different, `in_output`, where it is in the output,
+and `in_reference`, where the reference shows it. It gives the lens and
+the fix where they apply. The judge also gives a `rationale`. An answer
+that misses the shape goes back to the judge with the problems.
+
+**The weighted score.** The harness computes it, never a judge, and no
+judge is told the weights. It is the sum of each reference's score
+times its weight, to one decimal place, rounded half up. It is the
+judgement's score: each provider's mean, the overall mean, and the
+spread are over the weighted scores. The summary also holds each
+reference under `references`: its weight, each provider's mean, the
+mean of those means, the range of its scores, and its gaps counted by
+severity. A failed repeat scores 0 against every reference.
+
+**The budget.** Each judgement has its own. It ends as `missed` when the
+judge asks for a read after it was told none are left, when its wall
+time runs out, or when its next call would pass the input tokens or the
+dollars it may spend. That check comes before each call. The next call
+carries at least the last one's input, and costs at least that input at
+its price, so a call that would pass either budget is never made. The
+dollars are at the list prices in `models.yaml`. A model with no price
+there is held to the dearest price the file gives, so the check errs
+high. Every call on every provider carries the output cap,
+`max_output_tokens`. A `missed` judgement names the budget and its
+figures in `error`, and scores nothing. The summary names it as it
+names every judgement that did not answer.
+
+**Where it goes.** `judgements/<repeat>-<provider>.json` holds each
+judgement and the answer as the judge submitted it. Its transcript sits
+beside it as `.jsonl`: every turn, every tool call with its arguments,
+every submission, and the end, written as it happens. `results.json`
+holds each judgement's scores, gaps, and strengths per reference under
+`judged`, with the weighted score, the tool calls, the turns, and the
+transcript's path. `report.md` shows a score per reference and the
+weighted score for each judgement, the references in the summary, and
+the gaps per reference, most severe first. The task every judge gets is
+the repeat's `judge-prompt.md`.
+
+**Versions.** `versions.references` names each reference. A reference of
+the checkout is its paths and one SHA-256 over their copy. A repository
+is its URL, its tag, the commit the tag names, and the guideline release
+it pins. A repository that follows the guideline pins its release in
+`specs/architecture.md` ("pinned at `v0.37.0`", as
+`docs/adopting.md` says). A repository that pins a release other than
+this checkout's, or names none, is judged against all the same, and the
+run's notes say so.
+
+A dry run resolves every reference: it copies the paths, fetches each
+tag, and records the commit and the release each pins in `run.json`.
+Fetching a public repository spends nothing. It calls no judge.
+
+An agentic judge takes no `evidence`: it reads its roots instead, and a
+scenario that names both does not load. The judges of a repeat run one
+after another.
 
 ## Spend
 

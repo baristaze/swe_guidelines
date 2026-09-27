@@ -60,7 +60,10 @@ never run the harness from there.
    subject's `max_usd`, or for a scenario in phases each phase's. Say
    both when the prompt asks for a cap. When it asks what a run could
    spend, say that it can pass N by about the largest session cap and
-   one repeat's judges, which a dry run does not price. When the prompt names something with no flag behind it, say
+   one repeat's judges. A dry run does not price one-shot judges. An
+   agentic judge makes no call that would pass its budget's `max_usd`,
+   so one repeat's agentic judges spend about that times the number of
+   judges. When the prompt names something with no flag behind it, say
    so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
@@ -129,7 +132,13 @@ never run the harness from there.
    Report the subject's `output` folder and its `gates`, which the
    harness runs on the final tree. `benchmark/README.md`, "A subject in
    phases", says what each field means and what follows when a phase
-   hits a bound or fails; answer from it when the prompt asks. There is
+   hits a bound or fails; answer from it when the prompt asks. When
+   `scenario.judges.mode` is `agentic`, report the judges' `budget` and
+   each reference with its weight, and what the run resolved for it
+   under `versions.references`: the paths of the checkout, or the
+   repository's URL, tag, commit, and the guideline release it pins
+   (`pins`). Report every line under `notes`. `benchmark/README.md`,
+   "Agentic judges", says what each field means. There is
    no score to report, and inventing one is the worst thing this skill
    could do.
 7. List the run folder the command printed with `ls`, then read
@@ -164,11 +173,15 @@ After a measurement, short, in prose:
 
 - the scenario, the runtime, the repeats, and the judges that answered,
   each with its model id;
-- the score per provider and the overall mean;
+- the score per provider and the overall mean; for agentic judges, say
+  that each score is the weighted score the harness computed, and give
+  each reference's weight and mean;
 - for a scenario in phases, how each phase ended and the cap that
   stopped any, and which gates passed on the final tree;
-- the findings that matter, most severe first, in one line each;
-- any provider that did not answer, with the reason it gave;
+- the findings that matter, most severe first, in one line each; for
+  agentic judges, the gaps, per reference;
+- any provider that did not answer, with the reason it gave, and for
+  an agentic judge that ended `missed`, the budget it names;
 - the run folder path, and that it is checked in only once
   `run.py redact` has scanned it for keys.
 
