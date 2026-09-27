@@ -201,12 +201,16 @@ so they stay here:
     outside the gateway, a route that writes a durable row (201 or 202)
     without the `Idempotency-Key` dependency. Then read
     `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
-    and run it over the whole tree; the checker run and the git reads
-    it takes are in this skill's tools for that step. Close every high
+    and run it over the whole tree, once: it does not run again after
+    the fixes below. The checker run and the git reads it takes are in
+    this skill's tools for that step. A group it reports as "not
+    reviewed" (its reviewer failed twice, a stop at the agent's turn
+    cap counting as a failure) is named in the output as not reviewed,
+    with its error, and is not run again here. Close every high
     finding, within what After writing lets a fix change, then run
     `make check` under the bound every gate here has: the first run
-    plus at most 3 reruns. List the rest of the
-    findings in the output for the person. A high
+    plus at most 3 reruns. List the rest of the findings in the
+    output for the person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
 
