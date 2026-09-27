@@ -235,11 +235,11 @@ All three write the same streams into the run folder.
 
 ### Where a scenario runs
 
-A scenario says where it may run, and it has no default for that.
-`runtimes` lists the runtimes it runs on. The first is the one a run
-takes when `--runtime` names none. `run.py` refuses any other runtime
-before it makes a run folder, and exits 7. So a caller tells a scenario
-that does not run there from one that failed.
+A scenario says where it may run: `runtimes`, the runtimes it runs on,
+is required, and a scenario without it does not load. A run takes the
+first it lists when `--runtime` names none. `run.py` refuses any other
+runtime before it makes a run folder, and exits 7. So a caller tells a
+scenario that does not run there from one that failed.
 
 `requires` names what the runtime must provide. `docker` is the one
 requirement there is: a Docker engine the subject runs containers on.
@@ -425,7 +425,7 @@ The shape:
 ```yaml
 name: explain-tenancy
 kind: skill                 # skill | command | qa
-runtimes: [container]       # where it may run, the first the default
+runtimes: [container]       # required: where it may run; a run takes the first
 requires: []                # what the runtime must provide: docker
 subject:
   skill: arch-explain

@@ -12,9 +12,9 @@ A relative path in a scenario (`subject.target`, `subject.context`,
 `evidence.expected`) is read from the scenario file's folder, so a scenario means the same
 thing from wherever the run starts.
 
-A scenario says where it may run, and it has no default for that:
-`runtimes` lists the runtimes it runs on, the first the one a run takes
-when none is named. `requires` names what its runtime must provide. A
+A scenario says where it may run: `runtimes`, the runtimes it runs on,
+is required, and a run takes the first it lists when `--runtime` names
+none. `requires` names what its runtime must provide. A
 scenario that lists a runtime unable to provide what it requires is
 refused when it loads, so no run of it starts there.
 """
@@ -258,7 +258,8 @@ def _runtimes(data: dict[str, Any], name: str) -> tuple[list[str], list[str]]:
     runtimes = _strings(data.get("runtimes"), f"scenario {name}: runtimes")
     if not runtimes:
         raise ScenarioError(
-            f"scenario {name}: runtimes is required: the runtimes it may run on, of {', '.join(RT.NAMES)}, the first the default"
+            f"scenario {name}: runtimes is required: the runtimes it may run on, of {', '.join(RT.NAMES)}; "
+            "a run takes the first when --runtime names none"
         )
     unknown = [r for r in runtimes if r not in RT.NAMES]
     if unknown:
