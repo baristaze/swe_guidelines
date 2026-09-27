@@ -11,9 +11,12 @@
 #
 # Nothing of this machine is in the VM. Plain mode mounts no folder,
 # forwards no port, and runs no guest agent. SSH forwards no agent and
-# authorizes Lima's own key only. A firewall rule in the VM refuses
-# every connection to this machine but DNS. The harness reaches the VM
-# through `limactl shell` and `limactl copy`, which go over SSH.
+# authorizes Lima's own key only, and no proxy setting of this machine
+# is written into the VM. A firewall rule in the VM refuses every
+# connection that leaves it for a private address, this machine among
+# them, but DNS and DHCP. The public internet stays open. The harness
+# reaches the VM through `limactl shell` and `limactl copy`, which go
+# over SSH.
 #
 # Docker runs rootful, and its socket belongs to the VM's user, so a
 # subject runs `docker` without sudo. The VM is the boundary, not the
@@ -37,6 +40,7 @@ disk: 100GiB
 
 plain: true
 mounts: []
+propagateProxyEnv: false
 ssh:
   loadDotSSHPubKeys: false
   forwardAgent: false
@@ -109,36 +113,44 @@ provision:
     rm -rf "$work"
     echo "$pins" >/etc/swe-benchmark-pins
 - mode: system
-  # This machine is out of reach, on every boot. Lima's network answers
-  # host.lima.internal with this machine's loopback, where its own
-  # services listen, so the VM and its containers may open nothing
-  # there but DNS. The internet stays open: a subject needs it.
+  # This machine and its network are out of reach, on every boot. Lima's
+  # network answers host.lima.internal with this machine's loopback, and
+  # this machine's own address on its network is private too, so the VM
+  # and its containers may open nothing through the uplink to a
+  # loopback-alias, private, link-local, or shared (CGNAT) address, but
+  # DNS to the resolvers and DHCP. The rule matches the uplink only, so
+  # Docker's networks inside the VM work as they do anywhere. The
+  # public internet stays open: a subject needs it.
   script: |
     #!/bin/bash
     set -eux -o pipefail
     nft list table inet swe_benchmark >/dev/null 2>&1 && exit 0
+    uplink=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
     host=$(getent ahostsv4 host.lima.internal | awk 'NR == 1 { print $1 }')
-    test -n "$host"
+    resolvers=$(resolvectl dns "$uplink" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | paste -sd, -)
+    test -n "$uplink" && test -n "$host" && test -n "$resolvers"
     nft -f - <<EOF
     table inet swe_benchmark {
-      chain host {
-        ip daddr $host udp dport 53 accept
-        ip daddr $host tcp dport 53 accept
+      chain uplink {
+        ip daddr { $resolvers } meta l4proto { tcp, udp } th dport 53 accept
+        udp dport 67 accept
         ip daddr $host ct state new reject
+        ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } ct state new reject
+        ip6 daddr { fc00::/7, fe80::/10 } meta l4proto { tcp, udp } ct state new reject
       }
       chain output {
         type filter hook output priority filter; policy accept;
-        jump host
+        oifname "$uplink" jump uplink
       }
       chain forward {
         type filter hook forward priority filter; policy accept;
-        jump host
+        oifname "$uplink" jump uplink
       }
     }
     EOF
 
 probes:
-- description: the pinned tools answer
+- description: the pinned tools answer and the firewall holds
   script: |
     #!/bin/bash
     set -eux -o pipefail
@@ -146,6 +158,9 @@ probes:
       echo >&2 "the tools are not installed yet"
       exit 1
     fi
+    # Lima goes on past a provision script that failed, so the probe
+    # checks what the firewall script made.
+    sudo -n nft list table inet swe_benchmark
     claude --version
     uv --version
     node --version
