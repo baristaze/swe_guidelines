@@ -339,7 +339,9 @@ A judgement's `cost_usd` is its usage at those prices.
 The subject's spend is on each repeat, as `subject_usage` and
 `subject_cost_usd`. A skill's figures come from the `claude -p`
 envelope, and its cost is the one Claude Code reports, caching
-included. A `qa` answer is priced like a judgement.
+included. Its `reasoning_tokens` are the thinking tokens the envelope
+reports, which its output already counts. A `qa` answer is priced like a
+judgement.
 
 `results.json` totals it all under `spend`: each judge's tokens and
 cost, the subject's, and `total_usd`. `report.md` shows the same in its
