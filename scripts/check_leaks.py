@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Check the published Markdown for vocabulary that must not appear.
 
-The guideline is generic on purpose. Product names and hardware nouns
-belong to the projects it was extracted from, never to the guideline or
-the lenses. `REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says
-which group applies to which files.
+The guideline is generic on purpose. Hardware vocabulary belongs to the
+projects it was extracted from, never to the guideline or the lenses.
+`REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says which group
+applies to which files.
 
 It also refuses changelog phrasing in the guideline, and the one
 spelling of an update copy the guideline forbids, wherever a snippet
