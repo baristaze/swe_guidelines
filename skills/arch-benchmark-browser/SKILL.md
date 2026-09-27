@@ -111,6 +111,7 @@ Facts that decide how the steps below go. Read them before the browser.
      open the chip again, and click Fast; record Fast, and say in
      `note` that the mode the size asked for needs a SuperGrok plan. A
      locked mode is not tried again.
+   Where the size map's effort is `none`, `effort_label` is `none`.
    If the label does not match what the size asked for, try once more,
    then record the label the page shows and go on: the results carry
    what was actually used, never what was asked for.
