@@ -1,0 +1,31 @@
+# The runtime config that drives the VM `benchmark.yaml` makes:
+#
+#     uv run benchmark/run.py --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml ...
+#
+# `limactl shell` hands its words on as words. `--workdir /` keeps it
+# from looking for this machine's working folder in the VM, where there
+# is none.
+#
+# `limactl copy` over rsync lands a folder's content on a destination
+# with no slash at its end. So the staged folder becomes the path `copy`
+# names, and the workspace there becomes the one here on `fetch`.
+#
+# `limactl` needs HOME to find its machines, and LIMA_HOME when it is
+# set. The prefix gets those two from this machine's environment, and
+# nothing else of it.
+#
+# The run folders live on the VM's disk, under /var/tmp, because /tmp
+# is held in memory there.
+#
+# `check` runs there before every repeat, and a repeat whose check fails
+# runs no subject. It compares the firewall table with the listing saved
+# when it was loaded, so a table deleted, emptied, or with a rule
+# changed, removed, or added fails it. It catches a change made by
+# accident or in passing. It cannot stop a subject with sudo that means
+# to get around it: such a subject can rewrite the saved listing too.
+exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
+copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}"]
+fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
+remote_workspace: /var/tmp/swe-benchmark
+prefix_env: [HOME, LIMA_HOME]
+check: [sh, -c, "sudo -n nft list table inet swe_benchmark | cmp -s - /etc/swe-benchmark-firewall.nft"]
