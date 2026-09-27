@@ -205,6 +205,9 @@ def scenario_step(tmp_path):
         (scenarios / name).write_text("{}", encoding="utf-8")
     script = tmp_path / "step.sh"
     script.write_text(workflow_step("run every scenario"), encoding="utf-8")
+    # The step names no shell, so Actions runs it under `bash -e`, and so does the fixture.
+    step = WORKFLOW.read_text(encoding="utf-8").split("      - name: run every scenario\n")[1].split("      - name: ")[0]
+    assert "shell:" not in step
 
     def run_step(**inputs):
         env = {
@@ -214,7 +217,8 @@ def scenario_step(tmp_path):
             **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", **inputs},
         }
         (tmp_path / "uv.log").unlink(missing_ok=True)
-        done = subprocess.run(["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
+        # As Actions runs a step that names no shell: `bash -e {0}`.
+        done = subprocess.run(["bash", "-e", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
         log = tmp_path / "uv.log"
         ran = log.read_text(encoding="utf-8").split() if log.exists() else []
         return done.returncode, ran, done.stdout + done.stderr
@@ -231,10 +235,17 @@ def test_the_workflow_runs_every_cataloged_scenario_and_fails_at_the_end(scenari
 
 
 def test_the_workflow_skips_and_names_a_scenario_that_does_not_list_the_container(scenario_step):
-    code, ran, out = scenario_step(SCENARIOS="a elsewhere c")
-    assert code == 0 and ran == ["a", "elsewhere", "c"]
-    assert "::notice::skipped, since they do not list the container runtime: elsewhere\n" in out
+    code, ran, out = scenario_step(SCENARIOS="elsewhere a elsewhere c")
+    assert code == 0 and ran == ["elsewhere", "a", "elsewhere", "c"]  # a skip ends nothing after it
+    assert "::notice::skipped, since they do not list the container runtime: elsewhere elsewhere\n" in out
     assert "failed scenarios" not in out
+
+
+def test_a_failed_scenario_ends_nothing_after_it(scenario_step):
+    code, ran, out = scenario_step(SCENARIOS="broken a elsewhere c")
+    assert ran == ["broken", "a", "elsewhere", "c"]
+    assert code == 1 and "failed scenarios: broken\n" in out
+    assert "skipped, since they do not list the container runtime: elsewhere\n" in out
 
 
 @pytest.mark.parametrize(
