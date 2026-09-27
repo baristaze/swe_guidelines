@@ -147,6 +147,21 @@ def test_a_scenario_that_requires_docker_is_refused_in_a_container(tmp_path, cap
     assert not (tmp_path / "runs").exists()
 
 
+def test_a_qa_subject_in_a_container_builds_no_image(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setattr(run.J, "ask", lambda *args, **kwargs: ("the answer", {}))  # no provider is called
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr(run.RT.ContainerRuntime, "image_version", lambda self: None)
+    built: list[str] = []
+    monkeypatch.setattr(run.RT.ContainerRuntime, "build", lambda self, streams=None: built.append("built"))
+    path = tmp_path / "q.json"
+    path.write_text(json.dumps(dict(QA, subject={"prompt": "Why?"}, runtimes=["container"])), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--providers", "1", "--build"]
+    assert run.main(argv) == 0
+    assert built == []  # no engine is asked for an image no subject runs in
+
+
 def test_the_shipped_review_never_runs_on_the_host(tmp_path, capsys, monkeypatch):
     pytest.importorskip("yaml")
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")

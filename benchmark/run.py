@@ -599,7 +599,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(f"strict: the subject has no key of its own; set {', '.join(no_subject_key)}", file=sys.stderr)
         return 3
 
-    if isinstance(rt, RT.ContainerRuntime) and args.build:
+    # A qa subject runs no command, so no image is built for it: a container
+    # run of one needs no engine.
+    if isinstance(rt, RT.ContainerRuntime) and args.build and scn.kind != "qa":
         with CliStream(run_dir / "streams" / "build.jsonl") as build_stream:
             status = rt.build(build_stream)
         if status.code != 0:

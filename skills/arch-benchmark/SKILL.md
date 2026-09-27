@@ -60,8 +60,9 @@ never run the harness from there.
    does not show for the scenario, run nothing, neither on that runtime
    nor on another, and say so. When the prompt names no runtime, pass
    no `--runtime`. A `qa` subject runs no command on any runtime: the
-   harness asks the model itself. The runtime the run takes, named or
-   the scenario's first, asks for more:
+   harness asks the model itself, and builds no image for it, so it
+   needs no engine. The runtime the run takes, named or the scenario's
+   first, asks for more:
    - `container` runs the subject with `docker run` on this machine,
      so it needs a Docker engine here. Pass `--build` on every
      container run. The harness builds the image only when `--build`

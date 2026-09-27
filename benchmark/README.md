@@ -39,7 +39,7 @@ image first (see Where a scenario runs).
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
-| `--build` | build the container image before running |
+| `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
 | `--screencast-seconds` | how long to capture frames; 10 by default |
 
