@@ -1,25 +1,31 @@
 # The t-shirt sizes, and what each site's picker calls them. Two sizes per
 # run: the model and the effort. Sizes are xs, s, m, l, xl, so a new tier
 # slots in without renaming the others. The labels are what the pickers
-# showed on 2026-09-20, and grok.com's on 2026-09-27; when a site renames a
-# model, this file changes and the skill does not.
+# showed on 2026-09-27; when a site renames a model, this file changes and
+# the skill does not.
 #
-# The label is what the skill clicks. What the composer shows afterwards
-# can read differently (chatgpt.com shows the effort stop, not the model;
-# gemini.google.com shortens "3.1 Pro" to "Pro"), and the results carry
-# what the page showed, never what this file says.
+# A size names the current model of its tier, as the picker's top level
+# lists it. When a model moves under "More models" or is marked as leaving,
+# the size moves to its successor and this file changes, with a new date.
+# A run records what ran, so an older run keeps the labels it used.
+#
+# The label is the picker entry the skill clicks, and the results carry the
+# entry the page had checked when the prompt was sent. The chip beside the
+# composer can read differently (chatgpt.com shows the effort stop, not the
+# model; gemini.google.com shortens "3.1 Pro" to "Pro").
 model:
   chatgpt.com:                # a chevron inside the "Thinking effort" popover opens the model list
     xs: Latest
     s: Latest
     m: Latest
     l: Latest
-    xl: Latest                # "Latest" is the current flagship; GPT-5.6 Sol and GPT-5.5 sit below it
-  claude.ai:
-    xs: Haiku 4.5
+    xl: Latest                # "Latest" is the current flagship; GPT-5.6 Sol sits below it, and GPT-5.5
+                              # below that, marked "Leaving on October 14"
+  claude.ai:                  # the top level lists Fable 5.1, Opus 5.5, Sonnet 5, and Haiku 4.5; older
+    xs: Haiku 4.5             # models, Opus 5 among them, sit under "More models"
     s: Sonnet 5
-    m: Opus 5
-    l: Opus 5
+    m: Opus 5.5
+    l: Opus 5.5
     xl: Fable 5.1
   gemini.google.com:
     xs: 3.5 Flash-Lite
@@ -35,13 +41,13 @@ model:
     xl: Heavy                 # "Team of Experts"; "Auto" chooses Fast or Expert, so its label does not say
                               # which ran, and "Build" builds apps and sites: the map asks for neither
 effort:
-  chatgpt.com:                # the "Thinking effort" slider has five stops, left to right; the stop labels are
-    xs: 1                     # names ("Instant" at the left, "6 Pro" at the right), not effort words
-    s: 2
-    m: 3
-    l: 4
-    xl: 5
-  claude.ai:                  # the Effort submenu of the model picker: Low, Medium, High, Extra, Max
+  chatgpt.com:                # the "Thinking effort" slider's five stops, left to right; the label above the
+    xs: Instant               # slider names the stop the handle is on
+    s: Medium
+    m: High
+    l: Extra High
+    xl: 6 Pro
+  claude.ai:                  # the Effort submenu of the model picker: Low, Medium, High (the default), Extra, Max
     xs: Low
     s: Medium
     m: High
