@@ -56,10 +56,14 @@ cloud credential and reads no environment.
    uv run python ops/audit/dbcalls.py summary ~/Downloads/acme_database_calls_<yyyy-mm-dd>/calls.json
    ```
 
-   A flow that fails is named, the rest run, and `run` exits 1; go on to
-   the summary and the drop. A fixed flows file runs alone on the same
-   database with `--only seed` into a second `--out`. The summary's round
-   trips are warm (every statement already prepared); the report says so.
+   A flow that fails is named, the rest run, and `run` exits 1. When a
+   flow of the run's own file fails for a fault in that file, fix the
+   file and rerun it alone on the same database with `--only seed` into
+   a second `--out`: the first run plus at most 1 rerun. A flow that
+   fails again is reported as not measured, with its error. A failed
+   flow never stops the audit: go on to the summary and the drop. The
+   summary's round trips are warm (every statement already prepared);
+   the report says so.
 4. Read each call's `detail`: one line per transaction, with its role, its
    scope, the storage method that opened it, and its statements. From
    them: the fixed cost of a transaction (`BEGIN`, the scope, `COMMIT` or
