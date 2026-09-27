@@ -4,8 +4,8 @@
 The guideline is generic on purpose. The `product` group holds the
 hardware vocabulary of the one origin the guideline was extracted from.
 That vocabulary never belongs in the guideline or the lenses.
-`REFUSED_TERMS` below is the whole vocabulary; `SCOPES` says which group
-applies to which files.
+`REFUSED_TERMS` below holds every refused term, by group; `SCOPES` says
+which group applies to which files.
 
 It also refuses changelog phrasing in the guideline, and the one
 spelling of an update copy the guideline forbids, wherever a snippet
