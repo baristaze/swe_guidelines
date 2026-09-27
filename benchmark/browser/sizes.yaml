@@ -30,8 +30,8 @@ model:
   grok.com:                   # one list of modes, each with a tooltip; Build, Expert, and Heavy say "Grok 4.6"
     xs: Fast                  # "Quick responses"
     s: Fast
-    m: Expert                 # "Thinks hard"
-    l: Expert
+    m: Expert                 # "Thinks hard"; Expert and Heavy need a SuperGrok plan, and without one
+    l: Expert                 # the session runs on Fast and is recorded smaller-mode, never ok
     xl: Heavy                 # "Team of Experts"; "Auto" chooses Fast or Expert, so its label does not say
                               # which ran, and "Build" builds apps and sites: the map asks for neither
 effort:

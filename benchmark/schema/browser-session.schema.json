@@ -27,10 +27,11 @@
     },
     "prompt": {
       "type": "string",
-      "description": "the prompt as it was typed, before the contract; two runs compare only when this text is the same"
+      "description": "the prompt as it was typed, before the contract; two runs compare only when this text and contract are both the same"
     },
     "contract": {
-      "type": "string"
+      "type": "string",
+      "description": "the contract as it was typed after the prompt, in the same message; part of what two runs must share to compare"
     },
     "sizes": {
       "type": "object",
@@ -124,12 +125,14 @@
               "refused",
               "errored",
               "timed-out",
-              "not-signed-in"
+              "not-signed-in",
+              "smaller-mode"
             ],
-            "description": "errored is the product's own error message in place of an answer; refused is a decline"
+            "description": "errored is the product's own error message in place of an answer; refused is a decline; smaller-mode is a scored answer from a smaller model or mode than the size asked for, because that one is locked on the account: model_label is what ran, note names the locked one, and the session is left out of any like-for-like comparison"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "description": "every remark on the session, in the order they arose, separated by \"; \""
           }
         }
       }

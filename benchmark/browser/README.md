@@ -30,7 +30,7 @@ waits, and saves the answer with its proof.
 `~/Downloads/benchmark_browser/<YYYYMMDD-HHMMSS>/`:
 
 ```text
-results.json          the run, in the schema: the prompt as sent, sizes, each session's URL, labels, times, score
+results.json          the run, in the schema: the prompt and contract as sent, sizes, each session's URL, labels, times, score
 chatgpt.com.md        the answer as the page showed it, under a header with the URL and the labels
 claude.ai.md
 gemini.google.com.md
@@ -46,9 +46,12 @@ person can open it later and see the same answer. The labels are what
 the picker showed at the moment the prompt was sent, read off the page
 and not assumed from the size map.
 
-`results.json` holds the prompt as it was sent. When `prompt.md`
-changes, a run before the change and a run after it asked different
-questions, and their scores are not compared as one.
+`results.json` holds the prompt and the contract as they were sent,
+in one message. When either changes in `prompt.md`, a run before the
+change and a run after it asked different questions, and their scores
+are not compared as one. A session whose account locks the model or
+mode its size asked for answers on a smaller one. It is recorded
+`smaller-mode`, and it stays out of any comparison of like for like.
 
 ## Words
 

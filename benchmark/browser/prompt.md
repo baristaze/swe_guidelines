@@ -2,8 +2,8 @@
 
 The prompt below is the one a reader can paste into any assistant. It
 is sent as written, and then the contract that follows it, so the
-four answers line up. A run records the prompt it sent, and two runs
-compare only when that text is the same.
+four answers line up. A run records the prompt and the contract it
+sent, and two runs compare only when both texts are the same.
 
 ```text
 You are a highly senior software engineer and architect.
