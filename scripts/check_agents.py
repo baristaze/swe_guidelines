@@ -15,8 +15,10 @@ and nothing generates it, so this check holds the two files together:
 It also holds the agent to a count bound: its frontmatter carries
 `maxTurns`, a whole number above zero, and the host stops the agent
 after that many turns. The host's own validation accepts a missing or
-misspelled key, and then only the session's turns or wall time stop a
-reviewer that keeps reading.
+misspelled key, or a value that is no number, and then only the
+session's turns or wall time stop a reviewer that keeps reading. The
+message says which: the key is missing, or its value is not a whole
+number above zero.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -37,7 +39,9 @@ AGENT = ROOT / "agents" / "arch-reviewer.md"
 DECISIONS = ("finding", "pass", "not applicable", "unverified")
 STEP = re.compile(r"^\d+\. ", re.M)
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
-MAX_TURNS = re.compile(r"^maxTurns: *[1-9][0-9]* *$", re.M)
+MAX_TURNS = re.compile(r"^maxTurns:[ \t]*(.*?)[ \t]*$", re.M)
+# A whole number above zero, unquoted, with an optional YAML comment after it.
+WHOLE_ABOVE_ZERO = re.compile(r"^[1-9][0-9]*(?:[ \t]+#.*)?$")
 PLACEHOLDERS = {"{title}": "<group title>"}
 
 
@@ -64,8 +68,11 @@ def report_block(text: str, rel: str, errors: list[str]) -> str:
 def turn_cap(text: str, rel: str, errors: list[str]) -> None:
     """The agent's frontmatter bounds its turns with `maxTurns`, a whole number above zero."""
     head = FRONTMATTER.match(text)
-    if not head or not MAX_TURNS.search(head.group(1)):
+    found = MAX_TURNS.search(head.group(1)) if head else None
+    if not found:
         errors.append(f"{rel}: no maxTurns in the frontmatter; bound the agent's turns with `maxTurns: <n>`, n above 0")
+    elif not WHOLE_ABOVE_ZERO.match(found.group(1)):
+        errors.append(f"{rel}: maxTurns is {found.group(1)!r}, not a whole number above zero")
 
 
 def decision_order(proc: str) -> list[str]:

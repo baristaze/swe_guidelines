@@ -128,11 +128,23 @@ def test_missing_agent_file_fails(repo, agents, capsys):
     assert "agents/arch-reviewer.md: missing" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("line", ["", "maxTurns: 0\n", "maxTurns: eighty\n", "maxTurnz: 80\n"])
+@pytest.mark.parametrize("line", ["", "maxTurnz: 80\n"])
 def test_the_agent_bounds_its_turns(repo, agents, capsys, line):
     repo.edit("agents/arch-reviewer.md", "maxTurns: 80\n", line)
     assert agents.main() == 1
     assert "agents/arch-reviewer.md: no maxTurns in the frontmatter" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", ["0", "eighty", '"80"', "-5", "8.5", ""])
+def test_a_turn_cap_that_is_no_whole_number_above_zero_says_so(repo, agents, capsys, value):
+    repo.edit("agents/arch-reviewer.md", "maxTurns: 80\n", f"maxTurns: {value}\n")
+    assert agents.main() == 1
+    assert f"agents/arch-reviewer.md: maxTurns is {value!r}, not a whole number above zero" in capsys.readouterr().out
+
+
+def test_a_turn_cap_with_a_comment_after_it_passes(repo, agents):
+    repo.edit("agents/arch-reviewer.md", "maxTurns: 80\n", "maxTurns: 80  # cap\n")
+    assert agents.main() == 0
 
 
 def test_a_turn_cap_outside_the_frontmatter_is_no_cap(repo, agents, capsys):
