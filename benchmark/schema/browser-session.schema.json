@@ -26,7 +26,8 @@
       "format": "date-time"
     },
     "prompt": {
-      "type": "string"
+      "type": "string",
+      "description": "the prompt as it was typed, before the contract; two runs compare only when this text is the same"
     },
     "contract": {
       "type": "string"

@@ -162,4 +162,6 @@ In prose: the run folder path; per site, the model and effort labels
 the page showed, the score, and the conversation URL; any site that was
 not signed in, refused, errored, or timed out, with the page's own
 words; which sites were read from screenshots. Say what was measured.
-Do not compare the scores to an earlier run unless the prompt asks.
+Do not compare the scores to an earlier run unless asked. When asked,
+compare only runs whose `results.json` holds the same `prompt`, and
+name each run left out for asking a different one.
