@@ -34,6 +34,12 @@ minimumLimaVersion: 2.0.0
 base:
 - template:_images/ubuntu-26.04
 
+# macOS's own hypervisor, whose network the firewall below was checked
+# on. A host without it, such as Linux, drops this line, and Lima runs
+# QEMU. QEMU's user network gives the VM an IPv6 prefix, fec0::/10,
+# that reaches this machine's ::1, and the firewall refuses it too.
+vmType: vz
+
 cpus: 8
 memory: 32GiB
 disk: 100GiB
@@ -117,8 +123,8 @@ provision:
   # network answers its gateway, host.lima.internal, with this machine's
   # loopback, and this machine's own address on its network is private
   # too. So the VM and its containers may open nothing through the
-  # uplink to the gateway or to a private, link-local, or shared (CGNAT)
-  # address, but DNS to the resolvers and DHCP. The rule matches the
+  # uplink to the gateway or to a private, link-local, site-local, or
+  # shared (CGNAT) address, but DNS to the resolvers and DHCP. The rule matches the
   # uplink only, so Docker's networks inside the VM work as they do
   # anywhere. The public internet stays open: a subject needs it. The
   # script reads the uplink, the gateway, and the resolvers from the
@@ -143,7 +149,7 @@ provision:
         udp dport 67 accept
         ip daddr $gateway ct state new reject
         ip daddr { 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } ct state new reject
-        ip6 daddr { fc00::/7, fe80::/10 } meta l4proto { tcp, udp } ct state new reject
+        ip6 daddr { fc00::/7, fe80::/10, fec0::/10 } meta l4proto { tcp, udp } ct state new reject
       }
       chain output {
         type filter hook output priority filter; policy accept;

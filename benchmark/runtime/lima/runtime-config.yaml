@@ -16,8 +16,12 @@
 #
 # The run folders live on the VM's disk, under /var/tmp, because /tmp
 # is held in memory there.
+#
+# `check` runs there before every repeat: a subject with sudo can delete
+# the firewall, and a repeat whose check fails runs no subject.
 exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
 copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}"]
 fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
 remote_workspace: /var/tmp/swe-benchmark
 prefix_env: [HOME, LIMA_HOME]
+check: [sudo, -n, nft, list, table, inet, swe_benchmark]
