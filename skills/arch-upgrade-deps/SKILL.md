@@ -154,9 +154,9 @@ never removes them. Nothing else is asked for.
    (`uv lock --upgrade-package <name>==<release>`,
    `pnpm update --recursive <name>@<release>`): restoring the whole
    file would revert the other rows too. Reinstall before the next run
-   (`uv sync`, `pnpm install`, and `terraform init -upgrade
-   -backend=false` in each Terraform root the row touched), so that run
-   tests the release the row went back to.
+   (`uv sync`, `pnpm install`, and
+   `terraform init -upgrade -backend=false` in each Terraform root the
+   row touched), so that run tests the release the row went back to.
 
    Mark the row held back with its failing output, and run step 8
    again. Then go on from where step 8 was run: within step 7, with the
