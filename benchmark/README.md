@@ -97,7 +97,8 @@ Runtimes).
 runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   run.json                 the resolved scenario, runtime, models, argv, and versions
   streams/cli.jsonl        one JSON line per output line, written as it happens
-  streams/build.jsonl      the image build's output, with `--runtime container --build`
+  streams/build.jsonl      the image build's output, with `--runtime container --build`,
+                           for a skill or command subject
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
                            files under workspace/ at their own paths
@@ -158,7 +159,7 @@ path on that machine:
 |-------|---------------|
 | `checkout` | the commit, the plugin's version from `.claude-plugin/plugin.json`, and whether the tree held changes no commit holds (`dirty`), with those paths and one hash over their content |
 | `claude_code` | what `claude --version` answers inside the runtime, for a skill subject |
-| `image` | the container image by name and by the id the engine gives it |
+| `image` | the container image by name and by the id the engine gives it, for a skill or command subject; a `qa` subject runs in no image |
 | `target` | the target by its path in the repository and a hash of the staged copy the subject read |
 | `expected` | the planted findings by their path in the repository and a hash of the file |
 
