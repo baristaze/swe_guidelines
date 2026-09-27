@@ -72,8 +72,9 @@ lenses (`skills/`), and the checkers that keep the three consistent
   runtime its scenario lists, and to no key-shaped string inside a zip
   it holds. It reads the scenarios and scans the zips through the
   harness, so `make runs` brings `pyyaml`.
-  `make benchmark` runs the smoke scenario and is not part of
-  `make check`, because a run calls paid APIs.
+  `make benchmark` runs the smoke scenario in a container, its image
+  built first, and is not part of `make check`, because a run calls
+  paid APIs.
 - `checkers/` holds `arch-check`, the static checker that decides the
   mechanical lenses. It is its own Python package
   (`checkers/src/arch_check/`, Python 3.11, standard library only).

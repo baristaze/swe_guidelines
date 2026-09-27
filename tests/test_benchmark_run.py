@@ -148,6 +148,21 @@ def test_a_scenario_that_requires_docker_is_refused_in_a_container(tmp_path, cap
     assert not (tmp_path / "runs").exists()
 
 
+def test_a_qa_subject_in_a_container_builds_no_image(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setattr(run.J, "ask", lambda *args, **kwargs: ("the answer", {}))  # no provider is called
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr(run.RT.ContainerRuntime, "image_version", lambda self: None)
+    built: list[str] = []
+    monkeypatch.setattr(run.RT.ContainerRuntime, "build", lambda self, streams=None: built.append("built"))
+    path = tmp_path / "q.json"
+    path.write_text(json.dumps(dict(QA, subject={"prompt": "Why?"}, runtimes=["container"])), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--providers", "1", "--build"]
+    assert run.main(argv) == 0
+    assert built == []  # no engine is asked for an image no subject runs in
+
+
 def test_the_shipped_review_never_runs_on_the_host(tmp_path, capsys, monkeypatch):
     pytest.importorskip("yaml")
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
@@ -159,8 +174,13 @@ def test_the_shipped_review_never_runs_on_the_host(tmp_path, capsys, monkeypatch
 def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run, "SCENARIOS", tmp_path)
     (tmp_path / "one.json").write_text(json.dumps(dict(SKILL, runtimes=["container", "host"])), encoding="utf-8")
+    (tmp_path / "two.json").write_text(
+        json.dumps(dict(SKILL, name="two", runtimes=["vm"], requires=["docker"])), encoding="utf-8"
+    )
     assert run.main(["list", "--out", str(tmp_path)]) == 0
-    assert "runtimes=container,host" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "runtimes=container,host\n" in out  # a scenario that requires nothing says nothing of it
+    assert "runtimes=vm requires=docker\n" in out
 
 
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "benchmark.yml"
@@ -206,6 +226,9 @@ def scenario_step(tmp_path):
         (scenarios / name).write_text("{}", encoding="utf-8")
     script = tmp_path / "step.sh"
     script.write_text(workflow_step("run every scenario"), encoding="utf-8")
+    # The step names no shell, so Actions runs it under `bash -e`, and so does the fixture.
+    step = WORKFLOW.read_text(encoding="utf-8").split("      - name: run every scenario\n")[1].split("      - name: ")[0]
+    assert "shell:" not in step
 
     def run_step(**inputs):
         env = {
@@ -215,7 +238,8 @@ def scenario_step(tmp_path):
             **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", "MAX_SPEND_USD": "10", **inputs},
         }
         (tmp_path / "uv.log").unlink(missing_ok=True)
-        done = subprocess.run(["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
+        # As Actions runs a step that names no shell: `bash -e {0}`.
+        done = subprocess.run(["bash", "-e", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
         log = tmp_path / "uv.log"
         ran = log.read_text(encoding="utf-8").split() if log.exists() else []
         return done.returncode, ran, done.stdout + done.stderr
@@ -232,10 +256,17 @@ def test_the_workflow_runs_every_cataloged_scenario_and_fails_at_the_end(scenari
 
 
 def test_the_workflow_skips_and_names_a_scenario_that_does_not_list_the_container(scenario_step):
-    code, ran, out = scenario_step(SCENARIOS="a elsewhere c")
-    assert code == 0 and ran == ["a", "elsewhere", "c"]
-    assert "::notice::skipped, since they do not list the container runtime: elsewhere\n" in out
+    code, ran, out = scenario_step(SCENARIOS="elsewhere a elsewhere c")
+    assert code == 0 and ran == ["elsewhere", "a", "elsewhere", "c"]  # a skip ends nothing after it
+    assert "::notice::skipped, since they do not list the container runtime: elsewhere elsewhere\n" in out
     assert "failed scenarios" not in out
+
+
+def test_a_failed_scenario_ends_nothing_after_it(scenario_step):
+    code, ran, out = scenario_step(SCENARIOS="broken a elsewhere c")
+    assert ran == ["broken", "a", "elsewhere", "c"]
+    assert code == 1 and "failed scenarios: broken\n" in out
+    assert "skipped, since they do not list the container runtime: elsewhere\n" in out
 
 
 @pytest.mark.parametrize(

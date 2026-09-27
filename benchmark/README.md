@@ -27,7 +27,7 @@ image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
-| `--scenario` | a scenario name from `scenarios/`, or a path to a file |
+| `--scenario` | a scenario from `scenarios/`, by the name `list` prints or its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
@@ -40,7 +40,7 @@ image first (see Where a scenario runs).
 | `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
-| `--build` | build the container image before running |
+| `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
 | `--screencast-seconds` | how long to capture frames; 10 by default |
 
@@ -245,25 +245,35 @@ All three write the same streams into the run folder.
 
 ### Where a scenario runs
 
-A scenario says where it may run, and it has no default for that.
-`runtimes` lists the runtimes it runs on. The first is the one a run
-takes when `--runtime` names none. `run.py` refuses any other runtime
-before it makes a run folder, and exits 7. So a caller tells a scenario
-that does not run there from one that failed.
+A scenario says where it may run: `runtimes`, the runtimes it runs on,
+is required, and a scenario without it does not load. A run takes the
+first it lists when `--runtime` names none. `run.py` refuses any other
+runtime before it makes a run folder, and exits 7. So a caller tells a
+scenario that does not run there from one that failed. `run.py list`
+prints each scenario's runtimes, and what it requires when it requires
+anything.
 
 `requires` names what the runtime must provide. `docker` is the one
 requirement there is: a Docker engine the subject runs containers on.
-The container runtime cannot provide it, because it runs no engine and
-drops every capability. The host and the vm runtime hand on the engine
-their machine carries, and the Lima machine carries one. A scenario
-that lists a runtime unable to provide what it requires is refused when
-it loads. The check is against what a runtime can provide, not a probe
-of the machine: a host with no Docker engine fails the subject, not
-the start.
+Only the vm runtime provides it. The subject runs there as the
+machine's user. `runtime/lima/benchmark.yaml` makes a machine whose
+engine listens at the default socket, which that user reaches with no
+setting. The container runtime runs no engine and drops every
+capability. The host runtime hands the subject a private `HOME` and a
+few variables of the harness's environment. So an engine's settings,
+`DOCKER_HOST`, `DOCKER_CONTEXT`, or a context under `~/.docker`, never
+reach it, and an engine behind them is out of its reach.
 
-A checked-in run is held to the same. `make runs` fails on a run whose
-runtime its scenario, as its file is now, does not list, and on a run
-whose scenario has no file or one that does not load.
+A scenario that lists a runtime unable to provide what it requires is
+refused when it loads. The check is against what a runtime provides by
+its design, not a probe of the machine: another machine with no engine
+at its default socket fails the subject, not the start.
+
+A checked-in run is held to the same. `make runs` finds a run's
+scenario by the name the run records, and fails on a run whose runtime
+that scenario, as its file is now, does not list. It fails too on a run
+whose scenario has no file, one that does not load, or a name two files
+share.
 
 ### The vm runtime
 
@@ -437,7 +447,7 @@ The shape:
 ```yaml
 name: explain-tenancy
 kind: skill                 # skill | command | qa
-runtimes: [container]       # where it may run, the first the default
+runtimes: [container]       # required: where it may run; a run takes the first
 requires: []                # what the runtime must provide: docker
 subject:
   skill: arch-explain

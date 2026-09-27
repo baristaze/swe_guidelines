@@ -39,6 +39,26 @@ def test_the_scenario_round_trips_as_plain_data(tmp_path):
     assert json.loads(json.dumps(data))["rubric"].startswith("Score it")
 
 
+def test_a_file_that_does_not_parse_is_a_scenario_error(tmp_path):
+    (tmp_path / "broken.json").write_text('{"name": "broken",', encoding="utf-8")
+    with pytest.raises(S.ScenarioError, match=r"broken\.json: does not parse as JSON: "):
+        S.load(tmp_path / "broken.json")
+    pytest.importorskip("yaml")
+    (tmp_path / "broken.yaml").write_text("name: [broken\n", encoding="utf-8")
+    with pytest.raises(S.ScenarioError, match=r"broken\.yaml: does not parse as YAML: "):
+        S.load(tmp_path / "broken.yaml")
+
+
+def test_a_value_or_a_file_the_scenario_cannot_read_is_a_scenario_error(tmp_path):
+    with pytest.raises(S.ScenarioError, match=r"subject\.timeout_s: expected a whole number, got '900s'"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "timeout_s": "900s"}))
+    with pytest.raises(S.ScenarioError, match=r"subject\.max_turns: expected a whole number, got \[6\]"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_turns": [6]}))
+    (tmp_path / "latin.json").write_bytes(b'{"name": "caf\xe9"}')
+    with pytest.raises(S.ScenarioError, match=r"latin\.json: is not UTF-8"):
+        S.load(tmp_path / "latin.json")
+
+
 def test_an_unknown_key_is_refused(tmp_path):
     bad = dict(MINIMAL, rubrick="oops")
     with pytest.raises(S.ScenarioError, match="unknown key"):
@@ -81,12 +101,21 @@ def test_find_takes_a_name_or_a_path(tmp_path):
         S.find("two", tmp_path)
 
 
+def test_find_takes_the_name_a_scenario_file_gives_itself(tmp_path):
+    named = write(tmp_path, "first.json", dict(MINIMAL, name="alpha"))
+    (tmp_path / "broken.json").write_text('{"name": "beta",', encoding="utf-8")
+    assert S.find("alpha", tmp_path) == named  # the name run.py list prints
+    assert S.find("first", tmp_path) == named  # and the file's stem
+    with pytest.raises(S.ScenarioError, match="known: alpha, broken, first"):
+        S.find("beta", tmp_path)  # a file that does not load has no name to match
+
+
 def test_the_shipped_scenarios_are_a_catalog_of_three():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
 
 
-def test_a_scenario_says_where_it_runs_and_has_no_default_for_it():
+def test_a_scenario_without_runtimes_does_not_load():
     with pytest.raises(S.ScenarioError, match="runtimes is required"):
         S.from_data({k: v for k, v in MINIMAL.items() if k != "runtimes"})
     with pytest.raises(S.ScenarioError, match="runtimes is required"):
@@ -101,9 +130,11 @@ def test_a_scenario_says_where_it_runs_and_has_no_default_for_it():
 def test_a_scenario_requires_only_what_each_of_its_runtimes_can_provide():
     scn = S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["docker"]))
     assert scn.runtimes == ["vm"] and scn.requires == ["docker"]
-    assert S.from_data(dict(MINIMAL, runtimes=["host", "vm"], requires=["docker"])).requires == ["docker"]
     with pytest.raises(S.ScenarioError, match="the container runtime cannot provide docker, which the scenario requires"):
         S.from_data(dict(MINIMAL, runtimes=["vm", "container"], requires=["docker"]))
+    # The host hands its subject no engine's settings, so it provides no engine either.
+    with pytest.raises(S.ScenarioError, match="the host runtime cannot provide docker, which the scenario requires"):
+        S.from_data(dict(MINIMAL, runtimes=["vm", "host"], requires=["docker"]))
     with pytest.raises(S.ScenarioError, match="requires: gpu is not one of docker"):
         S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["gpu"]))
     assert S.from_data(MINIMAL).requires == []

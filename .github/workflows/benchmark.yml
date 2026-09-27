@@ -133,11 +133,13 @@ jobs:
           skipped=()
           for name in $names; do
             echo "::group::$name"
+            # Actions runs this step under `bash -e`, so the status is taken
+            # in a list, where a nonzero exit does not end the step.
+            code=0
             uv run --locked benchmark/run.py --scenario "$name" \
               ${judges[@]+"${judges[@]}"} \
               --strict --repeat "$REPEAT" --max-spend-usd "$MAX_SPEND_USD" --out benchmark/runs \
-              --runtime container --claude claude
-            code=$?
+              --runtime container --claude claude || code=$?
             if [ "$code" -eq 7 ]; then
               skipped+=("$name")
             elif [ "$code" -ne 0 ]; then

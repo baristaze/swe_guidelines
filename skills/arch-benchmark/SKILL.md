@@ -40,10 +40,11 @@ never run the harness from there.
 1. Confirm the working directory is a checkout, as "Where it runs"
    says. Every command below runs from it.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
-   their kind, their default judges, and the runtimes each runs on, and
-   each provider with its flag and whether its key is present. Report
-   an absent key as absent; it is a provider that will be skipped, not
-   a failure. It also shows whether the subject's own key,
+   their kind, their default judges, the runtimes each runs on, and
+   what each requires of its runtime when it requires anything. It
+   prints each provider with its flag and whether its key is present.
+   Report an absent key as absent; it is a provider that will be
+   skipped, not a failure. It also shows whether the subject's own key,
    `SUBJECT_ANTHROPIC_API_KEY`, is present; a skill scenario needs it,
    and without it a `--strict` run refuses.
 3. Map what the prompt asks to the flags that exist. The judges are a
@@ -59,19 +60,55 @@ never run the harness from there.
    Claude Code holds. Say both when the prompt asks for a cap. When it
    asks what a run could spend, say that it can pass N by about the
    largest session cap and one repeat's judges, which a dry run does not
-   price. `--runtime` is `host`, `container`, or `vm`, and one the
-   scenario lists: its first when the flag is not given. The harness refuses any other with exit 7 and
-   runs nothing. So when the prompt names a runtime that `list` does
-   not show for the scenario, run nothing, neither on that runtime nor
-   on another, and say so. When the prompt names something with no flag
-   behind it, say so and run without it.
-4. Run the scenario, for example
-   `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1`.
+   price. When the prompt names something with no flag behind it, say
+   so and run without it.
+4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
+   and one the scenario lists: its first when the flag is not given.
+   The harness refuses a runtime the scenario does not list with exit
+   7 and runs nothing. So when the prompt names a runtime that `list`
+   does not show for the scenario, run nothing, not even a dry run,
+   neither on that runtime nor on another, and say so. When the prompt
+   names no runtime, pass no `--runtime`.
+
+   A `qa` subject runs no command on any runtime: the harness asks the
+   model itself and builds no image for it, so it needs no engine, no
+   machine, and neither `--build` nor `--runtime-config`. For a skill
+   or command subject, the runtime the run takes, named or the
+   scenario's first, needs more:
+   - `container` runs the subject with `docker run` on this machine,
+     so it needs a Docker engine here. Pass `--build`. The harness
+     builds the image only when `--build` is passed, and nothing this
+     skill runs can see whether the image is there. A build whose
+     layers are cached takes seconds, and a first build takes minutes;
+     say so before a run that builds. With no engine here the build
+     fails, and the harness exits 4 before the subject runs or any
+     provider is called. Report that, and do not retry on another
+     runtime.
+   - `vm` runs the subject on another machine, which the runtime
+     config reaches. Pass
+     `--runtime-config benchmark/runtime/lima/runtime-config.yaml`,
+     which drives the Lima machine `swe-benchmark`, unless the prompt
+     names another config. This skill does not start the machine. A
+     machine that does not answer fails every repeat with a note, no
+     judge scores a repeat whose subject did not run, and the harness
+     exits 6. Report that.
+   - `host` runs the subject on this machine, so a skill subject needs
+     Claude Code installed here, and a command subject its command.
+
+   A scenario's requirements need no flag. A scenario that lists a
+   runtime unable to provide what it requires does not load, so every
+   runtime `list` shows for a scenario provides what it requires. A
+   scenario that requires `docker` lists `vm` only. A dry run (step 6)
+   builds nothing and asks no runtime anything, so it needs neither the
+   engine nor the machine. Pass the flags a run would take anyway, so
+   the command is the run's.
+5. Run the scenario, for example
+   `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges or how many repeats, use the
    scenario's default judges and the default of 3 repeats, and say
    which they were.
-5. When the prompt asks what a run would do rather than for a
+6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
    `run.json`, and calls nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
@@ -89,18 +126,13 @@ never run the harness from there.
    backstop), what follows a bound (`on_cap`), and what its `argv` runs:
    the prompt as written, and whether it gets `--add-dir` or `--resume`.
    Report the subject's `output` folder and its `gates`, which the
-   harness runs on the final tree. `benchmark/README.md`, "A subject in phases", says
-   what each field means. There is no
-   score to report, and inventing one is the worst thing this skill
-   could do.
-6. The `container` runtime, named or the scenario's first, runs the
-   subject with `docker run`, from an image it builds only when
-   `--build` is passed. The first run on a machine needs `--build`; a
-   later run adds it when the image's inputs changed. A build takes
-   minutes, so say that before starting one.
+   harness runs on the final tree. `benchmark/README.md`, "A subject in
+   phases", says what each field means. There is no score to report,
+   and inventing one is the worst thing this skill could do.
 7. List the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
-   needs its source.
+   needs its source. A run that exits 4 leaves no `report.md`; the
+   Output section says what to report then.
 8. Never edit a scenario, a rubric, or the model matrix to get a
    better score. A score that needs the rubric changed is the finding.
 
@@ -113,6 +145,17 @@ When the prompt names a runtime the scenario does not list: that
 runtime, the runtimes the scenario lists, and the sentence that nothing
 was executed and no provider was called. Nothing ran, so there is no
 plan to report.
+
+After exit 4, the image build that failed: the reason
+`streams/build.jsonl` in the run folder gives, and the sentence that no
+subject ran and no provider was called. There is no score to report.
+
+After exit 6, a subject that failed in some repeats: the measurement
+below, with the repeats that failed and the reason the stream
+`streams/cli.jsonl` gives for each. `report.md` scores a failed repeat 0
+in every mean; say those zeros are failures no judge scored. When every
+repeat failed, as on a vm machine that does not answer, report the
+reason and no score.
 
 After a measurement, short, in prose:
 

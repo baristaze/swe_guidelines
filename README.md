@@ -119,7 +119,8 @@ Claude Code 2.1 and later.
 ## Develop
 
 ```bash
-make benchmark    # the smoke scenario, judged by two providers, Anthropic and OpenAI (costs money, not part of check)
+make benchmark    # the smoke scenario in a container, its image built first (needs Docker), judged by two providers,
+                  # Anthropic and OpenAI (costs money, not part of check)
 make check        # what CI runs: markdownlint, ruff and mypy over scripts/, benchmark/, checkers/, and tests/, lens format and citations,
                   # vocabulary leaks, links, table of contents, version copies, generated skills up to date,
                   # skill shape, the reviewer agent against the review template, the checkers' tests,
