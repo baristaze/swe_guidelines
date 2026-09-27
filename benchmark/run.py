@@ -148,9 +148,10 @@ def probe_versions(scn: S.Scenario, rt: RT.BaseRuntime, claude: str) -> tuple[di
     """What only the runtime can answer: its Claude Code and its image. Returns them and the notes they call for.
 
     Claude Code is asked inside the runtime, because a container or another
-    machine carries its own. Only a skill runs it.
+    machine carries its own. Only a skill runs it. The image is asked only
+    for a subject that runs a command: a qa subject never runs in it.
     """
-    found: dict = {"claude_code": None, "image": rt.image_version()}
+    found: dict = {"claude_code": None, "image": rt.image_version() if scn.kind != "qa" else None}
     notes: list[str] = []
     if scn.kind == "skill":
         found["claude_code"] = rt.probe([claude, "--version"])
@@ -809,7 +810,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
-    parser.add_argument("--build", action="store_true", help="build the container image before running")
+    parser.add_argument(
+        "--build", action="store_true", help="build the container image before running, for a skill or command subject"
+    )
     parser.add_argument(
         "--screencast-port", type=int, default=None, help="capture frames from a Chrome already listening on this port"
     )

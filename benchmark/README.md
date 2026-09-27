@@ -27,7 +27,7 @@ image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
-| `--scenario` | a scenario from `scenarios/`, by the name `list` prints or its file's stem, or a path to a file |
+| `--scenario` | a scenario from `scenarios/`, by the name `list` prints, else by its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
@@ -102,7 +102,8 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
                            a skill subject's every turn
   streams/harness.jsonl    what the harness ran where the subject ran, when the
                            subject builds an output: checkpoints, the archive, the gates
-  streams/build.jsonl      the image build's output, with `--runtime container --build`
+  streams/build.jsonl      the image build's output, with `--runtime container --build`,
+                           for a skill or command subject
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
                            files under workspace/ at their own paths, byte for byte
@@ -168,7 +169,7 @@ path on that machine:
 |-------|---------------|
 | `checkout` | the commit, the plugin's version from `.claude-plugin/plugin.json`, and whether the tree held changes no commit holds (`dirty`), with those paths and one hash over their content |
 | `claude_code` | what `claude --version` answers inside the runtime, for a skill subject |
-| `image` | the container image by name and by the id the engine gives it |
+| `image` | the container image by name and by the id the engine gives it, for a skill or command subject; a `qa` subject runs in no image |
 | `target` | the target by its path in the repository and a hash of the staged copy the subject read |
 | `expected` | the planted findings by their path in the repository and a hash of the file |
 

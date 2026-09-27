@@ -72,9 +72,10 @@ never run the harness from there.
 
    A `qa` subject runs no command on any runtime: the harness asks the
    model itself and builds no image for it, so it needs no engine, no
-   machine, and neither `--build` nor `--runtime-config`. For a skill
-   or command subject, the runtime the run takes, named or the
-   scenario's first, needs more:
+   machine, and no `--build`. On `vm` it still takes the
+   `--runtime-config` below, which every vm run needs, a dry run
+   included. For a skill or command subject, the runtime the run takes,
+   named or the scenario's first, needs more:
    - `container` runs the subject with `docker run` on this machine,
      so it needs a Docker engine here. Pass `--build`. The harness
      builds the image only when `--build` is passed, and nothing this
