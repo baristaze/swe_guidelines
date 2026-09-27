@@ -436,7 +436,9 @@ def check_work_row(errors: list[str]) -> None:
 
 
 FIXES = re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE)
-RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b[^.;]{0,80}?\bagain\b", re.IGNORECASE)
+# A dot ends the sentence between `run` and `again` only when whitespace follows it,
+# so a command's file name or path (`tests/test_x.py`) sits inside the span.
+RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b(?:[^.;]|\.(?=\S)){0,120}?\bagain\b", re.IGNORECASE)
 RUNS_GATE = re.compile(r"`make [a-z]")
 COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b", re.IGNORECASE)
 BOUND_WORDING = "the first run plus at most <n> reruns"

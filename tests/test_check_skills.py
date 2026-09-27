@@ -569,6 +569,7 @@ def test_a_step_that_fixes_and_runs_a_gate_again_states_its_bound(repo, skills, 
         "Fix the file and rerun it alone.",
         "Fix the failure and re-run the suite.",
         "Fix it in place, and run step 8\n   again.",
+        "Fix the failure and run `uv run pytest tests/test_x.py` again.",
     ],
 )
 def test_a_rerun_after_a_fix_is_bounded_in_every_markdown_file_under_skills(repo, skills, capsys, said):
