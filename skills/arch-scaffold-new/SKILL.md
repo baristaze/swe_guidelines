@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Bootstrap a whole new system in the guideline's shape into an empty folder: the monorepo skeleton, the first API, a worker, a portal, deployment, CI, then the first namespace and entity."
-allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make infra-reset), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-scaffold-new
@@ -165,23 +165,32 @@ so they stay here:
    `make test-integration` with the table's policy in place. It stays
    green, the second fence holding. A failure in run one is fixed
    without putting the predicate back, since it stays out until run
-   three: a failure of that method's cross-tenant case is fixed in the
-   table's policy or the migration that writes it. Run two: turn the policy off for that table (`ALTER TABLE
-   ... NO FORCE ROW LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`,
-   through `uv run` over the local migration login's URL, since only
-   the owner alters a table), and run `make test-integration` again.
-   It fails, and the failures name the cross-tenant case of that
-   method beside the policy check. Run three: put the predicate back,
-   turn the policy on again the same way (`ENABLE` and `FORCE ROW
-   LEVEL SECURITY`), and run `make test-integration` green. Runs one
-   and three each have their own count, the first run plus at most 3
-   reruns; run two runs once and is never fixed. Record runs one and
-   two in `docs/runbooks/tenant-isolation.md`: the query, the table,
-   and what the suite reported each time. A run two that stays green,
-   or whose failures do not name that cross-tenant case, is a defect
-   of the suite: name it in the output and stop. Any other failure in
-   run two is recorded beside those two, and the step goes on to run
-   three.
+   three. A failure of that method's cross-tenant case is fixed in the
+   migration that writes the table's policy, never in the database
+   alone: `make infra-reset`, `make migrate`, and `make seed` give the
+   local database the fixed policy before run one runs again. Run two:
+   turn the policy off for that table (`ALTER TABLE ... NO FORCE ROW
+   LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`, through `uv run`
+   over the local migration login's URL, since only the owner alters a
+   table), and run `make test-integration` again. It fails, and its
+   failures name both the cross-tenant case of that method and the
+   policy check. Run three: put the predicate back, turn the policy on
+   again the same way (`ENABLE` and `FORCE ROW LEVEL SECURITY`), and
+   run `make test-integration` green. Runs one and three each have
+   their own count, the first run plus at most 3 reruns; run two runs
+   once and is never fixed. A run-three failure that outlasts its
+   count is a defect of this skill, one that run two's change to the
+   database caused included.
+
+   Once run two has run, stop or not, record the last attempt of run
+   one and run two in `docs/runbooks/tenant-isolation.md`: the query,
+   the table, and what the suite reported each time, with every
+   failure of run two besides the cross-tenant case and the policy
+   check named there. A run two that stays green, or whose failures do
+   not name both of those, is a defect of the suite, and the skill
+   stops. Before any stop in this step, put the predicate back and
+   turn the policy on again, as run three does, and end the stop line
+   with `; predicate and policy restored`.
 9. When Docker is available, `make devx-up`, then
    `make test-telemetry`: the round trip starts the API as a real
    process, drives one session, and reads the counter, the trace, the
