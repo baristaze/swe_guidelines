@@ -217,12 +217,13 @@ so they stay here:
     cap counting as a failure) is named in the output as not reviewed,
     with its error, and is not run again here. Close every high
     finding, within what After writing lets a fix change, then run
-    step 7's commands again, in order, under the same bound: the first
-    run plus at most 3 reruns. A high finding is closed once they pass
-    after its fix. One whose fix would need an exception is not fixed
-    and stays open, and the step goes on in place of the stop After
-    writing orders. List the rest of the findings in the output
-    for the person. A high
+    step 7's commands again and, when Docker is available, step 9's,
+    in order, under the same bound: the first run plus at most 3
+    reruns. A high finding is closed once they pass after its fix.
+    One whose fix would need an exception is not fixed and stays
+    open, and the step goes on in place of the stop After writing
+    orders. List the rest of the findings in the output for the
+    person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
 
