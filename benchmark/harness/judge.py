@@ -389,41 +389,24 @@ def _verdict_model():
     return VerdictModel
 
 
-# Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
+# One client per provider, on the key given. Every caller builds its client
+# here: the one-shot judges, `ask`, and the agentic loop in `agentic.py`.
+XAI_BASE_URL = "https://api.x.ai/v1"
 
 
-def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+def anthropic_client(key: str) -> Any:
     from anthropic import Anthropic
 
-    client = Anthropic(api_key=key)
-    response = client.messages.parse(
-        model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=_verdict_model(),
-        output_config={"effort": effort},
-    )
-    parsed = response.parsed_output
-    data = parsed.model_dump() if parsed is not None else {}
-    return data, json.dumps(data), anthropic_usage(response.usage)
+    return Anthropic(api_key=key)
 
 
-def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+def openai_client(key: str) -> Any:
     from openai import OpenAI
 
-    client = OpenAI(api_key=key)
-    response = client.responses.parse(
-        model=model,
-        input=prompt,
-        text_format=_verdict_model(),
-        reasoning={"effort": effort},
-    )
-    parsed = response.output_parsed
-    data = parsed.model_dump() if parsed is not None else {}
-    return data, response.output_text or json.dumps(data), openai_usage(response.usage)
+    return OpenAI(api_key=key)
 
 
-def gemini_client(key: str):
+def gemini_client(key: str) -> Any:
     """A Gemini client on the key given, with the ambient Google key out of the way.
 
     `google-genai` reads `GOOGLE_API_KEY` from the environment and says so
@@ -440,6 +423,51 @@ def gemini_client(key: str):
     finally:
         if ambient is not None:
             _os.environ["GOOGLE_API_KEY"] = ambient
+
+
+def xai_client(key: str) -> Any:
+    """xAI answers the OpenAI API at its own address, so its client is OpenAI's."""
+    from openai import OpenAI
+
+    return OpenAI(api_key=key, base_url=XAI_BASE_URL)
+
+
+CLIENTS: dict[str, Callable[[str], Any]] = {
+    "anthropic": anthropic_client,
+    "openai": openai_client,
+    "gemini": gemini_client,
+    "xai": xai_client,
+}
+
+
+# Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
+
+
+def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+    client = anthropic_client(key)
+    response = client.messages.parse(
+        model=model,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        messages=[{"role": "user", "content": prompt}],
+        output_format=_verdict_model(),
+        output_config={"effort": effort},
+    )
+    parsed = response.parsed_output
+    data = parsed.model_dump() if parsed is not None else {}
+    return data, json.dumps(data), anthropic_usage(response.usage)
+
+
+def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
+    client = openai_client(key)
+    response = client.responses.parse(
+        model=model,
+        input=prompt,
+        text_format=_verdict_model(),
+        reasoning={"effort": effort},
+    )
+    parsed = response.output_parsed
+    data = parsed.model_dump() if parsed is not None else {}
+    return data, response.output_text or json.dumps(data), openai_usage(response.usage)
 
 
 def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
@@ -459,9 +487,7 @@ def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
 
 
 def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
-    from openai import OpenAI
-
-    client = OpenAI(api_key=key, base_url="https://api.x.ai/v1")
+    client = xai_client(key)
     response = client.chat.completions.parse(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -568,9 +594,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
     """One free-text answer from a provider model: the subject of a `qa` scenario."""
     name = P.name(provider)
     if name == "anthropic":
-        from anthropic import Anthropic
-
-        client = Anthropic(api_key=key)
+        client = anthropic_client(key)
         with client.messages.stream(
             model=model,
             max_tokens=MAX_OUTPUT_TOKENS,
@@ -581,9 +605,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
         text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
         return text, anthropic_usage(message.usage)
     if name == "openai":
-        from openai import OpenAI
-
-        client = OpenAI(api_key=key)
+        client = openai_client(key)
         response = client.responses.create(model=model, input=prompt, reasoning={"effort": effort})
         return response.output_text or "", openai_usage(response.usage)
     if name == "gemini":
@@ -592,9 +614,7 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
             model=model, contents=prompt, config={"thinking_config": {"thinking_level": effort}}
         )
         return response.text or "", gemini_usage(response.usage_metadata)
-    from openai import OpenAI
-
-    client = OpenAI(api_key=key, base_url="https://api.x.ai/v1")
+    client = xai_client(key)
     response = client.chat.completions.create(
         model=model, messages=[{"role": "user", "content": prompt}], reasoning_effort=effort
     )
