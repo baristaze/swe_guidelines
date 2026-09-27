@@ -167,8 +167,8 @@ so they stay here:
    without putting the predicate back, since it stays out until run
    three. A failure of that method's cross-tenant case is fixed in the
    migration that writes the table's policy, never in the database
-   alone: `make infra-reset`, `make migrate`, and `make seed` give the
-   local database the fixed policy before run one runs again. Run two:
+   alone, and takes the reset every migration fix takes (below) before
+   run one runs again. Run two:
    turn the policy off for that table (`ALTER TABLE ... NO FORCE ROW
    LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`, through `uv run`
    over the local migration login's URL, since only the owner alters a
@@ -230,10 +230,13 @@ A gate in these steps that fails on what this skill wrote is fixed,
 and its step's commands run again from the first, in order, as After
 writing states: the first run plus at most 3 reruns, within what it
 lets a fix change. Step 8 is the exception: a rerun there repeats
-only the run that failed. The skill stops at the first stop After
-writing or step 8 orders. The tree is new, so nothing in it is pre-existing, and
-a gate that still fails when its count runs out is a defect of this
-skill.
+only the run that failed. A fix that edits a migration takes a reset
+before its rerun, since `make migrate` does not apply an applied
+migration again: `make infra-reset`, `make migrate`, and `make seed`.
+The tree is new, so the reset loses nothing. The skill stops at the
+first stop After writing or step 8 orders. Nothing in a new tree is
+pre-existing, and a gate that still fails when its count runs out is
+a defect of this skill.
 
 ## Output
 
