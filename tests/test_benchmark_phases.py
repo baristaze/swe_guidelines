@@ -408,3 +408,29 @@ def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(
     }
     # The run's cap saw 0.25 and 0.35 before the third phase, not 0.25 and 0.6.
     assert repeat["phases"][2]["status"] == "ok"
+
+
+def test_an_agentic_judge_reads_the_archived_tree_as_the_output(run_phases, monkeypatch):
+    seen_roots: dict[str, list[str]] = {}
+
+    def judge_all(flags, prompt, roots, *args, **kwargs):
+        for name, root in roots.items():
+            seen_roots[name] = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+        return []
+
+    monkeypatch.setattr(run.RF, "judge_all", judge_all)
+    scenario = phased(
+        phase("scaffold", {"write": {"site/README.md": "one\n", "stray.txt": "x"}}),
+        phase("mvp", {"write": {"site/app/main.py": "print(2)\n"}}),
+    )
+    scenario["judges"] = {
+        "providers": "anthropic",
+        "mode": "agentic",
+        "references": [{"name": "guideline", "weight": 1, "paths": ["lenses/README.md"]}],
+    }
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    # The last commit of the output folder, and nothing else of the workspace.
+    assert seen_roots == {"output": ["README.md", "app/main.py"], "guideline": ["lenses/README.md"]}
+    prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+    assert "- `output`: the tree the subject built, its output folder as its last commit holds it." in prompt
