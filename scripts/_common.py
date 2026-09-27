@@ -16,8 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # What "the repository's Markdown" leaves out: tool caches, installed
 # packages, Claude Code's own folder (agent worktrees live under
-# .claude/worktrees/), and the benchmark run folders git ignores. A
-# directory name is skipped at any depth; a path is skipped from the root.
+# .claude/worktrees/), and the benchmark run folders, which hold what a
+# run recorded, not the manual. A directory name is skipped at any depth;
+# a path is skipped from the root.
 SKIP_DIRS = {".git", ".claude", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
 SKIP_PATHS = {("benchmark", "runs")}
 

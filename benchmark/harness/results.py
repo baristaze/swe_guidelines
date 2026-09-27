@@ -5,8 +5,8 @@ shape is fixed by `schema/result.schema.json` and validated before it is
 written. `report.md` is the same data for a person: a table per repeat,
 the summary, the findings with the most severe first, and the paths.
 
-Paths in the report are written as code spans, never as links: a report
-lives in a run folder that no one checks in, and a link out of it would
+Paths in the report are written as code spans, never as links: a run
+folder is served, uploaded, and checked in, and a link out of it would
 point at nothing.
 """
 
