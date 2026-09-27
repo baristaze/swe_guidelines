@@ -64,9 +64,10 @@ cloud credential and reads no environment.
    then `summary` on `calls-rerun.json`. That is the first run plus at
    most 1 rerun. The rerun measures the whole file again, so the report
    takes every flow of the run's own file from `calls-rerun.json`, and
-   the built-in flows from `calls.json`. A flow that fails again is
-   listed under What I could not measure, with its error, and its row
-   under Tables per area says no in the Measured column. A failed flow
+   the built-in flows from `calls.json`. A flow of the run's own file
+   that fails in the rerun, whatever its first run did, is listed under
+   What I could not measure, with its error, and its row under Tables
+   per area says no in the Measured column. A failed flow
    never stops the audit: go on to the summary and the drop. The
    summary's round trips are warm (every statement already prepared);
    the report says so.
