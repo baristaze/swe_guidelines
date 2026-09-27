@@ -96,7 +96,7 @@ def test_the_shipped_scenarios_are_a_catalog_of_three():
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
 
 
-def test_a_scenario_says_where_it_runs_and_has_no_default_for_it():
+def test_a_scenario_without_runtimes_does_not_load():
     with pytest.raises(S.ScenarioError, match="runtimes is required"):
         S.from_data({k: v for k, v in MINIMAL.items() if k != "runtimes"})
     with pytest.raises(S.ScenarioError, match="runtimes is required"):
