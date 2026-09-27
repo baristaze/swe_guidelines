@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-"""Check that the index of the benchmark runs names every run folder once.
+"""Check that the index of the benchmark runs names every run folder once, in its scenario's section.
 
 `benchmark/runs/README.md` is written by hand: the pull request that adds
-a run folder adds its row. This holds the two together:
+a run folder adds its row. The index has one section per scenario, a
+`## <scenario>` heading over that scenario's table. This holds the index
+and the run folders together:
 - every run folder, a folder directly under `benchmark/runs/`, has
   exactly one row in the index;
 - every row links to a run folder that is there, with its `report.md`;
-- the rows run from the newest run at the top to the oldest at the
-  bottom, by the `started_at` each run's `results.json` records. The
-  folder names carry the local time of the machine that ran them, so
-  they do not order runs from two machines;
+- every row sits in the section of its run's scenario. The scenario is
+  the one the run's `results.json` records, or its `run.json` when that
+  records none;
+- every scenario a run folder ran has a section, and no section heading
+  is there twice;
+- within a section, the rows run from the newest run at the top to the
+  oldest at the bottom, by the `started_at` each run's `results.json`
+  records. The folder names carry the local time of the machine that
+  ran them, so they do not order runs from two machines;
 - every run that records its versions ran on a clean checkout. The
   skills are staged from the working tree, so a run on uncommitted
   changes names a commit that does not hold what ran. A run recorded
   before the harness kept its versions has none to check.
 
 A row is a table line of the index, and its run is the folder its
-`](<folder>/report.md)` link names. With no run folder and no index there
-is nothing to check.
+`](<folder>/report.md)` link names. Its section is the nearest `## `
+heading above it. A run that records no scenario is held to one row but
+to no section, and a run that records no start is left out of the order.
+With no run folder and no index there is nothing to check.
 
 Exit status is non-zero on any mismatch. Standard library only.
 """
@@ -27,7 +36,7 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 
 from _common import ROOT, parser
@@ -35,20 +44,30 @@ from _common import ROOT, parser
 RUNS = ROOT / "benchmark" / "runs"
 INDEX = RUNS / "README.md"
 ROW_LINK = re.compile(r"\]\(([^()/\s]+)/report\.md\)")
+SECTION = re.compile(r"^##\s+(.+?)\s*$")
 
 
-def rows(text: str) -> list[tuple[int, str]]:
-    """The line number and the run folder of every row, in order."""
+def sections(text: str) -> list[tuple[int, str]]:
+    """The line number and the name of every section heading, in order."""
+    return [(ln, m.group(1)) for ln, line in enumerate(text.splitlines(), start=1) if (m := SECTION.match(line))]
+
+
+def rows(text: str) -> list[tuple[int, str, str]]:
+    """The line number, the run folder, and the section of every row, in order; the section is empty above the first."""
     out = []
+    section = ""
     for ln, line in enumerate(text.splitlines(), start=1):
-        if line.lstrip().startswith("|"):
-            out += [(ln, m.group(1)) for m in ROW_LINK.finditer(line)]
+        heading = SECTION.match(line)
+        if heading:
+            section = heading.group(1)
+        elif line.lstrip().startswith("|"):
+            out += [(ln, m.group(1), section) for m in ROW_LINK.finditer(line)]
     return out
 
 
-def results(name: str) -> dict:
-    """A run's `results.json`, or an empty record when it has none that reads."""
-    path = RUNS / name / "results.json"
+def record(name: str, file: str = "results.json") -> dict:
+    """A JSON file of a run folder, `results.json` by default, or an empty record when it has none that reads."""
+    path = RUNS / name / file
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -58,12 +77,23 @@ def results(name: str) -> dict:
 
 def started_at(name: str) -> str:
     """When a run started, as its `results.json` records it in UTC; empty when it records nothing."""
-    return str(results(name).get("started_at") or "")
+    return str(record(name).get("started_at") or "")
+
+
+def scenario(name: str) -> str:
+    """The scenario a run ran, from its `results.json`, else its `run.json`; empty when neither records one."""
+    recorded = record(name).get("scenario")
+    if isinstance(recorded, str) and recorded:
+        return recorded
+    resolved = record(name, "run.json").get("scenario")
+    if isinstance(resolved, dict):
+        resolved = resolved.get("name")
+    return resolved if isinstance(resolved, str) else ""
 
 
 def unclean(name: str) -> str | None:
     """Why a run's checkout was not clean, or None when it was or the run records no versions."""
-    versions = results(name).get("versions")
+    versions = record(name).get("versions")
     if not isinstance(versions, dict) or not versions:
         return None
     checkout = versions.get("checkout")
@@ -85,28 +115,52 @@ def check(errors: list[str]) -> int:
         if folders:
             errors.append(f"{index}: missing, so no run folder has a row: {', '.join(folders)}")
         return len(folders)
-    found = rows(INDEX.read_text(encoding="utf-8"))
-    counts = Counter(name for _, name in found)
+    text = INDEX.read_text(encoding="utf-8")
+    found = rows(text)
+    counts = Counter(name for _, name, _ in found)
+    ran = {name: scenario(name) for name in folders}
+    headed: set[str] = set()
+    for ln, heading in sections(text):
+        if heading in headed:
+            errors.append(f"{index}:{ln}: a second section for {heading}; a scenario has one")
+        headed.add(heading)
+    unheaded: dict[str, list[str]] = defaultdict(list)
     for name in folders:
         if counts[name] == 0:
             errors.append(f"{index}: no row for the run folder {name}")
         reason = unclean(name)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}; a checked-in run names a commit that holds what ran")
-    reported: set[str] = set()
-    above: tuple[str, str] | None = None
-    for ln, name in found:
+        if ran[name] and ran[name] not in headed:
+            unheaded[ran[name]].append(name)
+    for missing in sorted(unheaded):
+        errors.append(
+            f"{index}: no section for the scenario {missing}, which {', '.join(unheaded[missing])} ran; "
+            f"add `## {missing}` with one line on what it measures, and put its rows there"
+        )
+    above: dict[str, tuple[str, str]] = {}
+    for ln, name, section in found:
         started = started_at(name)
-        if started and above and started > above[1]:
-            errors.append(f"{index}:{ln}: {name} started {started}, after {above[0]} above it; the newest run comes first")
+        if started and section in above and started > above[section][1]:
+            errors.append(
+                f"{index}:{ln}: {name} started {started}, after {above[section][0]} above it; "
+                "the newest run of a section comes first"
+            )
         if started:
-            above = (name, started)
-    for ln, name in found:
+            above[section] = (name, started)
+    reported: set[str] = set()
+    for ln, name, section in found:
         if not (RUNS / name / "report.md").is_file():
             errors.append(f"{index}:{ln}: links {name}/report.md, and there is no such run")
         elif counts[name] > 1 and name not in reported:
             reported.add(name)
             errors.append(f"{index}:{ln}: {name} has {counts[name]} rows; a run has one")
+        scenario_of = ran.get(name, "")
+        if scenario_of and scenario_of != section and scenario_of in headed:
+            where = f"under `## {section}`" if section else "above every section"
+            errors.append(
+                f"{index}:{ln}: {name} is a run of {scenario_of}, and its row sits {where}; it goes under `## {scenario_of}`"
+            )
     return len(folders)
 
 
@@ -118,7 +172,7 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         print(f"\n{len(errors)} run index mismatch(es)")
         return 1
-    print(f"runs ok: {count} run folder(s), one row each")
+    print(f"runs ok: {count} run folder(s), one row each, in its scenario's section")
     return 0
 
 

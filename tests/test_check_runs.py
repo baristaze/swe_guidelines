@@ -1,4 +1,4 @@
-"""scripts/check_runs.py: the index of the benchmark runs names every run folder once."""
+"""scripts/check_runs.py: the index of the benchmark runs names every run folder once, in its scenario's section."""
 
 import json
 
@@ -11,14 +11,19 @@ def row(name):
     return f"| [{name}]({name}/report.md) | one |\n"
 
 
+def section(scenario, *names):
+    return f"\n## {scenario}\n\nIt measures {scenario}.\n\n" + HEAD + "".join(row(name) for name in names)
+
+
 @pytest.fixture
 def runs(repo):
     return repo.script("check_runs")
 
 
-def a_run(repo, name, started="2026-01-01T00:00:00Z"):
+def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario=None):
     repo.write(f"benchmark/runs/{name}/report.md", "# Benchmark run\n")
-    repo.write(f"benchmark/runs/{name}/results.json", json.dumps({"started_at": started}) + "\n")
+    results = {"started_at": started} | ({"scenario": scenario} if scenario else {})
+    repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
 
 
 def test_no_runs_and_no_index_pass(runs, capsys):
@@ -129,3 +134,99 @@ def test_a_run_recorded_before_versions_has_none_to_check(repo, runs):
     a_run(repo, "20260101-000000-one-aa")
     repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa"))
     assert runs.main() == 0
+
+
+ONE_A = "20260101-000000-alpha-aa"
+TWO_A = "20260102-000000-alpha-bb"
+ONE_B = "20260101-000000-beta-cc"
+TWO_B = "20260102-000000-beta-dd"
+
+
+def test_every_row_in_its_scenarios_section_passes(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A) + section("beta", ONE_B))
+    assert runs.main() == 0
+    assert "runs ok: 2 run folder(s), one row each, in its scenario's section" in capsys.readouterr().out
+
+
+def test_the_newest_run_comes_first_within_a_section_not_across_the_file(repo, runs):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
+    a_run(repo, TWO_B, "2026-01-02T09:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", TWO_A, ONE_A) + section("beta", TWO_B))
+    assert runs.main() == 0
+
+
+def test_an_older_run_above_a_newer_one_in_a_section_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
+    a_run(repo, TWO_B, "2026-01-02T09:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, TWO_A) + section("beta", TWO_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"README.md:10: {TWO_A} started 2026-01-02T08:00:00Z, after {ONE_A} above it" in out
+    assert "the newest run of a section comes first" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_row_under_another_scenarios_section_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha") + section("beta", ONE_A, ONE_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"README.md:16: {ONE_A} is a run of alpha, and its row sits under `## beta`; it goes under `## alpha`" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_row_above_every_section_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    repo.write("benchmark/runs/README.md", "# Runs\n\n" + HEAD + row(ONE_A) + section("alpha"))
+    assert runs.main() == 1
+    assert f"README.md:5: {ONE_A} is a run of alpha, and its row sits above every section" in capsys.readouterr().out
+
+
+def test_a_run_whose_scenario_has_no_section_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, ONE_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/README.md: no section for the scenario beta, which {ONE_B} ran" in out
+    assert "add `## beta` with one line on what it measures, and put its rows there" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_second_section_for_a_scenario_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", TWO_A) + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "README.md:11: a second section for alpha; a scenario has one" in capsys.readouterr().out
+
+
+def index_with_one_row(heading, name):
+    """An index with a section for alpha and one for beta, the one row under `heading`."""
+    other = "beta" if heading == "alpha" else "alpha"
+    return "# Runs\n" + section(heading, name) + section(other)
+
+
+@pytest.mark.parametrize(("heading", "status"), [("alpha", 0), ("beta", 1)])
+def test_a_run_without_results_is_held_to_the_scenario_its_run_json_names(repo, runs, capsys, heading, status):
+    repo.write(f"benchmark/runs/{ONE_A}/report.md", "# Benchmark run\n")
+    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "alpha"}}) + "\n")
+    repo.write("benchmark/runs/README.md", index_with_one_row(heading, ONE_A))
+    assert runs.main() == status
+    refused = f"{ONE_A} is a run of alpha, and its row sits under `## beta`"
+    assert (refused in capsys.readouterr().out) == bool(status)
+
+
+@pytest.mark.parametrize(("heading", "status"), [("alpha", 0), ("beta", 1)])
+def test_the_scenario_results_json_records_decides_over_run_json(repo, runs, capsys, heading, status):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "beta"}}) + "\n")
+    repo.write("benchmark/runs/README.md", index_with_one_row(heading, ONE_A))
+    assert runs.main() == status
+    refused = f"{ONE_A} is a run of alpha, and its row sits under `## beta`"
+    assert (refused in capsys.readouterr().out) == bool(status)
