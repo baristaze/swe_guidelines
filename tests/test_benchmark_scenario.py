@@ -12,6 +12,7 @@ MINIMAL = {
     "kind": "skill",
     "subject": {"skill": "arch-explain", "prompt": "why?"},
     "rubric": "Score it 0 to 100.",
+    "runtimes": ["container"],
 }
 
 
@@ -34,6 +35,7 @@ def test_the_scenario_round_trips_as_plain_data(tmp_path):
     scn = S.load(write(tmp_path, "one.json", MINIMAL))
     data = scn.as_dict()
     assert data["subject"]["skill"] == "arch-explain"
+    assert data["runtimes"] == ["container"] and data["requires"] == []
     assert json.loads(json.dumps(data))["rubric"].startswith("Score it")
 
 
@@ -82,6 +84,40 @@ def test_find_takes_a_name_or_a_path(tmp_path):
 def test_the_shipped_scenarios_are_a_catalog_of_three():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
+
+
+def test_a_scenario_says_where_it_runs_and_has_no_default_for_it():
+    with pytest.raises(S.ScenarioError, match="runtimes is required"):
+        S.from_data({k: v for k, v in MINIMAL.items() if k != "runtimes"})
+    with pytest.raises(S.ScenarioError, match="runtimes is required"):
+        S.from_data(dict(MINIMAL, runtimes=[]))
+    with pytest.raises(S.ScenarioError, match="expected a list, got a string"):
+        S.from_data(dict(MINIMAL, runtimes="container"))
+    with pytest.raises(S.ScenarioError, match="runtimes: laptop is not one of host, container, vm"):
+        S.from_data(dict(MINIMAL, runtimes=["container", "laptop"]))
+    assert S.from_data(dict(MINIMAL, runtimes=["host", "container"])).runtimes == ["host", "container"]
+
+
+def test_a_scenario_requires_only_what_each_of_its_runtimes_can_provide():
+    scn = S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["docker"]))
+    assert scn.runtimes == ["vm"] and scn.requires == ["docker"]
+    assert S.from_data(dict(MINIMAL, runtimes=["host", "vm"], requires=["docker"])).requires == ["docker"]
+    with pytest.raises(S.ScenarioError, match="the container runtime cannot provide docker, which the scenario requires"):
+        S.from_data(dict(MINIMAL, runtimes=["vm", "container"], requires=["docker"]))
+    with pytest.raises(S.ScenarioError, match="requires: gpu is not one of docker"):
+        S.from_data(dict(MINIMAL, runtimes=["vm"], requires=["gpu"]))
+    assert S.from_data(MINIMAL).requires == []
+
+
+def test_the_shipped_scenarios_say_where_they_run():
+    pytest.importorskip("yaml")
+    folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
+    declared = {p.stem: (S.load(p).runtimes, S.load(p).requires) for p in S.catalog(folder)}
+    assert declared == {
+        "explain-tenancy": (["container"], []),
+        "review-om": (["container"], []),
+        "support-turn": (["host", "container"], []),
+    }
 
 
 def test_evidence_is_read_and_its_unknown_keys_refused(tmp_path):

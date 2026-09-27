@@ -15,7 +15,7 @@
 # step that holds the keys runs what was installed there, never a newer one.
 """Run one scenario and have the frontier models judge what came out.
 
-    uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1
+    uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -61,6 +61,10 @@ PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
 # payload the subject reads, and the harness, its scenarios, and its
 # fixtures. The run folders are the record, not an input.
 VERSIONED = (*RT.PLUGIN_PAYLOAD, "benchmark", ":(exclude)benchmark/runs")
+# The exit status of a run on a runtime its scenario does not list. Nothing
+# was made or spent, and the benchmark workflow reads it as a scenario to
+# skip, not one that failed.
+NOT_LISTED = 7
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -417,7 +421,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repeat", type=int, default=3, help="how many times the subject runs; one run is an anecdote, so 3 by default"
     )
-    parser.add_argument("--runtime", default="host", choices=list(RT.NAMES), help="where the subject runs")
+    parser.add_argument(
+        "--runtime",
+        default=None,
+        choices=list(RT.NAMES),
+        help="where the subject runs: one of the scenario's runtimes, its first by default",
+    )
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="folder the run folders are written under")
@@ -442,7 +451,10 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
-            print(f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort}")
+            print(
+                f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort} "
+                f"runtimes={','.join(scn.runtimes)}"
+            )
         except S.ScenarioError as exc:
             print(f"  {path.stem:18} unreadable: {exc}")
     print("\nproviders:")
@@ -484,6 +496,12 @@ def main(argv: list[str] | None = None) -> int:
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    # The scenario says where it runs. A runtime it does not list is refused
+    # here, before a run folder is made.
+    runtime = args.runtime or scn.runtimes[0]
+    if runtime not in scn.runtimes:
+        print(f"scenario {scn.name} runs on {', '.join(scn.runtimes)}, not on {runtime}", file=sys.stderr)
+        return NOT_LISTED
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
     own_target = scn.resolve(scn.subject.target)
@@ -498,12 +516,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.runtime_config:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
-    if args.runtime == "container":
+    if runtime == "container":
         config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(RT.SUBJECT_KEYS[n])])
     # The subject lives outside the checkout, with copies of the plugin
     # payload and of the target, so neither an answer key nor the
     # repository's CLAUDE.md is in its reach.
-    rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
+    rt = RT.build(runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
     try:
         return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
     finally:

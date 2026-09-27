@@ -23,8 +23,8 @@ Isolation is a choice, and the choice is named:
   user reads: the harness's environment, the judges' keys in it (on
   Linux, through `/proc/<pid>/environ` of the harness), and the answer
   files at their fixed paths in the checkout. The sandbox keeps those out
-  of the paths the subject is given, not out of its reach. A run whose
-  subject must not reach them uses `container`.
+  of the paths the subject is given, not out of its reach. A scenario
+  whose subject must not reach them does not list `host`.
 - `container` isolates with Docker: the plugin checkout and the target
   read-only, the workspace read-write, the keys passed one by one, every
   capability dropped, and memory, processor, and process count bounded.
@@ -76,6 +76,14 @@ from . import versions as V
 from .capture import CliStream
 
 NAMES = ("host", "container", "vm")
+# What a scenario may require of its runtime (`requires`), and which
+# runtimes can provide each. `docker` is a Docker engine the subject runs
+# containers on. The container runtime runs no engine and drops every
+# capability, so it cannot provide one. The host and another machine hand
+# on the engine they carry, and the machine `runtime/lima/benchmark.yaml`
+# makes carries one.
+REQUIREMENTS = ("docker",)
+PROVIDES: dict[str, tuple[str, ...]] = {"host": ("docker",), "container": (), "vm": ("docker",)}
 DEFAULT_IMAGE = "swe-guidelines-benchmark:latest"
 # Where the container mounts what it is given. Both are read-only.
 CONTAINER_PLUGIN = "/plugin"

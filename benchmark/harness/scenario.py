@@ -11,6 +11,12 @@ is a scenario that silently judges something else.
 A relative path in a scenario (`subject.target`, `subject.context`,
 `evidence.expected`) is read from the scenario file's folder, so a scenario means the same
 thing from wherever the run starts.
+
+A scenario says where it may run, and it has no default for that:
+`runtimes` lists the runtimes it runs on, the first the one a run takes
+when none is named. `requires` names what its runtime must provide. A
+scenario that lists a runtime unable to provide what it requires is
+refused when it loads, so no run of it starts there.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from . import providers as P
+from . import runtime as RT
 from .judge import EFFORTS
 
 KINDS = ("skill", "command", "qa")
@@ -91,7 +98,9 @@ class Scenario:
     artifact: ArtifactSpec
     rubric: str
     judges: JudgeSpec
+    runtimes: list[str]
     evidence: EvidenceSpec = field(default_factory=EvidenceSpec)
+    requires: list[str] = field(default_factory=list)
     path: Path | None = None
 
     def resolve(self, value: str | None) -> Path | None:
@@ -123,6 +132,8 @@ class Scenario:
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
             "judges": {"providers": self.judges.providers, "effort": self.judges.effort},
+            "runtimes": list(self.runtimes),
+            "requires": list(self.requires),
             "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
             "path": str(self.path) if self.path else None,
         }
@@ -148,13 +159,14 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     """Build a scenario from parsed data."""
     if not isinstance(data, dict):
         raise ScenarioError("a scenario file holds a mapping at the top level")
-    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "evidence"), "scenario")
+    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "runtimes", "requires", "evidence"), "scenario")
     name = str(data.get("name") or (path.stem if path else ""))
     if not name:
         raise ScenarioError("scenario: name is required")
     kind = str(data.get("kind") or "skill")
     if kind not in KINDS:
         raise ScenarioError(f"scenario {name}: kind {kind!r} is not one of {', '.join(KINDS)}")
+    runtimes, requires = _runtimes(data, name)
 
     raw_subject = data.get("subject") or {}
     if not isinstance(raw_subject, dict):
@@ -228,8 +240,41 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     if evidence.expected and not subject.target:
         raise ScenarioError(f"scenario {name}: evidence.expected describes a target, and subject.target names none")
     return Scenario(
-        name=name, kind=kind, subject=subject, artifact=artifact, rubric=rubric, judges=judges, evidence=evidence, path=path
+        name=name,
+        kind=kind,
+        subject=subject,
+        artifact=artifact,
+        rubric=rubric,
+        judges=judges,
+        runtimes=runtimes,
+        evidence=evidence,
+        requires=requires,
+        path=path,
     )
+
+
+def _runtimes(data: dict[str, Any], name: str) -> tuple[list[str], list[str]]:
+    """The runtimes a scenario runs on and what it requires of them, each runtime able to provide it."""
+    runtimes = _strings(data.get("runtimes"), f"scenario {name}: runtimes")
+    if not runtimes:
+        raise ScenarioError(
+            f"scenario {name}: runtimes is required: the runtimes it may run on, of {', '.join(RT.NAMES)}, the first the default"
+        )
+    unknown = [r for r in runtimes if r not in RT.NAMES]
+    if unknown:
+        raise ScenarioError(f"scenario {name}: runtimes: {', '.join(unknown)} is not one of {', '.join(RT.NAMES)}")
+    requires = _strings(data.get("requires"), f"scenario {name}: requires")
+    unknown = [r for r in requires if r not in RT.REQUIREMENTS]
+    if unknown:
+        raise ScenarioError(f"scenario {name}: requires: {', '.join(unknown)} is not one of {', '.join(RT.REQUIREMENTS)}")
+    for runtime in runtimes:
+        missing = [r for r in requires if r not in RT.PROVIDES[runtime]]
+        if missing:
+            raise ScenarioError(
+                f"scenario {name}: the {runtime} runtime cannot provide {', '.join(missing)}, which the scenario requires; "
+                "take it out of runtimes"
+            )
+    return runtimes, requires
 
 
 def parse_text(text: str, suffix: str = ".json") -> Any:

@@ -1,5 +1,8 @@
 name: explain-tenancy
 kind: skill
+# In a container only. On the host the subject runs as the harness's
+# user and can read the checkout, this rubric in it.
+runtimes: [container]
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"

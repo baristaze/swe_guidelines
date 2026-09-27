@@ -1,5 +1,8 @@
 name: support-turn
 kind: qa
+# A qa subject runs no command: the harness asks the model itself, so
+# the runtime holds nothing it reaches.
+runtimes: [host, container]
 subject:
   provider: anthropic
   model: claude-opus-5-5

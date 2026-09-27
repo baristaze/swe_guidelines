@@ -17,7 +17,15 @@ assert spec is not None and spec.loader is not None
 run = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run)
 
-SKILL = {"name": "one", "kind": "skill", "subject": {"skill": "arch-review-om", "prompt": "Review it."}, "rubric": "r"}
+# Every runtime, the host first, so a run that names none runs on the host.
+EVERYWHERE = ["host", "container", "vm"]
+SKILL = {
+    "name": "one",
+    "kind": "skill",
+    "subject": {"skill": "arch-review-om", "prompt": "Review it."},
+    "rubric": "r",
+    "runtimes": EVERYWHERE,
+}
 
 
 def test_a_skill_gets_the_plugin_and_the_target_it_is_given():
@@ -44,7 +52,15 @@ def test_the_target_placeholder_is_filled_and_refused_when_there_is_no_target():
 
 
 def test_a_command_gets_the_paths_in_its_argv():
-    scn = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["ls", "{target}", "{plugin}"]}, "rubric": "r"})
+    scn = S.from_data(
+        {
+            "name": "c",
+            "kind": "command",
+            "subject": {"argv": ["ls", "{target}", "{plugin}"]},
+            "rubric": "r",
+            "runtimes": EVERYWHERE,
+        }
+    )
     assert run.subject_argv(scn, "p", "/plugin", "/target") == ["ls", "/target", "/plugin"]
 
 
@@ -58,7 +74,13 @@ def test_the_shipped_review_runs_on_its_planted_checkout_with_the_answers_outsid
     assert target not in expected.parents
 
 
-QA = {"name": "q", "kind": "qa", "subject": {"prompt": "Why?", "context": ["notes/why.md"]}, "rubric": "r"}
+QA = {
+    "name": "q",
+    "kind": "qa",
+    "subject": {"prompt": "Why?", "context": ["notes/why.md"]},
+    "rubric": "r",
+    "runtimes": EVERYWHERE,
+}
 
 
 def test_a_qa_context_path_is_read_from_the_scenario_folder(tmp_path, monkeypatch):
@@ -196,6 +218,7 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
         "subject": {"argv": [sys.executable, "-c", script]},
         "artifact": {"stdout": True, "files": ["**/*.md", "*.md"]},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "files.json"
@@ -247,6 +270,7 @@ def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch
         },
         "artifact": {"stdout": True},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "reach.json"
@@ -281,7 +305,13 @@ def test_the_subject_holds_its_own_key_and_no_judge_key(tmp_path, monkeypatch, r
         monkeypatch.setenv(name, f"judge-{name}")
     monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "subject-key")
     script = "import os; print(sorted((k, v) for k, v in os.environ.items() if k.endswith('_KEY') or 'judge-' in v))"
-    scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    scenario = {
+        "name": "keys",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "rubric": "r",
+        "runtimes": EVERYWHERE,
+    }
     path = tmp_path / "keys.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15", "--repeat", "1"]
@@ -344,6 +374,7 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
         # A binary that is not there: exit 127, as the shell records it.
         "subject": {"argv": [str(tmp_path / "no-such-claude"), "-p", "hi"]},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "missing.json"
@@ -380,6 +411,7 @@ def test_two_runs_in_the_same_second_get_two_folders(tmp_path, monkeypatch):
         "kind": "command",
         "subject": {"argv": [sys.executable, "-c", "import uuid; print(uuid.uuid4().hex)"]},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "twice.json"
@@ -399,7 +431,13 @@ def test_an_answer_with_a_unicode_line_separator_is_kept_whole(tmp_path, monkeyp
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
     script = "import sys; sys.stdout.buffer.write('one\\u2028two\\u2029three\\n'.encode())"
-    scenario = {"name": "sep", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    scenario = {
+        "name": "sep",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "rubric": "r",
+        "runtimes": EVERYWHERE,
+    }
     path = tmp_path / "sep.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1"]) == 0
@@ -439,6 +477,7 @@ def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
         "subject": {"argv": [sys.executable, "-c", probe, "{target}"], "target": str(target)},
         "evidence": {"files": ["**/*.py"]},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "seen.json"
@@ -485,7 +524,7 @@ def test_the_subject_model_defaults_to_the_scenario_then_the_matrix():
     pinned = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review it.", "model": "claude-sonnet-5"}))
     assert run.subject_model(pinned, None, matrix) == "claude-sonnet-5"
     assert run.subject_model(pinned, "claude-haiku-5", matrix) == "claude-haiku-5"
-    command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"})
+    command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r", "runtimes": EVERYWHERE})
     assert run.subject_model(command, None, matrix) is None
 
 
@@ -554,6 +593,7 @@ def envelope_scenario(tmp_path, envelope):
         "kind": "command",
         "subject": {"argv": [sys.executable, "-c", script]},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "envelope.json"
@@ -636,6 +676,7 @@ def test_a_run_records_the_checkout_the_target_and_the_answers_by_reference(tmp_
         "subject": {"argv": [sys.executable, "-c", "print('ok')"], "target": str(fixtures / "review-om")},
         "evidence": {"expected": str(fixtures / "review-om.expected.yaml")},
         "rubric": "r",
+        "runtimes": EVERYWHERE,
         "judges": {"providers": "anthropic"},
     }
     path = tmp_path / "versions.json"
@@ -781,7 +822,13 @@ def test_a_vm_run_keeps_the_subject_key_out_of_every_file_it_writes(tmp_path, mo
     secret = "subject-key-for-the-run"
     monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", secret)
     script = "import os; print(len(os.environ.get('ANTHROPIC_API_KEY', '')))"
-    scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    scenario = {
+        "name": "keys",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "rubric": "r",
+        "runtimes": EVERYWHERE,
+    }
     run_dir = run_vm(tmp_path, scenario, vm_config(tmp_path))
     assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == f"{len(secret)}\n"
     for file in run_dir.rglob("*"):
@@ -793,7 +840,7 @@ def test_a_vm_run_keeps_the_subject_key_out_of_every_file_it_writes(tmp_path, mo
 def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
-    scenario = {"name": "down", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"}
+    scenario = {"name": "down", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r", "runtimes": EVERYWHERE}
     path = tmp_path / "scenario.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     config = tmp_path / "vm.json"
@@ -810,7 +857,7 @@ def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp
 
 def test_a_vm_config_that_reaches_no_machine_is_refused_before_the_run_starts(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
-    scenario = {"name": "nowhere", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"}
+    scenario = {"name": "nowhere", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r", "runtimes": EVERYWHERE}
     path = tmp_path / "scenario.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     config = tmp_path / "vm.json"
@@ -832,28 +879,40 @@ def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monke
         return 0
 
     monkeypatch.setattr(run.RT.VmRuntime, "helper", helper)
+    # A scenario that needs Docker, on the planted checkout; with no
+    # `--runtime`, it runs on the vm, its first runtime.
+    target = str(run.BENCHMARK / "fixtures" / "review-om")
+    scenario = dict(
+        SKILL, runtimes=["vm"], requires=["docker"], subject={"skill": "arch-review-om", "prompt": "Review it.", "target": target}
+    )
+    path = tmp_path / "system.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
     config = run.BENCHMARK / "runtime" / "lima" / "runtime-config.yaml"
-    argv = ["--scenario", "review-om", "--out", str(tmp_path / "runs"), "--runtime", "vm", "--runtime-config", str(config)]
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime-config", str(config)]
     assert run.main([*argv, "--dry-run"]) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
-    text = (run_dir / "run.json").read_text(encoding="utf-8")
-    subject = json.loads(text)["subject_argv"]
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["runtime"]["name"] == "vm"
+    subject = resolved["subject_argv"]
     there = f"/var/tmp/swe-benchmark/{run_dir.name}"
     assert subject[subject.index("--plugin-dir") + 1] == f"{there}/plugin"
     assert subject[subject.index("--add-dir") + 1] == f"{there}/target"
-    assert str(run.ROOT) not in text and called == []
+    assert str(run.ROOT) not in json.dumps(subject) and called == []
 
 
-@pytest.mark.parametrize("runtime", ["host", "container"])
-def test_a_shipped_scenario_s_run_names_no_path_of_the_checkout(tmp_path, monkeypatch, runtime):
+@pytest.mark.parametrize(
+    ("scenario", "runtime"),
+    [("review-om", "container"), ("explain-tenancy", "container"), ("support-turn", "host"), ("support-turn", "container")],
+)
+def test_a_shipped_scenario_s_run_names_no_path_of_the_checkout(tmp_path, monkeypatch, scenario, runtime):
     pytest.importorskip("yaml")
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
-    argv = ["--scenario", "review-om", "--out", str(tmp_path / "runs"), "--runtime", runtime, "--dry-run"]
+    argv = ["--scenario", scenario, "--out", str(tmp_path / "runs"), "--runtime", runtime, "--dry-run"]
     assert run.main(argv) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
     text = (run_dir / "run.json").read_text(encoding="utf-8")
     resolved = json.loads(text)
-    assert resolved["scenario"]["path"] == "benchmark/scenarios/review-om.yaml"
+    assert resolved["scenario"]["path"] == f"benchmark/scenarios/{scenario}.yaml"
     assert str(run.ROOT) not in text
 
 
