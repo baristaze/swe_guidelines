@@ -422,22 +422,23 @@ container.
 
 ## After writing
 
-1. Run the repository's fast gate (`make check` or its equivalent).
-   When a table was added, bring the stack up and migrate first
-   (`make infra-up`, then `make migrate`), then run
-   `make migrate-check`, which compares the ORM metadata with the
-   migrated schema per role and needs Postgres. When a route was added, run
-   `make openapi`, so the committed contract and the consuming apps'
-   generated types carry it. A single tool runs through the workspace
-   (`uv run`, `pnpm run`), never through a global install.
+1. Run these commands, in this order: `make infra-up` and
+   `make migrate` when a table was added; `make openapi` when a route
+   was added, so the committed contract and the consuming apps'
+   generated types carry it; the repository's fast gate (`make check`
+   or its equivalent); and `make migrate-check` when a table was
+   added, which compares the ORM metadata with the migrated schema per
+   role and needs Postgres. A single tool runs through the workspace
+   (`uv run`, `pnpm run`), never through a global install. A run of
+   these commands stops at the first one that fails.
 
-   When a gate fails on what the scaffold wrote, fix it, then run
-   every command of this step again, in order, and not only the gate
-   that failed: a fix made for one gate can break another. That is the
-   first run plus at most 3 reruns, then stop and say which gate fails
-   and why. The count belongs to the step that runs the gates, so a
-   gate that a skill's own step already ran starts a new count here.
-   This bound holds for every gate a scaffold runs, the steps of
+   When a gate fails on what the scaffold wrote, fix it, then run the
+   step's commands again from the first, in order: a fix made for one
+   gate can break another. The step is the numbered step whose command
+   failed, this one or one of the skill's Procedure, and each step has
+   its own count: the first run plus at most 3 reruns. When the count
+   runs out, stop, and leave the tree as the last run left it, fixes
+   kept. This bound holds for every gate a scaffold runs, the steps of
    `arch-scaffold-new` included. Report pre-existing failures and
    stop; do not edit unrelated files.
 
