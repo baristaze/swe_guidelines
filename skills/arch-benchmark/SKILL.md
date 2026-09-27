@@ -56,10 +56,11 @@ never run the harness from there.
    repeat and each phase and starts nothing more once it is reached, but
    what is running finishes, so a run can end above N. Each session of a
    skill subject also has its own cap, the scenario's `max_usd`, which
-   Claude Code holds. Say both when the prompt asks for a cap.
-   `--runtime` is `host`,
-   `container`, or `vm`, and one the scenario lists: its first when the
-   flag is not given. The harness refuses any other with exit 7 and
+   Claude Code holds. Say both when the prompt asks for a cap. When it
+   asks what a run could spend, say that it can pass N by about the
+   largest session cap and one repeat's judges, which a dry run does not
+   price. `--runtime` is `host`, `container`, or `vm`, and one the
+   scenario lists: its first when the flag is not given. The harness refuses any other with exit 7 and
    runs nothing. So when the prompt names a runtime that `list` does
    not show for the scenario, run nothing, neither on that runtime nor
    on another, and say so. When the prompt names something with no flag
@@ -76,16 +77,19 @@ never run the harness from there.
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
    fallbacks each would use, the effort, the repeats, the run's spend
-   cap when one was given, and the subject's own `max_usd`. For a
-   scenario in phases, `run.json` lists each phase under `phases`, and
+   cap when one was given, and the subject's `max_usd`. For a scenario
+   in phases, `run.json` lists each phase under `phases`, and the
+   phases' bounds are the ones in effect: the subject's `max_usd` is
+   null, and its `max_turns` and `timeout_s` are defaults nothing uses.
    `subject_argv` is only the first phase's command. Report each phase
    with the fields it holds: its `session` (`fresh`, or `resume` of the
    phase before), where it starts (`cwd`: the workspace or the output
    folder), whether it keeps the handoff note (`hint`), its bounds
    (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
-   backstop), what follows a bound (`on_cap`), and its `argv`. Report the
-   subject's `output` folder and its `gates`, which the harness runs on
-   the final tree. `benchmark/README.md`, "A subject in phases", says
+   backstop), what follows a bound (`on_cap`), and what its `argv` runs:
+   the prompt as written, and whether it gets `--add-dir` or `--resume`.
+   Report the subject's `output` folder and its `gates`, which the
+   harness runs on the final tree. `benchmark/README.md`, "A subject in phases", says
    what each field means. There is no
    score to report, and inventing one is the worst thing this skill
    could do.
