@@ -84,10 +84,10 @@ Rules:
 - a step that fixes and runs again states its count bound. In every Markdown
   file under skills/, a paragraph or list item that says fix beside a rerun
   (`rerun`, `run ... again`) or beside a backticked `make <target>` says
-  `at most <n>` in the same paragraph or item. A skill run by a strong model
-  fixes and reruns until something stops it, and with no count only its
-  session's turns or wall time would. Fenced code and table rows are left
-  out, and a loop said in other words is held by hand.
+  `at most <n> reruns` in the same paragraph or item. A skill run by a
+  strong model fixes and reruns until something stops it, and with no count
+  only its session's turns or wall time would. Fenced code and table rows
+  are left out, and a loop said in other words is held by hand.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -440,7 +440,8 @@ FIXES = re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE)
 # so a command's file name or path (`tests/test_x.py`) sits inside the span.
 RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b(?:[^.;]|\.(?=\S)){0,120}?\bagain\b", re.IGNORECASE)
 RUNS_GATE = re.compile(r"`make [a-z]")
-COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b", re.IGNORECASE)
+# The bound counts the reruns themselves: `at most 3 imports` in the same block bounds nothing.
+COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten) re-?runs?\b", re.IGNORECASE)
 BOUND_WORDING = "the first run plus at most <n> reruns"
 """The one wording a skill gives the bound of a step that fixes and runs a gate again."""
 
@@ -450,7 +451,7 @@ def unbounded_loops(text: str) -> list[str]:
 
     A block that says fix beside a rerun, or beside a `make <target>` it
     runs, is a step a model repeats until something stops it, so the block
-    says `at most <n>` too. Fenced code is a template and a table row
+    says `at most <n> reruns` too. Fenced code is a template and a table row
     describes a file, so both are left out.
     """
     prose = "\n".join("" if line.lstrip().startswith("|") else line for line in unfenced(text).split("\n"))

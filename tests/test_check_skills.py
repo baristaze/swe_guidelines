@@ -580,6 +580,14 @@ def test_a_rerun_after_a_fix_is_bounded_in_every_markdown_file_under_skills(repo
     assert skills.main() == 0
 
 
+def test_an_at_most_that_counts_something_else_is_no_bound(repo, skills, capsys):
+    conventions(repo, "1. Fix what it reports and rerun it. Keep at most 3 imports per line.\n")
+    assert skills.main() == 1
+    assert f"{CONVENTIONS}: a step fixes and runs again with no count bound" in capsys.readouterr().out
+    conventions(repo, "1. Fix what it reports and rerun it, at most 2 reruns. Keep at most 3 imports per line.\n")
+    assert skills.main() == 0
+
+
 @pytest.mark.parametrize(
     "text",
     [
