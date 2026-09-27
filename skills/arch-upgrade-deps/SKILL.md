@@ -153,7 +153,7 @@ never removes them. Nothing else is asked for.
    (`pyproject.toml`, `package.json`, `.terraform.lock.hcl`, a CI
    workflow, a compose file), edit back the row's lines alone:
    restoring the whole file would revert the other rows too. `uv.lock`
-   and `pnpm-lock.yaml` are never edited by hand: the library goes back
+   and `pnpm-lock.yaml` are never edited by hand: a library goes back
    to the release it had before the edit that moved it, through
    `uv lock --upgrade-package <name>==<release>` or
    `pnpm update --recursive <name>@<release>`, which rewrite the lock.
