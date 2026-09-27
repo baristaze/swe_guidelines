@@ -610,8 +610,8 @@ KILL = (
     'kill -s KILL -- "-$group" 2>/dev/null; n=0; '
     'while kill -0 -- "-$group" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done; exit 0'
 )
-# The end of a run: its folder goes, and the lock when the run holds one.
-RELEASE = REMOVE + 'remove "$1"; if [ -n "$2" ]; then rm -rf -- "$2"; fi; [ ! -e "$1" ]'
+# The end of a run: its folder goes, then the lock it holds.
+RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
 
 
 def fill(words: list[str], local: str, remote: str) -> list[str]:
@@ -890,12 +890,12 @@ class VmRuntime(BaseRuntime):
         """Remove the run's folder there and give the machine back, once; the notes on what went wrong.
 
         The run records these notes. A folder that stays there is named,
-        because it holds what the subject wrote.
+        because it holds what the subject wrote. A run that never took the
+        machine made nothing there, and removes nothing.
         """
-        if self.prepared and self.vm.exec_prefix and not self.released:
+        if self.locked and self.vm.exec_prefix and not self.released:
             self.released = True
-            lock = f"{self.remote_base()}/.lock" if self.locked else ""
-            code = self.helper(self.there(RELEASE, self.remote_run(), lock))
+            code = self.helper(self.there(RELEASE, self.remote_run(), f"{self.remote_base()}/.lock"))
             if code != 0:
                 self.notes.append(f"[{self.name}] the run's folder {self.remote_run()} was not removed there (exit {code})")
             self.locked = False

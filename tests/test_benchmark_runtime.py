@@ -347,7 +347,7 @@ def test_a_machine_that_does_not_answer_fails_every_repeat_with_a_note(tmp_path)
             assert status.code == 127 and not status.ok
     lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl")]
     assert sum("the other machine did not answer" in line for line in lines) == 2
-    assert any("/opt/work/run was not removed there" in note for note in rt.release())
+    assert rt.release() == []  # the run never took the machine, so it made nothing there to remove
     rt.teardown()  # a machine that is gone is no error here
 
 

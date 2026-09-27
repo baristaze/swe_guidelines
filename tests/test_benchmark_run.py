@@ -803,7 +803,7 @@ def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp
     (run_dir,) = (tmp_path / "runs").iterdir()
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
-    assert any("was not removed there" in note for note in results["notes"])
+    assert not any("was not removed there" in note for note in results["notes"])  # it made nothing there
     assert (run_dir / "report.md").is_file()
     assert "the other machine did not answer" in (run_dir / "streams" / "cli.jsonl").read_text(encoding="utf-8")
 
