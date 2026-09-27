@@ -790,6 +790,24 @@ def test_a_vm_run_keeps_the_subject_key_out_of_every_file_it_writes(tmp_path, mo
     assert not (tmp_path / "remote" / run_dir.name).exists()  # the key file went with the run's folder
 
 
+def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    scenario = {"name": "down", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r"}
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    config = tmp_path / "vm.json"
+    config.write_text(json.dumps(vm_config(tmp_path, exec_prefix=[str(tmp_path / "no-such-prefix")])), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2"]
+    assert run.main([*argv, "--runtime", "vm", "--runtime-config", str(config)]) == 6  # every repeat failed
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
+    assert any("was not removed there" in note for note in results["notes"])
+    assert (run_dir / "report.md").is_file()
+    assert "the other machine did not answer" in (run_dir / "streams" / "cli.jsonl").read_text(encoding="utf-8")
+
+
 def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monkeypatch):
     pytest.importorskip("yaml")
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")

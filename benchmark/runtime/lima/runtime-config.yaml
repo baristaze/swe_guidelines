@@ -6,14 +6,18 @@
 # from looking for this machine's working folder in the VM, where there
 # is none.
 #
-# `limactl copy` over rsync reads a slash at the end of the destination
-# as "into this folder". With the slash, the copy keeps the folder's
-# name, which is what `copy` asks for. Without it, the folder's content
-# lands on the destination, which is what `fetch` asks for.
+# `limactl copy` over rsync lands a folder's content on a destination
+# with no slash at its end. So the staged folder becomes the path `copy`
+# names, and the workspace there becomes the one here on `fetch`.
+#
+# `limactl` needs HOME to find its machines, and LIMA_HOME when it is
+# set. The prefix gets those two from this machine's environment, and
+# nothing else of it.
 #
 # The run folders live on the VM's disk, under /var/tmp, because /tmp
 # is held in memory there.
 exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
-copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}/"]
+copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}"]
 fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
 remote_workspace: /var/tmp/swe-benchmark
+prefix_env: [HOME, LIMA_HOME]

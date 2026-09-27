@@ -715,6 +715,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     if failed_subjects:
         notes.append(f"subject failed in repeat(s) {', '.join(map(str, failed_subjects))}; not judged")
+    if isinstance(rt, RT.VmRuntime):
+        # The other machine is given back before the results are written,
+        # so a folder that stayed there, or a fetch that failed, is noted.
+        notes.extend(rt.release())
     run.notes = notes
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
