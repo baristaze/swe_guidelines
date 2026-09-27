@@ -1,13 +1,13 @@
 ---
 name: arch-benchmark-browser
-description: "Run the benchmark prompt in the chatgpt.com, claude.ai, and gemini.google.com products, signed in, and save each answer with its conversation URL as proof."
+description: "Run the benchmark prompt in the chatgpt.com, claude.ai, gemini.google.com, and grok.com products, signed in, and save each answer with its conversation URL as proof."
 allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
 disable-model-invocation: true
 ---
 
 # arch-benchmark-browser
 
-Ask three products the same question and keep the answers with their
+Ask four products the same question and keep the answers with their
 proof. The prompt, the contract, the size map, and the schema live at
 `${CLAUDE_SKILL_DIR}/../../benchmark/browser/` and
 `${CLAUDE_SKILL_DIR}/../../benchmark/schema/browser-session.schema.json`.
@@ -18,7 +18,7 @@ If any is missing, stop and say the installation is incomplete.
 `$ARGUMENTS` names two sizes, `model=<size> effort=<size>`, each one of
 `xs`, `s`, `m`, `l`, `xl`. When one is missing, it is `m`. It may also
 name a subset of sites (`sites=claude.ai,gemini.google.com`); the
-default is all three.
+default is all four.
 
 ## What the pages are like
 
@@ -29,12 +29,14 @@ Facts that decide how the steps below go. Read them before the browser.
   screenshot works; on others `find` is refused while `read_page`
   works. When a read tool is refused, use a screenshot and `zoom`, and
   transcribe from it. Say in the output which site was read that way.
-- The composers on chatgpt.com and claude.ai are rich text: a line that
-  starts with a dash and a space becomes a bullet and the next line gets one too, and
-  backticks become inline code. gemini.google.com's composer is plain
-  text. So the contract is typed without the leading dash on every
-  site, one line per item, and the results carry the text as sent.
-- Enter sends on all three composers. A new line inside the message is
+- The composers on chatgpt.com, claude.ai, and grok.com are rich text:
+  a line that starts with a dash and a space becomes a bullet. On
+  chatgpt.com and claude.ai the next line gets one too, and backticks
+  become inline code; grok.com keeps backticks as typed.
+  gemini.google.com's composer is plain text. So the contract is typed
+  without the leading dash on every site, one line per item, and the
+  results carry the text as sent.
+- Enter sends on all four composers. A new line inside the message is
   `shift+Return`. Type one line, press `shift+Return`, type the next;
   a blank line is two `shift+Return`.
 - A `browser_batch` has a deadline of its own: at most five ten-second
@@ -57,11 +59,22 @@ Facts that decide how the steps below go. Read them before the browser.
   current model and not a model of its own; the chip then reads
   "Flash Extended". The size map never asks for it. The chip shortens
   "3.1 Pro" to "Pro".
+- grok.com: the chip at the right of the composer shows the mode and
+  is named "Model select". It opens one list of modes: Fast, Build,
+  Auto, Expert, Heavy, and a "SuperGrok" row with an Upgrade button. There is no effort control;
+  the "+" at the left holds files, projects, skills, and connectors.
+  Auto, Expert, and Heavy need a SuperGrok plan. On an account without
+  one, clicking them opens a plan page (the URL ends in `#subscribe`)
+  and the chip keeps its mode; the × at the page's top right closes it.
+  Never click Upgrade, there or anywhere else, and never switch to
+  "Private" at the top right.
 - A finished answer is announced in text: chatgpt.com writes "Worked
   for" and a duration above it; claude.ai's page text contains "Claude
   finished the response"; gemini.google.com shows the answer with the
-  composer empty and no stop control. Read that rather than the send
-  button's shape.
+  composer empty and no stop control; grok.com's page text is the same
+  on two polls a minute apart, with no stop control beside the empty
+  composer, whose button then reads "Enter voice mode". Read that
+  rather than the send button's shape.
 - The first line of a page's text is chrome (the time worked, the
   echoed prompt, a tool count), not the answer. The score is the line
   that matches `Score: NN/100`, wherever it is.
@@ -78,11 +91,11 @@ Facts that decide how the steps below go. Read them before the browser.
    holds a tab on a site, reuse it and navigate it to the new-chat URL;
    otherwise `tabs_create_mcp` one per site. The URLs:
    `https://chatgpt.com/`, `https://claude.ai/new`,
-   `https://gemini.google.com/app`. Take a screenshot of each. A page
-   that shows a sign-in button, a login form, or no composer is
-   `not-signed-in`: record it, tell the person which site to sign in
-   to, and go on with the sites that are. Never type an email or a
-   password, ever.
+   `https://gemini.google.com/app`, `https://grok.com/`. Take a
+   screenshot of each. A page that shows a sign-in button, a login
+   form, or no composer is `not-signed-in`: record it, tell the person
+   which site to sign in to, and go on with the sites that are. Never
+   type an email or a password, ever.
 4. Per site, set the model and the effort, then verify with a
    screenshot of the chip, and record the label the chip shows:
    - chatgpt.com: open the popover, open the chevron, click the model
@@ -93,6 +106,11 @@ Facts that decide how the steps below go. Read them before the browser.
      "Effort", click the level. The chip must read `<model> <effort>`.
    - gemini.google.com: click the composer, open the chip, click the
      model the size names. The chip must read the model's short name.
+   - grok.com: open the chip, click the mode the size names. The chip
+     must read the mode. When the plan page opens instead, close it,
+     open the chip again, and click Fast; record Fast, and say in
+     `note` that the mode the size asked for needs a SuperGrok plan. A
+     locked mode is not tried again.
    If the label does not match what the size asked for, try once more,
    then record the label the page shows and go on: the results carry
    what was actually used, never what was asked for.

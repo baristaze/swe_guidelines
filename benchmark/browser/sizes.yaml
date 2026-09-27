@@ -1,8 +1,8 @@
 # The t-shirt sizes, and what each site's picker calls them. Two sizes per
 # run: the model and the effort. Sizes are xs, s, m, l, xl, so a new tier
 # slots in without renaming the others. The labels are what the pickers
-# showed on 2026-09-20; when a site renames a model, this file changes and
-# the skill does not.
+# showed on 2026-09-20, and grok.com's on 2026-09-27; when a site renames a
+# model, this file changes and the skill does not.
 #
 # The label is what the skill clicks. What the composer shows afterwards
 # can read differently (chatgpt.com shows the effort stop, not the model;
@@ -27,6 +27,13 @@ model:
     m: 3.1 Pro
     l: 3.1 Pro
     xl: 3.1 Pro               # "Extended thinking" at the bottom of the list is a toggle on Flash, not a model
+  grok.com:                   # one list of modes, each with a tooltip; Build, Expert, and Heavy say "Grok 4.6"
+    xs: Fast                  # "Quick responses"
+    s: Fast
+    m: Expert                 # "Thinks hard"
+    l: Expert
+    xl: Heavy                 # "Team of Experts"; "Auto" chooses Fast or Expert, so its label does not say
+                              # which ran, and "Build" builds apps and sites: the map asks for neither
 effort:
   chatgpt.com:                # the "Thinking effort" slider has five stops, left to right; the stop labels are
     xs: 1                     # names ("Instant" at the left, "6 Pro" at the right), not effort words
@@ -41,6 +48,12 @@ effort:
     l: Extra
     xl: Max
   gemini.google.com:          # no effort control on the Pro model; the model size carries it
+    xs: none
+    s: none
+    m: none
+    l: none
+    xl: none
+  grok.com:                   # no effort control; the mode the model size picks carries it
     xs: none
     s: none
     m: none

@@ -2,7 +2,7 @@
 
 The prompt below is the one a reader can paste into any assistant. It
 is sent as written, and then the contract that follows it, so the
-three answers line up.
+four answers line up.
 
 ```text
 You are a software eng/architect! Evaluate the repository below.

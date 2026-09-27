@@ -80,7 +80,8 @@
             "enum": [
               "chatgpt.com",
               "claude.ai",
-              "gemini.google.com"
+              "gemini.google.com",
+              "grok.com"
             ]
           },
           "url": {
