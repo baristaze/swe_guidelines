@@ -46,8 +46,10 @@ lenses (`skills/`), and the checkers that keep the three consistent
   to. Its procedure and report shape mirror the review template, and
   `scripts/check_agents.py` holds the two together: the four decision
   words, the report block, and the count of procedure steps must
-  agree. The sentence "Never edit, stage, or commit" is repeated in
-  every review skill on purpose.
+  agree. It also holds the agent's `maxTurns`, the count of turns
+  after which the host stops it, since the host accepts the agent with
+  that key missing or misspelled. The sentence "Never edit, stage, or
+  commit" is repeated in every review skill on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
   version. `scripts/check_version.py` holds every copy to it: the

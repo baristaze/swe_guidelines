@@ -56,7 +56,7 @@ version:           ## every copy of the release version agrees with .claude-plug
 skills:            ## every skill has valid frontmatter and references files that exist
 	$(PYTHON) scripts/check_skills.py
 
-agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count)
+agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count) and caps its turns
 	$(PYTHON) scripts/check_agents.py
 
 test:              ## the checkers and generators pass their own tests (pytest through uv, pinned)

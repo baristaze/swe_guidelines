@@ -12,6 +12,12 @@ and nothing generates it, so this check holds the two files together:
   `<group title>`;
 - the numbered procedure steps agree in count.
 
+It also holds the agent to a count bound: its frontmatter carries
+`maxTurns`, a whole number above zero, and the host stops the agent
+after that many turns. The host's own validation accepts a missing or
+misspelled key, and then only the session's turns or wall time stop a
+reviewer that keeps reading.
+
 Exit status is non-zero on any failure. Standard library only.
 """
 
@@ -30,6 +36,8 @@ AGENT = ROOT / "agents" / "arch-reviewer.md"
 
 DECISIONS = ("finding", "pass", "not applicable", "unverified")
 STEP = re.compile(r"^\d+\. ", re.M)
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+MAX_TURNS = re.compile(r"^maxTurns: *[1-9][0-9]* *$", re.M)
 PLACEHOLDERS = {"{title}": "<group title>"}
 
 
@@ -53,6 +61,13 @@ def report_block(text: str, rel: str, errors: list[str]) -> str:
     return block
 
 
+def turn_cap(text: str, rel: str, errors: list[str]) -> None:
+    """The agent's frontmatter bounds its turns with `maxTurns`, a whole number above zero."""
+    head = FRONTMATTER.match(text)
+    if not head or not MAX_TURNS.search(head.group(1)):
+        errors.append(f"{rel}: no maxTurns in the frontmatter; bound the agent's turns with `maxTurns: <n>`, n above 0")
+
+
 def decision_order(proc: str) -> list[str]:
     flat = re.sub(r"\s+", " ", proc)
     found = [(flat.find(f"**{word}**"), word) for word in DECISIONS]
@@ -73,6 +88,7 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         return 1
     (t_rel, t_text), (a_rel, a_text) = files.items()
+    turn_cap(a_text, a_rel, errors)
     t_proc = procedure(t_text, t_rel, errors)
     a_proc = procedure(a_text, a_rel, errors)
     for rel, proc in ((t_rel, t_proc), (a_rel, a_proc)):
