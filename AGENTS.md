@@ -151,6 +151,17 @@ lenses (`skills/`), and the checkers that keep the three consistent
   step names is an orphan and an error, and a skill body past the word
   bound is an error whose fix is to move reference material into a
   step's file.
+- A step that fixes and runs again states its count bound. A skill
+  run by a strong model fixes and reruns until something stops it,
+  and with no count only its session's turns or wall time would. For
+  a gate the wording is one: the first run plus at most 3 reruns,
+  then stop and say which gate fails and why. A step with a smaller
+  unit (a dependency row, an audit's own flows file) states its own
+  count in the same shape and says what happens past it.
+  `scripts/check_skills.py` holds a paragraph or list item under
+  `skills/` that says fix beside a rerun, or beside a `make <target>`
+  it runs, to an `at most <n>` in the same paragraph or item. A loop
+  said in other words is held by hand.
 - The release version is written once, in `.claude-plugin/plugin.json`;
   every other copy is checked against it.
 - Scaffold skills share `skills/_shared/scaffold-conventions.md`.

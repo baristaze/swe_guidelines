@@ -80,7 +80,14 @@ Rules:
 - a skill body stays under `BODY_WORDS` words. The body is loaded in full
   every time the skill runs, so its length is a cost paid per run, and the
   fix a failure names is the split: move the long per-step material into the
-  file a step reads.
+  file a step reads;
+- a step that fixes and runs again states its count bound. In every Markdown
+  file under skills/, a paragraph or list item that says fix beside a rerun
+  (`rerun`, `run ... again`) or beside a backticked `make <target>` says
+  `at most <n>` in the same paragraph or item. A skill run by a strong model
+  fixes and reruns until something stops it, and with no count only its
+  session's turns or wall time would. Fenced code and table rows are left
+  out, and a loop said in other words is held by hand.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -92,7 +99,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import arguments, fenced_lines, headings
+from _common import arguments, fenced_lines, headings, unfenced
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
@@ -428,6 +435,40 @@ def check_work_row(errors: list[str]) -> None:
             )
 
 
+FIXES = re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE)
+RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b[^.;]{0,80}?\bagain\b", re.IGNORECASE)
+RUNS_GATE = re.compile(r"`make [a-z]")
+COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b", re.IGNORECASE)
+BOUND_WORDING = "the first run plus at most <n> reruns"
+"""The one wording a skill gives the bound of a step that fixes and runs a gate again."""
+
+
+def unbounded_loops(text: str) -> list[str]:
+    """The paragraphs and list items of a text that fix and run again with no count bound.
+
+    A block that says fix beside a rerun, or beside a `make <target>` it
+    runs, is a step a model repeats until something stops it, so the block
+    says `at most <n>` too. Fenced code is a template and a table row
+    describes a file, so both are left out.
+    """
+    prose = "\n".join("" if line.lstrip().startswith("|") else line for line in unfenced(text).split("\n"))
+    return [
+        block
+        for block in blocks(prose)
+        if FIXES.search(block) and (RERUNS.search(block) or RUNS_GATE.search(block)) and not COUNT_BOUND.search(block)
+    ]
+
+
+def check_bounds(errors: list[str]) -> None:
+    """Every Markdown file under skills/ bounds each step that fixes and runs again, as `unbounded_loops` reads it."""
+    for path in sorted(SKILLS.rglob("*.md")):
+        for block in unbounded_loops(body_of(path.read_text(encoding="utf-8"))):
+            errors.append(
+                f"{path.relative_to(ROOT)}: a step fixes and runs again with no count bound; "
+                f"say {BOUND_WORDING!r} in it: {block[:72]!r}"
+            )
+
+
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
@@ -548,6 +589,7 @@ def main(argv: Sequence[str] = ()) -> int:
         check_template(template, errors)
     check_audits(templates, errors)
     check_work_row(errors)
+    check_bounds(errors)
     for group in sorted(groups - review_groups):
         errors.append(f"skills/: no arch-review-{group} skill for lens group '{group}'")
     full = SKILLS / "arch-review-full" / "SKILL.md"
