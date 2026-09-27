@@ -1,0 +1,39 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 69.532,
+  "usage": {
+    "input_tokens": 3179,
+    "output_tokens": 369
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 83,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Section 0 rolls back in the first five minutes, before a failing request ID's trace is captured, and if errors continue it skips the trace and deploy diff for tenant-side checks."
+      },
+      {
+        "severity": "low",
+        "note": "The plan never starts from the signals one request ID already joins (payload, flag evaluations, row ids, downstream spans) and instead opens on blast radius."
+      },
+      {
+        "severity": "low",
+        "note": "Steps 4, 6, and 7 name a unique row, a per-tenant limit, and shard or cache state without saying what access is assumed or how to confirm the specific row short of a full replay."
+      }
+    ],
+    "strengths": [
+      "Every step states what it rules out, including version-split traffic and rollback as diagnostics rather than assumptions.",
+      "It treats unchanged endpoint code as a red herring and diffs shared code, dependencies, config, and flags on the request path.",
+      "It names the tenant-shaped causes (legacy or odd rows, size and quota limits, per-tenant flags and plan) and separates data from config by replay.",
+      "It moves from deploy timing into durable per-tenant state: shard migrations, cache format, and tenant-scoped downstream credentials."
+    ],
+    "rationale": "This is a real on-call plan for one tenant, one endpoint, and a recent deploy, not a checklist that could be written beforehand. It pairs deploy, data, flag, and limit hypotheses with rule-outs and a reproduction check. Points come off because evidence capture is ordered after rollback, the request-id signals are not the starting point, and a few causes lack an explicit access assumption or a confirming query. It still does what the rubric asks."
+  },
+  "raw": "{\"score\":83,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Section 0 rolls back in the first five minutes, before a failing request ID's trace is captured, and if errors continue it skips the trace and deploy diff for tenant-side checks.\"},{\"severity\":\"low\",\"note\":\"The plan never starts from the signals one request ID already joins (payload, flag evaluations, row ids, downstream spans) and instead opens on blast radius.\"},{\"severity\":\"low\",\"note\":\"Steps 4, 6, and 7 name a unique row, a per-tenant limit, and shard or cache state without saying what access is assumed or how to confirm the specific row short of a full replay.\"}],\"strengths\":[\"Every step states what it rules out, including version-split traffic and rollback as diagnostics rather than assumptions.\",\"It treats unchanged endpoint code as a red herring and diffs shared code, dependencies, config, and flags on the request path.\",\"It names the tenant-shaped causes (legacy or odd rows, size and quota limits, per-tenant flags and plan) and separates data from config by replay.\",\"It moves from deploy timing into durable per-tenant state: shard migrations, cache format, and tenant-scoped downstream credentials.\"],\"rationale\":\"This is a real on-call plan for one tenant, one endpoint, and a recent deploy, not a checklist that could be written beforehand. It pairs deploy, data, flag, and limit hypotheses with rule-outs and a reproduction check. Points come off because evidence capture is ordered after rollback, the request-id signals are not the starting point, and a few causes lack an explicit access assumption or a confirming query. It still does what the rubric asks.\"}"
+}

@@ -1,0 +1,30 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 9.75,
+  "usage": {
+    "input_tokens": 1444,
+    "output_tokens": 598
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 95,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The system-login and policy-catalog details add length beyond what is needed to answer how the tenant fence holds and how it is proved."
+      }
+    ],
+    "strengths": [
+      "Identifies the query’s tenant predicate as the fence and locates it in the WHERE clause.",
+      "Names cross-tenant contract cases as evidence and describes the deliberate breach, both suite runs, their expected outcomes, and the recorded results.",
+      "Cites sections by title without numbers and names reviewer lenses by ID."
+    ],
+    "rationale": "The artifact meets every central requirement of the rubric, including distinguishing the query predicate from the row-level security backstop. The only meaningful deduction is for ancillary detail that makes the answer longer than necessary."
+  },
+  "raw": "{\"score\":95,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"low\",\"note\":\"The system-login and policy-catalog details add length beyond what is needed to answer how the tenant fence holds and how it is proved.\"}],\"strengths\":[\"Identifies the query’s tenant predicate as the fence and locates it in the WHERE clause.\",\"Names cross-tenant contract cases as evidence and describes the deliberate breach, both suite runs, their expected outcomes, and the recorded results.\",\"Cites sections by title without numbers and names reviewer lenses by ID.\"],\"rationale\":\"The artifact meets every central requirement of the rubric, including distinguishing the query predicate from the row-level security backstop. The only meaningful deduction is for ancillary detail that makes the answer longer than necessary.\"}"
+}

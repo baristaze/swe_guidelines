@@ -1,0 +1,38 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 74.764,
+  "usage": {
+    "input_tokens": 3165,
+    "output_tokens": 332
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 78,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 5 names odd rows and per-tenant flags but never a limit, quota, or size threshold only that tenant reaches, and no step says how to confirm one."
+      },
+      {
+        "severity": "low",
+        "note": "The runbook filters by tenant and endpoint instead of starting from one failing request id and the version, host, query, and row that id ties together."
+      },
+      {
+        "severity": "low",
+        "note": "Rollback, log and trace filters, shard schema checks, and staging replay assume access the answer never states, with no branch if that access is missing."
+      }
+    ],
+    "strengths": [
+      "It treats an unchanged handler as a claim to test and widens the deploy diff to middleware, dependencies, config, flags, and migrations.",
+      "Each step says what it rules out, and the old-build versus new-build versus other-tenant replay separates deploy, data, and environment.",
+      "It names tenant-only triggers such as feature flags, legacy or null rows, shard schema version, and stale per-tenant cache, with cheap checks for several of them."
+    ],
+    "rationale": "This is a usable on-call order: mitigate, get the exception, confirm the timeline, place the errors, diff the deploy, then match tenant data. It covers flags and row-shaped data and ties most causes to a confirmation. It loses points because a limit only that tenant hits is never named, and the outer checklist plus unstated access keep it short of a tight trace from one request into that tenant's data."
+  },
+  "raw": "{\"score\":78,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Step 5 names odd rows and per-tenant flags but never a limit, quota, or size threshold only that tenant reaches, and no step says how to confirm one.\"},{\"severity\":\"low\",\"note\":\"The runbook filters by tenant and endpoint instead of starting from one failing request id and the version, host, query, and row that id ties together.\"},{\"severity\":\"low\",\"note\":\"Rollback, log and trace filters, shard schema checks, and staging replay assume access the answer never states, with no branch if that access is missing.\"}],\"strengths\":[\"It treats an unchanged handler as a claim to test and widens the deploy diff to middleware, dependencies, config, flags, and migrations.\",\"Each step says what it rules out, and the old-build versus new-build versus other-tenant replay separates deploy, data, and environment.\",\"It names tenant-only triggers such as feature flags, legacy or null rows, shard schema version, and stale per-tenant cache, with cheap checks for several of them.\"],\"rationale\":\"This is a usable on-call order: mitigate, get the exception, confirm the timeline, place the errors, diff the deploy, then match tenant data. It covers flags and row-shaped data and ties most causes to a confirmation. It loses points because a limit only that tenant hits is never named, and the outer checklist plus unstated access keep it short of a tight trace from one request into that tenant's data.\"}"
+}

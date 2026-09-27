@@ -1,0 +1,51 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 16.097,
+  "usage": {
+    "input_tokens": 3201,
+    "output_tokens": 1421
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 74,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 0 recommends rollback before pulling a single failing request ID, so the triage does not start from the signals the request id ties together, and a rollback can erase the new-version evidence that steps 1, 2 and 5 depend on."
+      },
+      {
+        "severity": "medium",
+        "note": "Step 1 uses the request ID only for app logs and a stack trace, not to join gateway, DB query, downstream-call and host/version signals, so its claim to rule out 'most of the hypothesis space' is asserted rather than shown."
+      },
+      {
+        "severity": "medium",
+        "note": "Steps 4, 5 and 7 assume access that is never stated or questioned: reading the tenant's raw rows, copying their data into staging, replaying requests as the tenant in prod, and inspecting per-tenant shards and credentials."
+      },
+      {
+        "severity": "medium",
+        "note": "The 'limit only that tenant reaches' cause gets no specific check: 'unusually large collections', rate-limit middleware and backfill timeouts are mentioned, but there is no step such as comparing row counts, payload size or query time against the limit."
+      },
+      {
+        "severity": "low",
+        "note": "Migrations appear as a rollback caveat in step 0 but are not examined until step 7, even though a half-applied migration on a large tenant is one of the strongest tenant-shaped hypotheses given deploy timing."
+      },
+      {
+        "severity": "low",
+        "note": "Step 6 and the wrap-up follow-ups read as generic checklist items that could be written without the specifics of this incident."
+      }
+    ],
+    "strengths": [
+      "Opens by naming the key reframe, that the handler did not change but the request path did, and carries that through step 3's diff of middleware, serializers, dependencies, config and migrations.",
+      "Every step pairs what to look at with what it rules out, including useful discriminators like 100% versus a fraction of requests, host clustering, and app-logged versus never-reached-the-app.",
+      "Names concrete tenant-shaped causes: legacy rows with nulls predating a schema change, per-tenant feature flags compared against a healthy tenant, and backfills that time out on large tenants.",
+      "Step 5 gives a real way to confirm a cause: old versus new version crossed with this tenant versus a healthy tenant, followed by bisecting the diff."
+    ],
+    "rationale": "The answer moves sensibly from the deploy to the tenant's data and states what each step excludes, and it names row-, flag- and size-shaped tenant causes, which is the core of the rubric. It loses points for putting rollback ahead of the request-id evidence and for using the request id only for a stack trace rather than to join signals across layers. It also assumes prod and data access without saying so, and gives the tenant-only-limit hypothesis no specific way to confirm it. It is above the bar but not a model on-call answer."
+  },
+  "raw": "{\"score\": 74, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"Step 0 recommends rollback before pulling a single failing request ID, so the triage does not start from the signals the request id ties together, and a rollback can erase the new-version evidence that steps 1, 2 and 5 depend on.\"}, {\"severity\": \"medium\", \"note\": \"Step 1 uses the request ID only for app logs and a stack trace, not to join gateway, DB query, downstream-call and host/version signals, so its claim to rule out 'most of the hypothesis space' is asserted rather than shown.\"}, {\"severity\": \"medium\", \"note\": \"Steps 4, 5 and 7 assume access that is never stated or questioned: reading the tenant's raw rows, copying their data into staging, replaying requests as the tenant in prod, and inspecting per-tenant shards and credentials.\"}, {\"severity\": \"medium\", \"note\": \"The 'limit only that tenant reaches' cause gets no specific check: 'unusually large collections', rate-limit middleware and backfill timeouts are mentioned, but there is no step such as comparing row counts, payload size or query time against the limit.\"}, {\"severity\": \"low\", \"note\": \"Migrations appear as a rollback caveat in step 0 but are not examined until step 7, even though a half-applied migration on a large tenant is one of the strongest tenant-shaped hypotheses given deploy timing.\"}, {\"severity\": \"low\", \"note\": \"Step 6 and the wrap-up follow-ups read as generic checklist items that could be written without the specifics of this incident.\"}], \"strengths\": [\"Opens by naming the key reframe, that the handler did not change but the request path did, and carries that through step 3's diff of middleware, serializers, dependencies, config and migrations.\", \"Every step pairs what to look at with what it rules out, including useful discriminators like 100% versus a fraction of requests, host clustering, and app-logged versus never-reached-the-app.\", \"Names concrete tenant-shaped causes: legacy rows with nulls predating a schema change, per-tenant feature flags compared against a healthy tenant, and backfills that time out on large tenants.\", \"Step 5 gives a real way to confirm a cause: old versus new version crossed with this tenant versus a healthy tenant, followed by bisecting the diff.\"], \"rationale\": \"The answer moves sensibly from the deploy to the tenant's data and states what each step excludes, and it names row-, flag- and size-shaped tenant causes, which is the core of the rubric. It loses points for putting rollback ahead of the request-id evidence and for using the request id only for a stack trace rather than to join signals across layers. It also assumes prod and data access without saying so, and gives the tenant-only-limit hypothesis no specific way to confirm it. It is above the bar but not a model on-call answer.\"}"
+}

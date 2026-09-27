@@ -1,0 +1,261 @@
+{"t": 1790512747.614634, "s": "err", "line": "[repeat 0] start"}
+{"t": 1790512747.614791, "s": "err", "line": "[qa] anthropic claude-opus-5-5"}
+{"t": 1790512781.768106, "s": "out", "line": "# On-call runbook: one tenant, one endpoint, 500s since the deploy"}
+{"t": 1790512781.768306, "s": "out", "line": ""}
+{"t": 1790512781.7683442, "s": "out", "line": "The phrase \"nothing changed in that endpoint's code\" usually means the handler file didn't change. The request still passes through middleware, auth, serializers, ORM models, libraries, config, flags, caches, and the schema, and the deploy could have touched any of those. The one-tenant scope tells me the trigger is something about that tenant's data or config meeting something new in the deploy."}
+{"t": 1790512781.768376, "s": "out", "line": ""}
+{"t": 1790512781.768397, "s": "out", "line": "## Step 0: Decide on mitigation before investigating (about 2 minutes)"}
+{"t": 1790512781.7684171, "s": "out", "line": ""}
+{"t": 1790512781.7684338, "s": "out", "line": "- **Check that rollback is safe.** Look for irreversible migrations, or new-format data already written that the old version can't read."}
+{"t": 1790512781.7684538, "s": "out", "line": "- **If it's safe and the tenant is hurting, roll back.** Rollback is also a diagnostic. If the errors stop, the deploy is confirmed as the cause. If they don't, I've saved an hour of chasing the wrong thing."}
+{"t": 1790512781.768477, "s": "out", "line": "- **If rollback isn't safe**, look for a per-tenant flag, a route-level disable, or pinning that tenant to old-version instances."}
+{"t": 1790512781.768499, "s": "out", "line": "- **Tell the account owner or support** that we're aware and working on it."}
+{"t": 1790512781.768518, "s": "out", "line": ""}
+{"t": 1790512781.768533, "s": "out", "line": "*Rules out:* nothing technical. It limits damage while I work."}
+{"t": 1790512781.76855, "s": "out", "line": ""}
+{"t": 1790512781.768565, "s": "out", "line": "## Step 1: Get the actual exception for a failing request"}
+{"t": 1790512781.7685812, "s": "out", "line": ""}
+{"t": 1790512781.768596, "s": "out", "line": "Filter logs and traces by tenant ID and endpoint and pull a stack trace. Confirm the 500 comes from the app itself, not from a gateway or proxy rewriting a timeout or upstream error."}
+{"t": 1790512781.768613, "s": "out", "line": ""}
+{"t": 1790512781.768629, "s": "out", "line": "*Rules out:* most of the rest of this list. A stack trace usually points at a serializer, a query, a null dereference, or a dependency call. It also separates an app exception from a timeout from an infra problem. If there's no app-side log for the request at all, the problem is in front of the app: gateway, WAF, auth proxy, or routing."}
+{"t": 1790512781.7686489, "s": "out", "line": ""}
+{"t": 1790512781.7686641, "s": "out", "line": "## Step 2: Check the timeline"}
+{"t": 1790512781.768683, "s": "out", "line": ""}
+{"t": 1790512781.768697, "s": "out", "line": "- Graph error rate for that tenant and endpoint against the deploy timestamp."}
+{"t": 1790512781.768714, "s": "out", "line": "- Confirm the tenant was hitting this endpoint successfully before the deploy."}
+{"t": 1790512781.768729, "s": "out", "line": "- Check whether their request volume or payload changed."}
+{"t": 1790512781.768744, "s": "out", "line": ""}
+{"t": 1790512781.768758, "s": "out", "line": "*Rules out:*"}
+{"t": 1790512781.768773, "s": "out", "line": "- **Coincidence.** For example, the tenant started using a new client version, a new integration, or a new feature at the same time."}
+{"t": 1790512781.768789, "s": "out", "line": "- **A tenant-side change.** If they were succeeding at 10:00 and failing from 10:05 with the same traffic, it's us."}
+{"t": 1790512781.768805, "s": "out", "line": ""}
+{"t": 1790512781.7688189, "s": "out", "line": "## Step 3: Find where the errors come from"}
+{"t": 1790512781.768834, "s": "out", "line": ""}
+{"t": 1790512781.768849, "s": "out", "line": "- Check which hosts or pods served the failing requests and which version each runs."}
+{"t": 1790512781.768867, "s": "out", "line": "- Check which shard, cell, region, or DB the tenant lives on."}
+{"t": 1790512781.768917, "s": "out", "line": ""}
+{"t": 1790512781.7689312, "s": "out", "line": "*Rules out or finds:*"}
+{"t": 1790512781.768944, "s": "out", "line": "- **Partial rollouts and canaries**, where the tenant is pinned to a cell that got the new build first."}
+{"t": 1790512781.7689579, "s": "out", "line": "- **Version skew**, where old and new instances coexist. The old version writes cache entries or queue messages that the new version can't read, or the reverse."}
+{"t": 1790512781.768972, "s": "out", "line": "- **Shard-specific infra problems**, such as a bad replica or a full disk on the tenant's DB."}
+{"t": 1790512781.768985, "s": "out", "line": ""}
+{"t": 1790512781.768998, "s": "out", "line": "## Step 4: Diff the whole deploy, not the endpoint"}
+{"t": 1790512781.7690141, "s": "out", "line": ""}
+{"t": 1790512781.769026, "s": "out", "line": "Look beyond the handler at everything else that changed:"}
+{"t": 1790512781.7690392, "s": "out", "line": ""}
+{"t": 1790512781.7690508, "s": "out", "line": "- **Shared code:** middleware, auth and permission checks, request and response serialization, base models, validation."}
+{"t": 1790512781.769065, "s": "out", "line": "- **Dependencies:** the lockfile diff. A transitive bump in a JSON library, ORM, or date/time library is a classic cause."}
+{"t": 1790512781.769078, "s": "out", "line": "- **Config and environment variables:** changed defaults, and feature flags flipped as part of the release."}
+{"t": 1790512781.769094, "s": "out", "line": "- **Migrations:** new NOT NULL columns, changed enums, renamed columns, new constraints."}
+{"t": 1790512781.7691069, "s": "out", "line": ""}
+{"t": 1790512781.769119, "s": "out", "line": "*Rules out:* the \"it can't be the deploy\" assumption. This produces a short list of changes that touch this request path."}
+{"t": 1790512781.7691321, "s": "out", "line": ""}
+{"t": 1790512781.769144, "s": "out", "line": "## Step 5: Find what's different about this tenant"}
+{"t": 1790512781.7691572, "s": "out", "line": ""}
+{"t": 1790512781.7691689, "s": "out", "line": "Match the list from step 4 against tenant specifics:"}
+{"t": 1790512781.769182, "s": "out", "line": ""}
+{"t": 1790512781.769194, "s": "out", "line": "- **Data shape:** nulls in fields other tenants populate, legacy records from before a past migration, an enum value the new code doesn't handle, unusual unicode, very large collections, deleted-but-referenced objects."}
+{"t": 1790512781.7692091, "s": "out", "line": "- **Per-tenant config:** feature flags, plan-specific settings, custom fields, locale or timezone. Timezone and locale break serializers more often than you'd expect."}
+{"t": 1790512781.769223, "s": "out", "line": "- **Per-tenant schema or shard:** did the migration fully apply there? Check the schema version on their shard specifically."}
+{"t": 1790512781.7692358, "s": "out", "line": "- **Cached objects:** per-tenant cache entries serialized by the old code that the new model can't deserialize. Evicting that tenant's keys is a cheap test."}
+{"t": 1790512781.7692502, "s": "out", "line": ""}
+{"t": 1790512781.769262, "s": "out", "line": "*Rules out:* the general code path. This is where the actual cause usually is."}
+{"t": 1790512781.769275, "s": "out", "line": ""}
+{"t": 1790512781.769286, "s": "out", "line": "## Step 6: Reproduce"}
+{"t": 1790512781.769299, "s": "out", "line": ""}
+{"t": 1790512781.769311, "s": "out", "line": "- Replay one failing request, or a sanitized copy of the tenant's data, against the new build in staging."}
+{"t": 1790512781.769325, "s": "out", "line": "- Replay the same request against the old build."}
+{"t": 1790512781.7693381, "s": "out", "line": "- Replay it against the new build with a different tenant's data."}
+{"t": 1790512781.7693498, "s": "out", "line": ""}
+{"t": 1790512781.769362, "s": "out", "line": "*Rules out:* remaining ambiguity."}
+{"t": 1790512781.769375, "s": "out", "line": "- Fails on new, passes on old: deploy regression confirmed."}
+{"t": 1790512781.769388, "s": "out", "line": "- Fails only with this tenant's data: data-shape trigger confirmed."}
+{"t": 1790512781.769423, "s": "out", "line": "- Can't reproduce: go back to steps 3 and 5, because it's environmental (cache, shard, flag state)."}
+{"t": 1790512781.76944, "s": "out", "line": ""}
+{"t": 1790512781.769453, "s": "out", "line": "## Fix and follow-up"}
+{"t": 1790512781.769465, "s": "out", "line": ""}
+{"t": 1790512781.7694771, "s": "out", "line": "- **Fix.** Roll back or hotfix the handling for that data shape or config. Repair the tenant's data only if it's genuinely invalid; don't just make the error go away."}
+{"t": 1790512781.769491, "s": "out", "line": "- **Check for other affected tenants.** Search for other tenants with the same data shape who haven't hit the endpoint yet. The problem may be \"one tenant so far.\""}
+{"t": 1790512781.769505, "s": "out", "line": "- **Post-incident actions:**"}
+{"t": 1790512781.769519, "s": "out", "line": "  - Add the case to tests."}
+{"t": 1790512781.769532, "s": "out", "line": "  - Add per-tenant error-rate alerting, since aggregate error rates hide single-tenant failures."}
+{"t": 1790512781.769545, "s": "out", "line": "  - Revisit whether that migration or dependency bump should have gone behind a flag or canary."}
+{"t": 1790512781.7695591, "s": "out", "line": ""}
+{"t": 1790512781.7695732, "s": "out", "line": "**The order in one line:** mitigate, get the stack trace, confirm the timeline, locate the errors in infra, diff the deploy broadly, match the diff against tenant specifics, reproduce. Step 1 is the one not to skip, because the stack trace usually collapses the rest of the list to one or two items."}
+{"t": 1790512781.7696168, "s": "err", "line": "[qa] usage {\"input_tokens\": 85, \"output_tokens\": 2895}"}
+{"t": 1790512781.769693, "s": "err", "line": "[repeat 0] exit 0"}
+{"t": 1790512911.410454, "s": "err", "line": "[repeat 1] start"}
+{"t": 1790512911.4111638, "s": "err", "line": "[qa] anthropic claude-opus-5-5"}
+{"t": 1790512943.569911, "s": "out", "line": "# On-call: 500s for one tenant, one endpoint, since a deploy"}
+{"t": 1790512943.569994, "s": "out", "line": ""}
+{"t": 1790512943.570015, "s": "out", "line": "**The framing I'd start with:** \"Nothing changed in that endpoint's code\" is almost never the same as \"nothing changed in that endpoint's request path.\" The likely culprit is shared code, config, or data that this tenant exercises and others don't. But I don't assume the deploy is guilty until the timing proves it."}
+{"t": 1790512943.5700321, "s": "out", "line": ""}
+{"t": 1790512943.570046, "s": "out", "line": "## 0. Size the blast radius and decide on rollback (first 5 minutes)"}
+{"t": 1790512943.5700579, "s": "out", "line": ""}
+{"t": 1790512943.57007, "s": "out", "line": "**Look at:** error rate for that tenant/endpoint pair, and whether it's 100% or intermittent. Also check how important the tenant is and whether this is a critical path for them."}
+{"t": 1790512943.5700831, "s": "out", "line": ""}
+{"t": 1790512943.570094, "s": "out", "line": "**Why first:** if it's a big customer on a critical path and rollback is cheap and safe (no irreversible migration), I roll back now and debug afterward. Rollback is also diagnostic:"}
+{"t": 1790512943.570105, "s": "out", "line": "- **Errors stop:** it's the deploy. Continue the investigation off the hot path."}
+{"t": 1790512943.570116, "s": "out", "line": "- **Errors continue:** the deploy is a coincidence. I skip to steps 5–6 (tenant-side or data changes)."}
+{"t": 1790512943.5701299, "s": "out", "line": ""}
+{"t": 1790512943.57014, "s": "out", "line": "**Rules out:** spending 40 minutes debugging while a customer is down."}
+{"t": 1790512943.5701509, "s": "out", "line": ""}
+{"t": 1790512943.5701609, "s": "out", "line": "## 1. Read an actual failing request's stack trace"}
+{"t": 1790512943.5701718, "s": "out", "line": ""}
+{"t": 1790512943.5701818, "s": "out", "line": "**Look at:** logs/APM for a specific failing request ID. Find where the exception originates:"}
+{"t": 1790512943.5701928, "s": "out", "line": "- endpoint handler"}
+{"t": 1790512943.570225, "s": "out", "line": "- middleware"}
+{"t": 1790512943.5702348, "s": "out", "line": "- auth/tenant resolution"}
+{"t": 1790512943.570244, "s": "out", "line": "- serializer"}
+{"t": 1790512943.5702531, "s": "out", "line": "- ORM/DB driver"}
+{"t": 1790512943.570262, "s": "out", "line": "- downstream client"}
+{"t": 1790512943.570271, "s": "out", "line": ""}
+{"t": 1790512943.570279, "s": "out", "line": "**Rules out:** guessing. This one step usually halves the search space. If the trace is in a serializer or middleware, \"endpoint code didn't change\" is immediately irrelevant."}
+{"t": 1790512943.570289, "s": "out", "line": ""}
+{"t": 1790512943.5702982, "s": "out", "line": "If there's no stack trace (a 500 from a proxy or gateway, or a swallowed exception), that's a finding too. The failure may be upstream of the app: timeouts, response size limits, gateway config."}
+{"t": 1790512943.5703082, "s": "out", "line": ""}
+{"t": 1790512943.570317, "s": "out", "line": "## 2. Pin the timing to the rollout"}
+{"t": 1790512943.570325, "s": "out", "line": ""}
+{"t": 1790512943.570334, "s": "out", "line": "**Look at:**"}
+{"t": 1790512943.570344, "s": "out", "line": "- Did errors start at the exact moment new instances took traffic?"}
+{"t": 1790512943.5703528, "s": "out", "line": "- If the rollout was staged, or both versions are still running, do failures occur only on new-version pods?"}
+{"t": 1790512943.5703628, "s": "out", "line": ""}
+{"t": 1790512943.570372, "s": "out", "line": "**Rules out:**"}
+{"t": 1790512943.57038, "s": "out", "line": "- **Coincidence.** If errors started 10 minutes before the deploy, the deploy isn't it."}
+{"t": 1790512943.570389, "s": "out", "line": "- **Per-host issues.** If failures cluster on one node regardless of version, it's a bad host or instance, not code."}
+{"t": 1790512943.570399, "s": "out", "line": ""}
+{"t": 1790512943.570409, "s": "out", "line": "## 3. Diff everything in the request path, not just the endpoint"}
+{"t": 1790512943.570417, "s": "out", "line": ""}
+{"t": 1790512943.5704262, "s": "out", "line": "**Look at the deploy diff for:**"}
+{"t": 1790512943.570435, "s": "out", "line": "- **Dependency changes:** lockfile bumps to JSON/serialization libs, ORM, HTTP clients, date/time or Unicode libraries."}
+{"t": 1790512943.570444, "s": "out", "line": "- **Shared code:** middleware, auth, tenant resolution, permission checks, base classes, response wrappers."}
+{"t": 1790512943.570453, "s": "out", "line": "- **Config/env vars:** changed defaults, removed keys, new required settings."}
+{"t": 1790512943.570462, "s": "out", "line": "- **Feature flags** flipped alongside the deploy."}
+{"t": 1790512943.5704708, "s": "out", "line": "- **Schema migrations** that shipped with it."}
+{"t": 1790512943.5704808, "s": "out", "line": ""}
+{"t": 1790512943.5704892, "s": "out", "line": "**Rules out:** \"it's the endpoint\" vs. \"it's something the endpoint calls.\" Usually something here correlates with what step 1 showed."}
+{"t": 1790512943.5704992, "s": "out", "line": ""}
+{"t": 1790512943.570508, "s": "out", "line": "## 4. Figure out what's special about this tenant"}
+{"t": 1790512943.570518, "s": "out", "line": ""}
+{"t": 1790512943.570526, "s": "out", "line": "**Look at the tenant's:**"}
+{"t": 1790512943.570535, "s": "out", "line": "- **Data shape:** nulls where others have values, legacy records predating a constraint, an enum value the new code doesn't handle, unusual Unicode, very large collections, deep nesting."}
+{"t": 1790512943.5705442, "s": "out", "line": "- **Config:** plan tier, feature flags, custom settings, locale/timezone, SSO/auth type."}
+{"t": 1790512943.570553, "s": "out", "line": "- **Placement:** region, shard, or dedicated database."}
+{"t": 1790512943.5705621, "s": "out", "line": ""}
+{"t": 1790512943.570571, "s": "out", "line": "**Then reproduce:** replay one of their failing requests (sanitized, or in a safe environment) against the new build, and against the old build if possible."}
+{"t": 1790512943.570581, "s": "out", "line": ""}
+{"t": 1790512943.5705888, "s": "out", "line": "**Rules out:** whether the trigger is data (reproduces with their data only) or configuration (reproduces with any data plus their flags or settings). A reproduction also gives you the fix test."}
+{"t": 1790512943.570612, "s": "out", "line": ""}
+{"t": 1790512943.570621, "s": "out", "line": "## 5. Check whether the tenant changed something"}
+{"t": 1790512943.5706298, "s": "out", "line": ""}
+{"t": 1790512943.5706382, "s": "out", "line": "**Look at:** request payloads, headers, client/SDK version, and API version for this tenant before vs. after the start time. Also check for recent admin actions on their account: bulk import, settings change, new integration."}
+{"t": 1790512943.5706491, "s": "out", "line": ""}
+{"t": 1790512943.570657, "s": "out", "line": "**Rules out:** blaming the deploy for a tenant-side change that happened to land in the same hour. This is especially likely if step 0's rollback didn't help."}
+{"t": 1790512943.570666, "s": "out", "line": ""}
+{"t": 1790512943.570675, "s": "out", "line": "## 6. Check state that outlives the code"}
+{"t": 1790512943.5706828, "s": "out", "line": ""}
+{"t": 1790512943.570691, "s": "out", "line": "**Look at:**"}
+{"t": 1790512943.5707, "s": "out", "line": "- **Migrations:** did they run fully on this tenant's shard? A partial or failed migration on one shard produces exactly this \"one tenant only\" pattern."}
+{"t": 1790512943.570709, "s": "out", "line": "- **Caches:** entries written in an old format that the new code can't deserialize, or vice versa. Their cache keys may just not have expired yet, while other tenants' have."}
+{"t": 1790512943.570719, "s": "out", "line": "- **Queued jobs or materialized data** produced by the new version with a different shape."}
+{"t": 1790512943.5707278, "s": "out", "line": ""}
+{"t": 1790512943.5707362, "s": "out", "line": "**Rules out:** \"the code is fine, the stored state isn't,\" which rollback alone may not fix. A new-format cache entry can break the old code too."}
+{"t": 1790512943.570745, "s": "out", "line": ""}
+{"t": 1790512943.570754, "s": "out", "line": "## 7. Check per-tenant downstream dependencies"}
+{"t": 1790512943.570762, "s": "out", "line": ""}
+{"t": 1790512943.570771, "s": "out", "line": "**Look at:** anything the endpoint calls with tenant-scoped credentials or routing:"}
+{"t": 1790512943.5707788, "s": "out", "line": "- third-party API keys and tokens (expired or rotated?)"}
+{"t": 1790512943.5707881, "s": "out", "line": "- per-tenant rate limits or quotas"}
+{"t": 1790512943.570797, "s": "out", "line": "- a dedicated DB or search index (disk full, connection limits)"}
+{"t": 1790512943.570805, "s": "out", "line": ""}
+{"t": 1790512943.570814, "s": "out", "line": "**Rules out:** an external failure that the deploy merely surfaced. For example, new code might stop catching a downstream error that old code swallowed."}
+{"t": 1790512943.570823, "s": "out", "line": ""}
+{"t": 1790512943.570831, "s": "out", "line": "## Then"}
+{"t": 1790512943.5708401, "s": "out", "line": ""}
+{"t": 1790512943.570849, "s": "out", "line": "- **Fix:** targeted if the cause is clear (hotfix the data handling, repair the migration, flush that tenant's cache keys). Otherwise, stay rolled back."}
+{"t": 1790512943.570858, "s": "out", "line": "- **Communicate:** update the customer or account team with scope and ETA as soon as step 0 is done, not after root cause."}
+{"t": 1790512943.570867, "s": "out", "line": "- **Follow-up:** turn the tenant's data shape into a test case. If per-tenant error alerting didn't catch this before a human did, add it. Per-tenant signals get drowned out in aggregate error rates."}
+{"t": 1790512943.570876, "s": "out", "line": ""}
+{"t": 1790512943.5708852, "s": "out", "line": "**The most common answer in my experience:** a dependency or shared-code change meets one tenant's odd legacy data, or a migration or cache is in a bad state on their shard. Steps 1, 3, and 4 find it most of the time."}
+{"t": 1790512943.570909, "s": "err", "line": "[qa] usage {\"input_tokens\": 85, \"output_tokens\": 2791}"}
+{"t": 1790512943.570988, "s": "err", "line": "[repeat 1] exit 0"}
+{"t": 1790513055.984448, "s": "err", "line": "[repeat 2] start"}
+{"t": 1790513055.984884, "s": "err", "line": "[qa] anthropic claude-opus-5-5"}
+{"t": 1790513090.113843, "s": "out", "line": "# On-call triage: 500s for one tenant, one endpoint, since a deploy"}
+{"t": 1790513090.113966, "s": "out", "line": ""}
+{"t": 1790513090.113997, "s": "out", "line": "My working assumption is that \"nothing changed in that endpoint's code\" is true but irrelevant. The request path is much bigger than the handler. The correlation with the deploy is strong, so I treat the deploy as guilty until shown otherwise, and I look for what's different about this tenant that makes it the only one exposed."}
+{"t": 1790513090.1140218, "s": "out", "line": ""}
+{"t": 1790513090.114039, "s": "out", "line": "## 0. Decide on mitigation first (2 minutes)"}
+{"t": 1790513090.114055, "s": "out", "line": ""}
+{"t": 1790513090.11407, "s": "out", "line": "- **Look at:** Is rollback cheap and safe? In particular, did the deploy include a DB migration that the old code can't handle? How bad is the impact for this tenant: a core workflow or a side feature?"}
+{"t": 1790513090.1140852, "s": "out", "line": "- **Action:** If rollback is safe, I'll often roll back right away. It's the fastest fix, and it's also the best single diagnostic."}
+{"t": 1790513090.114099, "s": "out", "line": "- **Rules out:** If errors stop on rollback, the cause is in the deploy (code, deps, config). If they persist, it's the data, a migration, or a coincidence."}
+{"t": 1790513090.114112, "s": "out", "line": "- **Caveat:** If a migration ran, rollback may not help or may make things worse. Then I go straight to steps 1–3."}
+{"t": 1790513090.1141279, "s": "out", "line": "- Either way, I open an incident channel and tell support/CS that one tenant is affected, so the customer hears from us first."}
+{"t": 1790513090.114142, "s": "out", "line": ""}
+{"t": 1790513090.114155, "s": "out", "line": "## 1. Get the actual error for a failing request"}
+{"t": 1790513090.1141691, "s": "out", "line": ""}
+{"t": 1790513090.114182, "s": "out", "line": "- **Look at:** Pull a few failing request IDs and their stack traces from app logs or APM. Then check where the 500 originates: the app, the gateway/LB, a sidecar, or a proxied downstream."}
+{"t": 1790513090.1141949, "s": "out", "line": "- **Rules out:** Most of the hypothesis space. A `KeyError` in a serializer, a DB constraint violation, a timeout, and an auth failure mapped to 500 all point to different places. If the app never logged the request, the problem is upstream of the app (routing, gateway, WAF rules, tenant-based routing to a bad pool)."}
+{"t": 1790513090.114209, "s": "out", "line": ""}
+{"t": 1790513090.114221, "s": "out", "line": "## 2. Pin down the scope and timing precisely"}
+{"t": 1790513090.114233, "s": "out", "line": ""}
+{"t": 1790513090.1142452, "s": "out", "line": "- **Look at:**"}
+{"t": 1790513090.1142578, "s": "out", "line": "  - Error rate for that tenant × endpoint, overlaid with the deploy timeline and rollout progression."}
+{"t": 1790513090.114271, "s": "out", "line": "  - Is it 100% of their requests or a fraction?"}
+{"t": 1790513090.114283, "s": "out", "line": "  - Did it start at deploy start, deploy end, or when the rollout reached specific hosts/regions/shards?"}
+{"t": 1790513090.114296, "s": "out", "line": "  - Are failing requests served only by the new version?"}
+{"t": 1790513090.114308, "s": "out", "line": "- **Rules out:**"}
+{"t": 1790513090.1143198, "s": "out", "line": "  - **Coincidence:** if it started 20 minutes after the deploy, I look harder at step 6."}
+{"t": 1790513090.114333, "s": "out", "line": "  - **Partial rollout or a single bad host:** failures would cluster by host."}
+{"t": 1790513090.114345, "s": "out", "line": "  - **Payload-dependent vs. tenant-dependent:** a fraction points to payload; 100% points to tenant config or state."}
+{"t": 1790513090.114357, "s": "out", "line": "  - It also tells me whether other tenants are quietly erroring at lower rates that I haven't noticed."}
+{"t": 1790513090.114408, "s": "out", "line": ""}
+{"t": 1790513090.114422, "s": "out", "line": "## 3. Diff the whole deploy, not the endpoint"}
+{"t": 1790513090.114434, "s": "out", "line": ""}
+{"t": 1790513090.114445, "s": "out", "line": "- **Look at:**"}
+{"t": 1790513090.114455, "s": "out", "line": "  - Everything the request touches:"}
+{"t": 1790513090.114465, "s": "out", "line": "    - middleware (auth, tenancy resolution, rate limiting)"}
+{"t": 1790513090.114476, "s": "out", "line": "    - shared models and serializers"}
+{"t": 1790513090.114486, "s": "out", "line": "    - ORM/query helpers"}
+{"t": 1790513090.114496, "s": "out", "line": "    - validation libraries"}
+{"t": 1790513090.114506, "s": "out", "line": "  - Lockfile and dependency bumps (transitive ones included)."}
+{"t": 1790513090.114516, "s": "out", "line": "  - Base image and runtime version."}
+{"t": 1790513090.114526, "s": "out", "line": "  - Config and env var changes, secrets, feature flag defaults."}
+{"t": 1790513090.114536, "s": "out", "line": "  - Migrations shipped with the deploy."}
+{"t": 1790513090.1145449, "s": "out", "line": "- **Rules out:** The \"untouched code\" illusion. Common real causes: a shared serializer that now chokes on a null field, a library upgrade that changed behavior (dates, decimals, unicode, JSON handling), or a new middleware that assumes a tenant setting exists."}
+{"t": 1790513090.114558, "s": "out", "line": ""}
+{"t": 1790513090.1145668, "s": "out", "line": "## 4. Figure out what's special about this tenant"}
+{"t": 1790513090.1145768, "s": "out", "line": ""}
+{"t": 1790513090.114588, "s": "out", "line": "- **Look at:**"}
+{"t": 1790513090.1145978, "s": "out", "line": "  - Tenant config and feature flags compared with a healthy tenant."}
+{"t": 1790513090.114608, "s": "out", "line": "  - Plan or tier, region or DB shard."}
+{"t": 1790513090.114617, "s": "out", "line": "  - Custom settings and integrations."}
+{"t": 1790513090.114626, "s": "out", "line": "  - Data shape: legacy records predating a schema change, nulls where newer tenants have values, unusually large collections, odd characters, soft-deleted references."}
+{"t": 1790513090.1146371, "s": "out", "line": "- **Rules out:** Whether the trigger is config (flag or setting drives a different code path), placement (their shard or region), or data (a specific record the new code can't handle). I cross-reference this with the stack trace from step 1; usually the two together name the bug."}
+{"t": 1790513090.11465, "s": "out", "line": ""}
+{"t": 1790513090.114659, "s": "out", "line": "## 5. Reproduce deliberately"}
+{"t": 1790513090.11467, "s": "out", "line": ""}
+{"t": 1790513090.11468, "s": "out", "line": "- **Look at:** Replay a failing request against the new version in staging with a copy of that tenant's relevant data or config, or safely as that tenant in prod if it's a read. Run the identical request as a healthy tenant. If possible, run it against the old version too."}
+{"t": 1790513090.1146922, "s": "out", "line": "- **Rules out:** Environmental flakiness vs. deterministic bug, and code vs. data. If old version + their data works and new version + their data fails, the deploy is confirmed and I can bisect the diff."}
+{"t": 1790513090.114702, "s": "out", "line": ""}
+{"t": 1790513090.114712, "s": "out", "line": "## 6. Rule out a change on the tenant's side"}
+{"t": 1790513090.114721, "s": "out", "line": ""}
+{"t": 1790513090.114731, "s": "out", "line": "- **Look at:** Request logs from before vs. after the start time. Did their client version, API version header, payload shape, request volume, or integration change? Did someone edit their account settings around the same time?"}
+{"t": 1790513090.114741, "s": "out", "line": "- **Rules out:** A coincidental customer-side change. It's rare given the deploy timing, but it's cheap to check and embarrassing to miss."}
+{"t": 1790513090.114752, "s": "out", "line": ""}
+{"t": 1790513090.1147609, "s": "out", "line": "## 7. Check migrations, backfills, and tenant-specific dependencies"}
+{"t": 1790513090.114771, "s": "out", "line": ""}
+{"t": 1790513090.114791, "s": "out", "line": "- **Look at:**"}
+{"t": 1790513090.1148002, "s": "out", "line": "  - Did a migration or backfill run at deploy, and did it touch or skip this tenant's rows (batch failure, timeout on a large tenant)?"}
+{"t": 1790513090.114811, "s": "out", "line": "  - Does the tenant have a dedicated DB, schema, or shard in a different state?"}
+{"t": 1790513090.1148212, "s": "out", "line": "  - Per-tenant credentials, webhooks, or third-party integrations that the endpoint calls and that might have rotated or broken?"}
+{"t": 1790513090.1148312, "s": "out", "line": "- **Rules out:** A half-applied schema or data state, and downstream failures surfacing as 500s. Big tenants are exactly the ones whose backfills time out."}
+{"t": 1790513090.1148422, "s": "out", "line": ""}
+{"t": 1790513090.114851, "s": "out", "line": "## Wrap-up"}
+{"t": 1790513090.11486, "s": "out", "line": ""}
+{"t": 1790513090.114868, "s": "out", "line": "- **Fix:** Roll back, flag off, or patch the specific path. Fix the tenant's data only if it's genuinely bad and the code is right."}
+{"t": 1790513090.114878, "s": "out", "line": "- **Verify:** Confirm the tenant's error rate returns to baseline, and check whether other tenants with similar data or config are latently affected."}
+{"t": 1790513090.114888, "s": "out", "line": "- **Follow up:** Test fixtures with legacy or edge-case tenant data, canary metrics broken down per tenant (aggregate error rates hide this class of bug), and alerts on per-tenant error spikes."}
+{"t": 1790513090.11491, "s": "err", "line": "[qa] usage {\"input_tokens\": 85, \"output_tokens\": 2919}"}
+{"t": 1790513090.114954, "s": "err", "line": "[repeat 2] exit 0"}

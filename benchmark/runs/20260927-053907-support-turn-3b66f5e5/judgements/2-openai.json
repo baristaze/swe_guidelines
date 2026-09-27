@@ -1,0 +1,38 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 12.746,
+  "usage": {
+    "input_tokens": 1919,
+    "output_tokens": 777
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 88,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 0 puts rollback ahead of inspecting a failing request ID, despite the prompt calling for triage grounded in the failure signal."
+      },
+      {
+        "severity": "low",
+        "note": "Steps 1–4 do not explicitly use one failing request ID to join the stack trace with its deployed version, tenant flags, shard, and offending data."
+      },
+      {
+        "severity": "low",
+        "note": "Step 4 mentions unusually large collections but does not say how to confirm a tenant-specific limit or identify the exact row that triggers the failure."
+      }
+    ],
+    "strengths": [
+      "The answer treats unchanged endpoint code as compatible with failures in shared code, dependencies, configuration, and migrations.",
+      "Most steps state what their observations would rule out, including rollout, placement, payload, tenant configuration, and data hypotheses.",
+      "It gives concrete tenant-shaped causes and a controlled reproduction using the tenant's data against old and new versions."
+    ],
+    "rationale": "This is a useful on-call sequence with specific hypotheses, confirmation paths, and attention to mitigation. Its main weakness is ordering: it proposes rollback before using the request-level evidence that could narrow the failure quickly. The missing explicit request-ID correlation and limit check keep it short of an excellent answer."
+  },
+  "raw": "{\"score\":88,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Step 0 puts rollback ahead of inspecting a failing request ID, despite the prompt calling for triage grounded in the failure signal.\"},{\"severity\":\"low\",\"note\":\"Steps 1–4 do not explicitly use one failing request ID to join the stack trace with its deployed version, tenant flags, shard, and offending data.\"},{\"severity\":\"low\",\"note\":\"Step 4 mentions unusually large collections but does not say how to confirm a tenant-specific limit or identify the exact row that triggers the failure.\"}],\"strengths\":[\"The answer treats unchanged endpoint code as compatible with failures in shared code, dependencies, configuration, and migrations.\",\"Most steps state what their observations would rule out, including rollout, placement, payload, tenant configuration, and data hypotheses.\",\"It gives concrete tenant-shaped causes and a controlled reproduction using the tenant's data against old and new versions.\"],\"rationale\":\"This is a useful on-call sequence with specific hypotheses, confirmation paths, and attention to mitigation. Its main weakness is ordering: it proposes rollback before using the request-level evidence that could narrow the failure quickly. The missing explicit request-ID correlation and limit check keep it short of an excellent answer.\"}"
+}

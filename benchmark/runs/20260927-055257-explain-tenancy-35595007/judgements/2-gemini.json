@@ -1,0 +1,26 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 13.272,
+  "usage": {
+    "input_tokens": 1578,
+    "output_tokens": 193
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 100,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Accurately identifies the tenant predicate as the primary fence and specifies its concrete location in the WHERE clause.",
+      "Correctly describes the deliberate breach negative control test, detailing the two-run verification process with and without row-level security.",
+      "Strictly adheres to citation rules by referencing section titles exclusively and avoiding section numbers.",
+      "Explicitly and accurately lists the exact reviewer lens IDs as requested by the rubric."
+    ],
+    "rationale": "The artifact follows all instructions perfectly, meeting every specific requirement of the rubric. It directly addresses the prompt by explaining the mechanisms of the tenant fence and the evidence that proves it, without introducing extraneous general advice or forbidden numbering. The thoroughness of the explanation adds direct value rather than unnecessary length."
+  },
+  "raw": "{\n  \"score\": 100,\n  \"verdict\": \"pass\",\n  \"findings\": [],\n  \"strengths\": [\n    \"Accurately identifies the tenant predicate as the primary fence and specifies its concrete location in the WHERE clause.\",\n    \"Correctly describes the deliberate breach negative control test, detailing the two-run verification process with and without row-level security.\",\n    \"Strictly adheres to citation rules by referencing section titles exclusively and avoiding section numbers.\",\n    \"Explicitly and accurately lists the exact reviewer lens IDs as requested by the rubric.\"\n  ],\n  \"rationale\": \"The artifact follows all instructions perfectly, meeting every specific requirement of the rubric. It directly addresses the prompt by explaining the mechanisms of the tenant fence and the evidence that proves it, without introducing extraneous general advice or forbidden numbering. The thoroughness of the explanation adds direct value rather than unnecessary length.\"\n}"
+}

@@ -1,0 +1,26 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 13.751,
+  "usage": {
+    "input_tokens": 1535,
+    "output_tokens": 190
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 100,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Accurately names the tenant predicate as the primary fence and specifies it is applied in the WHERE clause.",
+      "Correctly identifies cross-tenant test cases and the deliberate breach (negative control) as the required evidence, noting the specific two suite runs.",
+      "Strictly adheres to citing the guideline by section title rather than number.",
+      "Clearly lists the appropriate reviewer lenses by their specific IDs."
+    ],
+    "rationale": "The artifact meets all the rubric's requirements perfectly. It clearly explains how the tenant fence is held using both predicates and policies, and correctly details the specific tests that prove it holds. The formatting rules regarding section citations and reviewer lenses were followed flawlessly, resulting in a comprehensive and highly professional response."
+  },
+  "raw": "{\n  \"score\": 100,\n  \"verdict\": \"pass\",\n  \"findings\": [],\n  \"strengths\": [\n    \"Accurately names the tenant predicate as the primary fence and specifies it is applied in the WHERE clause.\",\n    \"Correctly identifies cross-tenant test cases and the deliberate breach (negative control) as the required evidence, noting the specific two suite runs.\",\n    \"Strictly adheres to citing the guideline by section title rather than number.\",\n    \"Clearly lists the appropriate reviewer lenses by their specific IDs.\"\n  ],\n  \"rationale\": \"The artifact meets all the rubric's requirements perfectly. It clearly explains how the tenant fence is held using both predicates and policies, and correctly details the specific tests that prove it holds. The formatting rules regarding section citations and reviewer lenses were followed flawlessly, resulting in a comprehensive and highly professional response.\"\n}"
+}

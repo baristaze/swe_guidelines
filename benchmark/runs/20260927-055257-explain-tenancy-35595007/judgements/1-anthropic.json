@@ -1,0 +1,40 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 10.228,
+  "usage": {
+    "input_tokens": 2738,
+    "output_tokens": 866
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 85,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The Second Fence section spends many bullets on mechanics (set_config funnel, NULLIF, FOR ALL policy shape, three logins) that go well beyond what the question needs, adding length without sharpening the answer."
+      },
+      {
+        "severity": "low",
+        "note": "The framing 'The guideline asks for four pieces of evidence' may be the artifact's own tally rather than a count the guideline states, which risks reading as an invented rule."
+      },
+      {
+        "severity": "low",
+        "note": "Lens STO-33 (lifting FORCE during a data migration) is tangential to how the fence is held and proved, and pads the lens list."
+      }
+    ],
+    "strengths": [
+      "It names the query's tenant predicate as the fence and places it in the WHERE clause, noting that a signature taking org_id only shows the tenant was offered, not applied.",
+      "It names the cross-tenant cases from Tests as the fence's evidence and describes what they cover.",
+      "It states the negative control exactly: one predicate is removed, the suite is green with the policy live and red with it off, and both runs are recorded.",
+      "It cites sections only by title (Storage Principles, Namespace Shape, The Second Fence, Tests) and never by number.",
+      "It lists reviewer lenses by id, including CTX-30 and CTX-31 for the cross-tenant case and the deliberate breach."
+    ],
+    "rationale": "Every element the rubric requires is present and anchored in quoted guideline text, with no section numbers and no general multi-tenancy advice. The deliberate breach is described exactly as the rubric specifies, including both runs recorded. Points come off because the mechanics of the second fence and some peripheral evidence and lenses add length beyond what the question needs. The 'four pieces of evidence' framing may also be the artifact's own structure rather than something the guideline states."
+  },
+  "raw": "{\"score\": 85, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The Second Fence section spends many bullets on mechanics (set_config funnel, NULLIF, FOR ALL policy shape, three logins) that go well beyond what the question needs, adding length without sharpening the answer.\"}, {\"severity\": \"low\", \"note\": \"The framing 'The guideline asks for four pieces of evidence' may be the artifact's own tally rather than a count the guideline states, which risks reading as an invented rule.\"}, {\"severity\": \"low\", \"note\": \"Lens STO-33 (lifting FORCE during a data migration) is tangential to how the fence is held and proved, and pads the lens list.\"}], \"strengths\": [\"It names the query's tenant predicate as the fence and places it in the WHERE clause, noting that a signature taking org_id only shows the tenant was offered, not applied.\", \"It names the cross-tenant cases from Tests as the fence's evidence and describes what they cover.\", \"It states the negative control exactly: one predicate is removed, the suite is green with the policy live and red with it off, and both runs are recorded.\", \"It cites sections only by title (Storage Principles, Namespace Shape, The Second Fence, Tests) and never by number.\", \"It lists reviewer lenses by id, including CTX-30 and CTX-31 for the cross-tenant case and the deliberate breach.\"], \"rationale\": \"Every element the rubric requires is present and anchored in quoted guideline text, with no section numbers and no general multi-tenancy advice. The deliberate breach is described exactly as the rubric specifies, including both runs recorded. Points come off because the mechanics of the second fence and some peripheral evidence and lenses add length beyond what the question needs. The 'four pieces of evidence' framing may also be the artifact's own structure rather than something the guideline states.\"}"
+}
