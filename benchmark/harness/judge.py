@@ -39,27 +39,41 @@ RETRY_WAIT_S = 4.0
 # The matrix a monthly run redefines. `models.yaml` beside `run.py` is the
 # copy to edit; this is the fallback when the file is missing, and it is the
 # shape the file follows: one model, optional fallbacks tried in order when a
-# model is refused or out of quota, and the effort word each SDK expects.
+# model is refused or out of quota, the effort word each SDK expects, and the
+# list price of each model in US dollars per million input and output tokens.
 DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
     "anthropic": {
         "model": "claude-opus-5",
         "fallbacks": ["claude-sonnet-5"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
+        "prices": {
+            "claude-opus-5-5": {"input": 4, "output": 20},
+            "claude-opus-5": {"input": 5, "output": 25},
+            "claude-sonnet-5": {"input": 2, "output": 10},
+        },
     },
     "openai": {
         "model": "gpt-5.5",
         "fallbacks": ["gpt-5.4", "gpt-5.1"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
+        "prices": {
+            "gpt-6-sol": {"input": 2, "output": 10},
+            "gpt-5.5": {"input": 5, "output": 30},
+            "gpt-5.4": {"input": 2.5, "output": 15},
+            "gpt-5.1": {"input": 1.25, "output": 10},
+        },
     },
     "gemini": {
         "model": "gemini-3.1-pro-preview",
         "fallbacks": ["gemini-3.8-flash"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
+        "prices": {"gemini-3.1-pro-preview": {"input": 2, "output": 12}, "gemini-3.8-flash": {"input": 0.75, "output": 3.75}},
     },
     "xai": {
         "model": "grok-4",
         "fallbacks": [],
         "effort": {"low": "low", "medium": "high", "high": "high"},
+        "prices": {"grok-4.7": {"input": 2, "output": 6}, "grok-4": {"input": 1.25, "output": 2.5}},
     },
 }
 
@@ -196,6 +210,8 @@ class Judgement:
     # The model the matrix put first and why it did not answer, when a
     # later model answered in its place; None when the first one answered.
     fallback: dict[str, str] | None = None
+    # What the usage cost at the matrix's list price; None when the model has no price.
+    cost_usd: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -205,6 +221,7 @@ class Judgement:
             "status": self.status,
             "latency_s": round(self.latency_s, 3),
             "usage": dict(self.usage),
+            "cost_usd": self.cost_usd,
             "error": self.error,
             "fallback": dict(self.fallback) if self.fallback else None,
             "verdict": self.verdict.as_dict() if self.verdict else None,
@@ -284,6 +301,76 @@ def effort_for(matrix: dict[str, dict[str, Any]], provider: str, effort: str) ->
     return str(matrix.get(provider, {}).get("effort", {}).get(effort, effort))
 
 
+def price_for(matrix: dict[str, dict[str, Any]], provider: str, model: str) -> dict[str, float] | None:
+    """The list price of a model in US dollars per million tokens, or None when the matrix has none."""
+    price = matrix.get(provider, {}).get("prices", {}).get(model)
+    if not isinstance(price, dict) or "input" not in price or "output" not in price:
+        return None
+    return {"input": float(price["input"]), "output": float(price["output"])}
+
+
+def cost_usd(matrix: dict[str, dict[str, Any]], provider: str, model: str, usage: dict[str, int]) -> float | None:
+    """What a call's usage cost at the model's list price; None when the model has no price.
+
+    Every input token is priced as input, cached or not, so a provider's
+    cache discount makes the true bill lower, never higher. The output
+    is the billed output, reasoning included.
+    """
+    price = price_for(matrix, provider, model)
+    if price is None:
+        return None
+    dollars = (usage.get("input_tokens", 0) * price["input"] + usage.get("output_tokens", 0) * price["output"]) / 1e6
+    return round(dollars, 6)
+
+
+def usage_of(
+    input_tokens: Any, output_tokens: Any, reasoning_tokens: Any = None, reasoning_in_output: bool = True
+) -> dict[str, int]:
+    """One call's usage in the shape every provider records.
+
+    `output_tokens` is the billed output. Anthropic and OpenAI count the
+    reasoning inside it; Gemini and xAI report it beside it, so it is added
+    in. `reasoning_tokens` is there when the provider reports it.
+    """
+    reasoning = int(reasoning_tokens or 0)
+    usage = {
+        "input_tokens": int(input_tokens or 0),
+        "output_tokens": int(output_tokens or 0) + (0 if reasoning_in_output else reasoning),
+    }
+    if reasoning_tokens is not None:
+        usage["reasoning_tokens"] = reasoning
+    return usage
+
+
+def anthropic_usage(u: Any) -> dict[str, int]:
+    details = getattr(u, "output_tokens_details", None)
+    return usage_of(getattr(u, "input_tokens", 0), getattr(u, "output_tokens", 0), getattr(details, "thinking_tokens", None))
+
+
+def openai_usage(u: Any) -> dict[str, int]:
+    details = getattr(u, "output_tokens_details", None)
+    return usage_of(getattr(u, "input_tokens", 0), getattr(u, "output_tokens", 0), getattr(details, "reasoning_tokens", None))
+
+
+def gemini_usage(meta: Any) -> dict[str, int]:
+    return usage_of(
+        getattr(meta, "prompt_token_count", 0),
+        getattr(meta, "candidates_token_count", 0),
+        getattr(meta, "thoughts_token_count", None),
+        reasoning_in_output=False,
+    )
+
+
+def xai_usage(u: Any) -> dict[str, int]:
+    details = getattr(u, "completion_tokens_details", None)
+    return usage_of(
+        getattr(u, "prompt_tokens", 0),
+        getattr(u, "completion_tokens", 0),
+        getattr(details, "reasoning_tokens", None),
+        reasoning_in_output=False,
+    )
+
+
 def _verdict_model():
     """The pydantic model the SDKs parse into. Imported here, not at module import."""
     from pydantic import BaseModel, Field
@@ -318,11 +405,7 @@ def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict
     )
     parsed = response.parsed_output
     data = parsed.model_dump() if parsed is not None else {}
-    usage = {
-        "input_tokens": getattr(response.usage, "input_tokens", 0) or 0,
-        "output_tokens": getattr(response.usage, "output_tokens", 0) or 0,
-    }
-    return data, json.dumps(data), usage
+    return data, json.dumps(data), anthropic_usage(response.usage)
 
 
 def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
@@ -337,11 +420,7 @@ def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
     )
     parsed = response.output_parsed
     data = parsed.model_dump() if parsed is not None else {}
-    usage = {
-        "input_tokens": getattr(response.usage, "input_tokens", 0) or 0,
-        "output_tokens": getattr(response.usage, "output_tokens", 0) or 0,
-    }
-    return data, response.output_text or json.dumps(data), usage
+    return data, response.output_text or json.dumps(data), openai_usage(response.usage)
 
 
 def gemini_client(key: str):
@@ -376,12 +455,7 @@ def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
     )
     parsed = response.parsed
     data = parsed.model_dump() if parsed is not None else json.loads(response.text or "{}")
-    meta = response.usage_metadata
-    usage = {
-        "input_tokens": getattr(meta, "prompt_token_count", 0) or 0,
-        "output_tokens": getattr(meta, "candidates_token_count", 0) or 0,
-    }
-    return data, response.text or json.dumps(data), usage
+    return data, response.text or json.dumps(data), gemini_usage(response.usage_metadata)
 
 
 def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
@@ -397,11 +471,7 @@ def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str,
     message = response.choices[0].message
     parsed = message.parsed
     data = parsed.model_dump() if parsed is not None else json.loads(message.content or "{}")
-    usage = {
-        "input_tokens": getattr(response.usage, "prompt_tokens", 0) or 0,
-        "output_tokens": getattr(response.usage, "completion_tokens", 0) or 0,
-    }
-    return data, message.content or json.dumps(data), usage
+    return data, message.content or json.dumps(data), xai_usage(response.usage)
 
 
 CALLS: dict[str, Callable[[str, str, str, str], tuple[dict, str, dict]]] = {
@@ -469,6 +539,7 @@ def judge_one(
             usage=usage,
             raw=raw,
             verdict=verdict,
+            cost_usd=cost_usd(matrix, name, model, usage),
             fallback={"from": models[0], "reason": errors[0] if errors else ""} if model != models[0] else None,
         )
     return Judgement(
@@ -508,37 +579,23 @@ def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "
         ) as stream:
             message = stream.get_final_message()
         text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
-        usage = {"input_tokens": message.usage.input_tokens or 0, "output_tokens": message.usage.output_tokens or 0}
-        return text, usage
+        return text, anthropic_usage(message.usage)
     if name == "openai":
         from openai import OpenAI
 
         client = OpenAI(api_key=key)
         response = client.responses.create(model=model, input=prompt, reasoning={"effort": effort})
-        usage = {
-            "input_tokens": getattr(response.usage, "input_tokens", 0) or 0,
-            "output_tokens": getattr(response.usage, "output_tokens", 0) or 0,
-        }
-        return response.output_text or "", usage
+        return response.output_text or "", openai_usage(response.usage)
     if name == "gemini":
         client = gemini_client(key)
         response = client.models.generate_content(
             model=model, contents=prompt, config={"thinking_config": {"thinking_level": effort}}
         )
-        meta = response.usage_metadata
-        usage = {
-            "input_tokens": getattr(meta, "prompt_token_count", 0) or 0,
-            "output_tokens": getattr(meta, "candidates_token_count", 0) or 0,
-        }
-        return response.text or "", usage
+        return response.text or "", gemini_usage(response.usage_metadata)
     from openai import OpenAI
 
     client = OpenAI(api_key=key, base_url="https://api.x.ai/v1")
     response = client.chat.completions.create(
         model=model, messages=[{"role": "user", "content": prompt}], reasoning_effort=effort
     )
-    usage = {
-        "input_tokens": getattr(response.usage, "prompt_tokens", 0) or 0,
-        "output_tokens": getattr(response.usage, "completion_tokens", 0) or 0,
-    }
-    return response.choices[0].message.content or "", usage
+    return response.choices[0].message.content or "", xai_usage(response.usage)

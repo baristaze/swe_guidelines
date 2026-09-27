@@ -1,11 +1,19 @@
 # The judge matrix. One model per provider, the fallbacks tried in order
-# when the first is refused or out of quota, and the word each SDK wants
-# for an effort level.
+# when the first is refused or out of quota, the word each SDK wants for an
+# effort level, and each model's list price in US dollars per million input
+# and output tokens.
+#
+# The prices are the standard tier's, read from each provider's pricing
+# page on 2026-09-27, and below each provider's long-context threshold
+# (200k prompt tokens for Gemini and xAI, 272k for OpenAI), where every
+# prompt of the shipped scenarios falls. A model with no price here is
+# reported by its tokens alone, with its cost unknown.
 #
 # This file is a snapshot, not a rule. A monthly run redefines it: put
-# the newest frontier model of each provider first and move the one it
-# replaces into the fallbacks. `harness/judge.py` holds the same matrix
-# as a default, so a missing file is not a broken run.
+# the newest frontier model of each provider first, move the one it
+# replaces into the fallbacks, and give every model its price.
+# `harness/judge.py` holds the same matrix as a default, so a missing file
+# is not a broken run.
 
 anthropic:
   model: claude-opus-5
@@ -14,6 +22,10 @@ anthropic:
     low: low
     medium: medium
     high: high
+  prices:
+    claude-opus-5-5: {input: 4, output: 20}
+    claude-opus-5: {input: 5, output: 25}
+    claude-sonnet-5: {input: 2, output: 10}
 
 openai:
   model: gpt-5.5
@@ -22,6 +34,11 @@ openai:
     low: low
     medium: medium
     high: high
+  prices:
+    gpt-6-sol: {input: 2, output: 10}
+    gpt-5.5: {input: 5, output: 30}
+    gpt-5.4: {input: 2.5, output: 15}
+    gpt-5.1: {input: 1.25, output: 10}
 
 gemini:
   # The pro preview is the judge when the account has quota for it; the
@@ -33,6 +50,10 @@ gemini:
     low: low
     medium: medium
     high: high
+  prices:
+    gemini-3.1-pro-preview: {input: 2, output: 12}
+    # The flash price holds through 2026-12-31 and doubles on 2027-01-01.
+    gemini-3.8-flash: {input: 0.75, output: 3.75}
 
 xai:
   model: grok-4
@@ -41,3 +62,7 @@ xai:
     low: low
     medium: high
     high: high
+  prices:
+    grok-4.7: {input: 2, output: 6}
+    # grok-4 is retired; the API serves it with grok-4.3 and bills grok-4.3's price.
+    grok-4: {input: 1.25, output: 2.5}
