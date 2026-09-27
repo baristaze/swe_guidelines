@@ -582,7 +582,7 @@ def test_the_agentic_report_shows_each_reference_the_weighing_the_gaps_and_the_t
     gaps = text[text.index("## Gaps") : text.index("## Strengths")]
     assert "### `guideline` (weight 0.4)" in gaps and "### `reference` (weight 0.6)" in gaps
     assert gaps.index("**high**") < gaps.index("**low**")  # most severe first
-    assert "- **high** (anthropic, repeat 0): a high gap (output `src/app.py`, reference `Async`)." in gaps
+    assert "- **high** (anthropic, repeat 0): a high gap. In the output: `src/app.py`. In the reference: `Async`." in gaps
     assert "## Findings" not in text
     assert "- (anthropic, `reference`) a strength against reference" in text
     assert "- **anthropic**, repeat 0: anthropic weighed it" in text
@@ -594,3 +594,23 @@ def test_the_agentic_report_shows_each_reference_the_weighing_the_gaps_and_the_t
         + "a" * 40
         + "`, pins the guideline at `v0.37.0`."
     ) in text
+
+
+def test_a_gap_in_the_report_reads_as_sentences_with_its_lens_and_its_fix():
+    j = judged("xai", {"guideline": 50, "reference": 50}, gaps=())
+    j.references["guideline"]["gaps"] = [
+        {
+            "severity": "medium",
+            "what": "No outbox",
+            "in_output": "",
+            "in_reference": "Async, The Outbox",
+            "lens": "ASY-03",
+            "fix": "Add one",
+        }
+    ]
+    text = R.report_text(agentic_run([R.RepeatResult(0, {"code": 0}, [], [j])]))
+    expected = (
+        "- **medium** ASY-03 (xai, repeat 0): No outbox. In the output: nothing there. In the reference: `Async, The Outbox`."
+    )
+    assert f"{expected} Fix: Add one." in text
+    assert "### `reference` (weight 0.6)\n\nNo judge named a gap." in text

@@ -565,6 +565,12 @@ def reference_lines(run: RunResult, summary: dict[str, Any]) -> list[str]:
     return [*lines, "", f"The harness weighs each judgement's scores: {formula}.", ""]
 
 
+def sentence(text: str) -> str:
+    """A judge's note as a sentence of the report: its own ending, or a period."""
+    text = text.strip()
+    return text if not text or text.endswith((".", "!", "?")) else f"{text}."
+
+
 def gap_lines(run: RunResult) -> list[str]:
     """The report's gaps, per reference, most severe first, each with where it is in each tree."""
     lines = ["## Gaps", ""]
@@ -573,9 +579,13 @@ def gap_lines(run: RunResult) -> list[str]:
         gaps = gaps_by_severity(run.repeats, name)
         for g in gaps:
             lens = f" {g['lens']}" if g.get("lens") else ""
-            where = f"output `{g['in_output'] or '(nothing there)'}`, reference `{g['in_reference'] or '-'}`"
-            fix = f" Fix: {g['fix']}" if g.get("fix") else ""
-            lines.append(f"- **{g['severity']}**{lens} ({g['provider']}, repeat {g['repeat']}): {g['what']} ({where}).{fix}")
+            output = f"`{g['in_output']}`" if g["in_output"] else "nothing there"
+            reference = f"`{g['in_reference']}`" if g["in_reference"] else "not named"
+            where = f" In the output: {output}. In the reference: {reference}."
+            fix = f" Fix: {sentence(g['fix'])}" if g.get("fix") else ""
+            lines.append(
+                f"- **{g['severity']}**{lens} ({g['provider']}, repeat {g['repeat']}): {sentence(g['what'])}{where}{fix}"
+            )
         if not gaps:
             lines.append("No judge named a gap.")
         lines.append("")
