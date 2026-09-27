@@ -27,7 +27,7 @@ image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
-| `--scenario` | a scenario name from `scenarios/`, or a path to a file |
+| `--scenario` | a scenario from `scenarios/`, by the name `list` prints or its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |

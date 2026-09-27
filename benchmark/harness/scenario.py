@@ -21,6 +21,7 @@ refused when it loads, so no run of it starts there.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -336,12 +337,22 @@ def catalog(folder: str | Path) -> list[Path]:
 
 
 def find(name: str, folder: str | Path) -> Path:
-    """The file of a scenario named on the command line, by name or by path."""
+    """The file of a scenario named on the command line: by path, by file stem, or by the name the file gives itself.
+
+    The name is what `run.py list` prints, so what it lists is what
+    `--scenario` takes. A file that does not load has no name to match.
+    """
     direct = Path(name)
     if direct.suffix in SUFFIXES and direct.exists():
         return direct
     for path in catalog(folder):
         if path.stem == name:
             return path
-    known = ", ".join(p.stem for p in catalog(folder)) or "none"
+    names: dict[str, Path] = {}
+    for path in catalog(folder):
+        with contextlib.suppress(ScenarioError):
+            names.setdefault(load(path).name, path)
+    if name in names:
+        return names[name]
+    known = ", ".join(sorted({*names, *(p.stem for p in catalog(folder))})) or "none"
     raise ScenarioError(f"no scenario named {name!r} in {folder}; known: {known}")

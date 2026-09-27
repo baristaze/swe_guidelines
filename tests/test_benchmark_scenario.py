@@ -101,6 +101,15 @@ def test_find_takes_a_name_or_a_path(tmp_path):
         S.find("two", tmp_path)
 
 
+def test_find_takes_the_name_a_scenario_file_gives_itself(tmp_path):
+    named = write(tmp_path, "first.json", dict(MINIMAL, name="alpha"))
+    (tmp_path / "broken.json").write_text('{"name": "beta",', encoding="utf-8")
+    assert S.find("alpha", tmp_path) == named  # the name run.py list prints
+    assert S.find("first", tmp_path) == named  # and the file's stem
+    with pytest.raises(S.ScenarioError, match="known: alpha, broken, first"):
+        S.find("beta", tmp_path)  # a file that does not load has no name to match
+
+
 def test_the_shipped_scenarios_are_a_catalog_of_three():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
