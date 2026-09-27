@@ -5,7 +5,11 @@
 a run folder adds its row. This holds the two together:
 - every run folder, a folder directly under `benchmark/runs/`, has
   exactly one row in the index;
-- every row links to a run folder that is there, with its `report.md`.
+- every row links to a run folder that is there, with its `report.md`;
+- the rows run from the newest run at the top to the oldest at the
+  bottom, by the `started_at` each run's `results.json` records. The
+  folder names carry the local time of the machine that ran them, so
+  they do not order runs from two machines.
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. With no run folder and no index there
@@ -16,6 +20,7 @@ Exit status is non-zero on any mismatch. Standard library only.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections import Counter
@@ -37,6 +42,15 @@ def rows(text: str) -> list[tuple[int, str]]:
     return out
 
 
+def started_at(name: str) -> str:
+    """When a run started, as its `results.json` records it in UTC; empty when it records nothing."""
+    path = RUNS / name / "results.json"
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("started_at") or "")
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
 def check(errors: list[str]) -> int:
     """Add every mismatch to `errors` and return the number of run folders."""
     folders = sorted(p.name for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
@@ -51,6 +65,13 @@ def check(errors: list[str]) -> int:
         if counts[name] == 0:
             errors.append(f"{index}: no row for the run folder {name}")
     reported: set[str] = set()
+    above: tuple[str, str] | None = None
+    for ln, name in found:
+        started = started_at(name)
+        if started and above and started > above[1]:
+            errors.append(f"{index}:{ln}: {name} started {started}, after {above[0]} above it; the newest run comes first")
+        if started:
+            above = (name, started)
     for ln, name in found:
         if not (RUNS / name / "report.md").is_file():
             errors.append(f"{index}:{ln}: links {name}/report.md, and there is no such run")

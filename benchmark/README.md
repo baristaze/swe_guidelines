@@ -136,7 +136,8 @@ for keys (see The workflow). `runs/README.md` is the index: one row per
 run, newest first, linking to its report. The pull request that adds a
 run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
-names a run that is not there.
+names a run that is not there, and when a row sits above a run that
+started after it.
 
 ## Runtimes
 

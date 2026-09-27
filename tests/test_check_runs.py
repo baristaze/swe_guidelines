@@ -1,5 +1,7 @@
 """scripts/check_runs.py: the index of the benchmark runs names every run folder once."""
 
+import json
+
 import pytest
 
 HEAD = "| Run | Scenario |\n|---|---|\n"
@@ -14,8 +16,9 @@ def runs(repo):
     return repo.script("check_runs")
 
 
-def a_run(repo, name):
+def a_run(repo, name, started="2026-01-01T00:00:00Z"):
     repo.write(f"benchmark/runs/{name}/report.md", "# Benchmark run\n")
+    repo.write(f"benchmark/runs/{name}/results.json", json.dumps({"started_at": started}) + "\n")
 
 
 def test_no_runs_and_no_index_pass(runs, capsys):
@@ -24,8 +27,8 @@ def test_no_runs_and_no_index_pass(runs, capsys):
 
 
 def test_every_run_with_one_row_passes(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa")
-    a_run(repo, "20260102-000000-two-bb")
+    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
+    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
     repo.write("benchmark/runs/README.md", "# Runs\n\n" + HEAD + row("20260102-000000-two-bb") + row("20260101-000000-one-aa"))
     assert runs.main() == 0
     assert "runs ok: 2 run folder(s), one row each" in capsys.readouterr().out
@@ -64,5 +67,33 @@ def test_a_link_outside_a_table_is_not_a_row(repo, runs):
     repo.write(
         "benchmark/runs/README.md",
         "See [the first run](20260101-000000-one-aa/report.md).\n\n" + HEAD + row("20260101-000000-one-aa"),
+    )
+    assert runs.main() == 0
+
+
+def test_an_older_run_above_a_newer_one_fails(repo, runs, capsys):
+    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
+    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
+    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260102-000000-two-bb"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert "README.md:4: 20260102-000000-two-bb started 2026-01-02T08:00:00Z, after 20260101-000000-one-aa above it" in out
+
+
+def test_runs_that_started_together_keep_either_order(repo, runs):
+    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
+    a_run(repo, "20260101-000000-two-bb", "2026-01-01T08:00:00Z")
+    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260101-000000-two-bb"))
+    assert runs.main() == 0
+
+
+def test_a_run_that_records_less_is_listed_and_left_out_of_the_order(repo, runs):
+    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
+    repo.write("benchmark/runs/20260101-000000-old-aa/report.md", "# Benchmark run\n")
+    repo.write("benchmark/runs/20260103-000000-bare-cc/report.md", "# Benchmark run\n")
+    repo.write("benchmark/runs/20260103-000000-bare-cc/results.json", "{}\n")
+    repo.write(
+        "benchmark/runs/README.md",
+        HEAD + row("20260101-000000-old-aa") + row("20260102-000000-two-bb") + row("20260103-000000-bare-cc"),
     )
     assert runs.main() == 0

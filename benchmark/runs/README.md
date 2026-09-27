@@ -1,7 +1,8 @@
 # Benchmark runs
 
-Every run checked in here, newest first. Each row links to the run's
-report. The run's `results.json` holds the numbers the row copies.
+Every run checked in here, the newest at the top and the oldest at the
+bottom. Each row links to the run's report, and the run's
+`results.json` holds the numbers the row copies.
 
 The pull request that adds a run folder adds its row, by hand. A row
 copies the run's `results.json`: the time it started, the scenario, the
