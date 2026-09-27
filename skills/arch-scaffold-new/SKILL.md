@@ -161,19 +161,27 @@ so they stay here:
 8. When Docker is available, run the negative control of
    Cross-Cutting Conventions (Tests) once. Take the tenant predicate
    out of one query of a storage impl over Postgres (the first
-   entity's list with `--first`, else a tenancy list). Run
-   `make test-integration` with the table's policy in place: it stays
-   green, the second fence holding. Turn the policy off for that
-   table (`ALTER TABLE ... NO FORCE ROW LEVEL SECURITY` and `DISABLE
-   ROW LEVEL SECURITY`, through `uv run` over the local migration
-   login's URL, since only the owner alters a table), and run `make test-integration` again: it fails, and the
-   failures name the cross-tenant case of that method beside the
-   policy check. Put the predicate back, turn the policy on again the
-   same way (`ENABLE` and `FORCE ROW LEVEL SECURITY`), and run
-   `make test-integration` green. Record both runs in
-   `docs/runbooks/tenant-isolation.md`: the query, the table, and
-   what the suite reported each time. A run two that stays green is a
-   defect of the suite: name it in the output and stop.
+   entity's list with `--first`, else a tenancy list). Run one: run
+   `make test-integration` with the table's policy in place. It stays
+   green, the second fence holding. A failure in run one is fixed in
+   the table's policy or the migration that writes it, never by
+   putting the predicate back: the predicate stays out until run
+   three. Run two: turn the policy off for that table (`ALTER TABLE
+   ... NO FORCE ROW LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`,
+   through `uv run` over the local migration login's URL, since only
+   the owner alters a table), and run `make test-integration` again.
+   It fails, and the failures name the cross-tenant case of that
+   method beside the policy check. Run three: put the predicate back,
+   turn the policy on again the same way (`ENABLE` and `FORCE ROW
+   LEVEL SECURITY`), and run `make test-integration` green. Runs one
+   and three each have their own count, the first run plus at most 3
+   reruns; run two runs once and is never fixed. Record runs one and
+   two in `docs/runbooks/tenant-isolation.md`: the query, the table,
+   and what the suite reported each time. A run two that stays green,
+   or whose failures do not name that cross-tenant case, is a defect
+   of the suite: name it in the output and stop. Any other failure in
+   run two is recorded beside those two, and the step goes on to run
+   three.
 9. When Docker is available, `make devx-up`, then
    `make test-telemetry`: the round trip starts the API as a real
    process, drives one session, and reads the counter, the trace, the
