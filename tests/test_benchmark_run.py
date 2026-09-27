@@ -212,7 +212,7 @@ def scenario_step(tmp_path):
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "UV_LOG": str(tmp_path / "uv.log"),
             "ARGV_LOG": str(tmp_path / "argv.log"),
-            **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", **inputs},
+            **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", "MAX_SPEND_USD": "10", **inputs},
         }
         (tmp_path / "uv.log").unlink(missing_ok=True)
         done = subprocess.run(["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
@@ -249,6 +249,11 @@ def test_the_workflow_skips_and_names_a_scenario_that_does_not_list_the_containe
         {"REPEAT": "6"},
         {"REPEAT": "10"},
         {"REPEAT": "1 --dry-run"},
+        {"MAX_SPEND_USD": "0"},
+        {"MAX_SPEND_USD": "51"},
+        {"MAX_SPEND_USD": "100"},
+        {"MAX_SPEND_USD": "2.5"},
+        {"MAX_SPEND_USD": ""},
     ],
 )
 def test_the_workflow_refuses_inputs_outside_their_pattern(scenario_step, tmp_path, inputs):
@@ -378,6 +383,14 @@ def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch
     assert "skills" in answer and "no skills" not in answer
     assert "target" in answer and "no target" not in answer
     assert "seen:\n" in answer, answer
+
+
+def test_the_workflow_gives_every_scenario_the_run_s_spend_cap(scenario_step, tmp_path):
+    code, ran, _ = scenario_step(SCENARIOS="a c", MAX_SPEND_USD="25")
+    logged = (tmp_path / "argv.log").read_text(encoding="utf-8").split()
+    assert code == 0 and ran == ["a", "c"] and logged[logged.index("--max-spend-usd") + 1] == "25"
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert 'default: "10"' in workflow[workflow.index("      max_spend_usd:") :].split("\n\n")[0]
 
 
 def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tmp_path):
