@@ -49,6 +49,16 @@ def test_a_file_that_does_not_parse_is_a_scenario_error(tmp_path):
         S.load(tmp_path / "broken.yaml")
 
 
+def test_a_value_or_a_file_the_scenario_cannot_read_is_a_scenario_error(tmp_path):
+    with pytest.raises(S.ScenarioError, match=r"subject\.timeout_s: expected a whole number, got '900s'"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "timeout_s": "900s"}))
+    with pytest.raises(S.ScenarioError, match=r"subject\.max_turns: expected a whole number, got \[6\]"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_turns": [6]}))
+    (tmp_path / "latin.json").write_bytes(b'{"name": "caf\xe9"}')
+    with pytest.raises(S.ScenarioError, match=r"latin\.json: is not UTF-8"):
+        S.load(tmp_path / "latin.json")
+
+
 def test_an_unknown_key_is_refused(tmp_path):
     bad = dict(MINIMAL, rubrick="oops")
     with pytest.raises(S.ScenarioError, match="unknown key"):

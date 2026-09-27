@@ -155,6 +155,13 @@ def _strings(value: Any, where: str) -> list[str]:
     return [str(v) for v in value]
 
 
+def _int(value: Any, where: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ScenarioError(f"{where}: expected a whole number, got {value!r}") from exc
+
+
 def from_data(data: Any, path: Path | None = None) -> Scenario:
     """Build a scenario from parsed data."""
     if not isinstance(data, dict):
@@ -180,13 +187,13 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         skill=raw_subject.get("skill"),
         prompt=str(raw_subject.get("prompt") or ""),
         argv=_strings(raw_subject.get("argv"), f"scenario {name}: subject.argv"),
-        max_turns=int(raw_subject.get("max_turns") or 6),
+        max_turns=_int(raw_subject.get("max_turns") or 6, f"scenario {name}: subject.max_turns"),
         allowed_tools=_strings(raw_subject.get("allowed_tools"), f"scenario {name}: subject.allowed_tools"),
         target=raw_subject.get("target"),
         model=raw_subject.get("model"),
         provider=raw_subject.get("provider"),
         context=_strings(raw_subject.get("context"), f"scenario {name}: subject.context"),
-        timeout_s=int(raw_subject.get("timeout_s") or 900),
+        timeout_s=_int(raw_subject.get("timeout_s") or 900, f"scenario {name}: subject.timeout_s"),
     )
     if kind == "skill" and not subject.skill:
         raise ScenarioError(f"scenario {name}: kind skill needs subject.skill")
@@ -308,7 +315,11 @@ def load(path: str | Path) -> Scenario:
     if not path.exists():
         raise ScenarioError(f"{path}: no such scenario file")
     try:
-        data = parse_text(path.read_text(encoding="utf-8"), path.suffix)
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ScenarioError(f"{path}: is not UTF-8: {exc}") from exc
+    try:
+        data = parse_text(text, path.suffix)
     except parse_errors() as exc:
         raise ScenarioError(f"{path}: does not parse as {path.suffix.lstrip('.').upper()}: {exc}") from exc
     return from_data(data, path)

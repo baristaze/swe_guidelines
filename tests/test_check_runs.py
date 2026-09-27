@@ -349,3 +349,12 @@ def test_a_run_of_a_name_two_scenario_files_bear_fails(repo, runs, capsys):
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     assert "the scenario files one.json, two.json are all named alpha, so none says where it runs" in capsys.readouterr().out
+
+
+def test_a_scenario_file_no_run_names_is_not_held_to_loading(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["container"])
+    bad = {"name": "beta", "kind": "qa", "subject": {"prompt": "?", "timeout_s": "900s"}, "rubric": "r", "runtimes": ["host"]}
+    repo.write("benchmark/scenarios/beta.json", json.dumps(bad) + "\n")
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 0  # beta does not load, and no run is held to it
