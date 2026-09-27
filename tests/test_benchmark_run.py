@@ -525,6 +525,30 @@ def test_the_envelope_gives_the_subject_tokens_and_claude_code_s_own_cost():
     assert run.read_envelope("plain text\n") == ("plain text\n", [], False)
 
 
+def test_the_envelope_s_thinking_tokens_are_the_subject_s_reasoning():
+    usage = {"input_tokens": 14, "output_tokens": 6281, "output_tokens_details": {"thinking_tokens": 2854}}
+    envelope = {"type": "result", "result": "a", "total_cost_usd": 0.27, "usage": usage}
+    recorded, cost = run.read_envelope_spend(json.dumps(envelope))
+    assert recorded["reasoning_tokens"] == 2854
+    assert recorded["output_tokens"] == 6281
+    assert cost == 0.27
+
+
+def test_the_thinking_tokens_per_model_count_when_the_usage_names_none():
+    envelope = {
+        "type": "result",
+        "result": "a",
+        "usage": {"input_tokens": 1, "output_tokens": 50},
+        "modelUsage": {"claude-a": {"thinkingTokens": 10}, "claude-b": {"thinkingTokens": 5}, "claude-c": {}},
+    }
+    assert run.read_envelope_spend(json.dumps(envelope))[0]["reasoning_tokens"] == 15
+
+
+def test_an_envelope_that_reports_no_thinking_records_no_reasoning():
+    envelope = {"type": "result", "result": "a", "usage": {"input_tokens": 1, "output_tokens": 50}, "modelUsage": {"m": {}}}
+    assert "reasoning_tokens" not in run.read_envelope_spend(json.dumps(envelope))[0]
+
+
 def envelope_scenario(tmp_path, envelope):
     script = f"print({json.dumps(json.dumps(envelope))})"
     scenario = {

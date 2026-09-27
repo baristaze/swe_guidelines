@@ -215,13 +215,40 @@ def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
 ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
+def token_count(value: Any) -> int | None:
+    """A token count as an int, or None when the value is not one."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def envelope_thinking(usage: Any, models: Any) -> int | None:
+    """The thinking tokens an envelope reports, or None when it reports none.
+
+    The envelope's usage names them under `output_tokens_details`; each
+    model in `modelUsage` names its own as `thinkingTokens`, so the sum is
+    the fallback when the first is absent.
+    """
+    details = usage.get("output_tokens_details") if isinstance(usage, dict) else None
+    total = token_count(details.get("thinking_tokens")) if isinstance(details, dict) else None
+    if total is not None:
+        return total
+    per_model = (
+        [token_count(m.get("thinkingTokens")) for m in models.values() if isinstance(m, dict)] if isinstance(models, dict) else []
+    )
+    found = [n for n in per_model if n is not None]
+    return sum(found) if found else None
+
+
 def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     """The tokens and the cost in US dollars of a `claude --output-format json` envelope.
 
     Claude Code prices its own run, caching included, as `total_cost_usd`;
     that figure is the subject's cost. `input_tokens` is every input token,
-    cached or not, with the cached ones also named on their own. Output that
-    is not an envelope spent nothing the run can see: no tokens, cost None.
+    cached or not, with the cached ones also named on their own.
+    `output_tokens` already counts the thinking, and `reasoning_tokens`
+    names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
+    `thinkingTokens` over `modelUsage`, and no key when the envelope reports
+    neither. Output that is not an envelope spent nothing the run can see:
+    no tokens, cost None.
     """
     try:
         data = json.loads(stdout.strip())
@@ -239,6 +266,9 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
             "cache_read_input_tokens": counts.get("cache_read_input_tokens", 0),
             "cache_creation_input_tokens": counts.get("cache_creation_input_tokens", 0),
         }
+        thinking = envelope_thinking(raw, data.get("modelUsage"))
+        if thinking is not None:
+            usage["reasoning_tokens"] = thinking
     cost = data.get("total_cost_usd")
     return usage, (round(float(cost), 6) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None)
 
