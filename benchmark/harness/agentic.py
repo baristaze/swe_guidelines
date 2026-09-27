@@ -26,7 +26,9 @@ do, the judge gets a refusal back and the loop goes on. A lone surrogate
 is a character no JSON text can carry, so a call that holds one is
 refused, and what the model sent goes back to it with the character
 written as its escape, such as `\\ud800`. Every tool result is escaped
-the same way.
+the same way. What a model sends is walked with a stack, never by
+recursion, so an argument nested past Python's recursion limit is read,
+checked, and escaped like any other.
 
 Every tool result sits inside a fence of backticks longer than any run
 of backticks in it, as the one-shot judge fences the artifact. The
@@ -195,12 +197,20 @@ def glob_pattern(glob: str) -> re.Pattern[str]:
         raise ToolError(f"the glob has a class no path can match: {exc}") from None
 
 
+def brief(value: Any) -> str:
+    """A value a model sent, as a refusal names it: a scalar as itself, anything else by its type."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        text = repr(value)
+        return text if len(text) <= 80 else text[:80] + "..."
+    return f"a {type(value).__name__}"
+
+
 def whole(value: Any, name: str) -> int | None:
     """A whole-number argument, or None when it is left out."""
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ToolError(f"{name} is a whole number, got {value!r}")
+        raise ToolError(f"{name} is a whole number, got {brief(value)}")
     return value
 
 
@@ -210,7 +220,7 @@ def text_arg(args: dict[str, Any], name: str, default: str | None = None) -> str
     if value is None:
         raise ToolError(f"{name} is required")
     if not isinstance(value, str):
-        raise ToolError(f"{name} is a string, got {value!r}")
+        raise ToolError(f"{name} is a string, got {brief(value)}")
     return value
 
 
@@ -259,10 +269,10 @@ class Tree:
     def locate(self, root: Any, path: Any) -> tuple[Path, Path]:
         """The root's folder and the path resolved in it; ToolError when the path leaves the root."""
         if not isinstance(root, str) or root not in self.roots:
-            raise ToolError(f"no root {root!r}; the roots are {', '.join(self.roots)}")
+            raise ToolError(f"no root {brief(root)}; the roots are {', '.join(self.roots)}")
         base = self.roots[root]
         if not isinstance(path, str):
-            raise ToolError(f"path is a string, got {path!r}")
+            raise ToolError(f"path is a string, got {brief(path)}")
         if "\0" in path:
             raise ToolError("a path holds no NUL byte")
         rel = PurePosixPath(path or ".")
@@ -586,25 +596,43 @@ def tool_specs(tree: Tree, answer_schema: dict[str, Any]) -> list[dict[str, Any]
 
 
 def plain(value: Any) -> Any:
-    """JSON data with every whole float as an int: Gemini sends 82 as 82.0."""
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, dict):
-        return {str(k): plain(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [plain(v) for v in value]
-    return value
+    """A fresh copy of JSON data, every key a string and every whole float an int: Gemini sends 82 as 82.0.
+
+    It walks with a stack, so no depth of nesting reaches the recursion limit.
+    """
+
+    def leaf(item: Any) -> Any:
+        return int(item) if isinstance(item, float) and item.is_integer() else item
+
+    if not isinstance(value, (dict, list, tuple)):
+        return leaf(value)
+    top: Any = {} if isinstance(value, dict) else []
+    stack: list[tuple[Any, Any]] = [(value, top)]
+    while stack:
+        source, target = stack.pop()
+        for key, item in source.items() if isinstance(source, dict) else enumerate(source):
+            child = ({} if isinstance(item, dict) else []) if isinstance(item, (dict, list, tuple)) else leaf(item)
+            if isinstance(item, (dict, list, tuple)):
+                stack.append((item, child))
+            if isinstance(target, dict):
+                target[str(key)] = child
+            else:
+                target.append(child)
+    return top
 
 
-def not_finite(value: Any, where: str = "") -> list[str]:
-    """The paths of every number in the data that is not finite."""
-    if isinstance(value, float) and not math.isfinite(value):
-        return [where or "(answer)"]
-    if isinstance(value, dict):
-        return [p for k, v in value.items() for p in not_finite(v, f"{where}/{k}" if where else str(k))]
-    if isinstance(value, list):
-        return [p for i, v in enumerate(value) for p in not_finite(v, f"{where}/{i}" if where else str(i))]
-    return []
+def not_finite(value: Any) -> list[str]:
+    """The paths of every number in the data that is not finite, in the order they appear."""
+    found: list[str] = []
+    stack: list[tuple[Any, str]] = [(value, "")]
+    while stack:
+        item, where = stack.pop()
+        if isinstance(item, float) and not math.isfinite(item):
+            found.append(where or "(answer)")
+        elif isinstance(item, (dict, list)):
+            pairs = item.items() if isinstance(item, dict) else enumerate(item)
+            stack.extend(reversed([(v, f"{where}/{k}" if where else str(k)) for k, v in pairs]))
+    return found
 
 
 def answer_checker(schema: Any) -> Callable[[Any], list[str]]:
@@ -677,6 +705,8 @@ def read_args(raw: Any) -> tuple[Any, str]:
         return plain(json.loads(raw or "{}", parse_constant=_refuse_constant)), ""
     except (TypeError, ValueError) as exc:
         return None, f"the arguments are not JSON: {exc}"
+    except RecursionError:  # the JSON parser recurses, and nesting can pass its limit
+        return None, "the arguments are nested too deep to read"
 
 
 LONE_SURROGATE = re.compile("[\ud800-\udfff]")
@@ -691,46 +721,72 @@ def escaped(text: str) -> str:
 
 
 def holds_lone(value: Any) -> bool:
-    """Whether any string in the data, a key included, holds a lone surrogate."""
-    if isinstance(value, str):
-        return bool(LONE_SURROGATE.search(value))
-    if isinstance(value, dict):
-        return any(holds_lone(k) or holds_lone(v) for k, v in value.items())
-    if isinstance(value, (list, tuple)):
-        return any(holds_lone(v) for v in value)
+    """Whether any string in the data, a key included, holds a lone surrogate. It walks with a stack."""
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            if LONE_SURROGATE.search(item):
+                return True
+        elif isinstance(item, dict):
+            stack.extend(item.keys())
+            stack.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            stack.extend(item)
     return False
 
 
-def escape_in_place(value: Any, depth: int = 0) -> Any:
+def escape_in_place(value: Any) -> Any:
     """What a model sent, with every lone surrogate in its strings escaped: changed in place, and returned.
 
-    It walks dicts, lists, and the fields of an SDK object, and sets a
-    field only when its string changed, so what holds no lone surrogate
-    goes back exactly as it came.
+    It walks dicts, lists, and the fields of an SDK object with a stack, to
+    any depth, and visits each object once. It sets a field only when its
+    string changed, so what holds no lone surrogate goes back exactly as it
+    came. A tuple that holds one is rebuilt, since a tuple cannot change.
     """
     if isinstance(value, str):
         return escaped(value)
-    if depth > 32 or value is None or isinstance(value, (bytes, bytearray, int, float)):
-        return value
-    if isinstance(value, dict):
-        for key in list(value):
-            item = escape_in_place(value[key], depth + 1)
-            fixed = escaped(key) if isinstance(key, str) else key
-            if fixed != key:
-                del value[key]
-            value[fixed] = item
-        return value
-    if isinstance(value, list):
-        value[:] = [escape_in_place(item, depth + 1) for item in value]
-        return value
     if isinstance(value, tuple):
-        return tuple(escape_in_place(item, depth + 1) for item in value)
-    fields = getattr(value, "__dict__", None)
-    if isinstance(fields, dict):
-        for name, item in list(fields.items()):
-            fixed = escape_in_place(item, depth + 1)
-            if fixed is not item:
-                setattr(value, name, fixed)
+        return tuple(escape_in_place(list(value))) if holds_lone(value) else value
+    stack: list[Any] = [value]
+    seen: set[int] = set()
+
+    def fixed(item: Any) -> Any:
+        if isinstance(item, str):
+            return escaped(item)
+        if isinstance(item, tuple):
+            return tuple(escape_in_place(list(item))) if holds_lone(item) else item
+        if item is not None and not isinstance(item, (bytes, bytearray, int, float)):
+            stack.append(item)
+        return item
+
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, dict):
+            for key in list(node):
+                item = node[key]
+                new_item = fixed(item)
+                new_key = escaped(key) if isinstance(key, str) else key
+                if new_key != key:
+                    del node[key]
+                    node[new_key] = new_item
+                elif new_item is not item:
+                    node[key] = new_item
+        elif isinstance(node, list):
+            for index, item in enumerate(node):
+                new_item = fixed(item)
+                if new_item is not item:
+                    node[index] = new_item
+        else:
+            fields = getattr(node, "__dict__", None)
+            if isinstance(fields, dict):
+                for name, item in list(fields.items()):
+                    new_item = fixed(item)
+                    if new_item is not item:
+                        setattr(node, name, new_item)
     return value
 
 
@@ -975,7 +1031,19 @@ class Transcript:
 
     def write(self, kind: str, **fields: Any) -> None:
         record = {"t": round(time.time(), 3), "provider": self.provider, "model": self.model, "kind": kind, **fields}
-        self.handle.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        try:
+            line = json.dumps(record, ensure_ascii=False, default=str)
+        except (RecursionError, ValueError):
+            # A field nested too deep for the JSON writer, or one that refers to itself, is named, not written.
+            safe: dict[str, Any] = {}
+            for name, value in record.items():
+                try:
+                    json.dumps(value, ensure_ascii=False, default=str)
+                    safe[name] = value
+                except (RecursionError, ValueError):
+                    safe[name] = f"(not written: a {type(value).__name__} the JSON writer cannot hold)"
+            line = json.dumps(safe, ensure_ascii=False, default=str)
+        self.handle.write(line + "\n")
         self.handle.flush()
 
     def close(self) -> None:

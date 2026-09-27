@@ -5,6 +5,7 @@ response shape and keeps every request it was sent. Nothing here reaches
 a network or reads a key.
 """
 
+import contextlib
 import copy
 import importlib.util
 import json
@@ -49,16 +50,26 @@ def as_json(args: Any) -> str:
 
 
 def as_floats(value: Any) -> Any:
-    """Arguments the way Gemini sends them: every number a float."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int):
-        return float(value)
-    if isinstance(value, dict):
-        return {k: as_floats(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [as_floats(v) for v in value]
-    return value
+    """Arguments the way Gemini sends them: a fresh copy, every number a float. It walks with a stack."""
+
+    def leaf(item: Any) -> Any:
+        return float(item) if isinstance(item, int) and not isinstance(item, bool) else item
+
+    if not isinstance(value, (dict, list)):
+        return leaf(value)
+    top: Any = {} if isinstance(value, dict) else []
+    stack: list[tuple[Any, Any]] = [(value, top)]
+    while stack:
+        source, target = stack.pop()
+        for key, item in source.items() if isinstance(source, dict) else enumerate(source):
+            child = ({} if isinstance(item, dict) else []) if isinstance(item, (dict, list)) else leaf(item)
+            if isinstance(item, (dict, list)):
+                stack.append((item, child))
+            if isinstance(target, dict):
+                target[key] = child
+            else:
+                target.append(child)
+    return top
 
 
 def sdk_json(value: Any) -> Any:
@@ -71,8 +82,12 @@ def sdk_json(value: Any) -> Any:
 class Fake:
     """A provider client that replays a script and keeps a copy of every request.
 
-    Like an SDK, it encodes each request as UTF-8 JSON before it answers,
-    so a string no JSON text can carry fails here as it would there.
+    It encodes each request as UTF-8 JSON before it answers, as the
+    Anthropic and OpenAI SDKs do (xAI's client is OpenAI's), so a lone
+    surrogate fails here as it fails there. google-genai writes its JSON
+    with ASCII escapes, where a lone surrogate passes; the Gemini fake holds
+    the loop to the stricter way. A request nested too deep for this check,
+    or for the copy it keeps, is kept as it is.
     """
 
     def __init__(self, script: list[Any], on_call: Any = None) -> None:
@@ -82,8 +97,12 @@ class Fake:
         self.on_call = on_call
 
     def next(self, request: dict[str, Any]) -> dict[str, Any]:
-        json.dumps(request, ensure_ascii=False, default=sdk_json).encode("utf-8")
-        self.requests.append(copy.deepcopy(request))
+        with contextlib.suppress(RecursionError):
+            json.dumps(request, ensure_ascii=False, default=sdk_json).encode("utf-8")
+        try:
+            self.requests.append(copy.deepcopy(request))
+        except RecursionError:  # each list as it stood, since the history grows after the call
+            self.requests.append({key: list(value) if isinstance(value, list) else value for key, value in request.items()})
         if self.on_call:
             self.on_call(self)
         item = self.script.pop(0)
@@ -1219,3 +1238,77 @@ def test_a_valid_submission_in_a_turn_is_taken_before_an_invalid_one_counts(vali
     judgement, _, records = run(P.Provider.ANTHROPIC, [last], roots, tmp_path, budget=A.Budget(submits=1))
     assert judgement.status == "ok" and judgement.answer == ANSWER
     assert sorted(r["valid"] for r in records if r["kind"] == "submit") == [False, True]
+
+
+# Nesting past Python's recursion limit ----------------------------------
+
+
+def nested(depth: int, bottom: Any) -> dict[str, Any]:
+    """A mapping nested `depth` deep, built without recursion, with `bottom` at the end."""
+    top: dict[str, Any] = {}
+    node = top
+    for _ in range(depth - 1):
+        node["x"] = {}
+        node = node["x"]
+    node["x"] = bottom
+    return top
+
+
+DEEP = 1000
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", [P.Provider.OPENAI, P.Provider.GEMINI, P.Provider.XAI], ids=["openai", "gemini", "xai"])
+def test_an_argument_nested_past_the_recursion_limit_is_refused_and_its_turn_counted(provider, roots, tmp_path):
+    name = P.name(provider)
+    if name == "gemini":
+        args: Any = {"root": "output", "extra": nested(DEEP, {})}
+    else:  # the JSON text a model sends, written out, since writing it with json.dumps recurses
+        args = '{"root": "output", "extra": ' + '{"x": ' * DEEP + "{}" + "}" * DEEP + "}"
+    judgement, fake, records = run(provider, [step(("list_dir", args)), step(("submit", ANSWER))], roots, tmp_path)
+    assert judgement.status == "ok" and judgement.fallback is None
+    assert judgement.model == J.models_for(J.DEFAULT_MATRIX, name)[0]
+    assert (judgement.turns, judgement.tool_calls) == (2, 1)
+    assert judgement.usage["input_tokens"] == 2000  # the turn with the deep call is counted
+    [(_, text)] = sent_results(name, fake.requests[1])
+    assert text.startswith("list_dir refused:")
+    assert records[-1]["kind"] == "end"
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", [P.Provider.ANTHROPIC, P.Provider.GEMINI], ids=["anthropic", "gemini"])
+def test_a_lone_surrogate_nested_deep_is_escaped_in_what_goes_back(provider, roots, tmp_path):
+    name = P.name(provider)
+    args = {"root": "output", "extra": nested(35, "\ud800")}
+    judgement, fake, _ = run(provider, [step(("list_dir", args)), step(("submit", ANSWER))], roots, tmp_path)
+    assert judgement.status == "ok", judgement.error  # the second request encoded, so nothing raw went back
+    [(_, text)] = sent_results(name, fake.requests[1])
+    assert text.startswith(f"list_dir refused: {A.LONE_PROBLEM}")
+
+
+def test_the_walks_reach_any_depth_without_recursion():
+    deep = nested(DEEP * 5, [1.0, float("nan"), "\ud800"])
+    assert A.holds_lone(deep)
+    copied = A.plain(deep)
+    node = copied
+    for _ in range(DEEP * 5):
+        node = node["x"]
+    assert node[0] == 1 and isinstance(node[0], int)
+    assert A.not_finite(deep) == ["/".join(["x"] * DEEP * 5) + "/1"]
+    A.escape_in_place(deep)
+    assert not A.holds_lone(deep)
+
+
+def test_a_transcript_field_the_json_writer_cannot_hold_is_named_and_the_step_kept(tmp_path):
+    loop: dict[str, Any] = {}
+    loop["self"] = loop
+    log = A.Transcript(tmp_path / "t.jsonl", "openai", 100)
+    log.write("tool", tool="list_dir", args=loop, size=1)
+    log.close()
+    [record] = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert record["kind"] == "tool" and record["tool"] == "list_dir" and record["size"] == 1
+    assert record["args"] == "(not written: a dict the JSON writer cannot hold)"
+
+
+def test_a_refusal_names_a_value_of_any_type_by_its_type():
+    assert A.brief(["output"]) == "a list" and A.brief(3) == "3" and A.brief("x" * 100).endswith("...")
