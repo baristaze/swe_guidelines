@@ -195,15 +195,17 @@ so they stay here:
     `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
     and run it over the whole tree; the checker run and the git reads
     it takes are in this skill's tools for that step. Close every high
-    finding, then run `make check` under the bound every gate here
-    has: the first run plus at most 3 reruns. List the rest of the
+    finding, within what After writing lets a fix change, then run
+    `make check` under the bound every gate here has: the first run
+    plus at most 3 reruns. List the rest of the
     findings in the output for the person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
 
 A gate in these steps that fails on what this skill wrote is fixed
-and run again, under the bound the conventions set in After writing:
-the first run plus at most 3 reruns. The second run of step 8 is
+and run again, under the bound the conventions set in After writing,
+and within what they let a fix change: the first run plus at most 3
+reruns. The second run of step 8 is
 meant to fail, and is no such failure. Stop at the first step whose
 gate still fails after its last rerun, say which gate fails and why,
 and report where it stopped.

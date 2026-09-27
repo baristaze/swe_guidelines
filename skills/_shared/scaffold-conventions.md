@@ -440,6 +440,12 @@ container.
    This bound holds for every gate a scaffold runs, the steps of
    `arch-scaffold-new` included. Report pre-existing failures and
    stop; do not edit unrelated files.
+
+   A fix never takes an exception to a rule the guideline states, and
+   never removes, skips, or suppresses a conformance test. Either is a
+   decision that constrains future work, recorded as an ADR
+   (Cross-Cutting Conventions, Records of Decisions), and the decision
+   is the person's: stop and say which gate fails and why instead.
 2. Print the guideline version the skill ran from (the release, or a
    later snapshot of main), then the list of files created and
    changed, one per line, followed by the commands that were run and
