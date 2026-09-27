@@ -15,6 +15,7 @@ import base64
 import json
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,16 +36,23 @@ class CliStream:
         self._lock = threading.Lock()
         self._fh = self.path.open("x", encoding="utf-8")
         self.count = 0
+        # Called with each line once it is written, when set: the harness
+        # watches a phase's bounds through it.
+        self.listener: Callable[[str, str], None] | None = None
 
     def write(self, stream: str, line: str, t: float | None = None) -> None:
         """Append one line. `stream` is `out` or `err`."""
         if stream not in ("out", "err"):
             raise ValueError(f"stream is 'out' or 'err', got {stream!r}")
-        record = {"t": time.time() if t is None else t, "s": stream, "line": line.rstrip("\n")}
+        text = line.rstrip("\n")
+        record = {"t": time.time() if t is None else t, "s": stream, "line": text}
         with self._lock:
             self._fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             self._fh.flush()
             self.count += 1
+        listener = self.listener
+        if listener is not None:
+            listener(stream, text)
 
     def note(self, line: str) -> None:
         """A line the harness itself writes into the stream."""
