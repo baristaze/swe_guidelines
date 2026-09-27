@@ -229,6 +229,6 @@ what failed.
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
 plus one line: the tree is uncommitted, and the first commit is the
-user's. When the skill stopped, the conventions' closing line names
-the step and the cause, and still comes last:
-`Stopped at step <n>: <gate> fails: <why>; <a defect of this skill | the machine: what failed>`.
+user's. When the skill stopped, at a gate or at a defect of the suite
+in step 8, the closing line says where and why, and still comes last:
+`Stopped at step <n>: <gate>: <what went wrong>; <a defect of this skill | a defect of the suite | the machine>`.
