@@ -439,20 +439,23 @@ container.
    its own count: the first run plus at most 3 reruns. When the count
    runs out, stop, and leave the tree as the last run left it, fixes
    kept. This bound holds for every gate a scaffold runs, the steps of
-   `arch-scaffold-new` included. Report pre-existing failures and
-   stop; do not edit unrelated files.
+   `arch-scaffold-new` included.
 
-   A fix never takes an exception to a rule the guideline states, and
-   never removes, skips, or suppresses a conformance test. Either is a
-   decision that constrains future work, recorded as an ADR
-   (Cross-Cutting Conventions, Records of Decisions), and the decision
-   is the person's: stop and say which gate fails and why instead.
+   Three other failures stop at once, with no fix and no retry: a
+   pre-existing failure, reported and left alone; a command
+   that fails on the machine (no network, a port in use, Docker
+   stopped); and a gate whose fix would take an exception to a rule the
+   guideline states, or remove, skip, or suppress a conformance test.
+   That fix is a decision that constrains future work, recorded as an
+   ADR (Cross-Cutting Conventions, Records of Decisions), and the
+   decision is the person's.
 2. Print the guideline version the skill ran from (the release, or a
    later snapshot of main), then the list of files created and
-   changed, one per line, followed by the commands that were run and
-   their outcome in the last run. When a gate still fails after its
-   last rerun, one line closes the output:
-   `Stopped: <gate> fails: <why>`.
+   changed, one per line, followed by each command that was run, once,
+   with the outcome of its last run. A stop closes the output with one
+   line, `Stopped: <command>: <what went wrong>; <cause>`, the cause
+   one of: the count ran out, pre-existing, the machine, needs an
+   exception.
    Nothing else. The list comes from
    `git status --porcelain --untracked-files=all`, which names every
    new file rather than the folder that holds it. Every scaffold runs
