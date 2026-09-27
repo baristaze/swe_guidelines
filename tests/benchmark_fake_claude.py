@@ -7,7 +7,7 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
-- `subtype`, `is_error`, `cost`: what its result line says; `result: false` writes none;
+- `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
 - `exit`: its exit code.
 
 Its answer, the result's `result`, is a JSON object of what it saw: its
@@ -79,7 +79,7 @@ if todo.get("result", True):
         "num_turns": 3,
         "session_id": session,
         "total_cost_usd": todo.get("cost", 0.25),
-        "usage": {"input_tokens": 10, "output_tokens": 20},
+        "usage": todo.get("usage", {"input_tokens": 10, "output_tokens": 20}),
         "modelUsage": {"claude-opus-5-5": {}},
     }
     if result["subtype"] == "success":

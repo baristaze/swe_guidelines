@@ -353,7 +353,7 @@
         "turns": { "type": ["integer", "null"], "minimum": 0 },
         "models": { "type": "array", "items": { "type": "string" } },
         "cost_usd": {
-          "description": "What Claude Code says the session cost; null when it wrote no result.",
+          "description": "What Claude Code says the session cost; for a resumed session, what it added to the session's running total; null when it wrote no result.",
           "type": ["number", "null"],
           "minimum": 0
         },

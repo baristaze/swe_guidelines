@@ -386,3 +386,25 @@ def test_a_run_s_spend_cap_is_an_amount_above_zero(tmp_path, monkeypatch, capsys
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--max-spend-usd", cap]) == 2
     assert "--max-spend-usd is an amount in US dollars above 0" in capsys.readouterr().err
     assert not (tmp_path / "runs").exists()
+
+
+def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(run_phases):
+    # Claude Code's result for a resumed session carries the session's total so far.
+    scenario = phased(
+        phase("scaffold", {"cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}),
+        phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume"),
+        phase("review", {"cost": 0.1}),
+    )
+    code, run_dir = run_phases(scenario, "--repeat", "1", "--max-spend-usd", "0.8")
+    assert code == 0
+    repeat = results(run_dir)["repeats"][0]
+    assert [p["cost_usd"] for p in repeat["phases"]] == [0.25, 0.35, 0.1]
+    assert repeat["subject_cost_usd"] == pytest.approx(0.7)
+    assert repeat["subject_usage"] == {
+        "input_tokens": 260,
+        "output_tokens": 50,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+    # The run's cap saw 0.25 and 0.35 before the third phase, not 0.25 and 0.6.
+    assert repeat["phases"][2]["status"] == "ok"

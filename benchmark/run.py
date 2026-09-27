@@ -585,6 +585,8 @@ def run_skill(
     duration = 0.0
     sessions: dict[str, str | None] = {}
     homes: dict[str, str] = {}
+    # Each session's running total so far, as its last result reported it or as the harness counted it.
+    running: dict[str, tuple[float, dict[str, int]]] = {}
     commit: str | None = None
     before: S.Phase | None = None
     for number, phase in enumerate(phases_of(scn), start=1):
@@ -625,6 +627,19 @@ def run_skill(
         if phase.hint:
             rt.hide(PH.HANDOFF)
         estimated = watch.estimated_usd
+        # A resumed session's result carries the session's running total, the
+        # phases before it included, so this phase's own is what it adds to it.
+        earlier_cost, earlier_usage = running.get(homes[phase.name], (0.0, {})) if resume else (0.0, {})
+        if spent is not None:
+            running[home] = (spent, dict(spent_usage))
+            spent = round(max(spent - earlier_cost, 0.0), 6)
+            spent_usage = {k: max(v - earlier_usage.get(k, 0), 0) for k, v in spent_usage.items()}
+        else:
+            own_usage = watch.usage()
+            running[home] = (
+                earlier_cost + estimated,
+                {k: earlier_usage.get(k, 0) + own_usage.get(k, 0) for k in {*earlier_usage, *own_usage}},
+            )
         phase_cost = spent if spent is not None else estimated
         plan.budget.spent += phase_cost
         cost += phase_cost
@@ -790,7 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-spend-usd",
         type=float,
         default=None,
-        help="the most the run may spend, subject and judges, in US dollars; checked before each phase and each repeat",
+        help="once the run has spent this many US dollars, subject and judges, it starts no further repeat or phase",
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
