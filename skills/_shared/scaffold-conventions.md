@@ -449,8 +449,9 @@ container.
 2. Print the guideline version the skill ran from (the release, or a
    later snapshot of main), then the list of files created and
    changed, one per line, followed by the commands that were run and
-   their outcome. A gate that still fails after its last rerun is
-   named there, with why it fails.
+   their outcome in the last run. When a gate still fails after its
+   last rerun, one line closes the output:
+   `Stopped: <gate> fails: <why>`.
    Nothing else. The list comes from
    `git status --porcelain --untracked-files=all`, which names every
    new file rather than the folder that holds it. Every scaffold runs

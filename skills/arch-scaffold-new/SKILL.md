@@ -213,13 +213,18 @@ so they stay here:
 A gate in these steps that fails on what this skill wrote is fixed
 and run again, under the bound the conventions set in After writing,
 and within what they let a fix change: the first run plus at most 3
-reruns. The second run of step 8 is
-meant to fail, and is no such failure. Stop at the first step whose
-gate still fails after its last rerun, say which gate fails and why,
-and report where it stopped.
+reruns. Run two of step 8 is meant to fail, and is no such failure.
+Stop at the first step whose gate still fails after its last rerun.
+The tree is new, so nothing in it is pre-existing: a gate that still
+fails on what this skill wrote is a defect of this skill, like a high
+finding. A gate that fails on the machine instead (no network, a port
+in use, Docker stopped) is no defect of the skill; the output names
+what failed.
 
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
 plus one line: the tree is uncommitted, and the first commit is the
-user's.
+user's. When the skill stopped, the conventions' closing line names
+the step and the cause, and still comes last:
+`Stopped at step <n>: <gate> fails: <why>; <a defect of this skill | the machine: what failed>`.
