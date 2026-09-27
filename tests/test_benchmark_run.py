@@ -115,6 +115,53 @@ def test_a_scenario_that_does_not_load_exits_2_with_its_message(tmp_path, capsys
     assert run.main(["--scenario", str(good), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
 
 
+def test_a_runtime_the_scenario_does_not_list_is_refused_before_anything_starts(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "boxed.json"
+    path.write_text(json.dumps(dict(SKILL, runtimes=["container"])), encoding="utf-8")
+    for runtime in ("host", "vm"):
+        assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime", runtime]) == run.NOT_LISTED
+        assert f"scenario one runs on container, not on {runtime}" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()  # no run folder, no runtime, nothing spent
+
+
+def test_a_run_that_names_no_runtime_takes_the_scenario_s_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "two.json"
+    path.write_text(json.dumps(dict(SKILL, runtimes=["container", "host"])), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["runtime"]["name"] == "container"
+
+
+def test_a_scenario_that_requires_docker_is_refused_in_a_container(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "system.json"
+    path.write_text(json.dumps(dict(SKILL, runtimes=["vm"], requires=["docker"])), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime", "container"]) == run.NOT_LISTED
+    assert "scenario one runs on vm, not on container" in capsys.readouterr().err
+    both = tmp_path / "both.json"
+    both.write_text(json.dumps(dict(SKILL, runtimes=["vm", "container"], requires=["docker"])), encoding="utf-8")
+    assert run.main(["--scenario", str(both), "--out", str(tmp_path / "runs"), "--runtime", "vm"]) == 2
+    assert "the container runtime cannot provide docker, which the scenario requires" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
+
+
+def test_the_shipped_review_never_runs_on_the_host(tmp_path, capsys, monkeypatch):
+    pytest.importorskip("yaml")
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    assert run.main(["--scenario", "review-om", "--out", str(tmp_path / "runs"), "--runtime", "host"]) == run.NOT_LISTED
+    assert "scenario review-om runs on container, not on host" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
+
+
+def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "SCENARIOS", tmp_path)
+    (tmp_path / "one.json").write_text(json.dumps(dict(SKILL, runtimes=["container", "host"])), encoding="utf-8")
+    assert run.main(["list", "--out", str(tmp_path)]) == 0
+    assert "runtimes=container,host" in capsys.readouterr().out
+
+
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "benchmark.yml"
 
 
@@ -141,17 +188,20 @@ def scenario_step(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "claude").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    # the stub records each scenario and fails the one named `broken`
+    # The stub records each scenario, fails the one named `broken`, and
+    # refuses the one named `elsewhere` as run.py refuses a scenario that
+    # does not list the runtime.
     (bin_dir / "uv").write_text(
         # `uv run --locked benchmark/run.py --scenario <name>`: three words, then the script.
-        '#!/bin/sh\necho "$@" > "$ARGV_LOG"\nshift 3\necho "$2" >> "$UV_LOG"\n[ "$2" != broken ]\n',
+        '#!/bin/sh\necho "$@" > "$ARGV_LOG"\nshift 3\necho "$2" >> "$UV_LOG"\n'
+        f'[ "$2" = elsewhere ] && exit {run.NOT_LISTED}\n[ "$2" != broken ]\n',
         encoding="utf-8",
     )
     for stub in bin_dir.iterdir():
         stub.chmod(0o755)
     scenarios = tmp_path / "benchmark" / "scenarios"
     scenarios.mkdir(parents=True)
-    for name in ("a.yaml", "b.yml", "broken.json", "c.yaml", "notes.txt"):
+    for name in ("a.yaml", "b.yml", "broken.json", "c.yaml", "elsewhere.yaml", "notes.txt"):
         (scenarios / name).write_text("{}", encoding="utf-8")
     script = tmp_path / "step.sh"
     script.write_text(workflow_step("run every scenario"), encoding="utf-8")
@@ -174,10 +224,17 @@ def scenario_step(tmp_path):
 
 def test_the_workflow_runs_every_cataloged_scenario_and_fails_at_the_end(scenario_step):
     code, ran, out = scenario_step()
-    assert ran == ["a", "b", "broken", "c"]  # every suffix the catalog reads, past the failure
-    assert code == 1 and "failed scenarios: broken" in out
+    assert ran == ["a", "b", "broken", "c", "elsewhere"]  # every suffix the catalog reads, past the failure
+    assert code == 1 and "failed scenarios: broken\n" in out
     code, ran, _ = scenario_step(SCENARIOS="a c", PROVIDERS="anthropic,openai", REPEAT="2")
     assert code == 0 and ran == ["a", "c"]
+
+
+def test_the_workflow_skips_and_names_a_scenario_that_does_not_list_the_container(scenario_step):
+    code, ran, out = scenario_step(SCENARIOS="a elsewhere c")
+    assert code == 0 and ran == ["a", "elsewhere", "c"]
+    assert "::notice::skipped, since they do not list the container runtime: elsewhere\n" in out
+    assert "failed scenarios" not in out
 
 
 @pytest.mark.parametrize(
@@ -188,6 +245,8 @@ def test_the_workflow_runs_every_cataloged_scenario_and_fails_at_the_end(scenari
         {"EFFORT": "maximum"},
         {"EFFORT": "high --dry-run"},
         {"REPEAT": "0"},
+        {"REPEAT": "6"},
+        {"REPEAT": "10"},
         {"REPEAT": "1 --dry-run"},
     ],
 )

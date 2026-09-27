@@ -17,7 +17,7 @@ on:
         default: ""
         type: string
       repeat:
-        description: "how many times each subject runs"
+        description: "how many times each subject runs, from 1 to 5"
         default: "3"
         type: string
 
@@ -50,7 +50,8 @@ jobs:
     # as this job's user and could read the run step's environment, the
     # judges' keys with it, and the answer files in the checkout; in the
     # container it sees its three mounts and the one key it is handed, its
-    # own, never a judge's.
+    # own, never a judge's. So only the scenarios that list the container
+    # runtime run here, and the rest are named as skipped.
     steps:
       # Actions are pinned by commit; the comment names the tag the commit carries.
       # No token left in .git/config for the subject to find.
@@ -74,6 +75,9 @@ jobs:
         # The inputs reach the shell as variables, never as text spliced
         # into the script. A failing scenario is recorded and the rest
         # still run; the step fails at the end if any of them did.
+        # run.py exits 7, before it makes or spends anything, for a
+        # scenario that does not list the container runtime: that one is
+        # skipped and named, not failed.
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -102,8 +106,9 @@ jobs:
           judges=()
           [ -n "$PROVIDERS" ] && judges+=(--providers "$PROVIDERS")
           [ -n "$EFFORT" ] && judges+=(--effort "$EFFORT")
-          if ! [[ "$REPEAT" =~ ^[1-9][0-9]?$ ]]; then
-            echo "::error::repeat is a whole number from 1 to 99, got '$REPEAT'"
+          # At most 5, which bounds what one dispatch spends on a scenario.
+          if ! [[ "$REPEAT" =~ ^[1-5]$ ]]; then
+            echo "::error::repeat is a whole number from 1 to 5, got '$REPEAT'"
             exit 2
           fi
           if [ "$SCENARIOS" = "all" ]; then
@@ -114,16 +119,24 @@ jobs:
             names="$SCENARIOS"
           fi
           failed=()
+          skipped=()
           for name in $names; do
             echo "::group::$name"
-            if ! uv run --locked benchmark/run.py --scenario "$name" \
+            uv run --locked benchmark/run.py --scenario "$name" \
               ${judges[@]+"${judges[@]}"} \
               --strict --repeat "$REPEAT" --out benchmark/runs \
-              --runtime container --claude claude; then
+              --runtime container --claude claude
+            code=$?
+            if [ "$code" -eq 7 ]; then
+              skipped+=("$name")
+            elif [ "$code" -ne 0 ]; then
               failed+=("$name")
             fi
             echo "::endgroup::"
           done
+          if [ "${#skipped[@]}" -gt 0 ]; then
+            echo "::notice::skipped, since they do not list the container runtime: ${skipped[*]}"
+          fi
           if [ "${#failed[@]}" -gt 0 ]; then
             echo "::error::failed scenarios: ${failed[*]}"
             exit 1
