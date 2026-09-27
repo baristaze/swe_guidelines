@@ -14,22 +14,24 @@ and asks one model.
 
 ```bash
 uv run benchmark/run.py list
-uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1
+uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
 uv run benchmark/serve.py --runs benchmark/runs --port 8765
 ```
 
 `uv run` reads the inline dependencies at the top of `run.py`, so there
 is nothing to install first. The harness modules import the standard
 library only; the provider clients and the YAML and schema packages are
-imported inside the functions that call them.
+imported inside the functions that call them. `explain-tenancy` runs in
+a container only, so its run needs Docker, and `--build` builds the
+image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
-| `--scenario` | a scenario name from `scenarios/`, or a path to a file |
+| `--scenario` | a scenario from `scenarios/`, by the name `list` prints, else by its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
-| `--runtime` | `host` (the default), `container`, or `vm` |
+| `--runtime` | `host`, `container`, or `vm`: one of the scenario's `runtimes`, its first by default |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default |
@@ -37,7 +39,7 @@ imported inside the functions that call them.
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
-| `--build` | build the container image before running |
+| `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
 | `--screencast-seconds` | how long to capture frames; 10 by default |
 
@@ -95,7 +97,8 @@ Runtimes).
 runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   run.json                 the resolved scenario, runtime, models, argv, and versions
   streams/cli.jsonl        one JSON line per output line, written as it happens
-  streams/build.jsonl      the image build's output, with `--runtime container --build`
+  streams/build.jsonl      the image build's output, with `--runtime container --build`,
+                           for a skill or command subject
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
                            files under workspace/ at their own paths
@@ -141,7 +144,8 @@ run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
-(see Versions).
+(see Versions), and on a run whose runtime its scenario does not list
+(see Where a scenario runs).
 
 ## Versions
 
@@ -155,7 +159,7 @@ path on that machine:
 |-------|---------------|
 | `checkout` | the commit, the plugin's version from `.claude-plugin/plugin.json`, and whether the tree held changes no commit holds (`dirty`), with those paths and one hash over their content |
 | `claude_code` | what `claude --version` answers inside the runtime, for a skill subject |
-| `image` | the container image by name and by the id the engine gives it |
+| `image` | the container image by name and by the id the engine gives it, for a skill or command subject; a `qa` subject runs in no image |
 | `target` | the target by its path in the repository and a hash of the staged copy the subject read |
 | `expected` | the planted findings by their path in the repository and a hash of the file |
 
@@ -199,7 +203,8 @@ version describes that, and the run's notes say so.
   Linux, through `/proc/<pid>/environ` of the harness), and the answer
   files at their fixed paths in the checkout. The sandbox keeps them out
   of the paths the subject is given, not out of its reach. Use `host`
-  for a quick run on your own machine, never where that matters. The
+  for a quick run on your own machine, never where that matters: a
+  scenario whose subject must not reach them does not list it. The
   subject runs in a process group of its own, and the group is killed
   when the subject ends, on a timeout, a clean exit that left children,
   or an interrupt.
@@ -210,8 +215,9 @@ version describes that, and the run's notes say so.
   in the container, so the judges' keys and the answer files are out of
   the subject's reach. The image's user is not this machine's user on a
   Linux runner, so the workspace is opened to every user; the sandbox
-  around it stays private. The benchmark workflow runs every scenario
-  here, with the image built in a step that holds no key.
+  around it stays private. The benchmark workflow runs here every
+  scenario that lists this runtime, with the image built in a step that
+  holds no key.
 - `vm` runs the subject on another machine through a configured
   prefix, such as `limactl shell`. The machine is the boundary. The
   harness copies the staged plugin and target there and nothing else
@@ -227,6 +233,38 @@ target are as the subject sees them, and those are the paths the
 subject is given: in `--plugin-dir`, in `--add-dir`, and in the prompt.
 
 All three write the same streams into the run folder.
+
+### Where a scenario runs
+
+A scenario says where it may run: `runtimes`, the runtimes it runs on,
+is required, and a scenario without it does not load. A run takes the
+first it lists when `--runtime` names none. `run.py` refuses any other
+runtime before it makes a run folder, and exits 7. So a caller tells a
+scenario that does not run there from one that failed. `run.py list`
+prints each scenario's runtimes, and what it requires when it requires
+anything.
+
+`requires` names what the runtime must provide. `docker` is the one
+requirement there is: a Docker engine the subject runs containers on.
+Only the vm runtime provides it. The subject runs there as the
+machine's user. `runtime/lima/benchmark.yaml` makes a machine whose
+engine listens at the default socket, which that user reaches with no
+setting. The container runtime runs no engine and drops every
+capability. The host runtime hands the subject a private `HOME` and a
+few variables of the harness's environment. So an engine's settings,
+`DOCKER_HOST`, `DOCKER_CONTEXT`, or a context under `~/.docker`, never
+reach it, and an engine behind them is out of its reach.
+
+A scenario that lists a runtime unable to provide what it requires is
+refused when it loads. The check is against what a runtime provides by
+its design, not a probe of the machine: another machine with no engine
+at its default socket fails the subject, not the start.
+
+A checked-in run is held to the same. `make runs` finds a run's
+scenario by the name the run records, and fails on a run whose runtime
+that scenario, as its file is now, does not list. It fails too on a run
+whose scenario has no file, one that does not load, or a name two files
+share.
 
 ### The vm runtime
 
@@ -337,8 +375,10 @@ stays is named in the run's notes.
 ```bash
 limactl create --name swe-benchmark benchmark/runtime/lima/benchmark.yaml
 limactl start swe-benchmark
-uv run benchmark/run.py --scenario review-om --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml
+uv run benchmark/run.py --scenario <name> --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml
 ```
+
+`<name>` is a scenario that lists `vm`.
 
 The machine is Ubuntu 26.04 LTS with 8 processors, 32 GiB of memory,
 and a 100 GiB disk. It carries Docker, rootful, with its socket owned
@@ -381,17 +421,23 @@ can change the machine itself. A changed pin takes a new machine:
 
 A scenario is YAML or JSON. Three ship here:
 
-| Scenario | Kind | What it measures |
-|----------|------|------------------|
-| `explain-tenancy` | `skill` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
-| `review-om` | `skill` | the `arch-review-om` skill over a checkout with eight planted defects |
-| `support-turn` | `qa` | a model answering an on-call question directly, with no skill |
+| Scenario | Kind | Runtimes | What it measures |
+|----------|------|----------|------------------|
+| `explain-tenancy` | `skill` | `container` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
+| `review-om` | `skill` | `container` | the `arch-review-om` skill over a checkout with eight planted defects |
+| `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
+
+The two skills run in a container only. On the host their subject can
+read the checkout, the rubric and the planted findings in it. A `qa`
+subject runs no command, so the runtime holds nothing it reaches.
 
 The shape:
 
 ```yaml
 name: explain-tenancy
 kind: skill                 # skill | command | qa
+runtimes: [container]       # required: where it may run; a run takes the first
+requires: []                # what the runtime must provide: docker
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
@@ -573,10 +619,14 @@ file here.
 
 ## The workflow
 
-`.github/workflows/benchmark.yml` runs every scenario on demand, in the
-container runtime. Its job runs in a GitHub environment named
-`benchmark`, and the workflow does not create it. Create it under the
-repository's Settings, Environments, with these rules:
+`.github/workflows/benchmark.yml` runs on demand every scenario that
+lists the container runtime, in that runtime. It skips the rest and
+names them in a notice. Its `repeat` input is 1 to 5, which bounds what
+one dispatch spends on a scenario.
+
+Its job runs in a GitHub environment named `benchmark`, and the
+workflow does not create it. Create it under the repository's
+Settings, Environments, with these rules:
 
 - Deployment branches: selected branches, `main` only. A dispatch from
   any other branch never reaches the keys.
@@ -604,6 +654,6 @@ so `make test` and CI cover it with no key and no network.
 
 ```bash
 make test
-make benchmark          # the smoke scenario, two judges (--providers 3), one repeat
+make benchmark          # the smoke scenario in a container, its image built first, two judges (--providers 3), one repeat
 make benchmark-serve    # serve benchmark/runs at port 8765
 ```

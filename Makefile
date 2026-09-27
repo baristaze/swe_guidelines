@@ -12,6 +12,9 @@ npm_pin = $(shell sed -n 's|^ *"$(1)": *"\([^"]*\)".*|\1|p' $(PINS)/package.json
 # not carry; uv brings them at pinned versions, locally and in CI alike.
 PYTEST := uv run --no-project --with pytest==$(call pin,pytest) --with pyyaml==$(call pin,pyyaml) \
   --with jsonschema==$(call pin,jsonschema) python -m pytest
+# make runs reads the benchmark scenarios, which are YAML, so it runs with
+# pyyaml at the pin the tests use.
+PYTHON_YAML := uv run --no-project --with pyyaml==$(call pin,pyyaml) python
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 # ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
@@ -44,8 +47,8 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
 
-runs:              ## the index of the benchmark runs has one row per run folder
-	$(PYTHON) scripts/check_runs.py
+runs:              ## the index of the benchmark runs has one row per run folder, and each ran on a runtime its scenario lists
+	$(PYTHON_YAML) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings
 	$(PYTHON) scripts/gen_toc.py --check
@@ -87,8 +90,8 @@ gen-skills-check:  ## fail when a generated skill is out of date
 gen-toc:           ## regenerate the table of contents of architecture.md
 	$(PYTHON) scripts/gen_toc.py
 
-benchmark:         ## run the smoke benchmark scenario (calls paid APIs; not part of check)
-	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1
+benchmark:         ## run the smoke benchmark scenario in a container, its image built first (calls paid APIs; not part of check)
+	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1 --build
 
 benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
 	uv run benchmark/serve.py --runs benchmark/runs --port 8765

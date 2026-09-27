@@ -1,5 +1,8 @@
 name: review-om
 kind: skill
+# In a container only. On the host the subject runs as the harness's
+# user and can read the checkout, the planted findings in it.
+runtimes: [container]
 subject:
   skill: arch-review-om
   prompt: "Review {target}/om against the object model lenses and report findings by lens id."

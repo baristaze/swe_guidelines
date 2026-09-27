@@ -11,16 +11,24 @@ is a scenario that silently judges something else.
 A relative path in a scenario (`subject.target`, `subject.context`,
 `evidence.expected`) is read from the scenario file's folder, so a scenario means the same
 thing from wherever the run starts.
+
+A scenario says where it may run: `runtimes`, the runtimes it runs on,
+is required, and a run takes the first it lists when `--runtime` names
+none. `requires` names what its runtime must provide. A
+scenario that lists a runtime unable to provide what it requires is
+refused when it loads, so no run of it starts there.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from . import providers as P
+from . import runtime as RT
 from .judge import EFFORTS
 
 KINDS = ("skill", "command", "qa")
@@ -91,7 +99,9 @@ class Scenario:
     artifact: ArtifactSpec
     rubric: str
     judges: JudgeSpec
+    runtimes: list[str]
     evidence: EvidenceSpec = field(default_factory=EvidenceSpec)
+    requires: list[str] = field(default_factory=list)
     path: Path | None = None
 
     def resolve(self, value: str | None) -> Path | None:
@@ -123,6 +133,8 @@ class Scenario:
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
             "judges": {"providers": self.judges.providers, "effort": self.judges.effort},
+            "runtimes": list(self.runtimes),
+            "requires": list(self.requires),
             "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
             "path": str(self.path) if self.path else None,
         }
@@ -144,17 +156,25 @@ def _strings(value: Any, where: str) -> list[str]:
     return [str(v) for v in value]
 
 
+def _int(value: Any, where: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ScenarioError(f"{where}: expected a whole number, got {value!r}") from exc
+
+
 def from_data(data: Any, path: Path | None = None) -> Scenario:
     """Build a scenario from parsed data."""
     if not isinstance(data, dict):
         raise ScenarioError("a scenario file holds a mapping at the top level")
-    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "evidence"), "scenario")
+    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "runtimes", "requires", "evidence"), "scenario")
     name = str(data.get("name") or (path.stem if path else ""))
     if not name:
         raise ScenarioError("scenario: name is required")
     kind = str(data.get("kind") or "skill")
     if kind not in KINDS:
         raise ScenarioError(f"scenario {name}: kind {kind!r} is not one of {', '.join(KINDS)}")
+    runtimes, requires = _runtimes(data, name)
 
     raw_subject = data.get("subject") or {}
     if not isinstance(raw_subject, dict):
@@ -168,13 +188,13 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         skill=raw_subject.get("skill"),
         prompt=str(raw_subject.get("prompt") or ""),
         argv=_strings(raw_subject.get("argv"), f"scenario {name}: subject.argv"),
-        max_turns=int(raw_subject.get("max_turns") or 6),
+        max_turns=_int(raw_subject.get("max_turns") or 6, f"scenario {name}: subject.max_turns"),
         allowed_tools=_strings(raw_subject.get("allowed_tools"), f"scenario {name}: subject.allowed_tools"),
         target=raw_subject.get("target"),
         model=raw_subject.get("model"),
         provider=raw_subject.get("provider"),
         context=_strings(raw_subject.get("context"), f"scenario {name}: subject.context"),
-        timeout_s=int(raw_subject.get("timeout_s") or 900),
+        timeout_s=_int(raw_subject.get("timeout_s") or 900, f"scenario {name}: subject.timeout_s"),
     )
     if kind == "skill" and not subject.skill:
         raise ScenarioError(f"scenario {name}: kind skill needs subject.skill")
@@ -228,8 +248,42 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     if evidence.expected and not subject.target:
         raise ScenarioError(f"scenario {name}: evidence.expected describes a target, and subject.target names none")
     return Scenario(
-        name=name, kind=kind, subject=subject, artifact=artifact, rubric=rubric, judges=judges, evidence=evidence, path=path
+        name=name,
+        kind=kind,
+        subject=subject,
+        artifact=artifact,
+        rubric=rubric,
+        judges=judges,
+        runtimes=runtimes,
+        evidence=evidence,
+        requires=requires,
+        path=path,
     )
+
+
+def _runtimes(data: dict[str, Any], name: str) -> tuple[list[str], list[str]]:
+    """The runtimes a scenario runs on and what it requires of them, each runtime able to provide it."""
+    runtimes = _strings(data.get("runtimes"), f"scenario {name}: runtimes")
+    if not runtimes:
+        raise ScenarioError(
+            f"scenario {name}: runtimes is required: the runtimes it may run on, of {', '.join(RT.NAMES)}; "
+            "a run takes the first when --runtime names none"
+        )
+    unknown = [r for r in runtimes if r not in RT.NAMES]
+    if unknown:
+        raise ScenarioError(f"scenario {name}: runtimes: {', '.join(unknown)} is not one of {', '.join(RT.NAMES)}")
+    requires = _strings(data.get("requires"), f"scenario {name}: requires")
+    unknown = [r for r in requires if r not in RT.REQUIREMENTS]
+    if unknown:
+        raise ScenarioError(f"scenario {name}: requires: {', '.join(unknown)} is not one of {', '.join(RT.REQUIREMENTS)}")
+    for runtime in runtimes:
+        missing = [r for r in requires if r not in RT.PROVIDES[runtime]]
+        if missing:
+            raise ScenarioError(
+                f"scenario {name}: the {runtime} runtime cannot provide {', '.join(missing)}, which the scenario requires; "
+                "take it out of runtimes"
+            )
+    return runtimes, requires
 
 
 def parse_text(text: str, suffix: str = ".json") -> Any:
@@ -245,14 +299,31 @@ def parse_text(text: str, suffix: str = ".json") -> Any:
     return yaml.safe_load(text)
 
 
+def parse_errors() -> tuple[type[Exception], ...]:
+    """What the parsers raise on text that does not parse: json's error, and yaml's when pyyaml is there."""
+    try:
+        import yaml  # imported here: the harness stays standard library at import time
+    except ModuleNotFoundError:
+        return (json.JSONDecodeError,)
+    return (json.JSONDecodeError, yaml.YAMLError)
+
+
 def load(path: str | Path) -> Scenario:
-    """Load one scenario file."""
+    """Load one scenario file. A file that does not parse is a ScenarioError, as one that is not a scenario is."""
     path = Path(path)
     if path.suffix not in SUFFIXES:
         raise ScenarioError(f"{path}: a scenario file ends in {', '.join(SUFFIXES)}")
     if not path.exists():
         raise ScenarioError(f"{path}: no such scenario file")
-    return from_data(parse_text(path.read_text(encoding="utf-8"), path.suffix), path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ScenarioError(f"{path}: is not UTF-8: {exc}") from exc
+    try:
+        data = parse_text(text, path.suffix)
+    except parse_errors() as exc:
+        raise ScenarioError(f"{path}: does not parse as {path.suffix.lstrip('.').upper()}: {exc}") from exc
+    return from_data(data, path)
 
 
 def catalog(folder: str | Path) -> list[Path]:
@@ -266,12 +337,24 @@ def catalog(folder: str | Path) -> list[Path]:
 
 
 def find(name: str, folder: str | Path) -> Path:
-    """The file of a scenario named on the command line, by name or by path."""
+    """The file of a scenario named on the command line: by path, by the name the file gives itself, else by file stem.
+
+    The name is what `run.py list` prints, and it is matched before any
+    stem, so what it lists is what `--scenario` takes, even where one
+    file's name is another file's stem. A file that does not load has no
+    name to match and is found by its stem.
+    """
     direct = Path(name)
     if direct.suffix in SUFFIXES and direct.exists():
         return direct
+    names: dict[str, Path] = {}
+    for path in catalog(folder):
+        with contextlib.suppress(ScenarioError):
+            names.setdefault(load(path).name, path)
+    if name in names:
+        return names[name]
     for path in catalog(folder):
         if path.stem == name:
             return path
-    known = ", ".join(p.stem for p in catalog(folder)) or "none"
+    known = ", ".join(sorted({*names, *(p.stem for p in catalog(folder))})) or "none"
     raise ScenarioError(f"no scenario named {name!r} in {folder}; known: {known}")

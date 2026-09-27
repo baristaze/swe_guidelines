@@ -15,7 +15,7 @@
 # step that holds the keys runs what was installed there, never a newer one.
 """Run one scenario and have the frontier models judge what came out.
 
-    uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1
+    uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -61,6 +61,10 @@ PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
 # payload the subject reads, and the harness, its scenarios, and its
 # fixtures. The run folders are the record, not an input.
 VERSIONED = (*RT.PLUGIN_PAYLOAD, "benchmark", ":(exclude)benchmark/runs")
+# The exit status of a run on a runtime its scenario does not list. Nothing
+# was made or spent, and the benchmark workflow reads it as a scenario to
+# skip, not one that failed.
+NOT_LISTED = 7
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -132,9 +136,10 @@ def probe_versions(scn: S.Scenario, rt: RT.BaseRuntime, claude: str) -> tuple[di
     """What only the runtime can answer: its Claude Code and its image. Returns them and the notes they call for.
 
     Claude Code is asked inside the runtime, because a container or another
-    machine carries its own. Only a skill runs it.
+    machine carries its own. Only a skill runs it. The image is asked only
+    for a subject that runs a command: a qa subject never runs in it.
     """
-    found: dict = {"claude_code": None, "image": rt.image_version()}
+    found: dict = {"claude_code": None, "image": rt.image_version() if scn.kind != "qa" else None}
     notes: list[str] = []
     if scn.kind == "skill":
         found["claude_code"] = rt.probe([claude, "--version"])
@@ -417,7 +422,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repeat", type=int, default=3, help="how many times the subject runs; one run is an anecdote, so 3 by default"
     )
-    parser.add_argument("--runtime", default="host", choices=list(RT.NAMES), help="where the subject runs")
+    parser.add_argument(
+        "--runtime",
+        default=None,
+        choices=list(RT.NAMES),
+        help="where the subject runs: one of the scenario's runtimes, its first by default",
+    )
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="folder the run folders are written under")
@@ -429,7 +439,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
-    parser.add_argument("--build", action="store_true", help="build the container image before running")
+    parser.add_argument(
+        "--build", action="store_true", help="build the container image before running, for a skill or command subject"
+    )
     parser.add_argument(
         "--screencast-port", type=int, default=None, help="capture frames from a Chrome already listening on this port"
     )
@@ -442,7 +454,11 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
-            print(f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort}")
+            requires = f" requires={','.join(scn.requires)}" if scn.requires else ""
+            print(
+                f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort} "
+                f"runtimes={','.join(scn.runtimes)}{requires}"
+            )
         except S.ScenarioError as exc:
             print(f"  {path.stem:18} unreadable: {exc}")
     print("\nproviders:")
@@ -484,6 +500,12 @@ def main(argv: list[str] | None = None) -> int:
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    # The scenario says where it runs. A runtime it does not list is refused
+    # here, before a run folder is made.
+    runtime = args.runtime or scn.runtimes[0]
+    if runtime not in scn.runtimes:
+        print(f"scenario {scn.name} runs on {', '.join(scn.runtimes)}, not on {runtime}", file=sys.stderr)
+        return NOT_LISTED
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
     own_target = scn.resolve(scn.subject.target)
@@ -498,12 +520,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.runtime_config:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
-    if args.runtime == "container":
+    if runtime == "container":
         config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(RT.SUBJECT_KEYS[n])])
     # The subject lives outside the checkout, with copies of the plugin
     # payload and of the target, so neither an answer key nor the
     # repository's CLAUDE.md is in its reach.
-    rt = RT.build(args.runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
+    rt = RT.build(runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
     try:
         return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
     finally:
@@ -580,7 +602,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(f"strict: the subject has no key of its own; set {', '.join(no_subject_key)}", file=sys.stderr)
         return 3
 
-    if isinstance(rt, RT.ContainerRuntime) and args.build:
+    # A qa subject runs no command, so no image is built for it: a container
+    # run of one needs no engine.
+    if isinstance(rt, RT.ContainerRuntime) and args.build and scn.kind != "qa":
         with CliStream(run_dir / "streams" / "build.jsonl") as build_stream:
             status = rt.build(build_stream)
         if status.code != 0:
