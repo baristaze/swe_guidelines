@@ -741,3 +741,25 @@ def test_the_vm_says_its_checkout_is_not_this_machine_s(tmp_path, monkeypatch):
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["versions"]["claude_code"] == "9.9.9 (Claude Code)"
     assert any("/srv/plugin" in note and "not that one" in note for note in results["notes"])
+
+
+@pytest.mark.parametrize("runtime", ["host", "container"])
+def test_a_shipped_scenario_s_run_names_no_path_of_the_checkout(tmp_path, monkeypatch, runtime):
+    pytest.importorskip("yaml")
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    argv = ["--scenario", "review-om", "--out", str(tmp_path / "runs"), "--runtime", runtime, "--dry-run"]
+    assert run.main(argv) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    text = (run_dir / "run.json").read_text(encoding="utf-8")
+    resolved = json.loads(text)
+    assert resolved["scenario"]["path"] == "benchmark/scenarios/review-om.yaml"
+    assert str(run.ROOT) not in text
+
+
+def test_a_scenario_outside_the_checkout_keeps_its_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["scenario"]["path"] == str(path.resolve())

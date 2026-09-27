@@ -531,7 +531,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     evidence_text = E.render(expected_text, source_text)
     resolved = {
         "run_id": run_id,
-        "scenario": scn.as_dict(),
+        # The scenario's content is inline; its path is a reference, so it is
+        # recorded as the other paths are, relative to the repository.
+        "scenario": {**scn.as_dict(), "path": V.shown(scn.path, ROOT)},
         "runtime": {"name": rt.name, "config": config, "target": V.shown(target, ROOT)},
         "providers": {"flags": int(flags), "names": [P.name(p) for p in P.members(flags)]},
         "effort": effort,
