@@ -259,9 +259,11 @@ refused when it loads. The check is against what a runtime provides by
 its design, not a probe of the machine: another machine with no engine
 at its default socket fails the subject, not the start.
 
-A checked-in run is held to the same. `make runs` fails on a run whose
-runtime its scenario, as its file is now, does not list, and on a run
-whose scenario has no file or one that does not load.
+A checked-in run is held to the same. `make runs` finds a run's
+scenario by the name the run records, and fails on a run whose runtime
+that scenario, as its file is now, does not list. It fails too on a run
+whose scenario has no file, one that does not load, or a name two files
+share.
 
 ### The vm runtime
 
