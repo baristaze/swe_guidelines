@@ -61,8 +61,19 @@ def as_floats(value: Any) -> Any:
     return value
 
 
+def sdk_json(value: Any) -> Any:
+    """An SDK object as the JSON of its fields, the way a client serializes a request."""
+    if isinstance(value, bytes):
+        return value.hex()
+    return vars(value) if hasattr(value, "__dict__") else repr(value)
+
+
 class Fake:
-    """A provider client that replays a script and keeps a copy of every request."""
+    """A provider client that replays a script and keeps a copy of every request.
+
+    Like an SDK, it encodes each request as UTF-8 JSON before it answers,
+    so a string no JSON text can carry fails here as it would there.
+    """
 
     def __init__(self, script: list[Any], on_call: Any = None) -> None:
         self.script = list(script)
@@ -71,6 +82,7 @@ class Fake:
         self.on_call = on_call
 
     def next(self, request: dict[str, Any]) -> dict[str, Any]:
+        json.dumps(request, ensure_ascii=False, default=sdk_json).encode("utf-8")
         self.requests.append(copy.deepcopy(request))
         if self.on_call:
             self.on_call(self)
@@ -96,7 +108,7 @@ class FakeAnthropic(Fake):
         if s["text"]:
             blocks.append(NS(type="text", text=s["text"]))
         for call_id, (name, args) in zip(self.call_ids(s), s["calls"], strict=True):
-            blocks.append(NS(type="tool_use", id=call_id, name=name, input=args))
+            blocks.append(NS(type="tool_use", id=call_id, name=name, input=copy.deepcopy(args)))  # a fresh response, as an SDK's
         i, o, r = s["usage"]
         return NS(
             content=blocks,
@@ -162,11 +174,14 @@ class FakeXai(Fake):
             NS(id=call_id, type="function", function=NS(name=name, arguments=as_json(args)))
             for call_id, (name, args) in zip(self.call_ids(s), s["calls"], strict=True)
         ]
+        refusal = None
+        if s["stop"] == "refusal part":
+            refusal, s = "I can't help with that.", {**s, "stop": None}
         i, o, r = s["usage"]
         return NS(
             choices=[
                 NS(
-                    message=NS(content=s["text"] or None, tool_calls=calls or None),
+                    message=NS(content=s["text"] or None, tool_calls=calls or None, refusal=refusal),
                     finish_reason=s["stop"] or ("tool_calls" if calls else "stop"),
                 )
             ],
@@ -959,7 +974,7 @@ def test_arguments_that_break_a_tool_are_refused_and_the_loop_goes_on(provider, 
     assert judgement.status == "ok" and judgement.tool_calls == 2
     [(_, find), (_, read)] = sent_results(name, fake.requests[1])
     assert find.startswith("find refused: the glob has a class no path can match")
-    assert read.startswith("read_file refused: '\\ud800' does not resolve")
+    assert read.startswith(f"read_file refused: {A.LONE_PROBLEM}")
     assert records[-1]["kind"] == "end"
 
 
@@ -1076,8 +1091,9 @@ def test_no_wait_is_taken_that_the_time_left_cannot_hold(roots, tmp_path):
 
 
 @needs_jsonschema
-def test_an_openai_refusal_part_ends_the_judgement_without_reminders(roots, tmp_path):
-    judgement, fake, records = run(P.Provider.OPENAI, [step(stop="refusal part")], roots, tmp_path)
+@pytest.mark.parametrize("provider", [P.Provider.OPENAI, P.Provider.XAI], ids=["openai", "xai"])
+def test_a_refusal_the_message_carries_ends_the_judgement_without_reminders(provider, roots, tmp_path):
+    judgement, fake, records = run(provider, [step(stop="refusal part")], roots, tmp_path)
     assert judgement.status == "error" and judgement.error is not None and judgement.error.endswith("refused (refusal)")
     assert len(fake.requests) == 1 and records[1]["text"] == "I can't help with that."
 
@@ -1145,3 +1161,61 @@ def test_no_refusal_names_a_folder_on_this_machine(path, roots, tmp_path, monkey
         assert folder not in transcript and folder not in text
     tool = next(r for r in records if r["kind"] == "tool")
     assert "/etc" not in tool["text"]
+
+
+# A lone surrogate, the one character no JSON text can carry --------------
+
+LONE_SHAPES = {
+    "a-path": ("read_file", {"root": "output", "path": "\ud800"}),
+    "an-argument-name": ("list_dir", {"root": "output", "\ud800": 1}),
+    "a-glob-class": ("find", {"root": "output", "glob": "[\ud800-a]"}),
+    "a-grep-class": ("grep", {"root": "output", "pattern": "[\ud800-a]"}),
+    "a-tool-name": ("\ud800", {"root": "output"}),
+}
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("shape", list(LONE_SHAPES))
+@pytest.mark.parametrize("provider", PROVIDERS, ids=NAMES)
+def test_a_call_holding_a_lone_surrogate_is_refused_and_goes_back_escaped(provider, shape, roots, tmp_path):
+    name = P.name(provider)
+    judgement, fake, records = run(provider, [step(LONE_SHAPES[shape]), step(("submit", ANSWER))], roots, tmp_path)
+    assert judgement.status == "ok", judgement.error
+    assert judgement.tool_calls == 1 and len(fake.requests) == 2  # the fake encoded both requests, as an SDK does
+    [(_, text)] = sent_results(name, fake.requests[1])
+    assert A.LONE_PROBLEM in text and not A.LONE_SURROGATE.search(text)
+    if shape == "a-tool-name":
+        assert text.startswith("\\ud800 refused:")  # the name, escaped
+    assert records[-1]["kind"] == "end"
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("provider", PROVIDERS, ids=NAMES)
+def test_a_submission_holding_a_lone_surrogate_is_refused_and_may_be_sent_again(provider, roots, tmp_path):
+    name = P.name(provider)
+    script = [step(("submit", {"score": 72, "gaps": ["\ud800"]})), step(("submit", ANSWER))]
+    judgement, fake, _ = run(provider, script, roots, tmp_path)
+    assert judgement.status == "ok" and judgement.answer == ANSWER
+    [(_, text)] = sent_results(name, fake.requests[1])
+    assert text.startswith(f"The answer misses the schema: {A.LONE_PROBLEM}")
+
+
+def test_a_lone_surrogate_is_written_as_its_escape_and_nothing_else_changes():
+    assert A.escaped("plain é text") == "plain é text"
+    assert A.escaped("a\ud800b") == "a\\ud800b"
+    data = {"\ud800": ["x\udfff", 3, None, b"\xff"]}
+    assert A.escape_in_place(data) == {"\\ud800": ["x\\udfff", 3, None, b"\xff"]}
+    block = NS(type="tool_use", name="\ud800", input={"path": "ok"}, signature=b"sig")
+    kept = block.input
+    A.escape_in_place(block)
+    assert block.name == "\\ud800" and block.input is kept and block.signature == b"sig"
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("valid_first", [True, False], ids=["valid-then-invalid", "invalid-then-valid"])
+def test_a_valid_submission_in_a_turn_is_taken_before_an_invalid_one_counts(valid_first, roots, tmp_path):
+    good, bad = ("submit", ANSWER), ("submit", {"score": "high", "gaps": []})
+    last = step(good, bad) if valid_first else step(bad, good)
+    judgement, _, records = run(P.Provider.ANTHROPIC, [last], roots, tmp_path, budget=A.Budget(submits=1))
+    assert judgement.status == "ok" and judgement.answer == ANSWER
+    assert sorted(r["valid"] for r in records if r["kind"] == "submit") == [False, True]

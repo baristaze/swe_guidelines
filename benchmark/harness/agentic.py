@@ -22,7 +22,11 @@ line number in the other. On a file larger than `Caps.file_bytes`,
 has at least so many lines.
 
 A tool argument can be anything a model sends. Whatever it makes a tool
-do, the judge gets a refusal back and the loop goes on.
+do, the judge gets a refusal back and the loop goes on. A lone surrogate
+is a character no JSON text can carry, so a call that holds one is
+refused, and what the model sent goes back to it with the character
+written as its escape, such as `\\ud800`. Every tool result is escaped
+the same way.
 
 Every tool result sits inside a fence of backticks longer than any run
 of backticks in it, as the one-shot judge fences the artifact. The
@@ -36,7 +40,8 @@ the schema (`jsonschema`, draft 2020-12). A whole number sent as a
 float, as Gemini sends numbers, is read as the whole number. An answer
 that misses goes back to the judge with the problems, and the judge may
 submit again, `Budget.submits` times in all. A turn's submissions are
-read before its other calls, so the order of calls in one turn never
+read before its other calls, and a valid one is taken before an invalid
+one counts against the budget, so the order of calls in one turn never
 decides the outcome.
 
 `Budget` bounds a judgement three ways: tool calls, input tokens summed
@@ -674,6 +679,70 @@ def read_args(raw: Any) -> tuple[Any, str]:
         return None, f"the arguments are not JSON: {exc}"
 
 
+LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+LONE_PROBLEM = "the call holds a lone surrogate, a character no JSON text can carry"
+
+
+def escaped(text: str) -> str:
+    """The text with every lone surrogate written as its escape, such as `\\ud800`."""
+    if not LONE_SURROGATE.search(text):
+        return text
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+def holds_lone(value: Any) -> bool:
+    """Whether any string in the data, a key included, holds a lone surrogate."""
+    if isinstance(value, str):
+        return bool(LONE_SURROGATE.search(value))
+    if isinstance(value, dict):
+        return any(holds_lone(k) or holds_lone(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(holds_lone(v) for v in value)
+    return False
+
+
+def escape_in_place(value: Any, depth: int = 0) -> Any:
+    """What a model sent, with every lone surrogate in its strings escaped: changed in place, and returned.
+
+    It walks dicts, lists, and the fields of an SDK object, and sets a
+    field only when its string changed, so what holds no lone surrogate
+    goes back exactly as it came.
+    """
+    if isinstance(value, str):
+        return escaped(value)
+    if depth > 32 or value is None or isinstance(value, (bytes, bytearray, int, float)):
+        return value
+    if isinstance(value, dict):
+        for key in list(value):
+            item = escape_in_place(value[key], depth + 1)
+            fixed = escaped(key) if isinstance(key, str) else key
+            if fixed != key:
+                del value[key]
+            value[fixed] = item
+        return value
+    if isinstance(value, list):
+        value[:] = [escape_in_place(item, depth + 1) for item in value]
+        return value
+    if isinstance(value, tuple):
+        return tuple(escape_in_place(item, depth + 1) for item in value)
+    fields = getattr(value, "__dict__", None)
+    if isinstance(fields, dict):
+        for name, item in list(fields.items()):
+            fixed = escape_in_place(item, depth + 1)
+            if fixed is not item:
+                setattr(value, name, fixed)
+    return value
+
+
+def make_call(call_id: Any, name: Any, raw_args: Any) -> Call:
+    """One tool call as the loop reads it. A call that holds a lone surrogate is escaped, and carries a problem."""
+    args, problem = read_args(raw_args)
+    call_id, name = str(call_id or ""), str(name or "")
+    if holds_lone(call_id) or holds_lone(name) or holds_lone(args):
+        return Call(escaped(call_id), escaped(name), escape_in_place(args), LONE_PROBLEM)
+    return Call(call_id, name, args, problem)
+
+
 class Chat(Protocol):
     """One model's side of the loop, in its provider's shape."""
 
@@ -705,11 +774,11 @@ class AnthropicChat:
             timeout=timeout,
         )
         blocks = list(response.content or [])
+        calls = [make_call(b.id, b.name, b.input) for b in blocks if getattr(b, "type", "") == "tool_use"]
+        text = escaped("".join(b.text for b in blocks if getattr(b, "type", "") == "text"))
         if blocks:
-            # Passed back as they came, thinking blocks and their signatures included.
-            self.messages.append({"role": "assistant", "content": blocks})
-        calls = [Call(b.id, b.name, *read_args(b.input)) for b in blocks if getattr(b, "type", "") == "tool_use"]
-        text = "".join(b.text for b in blocks if getattr(b, "type", "") == "text")
+            # Passed back as they came, thinking blocks and their signatures included; only a lone surrogate is escaped.
+            self.messages.append({"role": "assistant", "content": escape_in_place(blocks)})
         stop = str(response.stop_reason or "")
         return Turn(calls, text, J.anthropic_usage(response.usage), stop, refused=stop == "refusal")
 
@@ -749,9 +818,9 @@ class OpenAIChat:
             timeout=timeout,
         )
         items = list(response.output or [])
-        # Passed back as they came, reasoning items included.
-        self.input.extend(items)
-        calls = [Call(i.call_id, i.name, *read_args(i.arguments)) for i in items if getattr(i, "type", "") == "function_call"]
+        calls = [make_call(i.call_id, i.name, i.arguments) for i in items if getattr(i, "type", "") == "function_call"]
+        # Passed back as they came, reasoning items included; only a lone surrogate is escaped.
+        self.input.extend(escape_in_place(items))
         # A refusal comes as a `refusal` part of a completed message, or as a content filter that cut the answer.
         refusals = [
             str(getattr(part, "refusal", "") or "")
@@ -762,7 +831,7 @@ class OpenAIChat:
         ]
         reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
         stop = str(reason or ("refusal" if refusals else "") or getattr(response, "status", "") or "")
-        text = getattr(response, "output_text", "") or "\n".join(refusals)
+        text = escaped(getattr(response, "output_text", "") or "\n".join(refusals))
         refused = reason == "content_filter" or bool(refusals)
         return Turn(calls, text, J.openai_usage(response.usage), stop, refused=refused)
 
@@ -801,15 +870,15 @@ class GeminiChat:
         candidate = candidates[0] if candidates else None
         content = getattr(candidate, "content", None)
         parts = list(getattr(content, "parts", None) or [])
-        if parts:
-            # Passed back as it came, thought signatures included.
-            self.contents.append(content)
         calls = []
         for part in parts:
             called = getattr(part, "function_call", None)
             if called is not None:
-                calls.append(Call(called.id or "", called.name or "", *read_args(called.args or {})))
-        text = "".join(p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", None))
+                calls.append(make_call(called.id, called.name, called.args or {}))
+        text = escaped("".join(p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", None)))
+        if parts:
+            # Passed back as it came, thought signatures included; only a lone surrogate is escaped.
+            self.contents.append(escape_in_place(content))
         finish = getattr(candidate, "finish_reason", None)
         stop = str(getattr(finish, "value", finish) or "")
         blocked = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
@@ -852,16 +921,25 @@ class XaiChat:
         choice = response.choices[0]
         message = choice.message
         called = list(getattr(message, "tool_calls", None) or [])
-        entry: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
+        calls = [make_call(c.id, c.function.name, c.function.arguments) for c in called]
+        text = escaped(message.content or "")
+        entry: dict[str, Any] = {"role": "assistant", "content": text}
         if called:
             entry["tool_calls"] = [
-                {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}
+                {
+                    "id": escaped(str(c.id)),
+                    "type": "function",
+                    "function": {"name": escaped(str(c.function.name)), "arguments": escaped(str(c.function.arguments))},
+                }
                 for c in called
             ]
         self.messages.append(entry)
-        calls = [Call(c.id, c.function.name, *read_args(c.function.arguments)) for c in called]
-        stop = str(choice.finish_reason or "")
-        return Turn(calls, message.content or "", J.xai_usage(response.usage), stop, refused=stop == "content_filter")
+        # A refusal comes as the message's `refusal`, or as a content filter that cut the answer.
+        refusal = escaped(str(getattr(message, "refusal", None) or ""))
+        finish = str(choice.finish_reason or "")
+        stop = "refusal" if refusal and finish != "content_filter" else finish
+        refused = finish == "content_filter" or bool(refusal)
+        return Turn(calls, text or refusal, J.xai_usage(response.usage), stop, refused=refused)
 
     def answer(self, results: list[tuple[Call, str, bool]]) -> None:
         self.messages.extend({"role": "tool", "tool_call_id": c.id, "content": text} for c, text, _ in results)
@@ -1067,15 +1145,17 @@ class Loop:
         """
         spent, budget = self.spent, self.budget
         told_before = spent.told
-        answered: dict[int, tuple[str, bool]] = {}
-        for index, call in enumerate(turn.calls):
-            if call.name != SUBMIT:
-                continue
-            spent.submits += 1
-            problems = self.problems_of(call)
+        submissions = [(index, call, self.problems_of(call)) for index, call in enumerate(turn.calls) if call.name == SUBMIT]
+        for _, call, problems in submissions:
             self.log.write("submit", answer=call.args, valid=not problems, problems=problems)
-            if not problems:
-                return Outcome("ok", answer=call.args)
+        # A valid submission is taken before any invalid one in the turn counts against the budget.
+        valid = next((call for _, call, problems in submissions if not problems), None)
+        if valid is not None:
+            spent.submits += len(submissions)
+            return Outcome("ok", answer=valid.args)
+        answered: dict[int, tuple[str, bool]] = {}
+        for index, _, problems in submissions:
+            spent.submits += 1
             if spent.submits >= budget.submits:
                 return Outcome("error", f"malformed answer, {spent.submits} submissions: {'; '.join(problems)[:400]}")
             left = budget.submits - spent.submits
@@ -1110,7 +1190,8 @@ class Loop:
                 spent.told = True
             self.log.write("tool", tool=call.name, args=call.args, error=error, **self.log.clip(text))
             results.append((call, text, error))
-        chat.answer(results)
+        # A refusal can repeat what the model sent, so every result is escaped before it goes back.
+        chat.answer([(call, escaped(text), error) for call, text, error in results])
         return None
 
 
