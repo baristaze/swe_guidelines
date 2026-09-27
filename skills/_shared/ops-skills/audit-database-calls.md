@@ -58,10 +58,16 @@ cloud credential and reads no environment.
 
    A flow that fails is named, the rest run, and `run` exits 1. When a
    flow of the run's own file fails for a fault in that file, fix the
-   file and rerun it alone on the same database with `--only seed` into
-   a second `--out`: the first run plus at most 1 rerun. A flow that
-   fails again is reported as not measured, with its error. A failed
-   flow never stops the audit: go on to the summary and the drop. The
+   file and rerun it alone on the same database: `run` with
+   `--flows <file> --only seed` and
+   `--out ~/Downloads/acme_database_calls_<yyyy-mm-dd>/calls-rerun.json`,
+   then `summary` on `calls-rerun.json`. That is the first run plus at
+   most 1 rerun. The rerun measures the whole file again, so the report
+   takes every flow of the run's own file from `calls-rerun.json`, and
+   the built-in flows from `calls.json`. A flow that fails again is
+   listed under What I could not measure, with its error, and its row
+   under Tables per area says no in the Measured column. A failed flow
+   never stops the audit: go on to the summary and the drop. The
    summary's round trips are warm (every statement already prepared);
    the report says so.
 4. Read each call's `detail`: one line per transaction, with its role, its
