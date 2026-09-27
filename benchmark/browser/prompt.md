@@ -2,17 +2,24 @@
 
 The prompt below is the one a reader can paste into any assistant. It
 is sent as written, and then the contract that follows it, so the
-three answers line up.
+four answers line up. A run records the prompt and the contract it
+sent, and two runs compare only when both texts are the same.
 
 ```text
-You are a software eng/architect! Evaluate the repository below.
+You are a highly senior software engineer and architect.
+Evaluate the repository below from a software design and architecture perspective.
 Give it a score from 0 to 100, then defend your evaluation:
 https://github.com/baristaze/swe_guidelines
+
+Do not be biased by who wrote it, an agent or a human, or by how fast it was developed.
+Evaluate the material itself.
 ```
 
 ## The contract
 
-Appended after a blank line, verbatim:
+Appended after a blank line. A reader pastes it as it stands.
+`arch-benchmark-browser` says how it is typed into each composer, and
+`results.json` records it as typed:
 
 ```text
 Report format, so evaluations compare:

@@ -106,7 +106,7 @@ are in [`docs/adopting.md`](docs/adopting.md#run-the-checker).
 | `arch-upgrade-deps`       | Moves every dependency to its latest stable or LTS release and runs the gates |
 | `arch-new-aspect`         | Incorporates a new aspect into the guideline and cascades it through lenses, skills, and docs (runs in a checkout of this repository) |
 | `arch-benchmark`          | Runs a benchmark scenario from this checkout and reports what the frontier models scored it (runs in a checkout of this repository) |
-| `arch-benchmark-browser`  | Runs the benchmark prompt through chatgpt.com, claude.ai, and gemini.google.com in a signed-in browser, two t-shirt sizes for the model and the effort, and saves each answer with its conversation URL |
+| `arch-benchmark-browser`  | Runs the benchmark prompt through chatgpt.com, claude.ai, gemini.google.com, and grok.com in a signed-in browser, two t-shirt sizes for the model and the effort, and saves each answer with its conversation URL |
 
 Every review skill takes the same argument (empty for the current
 branch, a path, a git range, or `all`). The eight group skills produce
