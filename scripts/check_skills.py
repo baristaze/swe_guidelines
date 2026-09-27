@@ -87,7 +87,9 @@ Rules:
   `at most <n> reruns` in the same paragraph or item. A skill run by a
   strong model fixes and reruns until something stops it, and with no count
   only its session's turns or wall time would. Fenced code and table rows
-  are left out, and a loop said in other words is held by hand.
+  are left out. A fix and a rerun pair only inside one paragraph or item,
+  so a rerun in a nested bullet under the fix's step is not paired; that
+  loop, and a loop said in other words, is held by hand.
 
 Exit status is non-zero on any failure. Standard library only.
 """
