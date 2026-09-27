@@ -252,6 +252,10 @@ mirrors the sandbox:
     group/<repeat>         the process group the subject runs in
 ```
 
+Before every repeat, the harness removes the two copies and the
+repeat's own workspace, HOME, TMPDIR, keys, and group file, whatever an
+earlier repeat left there. Then it runs the config's `check` there.
+
 The runtime config names the commands that reach it:
 
 | Key | What it does |
@@ -263,11 +267,13 @@ The runtime config names the commands that reach it:
 | `remote_plugin`, `remote_target` | optional; a path the operator placed there, used in place of a copy |
 | `prefix_env` | optional; the names the prefix takes from this machine's environment besides `PATH` and the subject's own; `HOME` by default |
 | `helper_timeout_s` | optional; how long a command other than the subject may take; 600 seconds by default |
+| `check` | optional; a command run there before every repeat; a repeat whose check fails runs no subject |
 
 The prefix has to hand its words on as words, as `limactl shell` and
 `docker exec` do. `ssh` joins them into one remote shell line and needs
-a wrapper. A run that needs a plugin or a target and has neither `copy`
-nor the override is refused before it starts.
+a wrapper. A run with no `exec_prefix`, or one that needs a plugin or a
+target and has neither `copy` nor the override, is refused before it
+starts.
 
 The copies are made afresh before every repeat, so no repeat reads what
 an earlier one changed in them. A dry run makes none. They are the
@@ -288,11 +294,14 @@ there is removed when the run ends, and the key files with it.
 
 The prefix runs on this machine with the subject's environment, `PATH`,
 and the names `prefix_env` lists, and nothing else of the harness's.
-`limactl` needs `HOME` to find its machines.
+`limactl` needs `HOME` to find its machines. A probe, such as
+`claude --version`, and every other command the harness runs there get
+`PATH` and those names only.
 
 The subject runs in its repeat's workspace, so what it writes is what
 fetch brings back. Its HOME and TMPDIR are the repeat's own, as on the
-host, so no repeat finds what an earlier one left in them.
+host, and they start empty, so no repeat finds what an earlier one left
+in them.
 
 The subject runs in a process group of its own there, made with
 `setsid` where the machine has it, and the group's id goes into
@@ -300,11 +309,14 @@ The subject runs in a process group of its own there, made with
 started there. So however a subject ends, on a timeout, a clean exit,
 or an interrupt, the harness kills that group through the prefix
 first, then the prefix here. A process that starts a session of its
-own leaves the group, and the kill does not reach it.
+own leaves the group, and the kill does not reach it. Nor does it reach
+a container the subject starts, which is a child of Docker's daemon: it
+outlives the stop and the repeat, so a later repeat can find a port
+already allocated or a named volume already there.
 
 A step that fails there fails the repeat with a note, and the subject
-does not run: the machine stopped or held by another run, a copy, or a
-key that cannot be written. The run goes on, and it writes
+does not run: the machine stopped or held by another run, a copy, a
+key that cannot be written, or a `check` that fails. The run goes on, and it writes
 `results.json` and `report.md` either way. Every command other than the
 subject has a timeout, `helper_timeout_s`, and one that runs past it is
 stopped and noted. At the end the run's folder is removed, through
@@ -334,12 +346,19 @@ it. A firewall rule, loaded on every boot, refuses every connection
 that leaves the VM through its uplink for a private address. That
 covers this machine's loopback, which Lima's network answers at its
 gateway, `host.lima.internal`, this machine's address on its own
-network, and every other private, link-local, and shared (CGNAT)
-address. DNS to the resolvers and DHCP
-pass. Docker's networks inside the VM are not the uplink, so containers
-reach each other there as they do anywhere. The public internet stays
-open, because a subject needs it. The readiness probe checks the rule,
-so a machine whose firewall did not load never reports ready.
+network, and every other private, link-local, site-local, and shared
+(CGNAT) address. DNS to the resolvers and DHCP pass. Docker's networks
+inside the VM are not the uplink, so containers reach each other there
+as they do anywhere. The public internet stays open, because a subject
+needs it. The readiness probe checks the rule, so a machine whose
+firewall did not load never reports ready. A subject with sudo can
+delete the rule, so the runtime config's `check` lists it before every
+repeat, and a repeat that finds it gone runs no subject.
+
+The template pins Lima's `vz` machine type, macOS's own hypervisor. A
+host without it, such as Linux, drops that line, and Lima runs QEMU.
+QEMU's user network gives the VM an IPv6 prefix that reaches this
+machine's loopback, and the rule refuses that prefix too.
 
 The machine persists between runs. The harness removes what a run left
 in its own folder, and nothing else: the containers, volumes, and
