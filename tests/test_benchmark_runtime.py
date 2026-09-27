@@ -387,3 +387,48 @@ def test_the_vm_helpers_run_without_the_judge_keys(tmp_path, monkeypatch):
     assert envs and all(env is not None for env in envs)
     for env in envs:
         assert "judge-openai" not in env.values()
+
+
+def test_each_runtime_probes_where_its_subject_runs(tmp_path):
+    host = RT.build("host", tmp_path / "h")
+    assert host.probe_command(["claude", "--version"]) == ["claude", "--version"]
+    container = RT.build("container", tmp_path / "c", config={"image": "img:1", "keys": ["ANTHROPIC_API_KEY"]})
+    assert container.probe_command(["claude", "--version"]) == [
+        "docker", "run", "--rm", "--network", "none", "img:1", "claude", "--version",
+    ]  # fmt: skip
+    vm = RT.build("vm", tmp_path / "v", config={"exec_prefix": ["limactl", "shell", "default", "--"]})
+    assert vm.probe_command(["claude", "--version"]) == ["limactl", "shell", "default", "--", "claude", "--version"]
+
+
+def test_a_probe_answers_its_first_line_and_none_when_it_fails(tmp_path):
+    rt = RT.build("host", tmp_path)
+    assert rt.probe([sys.executable, "-c", "print(); print('2.1.0 (Claude Code)'); print('more')"]) == "2.1.0 (Claude Code)"
+    assert rt.probe([sys.executable, "-c", "import sys; print('half'); sys.exit(1)"]) is None
+    assert rt.probe([str(tmp_path / "no-such-binary"), "--version"]) is None
+
+
+def test_a_probe_runs_without_the_judge_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "judge")
+    rt = RT.build("host", tmp_path)
+    assert rt.probe([sys.executable, "-c", "import os; print(os.environ.get('OPENAI_API_KEY', 'none'))"]) == "none"
+
+
+def fake_docker(tmp_path, body):
+    """A docker stand-in: a script that answers `image inspect` as the body says."""
+    path = tmp_path / "docker"
+    path.write_text(f"#!{sys.executable}\nimport sys\n{body}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_the_container_names_its_image_by_the_id_the_engine_gives(tmp_path):
+    docker = fake_docker(tmp_path, "assert sys.argv[1:4] == ['image', 'inspect', '--format']\nprint('sha256:' + 'a' * 64)")
+    rt = RT.build("container", tmp_path / "run", config={"docker": docker, "image": "img:latest"})
+    assert rt.image_version() == {"name": "img:latest", "id": "sha256:" + "a" * 64}
+
+
+def test_an_image_the_engine_does_not_know_has_no_id(tmp_path):
+    docker = fake_docker(tmp_path, "sys.exit(1)")
+    rt = RT.build("container", tmp_path / "run", config={"docker": docker, "image": "img:latest"})
+    assert rt.image_version() == {"name": "img:latest", "id": None}
+    assert RT.build("host", tmp_path / "h").image_version() is None

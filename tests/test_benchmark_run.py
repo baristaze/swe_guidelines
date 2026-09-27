@@ -626,3 +626,118 @@ def test_the_listing_says_whether_the_subject_has_a_key_of_its_own(tmp_path, mon
     monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY", raising=False)
     assert run.main(["list", "--out", str(tmp_path)]) == 0
     assert "subject    key=absent  (SUBJECT_ANTHROPIC_API_KEY)" in capsys.readouterr().out
+
+
+def test_a_run_records_the_checkout_the_target_and_the_answers_by_reference(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])  # no provider is called
+    fixtures = run.ROOT / "benchmark" / "fixtures"
+    scenario = {
+        "name": "versions",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", "print('ok')"], "target": str(fixtures / "review-om")},
+        "evidence": {"expected": str(fixtures / "review-om.expected.yaml")},
+        "rubric": "r",
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "versions.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    versions = resolved["versions"]
+    assert results["versions"] == versions
+    assert versions["checkout"]["commit"] == run.git_sha(run.ROOT)
+    manifest = json.loads((run.ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert versions["checkout"]["plugin_version"] == manifest["version"]
+    assert isinstance(versions["checkout"]["dirty"], bool)
+    assert versions["target"] == {"path": "benchmark/fixtures/review-om", "sha256": run.V.sha256_tree(fixtures / "review-om")}
+    assert versions["expected"] == {
+        "path": "benchmark/fixtures/review-om.expected.yaml",
+        "sha256": run.V.sha256_file(fixtures / "review-om.expected.yaml"),
+    }
+    assert versions["claude_code"] is None and versions["image"] is None  # a command runs no Claude Code, the host no image
+    # No path of this machine stands in for the target or the answers.
+    assert resolved["runtime"]["target"] == "benchmark/fixtures/review-om"
+    assert resolved["evidence"]["expected"] == "benchmark/fixtures/review-om.expected.yaml"
+    assert results["subject"]["target"] == "benchmark/fixtures/review-om"
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Versions" in report and "- Target: `benchmark/fixtures/review-om`, sha256" in report
+
+
+def fake_claude(tmp_path, version_line, exit_code=0):
+    """A Claude Code stand-in: `--version` prints the line; anything else prints an envelope."""
+    envelope = {"type": "result", "is_error": False, "result": "ok", "modelUsage": {"claude-opus-5": {}}}
+    path = tmp_path / "claude"
+    path.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        f"    print({version_line!r})\n"
+        f"    sys.exit({exit_code})\n"
+        f"print(json.dumps({envelope!r}))\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_a_skill_run_records_the_claude_code_its_runtime_answers(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    claude = fake_claude(tmp_path, "9.9.9 (Claude Code)")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
+    assert run.main([*argv, "--subject-model", "claude-opus-5"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["versions"]["claude_code"] == "9.9.9 (Claude Code)"
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["versions"]["claude_code"] == "9.9.9 (Claude Code)"
+    assert "- Claude Code: `9.9.9 (Claude Code)`." in (run_dir / "report.md").read_text(encoding="utf-8")
+
+
+def test_a_claude_code_that_does_not_answer_is_named_in_the_notes(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    claude = fake_claude(tmp_path, "broken", exit_code=1)
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
+    assert run.main([*argv, "--subject-model", "claude-opus-5"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["versions"]["claude_code"] is None
+    assert any("--version` answered nothing in the host runtime" in note for note in results["notes"])
+
+
+def test_a_dry_run_records_the_checkout_and_asks_the_runtime_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    asked: list[list[str]] = []
+    monkeypatch.setattr(run.RT.BaseRuntime, "probe", lambda self, argv, timeout_s=120: asked.append(argv))
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    versions = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["versions"]
+    assert versions["checkout"]["commit"] == run.git_sha(run.ROOT)
+    assert versions["claude_code"] is None and asked == []
+
+
+def test_the_vm_says_its_checkout_is_not_this_machine_s(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    config = tmp_path / "vm.json"
+    # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+    vm = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote"), "remote_plugin": "/srv/plugin"}
+    config.write_text(json.dumps(vm), encoding="utf-8")
+    claude = fake_claude(tmp_path, "9.9.9 (Claude Code)")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
+    assert run.main([*argv, "--subject-model", "claude-opus-5", "--runtime", "vm", "--runtime-config", str(config)]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["versions"]["claude_code"] == "9.9.9 (Claude Code)"
+    assert any("/srv/plugin" in note and "not that one" in note for note in results["notes"])

@@ -367,3 +367,41 @@ def test_every_checked_in_run_still_validates_against_the_schema():
     for results in sorted(RUNS.glob("*/results.json")):
         data = json.loads(results.read_text(encoding="utf-8"))
         assert R.validate(data, SCHEMA) == [], results.parent.name
+
+
+VERSIONS: dict = {
+    "checkout": {"commit": "c" * 40, "plugin_version": "1.0.0", "dirty": False, "dirty_paths": [], "dirty_sha256": None},
+    "claude_code": "2.1.0 (Claude Code)",
+    "image": {"name": "img:latest", "id": "sha256:" + "a" * 64},
+    "target": {"path": "benchmark/fixtures/one", "sha256": "b" * 64},
+    "expected": {"path": "benchmark/fixtures/one.expected.yaml", "sha256": "d" * 64},
+}
+
+
+def test_the_versions_are_recorded_and_reported(tmp_path):
+    run = a_run([R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 50)])])
+    run.versions = VERSIONS
+    data = run.as_dict()
+    assert data["versions"] == VERSIONS
+    assert R.validate(data, SCHEMA) in ([], ["jsonschema is not installed; results.json was written unvalidated"])
+    text = R.report_text(run)
+    assert f"- Checkout: `{'c' * 40}`, plugin `1.0.0`, clean." in text
+    assert "- Claude Code: `2.1.0 (Claude Code)`." in text
+    assert f"- Image: `img:latest`, id `sha256:{'a' * 64}`." in text
+    assert f"- Expected findings: `benchmark/fixtures/one.expected.yaml`, sha256 `{'d' * 64}`." in text
+
+
+def test_a_dirty_checkout_is_reported_with_its_paths(tmp_path):
+    run = a_run([R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 50)])])
+    checkout = dict(VERSIONS["checkout"], dirty=True, dirty_paths=["skills/a.md"], dirty_sha256="e" * 64)
+    run.versions = dict(VERSIONS, checkout=checkout, claude_code=None, image=None)
+    text = R.report_text(run)
+    assert f"with changes no commit holds, sha256 `{'e' * 64}`: `skills/a.md`." in text
+    assert "- Claude Code: not run, or not known." in text
+
+
+def test_a_hash_that_is_not_one_is_refused_by_the_schema():
+    pytest.importorskip("jsonschema")
+    run = a_run([R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 50)])])
+    run.versions = dict(VERSIONS, target={"path": "t", "sha256": "not-a-hash"})
+    assert R.validate(run.as_dict(), SCHEMA)

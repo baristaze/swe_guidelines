@@ -48,6 +48,7 @@ from harness import redact as X  # noqa: E402
 from harness import results as R  # noqa: E402
 from harness import runtime as RT  # noqa: E402
 from harness import scenario as S  # noqa: E402
+from harness import versions as V  # noqa: E402
 from harness.capture import CliStream, FrameSink  # noqa: E402
 
 SCENARIOS = BENCHMARK / "scenarios"
@@ -56,6 +57,10 @@ MODELS = BENCHMARK / "models.yaml"
 DEFAULT_OUT = BENCHMARK / "runs"
 # What a subject inherits beyond its private HOME and TMPDIR and its key.
 PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "SHELL", "TERM", "USER"]
+# The paths of the checkout whose content decides a score: the plugin
+# payload the subject reads, and the harness, its scenarios, and its
+# fixtures. The run folders are the record, not an input.
+VERSIONED = (*RT.PLUGIN_PAYLOAD, "benchmark", ":(exclude)benchmark/runs")
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -106,6 +111,43 @@ def git_sha(path: Path) -> str:
     except (OSError, subprocess.SubprocessError):
         return ""
     return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def static_versions(target: Path | None, staged: Path | None, expected: Path | None) -> dict:
+    """What a run can name before anything runs: the checkout, the target, and the expected findings.
+
+    The target is hashed as the runtime staged it, the copy the subject
+    reads; its recorded path is the one it was staged from.
+    """
+    return {
+        "checkout": V.checkout(ROOT, VERSIONED),
+        "claude_code": None,
+        "image": None,
+        "target": V.content(target, ROOT, staged),
+        "expected": V.content(expected, ROOT),
+    }
+
+
+def probe_versions(scn: S.Scenario, rt: RT.BaseRuntime, claude: str) -> tuple[dict, list[str]]:
+    """What only the runtime can answer: its Claude Code and its image. Returns them and the notes they call for.
+
+    Claude Code is asked inside the runtime, because a container or another
+    machine carries its own. Only a skill runs it.
+    """
+    found: dict = {"claude_code": None, "image": rt.image_version()}
+    notes: list[str] = []
+    if scn.kind == "skill":
+        found["claude_code"] = rt.probe([claude, "--version"])
+        if found["claude_code"] is None:
+            notes.append(f"`{claude} --version` answered nothing in the {rt.name} runtime; the run does not know its Claude Code")
+    if found["image"] is not None and found["image"]["id"] is None:
+        notes.append(f"the image {found['image']['name']} has no id the engine reports")
+    if isinstance(rt, RT.VmRuntime) and rt.plugin is not None:
+        notes.append(
+            f"the plugin on the other machine is the one at {rt.vm.remote_plugin}; "
+            "versions.checkout describes this machine's checkout, not that one"
+        )
+    return found, notes
 
 
 def plugin_name(root: Path) -> str:
@@ -490,7 +532,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     resolved = {
         "run_id": run_id,
         "scenario": scn.as_dict(),
-        "runtime": {"name": rt.name, "config": config, "target": str(target) if target else None},
+        "runtime": {"name": rt.name, "config": config, "target": V.shown(target, ROOT)},
         "providers": {"flags": int(flags), "names": [P.name(p) for p in P.members(flags)]},
         "effort": effort,
         "repeat": args.repeat,
@@ -502,9 +544,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "evidence": {
             "files": list(scn.evidence.files),
             "source_chars": len(source_text),
-            "expected": str(expected_path) if expected_path else None,
+            "expected": V.shown(expected_path, ROOT),
             "note": expected_note,
         },
+        "versions": static_versions(target, rt.target, expected_path),
         "started_at": R.now(),
     }
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
@@ -533,7 +576,13 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             print(f"the image build failed with {status.code}; see streams/build.jsonl", file=sys.stderr)
             return 4
 
-    notes: list[str] = [expected_note] if expected_note else []
+    # The runtime is ready, so it can say what it carries. run.json is
+    # written again with the answer, before the subject runs.
+    probed, notes = probe_versions(scn, rt, argv_subject[0] if argv_subject else args.claude)
+    resolved["versions"].update(probed)
+    (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
+    if expected_note:
+        notes.insert(0, expected_note)
     screencast = None
     if args.screencast_port:
         from harness.capture import CdpScreencast
@@ -548,6 +597,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         started_at=resolved["started_at"],
         guideline_sha=resolved["guideline_sha"],
         target_sha=resolved["target_sha"],
+        versions=resolved["versions"],
         subject={
             "kind": scn.kind,
             "skill": scn.subject.skill,
@@ -555,7 +605,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             "argv": argv_subject,
             "model": model,
             "provider": scn.subject.provider,
-            "target": str(target) if target else None,
+            "target": V.shown(target, ROOT),
             "plugin": rt.plugin_path(),
             "max_turns": scn.subject.max_turns,
             "allowed_tools": list(scn.subject.allowed_tools),

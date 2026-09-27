@@ -74,6 +74,9 @@ class RunResult:
     finished_at: str = ""
     guideline_sha: str = ""
     target_sha: str | None = None
+    # Every version that decides a score, from `harness.versions`: the
+    # checkout, Claude Code, the image, the target, the expected findings.
+    versions: dict[str, Any] = field(default_factory=dict)
     subject: dict[str, Any] = field(default_factory=dict)
     repeats: list[RepeatResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -88,6 +91,7 @@ class RunResult:
             "finished_at": self.finished_at or now(),
             "guideline_sha": self.guideline_sha,
             "target_sha": self.target_sha,
+            "versions": self.versions,
             "subject": self.subject,
             "repeats": [r.as_dict() for r in self.repeats],
             "summary": summarize(self.repeats, self.subject),
@@ -322,6 +326,33 @@ def spend_lines(spent: dict[str, Any]) -> list[str]:
     return lines
 
 
+def version_lines(versions: dict[str, Any]) -> list[str]:
+    """The report's section on what ran: each version as a reference, and what is not known."""
+    lines = ["## Versions", ""]
+    checkout = versions.get("checkout")
+    if checkout:
+        where = f"`{checkout['commit']}`" if checkout.get("commit") else "no commit"
+        plugin = f", plugin `{checkout['plugin_version']}`" if checkout.get("plugin_version") else ""
+        if checkout.get("dirty") is None:
+            state = "not a git checkout, so no one can say what it held"
+        elif checkout["dirty"]:
+            paths = ", ".join(f"`{p}`" for p in checkout["dirty_paths"])
+            state = f"with changes no commit holds, sha256 `{checkout['dirty_sha256']}`: {paths}"
+        else:
+            state = "clean"
+        lines.append(f"- Checkout: {where}{plugin}, {state}.")
+    claude = versions.get("claude_code")
+    lines.append(f"- Claude Code: `{claude}`." if claude else "- Claude Code: not run, or not known.")
+    image = versions.get("image")
+    if image:
+        lines.append(f"- Image: `{image['name']}`, id `{image['id'] or 'unknown'}`.")
+    for key, label in (("target", "Target"), ("expected", "Expected findings")):
+        found = versions.get(key)
+        if found:
+            lines.append(f"- {label}: `{found['path']}`, sha256 `{found['sha256']}`.")
+    return [*lines, ""]
+
+
 def report_text(run: RunResult) -> str:
     """The Markdown report as one string."""
     data = run.as_dict()
@@ -420,7 +451,10 @@ def report_text(run: RunResult) -> str:
         for j in repeat.judgements:
             if j.verdict and j.verdict.rationale:
                 lines.append(f"- **{j.provider}**, repeat {repeat.index}: {j.verdict.rationale}")
-    lines += ["", "## Paths", "", f"- run folder: `{run.run_id}`"]
+    lines += [""]
+    if run.versions:
+        lines += version_lines(run.versions)
+    lines += ["## Paths", "", f"- run folder: `{run.run_id}`"]
     for repeat in run.repeats:
         for path in repeat.artifact_paths:
             lines.append(f"- artifact, repeat {repeat.index}: `{path}`")

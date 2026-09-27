@@ -91,7 +91,7 @@ own user and can read the harness's environment (see Runtimes).
 
 ```text
 runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
-  run.json                 the resolved scenario, runtime, models, and argv
+  run.json                 the resolved scenario, runtime, models, argv, and versions
   streams/cli.jsonl        one JSON line per output line, written as it happens
   streams/build.jsonl      the image build's output, with `--runtime container --build`
   streams/browser/         frames and index.jsonl, when something captured them
@@ -137,7 +137,44 @@ run, newest first, linking to its report. The pull request that adds a
 run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
-started after it.
+started after it. It also fails on a run whose checkout was not clean
+(see Versions).
+
+## Versions
+
+A score compares with another only when the same things made both. So
+a run names every version that decides a score, under `versions` in
+`run.json` and `results.json`, and in the report's Versions section.
+Each is a reference that resolves off the machine that ran it, never a
+path on that machine:
+
+| Field | What it names |
+|-------|---------------|
+| `checkout` | the commit, the plugin's version from `.claude-plugin/plugin.json`, and whether the tree held changes no commit holds (`dirty`), with those paths and one hash over their content |
+| `claude_code` | what `claude --version` answers inside the runtime, for a skill subject |
+| `image` | the container image by name and by the id the engine gives it |
+| `target` | the target by its path in the repository and a hash of the staged copy the subject read |
+| `expected` | the planted findings by their path in the repository and a hash of the file |
+
+The skills under test are staged from the working tree, not from a
+commit. So a run on uncommitted changes would name a commit that does
+not hold what ran. `dirty` says so. It counts the plugin payload and
+`benchmark/`, less the run folders, since those are the paths whose
+content decides a score. `make runs` refuses a checked-in run whose
+`dirty` is not `false`. A run recorded before the harness kept its
+versions has none to check.
+
+Claude Code is asked where the subject runs, because a container or
+another machine carries its own, and a tag such as `latest` names
+whatever was built last. The ask runs after the image build and before
+the first repeat, and `run.json` is written again with the answer. A
+dry run asks the runtime nothing, so its `claude_code` and `image` are
+null. A runtime that does not answer leaves the field null and the run
+says so in its notes. It is never filled in from this machine.
+
+On the `vm` runtime, the plugin the subject reads is the one at
+`remote_plugin`. `checkout` describes this machine's, and the run's
+notes say so.
 
 ## Runtimes
 

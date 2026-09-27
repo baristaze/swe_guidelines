@@ -27,6 +27,44 @@
     "finished_at": { "type": "string" },
     "guideline_sha": { "type": "string" },
     "target_sha": { "type": ["string", "null"] },
+    "versions": {
+      "description": "Every version that decides a score, each as a reference that resolves off the machine that ran it: the checkout, Claude Code as the runtime answers it, the image, and the target and the expected findings by path and content hash.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checkout": {
+          "type": "object",
+          "required": ["commit", "plugin_version", "dirty", "dirty_paths", "dirty_sha256"],
+          "additionalProperties": false,
+          "properties": {
+            "commit": { "type": "string" },
+            "plugin_version": { "type": ["string", "null"] },
+            "dirty": {
+              "description": "Whether the checkout held changes no commit holds, in the paths that decide a score; null when it is not a git checkout.",
+              "type": ["boolean", "null"]
+            },
+            "dirty_paths": { "type": "array", "items": { "type": "string" } },
+            "dirty_sha256": { "type": ["string", "null"] }
+          }
+        },
+        "claude_code": {
+          "description": "What `claude --version` answered inside the runtime; null when the subject runs no Claude Code or the runtime did not answer.",
+          "type": ["string", "null"]
+        },
+        "image": {
+          "description": "The container image by name and by the id the engine gives it; null outside the container runtime.",
+          "type": ["object", "null"],
+          "required": ["name", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "id": { "type": ["string", "null"] }
+          }
+        },
+        "target": { "$ref": "#/$defs/content" },
+        "expected": { "$ref": "#/$defs/content" }
+      }
+    },
     "notes": { "type": "array", "items": { "type": "string" } },
     "spend": {
       "description": "What the run spent: tokens and US dollars per judge, for the subject, and in all. A model with no price is named under unpriced, and its cost is not in any figure.",
@@ -265,6 +303,16 @@
     }
   },
   "$defs": {
+    "content": {
+      "description": "A file or a folder by its path, relative to the repository when it is inside it, and the SHA-256 of its content.",
+      "type": ["object", "null"],
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
     "spent": {
       "type": "object",
       "required": ["input_tokens", "output_tokens", "reasoning_tokens", "cost_usd", "unpriced"],
