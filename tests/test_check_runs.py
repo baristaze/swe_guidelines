@@ -230,3 +230,38 @@ def test_the_scenario_results_json_records_decides_over_run_json(repo, runs, cap
     assert runs.main() == status
     refused = f"{ONE_A} is a run of alpha, and its row sits under `## beta`"
     assert (refused in capsys.readouterr().out) == bool(status)
+
+
+def fenced(text):
+    return "\n```markdown\n" + text + "```\n"
+
+
+def test_a_heading_and_a_row_in_fenced_code_are_neither(repo, runs):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    example = fenced("## alpha\n\n" + HEAD + row(ONE_A))
+    repo.write("benchmark/runs/README.md", "# Runs\n" + example + section("alpha", ONE_A))
+    assert runs.main() == 0
+
+
+def test_a_heading_in_fenced_code_opens_no_section(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + fenced("## alpha\n") + section("beta", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"no section for the scenario alpha, which {ONE_A} ran" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_closing_sequence_is_not_part_of_a_sections_name(repo, runs):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
+    index = "# Runs\n\n## alpha ##\n\n" + HEAD + row(ONE_A) + "\n## beta #\n\n" + HEAD + row(ONE_B)
+    repo.write("benchmark/runs/README.md", index)
+    assert runs.main() == 0
+
+
+def test_a_row_under_a_heading_with_a_closing_sequence_is_held_to_its_name(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
+    repo.write("benchmark/runs/README.md", "# Runs\n\n## alpha ##\n\n## beta ##\n\n" + HEAD + row(ONE_A))
+    assert runs.main() == 1
+    assert f"{ONE_A} is a run of alpha, and its row sits under `## beta`; it goes under `## alpha`" in capsys.readouterr().out

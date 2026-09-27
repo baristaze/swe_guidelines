@@ -24,9 +24,11 @@ and the run folders together:
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. Its section is the nearest `## `
-heading above it. A run that records no scenario is held to one row but
-to no section, and a run that records no start is left out of the order.
-With no run folder and no index there is nothing to check.
+heading above it, and a closing sequence of `#` is not part of the
+heading's name. A line of fenced code is neither a row nor a heading. A
+run that records no scenario is held to one row but to no section, and
+a run that records no start is left out of the order. With no run
+folder and no index there is nothing to check.
 
 Exit status is non-zero on any mismatch. Standard library only.
 """
@@ -39,27 +41,38 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from _common import ROOT, parser
+from _common import CLOSING, HEADING, ROOT, parser, unfenced
 
 RUNS = ROOT / "benchmark" / "runs"
 INDEX = RUNS / "README.md"
 ROW_LINK = re.compile(r"\]\(([^()/\s]+)/report\.md\)")
-SECTION = re.compile(r"^##\s+(.+?)\s*$")
+
+
+def section_name(line: str) -> str | None:
+    """The name a `## ` heading line gives its section, less a closing `#` sequence; None for any other line."""
+    m = HEADING.match(line)
+    if not m or len(m.group(1)) != 2:
+        return None
+    return CLOSING.sub("", m.group(2)) or None
 
 
 def sections(text: str) -> list[tuple[int, str]]:
-    """The line number and the name of every section heading, in order."""
-    return [(ln, m.group(1)) for ln, line in enumerate(text.splitlines(), start=1) if (m := SECTION.match(line))]
+    """The line number and the name of every section heading outside fenced code, in order."""
+    lines = enumerate(unfenced(text).splitlines(), start=1)
+    return [(ln, name) for ln, line in lines if (name := section_name(line))]
 
 
 def rows(text: str) -> list[tuple[int, str, str]]:
-    """The line number, the run folder, and the section of every row, in order; the section is empty above the first."""
+    """The line number, the run folder, and the section of every row outside fenced code, in order.
+
+    The section is empty above the first heading.
+    """
     out = []
     section = ""
-    for ln, line in enumerate(text.splitlines(), start=1):
-        heading = SECTION.match(line)
-        if heading:
-            section = heading.group(1)
+    for ln, line in enumerate(unfenced(text).splitlines(), start=1):
+        name = section_name(line)
+        if name:
+            section = name
         elif line.lstrip().startswith("|"):
             out += [(ln, m.group(1), section) for m in ROW_LINK.finditer(line)]
     return out
