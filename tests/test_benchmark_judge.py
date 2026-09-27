@@ -102,6 +102,56 @@ def test_a_timeout_is_transient_and_asked_again(message):
     assert not J.is_transient(RuntimeError("429 quota exceeded"))
 
 
+def test_a_transient_error_is_asked_again_before_the_next_model(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(J.time, "sleep", waits.append)
+    asked: list[str] = []
+
+    def overloaded_once(model, effort, prompt, key):
+        asked.append(model)
+        if len(asked) == 1:
+            raise RuntimeError("503 model overloaded")
+        return fake_call()
+
+    judgement = J.judge_one(
+        P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=overloaded_once
+    )
+    assert judgement.status == "ok" and judgement.fallback is None
+    assert asked == ["claude-opus-5-5", "claude-opus-5-5"] and waits == [J.RETRY_WAIT_S]
+
+
+def test_an_error_that_is_not_transient_goes_to_the_next_model_without_waiting(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(J.time, "sleep", waits.append)
+    judgement = J.judge_one(
+        P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=failing_call
+    )
+    assert judgement.status == "ok" and judgement.model == "claude-opus-5" and waits == []
+
+
+def test_the_retry_policy_asks_again_only_when_transient_and_allowed_to_wait():
+    heard: list[str] = []
+    waits: list[float] = []
+
+    def always(message):
+        def call():
+            raise RuntimeError(message)
+
+        return call
+
+    with pytest.raises(RuntimeError, match="503"):
+        J.with_retries(always("503 unavailable"), on_error=lambda e: heard.append(str(e)), sleep=waits.append)
+    assert heard == ["503 unavailable"] * J.RETRIES and waits == [J.RETRY_WAIT_S] * (J.RETRIES - 1)
+    heard.clear()
+    waits.clear()
+    with pytest.raises(RuntimeError):
+        J.with_retries(
+            always("503 unavailable"), on_error=lambda e: heard.append(str(e)), sleep=waits.append, may_wait=lambda: False
+        )
+    assert len(heard) == 1 and waits == []
+    assert J.with_retries(lambda: 7) == 7
+
+
 def test_every_model_failing_is_an_error_that_keeps_what_each_said():
     def always_fails(model, effort, prompt, key):
         raise RuntimeError(f"{model} said no")

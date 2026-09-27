@@ -13,6 +13,7 @@ invented for a provider that did not answer.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
@@ -20,8 +21,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from . import providers as P
 
@@ -35,6 +37,7 @@ MAX_OUTPUT_TOKENS = 16_000
 TRANSIENT = ("503", "unavailable", "overloaded", "high demand", "timeout", "timed out", "temporarily")
 RETRIES = 2
 RETRY_WAIT_S = 4.0
+T = TypeVar("T")
 
 # The matrix a monthly run redefines. `models.yaml` beside `run.py` is the
 # copy to edit; this is the fallback when the file is missing, and it is the
@@ -238,6 +241,43 @@ def is_transient(exc: Exception) -> bool:
     """Whether an error says "ask again" rather than "ask something else"."""
     text = str(exc).lower()
     return any(word in text for word in TRANSIENT)
+
+
+def with_retries(
+    call: Callable[[], T],
+    on_error: Callable[[Exception], None] | None = None,
+    sleep: Callable[[float], None] | None = None,
+    may_wait: Callable[[], bool] | None = None,
+) -> T:
+    """One call, asked again when its error is transient: the one retry policy of every judge.
+
+    There are RETRIES attempts in all, RETRY_WAIT_S apart. `on_error` hears
+    every failed attempt, `sleep` does the waiting, and `may_wait` can turn
+    a wait down, as a deadline does. Raises the last error.
+    """
+    attempt = 1
+    while True:
+        try:
+            return call()
+        except Exception as exc:
+            if on_error is not None:
+                on_error(exc)
+            if attempt < RETRIES and is_transient(exc) and (may_wait is None or may_wait()):
+                attempt += 1
+                (sleep or time.sleep)(RETRY_WAIT_S)
+                continue
+            raise
+
+
+def timed(call: Callable[..., T], *args: Any) -> tuple[T, float]:
+    """A call's answer and how long it took, in seconds."""
+    started = time.monotonic()
+    return call(*args), time.monotonic() - started
+
+
+def note_error(errors: list[str], model: str, exc: Exception) -> None:
+    """One failed call, as a judgement's error keeps it."""
+    errors.append(f"{model}: {type(exc).__name__}: {str(exc)[:400]}")
 
 
 def truncate(text: str, limit: int = ARTIFACT_LIMIT) -> str:
@@ -535,19 +575,11 @@ def judge_one(
         data: dict = {}
         usage: dict[str, int] = {}
         raw, latency = "", 0.0
-        for attempt in range(RETRIES):
-            started = time.monotonic()
-            try:
-                data, raw, usage = dispatch(model, wanted, prompt, key)
-                latency = time.monotonic() - started
-                break
-            except Exception as exc:
-                message = f"{model}: {type(exc).__name__}: {str(exc)[:400]}"
-                errors.append(message)
-                if attempt + 1 < RETRIES and is_transient(exc):
-                    time.sleep(RETRY_WAIT_S)
-                    continue
-                break
+        # Every failed attempt is in `errors`; a model that never answered leaves `data` empty.
+        with contextlib.suppress(Exception):
+            (data, raw, usage), latency = with_retries(
+                partial(timed, dispatch, model, wanted, prompt, key), on_error=partial(note_error, errors, model)
+            )
         if not data:
             errors.append(f"{model}: no parsed verdict")
             continue
