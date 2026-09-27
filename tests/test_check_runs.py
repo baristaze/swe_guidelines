@@ -20,10 +20,15 @@ def runs(repo):
     return repo.script("check_runs")
 
 
-def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario=None):
+def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario=None, runtime=None):
     repo.write(f"benchmark/runs/{name}/report.md", "# Benchmark run\n")
-    results = {"started_at": started} | ({"scenario": scenario} if scenario else {})
+    results = {"started_at": started} | ({"scenario": scenario} if scenario else {}) | ({"runtime": runtime} if runtime else {})
     repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
+
+
+def a_scenario(repo, name, runtimes):
+    scenario = {"name": name, "kind": "qa", "subject": {"prompt": "Why?"}, "rubric": "r", "runtimes": runtimes}
+    repo.write(f"benchmark/scenarios/{name}.json", json.dumps(scenario) + "\n")
 
 
 def test_no_runs_and_no_index_pass(runs, capsys):
@@ -277,3 +282,44 @@ def test_a_row_of_another_scenario_is_left_out_of_the_sections_order(repo, runs,
     assert f"{ONE_B} is a run of beta, and its row sits under `## alpha`; it goes under `## beta`" in out
     assert TWO_A not in out
     assert "1 run index mismatch(es)" in out
+
+
+def test_a_run_on_a_runtime_its_scenario_lists_passes(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["host", "container"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 0
+    assert "on a runtime it lists" in capsys.readouterr().out
+
+
+def test_a_run_on_a_runtime_its_scenario_does_not_list_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["container"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "host")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        f"benchmark/runs/{ONE_A}: ran on host, and alpha runs on container; a checked-in run ran where its scenario runs" in out
+    )
+    assert "1 run index mismatch(es)" in out
+
+
+def test_the_runtime_run_json_records_counts_when_results_json_records_none(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["container"])
+    repo.write(f"benchmark/runs/{ONE_A}/report.md", "# Benchmark run\n")
+    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "alpha"}, "runtime": {"name": "vm"}}) + "\n")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert f"{ONE_A}: ran on vm, and alpha runs on container" in capsys.readouterr().out
+
+
+def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta", "container")
+    repo.write("benchmark/scenarios/beta.json", json.dumps({"name": "beta", "kind": "qa", "subject": {"prompt": "?"}}) + "\n")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A) + section("beta", ONE_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/{ONE_A}: no scenario alpha in benchmark/scenarios says where it runs" in out
+    assert f"benchmark/runs/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
+    assert "2 run index mismatch(es)" in out
