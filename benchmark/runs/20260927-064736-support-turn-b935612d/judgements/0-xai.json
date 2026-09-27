@@ -1,0 +1,45 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 106.168,
+  "usage": {
+    "input_tokens": 2775,
+    "output_tokens": 7433,
+    "reasoning_tokens": 6999
+  },
+  "cost_usd": 0.050148,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 80,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 1 searches logs by tenant, endpoint, and 5xx instead of starting from one request id and the trace, logs, and downstream calls that id ties together."
+      },
+      {
+        "severity": "medium",
+        "note": "The tenant comparison never names a limit only that tenant reaches, and the nearby mentions of large collections and connection limits have no check against a threshold."
+      },
+      {
+        "severity": "low",
+        "note": "A row only that tenant has is only implied by legacy records and nulls in step 4, with no step to fetch that row and compare it to a healthy tenant."
+      },
+      {
+        "severity": "low",
+        "note": "Step 5 names shard locks and replica lag without a confirming metric or query, and the staging data-copy replay assumes access it never states."
+      }
+    ],
+    "strengths": [
+      "Each step says what it rules out, including all-hosts versus some, all-requests versus some, and timing relative to the deploy.",
+      "It treats unchanged endpoint code as incomplete and diffs shared middleware, dependencies, schema, config, and flags before blaming the handler.",
+      "It names tenant-shaped causes (flags and entitlements, data shape, shard placement, skipped migration, stale per-tenant cache) and gives confirm actions for several of them.",
+      "The rollback call is gated on irreversibility and blast radius, and closeout checks that this tenant's error rate actually recovered."
+    ],
+    "rationale": "This is a usable on-call sequence: it starts from the single-tenant, post-deploy, unchanged-handler signals, moves from the deploy diff to tenant data and state, and says what each step rules out. The flag and data-shape causes are real, with replay, cache flush, and migration-table checks as confirmation. It loses points for not anchoring on one request id and for never crisply naming a limit, or a specific row, that only this tenant hits. Those gaps are real but do not make the answer a generic pre-written checklist."
+  },
+  "raw": "{\"score\": 80, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"Step 1 searches logs by tenant, endpoint, and 5xx instead of starting from one request id and the trace, logs, and downstream calls that id ties together.\"}, {\"severity\": \"medium\", \"note\": \"The tenant comparison never names a limit only that tenant reaches, and the nearby mentions of large collections and connection limits have no check against a threshold.\"}, {\"severity\": \"low\", \"note\": \"A row only that tenant has is only implied by legacy records and nulls in step 4, with no step to fetch that row and compare it to a healthy tenant.\"}, {\"severity\": \"low\", \"note\": \"Step 5 names shard locks and replica lag without a confirming metric or query, and the staging data-copy replay assumes access it never states.\"}], \"strengths\": [\"Each step says what it rules out, including all-hosts versus some, all-requests versus some, and timing relative to the deploy.\", \"It treats unchanged endpoint code as incomplete and diffs shared middleware, dependencies, schema, config, and flags before blaming the handler.\", \"It names tenant-shaped causes (flags and entitlements, data shape, shard placement, skipped migration, stale per-tenant cache) and gives confirm actions for several of them.\", \"The rollback call is gated on irreversibility and blast radius, and closeout checks that this tenant's error rate actually recovered.\"], \"rationale\": \"This is a usable on-call sequence: it starts from the single-tenant, post-deploy, unchanged-handler signals, moves from the deploy diff to tenant data and state, and says what each step rules out. The flag and data-shape causes are real, with replay, cache flush, and migration-table checks as confirmation. It loses points for not anchoring on one request id and for never crisply naming a limit, or a specific row, that only this tenant hits. Those gaps are real but do not make the answer a generic pre-written checklist.\"}"
+}

@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "run_id": "20260927-064736-support-turn-b935612d",
+  "scenario": "support-turn",
+  "runtime": "container",
+  "started_at": "2026-09-27T13:47:36Z",
+  "finished_at": "2026-09-27T13:50:42Z",
+  "guideline_sha": "f32f07951106f08aab778eb7dd2958c7d321c8fe",
+  "target_sha": null,
+  "subject": {
+    "kind": "qa",
+    "skill": null,
+    "prompt": "A service returns 500 for one tenant only, on one endpoint, since a\ndeploy an hour ago. Nothing changed in that endpoint's code. Answer\nas the person on call: what you look at, in what order, and what\neach step would rule out.\n",
+    "argv": [],
+    "model": "claude-opus-5-5",
+    "provider": "anthropic",
+    "target": null,
+    "plugin": null,
+    "max_turns": 6,
+    "allowed_tools": []
+  },
+  "repeats": [
+    {
+      "index": 0,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 29.648,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/0/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "subject_usage": {
+        "input_tokens": 85,
+        "output_tokens": 2373,
+        "reasoning_tokens": 994
+      },
+      "subject_cost_usd": 0.0478,
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 18.267,
+          "usage": {
+            "input_tokens": 2535,
+            "output_tokens": 1523,
+            "reasoning_tokens": 595
+          },
+          "cost_usd": 0.0406,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 76,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "Step 1 filters logs by tenant, endpoint and status but never pivots on a failing request's id to join the gateway log, app log, trace span and DB query, which is the correlation the rubric asks the answer to start from."
+              },
+              {
+                "severity": "medium",
+                "note": "Step 4's replay against staging with a copy of the tenant's data, and step 5's reads of the per-shard migration table and flushes of cache keys, assume production data and write access the answer never says it has."
+              },
+              {
+                "severity": "low",
+                "note": "Step 1's 'Rules out: guessing' is a filler entry rather than a concrete hypothesis eliminated, unlike the sharper rule-out statements in step 2."
+              },
+              {
+                "severity": "low",
+                "note": "Step 4 lists data-shape, flag and placement suspects as a menu without saying which observation from steps 1–3 would confirm each, so some causes are named without a concrete confirmation test."
+              },
+              {
+                "severity": "low",
+                "note": "The 'limit only this tenant reaches' class is thin: 'very large collections' and 'connection limits' appear, but per-tenant quotas, payload-size caps, pagination or integer-range limits are not called out explicitly."
+              },
+              {
+                "severity": "low",
+                "note": "Rolling back before reading the stack trace can erase the evidence (live failing requests, stale cache entries), and the answer does not suggest capturing a failing request id first."
+              }
+            ],
+            "strengths": [
+              "It moves in a clear order from the deploy diff (lockfile, middleware, schema, config, flag defaults) to tenant-specific data and state, which is the progression the rubric wants.",
+              "It names concrete tenant-shaped causes: legacy or null rows, deprecated enum values, per-tenant flags and overrides, shard placement, a skipped per-tenant migration, and a long-TTL stale cache entry.",
+              "Step 2's branches (exact deploy timing, some hosts only, some requests only, offset timing) each state what they imply, and so read as a real diagnostic rather than a checklist.",
+              "The cache-format hypothesis comes with a direct confirmation test (flush this tenant's keys), and the migration hypothesis points to checking the migration table on their shard.",
+              "It checks whether the 500 originates upstream of the app, and it closes with the per-tenant alerting gap, both of which are practical on-call touches."
+            ],
+            "rationale": "The answer follows the deploy-to-data arc, states what most steps rule out, and names all three tenant-shaped cause types with at least partial confirmation paths, so it meets the rubric's core. It loses points for not anchoring on a request id to tie signals together. It also assumes production data and cache access without stating it. A few items read as a pre-written menu rather than hypotheses tied to evidence."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 15.946,
+          "usage": {
+            "input_tokens": 1466,
+            "output_tokens": 788,
+            "reasoning_tokens": 516
+          },
+          "cost_usd": 0.010812,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 78,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The opening rollback decision comes before correlating a failing request ID across the app, database, and downstream signals, and a successful rollback would support rather than prove deploy causation."
+              },
+              {
+                "severity": "medium",
+                "note": "The tenant comparison names unusual records and large collections but does not show how to identify the particular failing row or confirm a tenant-specific size or timeout limit."
+              },
+              {
+                "severity": "low",
+                "note": "The staging replay and tenant-cache flush assume access to production-derived data and permission to change live state without explaining how to do either safely."
+              }
+            ],
+            "strengths": [
+              "The sequence uses errors and timing to narrow the failure before inspecting deploy-wide changes and tenant-specific data.",
+              "It correctly considers shared code, migrations, flags, placement, and cached state despite the endpoint code being unchanged.",
+              "Most steps say what their observations would rule out and end with verification of the tenant's error rate."
+            ],
+            "rationale": "This is a useful on-call plan with a strong deploy-to-tenant investigation and concrete tenant-shaped suspects. It falls short of the rubric's request-ID-led correlation and is less precise about proving which record or limit selects this tenant. The premature rollback framing and a few unqualified operational actions keep it from scoring higher."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 16.265,
+          "usage": {
+            "input_tokens": 1368,
+            "output_tokens": 1718,
+            "reasoning_tokens": 1388
+          },
+          "cost_usd": 0.023352,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 75,
+            "verdict": "weak",
+            "findings": [
+              {
+                "severity": "high",
+                "note": "The suggestion to copy relevant tenant data to staging assumes production data access that is typically restricted by security and compliance policies."
+              },
+              {
+                "severity": "medium",
+                "note": "The response fails to explicitly start from the signals tied together by a specific request ID, instead relying on general log filtering."
+              },
+              {
+                "severity": "low",
+                "note": "The initial steps regarding rollback and plotting error rates read like a generic incident response checklist rather than one tailored closely to the prompt."
+              }
+            ],
+            "strengths": [
+              "Names concrete tenant-shaped causes like cache format changes, per-tenant schema migrations, and specific data shape anomalies.",
+              "Explicitly details what is ruled out at every step of the investigation, closely following that instruction.",
+              "Effectively explains how an endpoint's behavior can change without its code changing by listing dependencies, middleware, and configuration diffs."
+            ],
+            "rationale": "The artifact correctly identifies tenant-specific causes and rigorously lists what each troubleshooting step rules out. It successfully moves from the deploy diff down to data and state. However, it loses points for missing the rubric's specific requirement to start from a request ID, acting somewhat like a generic checklist at the start, and assuming unsafe access to copy production data to a staging environment."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 106.168,
+          "usage": {
+            "input_tokens": 2775,
+            "output_tokens": 7433,
+            "reasoning_tokens": 6999
+          },
+          "cost_usd": 0.050148,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 80,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "Step 1 searches logs by tenant, endpoint, and 5xx instead of starting from one request id and the trace, logs, and downstream calls that id ties together."
+              },
+              {
+                "severity": "medium",
+                "note": "The tenant comparison never names a limit only that tenant reaches, and the nearby mentions of large collections and connection limits have no check against a threshold."
+              },
+              {
+                "severity": "low",
+                "note": "A row only that tenant has is only implied by legacy records and nulls in step 4, with no step to fetch that row and compare it to a healthy tenant."
+              },
+              {
+                "severity": "low",
+                "note": "Step 5 names shard locks and replica lag without a confirming metric or query, and the staging data-copy replay assumes access it never states."
+              }
+            ],
+            "strengths": [
+              "Each step says what it rules out, including all-hosts versus some, all-requests versus some, and timing relative to the deploy.",
+              "It treats unchanged endpoint code as incomplete and diffs shared middleware, dependencies, schema, config, and flags before blaming the handler.",
+              "It names tenant-shaped causes (flags and entitlements, data shape, shard placement, skipped migration, stale per-tenant cache) and gives confirm actions for several of them.",
+              "The rollback call is gated on irreversibility and blast radius, and closeout checks that this tenant's error rate actually recovered."
+            ],
+            "rationale": "This is a usable on-call sequence: it starts from the single-tenant, post-deploy, unchanged-handler signals, moves from the deploy diff to tenant data and state, and says what each step rules out. The flag and data-shape causes are real, with replay, cache flush, and migration-table checks as confirmation. It loses points for not anchoring on one request id and for never crisply naming a limit, or a specific row, that only this tenant hits. Those gaps are real but do not make the answer a generic pre-written checklist."
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "per_provider": {
+      "anthropic": {
+        "mean": 76.0,
+        "min": 76,
+        "max": 76,
+        "n": 1,
+        "stdev": null
+      },
+      "gemini": {
+        "mean": 75.0,
+        "min": 75,
+        "max": 75,
+        "n": 1,
+        "stdev": null
+      },
+      "openai": {
+        "mean": 78.0,
+        "min": 78,
+        "max": 78,
+        "n": 1,
+        "stdev": null
+      },
+      "xai": {
+        "mean": 80.0,
+        "min": 80,
+        "max": 80,
+        "n": 1,
+        "stdev": null
+      }
+    },
+    "overall_mean": 77.3,
+    "failed_repeats": [],
+    "spread": {
+      "repeat_means": [
+        77.3
+      ],
+      "min": 77.3,
+      "max": 77.3,
+      "stdev": null
+    },
+    "self_judged": "a Claude subject is judged by a panel that includes Claude (anthropic); read its score beside the other providers' before trusting the mean",
+    "fallbacks": [],
+    "skipped": [],
+    "missed": []
+  },
+  "spend": {
+    "judges": {
+      "anthropic": {
+        "input_tokens": 2535,
+        "output_tokens": 1523,
+        "reasoning_tokens": 595,
+        "cost_usd": 0.0406,
+        "unpriced": []
+      },
+      "gemini": {
+        "input_tokens": 1368,
+        "output_tokens": 1718,
+        "reasoning_tokens": 1388,
+        "cost_usd": 0.0234,
+        "unpriced": []
+      },
+      "openai": {
+        "input_tokens": 1466,
+        "output_tokens": 788,
+        "reasoning_tokens": 516,
+        "cost_usd": 0.0108,
+        "unpriced": []
+      },
+      "xai": {
+        "input_tokens": 2775,
+        "output_tokens": 7433,
+        "reasoning_tokens": 6999,
+        "cost_usd": 0.0501,
+        "unpriced": []
+      }
+    },
+    "subject": {
+      "input_tokens": 85,
+      "output_tokens": 2373,
+      "reasoning_tokens": 994,
+      "cost_usd": 0.0478,
+      "unpriced": []
+    },
+    "total_usd": 0.1727,
+    "unpriced": []
+  },
+  "notes": []
+}

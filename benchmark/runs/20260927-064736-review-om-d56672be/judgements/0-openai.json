@@ -1,0 +1,48 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 33.441,
+  "usage": {
+    "input_tokens": 5376,
+    "output_tokens": 2310,
+    "reasoning_tokens": 1979
+  },
+  "cost_usd": 0.033852,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 78,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-03 finding at `types/bin.py:9` asserts that `Bin` must declare `MANAGER_OWNED_FIELDS`, but the evidence does not establish that requirement."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-03 finding at `types/stock_movement.py:6` calls for an unsupported `MANAGER_OWNED_FIELDS` declaration."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-03 finding at `types/warehouse.py:4` calls for an unsupported `MANAGER_OWNED_FIELDS` declaration."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding at `types/stock_movement.py:6` repeats the ledger-line defect already reported under its expected lens, OM-06, without identifying a separate defect."
+      },
+      {
+        "severity": "low",
+        "note": "None of the findings quotes the guideline rule supporting its lens, making the unsupported advice harder to distinguish from a requirement."
+      }
+    ],
+    "strengths": [
+      "The review locates all eight planted defects at the correct files and nearby lines.",
+      "The suggested changes for the validation bypass, UUID generation, impure rule, and mutable entity field address the defects shown in the source.",
+      "The passed section correctly recognizes several intentionally sound parts of the checkout."
+    ],
+    "rationale": "Complete recall is the review’s strongest result: every planted defect is reported. Precision suffers from three unsupported OM-03 requirements and a redundant finding under OM-05. The findings give locations and remedies, but omit the rule quotations the rubric calls for."
+  },
+  "raw": "{\"score\":78,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"medium\",\"note\":\"The OM-03 finding at `types/bin.py:9` asserts that `Bin` must declare `MANAGER_OWNED_FIELDS`, but the evidence does not establish that requirement.\"},{\"severity\":\"medium\",\"note\":\"The OM-03 finding at `types/stock_movement.py:6` calls for an unsupported `MANAGER_OWNED_FIELDS` declaration.\"},{\"severity\":\"medium\",\"note\":\"The OM-03 finding at `types/warehouse.py:4` calls for an unsupported `MANAGER_OWNED_FIELDS` declaration.\"},{\"severity\":\"low\",\"note\":\"The OM-05 finding at `types/stock_movement.py:6` repeats the ledger-line defect already reported under its expected lens, OM-06, without identifying a separate defect.\"},{\"severity\":\"low\",\"note\":\"None of the findings quotes the guideline rule supporting its lens, making the unsupported advice harder to distinguish from a requirement.\"}],\"strengths\":[\"The review locates all eight planted defects at the correct files and nearby lines.\",\"The suggested changes for the validation bypass, UUID generation, impure rule, and mutable entity field address the defects shown in the source.\",\"The passed section correctly recognizes several intentionally sound parts of the checkout.\"],\"rationale\":\"Complete recall is the review’s strongest result: every planted defect is reported. Precision suffers from three unsupported OM-03 requirements and a redundant finding under OM-05. The findings give locations and remedies, but omit the rule quotations the rubric calls for.\"}"
+}

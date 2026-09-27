@@ -1,0 +1,54 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 18.267,
+  "usage": {
+    "input_tokens": 2535,
+    "output_tokens": 1523,
+    "reasoning_tokens": 595
+  },
+  "cost_usd": 0.0406,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 76,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Step 1 filters logs by tenant, endpoint and status but never pivots on a failing request's id to join the gateway log, app log, trace span and DB query, which is the correlation the rubric asks the answer to start from."
+      },
+      {
+        "severity": "medium",
+        "note": "Step 4's replay against staging with a copy of the tenant's data, and step 5's reads of the per-shard migration table and flushes of cache keys, assume production data and write access the answer never says it has."
+      },
+      {
+        "severity": "low",
+        "note": "Step 1's 'Rules out: guessing' is a filler entry rather than a concrete hypothesis eliminated, unlike the sharper rule-out statements in step 2."
+      },
+      {
+        "severity": "low",
+        "note": "Step 4 lists data-shape, flag and placement suspects as a menu without saying which observation from steps 1–3 would confirm each, so some causes are named without a concrete confirmation test."
+      },
+      {
+        "severity": "low",
+        "note": "The 'limit only this tenant reaches' class is thin: 'very large collections' and 'connection limits' appear, but per-tenant quotas, payload-size caps, pagination or integer-range limits are not called out explicitly."
+      },
+      {
+        "severity": "low",
+        "note": "Rolling back before reading the stack trace can erase the evidence (live failing requests, stale cache entries), and the answer does not suggest capturing a failing request id first."
+      }
+    ],
+    "strengths": [
+      "It moves in a clear order from the deploy diff (lockfile, middleware, schema, config, flag defaults) to tenant-specific data and state, which is the progression the rubric wants.",
+      "It names concrete tenant-shaped causes: legacy or null rows, deprecated enum values, per-tenant flags and overrides, shard placement, a skipped per-tenant migration, and a long-TTL stale cache entry.",
+      "Step 2's branches (exact deploy timing, some hosts only, some requests only, offset timing) each state what they imply, and so read as a real diagnostic rather than a checklist.",
+      "The cache-format hypothesis comes with a direct confirmation test (flush this tenant's keys), and the migration hypothesis points to checking the migration table on their shard.",
+      "It checks whether the 500 originates upstream of the app, and it closes with the per-tenant alerting gap, both of which are practical on-call touches."
+    ],
+    "rationale": "The answer follows the deploy-to-data arc, states what most steps rule out, and names all three tenant-shaped cause types with at least partial confirmation paths, so it meets the rubric's core. It loses points for not anchoring on a request id to tie signals together. It also assumes production data and cache access without stating it. A few items read as a pre-written menu rather than hypotheses tied to evidence."
+  },
+  "raw": "{\"score\": 76, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"Step 1 filters logs by tenant, endpoint and status but never pivots on a failing request's id to join the gateway log, app log, trace span and DB query, which is the correlation the rubric asks the answer to start from.\"}, {\"severity\": \"medium\", \"note\": \"Step 4's replay against staging with a copy of the tenant's data, and step 5's reads of the per-shard migration table and flushes of cache keys, assume production data and write access the answer never says it has.\"}, {\"severity\": \"low\", \"note\": \"Step 1's 'Rules out: guessing' is a filler entry rather than a concrete hypothesis eliminated, unlike the sharper rule-out statements in step 2.\"}, {\"severity\": \"low\", \"note\": \"Step 4 lists data-shape, flag and placement suspects as a menu without saying which observation from steps 1\\u20133 would confirm each, so some causes are named without a concrete confirmation test.\"}, {\"severity\": \"low\", \"note\": \"The 'limit only this tenant reaches' class is thin: 'very large collections' and 'connection limits' appear, but per-tenant quotas, payload-size caps, pagination or integer-range limits are not called out explicitly.\"}, {\"severity\": \"low\", \"note\": \"Rolling back before reading the stack trace can erase the evidence (live failing requests, stale cache entries), and the answer does not suggest capturing a failing request id first.\"}], \"strengths\": [\"It moves in a clear order from the deploy diff (lockfile, middleware, schema, config, flag defaults) to tenant-specific data and state, which is the progression the rubric wants.\", \"It names concrete tenant-shaped causes: legacy or null rows, deprecated enum values, per-tenant flags and overrides, shard placement, a skipped per-tenant migration, and a long-TTL stale cache entry.\", \"Step 2's branches (exact deploy timing, some hosts only, some requests only, offset timing) each state what they imply, and so read as a real diagnostic rather than a checklist.\", \"The cache-format hypothesis comes with a direct confirmation test (flush this tenant's keys), and the migration hypothesis points to checking the migration table on their shard.\", \"It checks whether the 500 originates upstream of the app, and it closes with the per-tenant alerting gap, both of which are practical on-call touches.\"], \"rationale\": \"The answer follows the deploy-to-data arc, states what most steps rule out, and names all three tenant-shaped cause types with at least partial confirmation paths, so it meets the rubric's core. It loses points for not anchoring on a request id to tie signals together. It also assumes production data and cache access without stating it. A few items read as a pre-written menu rather than hypotheses tied to evidence.\"}"
+}

@@ -1,0 +1,28 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 9.994,
+  "usage": {
+    "input_tokens": 1480,
+    "output_tokens": 1105,
+    "reasoning_tokens": 916
+  },
+  "cost_usd": 0.01622,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 100,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Accurately identifies the tenant predicate in the WHERE clause as the primary fence.",
+      "Correctly details the cross-tenant tests and the deliberate breach (negative control) methodology as the evidence that the fence holds.",
+      "Strictly adheres to citing guidelines by section title without using any numbers.",
+      "Explicitly lists the appropriate reviewer lenses by ID as requested."
+    ],
+    "rationale": "The artifact perfectly fulfills every requirement of the rubric for a full answer. It correctly names the fence, details its application, outlines the exact testing and verification strategies required, and rigorously follows the formatting constraints for citations and lens IDs. The detail provided is specific to the guideline and highly relevant, avoiding any generalized advice or empty padding."
+  },
+  "raw": "{\n  \"score\": 100,\n  \"verdict\": \"pass\",\n  \"findings\": [],\n  \"strengths\": [\n    \"Accurately identifies the tenant predicate in the WHERE clause as the primary fence.\",\n    \"Correctly details the cross-tenant tests and the deliberate breach (negative control) methodology as the evidence that the fence holds.\",\n    \"Strictly adheres to citing guidelines by section title without using any numbers.\",\n    \"Explicitly lists the appropriate reviewer lenses by ID as requested.\"\n  ],\n  \"rationale\": \"The artifact perfectly fulfills every requirement of the rubric for a full answer. It correctly names the fence, details its application, outlines the exact testing and verification strategies required, and rigorously follows the formatting constraints for citations and lens IDs. The detail provided is specific to the guideline and highly relevant, avoiding any generalized advice or empty padding.\"\n}"
+}

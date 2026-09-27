@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "run_id": "20260927-064736-explain-tenancy-cb44b4aa",
+  "scenario": "explain-tenancy",
+  "runtime": "container",
+  "started_at": "2026-09-27T13:47:36Z",
+  "finished_at": "2026-09-27T13:49:20Z",
+  "guideline_sha": "f32f07951106f08aab778eb7dd2958c7d321c8fe",
+  "target_sha": null,
+  "subject": {
+    "kind": "skill",
+    "skill": "arch-explain",
+    "prompt": "How does the guideline hold the tenant fence, and what proves it?",
+    "argv": [
+      "claude",
+      "-p",
+      "/swe-guidelines:arch-explain How does the guideline hold the tenant fence, and what proves it?",
+      "--plugin-dir",
+      "/plugin",
+      "--output-format",
+      "json",
+      "--max-turns",
+      "14",
+      "--model",
+      "claude-opus-5-5",
+      "--allowedTools",
+      "Read,Grep,Glob"
+    ],
+    "model": "claude-opus-5-5",
+    "provider": null,
+    "target": null,
+    "plugin": "/plugin",
+    "max_turns": 14,
+    "allowed_tools": [
+      "Read",
+      "Grep",
+      "Glob"
+    ]
+  },
+  "repeats": [
+    {
+      "index": 0,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 32.973,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/0/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "subject_usage": {
+        "input_tokens": 178873,
+        "output_tokens": 2861,
+        "cache_read_input_tokens": 150401,
+        "cache_creation_input_tokens": 28460
+      },
+      "subject_cost_usd": 0.229648,
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 10.23,
+          "usage": {
+            "input_tokens": 2673,
+            "output_tokens": 841,
+            "reasoning_tokens": 263
+          },
+          "cost_usd": 0.027512,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 85,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The four-part breakdown of The Second Fence (declared scope, funnel, NULLIF, three logins) goes past what the question needs and makes the answer longer than it has to be."
+              },
+              {
+                "severity": "low",
+                "note": "The policy check and login assertions are listed as coequal proofs next to the cross-tenant case and negative control, which blurs the rubric's split between evidence (cross-tenant cases) and verification (the deliberate breach)."
+              },
+              {
+                "severity": "low",
+                "note": "Specific claims such as the 'five pre-identity lookups' and the STO-33 parenthetical are stated precisely but add detail a reader cannot easily check against the question's scope."
+              }
+            ],
+            "strengths": [
+              "It names the tenant predicate as the fence and places it concretely in the WHERE clause of storage queries, quoting Namespace Shape and Separation of Layers.",
+              "It presents the cross-tenant contract case as the evidence and lists the paths it must cover.",
+              "The negative control is described exactly: one predicate removed, green with the policy live, failing with it off, both runs recorded, with the 'claim, not evidence' quote.",
+              "Every citation uses a section title and none uses a number.",
+              "Reviewer lenses are named by id and paired with the matching review skills."
+            ],
+            "rationale": "Every element the rubric requires is present and accurate: predicate as fence and where it is applied, cross-tenant cases as evidence, and the two-run negative control against The Second Fence with both runs recorded. Citations use titles and lenses are named by id, with no general multi-tenancy advice. Points come off because the RLS mechanics and the extra proof categories add length beyond what the question needs and slightly dilute the evidence-versus-verification framing."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 12.25,
+          "usage": {
+            "input_tokens": 1589,
+            "output_tokens": 571,
+            "reasoning_tokens": 407
+          },
+          "cost_usd": 0.008888,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 93,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "low",
+                "note": "The detailed login and session mechanics and closing review commands add length beyond what the tenant-fence question needs."
+              }
+            ],
+            "strengths": [
+              "The answer locates the primary fence in each storage query's tenant predicate rather than treating the method signature as enforcement.",
+              "It identifies cross-tenant contract cases as evidence and describes the recorded negative control: green with row-level security on and failing with it off.",
+              "It cites section titles rather than numbers and names reviewer lenses by ID."
+            ],
+            "rationale": "The artifact meets the rubric's substantive requirements, including the distinction between the query predicate and the policy that catches a missing predicate. Its only meaningful weakness is excess detail around the core explanation."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 9.994,
+          "usage": {
+            "input_tokens": 1480,
+            "output_tokens": 1105,
+            "reasoning_tokens": 916
+          },
+          "cost_usd": 0.01622,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 100,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Accurately identifies the tenant predicate in the WHERE clause as the primary fence.",
+              "Correctly details the cross-tenant tests and the deliberate breach (negative control) methodology as the evidence that the fence holds.",
+              "Strictly adheres to citing guidelines by section title without using any numbers.",
+              "Explicitly lists the appropriate reviewer lenses by ID as requested."
+            ],
+            "rationale": "The artifact perfectly fulfills every requirement of the rubric for a full answer. It correctly names the fence, details its application, outlines the exact testing and verification strategies required, and rigorously follows the formatting constraints for citations and lens IDs. The detail provided is specific to the guideline and highly relevant, avoiding any generalized advice or empty padding."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 38.865,
+          "usage": {
+            "input_tokens": 2907,
+            "output_tokens": 3147,
+            "reasoning_tokens": 2933
+          },
+          "cost_usd": 0.024696,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 96,
+            "verdict": "pass",
+            "findings": [],
+            "strengths": [
+              "Names the tenant predicate as the fence and places it in the query WHERE clause, where storage applies it, rather than in a signature or a manager hope.",
+              "States the proof as cross-tenant contract cases plus the deliberate breach: one predicate removed, suite green with The Second Fence policy live, failing with that policy off, both runs recorded.",
+              "Cites only section titles and names reviewer lenses by id (CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, STO-33)."
+            ],
+            "rationale": "The answer does what the rubric requires: the predicate is the fence, applied in the query, proved by cross-tenant cases and by the recorded two-run breach against The Second Fence. It stays inside the guideline, cites titles rather than numbers, and names lenses by id. The extra RLS and login detail answers how the fence is held rather than padding it."
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "per_provider": {
+      "anthropic": {
+        "mean": 85.0,
+        "min": 85,
+        "max": 85,
+        "n": 1,
+        "stdev": null
+      },
+      "gemini": {
+        "mean": 100.0,
+        "min": 100,
+        "max": 100,
+        "n": 1,
+        "stdev": null
+      },
+      "openai": {
+        "mean": 93.0,
+        "min": 93,
+        "max": 93,
+        "n": 1,
+        "stdev": null
+      },
+      "xai": {
+        "mean": 96.0,
+        "min": 96,
+        "max": 96,
+        "n": 1,
+        "stdev": null
+      }
+    },
+    "overall_mean": 93.5,
+    "failed_repeats": [],
+    "spread": {
+      "repeat_means": [
+        93.5
+      ],
+      "min": 93.5,
+      "max": 93.5,
+      "stdev": null
+    },
+    "self_judged": "a Claude subject is judged by a panel that includes Claude (anthropic); read its score beside the other providers' before trusting the mean",
+    "fallbacks": [],
+    "skipped": [],
+    "missed": []
+  },
+  "spend": {
+    "judges": {
+      "anthropic": {
+        "input_tokens": 2673,
+        "output_tokens": 841,
+        "reasoning_tokens": 263,
+        "cost_usd": 0.0275,
+        "unpriced": []
+      },
+      "gemini": {
+        "input_tokens": 1480,
+        "output_tokens": 1105,
+        "reasoning_tokens": 916,
+        "cost_usd": 0.0162,
+        "unpriced": []
+      },
+      "openai": {
+        "input_tokens": 1589,
+        "output_tokens": 571,
+        "reasoning_tokens": 407,
+        "cost_usd": 0.0089,
+        "unpriced": []
+      },
+      "xai": {
+        "input_tokens": 2907,
+        "output_tokens": 3147,
+        "reasoning_tokens": 2933,
+        "cost_usd": 0.0247,
+        "unpriced": []
+      }
+    },
+    "subject": {
+      "input_tokens": 178873,
+      "output_tokens": 2861,
+      "reasoning_tokens": 0,
+      "cost_usd": 0.2296,
+      "unpriced": []
+    },
+    "total_usd": 0.3069,
+    "unpriced": []
+  },
+  "notes": []
+}
