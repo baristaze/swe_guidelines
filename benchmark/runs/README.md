@@ -18,6 +18,9 @@ Judges: `claude-opus-5-5`, `gpt-6-sol`, `gemini-3.1-pro-preview`, and
 
 | Run | Started (UTC) | Scenario | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Planted named | Cost (USD) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [review-om-27d470ec](20260927-083632-review-om-27d470ec/report.md) | 2026-09-27 15:36 | review-om | `claude-opus-5-5` | high | 1 | 85.0 | 82.0 | 60.0 | 70.0 | **74.3** | 8/8 | $0.56 |
+| [explain-tenancy-a13cc441](20260927-083630-explain-tenancy-a13cc441/report.md) | 2026-09-27 15:36 | explain-tenancy | `claude-opus-5-5` | high | 1 | 88.0 | 94.0 | 100.0 | 96.0 | **94.5** | — | $0.29 |
+| [support-turn-f6a3fe89](20260927-083628-support-turn-f6a3fe89/report.md) | 2026-09-27 15:36 | support-turn | `claude-opus-5-5` | high | 1 | 72.0 | 80.0 | 75.0 | 84.0 | **77.8** | — | $0.18 |
 | [review-om-d56672be](20260927-064736-review-om-d56672be/report.md) | 2026-09-27 13:47 | review-om | `claude-opus-5-5` | high | 1 | 86.0 | 78.0 | 80.0 | 75.0 | **79.8** | 8/8 | $0.52 |
 | [explain-tenancy-cb44b4aa](20260927-064736-explain-tenancy-cb44b4aa/report.md) | 2026-09-27 13:47 | explain-tenancy | `claude-opus-5-5` | high | 1 | 85.0 | 93.0 | 100.0 | 96.0 | **93.5** | — | $0.31 |
 | [support-turn-b935612d](20260927-064736-support-turn-b935612d/report.md) | 2026-09-27 13:47 | support-turn | `claude-opus-5-5` | high | 1 | 76.0 | 78.0 | 75.0 | 80.0 | **77.3** | — | $0.17 |

@@ -1,0 +1,365 @@
+{
+  "schema_version": 1,
+  "run_id": "20260927-083632-review-om-27d470ec",
+  "scenario": "review-om",
+  "runtime": "container",
+  "started_at": "2026-09-27T15:36:32Z",
+  "finished_at": "2026-09-27T15:42:14Z",
+  "guideline_sha": "012ac9799686d00ec1e581e6b640f5f87b46d23b",
+  "target_sha": "012ac9799686d00ec1e581e6b640f5f87b46d23b",
+  "versions": {
+    "checkout": {
+      "commit": "012ac9799686d00ec1e581e6b640f5f87b46d23b",
+      "plugin_version": "0.37.0",
+      "dirty": false,
+      "dirty_paths": [],
+      "dirty_sha256": null
+    },
+    "claude_code": "2.1.283 (Claude Code)",
+    "image": {
+      "name": "swe-guidelines-benchmark:latest",
+      "id": "sha256:a2b79094b965466c8fbdc7d5293b7ce81d37cf15e79d788a38f64deed2f4a0bd"
+    },
+    "target": {
+      "path": "benchmark/fixtures/review-om",
+      "sha256": "2f36a47c0b634e275325054d0c66e64873aad25f2f8e97a4b9d34d471fb1fde8"
+    },
+    "expected": {
+      "path": "benchmark/fixtures/review-om.expected.yaml",
+      "sha256": "146dc830ce05bc878cc57180c8bec51edf36b5623015fc9f08002db1515e17a8"
+    }
+  },
+  "subject": {
+    "kind": "skill",
+    "skill": "arch-review-om",
+    "prompt": "Review {target}/om against the object model lenses and report findings by lens id.",
+    "argv": [
+      "claude",
+      "-p",
+      "/swe-guidelines:arch-review-om Review /target/om against the object model lenses and report findings by lens id.",
+      "--plugin-dir",
+      "/plugin",
+      "--output-format",
+      "json",
+      "--max-turns",
+      "30",
+      "--model",
+      "claude-opus-5-5",
+      "--add-dir",
+      "/target",
+      "--allowedTools",
+      "Read,Grep,Glob"
+    ],
+    "model": "claude-opus-5-5",
+    "provider": null,
+    "target": "benchmark/fixtures/review-om",
+    "plugin": "/plugin",
+    "max_turns": 30,
+    "allowed_tools": [
+      "Read",
+      "Grep",
+      "Glob"
+    ]
+  },
+  "repeats": [
+    {
+      "index": 0,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 62.147,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/0/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "subject_usage": {
+        "input_tokens": 241594,
+        "output_tokens": 6437,
+        "cache_read_input_tokens": 216323,
+        "cache_creation_input_tokens": 25255,
+        "reasoning_tokens": 3238
+      },
+      "subject_cost_usd": 0.298344,
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 18.903,
+          "usage": {
+            "input_tokens": 8500,
+            "output_tokens": 1588,
+            "reasoning_tokens": 931
+          },
+          "cost_usd": 0.06576,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 85,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The OM-16 finding at storage/__init__.py:14, which asks for new tenancy and audit namespaces, is not borne out by the source. The evidence lists passing tenancy to storage, with no org_id on entities, as correct, so this is advice the guideline does not appear to support."
+              },
+              {
+                "severity": "low",
+                "note": "The OM-03 finding at bin.py:9, which requires a MANAGER_OWNED_FIELDS tuple on every entity, rests on a symbol that appears nowhere in the checkout and cannot be verified against the source."
+              },
+              {
+                "severity": "low",
+                "note": "The OM-05 finding at stock_movement.py:6 restates the planted OM-06 defect at the same line under a second lens, which double-counts one issue."
+              },
+              {
+                "severity": "low",
+                "note": "Findings name lens, file, line, and fix, but none quotes the rule it rests on. None separates what the guideline requires from reviewer preference."
+              }
+            ],
+            "strengths": [
+              "All eight planted defects are reported with the correct lens id at the exact file and line: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.",
+              "No item on the clean list is flagged; the review even contrasts update_warehouse with delete_warehouse's correct model_validate rebuild.",
+              "Every finding gives a concrete, correct fix, such as new_id() for uuid4() and a now argument for is_stale.",
+              "The review reports the checker failure honestly and reads the code instead of staging or editing anything."
+            ],
+            "rationale": "Recall is complete: every planted finding is hit at the right file, line and lens. Precision loses points for the unsupported OM-16 call for tenancy and audit namespaces, and for an unverifiable MANAGER_OWNED_FIELDS claim, plus a minor duplicate under OM-05. Form is good on lens, location and fix but omits rule quotes and the required-versus-preferred split."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 37.02,
+          "usage": {
+            "input_tokens": 5232,
+            "output_tokens": 2325,
+            "reasoning_tokens": 2047
+          },
+          "cost_usd": 0.033714,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 82,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "The OM-05 and OM-06 findings about StockMovement incorrectly say its update fields are never set; record_movement sets updated_at and updated_by in impl/manager.py:63–65, although the underlying OM-06 concern is valid."
+              },
+              {
+                "severity": "medium",
+                "note": "The OM-03 finding at types/bin.py:9 prescribes MANAGER_OWNED_FIELDS and provenance filtering without establishing a need: WarehouseChanges permits updates only to name and capacity."
+              },
+              {
+                "severity": "medium",
+                "note": "The OM-16 finding at storage/__init__.py:14 treats separate tenancy and audit namespaces as required, but the cited use of org_id does not establish that requirement."
+              },
+              {
+                "severity": "low",
+                "note": "The review quotes no lens rules, and its summary says there are 10 findings while the Findings section contains 12 bullets."
+              }
+            ],
+            "strengths": [
+              "The review identifies all eight planted defects at the right files and near the right lines.",
+              "Most planted findings give a concrete change to make, and the review does not flag the listed correct implementations."
+            ],
+            "rationale": "Complete recall is the main reason this passes. Its score is limited by unsupported extra prescriptions, a factual error about StockMovement initialization, and missing rule quotations."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 31.841,
+          "usage": {
+            "input_tokens": 5890,
+            "output_tokens": 3968,
+            "reasoning_tokens": 3614
+          },
+          "cost_usd": 0.059396,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 60,
+            "verdict": "weak",
+            "findings": [
+              {
+                "severity": "high",
+                "note": "The review fabricates a requirement for `MANAGER_OWNED_FIELDS` under OM-03, which is not supported by the evidence."
+              },
+              {
+                "severity": "high",
+                "note": "The OM-16 finding incorrectly demands `tenancy` and `audit` namespaces, contradicting the evidence which states tenancy is properly passed to storage under OM-02."
+              },
+              {
+                "severity": "medium",
+                "note": "The review duplicates the finding about `StockMovement` composing `Trackable` by reporting it under both OM-05 and OM-06."
+              },
+              {
+                "severity": "medium",
+                "note": "The artifact fails to quote the rules the findings rest upon, which is required by the form instructions."
+              }
+            ],
+            "strengths": [
+              "The review successfully achieves perfect recall by finding all 8 planted defects.",
+              "Valid findings provide exact file paths, correct line numbers, and actionable fixes."
+            ],
+            "rationale": "The artifact does an excellent job of locating all planted defects with high accuracy regarding files, lines, and proposed changes. However, it suffers significantly in precision by hallucinating two major requirements (OM-16 namespaces and OM-03 MANAGER_OWNED_FIELDS) that contradict the baseline design, double-reporting one defect, and failing to quote the rules as required by the rubric."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 191.42,
+          "usage": {
+            "input_tokens": 6936,
+            "output_tokens": 14851,
+            "reasoning_tokens": 14417
+          },
+          "cost_usd": 0.102978,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 70,
+            "verdict": "weak",
+            "findings": [
+              {
+                "severity": "high",
+                "note": "The OM-05 finding on stock_movement.py:6 claims no manager sets updated_at or updated_by, but record_movement in manager.py:63-65 sets both, so the flag is not borne out and mislabels the OM-06 defect."
+              },
+              {
+                "severity": "high",
+                "note": "The OM-16 finding on storage/__init__.py:14 demands tenancy and audit namespaces for org_id-keyed storage, which the evidence lists as the correct OM-02 pattern (no org_id on entities; tenancy passed to storage)."
+              },
+              {
+                "severity": "medium",
+                "note": "The OM-03 finding at bin.py:9 requires MANAGER_OWNED_FIELDS, a symbol and exclusion rule that neither the source nor the OM-03 evidence supports; the real OM-03 defect is the redeclared created_at."
+              },
+              {
+                "severity": "low",
+                "note": "The summary says 16 lenses applied, 6 passed, and 10 findings, but the body lists 12 findings and those counts do not add up."
+              }
+            ],
+            "strengths": [
+              "All eight planted defects are reported with the correct lens id, file, and line.",
+              "Each true finding gives a concrete fix that matches the intended correction, including model_validate, new_id, a now argument, tuple tags, and Identifiable-only StockMovement.",
+              "Passes on OM-02, OM-07, OM-11, and OM-14 match the clean list, and the review only reports rather than editing the tree."
+            ],
+            "rationale": "Recall is complete: every planted finding is cited at the right file and line under the right lens. Precision is not: three extra findings are unsupported, including an OM-05 claim the source contradicts and an OM-16 flag on the tenancy pattern the evidence marks correct. Form is usable, but the summary counts are wrong and the findings paraphrase rules instead of quoting them. Full recall with material false positives is a weak review, not a pass."
+          }
+        }
+      ],
+      "expected": {
+        "expected": 8,
+        "named": [
+          "F1",
+          "F2",
+          "F3",
+          "F4",
+          "F5",
+          "F6",
+          "F7",
+          "F8"
+        ],
+        "missed": []
+      }
+    }
+  ],
+  "summary": {
+    "per_provider": {
+      "anthropic": {
+        "mean": 85.0,
+        "min": 85,
+        "max": 85,
+        "n": 1,
+        "stdev": null
+      },
+      "gemini": {
+        "mean": 60.0,
+        "min": 60,
+        "max": 60,
+        "n": 1,
+        "stdev": null
+      },
+      "openai": {
+        "mean": 82.0,
+        "min": 82,
+        "max": 82,
+        "n": 1,
+        "stdev": null
+      },
+      "xai": {
+        "mean": 70.0,
+        "min": 70,
+        "max": 70,
+        "n": 1,
+        "stdev": null
+      }
+    },
+    "overall_mean": 74.3,
+    "failed_repeats": [],
+    "spread": {
+      "repeat_means": [
+        74.3
+      ],
+      "min": 74.3,
+      "max": 74.3,
+      "stdev": null
+    },
+    "self_judged": "a Claude subject is judged by a panel that includes Claude (anthropic); read its score beside the other providers' before trusting the mean",
+    "fallbacks": [],
+    "skipped": [],
+    "missed": []
+  },
+  "spend": {
+    "judges": {
+      "anthropic": {
+        "input_tokens": 8500,
+        "output_tokens": 1588,
+        "reasoning_tokens": 931,
+        "cost_usd": 0.0658,
+        "unpriced": []
+      },
+      "gemini": {
+        "input_tokens": 5890,
+        "output_tokens": 3968,
+        "reasoning_tokens": 3614,
+        "cost_usd": 0.0594,
+        "unpriced": []
+      },
+      "openai": {
+        "input_tokens": 5232,
+        "output_tokens": 2325,
+        "reasoning_tokens": 2047,
+        "cost_usd": 0.0337,
+        "unpriced": []
+      },
+      "xai": {
+        "input_tokens": 6936,
+        "output_tokens": 14851,
+        "reasoning_tokens": 14417,
+        "cost_usd": 0.103,
+        "unpriced": []
+      }
+    },
+    "subject": {
+      "input_tokens": 241594,
+      "output_tokens": 6437,
+      "reasoning_tokens": 3238,
+      "cost_usd": 0.2983,
+      "unpriced": []
+    },
+    "total_usd": 0.5602,
+    "unpriced": []
+  },
+  "notes": []
+}

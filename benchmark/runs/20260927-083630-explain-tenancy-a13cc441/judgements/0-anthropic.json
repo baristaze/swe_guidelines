@@ -1,0 +1,42 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 10.469,
+  "usage": {
+    "input_tokens": 2736,
+    "output_tokens": 890,
+    "reasoning_tokens": 277
+  },
+  "cost_usd": 0.028744,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 88,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The build-out of The Second Fence (scope map, session funnel, FOR ALL policy, EMPTY_UUID, three logins) runs long for a question about how the fence is held and proven, and much of it could be cut to a line."
+      },
+      {
+        "severity": "low",
+        "note": "The lens list includes STO-33 (a data migration lifts FORCE in one transaction), which the body never explains and which bears only indirectly on how the fence is held or proven."
+      },
+      {
+        "severity": "low",
+        "note": "Specific claims such as 'the five lookups that run before an identity is known' and the policy and login checks can't be confirmed from the artifact alone, so they carry some risk of detail the guideline doesn't state."
+      }
+    ],
+    "strengths": [
+      "It names the tenant predicate as the fence and places it concretely in the WHERE clause of the storage query, with managers explicitly not holding it.",
+      "It presents the cross-tenant cases as the evidence and quotes the guideline's breach-trying framing, including early-return paths.",
+      "It describes the negative control exactly: one predicate removed, green with the row-level security policy live, failing with it off, both runs recorded.",
+      "Every citation is by section title (Separation of Layers, Storage Principles, The Second Fence, Cross-Cutting Conventions, Tests) and never by number.",
+      "The reviewer lenses are named by id, with the relevant ones present (CTX-09, CTX-30, CTX-31, STO-28)."
+    ],
+    "rationale": "Every element the rubric requires is present and grounded in quoted guideline text rather than general multi-tenancy advice, and no section numbers appear. The negative control is described precisely as the rubric specifies. Points come off for length: the detailed build of the second fence and the extra evidence categories go beyond what the question needs, and one tangential lens is listed without being explained."
+  },
+  "raw": "{\"score\": 88, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The build-out of The Second Fence (scope map, session funnel, FOR ALL policy, EMPTY_UUID, three logins) runs long for a question about how the fence is held and proven, and much of it could be cut to a line.\"}, {\"severity\": \"low\", \"note\": \"The lens list includes STO-33 (a data migration lifts FORCE in one transaction), which the body never explains and which bears only indirectly on how the fence is held or proven.\"}, {\"severity\": \"low\", \"note\": \"Specific claims such as 'the five lookups that run before an identity is known' and the policy and login checks can't be confirmed from the artifact alone, so they carry some risk of detail the guideline doesn't state.\"}], \"strengths\": [\"It names the tenant predicate as the fence and places it concretely in the WHERE clause of the storage query, with managers explicitly not holding it.\", \"It presents the cross-tenant cases as the evidence and quotes the guideline's breach-trying framing, including early-return paths.\", \"It describes the negative control exactly: one predicate removed, green with the row-level security policy live, failing with it off, both runs recorded.\", \"Every citation is by section title (Separation of Layers, Storage Principles, The Second Fence, Cross-Cutting Conventions, Tests) and never by number.\", \"The reviewer lenses are named by id, with the relevant ones present (CTX-09, CTX-30, CTX-31, STO-28).\"], \"rationale\": \"Every element the rubric requires is present and grounded in quoted guideline text rather than general multi-tenancy advice, and no section numbers appear. The negative control is described precisely as the rubric specifies. Points come off for length: the detailed build of the second fence and the extra evidence categories go beyond what the question needs, and one tangential lens is listed without being explained.\"}"
+}

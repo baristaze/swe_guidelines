@@ -1,0 +1,43 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 31.841,
+  "usage": {
+    "input_tokens": 5890,
+    "output_tokens": 3968,
+    "reasoning_tokens": 3614
+  },
+  "cost_usd": 0.059396,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 60,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The review fabricates a requirement for `MANAGER_OWNED_FIELDS` under OM-03, which is not supported by the evidence."
+      },
+      {
+        "severity": "high",
+        "note": "The OM-16 finding incorrectly demands `tenancy` and `audit` namespaces, contradicting the evidence which states tenancy is properly passed to storage under OM-02."
+      },
+      {
+        "severity": "medium",
+        "note": "The review duplicates the finding about `StockMovement` composing `Trackable` by reporting it under both OM-05 and OM-06."
+      },
+      {
+        "severity": "medium",
+        "note": "The artifact fails to quote the rules the findings rest upon, which is required by the form instructions."
+      }
+    ],
+    "strengths": [
+      "The review successfully achieves perfect recall by finding all 8 planted defects.",
+      "Valid findings provide exact file paths, correct line numbers, and actionable fixes."
+    ],
+    "rationale": "The artifact does an excellent job of locating all planted defects with high accuracy regarding files, lines, and proposed changes. However, it suffers significantly in precision by hallucinating two major requirements (OM-16 namespaces and OM-03 MANAGER_OWNED_FIELDS) that contradict the baseline design, double-reporting one defect, and failing to quote the rules as required by the rubric."
+  },
+  "raw": "{\n  \"score\": 60,\n  \"verdict\": \"weak\",\n  \"findings\": [\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review fabricates a requirement for `MANAGER_OWNED_FIELDS` under OM-03, which is not supported by the evidence.\"\n    },\n    {\n      \"severity\": \"high\",\n      \"note\": \"The OM-16 finding incorrectly demands `tenancy` and `audit` namespaces, contradicting the evidence which states tenancy is properly passed to storage under OM-02.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The review duplicates the finding about `StockMovement` composing `Trackable` by reporting it under both OM-05 and OM-06.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"The artifact fails to quote the rules the findings rest upon, which is required by the form instructions.\"\n    }\n  ],\n  \"strengths\": [\n    \"The review successfully achieves perfect recall by finding all 8 planted defects.\",\n    \"Valid findings provide exact file paths, correct line numbers, and actionable fixes.\"\n  ],\n  \"rationale\": \"The artifact does an excellent job of locating all planted defects with high accuracy regarding files, lines, and proposed changes. However, it suffers significantly in precision by hallucinating two major requirements (OM-16 namespaces and OM-03 MANAGER_OWNED_FIELDS) that contradict the baseline design, double-reporting one defect, and failing to quote the rules as required by the rubric.\"\n}"
+}

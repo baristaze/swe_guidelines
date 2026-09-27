@@ -1,0 +1,331 @@
+{
+  "schema_version": 1,
+  "run_id": "20260927-083628-support-turn-f6a3fe89",
+  "scenario": "support-turn",
+  "runtime": "container",
+  "started_at": "2026-09-27T15:36:28Z",
+  "finished_at": "2026-09-27T15:39:00Z",
+  "guideline_sha": "012ac9799686d00ec1e581e6b640f5f87b46d23b",
+  "target_sha": null,
+  "versions": {
+    "checkout": {
+      "commit": "012ac9799686d00ec1e581e6b640f5f87b46d23b",
+      "plugin_version": "0.37.0",
+      "dirty": false,
+      "dirty_paths": [],
+      "dirty_sha256": null
+    },
+    "claude_code": null,
+    "image": {
+      "name": "swe-guidelines-benchmark:latest",
+      "id": "sha256:a2b79094b965466c8fbdc7d5293b7ce81d37cf15e79d788a38f64deed2f4a0bd"
+    },
+    "target": null,
+    "expected": null
+  },
+  "subject": {
+    "kind": "qa",
+    "skill": null,
+    "prompt": "A service returns 500 for one tenant only, on one endpoint, since a\ndeploy an hour ago. Nothing changed in that endpoint's code. Answer\nas the person on call: what you look at, in what order, and what\neach step would rule out.\n",
+    "argv": [],
+    "model": "claude-opus-5-5",
+    "provider": "anthropic",
+    "target": null,
+    "plugin": null,
+    "max_turns": 6,
+    "allowed_tools": []
+  },
+  "repeats": [
+    {
+      "index": 0,
+      "exit_status": {
+        "code": 0,
+        "signal": null,
+        "duration_s": 35.676,
+        "timed_out": false,
+        "is_error": false
+      },
+      "artifact_paths": [
+        "artifacts/0/answer.md"
+      ],
+      "subject_models": [
+        "claude-opus-5-5"
+      ],
+      "subject_usage": {
+        "input_tokens": 85,
+        "output_tokens": 3099,
+        "reasoning_tokens": 917
+      },
+      "subject_cost_usd": 0.06232,
+      "judgements": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 16.691,
+          "usage": {
+            "input_tokens": 3338,
+            "output_tokens": 1438,
+            "reasoning_tokens": 480
+          },
+          "cost_usd": 0.042112,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 72,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "Step 1 filters logs by tenant and endpoint but never pivots on a single request/trace id to join the gateway log, app exception, downstream spans and the exact DB query, which is the signal the rubric wants the investigation to start from."
+              },
+              {
+                "severity": "medium",
+                "note": "Step 0 overclaims that errors persisting after rollback prove the deploy was coincidental, even though an irreversible migration or data written by the new code would survive the rollback, a risk the same step raises."
+              },
+              {
+                "severity": "medium",
+                "note": "Step 5 lists many tenant-unique attributes (nulls, legacy formats, unknown enums, unicode, timezones, SSO) without saying how to check any of them, such as a specific query comparing this tenant's rows against others, so most candidate causes have no confirmation path."
+              },
+              {
+                "severity": "medium",
+                "note": "Steps 5-7 assume read access to production tenant data and the ability to copy it into staging, but never state that access or address the privacy constraints on doing so."
+              },
+              {
+                "severity": "low",
+                "note": "The lists in steps 3 and 4 (cert rotations, base image, lockfile bumps, runtime version) read as a generic post-deploy checklist rather than reasoning tied to the one-tenant, one-endpoint signal."
+              },
+              {
+                "severity": "low",
+                "note": "Mitigation comes before the stack trace, so the first diagnostic signal is the rollback outcome rather than the evidence from a failing request."
+              }
+            ],
+            "strengths": [
+              "The opening hypothesis, that a shared change collided with something unique to this tenant, correctly reframes 'nothing changed in that endpoint' and organizes the steps that follow.",
+              "Each step has an explicit 'Rules out' section, and the step 1 exception-type branching maps each error class to a distinct hypothesis.",
+              "It names all three tenant-shaped causes: legacy or null rows only this tenant has, volume or timeouts where the tenant is simply the biggest, and per-tenant feature flags or plan config.",
+              "Step 2's per-version pod split and the 'is it really shard 7' check are sharp scope discriminators an on-call engineer would actually use.",
+              "Step 6 on partially completed migrations on the tenant's shard, and step 7's old-vs-new reproduction, give a real confirmation path for the data hypothesis."
+            ],
+            "rationale": "The answer follows the deploy-to-data arc the rubric asks for, states what each step rules out, and names row-, limit- and flag-shaped tenant causes, which earns a pass. Points come off because it never anchors on a request id to tie the signals together. Most of the tenant-unique causes in step 5 have no stated way to confirm them, and the data access it relies on is assumed rather than stated. The rollback-as-diagnostic reasoning also overlooks migrations that cannot be reverted, and parts of the answer read like a pre-written checklist."
+          }
+        },
+        {
+          "provider": "openai",
+          "model": "gpt-6-sol",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 17.559,
+          "usage": {
+            "input_tokens": 1970,
+            "output_tokens": 933,
+            "reasoning_tokens": 638
+          },
+          "cost_usd": 0.01327,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 80,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "Steps 1–3 do not use a failing request ID to connect the endpoint error to its trace, downstream calls, and data access before investigating broader hypotheses."
+              },
+              {
+                "severity": "medium",
+                "note": "Steps 0 and 2 wrongly treat errors persisting after rollback or appearing on old pods as evidence against the deploy, despite migrations or other persistent release changes."
+              },
+              {
+                "severity": "medium",
+                "note": "Step 5 names tenant-specific data, volume, and flags but does not explicitly compare a failing row or setting with a successful tenant or check volume against a concrete limit."
+              },
+              {
+                "severity": "low",
+                "note": "Step 7 assumes a captured request and a usable copy of tenant data in staging without saying whether those are available."
+              }
+            ],
+            "strengths": [
+              "The sequence moves from mitigation and exception evidence through rollout scope and release changes to tenant-specific data and reproduction.",
+              "Most steps say what their observations would rule out rather than merely listing things to inspect.",
+              "The artifact recognizes that unchanged endpoint code can still be affected by shared code, dependencies, migrations, and tenant-specific configuration."
+            ],
+            "rationale": "This is a useful on-call plan with a clear order and credible tenant-shaped hypotheses. It loses points chiefly for missing request-ID correlation, overstating what rollback and old-version results prove, and leaving the decisive tenant comparison less concrete than it could be."
+          }
+        },
+        {
+          "provider": "gemini",
+          "model": "gemini-3.1-pro-preview",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 20.851,
+          "usage": {
+            "input_tokens": 1913,
+            "output_tokens": 2217,
+            "reasoning_tokens": 1868
+          },
+          "cost_usd": 0.03043,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 75,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "high",
+                "note": "The response fails to start from a specific request ID and tie its signals together, instead opting to filter aggregate logs by tenant ID."
+              },
+              {
+                "severity": "medium",
+                "note": "Step 0 and the 'Resolution and follow-up' section read like a generic incident checklist written before reading the prompt."
+              },
+              {
+                "severity": "low",
+                "note": "Step 7 requires accessing and copying a tenant's production database record to a staging environment, which requires strict compliance and data access permissions not established in the prompt."
+              }
+            ],
+            "strengths": [
+              "Strictly adheres to the requirement to explain what each step rules out.",
+              "Successfully identifies tenant-shaped causes precisely as requested, including legacy data rows, volume limits, and feature flags.",
+              "Correctly deduces that an unchanged endpoint breaking after a deploy is likely a shared dependency, middleware, or schema change."
+            ],
+            "rationale": "The artifact is a strong, methodical on-call playbook that captures the likely culprits of a tenant-specific, post-deploy failure. It clearly maps out the transition from deployment diffs to tenant data shapes and explicitly states what is ruled out at each step. However, it loses points for relying on generic incident response boilerplate at the beginning and end, and for missing the rubric's specific requirement to trace a single request ID through the stack."
+          }
+        },
+        {
+          "provider": "xai",
+          "model": "grok-4.7",
+          "effort": "high",
+          "status": "ok",
+          "latency_s": 60.629,
+          "usage": {
+            "input_tokens": 3297,
+            "output_tokens": 4408,
+            "reasoning_tokens": 3986
+          },
+          "cost_usd": 0.033042,
+          "error": null,
+          "fallback": null,
+          "verdict": {
+            "score": 84,
+            "verdict": "pass",
+            "findings": [
+              {
+                "severity": "medium",
+                "note": "Step 0 rolls back or flips a flag before any step says to capture a failing request, trace, and tenant id, so the later stack-trace and replay steps can lose their only evidence."
+              },
+              {
+                "severity": "medium",
+                "note": "Steps 1 and 5 name a size or pool limit only this tenant hits, but never say how to confirm it by comparing that tenant's volume or payload to a threshold introduced in the deploy."
+              },
+              {
+                "severity": "low",
+                "note": "Step 0 says to disable \"the relevant feature flag\" before any look has identified a flag only this tenant carries."
+              },
+              {
+                "severity": "low",
+                "note": "The incident-channel, support heads-up, and postmortem sections are generic process that do not rule out a cause and could have been written before the question."
+              }
+            ],
+            "strengths": [
+              "It opens from the tied signals with a shared-change times tenant-unique hypothesis instead of treating an unchanged handler as exonerating the deploy.",
+              "Each numbered step states what it rules out, including using rollback itself as a causal test.",
+              "It names the tenant-shaped triggers the question implies: a record only this tenant has, volume only the largest tenant reaches, and a flag, plan, or config only this tenant carries.",
+              "It moves from the full deploy diff into that tenant's data, shard migration state, and a new-versus-old reproduction."
+            ],
+            "rationale": "The note does what an on-call answer should: it starts from one tenant, one endpoint, a recent deploy, and an unchanged handler, then walks from the deploy into that tenant's data while saying what each step rules out. The three tenant-shaped causes are present, not just a generic outage checklist. Points come off because rollback is ordered before evidence capture, the limit cause has no compare-against-threshold check, and some trailing process does not diagnose anything. That is a pass, not an excellent note."
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "per_provider": {
+      "anthropic": {
+        "mean": 72.0,
+        "min": 72,
+        "max": 72,
+        "n": 1,
+        "stdev": null
+      },
+      "gemini": {
+        "mean": 75.0,
+        "min": 75,
+        "max": 75,
+        "n": 1,
+        "stdev": null
+      },
+      "openai": {
+        "mean": 80.0,
+        "min": 80,
+        "max": 80,
+        "n": 1,
+        "stdev": null
+      },
+      "xai": {
+        "mean": 84.0,
+        "min": 84,
+        "max": 84,
+        "n": 1,
+        "stdev": null
+      }
+    },
+    "overall_mean": 77.8,
+    "failed_repeats": [],
+    "spread": {
+      "repeat_means": [
+        77.8
+      ],
+      "min": 77.8,
+      "max": 77.8,
+      "stdev": null
+    },
+    "self_judged": "a Claude subject is judged by a panel that includes Claude (anthropic); read its score beside the other providers' before trusting the mean",
+    "fallbacks": [],
+    "skipped": [],
+    "missed": []
+  },
+  "spend": {
+    "judges": {
+      "anthropic": {
+        "input_tokens": 3338,
+        "output_tokens": 1438,
+        "reasoning_tokens": 480,
+        "cost_usd": 0.0421,
+        "unpriced": []
+      },
+      "gemini": {
+        "input_tokens": 1913,
+        "output_tokens": 2217,
+        "reasoning_tokens": 1868,
+        "cost_usd": 0.0304,
+        "unpriced": []
+      },
+      "openai": {
+        "input_tokens": 1970,
+        "output_tokens": 933,
+        "reasoning_tokens": 638,
+        "cost_usd": 0.0133,
+        "unpriced": []
+      },
+      "xai": {
+        "input_tokens": 3297,
+        "output_tokens": 4408,
+        "reasoning_tokens": 3986,
+        "cost_usd": 0.033,
+        "unpriced": []
+      }
+    },
+    "subject": {
+      "input_tokens": 85,
+      "output_tokens": 3099,
+      "reasoning_tokens": 917,
+      "cost_usd": 0.0623,
+      "unpriced": []
+    },
+    "total_usd": 0.1811,
+    "unpriced": []
+  },
+  "notes": []
+}

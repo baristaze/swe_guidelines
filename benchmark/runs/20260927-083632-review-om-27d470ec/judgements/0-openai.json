@@ -1,0 +1,43 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 37.02,
+  "usage": {
+    "input_tokens": 5232,
+    "output_tokens": 2325,
+    "reasoning_tokens": 2047
+  },
+  "cost_usd": 0.033714,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 82,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-05 and OM-06 findings about StockMovement incorrectly say its update fields are never set; record_movement sets updated_at and updated_by in impl/manager.py:63–65, although the underlying OM-06 concern is valid."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-03 finding at types/bin.py:9 prescribes MANAGER_OWNED_FIELDS and provenance filtering without establishing a need: WarehouseChanges permits updates only to name and capacity."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at storage/__init__.py:14 treats separate tenancy and audit namespaces as required, but the cited use of org_id does not establish that requirement."
+      },
+      {
+        "severity": "low",
+        "note": "The review quotes no lens rules, and its summary says there are 10 findings while the Findings section contains 12 bullets."
+      }
+    ],
+    "strengths": [
+      "The review identifies all eight planted defects at the right files and near the right lines.",
+      "Most planted findings give a concrete change to make, and the review does not flag the listed correct implementations."
+    ],
+    "rationale": "Complete recall is the main reason this passes. Its score is limited by unsupported extra prescriptions, a factual error about StockMovement initialization, and missing rule quotations."
+  },
+  "raw": "{\"score\":82,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"The OM-05 and OM-06 findings about StockMovement incorrectly say its update fields are never set; record_movement sets updated_at and updated_by in impl/manager.py:63–65, although the underlying OM-06 concern is valid.\"},{\"severity\":\"medium\",\"note\":\"The OM-03 finding at types/bin.py:9 prescribes MANAGER_OWNED_FIELDS and provenance filtering without establishing a need: WarehouseChanges permits updates only to name and capacity.\"},{\"severity\":\"medium\",\"note\":\"The OM-16 finding at storage/__init__.py:14 treats separate tenancy and audit namespaces as required, but the cited use of org_id does not establish that requirement.\"},{\"severity\":\"low\",\"note\":\"The review quotes no lens rules, and its summary says there are 10 findings while the Findings section contains 12 bullets.\"}],\"strengths\":[\"The review identifies all eight planted defects at the right files and near the right lines.\",\"Most planted findings give a concrete change to make, and the review does not flag the listed correct implementations.\"],\"rationale\":\"Complete recall is the main reason this passes. Its score is limited by unsupported extra prescriptions, a factual error about StockMovement initialization, and missing rule quotations.\"}"
+}
