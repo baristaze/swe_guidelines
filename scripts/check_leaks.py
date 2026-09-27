@@ -32,7 +32,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import SKIP_DIRS, SKIP_PATHS, arguments, markdown_files
+from _common import arguments, markdown_files, skipped
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -180,12 +180,7 @@ def text_files(root: Path) -> list[Path]:
     except (OSError, subprocess.CalledProcessError):
         out = [p.relative_to(root).as_posix() for p in root.rglob("*")]
     return [
-        root / rel
-        for rel in sorted(set(out))
-        if not any(part in SKIP_DIRS for part in rel.split("/")[:-1])
-        and not any(tuple(rel.split("/")[: len(skip)]) == skip for skip in SKIP_PATHS)
-        and (root / rel).is_file()
-        and is_text(root / rel)
+        root / rel for rel in sorted(set(out)) if not skipped(rel.split("/")) and (root / rel).is_file() and is_text(root / rel)
     ]
 
 
