@@ -159,7 +159,7 @@ def _strings(value: Any, where: str) -> list[str]:
 def _int(value: Any, where: str) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ScenarioError(f"{where}: expected a whole number, got {value!r}") from exc
 
 

@@ -54,6 +54,12 @@ def test_a_value_or_a_file_the_scenario_cannot_read_is_a_scenario_error(tmp_path
         S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "timeout_s": "900s"}))
     with pytest.raises(S.ScenarioError, match=r"subject\.max_turns: expected a whole number, got \[6\]"):
         S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_turns": [6]}))
+    with pytest.raises(S.ScenarioError, match=r"subject\.timeout_s: expected a whole number, got inf"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "timeout_s": float("inf")}))  # YAML's .inf
+    huge = json.dumps(dict(MINIMAL, subject={"skill": "arch-explain", "max_turns": 7})).replace(": 7", ": 1e400")
+    (tmp_path / "huge.json").write_text(huge, encoding="utf-8")  # JSON reads 1e400 as inf
+    with pytest.raises(S.ScenarioError, match=r"subject\.max_turns: expected a whole number, got inf"):
+        S.load(tmp_path / "huge.json")
     (tmp_path / "latin.json").write_bytes(b'{"name": "caf\xe9"}')
     with pytest.raises(S.ScenarioError, match=r"latin\.json: is not UTF-8"):
         S.load(tmp_path / "latin.json")
