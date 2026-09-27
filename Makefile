@@ -90,8 +90,8 @@ gen-skills-check:  ## fail when a generated skill is out of date
 gen-toc:           ## regenerate the table of contents of architecture.md
 	$(PYTHON) scripts/gen_toc.py
 
-benchmark:         ## run the smoke benchmark scenario (calls paid APIs; not part of check)
-	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1
+benchmark:         ## run the smoke benchmark scenario in a container, its image built first (calls paid APIs; not part of check)
+	uv run benchmark/run.py --scenario explain-tenancy --providers 3 --effort medium --repeat 1 --build
 
 benchmark-serve:   ## serve the benchmark runs folder at http://127.0.0.1:8765/
 	uv run benchmark/serve.py --runs benchmark/runs --port 8765

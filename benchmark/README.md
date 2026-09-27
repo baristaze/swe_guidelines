@@ -14,14 +14,16 @@ and asks one model.
 
 ```bash
 uv run benchmark/run.py list
-uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1
+uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
 uv run benchmark/serve.py --runs benchmark/runs --port 8765
 ```
 
 `uv run` reads the inline dependencies at the top of `run.py`, so there
 is nothing to install first. The harness modules import the standard
 library only; the provider clients and the YAML and schema packages are
-imported inside the functions that call them.
+imported inside the functions that call them. `explain-tenancy` runs in
+a container only, so its run needs Docker, and `--build` builds the
+image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
@@ -29,7 +31,7 @@ imported inside the functions that call them.
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
-| `--runtime` | `host` (the default), `container`, or `vm` |
+| `--runtime` | `host`, `container`, or `vm`: one of the scenario's `runtimes`, its first by default |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default |
@@ -141,7 +143,8 @@ run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
-(see Versions).
+(see Versions), and on a run whose runtime its scenario does not list
+(see Where a scenario runs).
 
 ## Versions
 
@@ -199,7 +202,8 @@ version describes that, and the run's notes say so.
   Linux, through `/proc/<pid>/environ` of the harness), and the answer
   files at their fixed paths in the checkout. The sandbox keeps them out
   of the paths the subject is given, not out of its reach. Use `host`
-  for a quick run on your own machine, never where that matters. The
+  for a quick run on your own machine, never where that matters: a
+  scenario whose subject must not reach them does not list it. The
   subject runs in a process group of its own, and the group is killed
   when the subject ends, on a timeout, a clean exit that left children,
   or an interrupt.
@@ -210,8 +214,9 @@ version describes that, and the run's notes say so.
   in the container, so the judges' keys and the answer files are out of
   the subject's reach. The image's user is not this machine's user on a
   Linux runner, so the workspace is opened to every user; the sandbox
-  around it stays private. The benchmark workflow runs every scenario
-  here, with the image built in a step that holds no key.
+  around it stays private. The benchmark workflow runs here every
+  scenario that lists this runtime, with the image built in a step that
+  holds no key.
 - `vm` runs the subject on another machine through a configured
   prefix, such as `limactl shell`. The machine is the boundary. The
   harness copies the staged plugin and target there and nothing else
@@ -227,6 +232,28 @@ target are as the subject sees them, and those are the paths the
 subject is given: in `--plugin-dir`, in `--add-dir`, and in the prompt.
 
 All three write the same streams into the run folder.
+
+### Where a scenario runs
+
+A scenario says where it may run, and it has no default for that.
+`runtimes` lists the runtimes it runs on. The first is the one a run
+takes when `--runtime` names none. `run.py` refuses any other runtime
+before it makes a run folder, and exits 7. So a caller tells a scenario
+that does not run there from one that failed.
+
+`requires` names what the runtime must provide. `docker` is the one
+requirement there is: a Docker engine the subject runs containers on.
+The container runtime cannot provide it, because it runs no engine and
+drops every capability. The host and the vm runtime hand on the engine
+their machine carries, and the Lima machine carries one. A scenario
+that lists a runtime unable to provide what it requires is refused when
+it loads. The check is against what a runtime can provide, not a probe
+of the machine: a host with no Docker engine fails the subject, not
+the start.
+
+A checked-in run is held to the same. `make runs` fails on a run whose
+runtime its scenario, as its file is now, does not list, and on a run
+whose scenario has no file or one that does not load.
 
 ### The vm runtime
 
@@ -337,8 +364,10 @@ stays is named in the run's notes.
 ```bash
 limactl create --name swe-benchmark benchmark/runtime/lima/benchmark.yaml
 limactl start swe-benchmark
-uv run benchmark/run.py --scenario review-om --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml
+uv run benchmark/run.py --scenario <name> --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml
 ```
+
+`<name>` is a scenario that lists `vm`.
 
 The machine is Ubuntu 26.04 LTS with 8 processors, 32 GiB of memory,
 and a 100 GiB disk. It carries Docker, rootful, with its socket owned
@@ -381,17 +410,23 @@ can change the machine itself. A changed pin takes a new machine:
 
 A scenario is YAML or JSON. Three ship here:
 
-| Scenario | Kind | What it measures |
-|----------|------|------------------|
-| `explain-tenancy` | `skill` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
-| `review-om` | `skill` | the `arch-review-om` skill over a checkout with eight planted defects |
-| `support-turn` | `qa` | a model answering an on-call question directly, with no skill |
+| Scenario | Kind | Runtimes | What it measures |
+|----------|------|----------|------------------|
+| `explain-tenancy` | `skill` | `container` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
+| `review-om` | `skill` | `container` | the `arch-review-om` skill over a checkout with eight planted defects |
+| `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
+
+The two skills run in a container only. On the host their subject can
+read the checkout, the rubric and the planted findings in it. A `qa`
+subject runs no command, so the runtime holds nothing it reaches.
 
 The shape:
 
 ```yaml
 name: explain-tenancy
 kind: skill                 # skill | command | qa
+runtimes: [container]       # where it may run, the first the default
+requires: []                # what the runtime must provide: docker
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
@@ -573,10 +608,14 @@ file here.
 
 ## The workflow
 
-`.github/workflows/benchmark.yml` runs every scenario on demand, in the
-container runtime. Its job runs in a GitHub environment named
-`benchmark`, and the workflow does not create it. Create it under the
-repository's Settings, Environments, with these rules:
+`.github/workflows/benchmark.yml` runs on demand every scenario that
+lists the container runtime, in that runtime. It skips the rest and
+names them in a notice. Its `repeat` input is 1 to 5, which bounds what
+one dispatch spends on a scenario.
+
+Its job runs in a GitHub environment named `benchmark`, and the
+workflow does not create it. Create it under the repository's
+Settings, Environments, with these rules:
 
 - Deployment branches: selected branches, `main` only. A dispatch from
   any other branch never reaches the keys.
@@ -604,6 +643,6 @@ so `make test` and CI cover it with no key and no network.
 
 ```bash
 make test
-make benchmark          # the smoke scenario, two judges (--providers 3), one repeat
+make benchmark          # the smoke scenario in a container, its image built first, two judges (--providers 3), one repeat
 make benchmark-serve    # serve benchmark/runs at port 8765
 ```

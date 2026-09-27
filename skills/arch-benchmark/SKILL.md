@@ -40,18 +40,23 @@ never run the harness from there.
 1. Confirm the working directory is a checkout, as "Where it runs"
    says. Every command below runs from it.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
-   their kind and default judges, and each provider with its flag and
-   whether its key is present. Report an absent key as absent; it is a
-   provider that will be skipped, not a failure. It also shows whether
-   the subject's own key, `SUBJECT_ANTHROPIC_API_KEY`, is present; a
-   skill scenario needs it, and without it a `--strict` run refuses.
+   their kind, their default judges, and the runtimes each runs on, and
+   each provider with its flag and whether its key is present. Report
+   an absent key as absent; it is a provider that will be skipped, not
+   a failure. It also shows whether the subject's own key,
+   `SUBJECT_ANTHROPIC_API_KEY`, is present; a skill scenario needs it,
+   and without it a `--strict` run refuses.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
    `high`. `--repeat N` runs the subject N times, 3 by default.
-   `--subject-model` pins the subject's model. `--runtime` is
-   `host`, `container`, or `vm`. When the prompt names something with
-   no flag behind it, say so and run without it.
+   `--subject-model` pins the subject's model. `--runtime` is `host`,
+   `container`, or `vm`, and one the scenario lists: its first when the
+   flag is not given. The harness refuses any other with exit 7 and
+   runs nothing. So when the prompt names a runtime that `list` does
+   not show for the scenario, run nothing, neither on that runtime nor
+   on another, and say so. When the prompt names something with no flag
+   behind it, say so and run without it.
 4. Run the scenario, for example
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1`.
    A run takes minutes and costs money at every provider selected. When
@@ -66,10 +71,11 @@ never run the harness from there.
    fallbacks each would use, the effort, and the repeats. There is no
    score to report, and inventing one is the worst thing this skill
    could do.
-6. `--runtime container` runs the subject with `docker run`, from an
-   image it builds only when `--build` is passed. The first run on a
-   machine needs `--build`; a later run adds it when the image's inputs
-   changed. A build takes minutes, so say that before starting one.
+6. The `container` runtime, named or the scenario's first, runs the
+   subject with `docker run`, from an image it builds only when
+   `--build` is passed. The first run on a machine needs `--build`; a
+   later run adds it when the image's inputs changed. A build takes
+   minutes, so say that before starting one.
 7. List the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
    needs its source.
@@ -80,6 +86,11 @@ never run the harness from there.
 
 After a dry run: the resolved plan from `run.json`, in prose, and the
 sentence that nothing was executed and no provider was called.
+
+When the prompt names a runtime the scenario does not list: that
+runtime, the runtimes the scenario lists, and the sentence that nothing
+was executed and no provider was called. Nothing ran, so there is no
+plan to report.
 
 After a measurement, short, in prose:
 
