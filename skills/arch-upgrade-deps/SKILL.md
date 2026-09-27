@@ -139,11 +139,13 @@ never removes them. Nothing else is asked for.
 9. On a failure, find the row that causes it. Fix it in place when the
    fix is mechanical and named in that release's upgrade notes (a
    renamed setting, a moved import, a new required field in a config
-   file). When the fix would change what the application does, revert
-   that row's edits and its lock changes with `git restore` on the
-   files the row touched (`git restore <file> ...`), mark it held
-   back with the
-   failing output, and run step 8 again. Stop after every remaining row
+   file), and run step 8 again. A row gets the first run plus at most
+   2 reruns, so at most 2 in-place fixes. When the fix
+   would change what the application does, or the row still fails
+   after its second fix, revert that row's edits and its lock changes
+   with `git restore` on the files the row touched
+   (`git restore <file> ...`), mark it held back with the failing
+   output, and run step 8 again. Stop after every remaining row
    passes.
 
 Never commit. Never edit application behavior to fit an upgrade. A
