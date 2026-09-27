@@ -9,7 +9,11 @@ a run folder adds its row. This holds the two together:
 - the rows run from the newest run at the top to the oldest at the
   bottom, by the `started_at` each run's `results.json` records. The
   folder names carry the local time of the machine that ran them, so
-  they do not order runs from two machines.
+  they do not order runs from two machines;
+- every run that records its versions ran on a clean checkout. The
+  skills are staged from the working tree, so a run on uncommitted
+  changes names a commit that does not hold what ran. A run recorded
+  before the harness kept its versions has none to check.
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. With no run folder and no index there
@@ -42,13 +46,35 @@ def rows(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def started_at(name: str) -> str:
-    """When a run started, as its `results.json` records it in UTC; empty when it records nothing."""
+def results(name: str) -> dict:
+    """A run's `results.json`, or an empty record when it has none that reads."""
     path = RUNS / name / "results.json"
     try:
-        return str(json.loads(path.read_text(encoding="utf-8")).get("started_at") or "")
-    except (OSError, ValueError, AttributeError):
-        return ""
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def started_at(name: str) -> str:
+    """When a run started, as its `results.json` records it in UTC; empty when it records nothing."""
+    return str(results(name).get("started_at") or "")
+
+
+def unclean(name: str) -> str | None:
+    """Why a run's checkout was not clean, or None when it was or the run records no versions."""
+    versions = results(name).get("versions")
+    if not isinstance(versions, dict) or not versions:
+        return None
+    checkout = versions.get("checkout")
+    if not isinstance(checkout, dict):
+        return "records versions but no checkout"
+    if checkout.get("dirty") is False:
+        return None
+    if checkout.get("dirty") is None:
+        return "ran on no git checkout, so no commit holds what ran"
+    paths = ", ".join(checkout.get("dirty_paths") or [])
+    return f"ran on changes no commit holds ({paths})"
 
 
 def check(errors: list[str]) -> int:
@@ -64,6 +90,9 @@ def check(errors: list[str]) -> int:
     for name in folders:
         if counts[name] == 0:
             errors.append(f"{index}: no row for the run folder {name}")
+        reason = unclean(name)
+        if reason:
+            errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}; a checked-in run names a commit that holds what ran")
     reported: set[str] = set()
     above: tuple[str, str] | None = None
     for ln, name in found:

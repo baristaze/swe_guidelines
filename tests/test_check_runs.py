@@ -97,3 +97,35 @@ def test_a_run_that_records_less_is_listed_and_left_out_of_the_order(repo, runs)
         HEAD + row("20260101-000000-old-aa") + row("20260102-000000-two-bb") + row("20260103-000000-bare-cc"),
     )
     assert runs.main() == 0
+
+
+def a_versioned_run(repo, name, dirty, paths=()):
+    a_run(repo, name)
+    checkout = {"commit": "c" * 40, "plugin_version": "1.0.0", "dirty": dirty, "dirty_paths": list(paths), "dirty_sha256": None}
+    results = {"started_at": "2026-01-01T00:00:00Z", "versions": {"checkout": checkout}}
+    repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
+    repo.write("benchmark/runs/README.md", HEAD + row(name))
+
+
+def test_a_run_on_a_clean_checkout_passes(repo, runs):
+    a_versioned_run(repo, "20260101-000000-one-aa", False)
+    assert runs.main() == 0
+
+
+def test_a_run_on_changes_no_commit_holds_fails(repo, runs, capsys):
+    a_versioned_run(repo, "20260101-000000-one-aa", True, ["skills/one/SKILL.md"])
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert "benchmark/runs/20260101-000000-one-aa: ran on changes no commit holds (skills/one/SKILL.md)" in out
+
+
+def test_a_run_on_no_git_checkout_fails(repo, runs, capsys):
+    a_versioned_run(repo, "20260101-000000-one-aa", None)
+    assert runs.main() == 1
+    assert "ran on no git checkout" in capsys.readouterr().out
+
+
+def test_a_run_recorded_before_versions_has_none_to_check(repo, runs):
+    a_run(repo, "20260101-000000-one-aa")
+    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa"))
+    assert runs.main() == 0
