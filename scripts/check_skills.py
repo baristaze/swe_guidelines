@@ -438,9 +438,10 @@ def check_work_row(errors: list[str]) -> None:
 
 
 FIXES = re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE)
-# A dot ends the sentence between `run` and `again` only when whitespace follows it,
-# so a command's file name or path (`tests/test_x.py`) sits inside the span.
-RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b(?:[^.;]|\.(?=\S)){0,120}?\bagain\b", re.IGNORECASE)
+# A dot ends the sentence between `run` and `again` only before whitespace and a
+# capital letter, matched case-sensitively, so a path (`tests/test_x.py`) or an
+# abbreviation (`e.g.`, `i.e.`) sits inside the span.
+RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b(?:(?!\.\s+(?-i:[A-Z]))[^;]){0,120}?\bagain\b", re.IGNORECASE)
 RUNS_GATE = re.compile(r"`make [a-z]")
 # The bound counts the reruns themselves: `at most 3 imports` in the same block bounds nothing.
 COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten) re-?runs?\b", re.IGNORECASE)
