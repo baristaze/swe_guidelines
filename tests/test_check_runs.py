@@ -316,10 +316,15 @@ def test_the_runtime_run_json_records_counts_when_results_json_records_none(repo
 def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, runs, capsys):
     a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
     a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta", "container")
+    a_run(repo, "20260101-000000-gamma-ee", "2026-01-01T08:00:00Z", "gamma", "container")
     repo.write("benchmark/scenarios/beta.json", json.dumps({"name": "beta", "kind": "qa", "subject": {"prompt": "?"}}) + "\n")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A) + section("beta", ONE_B))
+    repo.write("benchmark/scenarios/gamma.json", '{"name": "gamma",\n')  # does not parse
+    index = section("alpha", ONE_A) + section("beta", ONE_B) + section("gamma", "20260101-000000-gamma-ee")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + index)
     assert runs.main() == 1
     out = capsys.readouterr().out
     assert f"benchmark/runs/{ONE_A}: no scenario alpha in benchmark/scenarios says where it runs" in out
     assert f"benchmark/runs/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
-    assert "2 run index mismatch(es)" in out
+    assert "benchmark/runs/20260101-000000-gamma-ee: its scenario does not load" in out
+    assert "gamma.json: does not parse as JSON" in out
+    assert "3 run index mismatch(es)" in out

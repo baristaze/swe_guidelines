@@ -39,6 +39,16 @@ def test_the_scenario_round_trips_as_plain_data(tmp_path):
     assert json.loads(json.dumps(data))["rubric"].startswith("Score it")
 
 
+def test_a_file_that_does_not_parse_is_a_scenario_error(tmp_path):
+    (tmp_path / "broken.json").write_text('{"name": "broken",', encoding="utf-8")
+    with pytest.raises(S.ScenarioError, match=r"broken\.json: does not parse as JSON: "):
+        S.load(tmp_path / "broken.json")
+    pytest.importorskip("yaml")
+    (tmp_path / "broken.yaml").write_text("name: [broken\n", encoding="utf-8")
+    with pytest.raises(S.ScenarioError, match=r"broken\.yaml: does not parse as YAML: "):
+        S.load(tmp_path / "broken.yaml")
+
+
 def test_an_unknown_key_is_refused(tmp_path):
     bad = dict(MINIMAL, rubrick="oops")
     with pytest.raises(S.ScenarioError, match="unknown key"):

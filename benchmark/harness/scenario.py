@@ -291,14 +291,27 @@ def parse_text(text: str, suffix: str = ".json") -> Any:
     return yaml.safe_load(text)
 
 
+def parse_errors() -> tuple[type[Exception], ...]:
+    """What the parsers raise on text that does not parse: json's error, and yaml's when pyyaml is there."""
+    try:
+        import yaml  # imported here: the harness stays standard library at import time
+    except ModuleNotFoundError:
+        return (json.JSONDecodeError,)
+    return (json.JSONDecodeError, yaml.YAMLError)
+
+
 def load(path: str | Path) -> Scenario:
-    """Load one scenario file."""
+    """Load one scenario file. A file that does not parse is a ScenarioError, as one that is not a scenario is."""
     path = Path(path)
     if path.suffix not in SUFFIXES:
         raise ScenarioError(f"{path}: a scenario file ends in {', '.join(SUFFIXES)}")
     if not path.exists():
         raise ScenarioError(f"{path}: no such scenario file")
-    return from_data(parse_text(path.read_text(encoding="utf-8"), path.suffix), path)
+    try:
+        data = parse_text(path.read_text(encoding="utf-8"), path.suffix)
+    except parse_errors() as exc:
+        raise ScenarioError(f"{path}: does not parse as {path.suffix.lstrip('.').upper()}: {exc}") from exc
+    return from_data(data, path)
 
 
 def catalog(folder: str | Path) -> list[Path]:
