@@ -219,8 +219,9 @@ so they stay here:
     finding, within what After writing lets a fix change, then run
     step 7's commands again, in order, under the same bound: the first
     run plus at most 3 reruns. A high finding is closed once they pass
-    after its fix. One whose fix would need an exception stays open,
-    and the step goes on. List the rest of the findings in the output
+    after its fix. One whose fix would need an exception is not fixed
+    and stays open, and the step goes on in place of the stop After
+    writing orders. List the rest of the findings in the output
     for the person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
@@ -228,9 +229,9 @@ so they stay here:
 A gate in these steps that fails on what this skill wrote is fixed,
 and its step's commands run again from the first, in order, as After
 writing states: the first run plus at most 3 reruns, within what it
-lets a fix change. Step 8 is the exception: each of its runs states
-what runs again. The skill stops at the first stop After writing or
-step 8 orders. The tree is new, so nothing in it is pre-existing, and
+lets a fix change. Step 8 is the exception: a rerun there repeats
+only the run that failed. The skill stops at the first stop After
+writing or step 8 orders. The tree is new, so nothing in it is pre-existing, and
 a gate that still fails when its count runs out is a defect of this
 skill.
 
