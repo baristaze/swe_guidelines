@@ -1,0 +1,46 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 33.102,
+  "usage": {
+    "input_tokens": 6044,
+    "output_tokens": 375
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 60,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The artifact hallucinates a requirement for a `MANAGER_OWNED_FIELDS` tuple, fabricating three separate unsupported OM-03 findings."
+      },
+      {
+        "severity": "high",
+        "note": "The review invents a requirement for tenancy and audit namespaces, applying an unsupported OM-16 lens."
+      },
+      {
+        "severity": "high",
+        "note": "The artifact hallucinates a rule dictating method naming for `write_movement` versus the entity name under OM-14."
+      },
+      {
+        "severity": "medium",
+        "note": "None of the findings quote the guideline rule they rest on, violating the required form specified in the rubric."
+      },
+      {
+        "severity": "low",
+        "note": "The preamble claims there are 11 findings, but the list actually contains 16 bullet points."
+      }
+    ],
+    "strengths": [
+      "Achieves perfect recall by successfully identifying all eight planted defects.",
+      "Points to accurate file paths and line numbers for the true findings.",
+      "Provides clear and actionable 'Fix' instructions for the identified defects."
+    ],
+    "rationale": "The review secures a solid base score by successfully catching every planted defect in the source code. However, it is heavily penalized for poor precision because it invents five unsupported findings related to missing fields, namespaces, and naming conventions. Additionally, the reviewer failed to follow the required form by omitting quotes of the rules being applied."
+  },
+  "raw": "{\n  \"score\": 60,\n  \"verdict\": \"weak\",\n  \"findings\": [\n    {\n      \"severity\": \"high\",\n      \"note\": \"The artifact hallucinates a requirement for a `MANAGER_OWNED_FIELDS` tuple, fabricating three separate unsupported OM-03 findings.\"\n    },\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review invents a requirement for tenancy and audit namespaces, applying an unsupported OM-16 lens.\"\n    },\n    {\n      \"severity\": \"high\",\n      \"note\": \"The artifact hallucinates a rule dictating method naming for `write_movement` versus the entity name under OM-14.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"note\": \"None of the findings quote the guideline rule they rest on, violating the required form specified in the rubric.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"note\": \"The preamble claims there are 11 findings, but the list actually contains 16 bullet points.\"\n    }\n  ],\n  \"strengths\": [\n    \"Achieves perfect recall by successfully identifying all eight planted defects.\",\n    \"Points to accurate file paths and line numbers for the true findings.\",\n    \"Provides clear and actionable 'Fix' instructions for the identified defects.\"\n  ],\n  \"rationale\": \"The review secures a solid base score by successfully catching every planted defect in the source code. However, it is heavily penalized for poor precision because it invents five unsupported findings related to missing fields, namespaces, and naming conventions. Additionally, the reviewer failed to follow the required form by omitting quotes of the rules being applied.\"\n}"
+}

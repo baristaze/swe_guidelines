@@ -1,0 +1,46 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 214.659,
+  "usage": {
+    "input_tokens": 7079,
+    "output_tokens": 467
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 64,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The OM-05 note on stock_movement.py:6 says no manager sets updated_at or updated_by, but record_movement sets both at manager.py:63-65, so that finding is not in the source."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-14 flag on write_movement naming treats a lens the evidence lists as correct (package layout and re-export) as a method-rename defect the checkout does not have."
+      },
+      {
+        "severity": "medium",
+        "note": "Three OM-03 findings require MANAGER_OWNED_FIELDS on Bin, StockMovement, and Warehouse, a symbol and rule neither the source nor the OM-03 plant (redeclared created_at) supports."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding demands tenancy and audit namespaces, which the evidence does not require and which conflicts with tenancy correctly passed to storage under OM-02."
+      },
+      {
+        "severity": "low",
+        "note": "No finding quotes the guideline rule, so invented fixes are stated as requirements rather than separated from preference."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported at the correct file and line under the correct lens id.",
+      "Clean cases are left alone: Bin base order, model_validate on move_bin and delete_warehouse, new_id in record_movement, pure free_capacity, the frozen root, and org_id kept off entities.",
+      "Fixes for the real defects name the right change: model_validate, new_id, Identifiable only, a tuple for tags, base reorder, drop created_at, optional parent, and inject now."
+    ],
+    "rationale": "Recall is complete: every planted defect is cited at the right site under the right lens, which carries most of the credit. Precision is not: OM-05 is factually false, OM-14 flags a lens the checkout gets right, and the MANAGER_OWNED_FIELDS and tenancy-namespace notes are requirements the evidence does not support. Findings also never quote a rule, so unsupported advice is presented as guideline. Full recall with repeated false flags is a weak review, not a pass."
+  },
+  "raw": "{\"score\":64,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"high\",\"note\":\"The OM-05 note on stock_movement.py:6 says no manager sets updated_at or updated_by, but record_movement sets both at manager.py:63-65, so that finding is not in the source.\"},{\"severity\":\"medium\",\"note\":\"The OM-14 flag on write_movement naming treats a lens the evidence lists as correct (package layout and re-export) as a method-rename defect the checkout does not have.\"},{\"severity\":\"medium\",\"note\":\"Three OM-03 findings require MANAGER_OWNED_FIELDS on Bin, StockMovement, and Warehouse, a symbol and rule neither the source nor the OM-03 plant (redeclared created_at) supports.\"},{\"severity\":\"medium\",\"note\":\"The OM-16 finding demands tenancy and audit namespaces, which the evidence does not require and which conflicts with tenancy correctly passed to storage under OM-02.\"},{\"severity\":\"low\",\"note\":\"No finding quotes the guideline rule, so invented fixes are stated as requirements rather than separated from preference.\"}],\"strengths\":[\"All eight planted defects are reported at the correct file and line under the correct lens id.\",\"Clean cases are left alone: Bin base order, model_validate on move_bin and delete_warehouse, new_id in record_movement, pure free_capacity, the frozen root, and org_id kept off entities.\",\"Fixes for the real defects name the right change: model_validate, new_id, Identifiable only, a tuple for tags, base reorder, drop created_at, optional parent, and inject now.\"],\"rationale\":\"Recall is complete: every planted defect is cited at the right site under the right lens, which carries most of the credit. Precision is not: OM-05 is factually false, OM-14 flags a lens the checkout gets right, and the MANAGER_OWNED_FIELDS and tenancy-namespace notes are requirements the evidence does not support. Findings also never quote a rule, so unsupported advice is presented as guideline. Full recall with repeated false flags is a weak review, not a pass.\"}"
+}

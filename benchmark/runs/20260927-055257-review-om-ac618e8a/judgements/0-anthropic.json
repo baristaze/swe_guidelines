@@ -1,0 +1,47 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 19.108,
+  "usage": {
+    "input_tokens": 8690,
+    "output_tokens": 1807
+  },
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 78,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at base.py:1 asks for new tenancy and audit namespaces; nothing in the source bears it out, and the evidence counts passing tenancy to storage as correct (OM-02), so this reads as speculative advice."
+      },
+      {
+        "severity": "medium",
+        "note": "Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) demand a MANAGER_OWNED_FIELDS tuple; the checkout never defines one, the planted list does not include it, and the review quotes no rule behind it, so the source does not support them."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-14 finding at storage/__init__.py:23 on the name write_movement goes beyond the evidence, which lists the inventory namespace layout as correct under OM-14, and it cites no naming rule."
+      },
+      {
+        "severity": "low",
+        "note": "No finding quotes the guideline rule it rests on or separates what the guideline requires from what the reviewer prefers, and nearly every finding is uniformly 'medium' whatever its weight."
+      },
+      {
+        "severity": "low",
+        "note": "Two defects are split into several entries: OM-15 at rules.py:3 and :11, and F5 reported under both OM-05 and OM-06. The OM-05 duplicate proposes the same fix under a second lens, which inflates the finding count."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the correct lens, at the correct file and line: OM-04, OM-17, OM-03 created_at, OM-13 NO_BIN, OM-06, OM-12, OM-10 and OM-15.",
+      "Each fix is concrete and matches the intended remedy, for example model_validate in update_warehouse, new_id() in create_bin, `now` as a parameter to is_stale, and `parent_bin_id: UUID | None = None`.",
+      "No clean item is flagged, and the Passed list correctly credits base.py for OM-07 and OM-11.",
+      "The scope section is honest about tool limits (not a git repo, arch-check exit 1, partial coverage), and the review only reports without editing anything."
+    ],
+    "rationale": "Recall is complete: all eight planted findings appear at the right lens, file and line. Precision is dented by about five findings the evidence does not bear out: the OM-16 tenancy/audit namespaces, three OM-03 MANAGER_OWNED_FIELDS demands, and the OM-14 renaming. Form is decent on lens id, location and fix, but no finding quotes a rule or separates requirement from preference. Together these put the review in the high 70s."
+  },
+  "raw": "{\"score\": 78, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The OM-16 finding at base.py:1 asks for new tenancy and audit namespaces; nothing in the source bears it out, and the evidence counts passing tenancy to storage as correct (OM-02), so this reads as speculative advice.\"}, {\"severity\": \"medium\", \"note\": \"Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) demand a MANAGER_OWNED_FIELDS tuple; the checkout never defines one, the planted list does not include it, and the review quotes no rule behind it, so the source does not support them.\"}, {\"severity\": \"low\", \"note\": \"The OM-14 finding at storage/__init__.py:23 on the name write_movement goes beyond the evidence, which lists the inventory namespace layout as correct under OM-14, and it cites no naming rule.\"}, {\"severity\": \"low\", \"note\": \"No finding quotes the guideline rule it rests on or separates what the guideline requires from what the reviewer prefers, and nearly every finding is uniformly 'medium' whatever its weight.\"}, {\"severity\": \"low\", \"note\": \"Two defects are split into several entries: OM-15 at rules.py:3 and :11, and F5 reported under both OM-05 and OM-06. The OM-05 duplicate proposes the same fix under a second lens, which inflates the finding count.\"}], \"strengths\": [\"All eight planted defects are reported under the correct lens, at the correct file and line: OM-04, OM-17, OM-03 created_at, OM-13 NO_BIN, OM-06, OM-12, OM-10 and OM-15.\", \"Each fix is concrete and matches the intended remedy, for example model_validate in update_warehouse, new_id() in create_bin, `now` as a parameter to is_stale, and `parent_bin_id: UUID | None = None`.\", \"No clean item is flagged, and the Passed list correctly credits base.py for OM-07 and OM-11.\", \"The scope section is honest about tool limits (not a git repo, arch-check exit 1, partial coverage), and the review only reports without editing anything.\"], \"rationale\": \"Recall is complete: all eight planted findings appear at the right lens, file and line. Precision is dented by about five findings the evidence does not bear out: the OM-16 tenancy/audit namespaces, three OM-03 MANAGER_OWNED_FIELDS demands, and the OM-14 renaming. Form is decent on lens id, location and fix, but no finding quotes a rule or separates requirement from preference. Together these put the review in the high 70s.\"}"
+}
