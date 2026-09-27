@@ -228,7 +228,16 @@ skill.
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
-plus one line: the tree is uncommitted, and the first commit is the
-user's. When the skill stopped, at a gate or at a defect of the suite
-in step 8, the closing line says where and why, and still comes last:
-`Stopped at step <n>: <gate>: <what went wrong>; <a defect of this skill | a defect of the suite | the machine>`.
+with these lines after the commands, in this order:
+
+- `High finding: <lens id> <path>:<line>: <closed | open>; a defect of this skill`, one per high finding of step 10;
+- `Finding: <lens id> <severity> <path>:<line>: <what breaks the rule>`, one per other finding of step 10;
+- `Not reviewed: <group>: <error>`, one per group step 10 could not review;
+- `The tree is uncommitted, and the first commit is the user's.`
+
+A stop closes the output with this skill's line in place of the
+conventions' `Stopped:` line:
+`Stopped at step <n>: <command>: <what went wrong>; <cause>`. The
+cause is one of the conventions' causes, with "the count ran out"
+written as "a defect of this skill", or "a defect of the suite" from
+step 8.
