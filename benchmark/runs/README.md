@@ -28,9 +28,10 @@ Each row links to the run's report and copies the run's
   "at least".
 - Commit: the commit the run ran from, short
   (`versions.checkout.commit`).
-- Claude Code: the version of Claude Code that ran the subject
-  (`versions.claude_code`). A `qa` scenario asks a model directly, with
-  no Claude Code, so its table has no such column.
+- Claude Code: the version of Claude Code that ran the subject. The
+  cell shows the version number from `versions.claude_code`. A scenario
+  that runs no skill (`qa`, `command`) records no Claude Code, so its
+  table has no such column.
 
 "—" marks what a run does not record. A run recorded before the
 harness kept its spend or its versions has none to show.
