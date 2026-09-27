@@ -1,0 +1,32 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 10.641,
+  "usage": {
+    "input_tokens": 1633,
+    "output_tokens": 520,
+    "reasoning_tokens": 351
+  },
+  "cost_usd": 0.008466,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 94,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The scope, login, and migration details add length beyond what is needed to explain the fence and its proof."
+      }
+    ],
+    "strengths": [
+      "Identifies the tenant predicate in the storage query as the fence, rather than treating a method signature or manager authorization as enforcement.",
+      "Names cross-tenant cases as evidence and describes the deliberate breach, both policy-on and policy-off runs, and the requirement to record both.",
+      "Cites section titles rather than numbers and names reviewer lenses by ID."
+    ],
+    "rationale": "The artifact covers every element the rubric requires and makes the distinction between the query predicate and the row-level security backstop clear. Its only material drawback is detail that dilutes an otherwise direct answer."
+  },
+  "raw": "{\"score\":94,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"low\",\"note\":\"The scope, login, and migration details add length beyond what is needed to explain the fence and its proof.\"}],\"strengths\":[\"Identifies the tenant predicate in the storage query as the fence, rather than treating a method signature or manager authorization as enforcement.\",\"Names cross-tenant cases as evidence and describes the deliberate breach, both policy-on and policy-off runs, and the requirement to record both.\",\"Cites section titles rather than numbers and names reviewer lenses by ID.\"],\"rationale\":\"The artifact covers every element the rubric requires and makes the distinction between the query predicate and the row-level security backstop clear. Its only material drawback is detail that dilutes an otherwise direct answer.\"}"
+}

@@ -1,0 +1,27 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 16.095,
+  "usage": {
+    "input_tokens": 1530,
+    "output_tokens": 1832,
+    "reasoning_tokens": 1669
+  },
+  "cost_usd": 0.025044,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 100,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Accurately identifies the tenant predicate in the WHERE clause as the fence, distinguishing it from method signatures.",
+      "Clearly describes the cross-tenant cases and the negative control deliberate breaches as concrete evidence.",
+      "Flawlessly adheres to citation rules by using only section titles and listing reviewer lenses strictly by ID."
+    ],
+    "rationale": "The artifact meets all rubric requirements perfectly without accumulating any deductions. It precisely addresses how the fence is held and proven, referencing the exact tests and negative controls expected. Formatting and citation constraints were followed to the letter, providing a concise and highly relevant architectural explanation."
+  },
+  "raw": "{\n  \"score\": 100,\n  \"verdict\": \"pass\",\n  \"findings\": [],\n  \"strengths\": [\n    \"Accurately identifies the tenant predicate in the WHERE clause as the fence, distinguishing it from method signatures.\",\n    \"Clearly describes the cross-tenant cases and the negative control deliberate breaches as concrete evidence.\",\n    \"Flawlessly adheres to citation rules by using only section titles and listing reviewer lenses strictly by ID.\"\n  ],\n  \"rationale\": \"The artifact meets all rubric requirements perfectly without accumulating any deductions. It precisely addresses how the fence is held and proven, referencing the exact tests and negative controls expected. Formatting and citation constraints were followed to the letter, providing a concise and highly relevant architectural explanation.\"\n}"
+}

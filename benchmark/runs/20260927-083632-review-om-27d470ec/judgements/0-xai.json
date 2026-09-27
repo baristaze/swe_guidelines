@@ -1,0 +1,44 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 191.42,
+  "usage": {
+    "input_tokens": 6936,
+    "output_tokens": 14851,
+    "reasoning_tokens": 14417
+  },
+  "cost_usd": 0.102978,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 70,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The OM-05 finding on stock_movement.py:6 claims no manager sets updated_at or updated_by, but record_movement in manager.py:63-65 sets both, so the flag is not borne out and mislabels the OM-06 defect."
+      },
+      {
+        "severity": "high",
+        "note": "The OM-16 finding on storage/__init__.py:14 demands tenancy and audit namespaces for org_id-keyed storage, which the evidence lists as the correct OM-02 pattern (no org_id on entities; tenancy passed to storage)."
+      },
+      {
+        "severity": "medium",
+        "note": "The OM-03 finding at bin.py:9 requires MANAGER_OWNED_FIELDS, a symbol and exclusion rule that neither the source nor the OM-03 evidence supports; the real OM-03 defect is the redeclared created_at."
+      },
+      {
+        "severity": "low",
+        "note": "The summary says 16 lenses applied, 6 passed, and 10 findings, but the body lists 12 findings and those counts do not add up."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported with the correct lens id, file, and line.",
+      "Each true finding gives a concrete fix that matches the intended correction, including model_validate, new_id, a now argument, tuple tags, and Identifiable-only StockMovement.",
+      "Passes on OM-02, OM-07, OM-11, and OM-14 match the clean list, and the review only reports rather than editing the tree."
+    ],
+    "rationale": "Recall is complete: every planted finding is cited at the right file and line under the right lens. Precision is not: three extra findings are unsupported, including an OM-05 claim the source contradicts and an OM-16 flag on the tenancy pattern the evidence marks correct. Form is usable, but the summary counts are wrong and the findings paraphrase rules instead of quoting them. Full recall with material false positives is a weak review, not a pass."
+  },
+  "raw": "{\"score\":70,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"high\",\"note\":\"The OM-05 finding on stock_movement.py:6 claims no manager sets updated_at or updated_by, but record_movement in manager.py:63-65 sets both, so the flag is not borne out and mislabels the OM-06 defect.\"},{\"severity\":\"high\",\"note\":\"The OM-16 finding on storage/__init__.py:14 demands tenancy and audit namespaces for org_id-keyed storage, which the evidence lists as the correct OM-02 pattern (no org_id on entities; tenancy passed to storage).\"},{\"severity\":\"medium\",\"note\":\"The OM-03 finding at bin.py:9 requires MANAGER_OWNED_FIELDS, a symbol and exclusion rule that neither the source nor the OM-03 evidence supports; the real OM-03 defect is the redeclared created_at.\"},{\"severity\":\"low\",\"note\":\"The summary says 16 lenses applied, 6 passed, and 10 findings, but the body lists 12 findings and those counts do not add up.\"}],\"strengths\":[\"All eight planted defects are reported with the correct lens id, file, and line.\",\"Each true finding gives a concrete fix that matches the intended correction, including model_validate, new_id, a now argument, tuple tags, and Identifiable-only StockMovement.\",\"Passes on OM-02, OM-07, OM-11, and OM-14 match the clean list, and the review only reports rather than editing the tree.\"],\"rationale\":\"Recall is complete: every planted finding is cited at the right file and line under the right lens. Precision is not: three extra findings are unsupported, including an OM-05 claim the source contradicts and an OM-16 flag on the tenancy pattern the evidence marks correct. Form is usable, but the summary counts are wrong and the findings paraphrase rules instead of quoting them. Full recall with material false positives is a weak review, not a pass.\"}"
+}

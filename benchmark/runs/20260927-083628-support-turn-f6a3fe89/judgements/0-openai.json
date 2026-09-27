@@ -1,0 +1,44 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 17.559,
+  "usage": {
+    "input_tokens": 1970,
+    "output_tokens": 933,
+    "reasoning_tokens": 638
+  },
+  "cost_usd": 0.01327,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 80,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Steps 1–3 do not use a failing request ID to connect the endpoint error to its trace, downstream calls, and data access before investigating broader hypotheses."
+      },
+      {
+        "severity": "medium",
+        "note": "Steps 0 and 2 wrongly treat errors persisting after rollback or appearing on old pods as evidence against the deploy, despite migrations or other persistent release changes."
+      },
+      {
+        "severity": "medium",
+        "note": "Step 5 names tenant-specific data, volume, and flags but does not explicitly compare a failing row or setting with a successful tenant or check volume against a concrete limit."
+      },
+      {
+        "severity": "low",
+        "note": "Step 7 assumes a captured request and a usable copy of tenant data in staging without saying whether those are available."
+      }
+    ],
+    "strengths": [
+      "The sequence moves from mitigation and exception evidence through rollout scope and release changes to tenant-specific data and reproduction.",
+      "Most steps say what their observations would rule out rather than merely listing things to inspect.",
+      "The artifact recognizes that unchanged endpoint code can still be affected by shared code, dependencies, migrations, and tenant-specific configuration."
+    ],
+    "rationale": "This is a useful on-call plan with a clear order and credible tenant-shaped hypotheses. It loses points chiefly for missing request-ID correlation, overstating what rollback and old-version results prove, and leaving the decisive tenant comparison less concrete than it could be."
+  },
+  "raw": "{\"score\":80,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Steps 1–3 do not use a failing request ID to connect the endpoint error to its trace, downstream calls, and data access before investigating broader hypotheses.\"},{\"severity\":\"medium\",\"note\":\"Steps 0 and 2 wrongly treat errors persisting after rollback or appearing on old pods as evidence against the deploy, despite migrations or other persistent release changes.\"},{\"severity\":\"medium\",\"note\":\"Step 5 names tenant-specific data, volume, and flags but does not explicitly compare a failing row or setting with a successful tenant or check volume against a concrete limit.\"},{\"severity\":\"low\",\"note\":\"Step 7 assumes a captured request and a usable copy of tenant data in staging without saying whether those are available.\"}],\"strengths\":[\"The sequence moves from mitigation and exception evidence through rollout scope and release changes to tenant-specific data and reproduction.\",\"Most steps say what their observations would rule out rather than merely listing things to inspect.\",\"The artifact recognizes that unchanged endpoint code can still be affected by shared code, dependencies, migrations, and tenant-specific configuration.\"],\"rationale\":\"This is a useful on-call plan with a clear order and credible tenant-shaped hypotheses. It loses points chiefly for missing request-ID correlation, overstating what rollback and old-version results prove, and leaving the decisive tenant comparison less concrete than it could be.\"}"
+}

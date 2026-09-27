@@ -1,0 +1,45 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 18.903,
+  "usage": {
+    "input_tokens": 8500,
+    "output_tokens": 1588,
+    "reasoning_tokens": 931
+  },
+  "cost_usd": 0.06576,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 85,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The OM-16 finding at storage/__init__.py:14, which asks for new tenancy and audit namespaces, is not borne out by the source. The evidence lists passing tenancy to storage, with no org_id on entities, as correct, so this is advice the guideline does not appear to support."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-03 finding at bin.py:9, which requires a MANAGER_OWNED_FIELDS tuple on every entity, rests on a symbol that appears nowhere in the checkout and cannot be verified against the source."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding at stock_movement.py:6 restates the planted OM-06 defect at the same line under a second lens, which double-counts one issue."
+      },
+      {
+        "severity": "low",
+        "note": "Findings name lens, file, line, and fix, but none quotes the rule it rests on. None separates what the guideline requires from reviewer preference."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported with the correct lens id at the exact file and line: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.",
+      "No item on the clean list is flagged; the review even contrasts update_warehouse with delete_warehouse's correct model_validate rebuild.",
+      "Every finding gives a concrete, correct fix, such as new_id() for uuid4() and a now argument for is_stale.",
+      "The review reports the checker failure honestly and reads the code instead of staging or editing anything."
+    ],
+    "rationale": "Recall is complete: every planted finding is hit at the right file, line and lens. Precision loses points for the unsupported OM-16 call for tenancy and audit namespaces, and for an unverifiable MANAGER_OWNED_FIELDS claim, plus a minor duplicate under OM-05. Form is good on lens, location and fix but omits rule quotes and the required-versus-preferred split."
+  },
+  "raw": "{\"score\": 85, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The OM-16 finding at storage/__init__.py:14, which asks for new tenancy and audit namespaces, is not borne out by the source. The evidence lists passing tenancy to storage, with no org_id on entities, as correct, so this is advice the guideline does not appear to support.\"}, {\"severity\": \"low\", \"note\": \"The OM-03 finding at bin.py:9, which requires a MANAGER_OWNED_FIELDS tuple on every entity, rests on a symbol that appears nowhere in the checkout and cannot be verified against the source.\"}, {\"severity\": \"low\", \"note\": \"The OM-05 finding at stock_movement.py:6 restates the planted OM-06 defect at the same line under a second lens, which double-counts one issue.\"}, {\"severity\": \"low\", \"note\": \"Findings name lens, file, line, and fix, but none quotes the rule it rests on. None separates what the guideline requires from reviewer preference.\"}], \"strengths\": [\"All eight planted defects are reported with the correct lens id at the exact file and line: OM-04, OM-17, OM-03, OM-13, OM-06, OM-12, OM-10 and OM-15.\", \"No item on the clean list is flagged; the review even contrasts update_warehouse with delete_warehouse's correct model_validate rebuild.\", \"Every finding gives a concrete, correct fix, such as new_id() for uuid4() and a now argument for is_stale.\", \"The review reports the checker failure honestly and reads the code instead of staging or editing anything.\"], \"rationale\": \"Recall is complete: every planted finding is hit at the right file, line and lens. Precision loses points for the unsupported OM-16 call for tenancy and audit namespaces, and for an unverifiable MANAGER_OWNED_FIELDS claim, plus a minor duplicate under OM-05. Form is good on lens, location and fix but omits rule quotes and the required-versus-preferred split.\"}"
+}

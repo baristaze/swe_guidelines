@@ -1,0 +1,119 @@
+{"t": 1790523389.0361469, "s": "err", "line": "[repeat 0] start"}
+{"t": 1790523389.03642, "s": "err", "line": "[qa] anthropic claude-opus-5-5"}
+{"t": 1790523424.709412, "s": "out", "line": "# On-call triage: 500s for one tenant, one endpoint, since a deploy"}
+{"t": 1790523424.709613, "s": "out", "line": ""}
+{"t": 1790523424.709666, "s": "out", "line": "The framing matters. \"Nothing changed in that endpoint's code\" usually means the handler file didn't change. The endpoint's *dependencies* often did. My working hypothesis from minute one is that **the deploy changed something shared, and that change interacts badly with something unique to this tenant.** Each step below tries to confirm or kill that."}
+{"t": 1790523424.7097101, "s": "out", "line": ""}
+{"t": 1790523424.709745, "s": "out", "line": "---"}
+{"t": 1790523424.709774, "s": "out", "line": ""}
+{"t": 1790523424.709801, "s": "out", "line": "### 0. Decide on mitigation before investigating (first 5 minutes)"}
+{"t": 1790523424.709825, "s": "out", "line": ""}
+{"t": 1790523424.709847, "s": "out", "line": "**Look at:** How bad is it? Is this tenant's core workflow down? Is the deploy rollback-safe? The main question is whether it included a migration that isn't backward-compatible."}
+{"t": 1790523424.709871, "s": "out", "line": ""}
+{"t": 1790523424.7098932, "s": "out", "line": "**Action:** If rollback is safe and the impact is real, roll back now, or disable the relevant feature flag for this tenant. Roll back first and understand later."}
+{"t": 1790523424.7099159, "s": "out", "line": ""}
+{"t": 1790523424.7099352, "s": "out", "line": "**Rules out:** Rollback is also a diagnostic."}
+{"t": 1790523424.7099571, "s": "out", "line": "- If errors stop, the deploy is causally confirmed, not just correlated."}
+{"t": 1790523424.709978, "s": "out", "line": "- If they don't stop, the deploy was a coincidence, and I shift to tenant-side and data changes."}
+{"t": 1790523424.709999, "s": "out", "line": ""}
+{"t": 1790523424.7100182, "s": "out", "line": "I also open an incident channel and give support/account management a heads-up for that tenant."}
+{"t": 1790523424.710038, "s": "out", "line": ""}
+{"t": 1790523424.710058, "s": "out", "line": "---"}
+{"t": 1790523424.7100768, "s": "out", "line": ""}
+{"t": 1790523424.7100952, "s": "out", "line": "### 1. Get an actual failing request's stack trace"}
+{"t": 1790523424.710115, "s": "out", "line": ""}
+{"t": 1790523424.710134, "s": "out", "line": "**Look at:** Logs and traces filtered by tenant ID and endpoint. I want the exception, not the status code."}
+{"t": 1790523424.710154, "s": "out", "line": ""}
+{"t": 1790523424.710172, "s": "out", "line": "**Rules out:** Guessing. The exception type narrows the search immediately:"}
+{"t": 1790523424.7101922, "s": "out", "line": "- **`NullPointerException`, `KeyError`, enum/parse error:** data shape problem. The new code meets a record this tenant has and others don't."}
+{"t": 1790523424.710212, "s": "out", "line": "- **Timeout or pool exhaustion:** query plan or volume problem. This tenant may simply be the biggest."}
+{"t": 1790523424.710232, "s": "out", "line": "- **Serialization/deserialization error:** schema or library change."}
+{"t": 1790523424.710251, "s": "out", "line": "- **Error from a downstream call:** the problem is in a dependency, not this service."}
+{"t": 1790523424.71027, "s": "out", "line": "- **Auth/permission error surfacing as 500:** tenant config or permission model change."}
+{"t": 1790523424.710289, "s": "out", "line": ""}
+{"t": 1790523424.710308, "s": "out", "line": "---"}
+{"t": 1790523424.710326, "s": "out", "line": ""}
+{"t": 1790523424.7103438, "s": "out", "line": "### 2. Confirm the scope precisely"}
+{"t": 1790523424.7103639, "s": "out", "line": ""}
+{"t": 1790523424.710382, "s": "out", "line": "**Look at:** Error rate broken down by tenant × endpoint × host/pod × version × region/shard/cell."}
+{"t": 1790523424.710403, "s": "out", "line": ""}
+{"t": 1790523424.710422, "s": "out", "line": "**Rules out:**"}
+{"t": 1790523424.7104409, "s": "out", "line": "- **Partial rollout:** If only new-version pods fail, it's the deploy. If old pods fail too, it isn't."}
+{"t": 1790523424.710526, "s": "out", "line": "- **Single bad host or AZ:** errors concentrated on one instance point to a host problem."}
+{"t": 1790523424.710551, "s": "out", "line": "- **Shard-specific infra:** If the tenant is pinned to a shard or cell, the real scope may be \"everything on shard 7,\" and this tenant is just the loudest one there."}
+{"t": 1790523424.7105742, "s": "out", "line": "- **Hidden breadth:** Is this truly one tenant, or the only tenant that heavily uses this endpoint? Check whether others call it at all and whether their calls succeed."}
+{"t": 1790523424.710597, "s": "out", "line": ""}
+{"t": 1790523424.710617, "s": "out", "line": "---"}
+{"t": 1790523424.710635, "s": "out", "line": ""}
+{"t": 1790523424.71066, "s": "out", "line": "### 3. Nail the timeline"}
+{"t": 1790523424.71068, "s": "out", "line": ""}
+{"t": 1790523424.710699, "s": "out", "line": "**Look at:** Timestamp of the first error versus deploy start, deploy finish, and migration run. Then list *everything else* that changed in that window:"}
+{"t": 1790523424.710717, "s": "out", "line": "- config pushes and feature flag flips"}
+{"t": 1790523424.7107341, "s": "out", "line": "- dependency service deploys"}
+{"t": 1790523424.710751, "s": "out", "line": "- cert or secret rotations"}
+{"t": 1790523424.710767, "s": "out", "line": "- the tenant's own actions: bulk import, settings change, new integration, API client upgrade"}
+{"t": 1790523424.710785, "s": "out", "line": ""}
+{"t": 1790523424.7108018, "s": "out", "line": "**Rules out:** Coincidence. If errors started 10 minutes *before* the deploy, or exactly when the tenant ran an import, the deploy is a red herring."}
+{"t": 1790523424.7108202, "s": "out", "line": ""}
+{"t": 1790523424.710836, "s": "out", "line": "---"}
+{"t": 1790523424.710853, "s": "out", "line": ""}
+{"t": 1790523424.71087, "s": "out", "line": "### 4. Diff the whole deploy, not the endpoint"}
+{"t": 1790523424.710886, "s": "out", "line": ""}
+{"t": 1790523424.710903, "s": "out", "line": "**Look at:** Every commit and artifact change in the release, specifically:"}
+{"t": 1790523424.7109199, "s": "out", "line": "- **Lockfile/dependency bumps:** ORM, JSON library, HTTP client, date/timezone library"}
+{"t": 1790523424.710936, "s": "out", "line": "- **Shared code:** middleware, serializers, validation layers, base models, auth/tenant-resolution code"}
+{"t": 1790523424.710953, "s": "out", "line": "- **Schema migrations and backfills**"}
+{"t": 1790523424.7109709, "s": "out", "line": "- **Config and env var changes, flag defaults**"}
+{"t": 1790523424.710989, "s": "out", "line": "- **Runtime:** base image, language version, container config"}
+{"t": 1790523424.711009, "s": "out", "line": ""}
+{"t": 1790523424.711027, "s": "out", "line": "**Rules out:** The \"nothing changed\" assumption. This is where the answer usually is. Typical culprits:"}
+{"t": 1790523424.711046, "s": "out", "line": "- stricter validation"}
+{"t": 1790523424.7110631, "s": "out", "line": "- a serializer that now rejects a legacy field format"}
+{"t": 1790523424.711081, "s": "out", "line": "- a new non-null column"}
+{"t": 1790523424.7110982, "s": "out", "line": "- a changed default ordering or pagination"}
+{"t": 1790523424.711116, "s": "out", "line": "- a library that handles unicode, large numbers, or timezones differently"}
+{"t": 1790523424.711133, "s": "out", "line": ""}
+{"t": 1790523424.711148, "s": "out", "line": "---"}
+{"t": 1790523424.711164, "s": "out", "line": ""}
+{"t": 1790523424.71118, "s": "out", "line": "### 5. Find what's unique about this tenant"}
+{"t": 1790523424.711196, "s": "out", "line": ""}
+{"t": 1790523424.71122, "s": "out", "line": "**Look at:**"}
+{"t": 1790523424.711238, "s": "out", "line": "- **Data:** nulls in columns that are usually populated, legacy record formats from before an old migration, enum values the new code doesn't know, unusually large collections or payloads, unicode or emoji in names, odd timezones or locales"}
+{"t": 1790523424.7112582, "s": "out", "line": "- **Config:** feature flags, plan tier, custom fields, SSO setup, custom domain, regional data residency"}
+{"t": 1790523424.711294, "s": "out", "line": "- **Topology:** dedicated shard/DB, different DB version on that shard, separate cache namespace"}
+{"t": 1790523424.711315, "s": "out", "line": "- **Integrations:** tenant-specific downstream calls such as their webhook, their third-party API credentials, their SSO provider"}
+{"t": 1790523424.711334, "s": "out", "line": ""}
+{"t": 1790523424.7113512, "s": "out", "line": "**Rules out:** Whether the bug is general and merely triggered by this tenant's data, or specific to their environment. The stack trace from step 1 plus the diff from step 4 usually point at one specific attribute here."}
+{"t": 1790523424.711369, "s": "out", "line": ""}
+{"t": 1790523424.711387, "s": "out", "line": "---"}
+{"t": 1790523424.711402, "s": "out", "line": ""}
+{"t": 1790523424.7114172, "s": "out", "line": "### 6. Check migrations specifically on their partition"}
+{"t": 1790523424.711435, "s": "out", "line": ""}
+{"t": 1790523424.711453, "s": "out", "line": "**Look at:** Did the migration or backfill complete on this tenant's shard or schema? Did it skip rows, for example because a batch job failed partway or a filter excluded legacy records?"}
+{"t": 1790523424.711471, "s": "out", "line": ""}
+{"t": 1790523424.711487, "s": "out", "line": "**Rules out:** \"Code is fine, data is half-migrated.\" This is common with per-tenant schemas or sharded DBs, where one shard's migration failed quietly."}
+{"t": 1790523424.711504, "s": "out", "line": ""}
+{"t": 1790523424.71152, "s": "out", "line": "---"}
+{"t": 1790523424.7115362, "s": "out", "line": ""}
+{"t": 1790523424.711552, "s": "out", "line": "### 7. Reproduce"}
+{"t": 1790523424.7115688, "s": "out", "line": ""}
+{"t": 1790523424.711586, "s": "out", "line": "**Look at:** Replay a captured failing request, sanitized, against:"}
+{"t": 1790523424.711602, "s": "out", "line": "- staging on the new version, with a copy or synthetic equivalent of the tenant's problematic record"}
+{"t": 1790523424.7116191, "s": "out", "line": "- the old version with the same data"}
+{"t": 1790523424.7116349, "s": "out", "line": ""}
+{"t": 1790523424.7116501, "s": "out", "line": "**Rules out:** Remaining ambiguity. Fails on new and passes on old means I have the exact trigger and can write the regression test."}
+{"t": 1790523424.711667, "s": "out", "line": ""}
+{"t": 1790523424.711683, "s": "out", "line": "---"}
+{"t": 1790523424.711699, "s": "out", "line": ""}
+{"t": 1790523424.711715, "s": "out", "line": "### Resolution and follow-up"}
+{"t": 1790523424.711731, "s": "out", "line": ""}
+{"t": 1790523424.711746, "s": "out", "line": "- **Fix forward or keep rolled back:** Ship the fix with a test covering that data shape. If data is the issue, repair it with a reviewed, reversible script."}
+{"t": 1790523424.7117639, "s": "out", "line": "- **Tell the tenant** what happened and when it was fixed, through support."}
+{"t": 1790523424.711781, "s": "out", "line": "- **Postmortem questions:**"}
+{"t": 1790523424.711797, "s": "out", "line": "  - Why didn't tests or canary catch it? Usually canary traffic didn't include that tenant, or test fixtures don't include legacy data shapes."}
+{"t": 1790523424.711814, "s": "out", "line": "  - Should canary analysis include per-tenant error rates, not just aggregate? Here the aggregate error rate probably barely moved."}
+{"t": 1790523424.711831, "s": "out", "line": "  - Should migrations validate completion per shard?"}
+{"t": 1790523424.711848, "s": "out", "line": ""}
+{"t": 1790523424.711864, "s": "out", "line": "**Short version of the order:** mitigate, get the stack trace, confirm scope, check the timeline, diff everything, then find the tenant's unique trait and reproduce. The first three steps take minutes and tell you which of the later ones actually matter."}
+{"t": 1790523424.711906, "s": "err", "line": "[qa] usage {\"input_tokens\": 85, \"output_tokens\": 3099, \"reasoning_tokens\": 917}"}
+{"t": 1790523424.7120872, "s": "err", "line": "[repeat 0] exit 0"}
