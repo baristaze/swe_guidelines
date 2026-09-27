@@ -17,7 +17,9 @@ Evaluate the material itself.
 
 ## The contract
 
-Appended after a blank line, verbatim:
+Appended after a blank line. A reader pastes it as it stands.
+`arch-benchmark-browser` says how it is typed into each composer, and
+`results.json` records it as typed:
 
 ```text
 Report format, so evaluations compare:

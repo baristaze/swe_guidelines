@@ -27,7 +27,7 @@
     },
     "prompt": {
       "type": "string",
-      "description": "the prompt as it was typed, before the contract; two runs compare only when this text and contract are both the same"
+      "description": "the prompt as it was typed, before the contract; two runs compare only when this text and the contract are both the same"
     },
     "contract": {
       "type": "string",
@@ -61,6 +61,10 @@
         }
       }
     },
+    "note": {
+      "type": "string",
+      "description": "remarks on the run as a whole, such as the labels step 1 resolved when nobody watched the run"
+    },
     "sessions": {
       "type": "array",
       "items": {
@@ -73,6 +77,8 @@
           "started_at",
           "finished_at",
           "score",
+          "read_version",
+          "polls",
           "response_path",
           "status"
         ],
@@ -88,18 +94,20 @@
           },
           "url": {
             "type": "string",
-            "description": "the conversation's own URL, the session id is in it"
+            "description": "the conversation's own URL, without its query string; the session id is in it"
           },
           "model_label": {
             "type": "string",
-            "description": "what the picker showed when the prompt was sent"
+            "description": "the model picker's checked entry when the prompt was sent, as the list writes it (\"3.1 Pro\", not the chip's \"Pro\")"
           },
           "effort_label": {
-            "type": "string"
+            "type": "string",
+            "description": "the checked effort entry or slider stop label when the prompt was sent, as the picker writes it; none where the site has no effort control"
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "when the prompt was sent"
           },
           "finished_at": {
             "type": "string",
@@ -114,6 +122,16 @@
             "minimum": 0,
             "maximum": 100
           },
+          "read_version": {
+            "type": "string",
+            "description": "the commit, tag, or branch and date the answer says it read, in its words; \"not stated\" when it names none"
+          },
+          "polls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30,
+            "description": "how many times the session was polled; thirty is the bound"
+          },
           "response_path": {
             "type": "string",
             "description": "the saved answer, relative to the run folder"
@@ -126,9 +144,10 @@
               "errored",
               "timed-out",
               "not-signed-in",
+              "not-run",
               "smaller-mode"
             ],
-            "description": "errored is the product's own error message in place of an answer; refused is a decline; smaller-mode is a scored answer from a smaller model or mode than the size asked for, because that one is locked on the account: model_label is what ran, note names the locked one, and the session is left out of any like-for-like comparison"
+            "description": "errored is the product's own error message in place of an answer; refused is a decline; not-run is a site the skill did not send to, for the reason in note; smaller-mode is a scored answer from a smaller model or mode than the size asked for, because that one is locked on the account: model_label is what ran, note names the locked one, and the session is left out of any like-for-like comparison"
           },
           "note": {
             "type": "string",
