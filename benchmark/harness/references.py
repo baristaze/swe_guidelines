@@ -105,10 +105,12 @@ def git_env() -> dict[str, str]:
     return env
 
 
-def git(*args: str) -> str:
-    """What a git command prints; StageError with its last line of error when it fails."""
+def git(*args: str, cwd: Path | None = None) -> str:
+    """What a git command prints, run in `cwd`; StageError with its last line of error when it fails."""
     try:
-        out = subprocess.run(["git", *args], capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT_S, env=git_env())
+        out = subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=False, timeout=GIT_TIMEOUT_S, env=git_env()
+        )
     except subprocess.TimeoutExpired:
         raise StageError(f"git {args[0]} ran past {GIT_TIMEOUT_S} s") from None
     except OSError as exc:
@@ -126,11 +128,10 @@ def fetch(url: str, tag: str, dest: Path) -> str:
     taken for the tag.
     """
     dest.mkdir(parents=True, exist_ok=True)
-    folder = str(dest)
-    git("init", "-q", "--template=", folder)
-    git("-C", folder, "fetch", "-q", "--depth", "1", "--no-tags", "--", url, f"refs/tags/{tag}:refs/tags/{tag}")
-    commit = git("-C", folder, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}").strip()
-    git("-C", folder, "-c", "advice.detachedHead=false", "checkout", "-q", commit)
+    git("init", "-q", "--template=", cwd=dest)
+    git("fetch", "-q", "--depth", "1", "--no-tags", "--", url, f"refs/tags/{tag}:refs/tags/{tag}", cwd=dest)
+    commit = git("rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}", cwd=dest).strip()
+    git("checkout", "-q", commit, cwd=dest)
     shutil.rmtree(dest / ".git")
     return commit
 
@@ -178,10 +179,10 @@ def stage(refs: list[Reference], checkout: Path, folder: Path, release: str | No
             version = stage_repository(ref, dest)
             pins = version["pins"]
             if pins is None:
-                staged.notes.append(f"reference {ref.name} names no guideline release in {SPEC}")
+                staged.notes.append(f"reference `{ref.name}` names no guideline release in {SPEC}")
             elif release and pins.removeprefix("v") != release.removeprefix("v"):
                 ours = f"v{release.removeprefix('v')}"
-                staged.notes.append(f"reference {ref.name} pins the guideline at {pins}, and this checkout is at {ours}")
+                staged.notes.append(f"reference `{ref.name}` pins the guideline at {pins}, and this checkout is at {ours}")
         else:
             version = stage_paths(ref, checkout, dest)
         staged.roots[ref.name] = dest
@@ -200,8 +201,8 @@ def stage_output(art_dir: Path, dest: Path, archived: bool) -> tuple[str, str | 
     kept = art_dir / AR.ZIP
     if archived:
         if not zipfile.is_zipfile(kept):
-            why = "there is no archive of it" if not kept.exists() else "its archive does not open as a zip"
-            return f"nothing: {why}", f"the judges read an empty output, since {why}"
+            why = "the repeat kept no archive of it" if not kept.exists() else "its archive does not open as a zip"
+            return f"nothing, since {why}", f"the judges read an empty output folder: {why}"
         with zipfile.ZipFile(kept) as zf:
             zf.extractall(dest)  # a member's absolute path or `..` stays inside dest
         return "the tree the subject built, its output folder as its last commit holds it", None

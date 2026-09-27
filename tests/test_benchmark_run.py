@@ -1165,7 +1165,7 @@ def test_a_dry_run_resolves_the_references_and_calls_no_judge(tmp_path, monkeypa
     guideline = references["guideline"]
     assert guideline["source"] == "checkout" and guideline["paths"] == ["lenses/README.md"] and len(guideline["sha256"]) == 64
     release = run.V.plugin_version(run.ROOT)
-    assert resolved["notes"] == [f"reference reference pins the guideline at v0.36.0, and this checkout is at v{release}"]
+    assert resolved["notes"] == [f"reference `reference` pins the guideline at v0.36.0, and this checkout is at v{release}"]
     assert str(repo) not in json.dumps(resolved)  # the run names the reference by its URL
     assert sandboxes and not sandboxes[0].exists()  # the fetched tree went with the sandbox
 

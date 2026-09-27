@@ -179,14 +179,14 @@ def test_staging_notes_a_repository_that_pins_another_release_or_none(tmp_path):
     assert staged.roots["other"] == tmp_path / "references" / "other"
     assert [v["source"] for v in staged.versions.values()] == ["checkout", "repository", "repository"]
     assert staged.notes == [
-        "reference reference pins the guideline at v0.37.0, and this checkout is at v0.38.0",
-        "reference other names no guideline release in specs/architecture.md",
+        "reference `reference` pins the guideline at v0.37.0, and this checkout is at v0.38.0",
+        "reference `other` names no guideline release in specs/architecture.md",
     ]
     assert RF.stage(refs[1:2], checkout, tmp_path / "again", release="v0.37.0").notes == []
     # The plugin manifest names a release without the tag's `v`.
     assert RF.stage(refs[1:2], checkout, tmp_path / "bare", release="0.37.0").notes == []
     assert RF.stage(refs[1:2], checkout, tmp_path / "older", release="0.36.0").notes == [
-        "reference reference pins the guideline at v0.37.0, and this checkout is at v0.36.0"
+        "reference `reference` pins the guideline at v0.37.0, and this checkout is at v0.36.0"
     ]
 
 
@@ -225,8 +225,8 @@ def test_the_output_root_is_empty_and_noted_when_the_archive_is_missing_or_unrea
     art = repeat_folder(tmp_path)
     holds, why = RF.stage_output(art, tmp_path / "a", archived=True)
     assert (
-        holds == "nothing: there is no archive of it"
-        and why == "the judges read an empty output, since there is no archive of it"
+        holds == "nothing, since the repeat kept no archive of it"
+        and why == "the judges read an empty output folder: the repeat kept no archive of it"
     )
     (art / "output.zip").write_bytes(b"[redacted: a zip that could not be scanned for keys]\n")
     holds, why = RF.stage_output(art, tmp_path / "b", archived=True)
