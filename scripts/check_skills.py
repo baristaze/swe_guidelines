@@ -83,13 +83,15 @@ Rules:
   file a step reads;
 - a step that fixes and runs again states its count bound. In every Markdown
   file under skills/, a paragraph or list item that says fix beside a rerun
-  (`rerun`, `run ... again`) or beside a backticked `make <target>` says
-  `at most <n> reruns` in the same paragraph or item. A skill run by a
-  strong model fixes and reruns until something stops it, and with no count
-  only its session's turns or wall time would. Fenced code and table rows
-  are left out. A fix and a rerun pair only inside one paragraph or item,
-  so a rerun in a nested bullet under the fix's step is not paired; that
-  loop, and a loop said in other words, is held by hand.
+  (`rerun`, or `run` with `again` anywhere after it) or beside a backticked
+  `make <target>` says `at most <n> reruns` in the same paragraph or item.
+  The span of `run ... again` is the whole paragraph or item, so a block
+  that says fix, run, and again without a loop is reworded so it does not.
+  A skill run by a strong model fixes and reruns until something stops it,
+  and with no count only its session's turns or wall time would. Fenced
+  code and table rows are left out. A fix and a rerun pair only inside one
+  paragraph or item, so a rerun in a nested bullet under the fix's step is
+  not paired; that loop, and a loop said in other words, is held by hand.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -438,10 +440,11 @@ def check_work_row(errors: list[str]) -> None:
 
 
 FIXES = re.compile(r"\bfix(?:es|ed|ing)?\b", re.IGNORECASE)
-# A dot ends the sentence between `run` and `again` only before whitespace and a
-# capital letter, matched case-sensitively, so a path (`tests/test_x.py`) or an
-# abbreviation (`e.g.`, `i.e.`) sits inside the span.
-RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b(?:(?!\.\s+(?-i:[A-Z]))[^;]){0,120}?\bagain\b", re.IGNORECASE)
+# `run` pairs with an `again` anywhere after it in the same block: no punctuation
+# ends the span, so a path, an abbreviation (`e.g.`, `i.e.`, `vs.`), or a sentence
+# between them stays inside it. A block that says fix, run, and again without a
+# loop is reworded so it does not.
+RERUNS = re.compile(r"\bre-?run(?:s|ning)?\b|\bruns?\b.*?\bagain\b", re.IGNORECASE | re.DOTALL)
 RUNS_GATE = re.compile(r"`make [a-z]")
 # The bound counts the reruns themselves: `at most 3 imports` in the same block bounds nothing.
 COUNT_BOUND = re.compile(r"\bat most (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten) re-?runs?\b", re.IGNORECASE)

@@ -572,6 +572,9 @@ def test_a_step_that_fixes_and_runs_a_gate_again_states_its_bound(repo, skills, 
         "Fix the failure and run `uv run pytest tests/test_x.py` again.",
         "Fix the file and run the check (e.g. `pytest -q`) again.",
         "Fix it and run the suite, i.e. the integration tests, again.",
+        "Fix it and run the suite, e.g. Playwright, again.",
+        "Fix it and run the type check, i.e. Pyright, again.",
+        "Fix it and run the tests vs. Postgres again.",
     ],
 )
 def test_a_rerun_after_a_fix_is_bounded_in_every_markdown_file_under_skills(repo, skills, capsys, said):
@@ -597,7 +600,7 @@ def test_an_at_most_that_counts_something_else_is_no_bound(repo, skills, capsys)
         "| File | Holds |\n|---|---|\n| `client.py` | a fix, retried and run again |\n",
         "Fix the tree.\n\nThen run `make check` again.\n",
         "The fixture reruns `make check`.\n",
-        "Fix the tree. Then run the tests. Again, nothing is fixed twice.\n",
+        "Fix the tree. Then run the tests. Nothing is fixed twice.\n",
     ],
 )
 def test_fenced_code_a_table_row_or_a_fix_in_another_paragraph_is_no_loop(repo, skills, text):
