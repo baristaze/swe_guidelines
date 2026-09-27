@@ -232,8 +232,12 @@ writing states: the first run plus at most 3 reruns, within what it
 lets a fix change. Step 8 is the exception: a rerun there repeats
 only the run that failed. A fix that edits a migration takes a reset
 before its rerun, since `make migrate` does not apply an applied
-migration again: `make infra-reset`, `make migrate`, and `make seed`.
-The tree is new, so the reset loses nothing. The skill stops at the
+migration again: `make infra-reset`, `make migrate`, and `make seed`,
+then the operator's and the provisioner's tokens again
+(`uv run <root>-ops token --env local --identity operator`, and the
+same with `provisioner`). `make seed` keeps an env file that exists,
+and the reset removed the sessions its tokens name. The tree is new,
+so the reset loses nothing. The skill stops at the
 first stop After writing or step 8 orders. Nothing in a new tree is
 pre-existing, and a gate that still fails when its count runs out is
 a defect of this skill.
