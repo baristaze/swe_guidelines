@@ -110,6 +110,14 @@ def test_find_takes_the_name_a_scenario_file_gives_itself(tmp_path):
         S.find("beta", tmp_path)  # a file that does not load has no name to match
 
 
+def test_find_takes_a_name_before_a_stem(tmp_path):
+    one = write(tmp_path, "one.json", dict(MINIMAL, name="two"))
+    two = write(tmp_path, "two.json", dict(MINIMAL, name="three"))
+    assert S.find("two", tmp_path) == one  # list prints "two" for one.json
+    assert S.find("three", tmp_path) == two
+    assert S.find("one", tmp_path) == one  # a stem no file bears as a name
+
+
 def test_the_shipped_scenarios_are_a_catalog_of_three():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]

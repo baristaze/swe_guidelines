@@ -337,22 +337,24 @@ def catalog(folder: str | Path) -> list[Path]:
 
 
 def find(name: str, folder: str | Path) -> Path:
-    """The file of a scenario named on the command line: by path, by file stem, or by the name the file gives itself.
+    """The file of a scenario named on the command line: by path, by the name the file gives itself, else by file stem.
 
-    The name is what `run.py list` prints, so what it lists is what
-    `--scenario` takes. A file that does not load has no name to match.
+    The name is what `run.py list` prints, and it is matched before any
+    stem, so what it lists is what `--scenario` takes, even where one
+    file's name is another file's stem. A file that does not load has no
+    name to match and is found by its stem.
     """
     direct = Path(name)
     if direct.suffix in SUFFIXES and direct.exists():
         return direct
-    for path in catalog(folder):
-        if path.stem == name:
-            return path
     names: dict[str, Path] = {}
     for path in catalog(folder):
         with contextlib.suppress(ScenarioError):
             names.setdefault(load(path).name, path)
     if name in names:
         return names[name]
+    for path in catalog(folder):
+        if path.stem == name:
+            return path
     known = ", ".join(sorted({*names, *(p.stem for p in catalog(folder))})) or "none"
     raise ScenarioError(f"no scenario named {name!r} in {folder}; known: {known}")
