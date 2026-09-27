@@ -44,7 +44,9 @@ the container running and paying.
 A path on this machine means nothing inside a container or on another
 machine. So a runtime also answers where the plugin checkout and the
 target are as the subject sees them, and the subject is told those
-paths, never the ones on this machine.
+paths, never the ones on this machine. For the same reason a runtime
+answers what it carries, such as `claude --version`, by a probe that
+runs where the subject runs.
 """
 
 from __future__ import annotations
@@ -63,6 +65,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import providers as P
+from . import versions as V
 from .capture import CliStream
 
 NAMES = ("host", "container", "vm")
@@ -75,7 +78,7 @@ CONTAINER_TARGET = "/target"
 # answer keys, the docs, and the repository's own CLAUDE.md stay out.
 PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
 # What no staged copy carries: the caches a tool leaves behind.
-STAGE_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache")
+STAGE_IGNORE = shutil.ignore_patterns(*V.CACHES)
 # The subject's own key, by the name the subject reads it under and the
 # name the harness reads it from. `claude -p` reads ANTHROPIC_API_KEY; its
 # value comes from SUBJECT_ANTHROPIC_API_KEY, never from a judge's key, so
@@ -304,6 +307,36 @@ class BaseRuntime:
             timed_out=timed_out,
         )
 
+    def probe_command(self, argv: list[str]) -> list[str]:
+        """The command a probe runs on this machine. The host runs it as it is."""
+        return list(argv)
+
+    def probe(self, argv: list[str], timeout_s: int = 120) -> str | None:
+        """The first line a short command prints where the subject runs, or None when it fails.
+
+        A probe asks the runtime what it carries, such as `claude --version`.
+        It runs with the harness's environment less every judge key, and
+        its output is never part of a repeat.
+        """
+        try:
+            out = subprocess.run(
+                self.probe_command(argv),
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=timeout_s,
+                env=clean_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        lines = [line.strip() for line in out.stdout.splitlines() if line.strip()]
+        return lines[0] if out.returncode == 0 and lines else None
+
+    def image_version(self) -> dict | None:
+        """The image the subject runs in, by name and id; None where there is no image."""
+        return None
+
     def stop(self, proc: subprocess.Popen) -> None:
         """Kill the subject's whole process group; a group already gone is no error."""
         kill_group(proc.pid)
@@ -481,6 +514,30 @@ class ContainerRuntime(BaseRuntime):
         """Docker carries the keys by name, so the local environment holds them."""
         return dict(env)
 
+    def probe_command(self, argv: list[str]) -> list[str]:
+        """A probe runs in a container of the same image, with no mount, no key, and no network."""
+        return [self.docker, "run", "--rm", "--network", "none", self.image, *argv]
+
+    def image_version(self) -> dict | None:
+        """The image's name and the id the engine gives it; the id is None when the engine does not answer.
+
+        A tag names whatever was built last under it. The id names the
+        image that ran.
+        """
+        try:
+            out = subprocess.run(
+                [self.docker, "image", "inspect", "--format", "{{.Id}}", self.image],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                env=clean_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return {"name": self.image, "id": None}
+        found = out.stdout.strip() if out.returncode == 0 else ""
+        return {"name": self.image, "id": found or None}
+
     def stop(self, proc: subprocess.Popen) -> None:
         """Kill the container by name, then the client."""
         if self.container_name:
@@ -543,6 +600,10 @@ class VmRuntime(BaseRuntime):
     def stage(self) -> None:
         """Nothing to copy here: the operator placed the plugin and the target on the other machine."""
         return None
+
+    def probe_command(self, argv: list[str]) -> list[str]:
+        """A probe runs on the other machine, through the prefix, outside any workspace."""
+        return [*self.vm.exec_prefix, *argv]
 
     def plugin_path(self) -> str | None:
         if not self.plugin:
