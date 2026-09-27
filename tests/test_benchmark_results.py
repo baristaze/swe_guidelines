@@ -126,7 +126,18 @@ def test_the_results_file_has_every_required_key(tmp_path):
     for key in REQUIRED:
         assert key in data
     judged = data["repeats"][0]["judgements"][0]
-    assert set(judged) == {"provider", "model", "effort", "status", "latency_s", "usage", "error", "fallback", "verdict"}
+    assert set(judged) == {
+        "provider",
+        "model",
+        "effort",
+        "status",
+        "latency_s",
+        "usage",
+        "cost_usd",
+        "error",
+        "fallback",
+        "verdict",
+    }
     assert judged["verdict"]["score"] == 88
 
 
@@ -268,3 +279,78 @@ def test_a_claude_subject_judged_by_a_panel_with_claude_is_named():
     assert data["summary"]["self_judged"]
     assert data["summary"]["self_judged"] in R.report_text(run)
     assert R.validate(data, SCHEMA) in ([], ["jsonschema is not installed; results.json was written unvalidated"])
+
+
+def priced(provider, model, usage, cost):
+    """A judgement that spent `usage`; with no usage it is a judge that was skipped."""
+    j = judgement(provider, 80 if usage else None, status="ok" if usage else "skipped", model=model)
+    j.usage, j.cost_usd = usage, cost
+    return j
+
+
+def test_the_run_totals_its_spend_per_judge_for_the_subject_and_in_all(tmp_path):
+    run = a_run(
+        [
+            R.RepeatResult(
+                0,
+                {"code": 0},
+                [],
+                [
+                    priced("anthropic", "a", {"input_tokens": 100, "output_tokens": 50}, 0.25),
+                    priced("xai", "x", {"input_tokens": 10, "output_tokens": 40, "reasoning_tokens": 30}, 0.5),
+                    priced("gemini", "g", {}, None),
+                ],
+                subject_models=["s"],
+                subject_usage={"input_tokens": 1000, "output_tokens": 200},
+                subject_cost_usd=1.0,
+            ),
+            R.RepeatResult(
+                1,
+                {"code": 0},
+                [],
+                [priced("anthropic", "a", {"input_tokens": 100, "output_tokens": 50}, 0.25)],
+                subject_models=["s"],
+                subject_usage={"input_tokens": 1000, "output_tokens": 200},
+                subject_cost_usd=1.0,
+            ),
+        ]
+    )
+    spent = run.as_dict()["spend"]
+    assert set(spent["judges"]) == {"anthropic", "xai"}
+    assert spent["judges"]["anthropic"] == {
+        "input_tokens": 200,
+        "output_tokens": 100,
+        "reasoning_tokens": 0,
+        "cost_usd": 0.5,
+        "unpriced": [],
+    }
+    assert spent["judges"]["xai"]["reasoning_tokens"] == 30
+    assert spent["subject"]["input_tokens"] == 2000 and spent["subject"]["cost_usd"] == 2.0
+    assert spent["total_usd"] == 3.0 and spent["unpriced"] == []
+    assert R.validate(R.write_results(run, tmp_path / "results.json"), SCHEMA) in ([], [R.UNVALIDATED])
+    text = R.report_text(run)
+    assert "## Spend" in text
+    assert "| judge `xai` | 10 | 40 | 30 | $0.5000 |" in text
+    assert "Total: $3.0000." in text
+
+
+def test_a_model_without_a_price_keeps_its_tokens_and_makes_the_total_a_lower_bound():
+    run = a_run(
+        [
+            R.RepeatResult(
+                0,
+                {"code": 0},
+                [],
+                [
+                    priced("openai", "unknown-model", {"input_tokens": 5, "output_tokens": 7}, None),
+                    priced("anthropic", "a", {"input_tokens": 1, "output_tokens": 1}, 0.1),
+                ],
+            )
+        ]
+    )
+    spent = run.as_dict()["spend"]
+    assert spent["judges"]["openai"]["output_tokens"] == 7
+    assert spent["judges"]["openai"]["cost_usd"] == 0.0
+    assert spent["unpriced"] == ["unknown-model"]
+    assert spent["total_usd"] == 0.1
+    assert "Total: at least $0.1000. No price for `unknown-model`" in R.report_text(run)
