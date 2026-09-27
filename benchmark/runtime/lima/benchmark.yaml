@@ -129,7 +129,9 @@ provision:
   # anywhere. The public internet stays open: a subject needs it. The
   # script reads the uplink, the gateway, and the resolvers from the
   # routing table and resolved, waiting for them, because a name does
-  # not resolve yet this early in a boot.
+  # not resolve yet this early in a boot. It saves the table's listing
+  # as loaded, root's own, and the runtime config's `check` compares the
+  # live table with it before every repeat.
   script: |
     #!/bin/bash
     set -eux -o pipefail
@@ -161,6 +163,7 @@ provision:
       }
     }
     EOF
+    nft list table inet swe_benchmark >/etc/swe-benchmark-firewall.nft
 
 probes:
 - description: the pinned tools answer and the firewall holds

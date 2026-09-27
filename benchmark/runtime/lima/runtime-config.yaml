@@ -17,11 +17,15 @@
 # The run folders live on the VM's disk, under /var/tmp, because /tmp
 # is held in memory there.
 #
-# `check` runs there before every repeat: a subject with sudo can delete
-# the firewall, and a repeat whose check fails runs no subject.
+# `check` runs there before every repeat, and a repeat whose check fails
+# runs no subject. It compares the firewall table with the listing saved
+# when it was loaded, so a table deleted, emptied, or with a rule
+# changed, removed, or added fails it. It catches a change made by
+# accident or in passing. It cannot stop a subject with sudo that means
+# to get around it: such a subject can rewrite the saved listing too.
 exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
 copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}"]
 fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
 remote_workspace: /var/tmp/swe-benchmark
 prefix_env: [HOME, LIMA_HOME]
-check: [sudo, -n, nft, list, table, inet, swe_benchmark]
+check: [sh, -c, "sudo -n nft list table inet swe_benchmark | cmp -s - /etc/swe-benchmark-firewall.nft"]

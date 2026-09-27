@@ -252,9 +252,16 @@ mirrors the sandbox:
     group/<repeat>         the process group the subject runs in
 ```
 
-Before every repeat, the harness removes the two copies and the
-repeat's own workspace, HOME, TMPDIR, keys, and group file, whatever an
-earlier repeat left there. Then it runs the config's `check` there.
+Before every repeat, the harness removes the run's folder whole and
+makes it again, so nothing an earlier repeat left in it reaches this
+one. That matters for a `CLAUDE.md` above the workspace too, because
+Claude Code loads every `CLAUDE.md` from its working folder up. The
+lock, beside the run's folder, stays, and fetch has already brought each
+earlier repeat's workspace back. Then the harness runs the config's
+`check` there. The folders above the run's folder, `<remote_workspace>/`
+and, with the Lima config, `/var/tmp`, outlast every repeat and the run,
+and the subject can write there. The harness resets neither; only a new
+machine does.
 
 The runtime config names the commands that reach it:
 
@@ -351,9 +358,13 @@ network, and every other private, link-local, site-local, and shared
 inside the VM are not the uplink, so containers reach each other there
 as they do anywhere. The public internet stays open, because a subject
 needs it. The readiness probe checks the rule, so a machine whose
-firewall did not load never reports ready. A subject with sudo can
-delete the rule, so the runtime config's `check` lists it before every
-repeat, and a repeat that finds it gone runs no subject.
+firewall did not load never reports ready. The firewall script saves
+the table's listing as it loads it, and the runtime config's `check`
+compares the live table with that listing before every repeat. A table
+deleted or emptied, or a rule changed, removed, or added, fails the
+check, and the repeat runs no subject. The check catches a change made
+by accident or in passing. It cannot stop a subject with sudo that
+means to get around it, which can rewrite the saved listing too.
 
 The template pins Lima's `vz` machine type, macOS's own hypervisor. A
 host without it, such as Linux, drops that line, and Lima runs QEMU.
