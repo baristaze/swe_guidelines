@@ -142,10 +142,18 @@ def probe_versions(scn: S.Scenario, rt: RT.BaseRuntime, claude: str) -> tuple[di
             notes.append(f"`{claude} --version` answered nothing in the {rt.name} runtime; the run does not know its Claude Code")
     if found["image"] is not None and found["image"]["id"] is None:
         notes.append(f"the image {found['image']['name']} has no id the engine reports")
-    if isinstance(rt, RT.VmRuntime) and rt.plugin is not None:
+    # The vm runtime copies what this machine staged, so the versions
+    # describe what the subject read. An override replaces a copy with a
+    # path the operator placed there, which no version describes.
+    if isinstance(rt, RT.VmRuntime) and rt.plugin is not None and rt.vm.remote_plugin:
         notes.append(
-            f"the plugin on the other machine is the one at {rt.vm.remote_plugin}; "
+            f"the plugin on the other machine is the one at {rt.vm.remote_plugin}, which the runtime config names; "
             "versions.checkout describes this machine's checkout, not that one"
+        )
+    if isinstance(rt, RT.VmRuntime) and rt.target is not None and rt.vm.remote_target:
+        notes.append(
+            f"the target on the other machine is the one at {rt.vm.remote_target}, which the runtime config names; "
+            "versions.target and the judges' evidence describe the copy staged here, not that one"
         )
     return found, notes
 
@@ -204,7 +212,7 @@ def subject_argv(
 
     `plugin` and `target` are paths as the subject sees them, which the
     runtime answers: this machine's paths on the host, the mount points
-    in a container, the configured paths on another machine.
+    in a container, the copies in the run's folder on another machine.
     """
     if scn.kind == "command":
         return [w.replace("{target}", target or "").replace("{plugin}", plugin or "") for w in scn.subject.argv]

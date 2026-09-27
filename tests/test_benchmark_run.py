@@ -287,9 +287,7 @@ def test_the_subject_holds_its_own_key_and_no_judge_key(tmp_path, monkeypatch, r
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "15", "--repeat", "1"]
     if runtime == "vm":
         config = tmp_path / "vm.json"
-        # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
-        vm = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote"), "remote_plugin": str(tmp_path)}
-        config.write_text(json.dumps(vm), encoding="utf-8")
+        config.write_text(json.dumps(vm_config(tmp_path)), encoding="utf-8")
 
         argv += ["--runtime", "vm", "--runtime-config", str(config)]
     assert run.main(argv) == 0
@@ -725,22 +723,93 @@ def test_a_dry_run_records_the_checkout_and_asks_the_runtime_nothing(tmp_path, m
     assert versions["claude_code"] is None and asked == []
 
 
-def test_the_vm_says_its_checkout_is_not_this_machine_s(tmp_path, monkeypatch):
+def vm_config(tmp_path, **override):
+    """A vm runtime config that runs here, as another machine would.
+
+    `env -i` stands in for the prefix: the command starts in an empty
+    environment, as a remote shell does, with nothing of this one. `cp -R`
+    stands in for the copy.
+    """
+    return {
+        "exec_prefix": ["env", "-i", "PATH=/usr/bin:/bin"],
+        "copy": ["cp", "-R", "{local}", "{remote}"],
+        "remote_workspace": str(tmp_path / "remote"),
+        **override,
+    }
+
+
+def run_vm(tmp_path, scenario, config, *extra):
+    """One repeat of a scenario on the vm runtime, and its run folder."""
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    config_path = tmp_path / "vm.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", *extra]
+    assert run.main([*argv, "--runtime", "vm", "--runtime-config", str(config_path)]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    return run_dir
+
+
+def test_a_vm_run_reads_the_copies_this_checkout_staged(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
-    path = tmp_path / "one.json"
-    path.write_text(json.dumps(SKILL), encoding="utf-8")
-    config = tmp_path / "vm.json"
-    # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
-    vm = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote"), "remote_plugin": "/srv/plugin"}
-    config.write_text(json.dumps(vm), encoding="utf-8")
     claude = fake_claude(tmp_path, "9.9.9 (Claude Code)")
-    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
-    assert run.main([*argv, "--subject-model", "claude-opus-5", "--runtime", "vm", "--runtime-config", str(config)]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    run_dir = run_vm(tmp_path, SKILL, vm_config(tmp_path), "--subject-model", "claude-opus-5", "--claude", claude)
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    plugin = str(tmp_path / "remote" / run_dir.name / "plugin")
+    assert results["subject"]["plugin"] == plugin
+    assert results["subject"]["argv"][results["subject"]["argv"].index("--plugin-dir") + 1] == plugin
+    assert results["versions"]["checkout"]["commit"] == run.git_sha(run.ROOT)
+    assert not any("not that one" in note for note in results["notes"])  # the checkout is what the subject read
+
+
+def test_a_vm_run_on_a_placed_plugin_says_its_checkout_is_not_that_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    claude = fake_claude(tmp_path, "9.9.9 (Claude Code)")
+    config = vm_config(tmp_path, remote_plugin="/srv/plugin")
+    run_dir = run_vm(tmp_path, SKILL, config, "--subject-model", "claude-opus-5", "--claude", claude)
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["versions"]["claude_code"] == "9.9.9 (Claude Code)"
+    assert results["subject"]["plugin"] == "/srv/plugin"
     assert any("/srv/plugin" in note and "not that one" in note for note in results["notes"])
+
+
+def test_a_vm_run_keeps_the_subject_key_out_of_every_file_it_writes(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    secret = "subject-key-for-the-run"
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", secret)
+    script = "import os; print(len(os.environ.get('ANTHROPIC_API_KEY', '')))"
+    scenario = {"name": "keys", "kind": "command", "subject": {"argv": [sys.executable, "-c", script]}, "rubric": "r"}
+    run_dir = run_vm(tmp_path, scenario, vm_config(tmp_path))
+    assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == f"{len(secret)}\n"
+    for file in run_dir.rglob("*"):
+        if file.is_file():
+            assert secret not in file.read_text(encoding="utf-8", errors="replace"), file
+    assert not (tmp_path / "remote" / run_dir.name).exists()  # the key file went with the run's folder
+
+
+def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monkeypatch):
+    pytest.importorskip("yaml")
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    called: list[list[str]] = []
+
+    def helper(self, argv, stdin=None):
+        called.append(argv)
+        return 0
+
+    monkeypatch.setattr(run.RT.VmRuntime, "helper", helper)
+    config = run.BENCHMARK / "runtime" / "lima" / "runtime-config.yaml"
+    argv = ["--scenario", "review-om", "--out", str(tmp_path / "runs"), "--runtime", "vm", "--runtime-config", str(config)]
+    assert run.main([*argv, "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    text = (run_dir / "run.json").read_text(encoding="utf-8")
+    subject = json.loads(text)["subject_argv"]
+    there = f"/var/tmp/swe-benchmark/{run_dir.name}"
+    assert subject[subject.index("--plugin-dir") + 1] == f"{there}/plugin"
+    assert subject[subject.index("--add-dir") + 1] == f"{there}/target"
+    assert str(run.ROOT) not in text and called == []
 
 
 @pytest.mark.parametrize("runtime", ["host", "container"])

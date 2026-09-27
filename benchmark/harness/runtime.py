@@ -31,8 +31,12 @@ Isolation is a choice, and the choice is named:
   Nothing of the harness's machine is in the container but the three
   mounts, so the judges' keys and the answer files are out of reach.
 - `vm` runs the command on another machine through a configured prefix.
-  The harness provisions nothing; it composes the prefix and the sync
-  command, and the tests cover that composition with a fake prefix.
+  The harness provisions no machine. It copies the staged plugin and
+  target into the run's folder there, hands the subject its key through
+  a file, and composes the prefix; the tests cover that with a fake
+  prefix. The machine is the boundary: `runtime/lima/benchmark.yaml`
+  makes one that holds nothing of this machine, so the judges' keys and
+  the answer files are out of the subject's reach.
 
 A subject is stopped whole, however it ends: past its timeout, on a clean
 exit that left children behind, or when the harness itself is
@@ -547,9 +551,10 @@ class ContainerRuntime(BaseRuntime):
 
 @dataclass
 class VmConfig:
-    """How to reach the other machine and how to get the workspace there."""
+    """How to reach the other machine, and how to get files there and back."""
 
     exec_prefix: list[str] = field(default_factory=list)
+    copy: list[str] = field(default_factory=list)
     sync: list[str] = field(default_factory=list)
     remote_workspace: str = "/tmp/benchmark-workspace"
     fetch: list[str] = field(default_factory=list)
@@ -557,23 +562,51 @@ class VmConfig:
     remote_target: str | None = None
 
 
+# The run's folder there is made private to that machine's user.
+MAKE_PRIVATE = 'umask 077 && mkdir -p "$1"'
+# A key goes through stdin into a file only that user can read.
+WRITE_KEY = 'umask 077 && mkdir -p "$1" && cat > "$2"'
+# What runs before the subject there: every key file becomes a variable,
+# HOME and TMPDIR become the repeat's own, and the subject starts in its
+# workspace. The paths travel as arguments, never spliced into the
+# script, so a space or a quote in them stays one word.
+WRAPPER = (
+    "keys=$1 home=$2 tmp=$3 work=$4; shift 4; "
+    'for file in "$keys"/*; do if [ -f "$file" ]; then export "${file##*/}=$(cat "$file")"; fi; done; '
+    'mkdir -p "$home" "$tmp" "$work" && cd "$work" && export HOME="$home" TMPDIR="$tmp" && exec "$@"'
+)
+
+
+def fill(words: list[str], local: str, remote: str) -> list[str]:
+    """A configured command with `{local}` and `{remote}` replaced in every word."""
+    return [w.replace("{local}", local).replace("{remote}", remote) for w in words]
+
+
 class VmRuntime(BaseRuntime):
     """Another machine, reached through a command prefix.
 
-       The prefix is configuration, for example
-       `["limactl", "shell", "default", "--"]`. The sync command is
-       configuration too; `{local}` and `{remote}` in any of its words are
-       replaced with the two workspace paths. Each run gets its own folder
-       under `remote_workspace`, removed at teardown, and each repeat its
-       own folder inside that, as it gets its own local one. The subject
-       runs inside it.
-    The prefix has to hand its
-       words on as words (`limactl shell`, `docker exec`); one that joins
-       them into a remote shell line, as `ssh` does, needs a wrapper. The harness provisions no
-       machine and starts none, and copies neither the plugin checkout nor
-       the target there: `remote_plugin` and `remote_target` say where the
-       operator put them, and a run that needs one and is not told is
-       refused before it starts.
+    The prefix is configuration, for example
+    `["limactl", "shell", "--workdir", "/", "swe-benchmark", "--"]`. It
+    has to hand its words on as words (`limactl shell`, `docker exec`);
+    one that joins them into a remote shell line, as `ssh` does, needs a
+    wrapper. The harness provisions no machine and starts none.
+
+    Each run gets its own folder under `remote_workspace`, named after
+    the run folder, private to that machine's user, and removed at
+    teardown. It mirrors the sandbox: `plugin/` and `target/` hold the
+    staged copies, and `workspace/`, `home/`, and `tmp/` hold one folder
+    per repeat. The configured copy command puts the staged folders
+    there: `{local}` is the folder here, `{remote}` the run's folder
+    there, and the copy keeps the folder's name, as `cp -R` does into a
+    folder that exists. The sync and fetch commands take the
+    repeat's workspace here and there. `remote_plugin` and
+    `remote_target` override the copies with paths the operator placed
+    on that machine, which nothing copies and no version names.
+
+    The subject's key never travels in a command line, and the prefix
+    never holds it here. It goes through stdin into a file of mode 0600
+    in the run's folder, the wrapper reads it into the subject's
+    environment, and the folder takes it along at teardown.
     """
 
     name = "vm"
@@ -590,16 +623,15 @@ class VmRuntime(BaseRuntime):
         raw = self.config
         self.vm = VmConfig(
             exec_prefix=list(raw.get("exec_prefix", [])),
+            copy=list(raw.get("copy", [])),
             sync=list(raw.get("sync", [])),
             remote_workspace=str(raw.get("remote_workspace", "/tmp/benchmark-workspace")),
             fetch=list(raw.get("fetch", [])),
             remote_plugin=raw.get("remote_plugin"),
             remote_target=raw.get("remote_target"),
         )
-
-    def stage(self) -> None:
-        """Nothing to copy here: the operator placed the plugin and the target on the other machine."""
-        return None
+        self.uploaded = False
+        self.handed: set[str] = set()
 
     def probe_command(self, argv: list[str]) -> list[str]:
         """A probe runs on the other machine, through the prefix, outside any workspace."""
@@ -608,16 +640,31 @@ class VmRuntime(BaseRuntime):
     def plugin_path(self) -> str | None:
         if not self.plugin:
             return None
-        if not self.vm.remote_plugin:
-            raise ValueError("the vm runtime needs remote_plugin in its runtime config to run a skill")
-        return str(self.vm.remote_plugin)
+        if self.vm.remote_plugin:
+            return str(self.vm.remote_plugin)
+        return self.copied(self.plugin, "remote_plugin", "to run a skill")
 
     def target_path(self) -> str | None:
         if not self.target:
             return None
-        if not self.vm.remote_target:
-            raise ValueError("the vm runtime needs remote_target in its runtime config to run on a target")
-        return str(self.vm.remote_target)
+        if self.vm.remote_target:
+            return str(self.vm.remote_target)
+        return self.copied(self.target, "remote_target", "to run on a target")
+
+    def copied(self, local: Path, override: str, purpose: str) -> str:
+        """Where the copy of a staged folder lands there: in the run's folder, under its own name."""
+        if not self.vm.copy:
+            raise ValueError(f"the vm runtime needs copy, or {override}, in its runtime config {purpose}")
+        return f"{self.remote_run()}/{local.name}"
+
+    def copies(self) -> list[Path]:
+        """The staged folders the copy command takes there: each one no override replaces."""
+        out = []
+        if self.plugin and not self.vm.remote_plugin:
+            out.append(self.plugin)
+        if self.target and not self.vm.remote_target:
+            out.append(self.target)
+        return out
 
     def remote_run(self) -> str:
         """This run's folder on the other machine, named after the run folder.
@@ -627,50 +674,127 @@ class VmRuntime(BaseRuntime):
         base = self.vm.remote_workspace.rstrip("/")
         return f"{base}/{self.run_dir.name}"
 
-    def remote(self) -> str:
-        """The workspace on the other machine: one folder per repeat once a repeat is prepared."""
-        return f"{self.remote_run()}/{self.slot}" if self.slot is not None else self.remote_run()
+    def remote_part(self, name: str) -> str:
+        """The workspace, HOME, or TMPDIR there: one folder per repeat once a repeat is prepared."""
+        base = f"{self.remote_run()}/{name}"
+        return f"{base}/{self.slot}" if self.slot is not None else base
 
-    def _fill(self, words: list[str]) -> list[str]:
-        return [w.replace("{local}", str(self.workspace)).replace("{remote}", self.remote()) for w in words]
+    def remote(self) -> str:
+        """The workspace on the other machine."""
+        return self.remote_part("workspace")
+
+    def remote_keys(self) -> str:
+        """The folder there that holds one file per key the subject is handed."""
+        return f"{self.remote_run()}/keys"
+
+    def copy_command(self, local: Path) -> list[str]:
+        """The configured copy of one staged folder into the run's folder there, filled in."""
+        return fill(self.vm.copy, str(local), self.remote_run())
 
     def sync_command(self) -> list[str]:
         """The configured sync, with the two workspace paths filled in."""
-        return self._fill(self.vm.sync)
+        return fill(self.vm.sync, str(self.workspace), self.remote())
 
     def fetch_command(self) -> list[str]:
         """The configured way to bring the workspace back, filled in."""
-        return self._fill(self.vm.fetch)
+        return fill(self.vm.fetch, str(self.workspace), self.remote())
+
+    def helper(self, argv: list[str], stdin: str | None = None) -> int:
+        """Run a helper command here with no judge key in its environment; its exit code.
+
+        What it reads comes from `stdin` or from nowhere, never from the
+        harness's own input. A helper that cannot start is exit 127, as
+        the shell records it.
+        """
+        feed = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
+        try:
+            return subprocess.run(argv, check=False, text=True, env=clean_env(), **feed).returncode
+        except OSError:
+            return 127
+
+    def upload(self) -> None:
+        """Make the run's folder there, private, and copy the staged plugin and target into it, once."""
+        if self.uploaded:
+            return
+        code = self.helper([*self.vm.exec_prefix, "sh", "-c", MAKE_PRIVATE, "sh", self.remote_run()])
+        if code != 0:
+            raise RuntimeError(f"the vm runtime could not make {self.remote_run()} on the other machine (exit {code})")
+        for local in self.copies():
+            if not self.vm.copy:
+                raise ValueError(f"the vm runtime needs copy in its runtime config to take {local.name} there")
+            code = self.helper(self.copy_command(local))
+            if code != 0:
+                raise RuntimeError(f"the vm runtime could not copy {local.name} to the other machine (exit {code})")
+        self.uploaded = True
 
     def prepare(self, workspace: Path | None = None) -> Path:
         path = super().prepare(workspace)
         if not self.vm.exec_prefix:
             raise ValueError("the vm runtime needs exec_prefix in its runtime config")
+        self.upload()
         if self.vm.sync:
             # The repeat's remote folder is new, and a sync may not make its parents.
-            subprocess.run([*self.vm.exec_prefix, "mkdir", "-p", self.remote()], check=False, env=clean_env())
-            subprocess.run(self.sync_command(), check=False, env=clean_env())
+            self.helper([*self.vm.exec_prefix, "mkdir", "-p", self.remote()])
+            self.helper(self.sync_command())
         return path
 
-    def command(self, argv: list[str], cwd: Path) -> list[str]:
-        """The subject runs in the remote workspace, so what it writes is what fetch brings back.
+    def hand_keys(self, keys: dict[str, str], streams: CliStream) -> ExitStatus | None:
+        """Write each key into its file there, once per run; a failure is the repeat's, with a note.
 
-        The folder and the words travel as arguments of `sh -c`, never
-        spliced into its script, so a space or a quote in them stays
-        one word.
+        The value goes through stdin, so no command line and no stream
+        line holds it. The note names the variable and never its value.
         """
-        script = 'mkdir -p "$1" && cd "$1" && shift && exec "$@"'
-        return [*self.vm.exec_prefix, "sh", "-c", script, "sh", self.remote(), *argv]
+        for name, value in keys.items():
+            if name in self.handed:
+                continue
+            path = f"{self.remote_keys()}/{name}"
+            code = self.helper([*self.vm.exec_prefix, "sh", "-c", WRITE_KEY, "sh", self.remote_keys(), path], stdin=value)
+            if code != 0:
+                streams.note(
+                    f"[{self.name}] {name} could not be written on the other machine (exit {code}); the subject does not run"
+                )
+                return ExitStatus(code=code)
+            self.handed.add(name)
+            streams.note(f"[{self.name}] {name} reaches the subject through a file in the run's folder, not the command line")
+        return None
+
+    def run(self, argv: list[str], cwd: Path, env: dict[str, str], streams: CliStream, timeout_s: int = 900) -> ExitStatus:
+        """Hand the subject its keys through files there, then run the command with none of them here.
+
+        A subject key that holds a judge's key is not handed on; it stays
+        in the environment the base scrubs, which drops it and says so.
+        """
+        kept = scrub(env)[0]
+        keys = {n: kept[n] for n in SUBJECT_KEYS if kept.get(n)}
+        failed = self.hand_keys(keys, streams)
+        if failed is not None:
+            return failed
+        return super().run(argv, cwd, {k: v for k, v in env.items() if k not in keys}, streams, timeout_s)
+
+    def environment(self, env: dict[str, str]) -> dict[str, str]:
+        """The prefix's environment here: the harness's own less every judge key, as a helper's, under the subject's.
+
+        The prefix runs on this machine and needs what a helper needs to
+        find the other one: `limactl` does not start without HOME, and
+        the subject's environment has none. A prefix such as `limactl
+        shell` hands none of it to the other machine.
+        """
+        return {**clean_env(), **env}
+
+    def command(self, argv: list[str], cwd: Path) -> list[str]:
+        """The wrapper, then the subject, in the repeat's workspace, so what it writes is what fetch brings back."""
+        parts = [self.remote_keys(), self.remote_part("home"), self.remote_part("tmp"), self.remote()]
+        return [*self.vm.exec_prefix, "sh", "-c", WRAPPER, "sh", *parts, *argv]
 
     def collect(self, globs: list[str]) -> list[Path]:
         if self.vm.fetch:
-            subprocess.run(self.fetch_command(), check=False, env=clean_env())
+            self.helper(self.fetch_command())
         return super().collect(globs)
 
     def teardown(self) -> None:
-        """Remove this run's folder on the other machine, then what is here."""
+        """Remove this run's folder on the other machine, the key files in it too, then what is here."""
         if self.prepared and self.vm.exec_prefix:
-            subprocess.run([*self.vm.exec_prefix, "rm", "-rf", "--", self.remote_run()], check=False, env=clean_env())
+            self.helper([*self.vm.exec_prefix, "rm", "-rf", "--", self.remote_run()])
         super().teardown()
 
 

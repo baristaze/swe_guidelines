@@ -1,5 +1,8 @@
 """benchmark/harness/runtime.py: what each runtime executes and where."""
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -163,14 +166,21 @@ def test_the_vm_runs_behind_the_prefix_and_fills_the_sync_paths(tmp_path):
     rt.workspace = tmp_path / "workspace"
     command = rt.command(["claude", "-p", "hi"], rt.workspace)
     assert command[:5] == ["fake-shell", "station", "--", "sh", "-c"]
-    assert command[6:] == ["sh", "/opt/work/run-1", "claude", "-p", "hi"]  # the folder is an argument, not script text
-    assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/run-1/"]
-    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/", f"{rt.workspace}/"]
+    # The folders are arguments, not script text: the keys, HOME, TMPDIR, and the workspace.
+    folders = ["/opt/work/run-1/keys", "/opt/work/run-1/home", "/opt/work/run-1/tmp", "/opt/work/run-1/workspace"]
+    assert command[6:] == ["sh", *folders, "claude", "-p", "hi"]
+    assert rt.sync_command() == ["fake-copy", f"{rt.workspace}/", "station:/opt/work/run-1/workspace/"]
+    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/workspace/", f"{rt.workspace}/"]
 
 
 def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch):
     ran: list[list[str]] = []
-    monkeypatch.setattr(RT.subprocess, "run", lambda argv, **kwargs: ran.append(list(argv)))
+
+    def record(argv, **kwargs):
+        ran.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(RT.subprocess, "run", record)
     config = {
         "exec_prefix": ["fake-shell", "--"],
         "sync": ["fake-copy", "{local}/", "station:{remote}/"],
@@ -181,14 +191,16 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
     assert isinstance(rt, RT.VmRuntime)
     first = rt.prepare_repeat(0)
     assert ran == [
-        ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/0"],
-        ["fake-copy", f"{first}/", "station:/opt/work/run-1/0/"],
+        ["fake-shell", "--", "sh", "-c", RT.MAKE_PRIVATE, "sh", "/opt/work/run-1"],
+        ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/0"],
+        ["fake-copy", f"{first}/", "station:/opt/work/run-1/workspace/0/"],
     ]
-    assert rt.command(["claude"], first)[-2:] == ["/opt/work/run-1/0", "claude"]
+    assert rt.command(["claude"], first)[-2:] == ["/opt/work/run-1/workspace/0", "claude"]
     second = rt.prepare_repeat(1)
-    assert rt.sync_command() == ["fake-copy", f"{second}/", "station:/opt/work/run-1/1/"]
-    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/1/", f"{second}/"]
-    assert rt.command(["claude"], second)[-2:] == ["/opt/work/run-1/1", "claude"]
+    assert len(ran) == 5  # the run's folder is made once, for every repeat
+    assert rt.sync_command() == ["fake-copy", f"{second}/", "station:/opt/work/run-1/workspace/1/"]
+    assert rt.fetch_command() == ["fake-copy", "station:/opt/work/run-1/workspace/1/", f"{second}/"]
+    assert rt.command(["claude"], second)[-2:] == ["/opt/work/run-1/workspace/1", "claude"]
 
 
 def test_two_vm_runs_never_share_a_remote_workspace_and_each_removes_its_own(tmp_path, monkeypatch):
@@ -202,7 +214,7 @@ def test_two_vm_runs_never_share_a_remote_workspace_and_each_removes_its_own(tmp
         with CliStream(tmp_path / f"{name}.jsonl") as stream:
             assert rt.run([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}, stream).ok
         seen += [r["line"] for r in CliStream.read(tmp_path / f"{name}.jsonl") if r["s"] == "out"]
-        assert (remote / name / "0" / "left.md").is_file()
+        assert (remote / name / "workspace" / "0" / "left.md").is_file()
         rt.teardown()
         assert not (remote / name).exists()
     assert seen == ["0", "0"]  # the second run found nothing the first left
@@ -217,7 +229,7 @@ def test_the_vm_subject_runs_in_the_remote_workspace_not_the_shell_default(tmp_p
     with CliStream(tmp_path / "cli.jsonl") as stream:
         status = rt.run([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}, stream)
     assert status.ok
-    assert (remote / "run" / "0" / "out.md").read_text(encoding="utf-8") == "x"
+    assert (remote / "run" / "workspace" / "0" / "out.md").read_text(encoding="utf-8") == "x"
 
     assert not (tmp_path / "out.md").exists()
 
@@ -225,6 +237,136 @@ def test_the_vm_subject_runs_in_the_remote_workspace_not_the_shell_default(tmp_p
 def test_the_vm_without_a_prefix_is_refused(tmp_path):
     with pytest.raises(ValueError, match="exec_prefix"):
         RT.build("vm", tmp_path, None, {}).prepare()
+
+
+def payload_checkout(tmp_path):
+    """A checkout with a skill, the guideline, and a fixture whose answers sit beside it."""
+    root = tmp_path / "checkout"
+    for name in ("skills/a", "benchmark/fixtures/x"):
+        (root / name).mkdir(parents=True)
+    (root / "architecture.md").write_text("g", encoding="utf-8")
+    (root / "benchmark" / "fixtures" / "x.expected.yaml").write_text("k", encoding="utf-8")
+    (root / "benchmark" / "fixtures" / "x" / "a.py").write_text("print()", encoding="utf-8")
+    return root, root / "benchmark" / "fixtures" / "x"
+
+
+def fake_prefix(tmp_path):
+    """A prefix that logs its words and its environment's names, then runs the words here, as a shell there would."""
+    log = tmp_path / "prefix.log"
+    path = tmp_path / "prefix"
+    path.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        f"with open({str(log)!r}, 'a') as fh:\n"
+        "    fh.write(json.dumps({'argv': sys.argv[1:], 'env': sorted(os.environ)}) + '\\n')\n"
+        "os.execvp(sys.argv[1], sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return str(path), log
+
+
+def test_the_vm_copies_what_it_staged_into_the_run_folder_there(tmp_path):
+    # `env` stands in for the prefix and `cp -R` for the copy: they run here, as they would there.
+    root, target = payload_checkout(tmp_path)
+    remote = tmp_path / "remote"
+    prefix, log = fake_prefix(tmp_path)
+    config = {"exec_prefix": [prefix], "copy": [prefix, "cp", "-R", "{local}", "{remote}"], "remote_workspace": str(remote)}
+    rt = RT.build("vm", tmp_path / "run", target, config, plugin=root, sandbox=RT.new_sandbox())
+    rt.stage()
+    assert (rt.plugin_path(), rt.target_path()) == (str(remote / "run" / "plugin"), str(remote / "run" / "target"))
+    assert not remote.exists()  # naming the copies copies nothing, so a dry run touches nothing there
+    rt.prepare_repeat(0)
+    rt.prepare_repeat(1)
+    plugin, copied = remote / "run" / "plugin", remote / "run" / "target"
+    assert (plugin / "skills" / "a").is_dir() and (plugin / "architecture.md").is_file()
+    assert not (plugin / "benchmark").exists()  # the payload only, no fixture and no answer
+    assert (copied / "a.py").is_file() and list(copied.parent.glob("*.expected.yaml")) == []
+    assert (remote / "run").stat().st_mode & 0o777 == 0o700
+    copies = [json.loads(line)["argv"] for line in log.read_text(encoding="utf-8").splitlines()]
+    assert sum(argv[0] == "cp" for argv in copies) == 2  # the plugin and the target, once for every repeat
+    rt.teardown()
+    assert not (remote / "run").exists()
+
+
+def test_a_copy_that_fails_stops_the_run_before_any_subject(tmp_path):
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    config = {"exec_prefix": ["env"], "copy": ["false"], "remote_workspace": str(tmp_path / "remote")}
+    rt = RT.build("vm", tmp_path / "run", None, config, plugin=plugin)
+    with pytest.raises(RuntimeError, match="could not copy plugin"):
+        rt.prepare_repeat(0)
+
+
+KEY = "subject-key-for-the-test"
+
+
+def test_the_vm_hands_the_key_through_a_file_never_a_command_line_or_a_stream(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-openai")
+    monkeypatch.setenv("HOME", str(tmp_path / "operator"))
+    prefix, log = fake_prefix(tmp_path)
+    remote = tmp_path / "remote"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": [prefix], "remote_workspace": str(remote)})
+    script = "import os; print(len(os.environ.get('ANTHROPIC_API_KEY', '')))"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        for index in (0, 1):
+            rt.prepare_repeat(index)
+            env = {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": KEY}
+            assert rt.run([sys.executable, "-c", script], tmp_path, env, stream).ok
+    assert [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"] == [str(len(KEY))] * 2
+    key = remote / "run" / "keys" / "ANTHROPIC_API_KEY"
+    assert key.read_text(encoding="utf-8") == KEY and key.stat().st_mode & 0o777 == 0o600
+    calls = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert sum(c["argv"][-1] == str(key) for c in calls) == 1  # written once, read by both repeats
+    assert all(KEY not in " ".join(c["argv"]) for c in calls)
+    assert all("ANTHROPIC_API_KEY" not in c["env"] for c in calls)  # the prefix here never holds it
+    assert all("OPENAI_API_KEY" not in c["env"] for c in calls)
+    assert all("HOME" in c["env"] for c in calls)  # a prefix such as limactl finds its machine through HOME
+    assert KEY not in (tmp_path / "cli.jsonl").read_text(encoding="utf-8")
+    rt.teardown()
+    assert not key.exists()
+
+
+def test_a_vm_subject_key_that_is_a_judge_key_is_never_written(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "shared")
+    remote = tmp_path / "remote"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
+    rt.prepare_repeat(0)
+    script = "import os; print(os.environ.get('ANTHROPIC_API_KEY', 'none'))"
+    env = {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": "shared"}
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        assert rt.run([sys.executable, "-c", script], tmp_path, env, stream).ok
+    lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl")]
+    assert "none" in lines
+    assert any("ANTHROPIC_API_KEY holds a judge's key" in line for line in lines)
+    assert not (remote / "run" / "keys").exists()
+
+
+def test_a_key_that_cannot_be_written_there_fails_the_repeat_and_the_subject_never_runs(tmp_path):
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote")})
+    rt.prepare_repeat(0)
+    assert isinstance(rt, RT.VmRuntime)
+    rt.vm.exec_prefix = [str(tmp_path / "no-such-prefix")]
+    marker = tmp_path / "ran"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        status = rt.run(["touch", str(marker)], tmp_path, {"PATH": os.environ["PATH"], "ANTHROPIC_API_KEY": KEY}, stream)
+    assert status.code == 127 and not status.ok and not marker.exists()
+    text = (tmp_path / "cli.jsonl").read_text(encoding="utf-8")
+    assert "ANTHROPIC_API_KEY could not be written" in text and KEY not in text
+
+
+def test_each_vm_repeat_gets_its_own_home_and_tmp_there(tmp_path):
+    remote = tmp_path / "remote"
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(remote)})
+    script = "import os; print(os.environ['HOME']); print(os.environ['TMPDIR'])"
+    with CliStream(tmp_path / "cli.jsonl") as stream:
+        for index in (0, 1):
+            rt.prepare_repeat(index)
+            env = {"PATH": "/usr/bin:/bin", "HOME": "/elsewhere"}
+            assert rt.run([sys.executable, "-c", script], tmp_path, env, stream).ok
+    lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl") if r["s"] == "out"]
+    run = remote / "run"
+    assert lines == [str(run / "home" / "0"), str(run / "tmp" / "0"), str(run / "home" / "1"), str(run / "tmp" / "1")]
 
 
 def test_collect_takes_every_glob_once_in_path_order(tmp_path):
@@ -255,10 +397,16 @@ def test_each_runtime_names_the_plugin_and_the_target_as_the_subject_sees_them(t
     assert (host.plugin_path(), host.target_path()) == (str(plugin.resolve()), str(target.resolve()))
     box = RT.build("container", tmp_path, target, {"image": "img:1"}, plugin=plugin)
     assert (box.plugin_path(), box.target_path()) == ("/plugin", "/target")
-    vm = RT.build(
+    placed = RT.build(
         "vm", tmp_path, target, {"exec_prefix": ["x"], "remote_plugin": "/opt/p", "remote_target": "/opt/t"}, plugin=plugin
     )
-    assert (vm.plugin_path(), vm.target_path()) == ("/opt/p", "/opt/t")
+    assert isinstance(placed, RT.VmRuntime)
+    assert (placed.plugin_path(), placed.target_path()) == ("/opt/p", "/opt/t")
+    assert placed.copies() == []  # what the operator placed there is not copied
+    vm = RT.build(
+        "vm", tmp_path / "run-1", target, {"exec_prefix": ["x"], "copy": ["x"], "remote_workspace": "/w"}, plugin=plugin
+    )
+    assert (vm.plugin_path(), vm.target_path()) == ("/w/run-1/plugin", "/w/run-1/checkout")
     bare = RT.build("container", tmp_path)
     assert (bare.plugin_path(), bare.target_path()) == (None, None)
 
@@ -378,7 +526,12 @@ def test_the_vm_helpers_run_without_the_judge_keys(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "judge-openai")
     monkeypatch.setenv("NOT_A_KEY", "judge-openai")  # the value is what counts, whatever the name
     envs: list[dict[str, str]] = []
-    monkeypatch.setattr(RT.subprocess, "run", lambda argv, **kwargs: envs.append(kwargs.get("env")))
+
+    def record(argv, **kwargs):
+        envs.append(kwargs["env"])  # every helper is handed its environment
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(RT.subprocess, "run", record)
     config = {"exec_prefix": ["fake-shell", "--"], "sync": ["fake-copy", "{local}/", "{remote}/"], "fetch": ["x"]}
     rt = RT.build("vm", tmp_path, None, config)
     rt.prepare_repeat(0)
