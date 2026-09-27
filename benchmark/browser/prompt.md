@@ -6,13 +6,13 @@ four answers line up. A run records the prompt it sent, and two runs
 compare only when that text is the same.
 
 ```text
-You are a highly senior software engineer and architect. Evaluate the
-repository below from a software design and architecture perspective.
+You are a highly senior software engineer and architect.
+Evaluate the repository below from a software design and architecture perspective.
 Give it a score from 0 to 100, then defend your evaluation:
 https://github.com/baristaze/swe_guidelines
 
-Do not be biased by who wrote it, an agent or a human, or by how fast it
-was developed. Evaluate the material itself.
+Do not be biased by who wrote it, an agent or a human, or by how fast it was developed.
+Evaluate the material itself.
 ```
 
 ## The contract
