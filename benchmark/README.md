@@ -73,8 +73,9 @@ out of its way, because those two names often hold different accounts.
 
 The subject has a key of its own: `SUBJECT_ANTHROPIC_API_KEY`. A
 subject that runs a command, a skill's `claude -p` included, gets that
-value as `ANTHROPIC_API_KEY`, in its environment on the host and on
-another machine, and by `-e` in a container. It is spawned from an
+value as `ANTHROPIC_API_KEY`: in its environment on the host, by `-e`
+in a container, and through a file on another machine (see The vm
+runtime). It is spawned from an
 environment that never held a judge's key, on every runtime: every
 provider key name is taken out, and so is any variable whose value is
 a judge's key, whatever its name. So a subject key set to a judge's key
@@ -84,8 +85,9 @@ refuses a skill run whose subject has none.
 
 Out of the subject's environment is not out of its reach. The judges'
 keys stay in the harness process, out of the subject's reach, in the
-container runtime only. On the host the subject runs as the harness's
-own user and can read the harness's environment (see Runtimes).
+container and vm runtimes only. On the host the subject runs as the
+harness's own user and can read the harness's environment (see
+Runtimes).
 
 ## What a run leaves behind
 
@@ -123,8 +125,9 @@ outside the checkout, a fresh temporary folder per run:
 So no answer key, no earlier repeat's judge prompt, and no
 `CLAUDE.md` of the checkout is on a path the subject is given, or
 under a folder it starts in. In the container runtime none of them is
-in its reach at all; on the host a subject that looks for them finds
-them (see Runtimes). What a scenario
+in its reach at all, and in the vm runtime none is unless an override
+names a whole checkout (see The vm runtime). On the host a subject
+that looks for them finds them (see Runtimes). What a scenario
 collects from the workspace is copied into `artifacts/`, and the
 sandbox is removed when the run ends, however it ends. Every repeat
 starts in an empty workspace of its own, so no repeat sees what an
@@ -179,9 +182,11 @@ recorded as it is. The subject's command is recorded as it ran, so on
 the `host` runtime it names the sandbox, a folder that is gone once
 the run ends.
 
-On the `vm` runtime, the plugin the subject reads is the one at
-`remote_plugin`. `checkout` describes this machine's, and the run's
-notes say so.
+On the `vm` runtime, the subject reads copies of the plugin and the
+target this machine staged, so `checkout` and `target` describe what it
+read. A runtime config that names `remote_plugin` or `remote_target`
+replaces a copy with what the operator placed on that machine. No
+version describes that, and the run's notes say so.
 
 ## Runtimes
 
@@ -207,24 +212,14 @@ notes say so.
   Linux runner, so the workspace is opened to every user; the sandbox
   around it stays private. The benchmark workflow runs every scenario
   here, with the image built in a step that holds no key.
-- `vm` runs the command on another machine through a configured
-  prefix, for example `["limactl", "shell", "default", "--"]`, with a
-  configured sync command. The harness provisions no machine and
-  starts none; it composes the prefix and the sync. It copies neither
-  the plugin checkout nor the target either: `remote_plugin` and
-  `remote_target` in the runtime config say where they are on that
-  machine, and a run that needs one and is not told is refused before
-  it starts. Each run gets a folder of its own under
-  `remote_workspace`, named after the run folder, and each repeat a
-  folder inside it (`{remote}` in the sync and fetch commands names
-  it). So no run finds what an earlier run left there. The subject
-  runs inside the repeat's folder, so what it writes is what fetch
-  brings back. The run's folder is removed when the run ends. The
-  prefix has to hand its words on as words, as `limactl shell` and
-  `docker exec` do; `ssh` joins them into one remote shell line and
-  needs a wrapper. The plugin checkout at `remote_plugin` is whatever
-  the operator put there, not a staged payload. If it is a whole
-  checkout, the answer files are in it, and the subject can read them.
+- `vm` runs the subject on another machine through a configured
+  prefix, such as `limactl shell`. The machine is the boundary. The
+  harness copies the staged plugin and target there and nothing else
+  of this machine, so the judges' keys are out of the subject's reach,
+  and so are the answer files unless an override names a whole
+  checkout. The harness provisions no machine and starts none.
+  `runtime/lima/` holds the template of one that holds nothing of this
+  machine (see The vm runtime).
 
 A path on this machine means nothing in a container or on another
 machine. So the runtime answers where the plugin checkout and the
@@ -232,6 +227,155 @@ target are as the subject sees them, and those are the paths the
 subject is given: in `--plugin-dir`, in `--add-dir`, and in the prompt.
 
 All three write the same streams into the run folder.
+
+### The vm runtime
+
+A run takes the other machine alone. A lock, the folder
+`<remote_workspace>/.lock`, names the run that holds it. A second run
+there fails every repeat with a note until the first gives the machine
+back at its end. A harness that dies before its end leaves the lock;
+remove the folder once no run is using the machine.
+
+Each run gets a folder of its own there, under `remote_workspace`,
+named after the run folder. It is made with mode 0700, so no other
+user there reads it, and the lock keeps every other run out of it. It
+mirrors the sandbox:
+
+```text
+<remote_workspace>/
+  .lock/                   the run that holds the machine
+  <run>/
+    plugin/, target/       copies of the staged plugin and target, afresh before every repeat
+    workspace/<repeat>/    what the subject works in, empty at the start
+    home/<repeat>/, tmp/<repeat>/  the subject's private HOME and TMPDIR
+    keys/<repeat>/         one file per key the repeat's subject is handed
+    group/<repeat>         the process group the subject runs in
+```
+
+Before every repeat, the harness removes the run's folder whole and
+makes it again, so nothing an earlier repeat left in it reaches this
+one. That matters for a `CLAUDE.md` above the workspace too, because
+Claude Code loads every `CLAUDE.md` from its working folder up. The
+lock, beside the run's folder, stays, and fetch has already brought each
+earlier repeat's workspace back. Then the harness runs the config's
+`check` there. The folders above the run's folder, `<remote_workspace>/`
+and, with the Lima config, `/var/tmp`, outlast every repeat and the run,
+and the subject can write there. The harness resets neither; only a new
+machine does.
+
+The runtime config names the commands that reach it:
+
+| Key | What it does |
+|-----|--------------|
+| `exec_prefix` | the words before every command there, such as `["limactl", "shell", "--workdir", "/", "swe-benchmark", "--"]` |
+| `copy` | makes a copy of a staged folder there; `{local}` is the folder here, `{remote}` the path the copy takes there, `plugin/` or `target/` in the run's folder |
+| `remote_workspace` | the folder there that holds the lock and the run folders |
+| `sync`, `fetch` | optional; copy the repeat's workspace there before the subject runs, and back after; `{local}` and `{remote}` are the two workspaces |
+| `remote_plugin`, `remote_target` | optional; a path the operator placed there, used in place of a copy |
+| `prefix_env` | optional; the names the prefix takes from this machine's environment besides `PATH` and the subject's own; `HOME` by default |
+| `helper_timeout_s` | optional; how long a command other than the subject may take; 600 seconds by default |
+| `check` | optional; a command run there before every repeat; a repeat whose check fails runs no subject |
+
+The prefix has to hand its words on as words, as `limactl shell` and
+`docker exec` do. `ssh` joins them into one remote shell line and needs
+a wrapper. A run with no `exec_prefix`, or one that needs a plugin or a
+target and has neither `copy` nor the override, is refused before it
+starts.
+
+The copies are made afresh before every repeat, so no repeat reads what
+an earlier one changed in them. A dry run makes none. They are the
+staged payload, so `versions` describes what the subject read, and no
+answer file is among them. An override replaces a copy with whatever
+the operator put there. Nothing makes it afresh, no version describes
+it, and the run's notes say so. If the plugin there is a whole
+checkout, the answer files are in it, and the subject can read them.
+
+The subject's key never travels in a command line, and the prefix on
+this machine never holds it. Before every repeat, the harness writes it
+through stdin into a file of mode 0600 under the repeat's `keys/`. A
+wrapper exports the names the harness hands it, and no other file
+there, just before the subject starts. So the key is in no argument, no
+stream line, no note, and nothing the run folder keeps. A file a
+subject leaves under `keys/` reaches no later repeat. The run's folder
+there is removed when the run ends, and the key files with it.
+
+The prefix runs on this machine with the subject's environment, `PATH`,
+and the names `prefix_env` lists, and nothing else of the harness's.
+`limactl` needs `HOME` to find its machines. A probe, such as
+`claude --version`, and every other command the harness runs there get
+`PATH` and those names only.
+
+The subject runs in its repeat's workspace, so what it writes is what
+fetch brings back. Its HOME and TMPDIR are the repeat's own, as on the
+host, and they start empty, so no repeat finds what an earlier one left
+in them.
+
+The subject runs in a process group of its own there, made with
+`setsid` where the machine has it, and the group's id goes into
+`group/<repeat>`. Stopping the prefix here does not stop what it
+started there. So however a subject ends, on a timeout, a clean exit,
+or an interrupt, the harness kills that group through the prefix
+first, then the prefix here. A process that starts a session of its
+own leaves the group, and the kill does not reach it. Nor does it reach
+a container the subject starts, which is a child of Docker's daemon: it
+outlives the stop and the repeat, so a later repeat can find a port
+already allocated or a named volume already there.
+
+A step that fails there fails the repeat with a note, and the subject
+does not run: the machine stopped or held by another run, a copy, a
+key that cannot be written, or a `check` that fails. The run goes on, and it writes
+`results.json` and `report.md` either way. Every command other than the
+subject has a timeout, `helper_timeout_s`, and one that runs past it is
+stopped and noted. At the end the run's folder is removed, through
+`sudo` where it answers without a password, because a container the
+subject ran as root leaves files its user cannot remove. A folder that
+stays is named in the run's notes.
+
+`runtime/lima/benchmark.yaml` makes the machine with Lima, and
+`runtime/lima/runtime-config.yaml` drives it:
+
+```bash
+limactl create --name swe-benchmark benchmark/runtime/lima/benchmark.yaml
+limactl start swe-benchmark
+uv run benchmark/run.py --scenario review-om --runtime vm --runtime-config benchmark/runtime/lima/runtime-config.yaml
+```
+
+The machine is Ubuntu 26.04 LTS with 8 processors, 32 GiB of memory,
+and a 100 GiB disk. It carries Docker, rootful, with its socket owned
+by the machine's user, so a subject runs `docker` without sudo. It
+carries uv, Node, and Claude Code at the versions `runtime/Dockerfile`
+pins, and pnpm and Terraform at pins of their own.
+
+Nothing of this machine is in it. It runs in Lima's plain mode, which
+mounts no folder, forwards no port, and runs no guest agent. SSH
+forwards no agent, and no proxy setting of this machine is written into
+it. A firewall rule, loaded on every boot, refuses every connection
+that leaves the VM through its uplink for a private address. That
+covers this machine's loopback, which Lima's network answers at its
+gateway, `host.lima.internal`, this machine's address on its own
+network, and every other private, link-local, site-local, and shared
+(CGNAT) address. DNS to the resolvers and DHCP pass. Docker's networks
+inside the VM are not the uplink, so containers reach each other there
+as they do anywhere. The public internet stays open, because a subject
+needs it. The readiness probe checks the rule, so a machine whose
+firewall did not load never reports ready. The firewall script saves
+the table's listing as it loads it, and the runtime config's `check`
+compares the live table with that listing before every repeat. A table
+deleted or emptied, or a rule changed, removed, or added, fails the
+check, and the repeat runs no subject. The check catches a change made
+by accident or in passing. It cannot stop a subject with sudo that
+means to get around it, which can rewrite the saved listing too.
+
+The template pins Lima's `vz` machine type, macOS's own hypervisor. A
+host without it, such as Linux, drops that line, and Lima runs QEMU.
+QEMU's user network gives the VM an IPv6 prefix that reaches this
+machine's loopback, and the rule refuses that prefix too.
+
+The machine persists between runs. The harness removes what a run left
+in its own folder, and nothing else: the containers, volumes, and
+images a subject made stay. The machine's user has sudo, so a subject
+can change the machine itself. A changed pin takes a new machine:
+`limactl delete swe-benchmark`, then create it again.
 
 ## Scenarios
 
@@ -310,9 +454,9 @@ scenario can give the judges evidence:
   it, and the subject gets a copy of the target alone and a copy of
   the plugin that holds no fixture. So the answers are on no path the
   subject is given. The subject cannot read the answers in the
-  container runtime only: on the host it can read them at their fixed
-  path in the checkout, and on another machine it can read them in
-  whatever checkout `remote_plugin` names.
+  container runtime, nor in the vm runtime unless an override names a
+  whole checkout. On the host it can read them at their fixed path in
+  the checkout.
   On any other target the list would be wrong, so a run with
   `--target` drops it and says so; the source still goes to the
   judges.
