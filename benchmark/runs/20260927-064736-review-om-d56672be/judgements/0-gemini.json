@@ -1,0 +1,36 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 23.907,
+  "usage": {
+    "input_tokens": 6052,
+    "output_tokens": 3075,
+    "reasoning_tokens": 2823
+  },
+  "cost_usd": 0.049004,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 80,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "high",
+        "note": "The review fabricates a requirement for entities to declare `MANAGER_OWNED_FIELDS`, resulting in three false-positive findings under OM-03 for `Bin`, `StockMovement`, and `Warehouse`."
+      },
+      {
+        "severity": "low",
+        "note": "The findings omit quoting the specific guideline rules they rest on, missing one of the formatting requirements."
+      }
+    ],
+    "strengths": [
+      "The review demonstrated perfect recall by successfully finding all eight planted defects.",
+      "File paths and line numbers are precise and accurate for every finding.",
+      "The proposed fixes for the valid findings are correct and actionable."
+    ],
+    "rationale": "The reviewer achieved excellent recall, identifying every expected defect accurately and prescribing the correct fixes. However, the score is penalized for hallucinating a rule about `MANAGER_OWNED_FIELDS` which caused three false-positive flags, and for not quoting the guideline rules in the findings."
+  },
+  "raw": "{\n  \"score\": 80,\n  \"verdict\": \"pass\",\n  \"findings\": [\n    {\n      \"severity\": \"high\",\n      \"note\": \"The review fabricates a requirement for entities to declare `MANAGER_OWNED_FIELDS`, resulting in three false-positive findings under OM-03 for `Bin`, `StockMovement`, and `Warehouse`.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"note\": \"The findings omit quoting the specific guideline rules they rest on, missing one of the formatting requirements.\"\n    }\n  ],\n  \"strengths\": [\n    \"The review demonstrated perfect recall by successfully finding all eight planted defects.\",\n    \"File paths and line numbers are precise and accurate for every finding.\",\n    \"The proposed fixes for the valid findings are correct and actionable.\"\n  ],\n  \"rationale\": \"The reviewer achieved excellent recall, identifying every expected defect accurately and prescribing the correct fixes. However, the score is penalized for hallucinating a rule about `MANAGER_OWNED_FIELDS` which caused three false-positive flags, and for not quoting the guideline rules in the findings.\"\n}"
+}

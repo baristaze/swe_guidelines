@@ -1,0 +1,41 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 17.621,
+  "usage": {
+    "input_tokens": 8725,
+    "output_tokens": 1816,
+    "reasoning_tokens": 1114
+  },
+  "cost_usd": 0.07122,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 86,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The three OM-03 findings that Warehouse, Bin and StockMovement lack a `MANAGER_OWNED_FIELDS` tuple rest on a construct that appears nowhere in the source (base.py declares only `PROVENANCE_FIELDS`) and on no planted finding, so the evidence does not bear them out."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 finding on stock_movement.py:6 restates the planted OM-06 defect (the ledger line composing Trackable) under a second lens, which double-counts one defect."
+      },
+      {
+        "severity": "low",
+        "note": "No finding quotes the guideline rule it rests on, and none separates what the guideline requires from what the reviewer prefers; each gives only lens, location, and a fix."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the right lens at the right file and line: OM-04 and OM-17 in warehouse.py, OM-03 and OM-13 in bin.py, OM-06 in stock_movement.py, OM-12 and OM-10 in manager.py, and OM-15 in rules.py.",
+      "No item on the evidence's correct-on-purpose list is flagged; the passes for OM-02, OM-07, OM-11 and OM-14 match the evidence.",
+      "Every finding carries an existing lens id, a file:line pointer, and a concrete fix, and the review only reports without editing anything.",
+      "The scope header's counts are accurate (13 files, and 16 applied plus 2 not applicable), and OM-16 is marked unverified with a stated reason rather than guessed."
+    ],
+    "rationale": "Recall is complete, with all eight planted findings at the correct lens, file and line, and no correct-on-purpose item is flagged. Points come off for three unsupported `MANAGER_OWNED_FIELDS` findings that the source cannot verify, and for a duplicate OM-05 report of the OM-06 defect. Form is good but not full, since no finding quotes its rule or separates what the guideline requires from what the reviewer prefers."
+  },
+  "raw": "{\"score\": 86, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"medium\", \"note\": \"The three OM-03 findings that Warehouse, Bin and StockMovement lack a `MANAGER_OWNED_FIELDS` tuple rest on a construct that appears nowhere in the source (base.py declares only `PROVENANCE_FIELDS`) and on no planted finding, so the evidence does not bear them out.\"}, {\"severity\": \"low\", \"note\": \"The OM-05 finding on stock_movement.py:6 restates the planted OM-06 defect (the ledger line composing Trackable) under a second lens, which double-counts one defect.\"}, {\"severity\": \"low\", \"note\": \"No finding quotes the guideline rule it rests on, and none separates what the guideline requires from what the reviewer prefers; each gives only lens, location, and a fix.\"}], \"strengths\": [\"All eight planted defects are reported under the right lens at the right file and line: OM-04 and OM-17 in warehouse.py, OM-03 and OM-13 in bin.py, OM-06 in stock_movement.py, OM-12 and OM-10 in manager.py, and OM-15 in rules.py.\", \"No item on the evidence's correct-on-purpose list is flagged; the passes for OM-02, OM-07, OM-11 and OM-14 match the evidence.\", \"Every finding carries an existing lens id, a file:line pointer, and a concrete fix, and the review only reports without editing anything.\", \"The scope header's counts are accurate (13 files, and 16 applied plus 2 not applicable), and OM-16 is marked unverified with a stated reason rather than guessed.\"], \"rationale\": \"Recall is complete, with all eight planted findings at the correct lens, file and line, and no correct-on-purpose item is flagged. Points come off for three unsupported `MANAGER_OWNED_FIELDS` findings that the source cannot verify, and for a duplicate OM-05 report of the OM-06 defect. Form is good but not full, since no finding quotes its rule or separates what the guideline requires from what the reviewer prefers.\"}"
+}

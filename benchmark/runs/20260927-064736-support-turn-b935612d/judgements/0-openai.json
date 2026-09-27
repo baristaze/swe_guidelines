@@ -1,0 +1,40 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 15.946,
+  "usage": {
+    "input_tokens": 1466,
+    "output_tokens": 788,
+    "reasoning_tokens": 516
+  },
+  "cost_usd": 0.010812,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 78,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "The opening rollback decision comes before correlating a failing request ID across the app, database, and downstream signals, and a successful rollback would support rather than prove deploy causation."
+      },
+      {
+        "severity": "medium",
+        "note": "The tenant comparison names unusual records and large collections but does not show how to identify the particular failing row or confirm a tenant-specific size or timeout limit."
+      },
+      {
+        "severity": "low",
+        "note": "The staging replay and tenant-cache flush assume access to production-derived data and permission to change live state without explaining how to do either safely."
+      }
+    ],
+    "strengths": [
+      "The sequence uses errors and timing to narrow the failure before inspecting deploy-wide changes and tenant-specific data.",
+      "It correctly considers shared code, migrations, flags, placement, and cached state despite the endpoint code being unchanged.",
+      "Most steps say what their observations would rule out and end with verification of the tenant's error rate."
+    ],
+    "rationale": "This is a useful on-call plan with a strong deploy-to-tenant investigation and concrete tenant-shaped suspects. It falls short of the rubric's request-ID-led correlation and is less precise about proving which record or limit selects this tenant. The premature rollback framing and a few unqualified operational actions keep it from scoring higher."
+  },
+  "raw": "{\"score\":78,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"medium\",\"note\":\"The opening rollback decision comes before correlating a failing request ID across the app, database, and downstream signals, and a successful rollback would support rather than prove deploy causation.\"},{\"severity\":\"medium\",\"note\":\"The tenant comparison names unusual records and large collections but does not show how to identify the particular failing row or confirm a tenant-specific size or timeout limit.\"},{\"severity\":\"low\",\"note\":\"The staging replay and tenant-cache flush assume access to production-derived data and permission to change live state without explaining how to do either safely.\"}],\"strengths\":[\"The sequence uses errors and timing to narrow the failure before inspecting deploy-wide changes and tenant-specific data.\",\"It correctly considers shared code, migrations, flags, placement, and cached state despite the endpoint code being unchanged.\",\"Most steps say what their observations would rule out and end with verification of the tenant's error rate.\"],\"rationale\":\"This is a useful on-call plan with a strong deploy-to-tenant investigation and concrete tenant-shaped suspects. It falls short of the rubric's request-ID-led correlation and is less precise about proving which record or limit selects this tenant. The premature rollback framing and a few unqualified operational actions keep it from scoring higher.\"}"
+}

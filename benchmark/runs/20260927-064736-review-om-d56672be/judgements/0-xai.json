@@ -1,0 +1,39 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 145.855,
+  "usage": {
+    "input_tokens": 7076,
+    "output_tokens": 12517,
+    "reasoning_tokens": 12195
+  },
+  "cost_usd": 0.089254,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 75,
+    "verdict": "weak",
+    "findings": [
+      {
+        "severity": "medium",
+        "note": "Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) invent a MANAGER_OWNED_FIELDS requirement the source and lenses do not contain; OM-03 is only the created_at redeclaration."
+      },
+      {
+        "severity": "low",
+        "note": "The OM-05 note on stock_movement.py:6 restates the planted OM-06 ledger/Trackable defect under the wrong lens."
+      },
+      {
+        "severity": "low",
+        "note": "The header counts do not match the body (16 lenses vs 18 enumerated; 9 findings vs 13 bullets), and no finding quotes the rule it rests on."
+      }
+    ],
+    "strengths": [
+      "All eight planted defects are reported under the correct lens at the right file and line, with a concrete fix.",
+      "Nothing listed as clean is flagged, and the passed, unverified, and not-applicable calls match the source."
+    ],
+    "rationale": "Recall is complete: every planted defect is cited at the right file and line under the right lens, and no clean behavior is flagged. Precision is the gap: three OM-03 bullets require a MANAGER_OWNED_FIELDS tuple that neither the source nor the lenses define, and the StockMovement issue is filed again under OM-05. Form is mostly usable but the summary counts disagree with the body and the findings never quote the rule. That is a usable review with a material precision miss, not a failed one."
+  },
+  "raw": "{\"score\":75,\"verdict\":\"weak\",\"findings\":[{\"severity\":\"medium\",\"note\":\"Three OM-03 findings (bin.py:9, stock_movement.py:6, warehouse.py:4) invent a MANAGER_OWNED_FIELDS requirement the source and lenses do not contain; OM-03 is only the created_at redeclaration.\"},{\"severity\":\"low\",\"note\":\"The OM-05 note on stock_movement.py:6 restates the planted OM-06 ledger/Trackable defect under the wrong lens.\"},{\"severity\":\"low\",\"note\":\"The header counts do not match the body (16 lenses vs 18 enumerated; 9 findings vs 13 bullets), and no finding quotes the rule it rests on.\"}],\"strengths\":[\"All eight planted defects are reported under the correct lens at the right file and line, with a concrete fix.\",\"Nothing listed as clean is flagged, and the passed, unverified, and not-applicable calls match the source.\"],\"rationale\":\"Recall is complete: every planted defect is cited at the right file and line under the right lens, and no clean behavior is flagged. Precision is the gap: three OM-03 bullets require a MANAGER_OWNED_FIELDS tuple that neither the source nor the lenses define, and the StockMovement issue is filed again under OM-05. Form is mostly usable but the summary counts disagree with the body and the findings never quote the rule. That is a usable review with a material precision miss, not a failed one.\"}"
+}

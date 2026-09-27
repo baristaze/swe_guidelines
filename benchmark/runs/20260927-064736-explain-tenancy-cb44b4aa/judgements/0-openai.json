@@ -1,0 +1,32 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 12.25,
+  "usage": {
+    "input_tokens": 1589,
+    "output_tokens": 571,
+    "reasoning_tokens": 407
+  },
+  "cost_usd": 0.008888,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 93,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The detailed login and session mechanics and closing review commands add length beyond what the tenant-fence question needs."
+      }
+    ],
+    "strengths": [
+      "The answer locates the primary fence in each storage query's tenant predicate rather than treating the method signature as enforcement.",
+      "It identifies cross-tenant contract cases as evidence and describes the recorded negative control: green with row-level security on and failing with it off.",
+      "It cites section titles rather than numbers and names reviewer lenses by ID."
+    ],
+    "rationale": "The artifact meets the rubric's substantive requirements, including the distinction between the query predicate and the policy that catches a missing predicate. Its only meaningful weakness is excess detail around the core explanation."
+  },
+  "raw": "{\"score\":93,\"verdict\":\"pass\",\"findings\":[{\"severity\":\"low\",\"note\":\"The detailed login and session mechanics and closing review commands add length beyond what the tenant-fence question needs.\"}],\"strengths\":[\"The answer locates the primary fence in each storage query's tenant predicate rather than treating the method signature as enforcement.\",\"It identifies cross-tenant contract cases as evidence and describes the recorded negative control: green with row-level security on and failing with it off.\",\"It cites section titles rather than numbers and names reviewer lenses by ID.\"],\"rationale\":\"The artifact meets the rubric's substantive requirements, including the distinction between the query predicate and the policy that catches a missing predicate. Its only meaningful weakness is excess detail around the core explanation.\"}"
+}

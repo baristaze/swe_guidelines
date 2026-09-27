@@ -1,0 +1,27 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 38.865,
+  "usage": {
+    "input_tokens": 2907,
+    "output_tokens": 3147,
+    "reasoning_tokens": 2933
+  },
+  "cost_usd": 0.024696,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 96,
+    "verdict": "pass",
+    "findings": [],
+    "strengths": [
+      "Names the tenant predicate as the fence and places it in the query WHERE clause, where storage applies it, rather than in a signature or a manager hope.",
+      "States the proof as cross-tenant contract cases plus the deliberate breach: one predicate removed, suite green with The Second Fence policy live, failing with that policy off, both runs recorded.",
+      "Cites only section titles and names reviewer lenses by id (CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, STO-33)."
+    ],
+    "rationale": "The answer does what the rubric requires: the predicate is the fence, applied in the query, proved by cross-tenant cases and by the recorded two-run breach against The Second Fence. It stays inside the guideline, cites titles rather than numbers, and names lenses by id. The extra RLS and login detail answers how the fence is held rather than padding it."
+  },
+  "raw": "{\"score\":96,\"verdict\":\"pass\",\"findings\":[],\"strengths\":[\"Names the tenant predicate as the fence and places it in the query WHERE clause, where storage applies it, rather than in a signature or a manager hope.\",\"States the proof as cross-tenant contract cases plus the deliberate breach: one predicate removed, suite green with The Second Fence policy live, failing with that policy off, both runs recorded.\",\"Cites only section titles and names reviewer lenses by id (CTX-09, CTX-12, CTX-13, CTX-30, CTX-31, CTX-32, STO-28, STO-33).\"],\"rationale\":\"The answer does what the rubric requires: the predicate is the fence, applied in the query, proved by cross-tenant cases and by the recorded two-run breach against The Second Fence. It stays inside the guideline, cites titles rather than numbers, and names lenses by id. The extra RLS and login detail answers how the fence is held rather than padding it.\"}"
+}

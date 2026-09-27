@@ -1,0 +1,42 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 10.23,
+  "usage": {
+    "input_tokens": 2673,
+    "output_tokens": 841,
+    "reasoning_tokens": 263
+  },
+  "cost_usd": 0.027512,
+  "error": null,
+  "fallback": null,
+  "verdict": {
+    "score": 85,
+    "verdict": "pass",
+    "findings": [
+      {
+        "severity": "low",
+        "note": "The four-part breakdown of The Second Fence (declared scope, funnel, NULLIF, three logins) goes past what the question needs and makes the answer longer than it has to be."
+      },
+      {
+        "severity": "low",
+        "note": "The policy check and login assertions are listed as coequal proofs next to the cross-tenant case and negative control, which blurs the rubric's split between evidence (cross-tenant cases) and verification (the deliberate breach)."
+      },
+      {
+        "severity": "low",
+        "note": "Specific claims such as the 'five pre-identity lookups' and the STO-33 parenthetical are stated precisely but add detail a reader cannot easily check against the question's scope."
+      }
+    ],
+    "strengths": [
+      "It names the tenant predicate as the fence and places it concretely in the WHERE clause of storage queries, quoting Namespace Shape and Separation of Layers.",
+      "It presents the cross-tenant contract case as the evidence and lists the paths it must cover.",
+      "The negative control is described exactly: one predicate removed, green with the policy live, failing with it off, both runs recorded, with the 'claim, not evidence' quote.",
+      "Every citation uses a section title and none uses a number.",
+      "Reviewer lenses are named by id and paired with the matching review skills."
+    ],
+    "rationale": "Every element the rubric requires is present and accurate: predicate as fence and where it is applied, cross-tenant cases as evidence, and the two-run negative control against The Second Fence with both runs recorded. Citations use titles and lenses are named by id, with no general multi-tenancy advice. Points come off because the RLS mechanics and the extra proof categories add length beyond what the question needs and slightly dilute the evidence-versus-verification framing."
+  },
+  "raw": "{\"score\": 85, \"verdict\": \"pass\", \"findings\": [{\"severity\": \"low\", \"note\": \"The four-part breakdown of The Second Fence (declared scope, funnel, NULLIF, three logins) goes past what the question needs and makes the answer longer than it has to be.\"}, {\"severity\": \"low\", \"note\": \"The policy check and login assertions are listed as coequal proofs next to the cross-tenant case and negative control, which blurs the rubric's split between evidence (cross-tenant cases) and verification (the deliberate breach).\"}, {\"severity\": \"low\", \"note\": \"Specific claims such as the 'five pre-identity lookups' and the STO-33 parenthetical are stated precisely but add detail a reader cannot easily check against the question's scope.\"}], \"strengths\": [\"It names the tenant predicate as the fence and places it concretely in the WHERE clause of storage queries, quoting Namespace Shape and Separation of Layers.\", \"It presents the cross-tenant contract case as the evidence and lists the paths it must cover.\", \"The negative control is described exactly: one predicate removed, green with the policy live, failing with it off, both runs recorded, with the 'claim, not evidence' quote.\", \"Every citation uses a section title and none uses a number.\", \"Reviewer lenses are named by id and paired with the matching review skills.\"], \"rationale\": \"Every element the rubric requires is present and accurate: predicate as fence and where it is applied, cross-tenant cases as evidence, and the two-run negative control against The Second Fence with both runs recorded. Citations use titles and lenses are named by id, with no general multi-tenancy advice. Points come off because the RLS mechanics and the extra proof categories add length beyond what the question needs and slightly dilute the evidence-versus-verification framing.\"}"
+}
