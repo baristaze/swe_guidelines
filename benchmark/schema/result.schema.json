@@ -28,7 +28,7 @@
     "guideline_sha": { "type": "string" },
     "target_sha": { "type": ["string", "null"] },
     "versions": {
-      "description": "Every version that decides a score, each as a reference that resolves off the machine that ran it: the checkout, Claude Code as the runtime answers it, the image, and the target and the expected findings by path and content hash.",
+      "description": "Every version that decides a score, each as a reference that resolves off the machine that ran it: the checkout, Claude Code as the runtime answers it, the image, the target and the expected findings by path and content hash, and what agentic judges read beside the output.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -62,7 +62,37 @@
           }
         },
         "target": { "$ref": "#/$defs/content" },
-        "expected": { "$ref": "#/$defs/content" }
+        "expected": { "$ref": "#/$defs/content" },
+        "references": {
+          "description": "Each reference agentic judges read, by name: paths of the checkout with one hash over them, or a public repository at a tag with the commit it names and the guideline release it pins.",
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["source", "paths", "sha256"],
+                "additionalProperties": false,
+                "properties": {
+                  "source": { "const": "checkout" },
+                  "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["source", "url", "tag", "commit", "pins"],
+                "additionalProperties": false,
+                "properties": {
+                  "source": { "const": "repository" },
+                  "url": { "type": "string" },
+                  "tag": { "type": "string" },
+                  "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+                  "pins": { "description": "The guideline release the repository pins; null when it names none.", "type": ["string", "null"] }
+                }
+              }
+            ]
+          }
+        }
       }
     },
     "notes": { "type": "array", "items": { "type": "string" } },
@@ -186,7 +216,7 @@
                 "provider": { "type": "string", "enum": ["anthropic", "openai", "gemini", "xai"] },
                 "model": { "type": "string" },
                 "effort": { "type": "string" },
-                "status": { "type": "string", "enum": ["ok", "skipped", "error"] },
+                "status": { "type": "string", "enum": ["ok", "skipped", "error", "missed"] },
                 "latency_s": { "type": "number", "minimum": 0 },
                 "usage": {
                   "description": "input_tokens, output_tokens with the reasoning included, and reasoning_tokens when the provider reports it.",
@@ -213,6 +243,48 @@
                       }
                     }
                   ]
+                },
+                "judged": {
+                  "description": "An agentic judgement: each reference's weight, score, gaps, and strengths, the weighted score the harness computed, the rationale, what the loop spent in calls and turns, and the transcript's path in the run folder.",
+                  "type": "object",
+                  "required": ["score", "references", "rationale", "tool_calls", "turns", "transcript"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+                    "references": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": ["weight", "score", "gaps", "strengths"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+                          "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+                          "gaps": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": ["severity", "what", "in_output", "in_reference"],
+                              "additionalProperties": false,
+                              "properties": {
+                                "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+                                "what": { "type": "string" },
+                                "in_output": { "type": "string" },
+                                "in_reference": { "type": "string" },
+                                "lens": { "type": "string" },
+                                "fix": { "type": "string" }
+                              }
+                            }
+                          },
+                          "strengths": { "type": "array", "items": { "type": "string" } }
+                        }
+                      }
+                    },
+                    "rationale": { "type": "string" },
+                    "tool_calls": { "type": "integer", "minimum": 0 },
+                    "turns": { "type": "integer", "minimum": 0 },
+                    "transcript": { "type": "string" }
+                  }
                 },
                 "verdict": {
                   "oneOf": [
@@ -261,14 +333,41 @@
             "additionalProperties": false,
             "properties": {
               "mean": { "type": "number" },
-              "min": { "type": "integer" },
-              "max": { "type": "integer" },
+              "min": { "description": "A verdict's score is whole; a weighted score has one decimal place.", "type": "number" },
+              "max": { "type": "number" },
               "n": { "type": "integer", "minimum": 0 },
               "stdev": { "type": ["number", "null"] }
             }
           }
         },
         "overall_mean": { "type": ["number", "null"] },
+        "references": {
+          "description": "For agentic judges, each reference in the scenario's order: its weight, each provider's mean, the mean of those means, the range and count of its scores, a failed repeat as 0, and its gaps by severity.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["weight", "mean", "per_provider", "min", "max", "n", "gaps"],
+            "additionalProperties": false,
+            "properties": {
+              "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+              "mean": { "type": ["number", "null"] },
+              "per_provider": { "type": "object", "additionalProperties": { "type": "number" } },
+              "min": { "type": ["integer", "null"] },
+              "max": { "type": ["integer", "null"] },
+              "n": { "type": "integer", "minimum": 0 },
+              "gaps": {
+                "type": "object",
+                "required": ["high", "medium", "low"],
+                "additionalProperties": false,
+                "properties": {
+                  "high": { "type": "integer", "minimum": 0 },
+                  "medium": { "type": "integer", "minimum": 0 },
+                  "low": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
         "failed_repeats": {
           "description": "The repeats whose subject failed; each scores 0 in every provider's mean.",
           "type": "array",
