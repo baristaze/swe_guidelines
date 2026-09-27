@@ -55,13 +55,13 @@ never run the harness from there.
    something with no flag behind it, say so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
-   When the prompt names no runtime, pass no `--runtime`. The harness
-   refuses any other with exit 7 and runs nothing. So when the prompt
-   names a runtime that `list` does not show for the scenario, run
-   nothing, neither on that runtime nor on another, and say so. A `qa`
-   subject runs no command on any runtime: the harness asks the model
-   itself. The runtime the run takes, named or the scenario's first,
-   asks for more:
+   The harness refuses a runtime the scenario does not list with exit
+   7 and runs nothing. So when the prompt names a runtime that `list`
+   does not show for the scenario, run nothing, neither on that runtime
+   nor on another, and say so. When the prompt names no runtime, pass
+   no `--runtime`. A `qa` subject runs no command on any runtime: the
+   harness asks the model itself. The runtime the run takes, named or
+   the scenario's first, asks for more:
    - `container` runs the subject with `docker run` on this machine,
      so it needs a Docker engine here. Pass `--build` on every
      container run. The harness builds the image only when `--build`
