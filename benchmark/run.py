@@ -29,6 +29,9 @@ import argparse
 import dataclasses
 import json
 import os
+import posixpath
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -41,8 +44,10 @@ ROOT = BENCHMARK.parent
 if str(BENCHMARK) not in sys.path:
     sys.path.insert(0, str(BENCHMARK))
 
+from harness import archive as A  # noqa: E402
 from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
+from harness import phases as PH  # noqa: E402
 from harness import providers as P  # noqa: E402
 from harness import redact as X  # noqa: E402
 from harness import results as R  # noqa: E402
@@ -65,6 +70,13 @@ VERSIONED = (*RT.PLUGIN_PAYLOAD, "benchmark", ":(exclude)benchmark/runs")
 # was made or spent, and the benchmark workflow reads it as a scenario to
 # skip, not one that failed.
 NOT_LISTED = 7
+# How long a command the harness runs where the subject runs may take: a
+# checkpoint, the archive.
+HELPER_TIMEOUT_S = 600
+# The name a subject that runs no phases of its own gives its one session.
+ONE_PHASE = "subject"
+# The session the harness's own commands run in, a name no phase can take.
+HARNESS_SESSION = "_harness"
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -209,10 +221,95 @@ def subject_model(scn: S.Scenario, flag: str | None, matrix: dict[str, Any]) -> 
     return J.models_for(matrix, provider)[0] or None
 
 
+def phases_of(scn: S.Scenario) -> list[S.Phase]:
+    """The sessions a skill subject runs: its phases, or one made of its prompt and its bounds."""
+    if scn.subject.phases:
+        return list(scn.subject.phases)
+    return [
+        S.Phase(
+            name=ONE_PHASE,
+            prompt=scn.subject.prompt,
+            max_turns=scn.subject.max_turns,
+            max_usd=scn.subject.max_usd or 0.0,
+            timeout_s=scn.subject.timeout_s,
+        )
+    ]
+
+
+def phase_prompt(scn: S.Scenario, phase: S.Phase, target: str | None) -> tuple[str, bool]:
+    """A phase's prompt as the subject reads it, and whether it is given the target.
+
+    A phase is told of the target only where its prompt names `{target}`,
+    and nothing is added to its prompt but the handoff note's sentence
+    when it is hinted. So a phase that is not told of the target, or of
+    the note, reads only its prompt and what is in its working folder.
+    """
+    prompt = phase.prompt
+    reads = "{target}" in prompt
+    if reads:
+        if not target:
+            raise S.ScenarioError(f"scenario {scn.name}: phase {phase.name} names {{target}} and the run has no target")
+        prompt = prompt.replace("{target}", target)
+    if phase.hint:
+        start = scn.subject.output if phase.cwd == "output" and scn.subject.output else "."
+        prompt = f"{prompt.rstrip()}\n\n{PH.HINT.format(path=posixpath.relpath(PH.HANDOFF, start))}"
+    return prompt, reads
+
+
+def phase_argv(
+    scn: S.Scenario,
+    phase: S.Phase,
+    name: str,
+    plugin: str | None,
+    target: str | None,
+    claude: str = "claude",
+    model: str | None = None,
+    resume: str | None = None,
+) -> list[str]:
+    """The `claude -p` one session of a skill subject runs, with its bounds.
+
+    The session writes every turn to stdout as a JSON line
+    (`--output-format stream-json --verbose`). Claude Code holds the turn
+    cap and the spend cap itself. A resumed session names the session it
+    continues. A phase that starts in the output folder is started there
+    by a shell, since the runtime starts every command in the workspace.
+    """
+    if scn.subject.phases:
+        prompt, reads = phase_prompt(scn, phase, target)
+    else:
+        # The workspace is the subject's working directory; the target is outside it.
+        prompt, reads = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip(), bool(target)
+    argv = [
+        claude,
+        "-p",
+        prompt,
+        "--plugin-dir",
+        str(plugin),
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--max-turns",
+        str(phase.max_turns),
+        "--max-budget-usd",
+        f"{phase.max_usd:g}",
+    ]
+    if model:
+        argv += ["--model", model]
+    if reads and target:
+        argv += ["--add-dir", target]
+    if scn.subject.allowed_tools:
+        argv += ["--allowedTools", ",".join(scn.subject.allowed_tools)]
+    if resume:
+        argv += ["--resume", resume]
+    if phase.cwd == "output" and scn.subject.output:
+        argv = ["sh", "-c", PH.IN_FOLDER, "sh", scn.subject.output, *argv]
+    return argv
+
+
 def subject_argv(
     scn: S.Scenario, name: str, plugin: str | None, target: str | None, claude: str = "claude", model: str | None = None
 ) -> list[str]:
-    """The command a subject of each kind runs. `qa` runs no command.
+    """The command a subject of each kind runs; for a skill, its first session. `qa` runs no command.
 
     `plugin` and `target` are paths as the subject sees them, which the
     runtime answers: this machine's paths on the host, the mount points
@@ -222,48 +319,36 @@ def subject_argv(
         return [w.replace("{target}", target or "").replace("{plugin}", plugin or "") for w in scn.subject.argv]
     if scn.kind == "qa":
         return []
-    prompt = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip()
-    argv = [
-        claude,
-        "-p",
-        prompt,
-        "--plugin-dir",
-        str(plugin),
-        "--output-format",
-        "json",
-        "--max-turns",
-        str(scn.subject.max_turns),
-    ]
-    if model:
-        argv += ["--model", model]
-    if target:
-        # The workspace is the subject's working directory; the target is outside it.
-        argv += ["--add-dir", target]
-    if scn.subject.allowed_tools:
-        argv += ["--allowedTools", ",".join(scn.subject.allowed_tools)]
-    return argv
+    return phase_argv(scn, phases_of(scn)[0], name, plugin, target, claude, model)
+
+
+def envelope(stdout: str) -> dict[str, Any] | None:
+    """The result of a `claude -p` session: its last `result` line, else the whole output read as one JSON object."""
+    found = PH.final_result(stdout.split("\n"))
+    if found is not None:
+        return found
+    try:
+        data = json.loads(stdout.strip())
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
-    """The answer, the models, and the error flag of a `claude --output-format json` envelope.
+    """The answer, the models, and the error flag of a `claude -p` session's result.
 
     The models are the keys of `modelUsage`: the models that answered, read
-    back so a run records what ran and not only what it asked for. Output
-    that is not an envelope is the answer as it is, with no model and no
-    error.
+    back so a run records what ran and not only what it asked for. A
+    result that a bound ended carries no answer. Output with no result is
+    the answer as it is, with no model and no error.
     """
-    text = stdout.strip()
-    if not text.startswith("{"):
-        return stdout, [], False
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return stdout, [], False
-    if not isinstance(data, dict) or not isinstance(data.get("result"), str):
+    data = envelope(stdout)
+    if data is None or not (isinstance(data.get("result"), str) or data.get("type") == "result"):
         return stdout, [], False
     usage = data.get("modelUsage")
     models = sorted(str(m) for m in usage) if isinstance(usage, dict) else []
-    return data["result"], models, data.get("is_error") is True
+    answer = data["result"] if isinstance(data.get("result"), str) else ""
+    return answer, models, data.get("is_error") is True
 
 
 ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
@@ -293,7 +378,7 @@ def envelope_thinking(usage: Any, models: Any) -> int | None:
 
 
 def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
-    """The tokens and the cost in US dollars of a `claude --output-format json` envelope.
+    """The tokens and the cost in US dollars of a `claude -p` session's result.
 
     Claude Code prices its own run, caching included, as `total_cost_usd`;
     that figure is the subject's cost. `input_tokens` is every input token,
@@ -301,14 +386,11 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     `output_tokens` already counts the thinking, and `reasoning_tokens`
     names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
     `thinkingTokens` over `modelUsage`, and no key when the envelope reports
-    neither. Output that is not an envelope spent nothing the run can see:
-    no tokens, cost None.
+    neither. Output with no result spent nothing the run can see: no
+    tokens, cost None.
     """
-    try:
-        data = json.loads(stdout.strip())
-    except json.JSONDecodeError:
-        return {}, None
-    if not isinstance(data, dict):
+    data = envelope(stdout)
+    if data is None:
         return {}, None
     raw = data.get("usage")
     counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if isinstance(v, int) and not isinstance(v, bool)}
@@ -374,29 +456,297 @@ def run_subject_qa(
     return RT.ExitStatus(code=0, duration_s=time.monotonic() - started), text, usage
 
 
-def collect_files(rt: RT.BaseRuntime, globs: list[str], art_dir: Path, index: int) -> tuple[list[str], list[str]]:
-    """Copy the collected files of one repeat and return their paths and their text.
+def collect_files(rt: RT.BaseRuntime, files: list[Path], art_dir: Path, index: int) -> tuple[list[str], list[str]]:
+    """Copy the collected files of one repeat, byte for byte, and return their paths and their text for the judges.
 
     A file keeps its path inside the workspace, under `workspace/` in the
     repeat's artifact folder: two files of the same name in two folders
     stay two files, and none of them overwrites the harness's own
-    `answer.md` or `judge-prompt.md`.
+    `answer.md` or `judge-prompt.md`. A file with a NUL byte in its first
+    8 KiB is binary, as git counts it: it is copied as it is, and the
+    judges are told its size, not its bytes.
     """
     paths: list[str] = []
     parts: list[str] = []
-    for file in rt.collect(globs) if globs else []:
+    for file in files:
         rel = file.relative_to(rt.workspace).as_posix()
-        text = file.read_text(encoding="utf-8", errors="replace")
         copy = art_dir / "workspace" / rel
         copy.parent.mkdir(parents=True, exist_ok=True)
-        copy.write_text(text, encoding="utf-8")
+        shutil.copyfile(file, copy)
+        data = copy.read_bytes()
         paths.append(f"artifacts/{index}/workspace/{rel}")
-        parts.append(f"### File: {rel}\n\n{text}")
+        if b"\0" in data[:8192]:
+            parts.append(f"### File: {rel}\n\n(binary, {len(data)} bytes; not shown)")
+        else:
+            parts.append(f"### File: {rel}\n\n{data.decode('utf-8', errors='replace')}")
     return paths, parts
+
+
+def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | None) -> dict[str, Any]:
+    """Move the output's zip into the repeat's artifacts, redacted, with its manifest; return its record."""
+    kept = art_dir / A.ZIP
+    shutil.move(str(zip_file), str(kept))
+    X.redact_zip(kept, X.key_values())
+    A.write_manifest(kept)
+    return {**A.record(kept, run_dir), "commit": commit}
+
+
+@dataclasses.dataclass
+class Budget:
+    """The run's spend cap over the subject and the judges, in US dollars, and what the run has spent."""
+
+    cap: float | None
+    spent: float = 0.0
+
+    def reached(self) -> bool:
+        return self.cap is not None and self.spent >= self.cap
+
+    def says(self) -> str:
+        return f"the run's spend cap of ${self.cap:g} was reached at ${self.spent:.4f}"
+
+
+@dataclasses.dataclass
+class Plan:
+    """What every session of a skill subject runs with, as the subject sees it."""
+
+    name: str
+    plugin: str | None
+    target: str | None
+    claude: str
+    model: str | None
+    prices: dict[str, dict[str, float]]
+    budget: Budget
+    env: dict[str, str]
+
+
+@dataclasses.dataclass
+class SkillRepeat:
+    """One repeat of a skill subject: how it ended, its answer, and what its sessions did."""
+
+    status: RT.ExitStatus
+    answer: str
+    models: list[str]
+    usage: dict[str, int]
+    cost: float | None
+    phases: list[dict[str, Any]]
+    commit: str | None = None
+    gates: list[dict[str, Any]] | None = None
+    notes: list[str] = dataclasses.field(default_factory=list)
+
+
+def harness_run(
+    rt: RT.BaseRuntime, harness: CliStream, plan: Plan, argv: list[str], timeout_s: int = HELPER_TIMEOUT_S
+) -> tuple[RT.ExitStatus, list[str]]:
+    """Run a command of the harness's where the subject runs, in its workspace, with no key; its status and stdout.
+
+    It gets a HOME of its own, never a session's: no phase's name starts with `_`.
+    """
+    rt.use_session(HARNESS_SESSION)
+    mark = harness.count
+    env = {k: v for k, v in plan.env.items() if k not in RT.SUBJECT_KEYS}
+    status = rt.run(argv, rt.workspace, env, harness, timeout_s=timeout_s)
+    return status, [r["line"] for r in CliStream.read(harness.path)[mark:] if r.get("s") == "out"]
+
+
+def checkpoint(rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, message: str) -> tuple[str | None, str | None]:
+    """Commit every change in the output folder; the commit's id, or why there is none."""
+    harness.note(f"[checkpoint] {message}")
+    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, message])
+    commit = next((line.strip() for line in reversed(out) if re.fullmatch(r"[0-9a-f]{40,64}", line.strip())), None)
+    if status.ok and commit:
+        return commit, None
+    if status.code == 3:
+        return None, f"there is no output folder {folder} to commit"
+    return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl"
+
+
+def run_skill(
+    scn: S.Scenario, rt: RT.BaseRuntime, streams: CliStream, harness: CliStream | None, plan: Plan, index: int
+) -> SkillRepeat:
+    """Run a skill subject's sessions in one repeat: its phases, or its one prompt.
+
+    Each phase runs with its bounds, watched through the stream. After
+    each, the output folder is committed. A phase that fails ends the
+    repeat; one that hits a bound ends it only when it says so. The
+    run's spend cap is checked before each phase. After the last phase,
+    the harness archives the last commit and runs the gates on the tree.
+    """
+    folder = scn.subject.output
+    phased = bool(scn.subject.phases)
+    records: list[dict[str, Any]] = []
+    notes: list[str] = []
+    answers: list[str] = []
+    models: set[str] = set()
+    usage: dict[str, int] = {}
+    cost = 0.0
+    priced = False
+    failed: RT.ExitStatus | None = None
+    last = RT.ExitStatus(code=0)
+    duration = 0.0
+    sessions: dict[str, str | None] = {}
+    homes: dict[str, str] = {}
+    commit: str | None = None
+    before: S.Phase | None = None
+    for number, phase in enumerate(phases_of(scn), start=1):
+        if plan.budget.reached():
+            notes.append(f"repeat {index}: {plan.budget.says()}; phase {phase.name} and after did not run")
+            break
+        home = phase.name if phase.session == "fresh" or before is None else homes[before.name]
+        homes[phase.name] = home
+        # A subject that builds an output shares its repeat with the harness's commands, so its HOME is named too.
+        rt.use_session(home if phased or folder else None)
+        resume = sessions.get(before.name) if phase.session == "resume" and before is not None else None
+        if phase.session == "resume" and not resume:
+            failed = RT.ExitStatus(code=2)
+            notes.append(f"repeat {index}: phase {phase.name} resumes a session the phase before it did not report")
+            records.append({"name": phase.name, "session": phase.session, "status": "failed", "capped": None})
+            break
+        if phase.hint:
+            rt.show(PH.HANDOFF)
+        argv = phase_argv(scn, phase, plan.name, plan.plugin, plan.target, plan.claude, plan.model, resume)
+        watch = PH.Watch(phase.max_usd, plan.prices, scn.subject.gates, phase.max_gate_reruns)
+        mark = streams.count
+        streams.note(f"[phase {phase.name}] {phase.session}, at most {phase.max_turns} turns and ${phase.max_usd:g}")
+        streams.listener = watch.feed
+        try:
+            status = rt.run(argv, rt.workspace, plan.env, streams, timeout_s=phase.timeout_s, stop=watch.stop)
+        finally:
+            streams.listener = None
+        lines = [r["line"] for r in CliStream.read(streams.path)[mark:] if r.get("s") == "out"]
+        result = PH.final_result(lines)
+        text = "\n".join(lines)
+        answer, found, is_error = read_envelope(text) if result is not None else ("", [], False)
+        spent_usage, spent = read_envelope_spend(text) if result is not None else ({}, None)
+        if is_error:
+            status = dataclasses.replace(status, is_error=True)
+        cap = watch.capped or PH.cap_of(result)
+        outcome = "capped" if cap and not status.timed_out else "ok" if status.ok else "failed"
+        streams.note(f"[phase {phase.name}] {outcome}" + (f" at its {cap} cap" if outcome == "capped" else ""))
+        if phase.hint:
+            rt.hide(PH.HANDOFF)
+        estimated = watch.estimated_usd
+        phase_cost = spent if spent is not None else estimated
+        plan.budget.spent += phase_cost
+        cost += phase_cost
+        priced = priced or spent is not None
+        if spent is None and estimated:
+            notes.append(
+                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}"
+            )
+        for name, value in (spent_usage or watch.usage()).items():
+            usage[name] = usage.get(name, 0) + value
+        models.update(found)
+        sessions[phase.name] = PH.session_id(lines)
+        if answer.strip():
+            answers.append(f"## {phase.name}\n\n{answer}" if phased else answer)
+        record: dict[str, Any] = {
+            "name": phase.name,
+            "session": phase.session,
+            "status": outcome,
+            "capped": cap if outcome == "capped" else None,
+            "exit_status": status.as_dict(),
+            "session_id": sessions[phase.name],
+            "turns": result.get("num_turns") if result and isinstance(result.get("num_turns"), int) else None,
+            "models": sorted(found),
+            "cost_usd": spent,
+            "estimated_usd": estimated,
+        }
+        if scn.subject.gates:
+            record["gate_runs"] = watch.gate_runs()
+        if watch.unpriced:
+            record["unpriced"] = sorted(watch.unpriced)
+        if folder and harness is not None:
+            made, why = checkpoint(rt, harness, plan, folder, f"checkpoint {number}: {phase.name}, {outcome}")
+            record["checkpoint"] = made
+            commit = made or commit
+            if why:
+                notes.append(f"repeat {index}: after phase {phase.name}, {why}")
+        records.append(record)
+        duration += status.duration_s
+        last = status
+        if outcome == "failed":
+            failed = status
+            if phased:
+                notes.append(f"repeat {index}: phase {phase.name} failed; the phases after it did not run")
+            break
+        if outcome == "capped" and phase.on_cap == "stop":
+            notes.append(f"repeat {index}: phase {phase.name} ended at its {cap} cap, and it stops the repeat there")
+            break
+        before = phase
+    gates: list[dict[str, Any]] | None = None
+    if folder and harness is not None:
+        if commit is None:
+            notes.append(f"repeat {index}: no commit of {folder} to archive, and no tree to run the gates on")
+        else:
+            archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE])
+            if not archived.ok:
+                notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
+            gates = []
+            for gate in scn.subject.gates:
+                harness.note(f"[gate] {gate}")
+                ran, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.GATE, "sh", folder, gate], scn.subject.gate_timeout_s)
+                gates.append(
+                    {
+                        "command": gate,
+                        "passed": ran.ok,
+                        "exit_code": ran.code,
+                        "timed_out": ran.timed_out,
+                        "duration_s": round(ran.duration_s, 3),
+                    }
+                )
+    # One session ends the repeat as it ended; phases end it failed only when one failed.
+    status = (failed or RT.ExitStatus(code=0, duration_s=duration)) if phased else last
+    return SkillRepeat(
+        status=status,
+        answer="\n\n".join(answers),
+        models=sorted(models),
+        usage=usage,
+        cost=round(cost, 6) if priced or cost else None,
+        phases=records,
+        commit=commit,
+        gates=gates,
+        notes=notes,
+    )
+
+
+def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by."""
+    names = matrix.get("anthropic", {}).get("prices", {})
+    return {m: price for m in names if (price := J.price_for(matrix, "anthropic", m)) is not None}
+
+
+def planned_phases(
+    scn: S.Scenario, name: str, plugin: str | None, target: str | None, claude: str, model: str | None
+) -> list[dict[str, Any]]:
+    """Each phase of a subject in phases as `run.json` records it, with the command it will run.
+
+    A resumed session's id is known only once the phase before it has
+    run, so the command names it by that phase.
+    """
+    out = []
+    before: S.Phase | None = None
+    for phase in scn.subject.phases:
+        resume = f"<the session of {before.name}>" if phase.session == "resume" and before else None
+        out.append({**phase.as_dict(), "argv": phase_argv(scn, phase, name, plugin, target, claude, model, resume)})
+        before = phase
+    return out
+
+
+def subject_bounds(scn: S.Scenario) -> dict[str, Any]:
+    """What `results.json` records of a skill subject's bounds and output, besides its prompt and turns."""
+    if scn.kind != "skill":
+        return {}
+    out: dict[str, Any] = {"max_usd": scn.subject.max_usd, "output": scn.subject.output, "gates": list(scn.subject.gates)}
+    if scn.subject.phases:
+        out["phases"] = [p.as_dict() for p in scn.subject.phases]
+    return out
 
 
 def describe_subject(scn: S.Scenario, argv: list[str]) -> str:
     """The sentence the judge reads about what made the artifact."""
+    if scn.kind == "skill" and scn.subject.phases:
+        steps = "\n\n".join(f"{n}. {p.name} ({p.session} session):\n\n{p.prompt}" for n, p in enumerate(scn.subject.phases, 1))
+        return f"A Claude Code subject with the guideline's skills ran these phases, in order:\n\n{steps}"
     if scn.kind == "skill":
         return f"The `{scn.subject.skill}` skill of the guideline answered this prompt:\n\n{scn.subject.prompt}"
     if scn.kind == "command":
@@ -435,6 +785,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--subject-model", default=None, help="the model the subject runs on; the scenario's, else the matrix's first"
+    )
+    parser.add_argument(
+        "--max-spend-usd",
+        type=float,
+        default=None,
+        help="the most the run may spend, subject and judges, in US dollars; checked before each phase and each repeat",
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
@@ -487,6 +843,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.scenario:
         print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
         return 2
+    if args.max_spend_usd is not None and not 0 < args.max_spend_usd < float("inf"):
+        print(f"--max-spend-usd is an amount in US dollars above 0, got {args.max_spend_usd}", file=sys.stderr)
+        return 2
 
     try:
         scn = S.load(S.find(args.scenario, SCENARIOS))
@@ -535,6 +894,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         # A runtime config that cannot run is refused here, before anything is spent.
         rt.stage()
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
+        planned = planned_phases(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -568,6 +928,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "models": {P.name(p): J.models_for(matrix, P.name(p)) for p in P.members(flags)},
         "subject_argv": argv_subject,
         "subject_model": model,
+        "max_spend_usd": args.max_spend_usd,
         "guideline_sha": git_sha(ROOT),
         "target_sha": git_sha(target) if target else None,
         "evidence": {
@@ -579,6 +940,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "versions": static_versions(target, rt.target, expected_path),
         "started_at": R.now(),
     }
+    if planned:
+        resolved["phases"] = planned
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     print(f"run folder: {run_dir}")
     if expected_note:
@@ -607,7 +970,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     # The runtime is ready, so it can say what it carries. run.json is
     # written again with the answer, before the subject runs.
-    probed, notes = probe_versions(scn, rt, argv_subject[0] if argv_subject else args.claude)
+    probed, notes = probe_versions(scn, rt, args.claude)
     resolved["versions"].update(probed)
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     if expected_note:
@@ -638,34 +1001,48 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             "plugin": rt.plugin_path(),
             "max_turns": scn.subject.max_turns,
             "allowed_tools": list(scn.subject.allowed_tools),
+            **subject_bounds(scn),
         },
     )
 
     env = subject_env(scn)
+    budget = Budget(args.max_spend_usd)
+    plan = Plan(plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model, subject_prices(matrix), budget, env)
 
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
+    # What the harness runs where the subject runs: the checkpoints, the archive, the gates.
+    harness = CliStream(run_dir / "streams" / "harness.jsonl") if scn.subject.output else None
     failed_subjects: list[int] = []
     try:
         for index in range(max(1, args.repeat)):
+            if budget.reached():
+                notes.append(f"{budget.says()}; repeat {index} and after did not run")
+                break
             mark = streams.count
             streams.note(f"[repeat {index}] start")
             rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
+            done: SkillRepeat | None = None
             if scn.kind == "qa":
                 status, artifact, subject_usage = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
                 models = [model] if model else []
                 qa_provider = P.name(P.parse(scn.subject.provider or "anthropic"))
                 subject_cost = J.cost_usd(matrix, qa_provider, model or "", subject_usage) if subject_usage else None
+                budget.spent += subject_cost or 0.0
+            elif scn.kind == "skill":
+                done = run_skill(scn, rt, streams, harness, plan, index)
+                status, artifact, models = done.status, done.answer, done.models
+                subject_usage, subject_cost = done.usage, done.cost
+                notes.extend(done.notes)
             else:
                 status = rt.run(argv_subject, rt.workspace, env, streams, timeout_s=scn.subject.timeout_s)
                 lines = [r["line"] for r in CliStream.read(run_dir / "streams" / "cli.jsonl")[mark:] if r.get("s") == "out"]
                 artifact, models, is_error = read_envelope("\n".join(lines))
                 subject_usage, subject_cost = read_envelope_spend("\n".join(lines))
+                budget.spent += subject_cost or 0.0
                 if is_error:
                     status = dataclasses.replace(status, is_error=True)
-                if model and models and not any(m.startswith(model) for m in models):
-                    notes.append(
-                        f"repeat {index}: the subject was pinned to {model}, and the envelope reports {', '.join(models)}"
-                    )
+            if scn.kind != "qa" and model and models and not any(m.startswith(model) for m in models):
+                notes.append(f"repeat {index}: the subject was pinned to {model}, and the envelope reports {', '.join(models)}")
             streams.note(f"[repeat {index}] exit {status.code}")
 
             art_dir = run_dir / "artifacts" / str(index)
@@ -675,9 +1052,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 (art_dir / "answer.md").write_text(artifact + "\n", encoding="utf-8")
                 paths.append(f"artifacts/{index}/answer.md")
             parts = [artifact] if scn.artifact.stdout else []
-            file_paths, file_parts = collect_files(rt, scn.artifact.files, art_dir, index)
+            # One collection, so another machine's workspace is fetched once: the files and the archive.
+            wanted = [*scn.artifact.files, *([PH.ARCHIVE] if scn.subject.output else [])]
+            found = rt.collect(wanted) if wanted else []
+            zip_file = rt.workspace / PH.ARCHIVE
+            file_paths, file_parts = collect_files(rt, [f for f in found if f != zip_file], art_dir, index)
             paths += file_paths
             parts += file_parts
+            archive = None
+            if zip_file in found:
+                archive = keep_archive(zip_file, art_dir, run_dir, done.commit if done else None)
+                paths += [archive["path"], archive["manifest"]]
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
 
             if not status.ok:
@@ -695,6 +1080,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                         subject_models=models,
                         subject_usage=subject_usage,
                         subject_cost_usd=subject_cost,
+                        phases=done.phases if done else None,
+                        archive=archive,
+                        gates=done.gates if done else None,
                     )
                 )
                 continue
@@ -705,6 +1093,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 print(f"  repeat {index} names {len(expected['named'])} of {expected['expected']} planted findings")
             (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
             judgements = J.judge_all(flags, prompt, effort, matrix)
+            budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
             for j in judgements:
                 record = j.as_dict()
                 record["raw"] = j.raw
@@ -724,10 +1113,15 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                     subject_models=models,
                     subject_usage=subject_usage,
                     subject_cost_usd=subject_cost,
+                    phases=done.phases if done else None,
+                    archive=archive,
+                    gates=done.gates if done else None,
                 )
             )
     finally:
         streams.close()
+        if harness is not None:
+            harness.close()
         if screencast is not None:
             result = screencast.stop()
             notes.append(f"screencast: {result.frames} frame(s)" + (f", {result.error}" if result.error else ""))

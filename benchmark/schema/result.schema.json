@@ -110,10 +110,46 @@
               "signal": { "type": ["integer", "null"] },
               "duration_s": { "type": "number" },
               "timed_out": { "type": "boolean" },
-              "is_error": { "type": "boolean" }
+              "is_error": { "type": "boolean" },
+              "stopped": { "description": "The harness stopped the subject at a bound before it ended.", "type": "boolean" }
             }
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "phases": {
+            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran.",
+            "type": "array",
+            "items": { "$ref": "#/$defs/phase" }
+          },
+          "archive": {
+            "description": "The output's last commit as a zip: its path and its manifest's in the run folder, its SHA-256, its size, how many files it holds, and the commit.",
+            "type": "object",
+            "required": ["path", "manifest", "sha256", "bytes", "files"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "manifest": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "files": { "type": "integer", "minimum": 0 },
+              "commit": { "type": ["string", "null"] }
+            }
+          },
+          "gates": {
+            "description": "The scenario's gates, run on the final tree after the last phase; recorded beside the scores, never a cap on them.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["command", "passed", "exit_code"],
+              "additionalProperties": false,
+              "properties": {
+                "command": { "type": "string" },
+                "passed": { "type": "boolean" },
+                "exit_code": { "type": "integer" },
+                "timed_out": { "type": "boolean" },
+                "duration_s": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
           "subject_models": {
             "description": "The models the subject's envelope reports it ran on.",
             "type": "array",
@@ -303,6 +339,47 @@
     }
   },
   "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["name", "session", "status", "capped"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "session": { "type": "string", "enum": ["fresh", "resume"] },
+        "status": { "type": "string", "enum": ["ok", "capped", "failed"] },
+        "capped": { "type": ["string", "null"], "enum": ["turns", "spend", "gate_reruns", null] },
+        "exit_status": { "type": "object" },
+        "session_id": { "type": ["string", "null"] },
+        "turns": { "type": ["integer", "null"], "minimum": 0 },
+        "models": { "type": "array", "items": { "type": "string" } },
+        "cost_usd": {
+          "description": "What Claude Code says the session cost; null when it wrote no result.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "estimated_usd": {
+          "description": "What the harness priced the session's stream at, the figure it holds the spend cap by.",
+          "type": "number",
+          "minimum": 0
+        },
+        "unpriced": { "type": "array", "items": { "type": "string" } },
+        "gate_runs": {
+          "description": "Each gate's runs in the session, its failures, and whether its last run failed.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["runs", "failed", "failing"],
+            "additionalProperties": false,
+            "properties": {
+              "runs": { "type": "integer", "minimum": 0 },
+              "failed": { "type": "integer", "minimum": 0 },
+              "failing": { "type": "boolean" }
+            }
+          }
+        },
+        "checkpoint": { "description": "The commit made in the output folder after the phase; null when none was.", "type": ["string", "null"] }
+      }
+    },
     "content": {
       "description": "A file or a folder by its path, relative to the repository when it is inside it, and the SHA-256 of its content.",
       "type": ["object", "null"],

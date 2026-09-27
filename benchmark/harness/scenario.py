@@ -17,25 +17,79 @@ A scenario says where it may run, and it has no default for that:
 when none is named. `requires` names what its runtime must provide. A
 scenario that lists a runtime unable to provide what it requires is
 refused when it loads, so no run of it starts there.
+
+A skill subject is bounded by count and by spend: a turn cap and a cap in
+US dollars, `max_usd`, which every skill subject names. A skill subject
+can also run in `phases`, each a session of its own with its own prompt
+and bounds, building one `output` folder the harness commits after every
+phase. A phase is `fresh`, a new session with a new HOME, unless it says
+`resume`, which continues the session of the phase before it in the same
+HOME and the same working folder. The container runtime starts every
+phase in a new container, so a scenario that resumes a phase does not
+list it.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import phases as PH
 from . import providers as P
 from . import runtime as RT
 from .judge import EFFORTS
 
 KINDS = ("skill", "command", "qa")
 SUFFIXES = (".yaml", ".yml", ".json")
+SESSIONS = ("fresh", "resume")
+# Where a phase starts: the workspace, or the output folder in it.
+WORKDIRS = ("workspace", "output")
+# What follows a phase that hit a bound: the next phase, or the end of the repeat.
+AFTER_CAP = ("continue", "stop")
+# A failed gate run is followed by at most this many more, unless the phase says otherwise.
+GATE_RERUNS = 3
 
 
 class ScenarioError(ValueError):
     """A scenario file that cannot be read as a scenario."""
+
+
+@dataclass(frozen=True)
+class Phase:
+    """One session of a skill subject: its prompt and its bounds.
+
+    `session` is `fresh` or `resume`. `cwd` is where it starts: the
+    workspace or the output folder. `hint` gives it the handoff note.
+    `on_cap` says whether the next phase runs after this one hits a bound.
+    """
+
+    name: str
+    prompt: str
+    max_turns: int
+    max_usd: float
+    timeout_s: int
+    session: str = "fresh"
+    cwd: str = "workspace"
+    hint: bool = False
+    max_gate_reruns: int = GATE_RERUNS
+    on_cap: str = "continue"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "prompt": self.prompt,
+            "session": self.session,
+            "cwd": self.cwd,
+            "hint": self.hint,
+            "max_turns": self.max_turns,
+            "max_usd": self.max_usd,
+            "timeout_s": self.timeout_s,
+            "max_gate_reruns": self.max_gate_reruns,
+            "on_cap": self.on_cap,
+        }
 
 
 @dataclass(frozen=True)
@@ -52,6 +106,14 @@ class Subject:
     provider: str | None = None
     context: list[str] = field(default_factory=list)
     timeout_s: int = 900
+    # A skill subject's spend cap in US dollars, passed to Claude Code.
+    max_usd: float | None = None
+    # The folder in the workspace a skill subject builds, committed after
+    # every phase and archived at the end; the gates run in it.
+    output: str | None = None
+    gates: list[str] = field(default_factory=list)
+    gate_timeout_s: int = 3600
+    phases: list[Phase] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -128,6 +190,11 @@ class Scenario:
                 "provider": self.subject.provider,
                 "context": list(self.subject.context),
                 "timeout_s": self.subject.timeout_s,
+                "max_usd": self.subject.max_usd,
+                "output": self.subject.output,
+                "gates": list(self.subject.gates),
+                "gate_timeout_s": self.subject.gate_timeout_s,
+                "phases": [p.as_dict() for p in self.subject.phases],
             },
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
@@ -171,11 +238,8 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     raw_subject = data.get("subject") or {}
     if not isinstance(raw_subject, dict):
         raise ScenarioError(f"scenario {name}: subject holds a mapping")
-    _only(
-        raw_subject,
-        ("skill", "prompt", "argv", "max_turns", "allowed_tools", "target", "model", "provider", "context", "timeout_s"),
-        f"scenario {name}: subject",
-    )
+    _only(raw_subject, SUBJECT_KEYS, f"scenario {name}: subject")
+    phases = _phases(raw_subject, kind, runtimes, name)
     subject = Subject(
         skill=raw_subject.get("skill"),
         prompt=str(raw_subject.get("prompt") or ""),
@@ -187,9 +251,15 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         provider=raw_subject.get("provider"),
         context=_strings(raw_subject.get("context"), f"scenario {name}: subject.context"),
         timeout_s=int(raw_subject.get("timeout_s") or 900),
+        max_usd=_usd(raw_subject.get("max_usd"), f"scenario {name}: subject.max_usd"),
+        output=_output(raw_subject.get("output"), name),
+        gates=_strings(raw_subject.get("gates"), f"scenario {name}: subject.gates"),
+        gate_timeout_s=_whole(raw_subject.get("gate_timeout_s", 3600), f"scenario {name}: subject.gate_timeout_s"),
+        phases=phases,
     )
     if kind == "skill" and not subject.skill:
         raise ScenarioError(f"scenario {name}: kind skill needs subject.skill")
+    _bounded(subject, kind, name)
     if kind == "command" and not subject.argv:
         raise ScenarioError(f"scenario {name}: kind command needs subject.argv")
     if kind == "qa" and not subject.prompt:
@@ -251,6 +321,132 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         requires=requires,
         path=path,
     )
+
+
+SUBJECT_KEYS = (
+    "skill",
+    "prompt",
+    "argv",
+    "max_turns",
+    "allowed_tools",
+    "target",
+    "model",
+    "provider",
+    "context",
+    "timeout_s",
+    "max_usd",
+    "output",
+    "gates",
+    "gate_timeout_s",
+    "phases",
+)
+PHASE_KEYS = ("name", "prompt", "max_turns", "max_usd", "timeout_s", "session", "cwd", "hint", "max_gate_reruns", "on_cap")
+# What a subject in phases takes from each phase instead, so a subject-wide one would be read by nothing.
+PER_PHASE = ("prompt", "max_turns", "timeout_s", "max_usd")
+
+
+def _whole(value: Any, where: str, least: int = 1) -> int:
+    """A whole number of at least `least`, or a ScenarioError that says where."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < least:
+        raise ScenarioError(f"{where}: a whole number of at least {least}, got {value!r}")
+    return value
+
+
+def _usd(value: Any, where: str) -> float | None:
+    """A cap in US dollars, above zero; None when the scenario names none."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0 or value == float("inf"):
+        raise ScenarioError(f"{where}: an amount in US dollars above 0, got {value!r}")
+    return float(value)
+
+
+def _output(value: Any, name: str) -> str | None:
+    """The output folder: a folder of the workspace, by a relative path that stays in it."""
+    if value is None:
+        return None
+    parts = str(value).split("/")
+    if not isinstance(value, str) or value.startswith("/") or any(p in ("", ".", "..") for p in parts):
+        raise ScenarioError(f"scenario {name}: subject.output is a folder of the workspace, such as `site`, got {value!r}")
+    if parts[0] in (PH.HANDOFF, PH.ARCHIVE.split("/")[0]):
+        raise ScenarioError(f"scenario {name}: subject.output {value!r} is where the harness keeps its own files")
+    return value
+
+
+def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str) -> list[Phase]:
+    """The phases of a skill subject, each checked; none when the subject names none."""
+    if raw.get("phases") is None:
+        return []
+    where = f"scenario {name}: subject.phases"
+    if kind != "skill":
+        raise ScenarioError(f"{where}: only a skill subject runs in phases")
+    if not isinstance(raw["phases"], list) or not raw["phases"]:
+        raise ScenarioError(f"{where}: a list of at least one phase")
+    shared = [k for k in PER_PHASE if k in raw]
+    if shared:
+        raise ScenarioError(f"{where}: each phase names its own {', '.join(shared)}; the subject names none")
+    phases: list[Phase] = []
+    for index, item in enumerate(raw["phases"]):
+        at = f"{where}[{index}]"
+        if not isinstance(item, dict):
+            raise ScenarioError(f"{at}: a phase holds a mapping")
+        _only(item, PHASE_KEYS, at)
+        missing = [k for k in ("name", "prompt", "max_turns", "max_usd", "timeout_s") if item.get(k) in (None, "")]
+        if missing:
+            raise ScenarioError(f"{at}: every phase names its {', '.join(missing)}")
+        phase = Phase(
+            name=str(item["name"]),
+            prompt=str(item["prompt"]),
+            max_turns=_whole(item["max_turns"], f"{at}.max_turns"),
+            max_usd=_usd(item["max_usd"], f"{at}.max_usd") or 0.0,
+            timeout_s=_whole(item["timeout_s"], f"{at}.timeout_s"),
+            session=str(item.get("session", "fresh")),
+            cwd=str(item.get("cwd", "workspace")),
+            hint=item.get("hint", False),
+            max_gate_reruns=_whole(item.get("max_gate_reruns", GATE_RERUNS), f"{at}.max_gate_reruns", least=0),
+            on_cap=str(item.get("on_cap", "continue")),
+        )
+        for key, value, allowed in (
+            ("session", phase.session, SESSIONS),
+            ("cwd", phase.cwd, WORKDIRS),
+            ("on_cap", phase.on_cap, AFTER_CAP),
+        ):
+            if value not in allowed:
+                raise ScenarioError(f"{at}.{key} is one of {', '.join(allowed)}, got {value!r}")
+        if not isinstance(phase.hint, bool):
+            raise ScenarioError(f"{at}.hint is true or false, got {phase.hint!r}")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", phase.name) or phase.name in (p.name for p in phases):
+            raise ScenarioError(f"{at}.name is a lowercase word of its own, such as `scaffold`, got {phase.name!r}")
+        if phase.session == "resume":
+            if not phases:
+                raise ScenarioError(f"{at}: the first phase has no session before it to resume")
+            if phase.cwd != phases[-1].cwd:
+                raise ScenarioError(f"{at}: a resumed session starts where the phase before it did, in its {phases[-1].cwd}")
+            if "container" in runtimes:
+                raise ScenarioError(
+                    f"{at}: the container runtime starts every phase in a new container, so no phase resumes there; "
+                    "take it out of runtimes"
+                )
+        phases.append(phase)
+    return phases
+
+
+def _bounded(subject: Subject, kind: str, name: str) -> None:
+    """A skill subject has its spend cap, and what builds an output names one."""
+    where = f"scenario {name}: subject"
+    if kind != "skill":
+        extra = [k for k in ("max_usd", "output", "gates") if getattr(subject, k)]
+        if extra:
+            raise ScenarioError(f"{where}: {', '.join(extra)} belong to a skill subject")
+        return
+    if not subject.phases and subject.max_usd is None:
+        raise ScenarioError(f"{where}.max_usd is required: the most a skill subject may spend, in US dollars")
+    if subject.phases and not subject.output:
+        raise ScenarioError(f"{where}.output is required: the folder the phases build, committed after each")
+    if subject.gates and not subject.output:
+        raise ScenarioError(f"{where}.gates run in the output folder, and subject.output names none")
+    if not subject.output and any(p.cwd == "output" for p in subject.phases):
+        raise ScenarioError(f"{where}: a phase starts in the output folder, and subject.output names none")
 
 
 def _runtimes(data: dict[str, Any], name: str) -> tuple[list[str], list[str]]:

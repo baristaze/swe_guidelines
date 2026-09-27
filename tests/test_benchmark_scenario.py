@@ -10,7 +10,7 @@ from harness import scenario as S
 MINIMAL = {
     "name": "one",
     "kind": "skill",
-    "subject": {"skill": "arch-explain", "prompt": "why?"},
+    "subject": {"skill": "arch-explain", "prompt": "why?", "max_usd": 1},
     "rubric": "Score it 0 to 100.",
     "runtimes": ["container"],
 }
@@ -63,7 +63,7 @@ def test_an_unknown_kind_and_a_missing_rubric_are_refused():
 
 def test_a_list_field_written_as_a_string_is_refused():
     with pytest.raises(S.ScenarioError, match="expected a list"):
-        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "allowed_tools": "Read"}))
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "allowed_tools": "Read", "max_usd": 1}))
 
 
 def test_the_catalog_lists_one_file_per_name(tmp_path):
@@ -121,7 +121,11 @@ def test_the_shipped_scenarios_say_where_they_run():
 
 
 def test_evidence_is_read_and_its_unknown_keys_refused(tmp_path):
-    data = dict(MINIMAL, subject={"skill": "arch-explain", "target": "t"}, evidence={"files": ["**/*.py"], "expected": "e.yaml"})
+    data = dict(
+        MINIMAL,
+        subject={"skill": "arch-explain", "target": "t", "max_usd": 1},
+        evidence={"files": ["**/*.py"], "expected": "e.yaml"},
+    )
     scn = S.load(write(tmp_path, "one.json", data))
     assert scn.evidence.files == ["**/*.py"] and scn.evidence.expected == "e.yaml"
     assert scn.as_dict()["evidence"] == {"files": ["**/*.py"], "expected": "e.yaml"}
@@ -161,3 +165,91 @@ def test_the_judges_are_checked_when_the_scenario_loads():
         S.from_data(dict(MINIMAL, judges={"providers": "claude"}))
     with pytest.raises(S.ScenarioError, match=r"judges\.providers: provider selection 99 sets a bit"):
         S.from_data(dict(MINIMAL, judges={"providers": 99}))
+
+
+def phase(name: str, **extra) -> dict:
+    return {"name": name, "prompt": "Do it.", "max_turns": 10, "max_usd": 5, "timeout_s": 600, **extra}
+
+
+def phased(*phases: dict, runtimes=("vm",), **subject) -> dict:
+    return dict(
+        MINIMAL,
+        runtimes=list(runtimes),
+        subject={"skill": "arch-scaffold-new", "output": "site", "phases": list(phases), **subject},
+    )
+
+
+def test_a_skill_subject_names_its_spend_cap():
+    with pytest.raises(S.ScenarioError, match=r"subject\.max_usd is required"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "prompt": "why?"}))
+    for bad in (0, -1, "5", True):
+        with pytest.raises(S.ScenarioError, match="an amount in US dollars above 0"):
+            S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_usd": bad}))
+    assert S.from_data(MINIMAL).subject.max_usd == 1.0
+    with pytest.raises(S.ScenarioError, match="max_usd belong to a skill subject"):
+        S.from_data(dict(MINIMAL, kind="qa", subject={"prompt": "why?", "max_usd": 1}))
+
+
+def test_a_subject_in_phases_takes_the_defaults_of_each_phase():
+    scn = S.from_data(phased(phase("scaffold"), phase("mvp", session="resume", hint=True)))
+    first, second = scn.subject.phases
+    assert (first.session, first.cwd, first.hint, first.max_gate_reruns, first.on_cap) == (
+        "fresh",
+        "workspace",
+        False,
+        3,
+        "continue",
+    )
+    assert (second.session, second.hint, second.max_usd) == ("resume", True, 5.0)
+    assert scn.as_dict()["subject"]["phases"][1]["session"] == "resume"
+    assert scn.subject.output == "site"
+
+
+def test_every_phase_names_its_prompt_and_its_bounds():
+    for key in ("name", "prompt", "max_turns", "max_usd", "timeout_s"):
+        broken = {k: v for k, v in phase("scaffold").items() if k != key}
+        with pytest.raises(S.ScenarioError, match=f"every phase names its {key}"):
+            S.from_data(phased(broken))
+    with pytest.raises(S.ScenarioError, match=r"max_turns: a whole number of at least 1, got 0"):
+        S.from_data(phased(phase("scaffold", max_turns=0)))
+    with pytest.raises(S.ScenarioError, match="unknown key"):
+        S.from_data(phased(phase("scaffold", turns=3)))
+    with pytest.raises(S.ScenarioError, match=r"session is one of fresh, resume, got 'continue'"):
+        S.from_data(phased(phase("scaffold", session="continue")))
+    with pytest.raises(S.ScenarioError, match="a lowercase word of its own"):
+        S.from_data(phased(phase("scaffold"), phase("scaffold")))
+    with pytest.raises(S.ScenarioError, match="each phase names its own prompt, max_turns"):
+        S.from_data(phased(phase("scaffold"), prompt="x", max_turns=3))
+
+
+def test_a_resumed_phase_continues_the_one_before_it_where_it_ran():
+    with pytest.raises(S.ScenarioError, match="the first phase has no session before it to resume"):
+        S.from_data(phased(phase("scaffold", session="resume")))
+    with pytest.raises(S.ScenarioError, match="starts where the phase before it did, in its workspace"):
+        S.from_data(phased(phase("scaffold"), phase("mvp", session="resume", cwd="output")))
+    with pytest.raises(S.ScenarioError, match="starts every phase in a new container, so no phase resumes there"):
+        S.from_data(phased(phase("scaffold"), phase("mvp", session="resume"), runtimes=("vm", "container")))
+    # A fresh phase runs anywhere, the container included.
+    assert S.from_data(phased(phase("scaffold"), phase("mvp"), runtimes=("container",))).runtimes == ["container"]
+
+
+def test_a_subject_in_phases_builds_an_output_folder_of_the_workspace():
+    data = phased(phase("scaffold"))
+    del data["subject"]["output"]
+    with pytest.raises(S.ScenarioError, match=r"subject\.output is required"):
+        S.from_data(data)
+    for bad in ("/abs", "../up", ".", "a//b", "HANDOFF.md", ".archive/x"):
+        with pytest.raises(S.ScenarioError, match=r"subject\.output"):
+            S.from_data(phased(phase("scaffold"), output=bad))
+    assert S.from_data(phased(phase("scaffold"), output="apps/site")).subject.output == "apps/site"
+    with pytest.raises(S.ScenarioError, match="gates run in the output folder"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_usd": 1, "gates": ["make check"]}))
+    with pytest.raises(S.ScenarioError, match="only a skill subject runs in phases"):
+        S.from_data(dict(MINIMAL, kind="command", subject={"argv": ["true"], "phases": [phase("a")]}))
+
+
+def test_the_shipped_skill_scenarios_name_their_spend_caps():
+    pytest.importorskip("yaml")
+    folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
+    caps = {p.stem: S.load(p).subject.max_usd for p in S.catalog(folder) if S.load(p).kind == "skill"}
+    assert caps == {"explain-tenancy": 2.0, "review-om": 3.0}
