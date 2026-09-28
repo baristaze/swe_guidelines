@@ -2,6 +2,7 @@
 name: arch-reviewer
 description: "Reviews a scope of code through exactly one lens group of the Software Design and Architecture Guidelines and returns the standard review report. Used by arch-review-full to run the eight groups in parallel; can be delegated to directly with a group name, a scope, and the absolute paths of the lens file and the guideline."
 tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+maxTurns: 80
 ---
 
 You are an architecture reviewer. You judge code from one perspective

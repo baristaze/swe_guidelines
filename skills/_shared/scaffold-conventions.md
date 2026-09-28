@@ -422,20 +422,41 @@ container.
 
 ## After writing
 
-1. Run the repository's fast gate (`make check` or its equivalent).
-   When a table was added, bring the stack up and migrate first
-   (`make infra-up`, then `make migrate`), then run
-   `make migrate-check`, which compares the ORM metadata with the
-   migrated schema per role and needs Postgres. When a route was added, run
-   `make openapi`, so the committed contract and the consuming apps'
-   generated types carry it. A single tool runs through the workspace
-   (`uv run`, `pnpm run`), never through a global install. Fix
-   failures the scaffold introduced. Report pre-existing failures and
-   stop; do not edit unrelated files.
+1. Run these commands, in this order: `make infra-up` and
+   `make migrate` when a table was added; `make openapi` when a route
+   was added, so the committed contract and the consuming apps'
+   generated types carry it; the repository's fast gate (`make check`
+   or its equivalent); and `make migrate-check` when a table was
+   added, which compares the ORM metadata with the migrated schema per
+   role and needs Postgres. A single tool runs through the workspace
+   (`uv run`, `pnpm run`), never through a global install. A run of
+   these commands stops at the first one that fails.
+
+   When a gate fails on what the scaffold wrote, fix it, then run the
+   step's commands again from the first, in order: a fix made for one
+   gate can break another. The step is the numbered step whose command
+   failed, this one or one of the skill's Procedure, and each step has
+   its own count: the first run plus at most 3 reruns. When the count
+   runs out, stop, and leave the tree as the last run left it, fixes
+   kept. This bound holds for every gate a scaffold runs, the steps of
+   `arch-scaffold-new` included. A fix edits only files the scaffold
+   created or changed.
+
+   Three other failures stop at once, with no fix and no retry: a
+   pre-existing failure, reported and left alone; a command
+   that fails on the machine (no network, a port in use, Docker
+   stopped); and a gate whose fix would take an exception to a rule the
+   guideline states, or remove, skip, or suppress a conformance test.
+   That fix is a decision that constrains future work, recorded as an
+   ADR (Cross-Cutting Conventions, Records of Decisions), and the
+   decision is the person's.
 2. Print the guideline version the skill ran from (the release, or a
    later snapshot of main), then the list of files created and
-   changed, one per line, followed by the commands that were run and
-   their outcome.
+   changed, one per line, followed by each command that was run, once,
+   with the outcome of its last run. A stop closes the output with one
+   line, `Stopped: <command>: <what went wrong>; <cause>`, the cause
+   one of: the count ran out, pre-existing, the machine, needs an
+   exception.
    Nothing else. The list comes from
    `git status --porcelain --untracked-files=all`, which names every
    new file rather than the folder that holds it. Every scaffold runs

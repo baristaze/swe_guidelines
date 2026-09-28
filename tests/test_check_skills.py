@@ -535,3 +535,74 @@ def test_the_work_row_rule_is_said_in_the_text_the_lens_and_both_scaffolds(repo,
         "skills/arch-scaffold-new/references/object-model.md: does not say 'a work row is done once its item is queued'; "
         "the text, STO-20, and the relay's two scaffolds must each say it" in capsys.readouterr().out
     )
+
+
+CONVENTIONS = "skills/_shared/scaffold-conventions.md"
+
+
+def conventions(repo, text: str) -> None:
+    """Write the scaffold conventions and have the scaffold reference them, so only `text` can fail."""
+    repo.write(CONVENTIONS, f"# Conventions\n\n{text}")
+    if CONVENTIONS not in repo.read("skills/arch-scaffold-thing/SKILL.md"):
+        repo.edit("skills/arch-scaffold-thing/SKILL.md", "One line.\n", f"One line.\n\nConventions: `{CONVENTIONS}`.\n")
+
+
+def test_a_step_that_fixes_and_runs_a_gate_again_states_its_bound(repo, skills, capsys):
+    repo.edit("skills/arch-scaffold-thing/SKILL.md", "2. Run `make check`.", "2. Run `make check` and fix what it reports.")
+    assert skills.main() == 1
+    assert (
+        "skills/arch-scaffold-thing/SKILL.md: a step fixes and runs again with no count bound; "
+        "say 'the first run plus at most <n> reruns' in it: '2. Run `make check` and fix what it reports.'"
+        in capsys.readouterr().out
+    )
+    repo.edit(
+        "skills/arch-scaffold-thing/SKILL.md",
+        "fix what it reports.",
+        "fix what it reports: the first run plus at most 3\n   reruns, then stop and say which gate fails and why.",
+    )
+    assert skills.main() == 0
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Fix the file and rerun it alone.",
+        "Fix the failure and re-run the suite.",
+        "Fix it in place, and run step 8\n   again.",
+        "Fix the failure and run `uv run pytest tests/test_x.py` again.",
+        "Fix the file and run the check (e.g. `pytest -q`) again.",
+        "Fix it and run the suite, i.e. the integration tests, again.",
+        "Fix it and run the suite, e.g. Playwright, again.",
+        "Fix it and run the type check, i.e. Pyright, again.",
+        "Fix it and run the tests vs. Postgres again.",
+    ],
+)
+def test_a_rerun_after_a_fix_is_bounded_in_every_markdown_file_under_skills(repo, skills, capsys, said):
+    conventions(repo, f"## After writing\n\n1. {said}\n")
+    assert skills.main() == 1
+    assert f"{CONVENTIONS}: a step fixes and runs again with no count bound" in capsys.readouterr().out
+    conventions(repo, f"## After writing\n\n1. {said} The first run plus at most 1 rerun.\n")
+    assert skills.main() == 0
+
+
+def test_an_at_most_that_counts_something_else_is_no_bound(repo, skills, capsys):
+    conventions(repo, "1. Fix what it reports and rerun it. Keep at most 3 imports per line.\n")
+    assert skills.main() == 1
+    assert f"{CONVENTIONS}: a step fixes and runs again with no count bound" in capsys.readouterr().out
+    conventions(repo, "1. Fix what it reports and rerun it, at most 2 reruns. Keep at most 3 imports per line.\n")
+    assert skills.main() == 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "```text\nFix it and rerun `make check`.\n```\n",
+        "| File | Holds |\n|---|---|\n| `client.py` | a fix, retried and run again |\n",
+        "Fix the tree.\n\nThen run `make check` again.\n",
+        "The fixture reruns `make check`.\n",
+        "Fix the tree. Then run the tests. Nothing is fixed twice.\n",
+    ],
+)
+def test_fenced_code_a_table_row_or_a_fix_in_another_paragraph_is_no_loop(repo, skills, text):
+    conventions(repo, text)
+    assert skills.main() == 0
