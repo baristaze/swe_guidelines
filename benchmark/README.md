@@ -925,12 +925,17 @@ monthly run redefines, not a rule. The results name whichever model
 answered.
 
 A model under load answers with a transient error, and the harness asks
-it again: a `503`, an overload, and a timeout are transient. A model out
-of quota is not asked again; the next model in the matrix is. A
-judgement a later model answered records `fallback`: the model the
-matrix put first and the reason it did not answer. The summary names
-every fallback, because a score from a fallback model is not a score
-from the model the matrix names.
+it again: a `503`, an overload, and a timeout are transient. So is a
+per-minute rate limit: a `429` whose error names a limit on tokens or
+requests per minute, and names the wait, in a `retry-after` header or in
+words such as "Please try again in 135ms". The harness waits that long
+and asks again. A per-minute limit frees up within a minute, so a named
+wait longer than 60 seconds is not waited. A model out of quota, a `429`
+that says `insufficient_quota`, is not asked again; the next model in
+the matrix is. A judgement a later model answered records `fallback`:
+the model the matrix put first and the reason it did not answer. The
+summary names every fallback, because a score from a fallback model is
+not a score from the model the matrix names.
  A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
@@ -942,8 +947,9 @@ judgement a checked-in run records. No call is sent a token limit below
 what the model can write. Anthropic's API requires one, so an Anthropic
 call sends the model's own maximum, and the other providers are sent
 none. So time bounds one provider's judgement: at most two calls per
-model in the matrix, each within its timeout. The run's spend cap bounds
-the run (see The run's spend).
+model in the matrix, each within its timeout, with at most one wait of
+a minute between them. The run's spend cap bounds the run (see The
+run's spend).
 
 ## Agentic judges
 
@@ -1037,7 +1043,10 @@ the judge just asked for are not run, and each answer tells it to
 submit now. A submission on the last turn is the answer, and it is
 scored like any other. Anything else ends the judgement as `missed`.
 Wall time has no last turn: a judgement whose wall time runs out is
-`missed`, since no call has time left to run.
+`missed`, since no call has time left to run. A per-minute rate limit
+is waited out on the judgement's wall time, as a transient error is
+(see Judges). When the wait it names is longer than the time left, the
+judgement is `missed` at once, without waiting.
 
 Neither the input tokens nor the dollars are a hard cap, for two
 reasons. The check counts only what the next call carries at least, and
