@@ -52,7 +52,10 @@ again, and runs no subject (see Judge a run again).
 
 `resume --source <run folder> [--after <phase>]` starts a new run from
 the milestone an earlier run kept after a phase, and runs only the
-phases after it (see Resume from a milestone).
+phases after it (see Resume from a milestone). Of a run whose phases
+all ran, it runs again only the judges `--judges` names, or those that
+did not answer, and carries the other judgements (see Resume a run's
+judges).
 
 A provider whose key is absent is skipped, named in the results, and
 does not fail the run. That is a choice: a run with three judges is
@@ -1383,9 +1386,9 @@ went through, the carried ones included, and a carried phase counts as
 one that ran: the rubric takes the sentence of each group the source
 took. On the vm runtime, what the subject's Docker made is removed after
 a resumed repeat, as after any repeat. A resume after the last phase
-has nothing to run and is refused: `judge` judges that output. So is a
-resume whose next phase continues the session of the one before, which
-only the source run held.
+has no phase to run, so it resumes the run's judges (see Resume a run's
+judges). A resume whose next phase continues the session of the one
+before is refused, since only the source run held that session.
 
 Every repeat the source recorded is resumed, each from its own
 milestone. Its workspace starts with the milestone's tree as the output
@@ -1444,7 +1447,82 @@ as it checks any run.
 `resume` takes no flag that the source decides: `--scenario`, `--with`,
 `--repeat`, `--runtime`, `--target`, and `--subject-model` are refused
 with exit 2, and so is `--rehearsal`. A source that is a rehearsal is
-refused too: its bounds were cut small. `--after` is for `resume` alone.
+refused too: its bounds were cut small. `--after` is for `resume` alone,
+and so is `--judges`, which a resume after an earlier phase refuses:
+every judge judges what the phases after it build.
+
+## Resume a run's judges
+
+A judge that misses leaves its run a score short, and judging the
+output again pays for every judge. A `resume` of a run whose phases all
+ran runs only the judges that need it, and carries the others:
+
+```bash
+uv run benchmark/run.py resume --source benchmark/runs/<run folder> --judges openai --dry-run
+uv run benchmark/run.py resume --source benchmark/runs/<run folder>
+```
+
+Such a run has no phase after its last, so `resume` resumes its judges:
+by default, and when `--after` names the last phase. The run's judges
+are the source's. `--judges` names the ones to run again, in the words
+`--providers` takes. With no `--judges`, it runs those whose judgement
+in the source did not answer: an `error`, a `missed`, or a `skipped`
+one. Each runs on the source's archive, as `judge` runs its judges (see
+Judge a run again), and at the effort the source's `run.json` records,
+the one its judgements were made at, unless `--effort` names another.
+Every other judgement of the source is carried: the new run holds it as
+the source recorded it, marked `carried`. So its scores, its means, and
+its report hold every judge, and a mean is never over fewer judges than
+the run has. The weighted score is the
+harness's, so a carried one is weighed with this checkout's weights. A
+source whose judges all answered has nothing to resume: it makes no run
+folder, starts no judge, and exits 2.
+
+A judgement is carried only when the source judged the same output with
+the task this run's judges get. A repeat is refused, with its reason
+and no judge started, when:
+
+- `judge` would refuse it: it kept no archive, its archive does not open
+  or holds no file, or its SHA-256 is not the one the source recorded;
+- the source recorded no SHA-256 of its archive, so nothing says which
+  output its judges read;
+- the source holds no judgement of it;
+- the source kept no judge prompt of it, or the one it kept is not the
+  one this run builds for it.
+
+The judge prompt holds the rubric with the sentence of each group it
+took, the phases the judges are told of, and the references at their
+versions. So a score of another output, of another rubric, or against
+another copy of a reference is never mixed into a mean. A repeat
+refused for its task is judged whole by `judge`. A source with no
+repeat to resume makes no run folder, and exits 2.
+
+**What it records.** The new run lands beside the source, or under
+`--out`, as a folder `judge` writes: each repeat's artifacts, its
+archive, and the phases its source's repeat ran, with no subject spend.
+Each repeat keeps the source's judge prompt, which is the one its
+judges get. Its judgements are the ones it ran and the carried ones, in
+the flag's order. A carried one keeps its answer under `judgements/`,
+and its transcript is copied there. `results.json` and `run.json` name
+the source under `source`, with `judges`: for each repeat, the judges it
+ran and those it carried. `run.json`'s `providers` are the judges it
+runs. The report opens with the source and each repeat's judges, and
+marks each carried judgement.
+
+**Its spend.** The run's spend cap is the dollar budgets of the judges
+it runs, summed over the repeats: one judge at $45 is $45. A carried
+judgement's cost is in its record, and in no total, so what the run
+spent is what its own judges spent. `--max-spend-usd` overrides the
+cap. As in `judge`, a repeat's judges start only when what is left of
+the cap covers their budgets. `--dry-run` resolves the source, the
+judges each repeat runs and carries, their task, and the cap, writes
+`run.json`, and calls no judge.
+
+No phase runs, so a resume of the judges takes no flag of a runtime:
+`--runtime-config`, `--preflight`, `--build`, and `--screencast-port`
+are refused with exit 2. So is `--providers`, since the run's judges
+are the source's. Only agentic judgements are carried, so a scenario
+whose judges are one-shot is refused.
 
 ## Streams
 
