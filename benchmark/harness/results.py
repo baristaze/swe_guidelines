@@ -105,9 +105,11 @@ class RunResult:
     notes: list[str] = field(default_factory=list)
     # Each reference's weight, by name, when the judges are agentic; empty when they are one-shot.
     weights: dict[str, float] = field(default_factory=dict)
+    # A rehearsal's outcome and where its money went; None for a run that is not one.
+    rehearsal: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
             "scenario": self.scenario,
@@ -123,6 +125,9 @@ class RunResult:
             "spend": spend(self.repeats),
             "notes": list(self.notes),
         }
+        if self.rehearsal is not None:
+            out["rehearsal"] = dict(self.rehearsal)
+        return out
 
 
 def failed(exit_status: dict[str, Any]) -> bool:
@@ -595,6 +600,21 @@ def gap_lines(run: RunResult) -> list[str]:
     return lines
 
 
+def rehearsal_lines(record: dict[str, Any]) -> list[str]:
+    """The report's section on a rehearsal: what it is, how it ended, and where its money went."""
+    lines = [
+        "## Rehearsal",
+        "",
+        "The scenario ran as it will really run, with every bound cut small. The scores mean nothing,",
+        "and a rehearsal is never checked in.",
+        "",
+    ]
+    cap = f" of its {_usd(record['max_spend_usd'])} cap" if record.get("max_spend_usd") is not None else ""
+    lines += [f"It ended `{record['status']}`, having spent {_usd(record['spent_usd'])}{cap}:", ""]
+    lines += [f"- {s['what']}: {_usd(s['usd'])}" for s in record["spent"]] or ["- nothing"]
+    return [*lines, ""]
+
+
 def report_text(run: RunResult) -> str:
     """The Markdown report as one string."""
     data = run.as_dict()
@@ -608,9 +628,10 @@ def report_text(run: RunResult) -> str:
         "",
         f"Started {run.started_at}, finished {data['finished_at']}.",
         "",
-        "## Scores",
-        "",
     ]
+    if run.rehearsal:
+        lines += rehearsal_lines(run.rehearsal)
+    lines += ["## Scores", ""]
     if agentic:
         lines += agentic_score_lines(run)
     else:

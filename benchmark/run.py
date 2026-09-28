@@ -17,6 +17,8 @@
 
     uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
     uv run benchmark/run.py --scenario explain-tenancy --max-spend-usd 10 --build --preflight
+    uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
+      --rehearsal --out /tmp/rehearsals
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -26,6 +28,8 @@ file per judgement, and an agentic judge's transcript beside it,
 
 `--preflight` resolves the run as `--dry-run` does, then checks what it
 needs, where it runs, before it spends anything (`harness/preflight.py`).
+`--rehearsal` runs the scenario as it will really run, with every bound
+cut small, after its preflight (`harness/rehearsal.py`).
 """
 
 from __future__ import annotations
@@ -57,6 +61,7 @@ from harness import preflight as PF  # noqa: E402
 from harness import providers as P  # noqa: E402
 from harness import redact as X  # noqa: E402
 from harness import references as RF  # noqa: E402
+from harness import rehearsal as RH  # noqa: E402
 from harness import results as R  # noqa: E402
 from harness import runtime as RT  # noqa: E402
 from harness import scenario as S  # noqa: E402
@@ -80,6 +85,9 @@ NOT_LISTED = 7
 # The exit status of a preflight that failed a check. Nothing was run and
 # no paid endpoint was called.
 PREFLIGHT_FAILED = 8
+# The exit status of a rehearsal the run's spend cap cut short: it did not
+# prove the pipeline to its end.
+REHEARSAL_CAPPED = 9
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -546,6 +554,8 @@ class Plan:
     prices: dict[str, dict[str, float]]
     budget: Budget
     env: dict[str, str]
+    # A rehearsal makes the output folder when a phase left none.
+    rehearsal: bool = False
 
 
 @dataclasses.dataclass
@@ -713,6 +723,13 @@ def run_skill(
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
         if folder and harness is not None:
+            if plan.rehearsal:
+                _, said = harness_run(rt, harness, plan, ["sh", "-c", RH.MAKE_OUTPUT, "sh", folder])
+                if "made" in said:
+                    notes.append(
+                        f"repeat {index}: phase {phase.name} left no {folder}, so the rehearsal made it, empty, "
+                        "for the checkpoints, the phases after it, the archive, and the gates"
+                    )
             made, why = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
             record["checkpoint"] = made
             commit = made or commit
@@ -901,6 +918,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="resolve as --dry-run does, then check what the run needs and stop at the first failure; call no paid endpoint",
     )
+    parser.add_argument(
+        "--rehearsal",
+        action="store_true",
+        help=f"run the scenario as it will really run, every bound cut small, after its preflight; "
+        f"one repeat, the cheapest subject model, a spend cap of ${RH.MAX_SPEND_USD:g}; never checked in",
+    )
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
     parser.add_argument(
         "--build", action="store_true", help="build the container image before running, for a skill or command subject"
@@ -980,6 +1003,20 @@ def main(argv: list[str] | None = None) -> int:
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    matrix = J.load_matrix(MODELS)
+    if args.rehearsal:
+        # A rehearsal cuts every bound small; a flag may cut one further, never raise it.
+        if args.repeat not in (None, 1):
+            print(f"a rehearsal runs one repeat, and --repeat asks for {args.repeat}", file=sys.stderr)
+            return 2
+        if args.max_spend_usd is not None and args.max_spend_usd > RH.MAX_SPEND_USD:
+            print(
+                f"a rehearsal spends at most ${RH.MAX_SPEND_USD:g}; --max-spend-usd can lower that, "
+                f"and {args.max_spend_usd:g} would raise it",
+                file=sys.stderr,
+            )
+            return 2
+        scn = RH.scenario(scn, matrix)
     # A flag that is not given takes the scenario's value. From here on,
     # args.repeat and args.max_spend_usd are what the run takes.
     if args.repeat is None:
@@ -993,7 +1030,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"scenario {scn.name} runs on {', '.join(scn.runtimes)}, not on {runtime}", file=sys.stderr)
         return NOT_LISTED
     effort = args.effort or scn.judges.effort
-    matrix = J.load_matrix(MODELS)
     own_target = scn.resolve(scn.subject.target)
     target = Path(args.target).resolve() if args.target else own_target
     if target is not None and not target.is_dir():
@@ -1052,6 +1088,7 @@ def preflight(
         references=staged.versions,
         stage_error=stage_error,
         run_dir=run_dir,
+        rehearsal=args.rehearsal,
     )
     print(f"preflight of {scn.name} on the {rt.name} runtime:")
     record = PF.run(ctx)
@@ -1091,7 +1128,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         try:
             staged = RF.stage(scn.judges.references, ROOT, rt.sandbox / "references", V.plugin_version(ROOT))
         except RF.StageError as exc:
-            if not args.preflight:
+            if not (args.preflight or args.rehearsal):
                 print(exc, file=sys.stderr)
                 return 2
             stage_error = str(exc)
@@ -1142,6 +1179,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         resolved["notes"] = list(staged.notes)
     if planned:
         resolved["phases"] = planned
+    if args.rehearsal:
+        # Every bound above is the rehearsal's. A rehearsal is never checked in.
+        resolved["rehearsal"] = True
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     print(f"run folder: {run_dir}")
     if expected_note:
@@ -1153,8 +1193,11 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(json.dumps(resolved, indent=2))
         print("dry run: nothing was executed and no provider was called")
         return 0
-    if args.preflight:
-        return preflight(args, scn, rt, run_dir, resolved, staged, stage_error, flags)
+    if args.preflight or args.rehearsal:
+        # A rehearsal runs its preflight first, and spends nothing when a check fails.
+        checked = preflight(args, scn, rt, run_dir, resolved, staged, stage_error, flags)
+        if args.preflight or checked != 0:
+            return checked
 
     missing = [P.name(p) for p in P.members(flags) if not P.available(p)]
     if missing and args.strict:
@@ -1215,7 +1258,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     env = subject_env(scn)
     budget = Budget(args.max_spend_usd)
-    plan = Plan(plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model, subject_prices(matrix), budget, env)
+    plan = Plan(
+        plugin_name(ROOT),
+        rt.plugin_path(),
+        rt.target_path(),
+        args.claude,
+        model,
+        subject_prices(matrix),
+        budget,
+        env,
+        rehearsal=args.rehearsal,
+    )
 
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
     # What the harness runs where the subject runs: the checkpoints, the archive, the gates.
@@ -1373,6 +1426,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         # so a folder that stayed there, or a fetch that failed, is noted.
         notes.extend(rt.release())
     run.notes = notes
+    if args.rehearsal:
+        run.rehearsal = RH.outcome(run.repeats, bool(failed_subjects), budget.cap)
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
     if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing
@@ -1400,12 +1455,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     for skipped in summary["skipped"]:
         print(f"{skipped['provider']:10} not answered: {skipped['reason']}")
+    if run.rehearsal:
+        print(RH.says(run.rehearsal))
     print(f"report: {run_dir / 'report.md'}")
     if problems:
         return 5
     if failed_subjects:
         print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
         return 6
+    if run.rehearsal and run.rehearsal["status"] == "capped":
+        print("the run's spend cap cut the rehearsal short, so it did not prove the pipeline to its end", file=sys.stderr)
+        return REHEARSAL_CAPPED
     if args.strict and summary["skipped"]:
         return 3
     return 0

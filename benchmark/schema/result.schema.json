@@ -96,6 +96,29 @@
       }
     },
     "notes": { "type": "array", "items": { "type": "string" } },
+    "rehearsal": {
+      "description": "A rehearsal's outcome: completed, capped when the run's spend cap kept a phase from running, or failed when the subject failed; its spend cap, what it spent, and where the money went, each phase and each judge in the order they spent it. Only a rehearsal has it.",
+      "type": "object",
+      "required": ["status", "max_spend_usd", "spent_usd", "spent"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["completed", "capped", "failed"] },
+        "max_spend_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "spent_usd": { "type": "number", "minimum": 0 },
+        "spent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["what", "usd"],
+            "additionalProperties": false,
+            "properties": {
+              "what": { "type": "string" },
+              "usd": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
     "spend": {
       "description": "What the run spent: tokens and US dollars per judge, for the subject, and in all. A model with no price is named under unpriced, and its cost is not in any figure.",
       "type": "object",
