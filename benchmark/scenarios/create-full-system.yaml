@@ -7,6 +7,18 @@ kind: skill
 # the tree against the guideline and against the guideline's reference
 # implementation.
 #
+# The extras stay an opt-in, because the first run with them showed what
+# they add. Its review found 24 high findings in the tree the build
+# left, 11 of them in files the MVP phase added or changed, 3 of those in
+# files it added. The scaffold skill's own review reads only the
+# scaffold's tree, and in that run the scaffold stopped before it, so
+# this review was the first to read any of the tree. The close reported
+# all 24 closed, with both gates green. Its tree differs from the MVP's
+# in 131 files, +2,630/-277 lines. The MVP's checkpoint was not judged
+# apart, so the run scores only the tree after the extras. The run is
+# checked in as three folders under benchmark/runs/: the scaffold, its
+# resume from the scaffold's milestone, and the resume of its judges.
+#
 # On the vm runtime only. The subject runs Docker, which only that
 # runtime provides, and the machine keeps the judges' keys and this file
 # out of the subject's reach.
