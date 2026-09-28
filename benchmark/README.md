@@ -400,7 +400,12 @@ The machine is Ubuntu 26.04 LTS with 8 processors, 32 GiB of memory,
 and a 100 GiB disk. It carries Docker, rootful, with its socket owned
 by the machine's user, so a subject runs `docker` without sudo. It
 carries uv, Node, and Claude Code at the versions `runtime/Dockerfile`
-pins, and pnpm and Terraform at pins of their own.
+pins, and pnpm and Terraform at pins of their own. It carries make and
+git from Ubuntu's archive. A tree the scaffold skills make runs its
+gates, `make check` and `make test-integration`, with make, git, uv,
+Node, pnpm, and Docker Compose. The readiness probe runs each of them,
+so a machine that lacks one never reports ready. uv runs the Python the
+tree names: Ubuntu's own when its release matches, else one uv fetches.
 
 Nothing of this machine is in it. It runs in Lima's plain mode, which
 mounts no folder, forwards no port, and runs no guest agent. SSH
@@ -430,8 +435,9 @@ machine's loopback, and the rule refuses that prefix too.
 The machine persists between runs. The harness removes what a run left
 in its own folder, and nothing else: the containers, volumes, and
 images a subject made stay. The machine's user has sudo, so a subject
-can change the machine itself. A changed pin takes a new machine:
-`limactl delete swe-benchmark`, then create it again.
+can change the machine itself. Lima keeps the template as it read it
+at create, so a change to the template, a pin or a package, takes a new
+machine: `limactl delete swe-benchmark`, then create it again.
 
 ## Scenarios
 
