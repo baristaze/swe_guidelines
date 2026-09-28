@@ -217,7 +217,8 @@ def test_a_rehearsal_skips_the_checkout_check_and_a_preflight_of_the_real_run_do
 
 
 def test_a_rehearsal_the_run_s_spend_cap_cuts_short_ends_capped_and_exits_9(rehearse, capsys):
-    code, run_dir, judged = rehearse(phased(phase("scaffold", TREE), phase("mvp"), phase("review")), "--max-spend-usd", "0.3")
+    three = (phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review"))
+    code, run_dir, judged = rehearse(phased(*three), "--max-spend-usd", "0.3")
     assert code == run.REHEARSAL_UNPROVEN == 9 and judged == []
     data = results(run_dir)
     assert data["repeats"][0]["cut_short"] == ["review"]
@@ -366,3 +367,12 @@ def test_a_rehearsal_of_either_path_of_the_shipped_system_spends_at_most_5():
         small = RH.scenario(S.select(scn, taken), J.load_matrix(None))
         assert small.max_spend_usd == RH.MAX_SPEND_USD
         assert all(p.prompt.endswith(RH.LINE) for p in small.subject.phases)
+
+
+def test_a_rehearsal_whose_cap_covers_no_repeat_ends_capped_having_spent_nothing(rehearse, capsys):
+    # Two phases at the rehearsal's $0.50 each need $1, and the flag leaves $0.60.
+    code, run_dir, judged = rehearse(phased(phase("scaffold", TREE), phase("mvp")), "--max-spend-usd", "0.6")
+    assert code == run.REHEARSAL_UNPROVEN and judged == []
+    data = results(run_dir)
+    assert data["repeats"] == [] and (data["rehearsal"]["status"], data["rehearsal"]["spent_usd"]) == ("capped", 0.0)
+    assert "the rehearsal did not prove the pipeline to its end: the run's spend cap cut it short" in capsys.readouterr().err

@@ -748,7 +748,12 @@ group; else the sum of the caps of the phases that run, over every
 repeat. So a run that takes a group is capped by the phases it runs,
 unless the flag names a cap. The harness checks it before each repeat and
 before each phase, and starts nothing more once the run has spent that
-much. It stops nothing that is running: a phase that starts
+much. A repeat of a skill subject starts only when what is left of the
+cap covers the sum of the caps of every phase it runs. Otherwise it, and
+every repeat after it, does not start, and the notes say why. So the
+judges of one repeat never leave the next too little room to finish, and
+a cap below one repeat's phases starts no repeat. It stops nothing that
+is running: a phase that starts
 below it can spend up to its own `max_usd`, and the judges of a repeat
 still judge it. So a run can end above it, by about what one phase and
 one repeat's judges spend. The run's notes say where it stopped. A
@@ -1126,7 +1131,8 @@ spent, and where the money went, each phase and each judge in the order
 they spent it. It ends in one of four ways:
 
 - `failed`: a phase failed, or left no tree.
-- `capped`: the run's spend cap kept a phase from running.
+- `capped`: the run's spend cap kept a phase, or the repeat, from
+  running.
 - `incomplete`: a step it exists to prove did not happen. A phase left
   no checkpoint, the archive failed, no archive came back from the
   runtime, the gates did not run, or no judge answered. `missing` names

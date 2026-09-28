@@ -137,16 +137,22 @@ def missing(scn: Scenario, repeat: Any, archived: bool | None) -> list[str]:
 
 
 def outcome(
-    scn: Scenario, repeats: list[Any], failed: bool, cap: float | None, archived: dict[int, bool | None]
+    scn: Scenario,
+    repeats: list[Any],
+    failed: bool,
+    cap: float | None,
+    archived: dict[int, bool | None],
+    held: bool = False,
 ) -> dict[str, Any]:
     """How a rehearsal ended, the steps it did not prove, and where its money went, in the order it was spent.
 
-    It ended `capped` when the run's spend cap kept a phase from running,
-    `failed` when the subject failed or a phase left no tree, `incomplete` when a step it exists to
-    prove did not happen, and `completed` otherwise. `archived` holds each
-    repeat's archive command, by index, as `missing` reads it.
+    It ended `capped` when the run's spend cap kept a phase or its repeat
+    from running (`held`), `failed` when the subject failed or a phase
+    ended the run early, `incomplete` when a step it exists to prove did
+    not happen, and `completed` otherwise. `archived` holds each repeat's
+    archive command, by index, as `missing` reads it.
     """
-    status = "capped" if any(r.cut_short for r in repeats) else "failed" if failed else "completed"
+    status = "capped" if held or any(r.cut_short for r in repeats) else "failed" if failed else "completed"
     steps = [f for r in repeats for f in missing(scn, r, archived.get(r.index))] if status == "completed" else []
     spent: list[dict[str, Any]] = []
     for repeat in repeats:

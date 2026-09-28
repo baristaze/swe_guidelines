@@ -79,7 +79,9 @@ never run the harness from there.
    scenario's value. The cap is not a hard ceiling: the
    harness checks it before each repeat and each phase and starts
    nothing more once it is reached, but what is running finishes, so a
-   run can end above N. Each session of a
+   run can end above N. A repeat starts only when what is left of N
+   covers the caps of all its phases, so a cap below one repeat's phases
+   runs nothing. Each session of a
    skill subject also has its own cap, which Claude Code holds: the
    subject's `max_usd`, or for a scenario in phases each phase's. Say
    both when the prompt asks for a cap. When it asks what a run could

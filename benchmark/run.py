@@ -542,6 +542,11 @@ class Budget:
     def reached(self) -> bool:
         return self.cap is not None and self.spent >= self.cap
 
+    def covers(self, need: float | None) -> bool:
+        """Whether what is left of the cap covers `need`; a run with no cap, or a need no one knows, is covered."""
+        # A hair of tolerance, so a cap that is the sum of the phases' caps covers them.
+        return self.cap is None or need is None or self.cap - self.spent + 1e-9 >= need
+
     def says(self) -> str:
         return f"the run's spend cap of ${self.cap:g} was reached at ${self.spent:.4f}"
 
@@ -799,6 +804,11 @@ def run_skill(
         archived=archived_ok,
         no_tree=no_tree,
     )
+
+
+def repeat_need(scn: S.Scenario) -> float | None:
+    """What one repeat's sessions may spend: the sum of the caps of every phase it runs; None for a subject with none."""
+    return round(sum(p.max_usd for p in phases_of(scn)), 6) if scn.kind == "skill" else None
 
 
 def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -1308,10 +1318,23 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     failed_subjects: list[int] = []
     # Each repeat's archive command, for a rehearsal's outcome.
     archived: dict[int, bool | None] = {}
+    # A repeat starts only when what is left of the cap covers every phase it runs, so the cap
+    # never cuts short a repeat whose first phases it let spend. Judges count toward the spend.
+    need = repeat_need(scn)
+    held = False
     try:
         for index in range(args.repeat):
             if budget.reached():
                 notes.append(f"{budget.says()}; repeat {index} and after did not run")
+                held = True
+                break
+            if not budget.covers(need):
+                left = (budget.cap or 0.0) - budget.spent
+                notes.append(
+                    f"repeat {index} and after did not run: ${left:.4f} of the run's ${budget.cap:g} spend cap is left, "
+                    f"and the phases of a repeat may spend ${need:g}"
+                )
+                held = True
                 break
             mark = streams.count
             streams.note(f"[repeat {index}] start")
@@ -1470,7 +1493,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         notes.extend(rt.release())
     run.notes = notes
     if args.rehearsal:
-        run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived)
+        run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived, held=held)
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
     if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing

@@ -225,7 +225,8 @@ def test_the_gates_run_on_the_final_tree_and_are_recorded_beside_the_scores(run_
 
 
 def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_phases):
-    scenario = phased(phase("scaffold", TREE), phase("mvp"), phase("review"))
+    # Each phase spends $0.25, past its own $0.10 cap, so the run's cap is reached inside the repeat.
+    scenario = phased(*(phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review")))
     code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "0.3")
     assert code == 0
     data = results(run_dir)
@@ -236,7 +237,8 @@ def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_ph
 
 
 def test_a_run_takes_the_scenario_s_repeats_and_spend_cap_unless_a_flag_overrides_them(run_phases):
-    scenario = dict(phased(phase("scaffold", TREE), phase("mvp"), phase("review")), repeat=2, max_spend_usd=0.3)
+    three = (phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review"))
+    scenario = dict(phased(*three), repeat=2, max_spend_usd=0.3)
     # No --repeat and no --max-spend-usd: the scenario's cap stops the run as the flag's would.
     code, run_dir = run_phases(scenario, "--runtime", "host")
     assert code == 0
@@ -417,9 +419,9 @@ def test_a_run_s_spend_cap_is_an_amount_above_zero(tmp_path, monkeypatch, capsys
 def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(run_phases):
     # Claude Code's result for a resumed session carries the session's total so far.
     scenario = phased(
-        phase("scaffold", {**TREE, "cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}),
-        phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume"),
-        phase("review", {"cost": 0.1}),
+        phase("scaffold", {**TREE, "cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}, max_usd=0.25),
+        phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume", max_usd=0.25),
+        phase("review", {"cost": 0.1}, max_usd=0.25),
     )
     code, run_dir = run_phases(scenario, "--repeat", "1", "--max-spend-usd", "0.8")
     assert code == 0
@@ -546,9 +548,8 @@ def test_a_repeat_the_run_s_spend_cap_cuts_short_is_marked_and_not_judged(tmp_pa
         return []
 
     monkeypatch.setattr(run.J, "judge_all", judge_all)
-    code, run_dir = run_phases(
-        phased(phase("scaffold", TREE), phase("mvp"), phase("review")), "--repeat", "1", "--max-spend-usd", "0.3"
-    )
+    three = (phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review"))
+    code, run_dir = run_phases(phased(*three), "--repeat", "1", "--max-spend-usd", "0.3")
     assert code == 0 and judged == []
     data = results(run_dir)
     assert data["repeats"][0]["cut_short"] == ["review"] and data["summary"]["cut_short"] == [0]
@@ -766,3 +767,36 @@ def test_a_phase_s_wall_time_is_in_its_record_and_the_report(run_phases):
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "| Repeat | Phase | Session | Status | Cap | Turns | Wall (s) | Cost (USD) | Checkpoint |" in report
     assert f"| 0 | scaffold | fresh | ok | - | 3 | {record['wall_s']:.1f} | $0.2500 |" in report
+
+
+# The run's spend cap and a repeat ---------------------------------------------
+
+
+def test_a_repeat_starts_only_when_what_is_left_of_the_cap_covers_its_phases(run_phases, monkeypatch):
+    # Two phases capped at $1 each and two repeats: the cap is $4. The first repeat's subject spends $0.50 and its
+    # judge $2, so $1.50 is left, less than the $2 the second repeat's phases may spend: it does not start.
+    def judge_all(*args, **kwargs):
+        usage = {"input_tokens": 1000, "output_tokens": 100}
+        return [run.J.Judgement(provider="anthropic", model="claude-opus-5-5", effort="medium", usage=usage, cost_usd=2.0)]
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp")), "--repeat", "2")
+    assert code == 0
+    data = results(run_dir)
+    (repeat,) = data["repeats"]
+    assert [p["name"] for p in repeat["phases"]] == ["scaffold", "mvp"] and "cut_short" not in repeat
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == 4.0
+    assert any(
+        "repeat 1 and after did not run: $1.5000 of the run's $4 spend cap is left, and the phases of a repeat may spend $2"
+        in n
+        for n in data["notes"]
+    )
+    assert len(seen(run_dir)) == 2  # no session of the second repeat started
+
+
+def test_a_run_whose_cap_covers_no_repeat_starts_none_and_says_why(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp")), "--repeat", "1", "--max-spend-usd", "1.5")
+    assert code == 0
+    data = results(run_dir)
+    assert data["repeats"] == [] and seen(run_dir) == []
+    assert any("repeat 0 and after did not run: $1.5000 of the run's $1.5 spend cap is left" in n for n in data["notes"])
