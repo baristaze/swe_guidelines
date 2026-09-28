@@ -101,7 +101,9 @@ all their logs in one command. Locally there is no credential check,
 and the Prometheus queries of step 4 run as one command, as do those
 of step 5. A retry counts as a call. A read that would be a seventh
 call is not made: the batch stops there, writes that read as not
-read, and the next batch starts on time.
+read, and the watch goes on to the next batch. The first credential
+check and the size read of step 2 come before the first batch, and
+are not counted in it.
 
 1. Verify the credential as Role and credential states. A chained
    session lasts an hour at most, so every interval reads the profile
@@ -180,10 +182,11 @@ read, and the next batch starts on time.
    with the alarm at the top, and the sub-agent returns so the
    invoker can act.
 7. When the window passes or the 30th batch closes, write the report
-   with every batch in order. A session follows at most 2 hops of
-   Next. The skill it starts with is hop zero; the report of the
-   second hop still names its next skill, and the session stops there
-   and reports.
+   with every batch in order. The sub-agent names its Next and never
+   runs it; the invoking session decides. A session follows at most 2
+   hops of Next. The skill it starts with is hop zero; the report of
+   the second hop still names its next skill, and the session stops
+   there and reports.
 
 ## What it never does
 
@@ -207,7 +210,7 @@ read, and the next batch starts on time.
 
 **Credential.** <profile and the Arn it resolved to, or local>
 **Size.** <tenants> tenants, <users> users, <n> written in the last day
-**Ended.** <window passed | 30th batch, <start> to <end> not watched | escalated on <alarm> at <time>>
+**Ended.** <window passed | 30th batch, <start> to <end> not watched | escalated on <alarm> at <time> | credential ended at <time>>
 
 ## Alarms
 
