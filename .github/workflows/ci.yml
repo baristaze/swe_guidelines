@@ -43,7 +43,7 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: .github/pins/package.json
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ steps.pins.outputs.uv }}
           python-version: ${{ matrix.python }}
@@ -74,7 +74,7 @@ jobs:
       - name: read the tool pins
         id: pins
         run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: ${{ steps.pins.outputs.uv }}
           python-version: "3.11"
