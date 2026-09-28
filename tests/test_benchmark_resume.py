@@ -673,9 +673,9 @@ def test_a_judgement_is_carried_only_from_the_same_archive_judged_with_the_same_
     prompt.write_text(told, encoding="utf-8")
     # This checkout says the group's sentence in other words: the rubric is another.
     changed = four_judges()
-    changed["subject"]["groups"]["extras"]["rubric"] = "A review read the tree."
+    changed["subject"]["groups"]["extras"]["rubric"] = "A last session read the tree."
     bench.write(changed)
-    assert f"reads {SENTENCE!r} there, and 'A review read the tree.' here" in refused(another)
+    assert f"reads {SENTENCE!r} there, and 'A last session read the tree.' here" in refused(another)
     bench.write(four_judges())
     # Nothing says what the source's judges were told.
     prompt.unlink()
