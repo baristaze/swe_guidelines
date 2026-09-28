@@ -365,6 +365,56 @@ class Judged:
     references: dict[str, dict[str, Any]] = field(default_factory=dict)
     rationale: str = ""
     score: float | None = None
+    # Made in the run this one resumed, and carried: its cost is in its record, and in no total.
+    carried: bool = False
+
+    @staticmethod
+    def carried_from(record: dict[str, Any], weights: dict[str, float]) -> Judged | None:
+        """A judgement as another run's `results.json` recorded it, marked carried, weighed with `weights`.
+
+        The scores, gaps, and strengths per reference are the judge's. The
+        weighted score is the harness's, so it is computed again with this
+        run's weights. None when the record is not an agentic judgement, or
+        when it answered and misses a reference that `weights` names.
+        """
+        judged = record.get("judged")
+        if not isinstance(judged, dict) or record.get("provider") not in [P.name(p) for p in P.Provider]:
+            return None
+        given = judged.get("references")
+        references: dict[str, dict[str, Any]] = {}
+        if record.get("status") == "ok" and isinstance(given, dict) and given:
+            for name, weight in weights.items():
+                entry = given.get(name)
+                if not isinstance(entry, dict) or not isinstance(entry.get("score"), int):
+                    return None
+                gaps, strengths = entry.get("gaps"), entry.get("strengths")
+                references[name] = {
+                    "weight": weight,
+                    "score": entry["score"],
+                    "gaps": [{k: str(g[k]) for k in GAP_KEYS if k in g} for g in gaps if isinstance(g, dict)]
+                    if isinstance(gaps, list)
+                    else [],
+                    "strengths": [str(s) for s in strengths] if isinstance(strengths, list) else [],
+                }
+        usage, fallback = record.get("usage"), record.get("fallback")
+        return Judged(
+            provider=str(record["provider"]),
+            model=str(record.get("model") or ""),
+            effort=str(record.get("effort") or ""),
+            status=str(record.get("status") or ""),
+            latency_s=float(record.get("latency_s") or 0.0),
+            usage=dict(usage) if isinstance(usage, dict) else {},
+            cost_usd=record.get("cost_usd"),
+            error=record.get("error"),
+            fallback=dict(fallback) if isinstance(fallback, dict) else None,
+            tool_calls=int(judged.get("tool_calls") or 0),
+            turns=int(judged.get("turns") or 0),
+            transcript=str(judged.get("transcript") or ""),
+            references=references,
+            rationale=str(judged.get("rationale") or ""),
+            score=weighted({n: r["score"] for n, r in references.items()}, weights) if references else None,
+            carried=True,
+        )
 
     @staticmethod
     def of(judgement: A.AgenticJudgement, weights: dict[str, float], transcript: str) -> Judged:
@@ -398,8 +448,9 @@ class Judged:
         return judged
 
     def as_dict(self) -> dict[str, Any]:
-        """The judgement as `results.json` records it: the fields every judgement has, and what the agentic one adds."""
-        return {
+        """The judgement as `results.json` records it: the fields every judgement has, what the agentic one adds, and
+        `carried` when it is carried."""
+        out: dict[str, Any] = {
             "provider": self.provider,
             "model": self.model,
             "effort": self.effort,
@@ -419,6 +470,9 @@ class Judged:
                 "transcript": self.transcript,
             },
         }
+        if self.carried:
+            out["carried"] = True
+        return out
 
 
 def judge_all(

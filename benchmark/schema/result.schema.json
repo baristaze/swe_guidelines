@@ -121,7 +121,7 @@
       }
     },
     "source": {
-      "description": "The earlier run this run started from: that run's folder by name and path, the repeats taken, each repeat refused with why, and the repeats the run's spend cap kept from starting. A run that judges another run's output again, with no subject run, has it, with the groups each repeat's rubric took; so does a run that resumes another after a phase, which also names that phase, the source's checkout, and each milestone it restored.",
+      "description": "The earlier run this run started from: that run's folder by name and path, the repeats taken, each repeat refused with why, and the repeats the run's spend cap kept from starting. A run that judges another run's output again, with no subject run, has it, with the groups each repeat's rubric took; so does a run that resumes another's judges, which also names the judges each repeat ran and those it carried; and so does a run that resumes another after a phase, which also names that phase, the source's checkout, and each milestone it restored.",
       "type": "object",
       "required": ["run_id", "path", "repeats", "refused", "capped"],
       "additionalProperties": false,
@@ -176,6 +176,20 @@
             "properties": {
               "repeat": { "type": "integer", "minimum": 0 },
               "groups": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "judges": {
+          "description": "For a run that resumed another's judges: for each repeat it took, the judges it ran here and those whose judgements it carried from the source.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repeat", "run", "carried"],
+            "additionalProperties": false,
+            "properties": {
+              "repeat": { "type": "integer", "minimum": 0 },
+              "run": { "type": "array", "items": { "type": "string" } },
+              "carried": { "type": "array", "items": { "type": "string" } }
             }
           }
         }
@@ -365,6 +379,10 @@
                 "model": { "type": "string" },
                 "effort": { "type": "string" },
                 "status": { "type": "string", "enum": ["ok", "skipped", "error", "missed"] },
+                "carried": {
+                  "description": "The judgement was made in the run this one resumed the judges of, on the same archive and with the same task, and is carried: it counts in every mean, and its cost in no spend.",
+                  "const": true
+                },
                 "latency_s": { "type": "number", "minimum": 0 },
                 "usage": {
                   "description": "input_tokens, output_tokens with the reasoning included, and reasoning_tokens when the provider reports it.",

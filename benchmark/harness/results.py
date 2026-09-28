@@ -12,7 +12,8 @@ computed. Every mean, spread, and count reads a judgement's score the
 same way: the verdict's score, or the weighted score. An agentic run's
 summary also carries each reference's scores and its gaps by severity,
 and its report shows the scores per reference, the gaps, and where each
-judge's transcript is.
+judge's transcript is. A judgement carried from the run this one resumed
+counts in every mean, and in no spend: the run that made it paid for it.
 
 Paths in the report are written as code spans, never as links: a run
 folder is served, uploaded, and checked in, and a link out of it would
@@ -340,7 +341,8 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
     """What the run spent: tokens and US dollars per judge, for the subject, and in all.
 
     Only a call that used tokens counts: a skipped judge and a subject that
-    reported no usage spent nothing the run can see. A call whose model has
+    reported no usage spent nothing the run can see. A carried judgement was
+    paid for by the run that made it, so it counts here for nothing. A call whose model has
     no price adds its tokens and is named under `unpriced`, so `cost_usd` is
     what the priced calls cost, and a total with anything unpriced is a
     lower bound, never a guess.
@@ -351,7 +353,7 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
         if repeat.subject_usage or repeat.subject_cost_usd is not None:
             _add(subject, repeat.subject_usage, repeat.subject_cost_usd, ", ".join(repeat.subject_models) or "subject")
         for j in repeat.judgements:
-            if j.usage:
+            if j.usage and not (isinstance(j, Judged) and j.carried):
                 _add(judges.setdefault(j.provider, _total()), j.usage, j.cost_usd, j.model)
     everything = [*judges.values(), subject]
     for total in everything:
@@ -578,7 +580,7 @@ def agentic_score_lines(run: RunResult) -> list[str]:
             weighted = str(j.score) if j.score is not None else "-"
             model = f"`{j.model}`" if j.model else "-"
             cells = [str(repeat.index), j.provider, model, j.effort, *scores, weighted, str(j.tool_calls), f"{j.latency_s:.1f}"]
-            lines.append(_row([*cells, j.status]))
+            lines.append(_row([*cells, f"{j.status} (carried)" if j.carried else j.status]))
     return lines
 
 
@@ -647,7 +649,8 @@ def source_lines(source: dict[str, Any]) -> list[str]:
     """The opening lines of a run that started from another: that run, what this one took of it, and what was refused.
 
     A run that judged another's output again also says the groups each
-    repeat's rubric took.
+    repeat's rubric took, and a run that resumed another's judges says
+    which judges each repeat ran and which it carried.
     """
     if "after" in source:
         lines = [
@@ -659,6 +662,18 @@ def source_lines(source: dict[str, Any]) -> list[str]:
         if commit:
             lines += [f"That run's checkout, `{commit}`, ran the carried phases; this run's checkout ran the rest.", ""]
         verb, covered = "resumed", "their phases' caps and their judges' budgets"
+    elif "judges" in source:
+        lines = [
+            f"This run resumed the judges of the run `{source['run_id']}`, at `{source['path']}`. No subject ran: the "
+            "output, and how its subject ended, are that run's. The judges each repeat names below judged its archived "
+            "output here; the other judgements are that run's, carried.",
+            "",
+        ]
+        for entry in source["judges"]:
+            here = ", ".join(f"`{p}`" for p in entry["run"]) or "none"
+            carried = ", ".join(f"`{p}`" for p in entry["carried"]) or "none"
+            lines += [f"Repeat {entry['repeat']}: judged here by {here}; carried: {carried}.", ""]
+        verb, covered = "resumed", "the budgets of the judges it runs"
     else:
         lines = [
             f"This run judged again the archived output of the run `{source['run_id']}`, at `{source['path']}`. "
