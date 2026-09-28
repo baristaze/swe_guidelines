@@ -186,10 +186,18 @@ def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsy
     (tmp_path / "two.json").write_text(
         json.dumps(dict(SKILL, name="two", runtimes=["vm"], requires=["docker"])), encoding="utf-8"
     )
+    (tmp_path / "three.json").write_text(
+        json.dumps(dict(SKILL, name="three", runtimes=["vm"], requires=["docker"], repeat=1, max_spend_usd=190)),
+        encoding="utf-8",
+    )
+    (tmp_path / "four.json").write_text(json.dumps(dict(SKILL, name="four", max_spend_usd=0.5)), encoding="utf-8")
     assert run.main(["list", "--out", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "runtimes=container,host\n" in out  # a scenario that requires nothing says nothing of it
     assert "runtimes=vm requires=docker\n" in out
+    # A scenario's repeats and its run's spend cap, each only when it names one.
+    assert "runtimes=vm requires=docker repeat=1 max_spend_usd=190\n" in out
+    assert "runtimes=host,container,vm max_spend_usd=0.5\n" in out
 
 
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "benchmark.yml"
@@ -539,11 +547,42 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
     assert any("not judged" in note for note in results["notes"])
 
 
-def test_a_run_repeats_three_times_unless_told_otherwise():
-    assert run.build_parser().parse_args([]).repeat == 3
+def test_a_run_repeats_three_times_unless_told_otherwise(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    assert run.build_parser().parse_args([]).repeat is None  # the scenario's, else run.REPEAT
+    assert run.REPEAT == 3
+
+    def dry_run(scenario: dict, *flags: str) -> dict:
+        path = tmp_path / "one.json"
+        path.write_text(json.dumps(scenario), encoding="utf-8")
+        out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
+        assert run.main(["--scenario", str(path), "--out", str(out), "--dry-run", *flags]) == 0
+        (run_dir,) = out.iterdir()
+        resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        return {"repeat": resolved["repeat"], "max_spend_usd": resolved["max_spend_usd"]}
+
+    # A scenario that names neither: 3 repeats and no run cap.
+    assert dry_run(SKILL) == {"repeat": 3, "max_spend_usd": None}
+    # A scenario that names them: a run without the flags takes them.
+    named = dict(SKILL, repeat=1, max_spend_usd=190)
+    assert dry_run(named) == {"repeat": 1, "max_spend_usd": 190.0}
+    # Each flag overrides its key, one without the other.
+    assert dry_run(named, "--repeat", "2") == {"repeat": 2, "max_spend_usd": 190.0}
+    assert dry_run(named, "--max-spend-usd", "5") == {"repeat": 1, "max_spend_usd": 5.0}
+    assert dry_run(SKILL, "--repeat", "4", "--max-spend-usd", "7.5") == {"repeat": 4, "max_spend_usd": 7.5}
     workflow = WORKFLOW.read_text(encoding="utf-8")
     repeat = workflow[workflow.index("      repeat:") :]
     assert 'default: "3"' in repeat.split("\n\n")[0]
+
+
+@pytest.mark.parametrize("repeat", ["0", "-1"])
+def test_a_repeat_flag_below_1_is_refused_before_anything_starts(tmp_path, monkeypatch, capsys, repeat):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(dict(SKILL, repeat=2)), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", repeat]) == 2
+    assert f"--repeat is a whole number of at least 1, got {repeat}" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
 
 
 def test_the_workflow_runs_every_scenario_strict():

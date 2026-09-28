@@ -231,6 +231,27 @@ def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_ph
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == 0.3
 
 
+def test_a_run_takes_the_scenario_s_repeats_and_spend_cap_unless_a_flag_overrides_them(run_phases):
+    scenario = dict(phased(phase("scaffold"), phase("mvp"), phase("review")), repeat=2, max_spend_usd=0.3)
+    # No --repeat and no --max-spend-usd: the scenario's cap stops the run as the flag's would.
+    code, run_dir = run_phases(scenario, "--runtime", "host")
+    assert code == 0
+    data = results(run_dir)
+    assert [[p["name"] for p in r["phases"]] for r in data["repeats"]] == [["scaffold", "mvp"]]
+    assert any("$0.3 was reached at $0.5000; phase review and after did not run" in n for n in data["notes"])
+    assert any("repeat 1 and after did not run" in n for n in data["notes"])
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert (resolved["repeat"], resolved["max_spend_usd"]) == (2, 0.3)
+    # The flags override both: one repeat, under a cap it does not reach.
+    code, run_dir = run_phases(scenario, "--repeat", "1", "--max-spend-usd", "5")
+    assert code == 0
+    data = results(run_dir)
+    assert [[p["name"] for p in r["phases"]] for r in data["repeats"]] == [["scaffold", "mvp", "review"]]
+    assert not any("spend cap" in n for n in data["notes"])
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert (resolved["repeat"], resolved["max_spend_usd"]) == (1, 5.0)
+
+
 def test_a_one_phase_skill_takes_its_spend_cap_the_same_way(run_phases):
     one = {
         "name": "one",

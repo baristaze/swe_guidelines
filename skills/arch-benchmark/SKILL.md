@@ -43,23 +43,29 @@ never run the harness from there.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
    their kind, their default judges, the runtimes each runs on, and
    what each requires of its runtime when it requires anything. It
+   prints a scenario's `repeat` and `max_spend_usd` when it names them:
+   the repeats and the run's spend cap a run of it takes by default. It
    prints each provider with its flag and whether its key is present.
    Report an absent key as absent; it is a provider that will be
    skipped, not a failure. It also shows whether the subject's own key,
    `SUBJECT_ANTHROPIC_API_KEY`, is present; a skill scenario needs it,
    and without it a `--strict` run refuses. `list` shows only the
    scenarios under `benchmark/scenarios/`. For a scenario given by its
-   path, read its `kind`, `runtimes`, `requires`, and `judges` from the
-   file.
+   path, read its `kind`, `runtimes`, `requires`, `repeat`,
+   `max_spend_usd`, and `judges` from the file.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
-   `high`. `--repeat N` runs the subject N times, 3 by default.
-   `--subject-model` pins the subject's model. `--max-spend-usd N` is
-   the run's spend cap in US dollars, over the subject and the judges
-   together. It is not a hard ceiling: the harness checks it before each
-   repeat and each phase and starts nothing more once it is reached, but
-   what is running finishes, so a run can end above N. Each session of a
+   `high`. `--repeat N` runs the subject N times. Without it, the run
+   takes the scenario's `repeat`, and 3 only when the scenario names
+   none. `--subject-model` pins the subject's model. `--max-spend-usd N`
+   is the run's spend cap in US dollars, over the subject and the judges
+   together. Without it, the run takes the scenario's `max_spend_usd`,
+   and has no run cap only when the scenario names none. A flag
+   overrides the scenario's value. The cap is not a hard ceiling: the
+   harness checks it before each repeat and each phase and starts
+   nothing more once it is reached, but what is running finishes, so a
+   run can end above N. Each session of a
    skill subject also has its own cap, which Claude Code holds: the
    subject's `max_usd`, or for a scenario in phases each phase's. Say
    both when the prompt asks for a cap. When it asks what a run could
@@ -118,10 +124,12 @@ never run the harness from there.
 5. Run the scenario, for example
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
-   the prompt has not said which judges or how many repeats, use the
-   scenario's default judges and the default of 3 repeats, by leaving
-   out `--providers`, `--effort`, and `--repeat`, and say which they
-   were.
+   the prompt has not said which judges, how many repeats, or what the
+   run may spend, leave out `--providers`, `--effort`, `--repeat`, and
+   `--max-spend-usd`. A run without those flags takes the scenario's
+   own: its judges, its effort, its `repeat`, and its `max_spend_usd`.
+   It takes 3 repeats only when the scenario names no `repeat`, and no
+   run cap only when it names no `max_spend_usd`. Say which they were.
 6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
    `run.json`, and calls nothing. For agentic judges, it also copies
@@ -130,9 +138,12 @@ never run the harness from there.
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
    fallbacks each would use (`models` lists each provider's model
-   first, then its fallbacks in order), the effort, the repeats, the run's spend
-   cap when one was given, and the subject's `max_usd`. For a scenario
-   in phases, `run.json` lists each phase under `phases`, and the
+   first, then its fallbacks in order), the effort, the repeats
+   (`repeat`), the run's spend cap (`max_spend_usd`) when there is one,
+   and the subject's `max_usd`. The top-level `repeat` and
+   `max_spend_usd` are what the run takes, from its flags or its
+   scenario. For a scenario in phases, `run.json` lists each phase
+   under `phases`, and the
    phases' bounds are the ones in effect: the subject's `max_usd` is
    null, and its `max_turns` and `timeout_s` are defaults nothing uses.
    `subject_argv` is only the first phase's command. Report each phase

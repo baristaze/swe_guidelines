@@ -321,6 +321,40 @@ def test_the_shipped_skill_scenarios_name_their_spend_caps():
     }
 
 
+def test_a_scenario_names_its_repeats_and_its_run_s_spend_cap():
+    scn = S.from_data(MINIMAL)
+    assert (scn.repeat, scn.max_spend_usd) == (None, None)  # a run takes 3 repeats and no run cap
+    assert (scn.as_dict()["repeat"], scn.as_dict()["max_spend_usd"]) == (None, None)
+    scn = S.from_data(dict(MINIMAL, repeat=1, max_spend_usd=190))
+    assert (scn.repeat, scn.max_spend_usd) == (1, 190.0)
+    assert (scn.as_dict()["repeat"], scn.as_dict()["max_spend_usd"]) == (1, 190.0)
+    assert S.from_data(dict(MINIMAL, repeat=None, max_spend_usd=None)).repeat is None  # YAML's empty value names none
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, "2", True])
+def test_a_repeat_that_is_not_a_whole_number_of_at_least_1_is_refused_when_the_scenario_loads(tmp_path, bad):
+    message = rf"scenario one: repeat: a whole number of at least 1, got {re.escape(repr(bad))}"
+    with pytest.raises(S.ScenarioError, match=message):
+        S.load(write(tmp_path, "one.json", dict(MINIMAL, repeat=bad)))
+
+
+@pytest.mark.parametrize("bad", [0, -1, "190", True, float("inf")])
+def test_a_run_s_spend_cap_that_is_not_an_amount_above_0_is_refused_when_the_scenario_loads(bad):
+    with pytest.raises(S.ScenarioError, match=r"scenario one: max_spend_usd: an amount in US dollars above 0"):
+        S.from_data(dict(MINIMAL, max_spend_usd=bad))
+
+
+def test_the_full_system_scenario_runs_once_under_the_sum_of_its_phases_caps():
+    pytest.importorskip("yaml")
+    folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
+    scenarios = {s.name: s for s in (S.load(p) for p in S.catalog(folder))}
+    system = scenarios.pop("create-full-system")
+    assert system.repeat == 1
+    assert system.max_spend_usd == sum(p.max_usd for p in system.subject.phases) == 190.0
+    # The others name neither, so a run of one takes 3 repeats and no run cap unless a flag says otherwise.
+    assert {(s.repeat, s.max_spend_usd) for s in scenarios.values()} == {(None, None)}
+
+
 def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
     pytest.importorskip("yaml")
     scn = S.load(Path(__file__).resolve().parent.parent / "benchmark" / "scenarios" / "create-full-system.yaml")

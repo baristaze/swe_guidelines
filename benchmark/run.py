@@ -79,6 +79,9 @@ HELPER_TIMEOUT_S = 600
 ONE_PHASE = "subject"
 # The session the harness's own commands run in, a name no phase can take.
 HARNESS_SESSION = "_harness"
+# One run of a subject is an anecdote, so a run repeats it this many times
+# when neither `--repeat` nor the scenario's `repeat` says otherwise.
+REPEAT = 3
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -856,7 +859,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
     parser.add_argument(
-        "--repeat", type=int, default=3, help="how many times the subject runs; one run is an anecdote, so 3 by default"
+        "--repeat",
+        type=int,
+        default=None,
+        help=f"how many times the subject runs; the scenario's repeat, else {REPEAT}, since one run is an anecdote",
     )
     parser.add_argument(
         "--runtime",
@@ -877,7 +883,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-spend-usd",
         type=float,
         default=None,
-        help="once the run has spent this many US dollars, subject and judges, it starts no further repeat or phase",
+        help="once the run has spent this many US dollars, subject and judges, it starts no further repeat or phase; "
+        "the scenario's max_spend_usd when not given",
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
@@ -896,10 +903,13 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
-            requires = f" requires={','.join(scn.requires)}" if scn.requires else ""
+            # What a scenario requires, how many repeats it runs, and its run's spend cap, each only when it names one.
+            named = f" requires={','.join(scn.requires)}" if scn.requires else ""
+            named += f" repeat={scn.repeat}" if scn.repeat else ""
+            named += f" max_spend_usd={scn.max_spend_usd:g}" if scn.max_spend_usd else ""
             print(
                 f"  {scn.name:18} kind={scn.kind:8} judges={scn.judges.providers} effort={scn.judges.effort} "
-                f"runtimes={','.join(scn.runtimes)}{requires}"
+                f"runtimes={','.join(scn.runtimes)}{named}"
             )
         except S.ScenarioError as exc:
             print(f"  {path.stem:18} unreadable: {exc}")
@@ -944,6 +954,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_spend_usd is not None and not 0 < args.max_spend_usd < float("inf"):
         print(f"--max-spend-usd is an amount in US dollars above 0, got {args.max_spend_usd}", file=sys.stderr)
         return 2
+    if args.repeat is not None and args.repeat < 1:
+        print(f"--repeat is a whole number of at least 1, got {args.repeat}", file=sys.stderr)
+        return 2
 
     try:
         scn = S.load(S.find(args.scenario, SCENARIOS))
@@ -953,6 +966,12 @@ def main(argv: list[str] | None = None) -> int:
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    # A flag that is not given takes the scenario's value. From here on,
+    # args.repeat and args.max_spend_usd are what the run takes.
+    if args.repeat is None:
+        args.repeat = scn.repeat or REPEAT
+    if args.max_spend_usd is None:
+        args.max_spend_usd = scn.max_spend_usd
     # The scenario says where it runs. A runtime it does not list is refused
     # here, before a run folder is made.
     runtime = args.runtime or scn.runtimes[0]
@@ -1127,7 +1146,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     harness = CliStream(run_dir / "streams" / "harness.jsonl") if scn.subject.output else None
     failed_subjects: list[int] = []
     try:
-        for index in range(max(1, args.repeat)):
+        for index in range(args.repeat):
             if budget.reached():
                 notes.append(f"{budget.says()}; repeat {index} and after did not run")
                 break
