@@ -54,7 +54,7 @@ class RepeatResult:
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
-    # The models the subject's envelope reports it ran on; empty when it reports none.
+    # The models the subject's result reports it ran on; empty when it reports none.
     subject_models: list[str] = field(default_factory=list)
     # What the subject spent: its tokens, and their cost in US dollars, None when unknown.
     subject_usage: dict[str, int] = field(default_factory=dict)
@@ -65,6 +65,8 @@ class RepeatResult:
     archive: dict[str, Any] | None = None
     # The scenario's gates, run on the final tree: each command and whether it passed.
     gates: list[dict[str, Any]] | None = None
+    # The phases the run's spend cap kept from running; such a repeat is not judged and scores nothing.
+    cut_short: list[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -78,7 +80,7 @@ class RepeatResult:
         }
         if self.expected is not None:
             out["expected"] = dict(self.expected)
-        for key in ("phases", "archive", "gates"):
+        for key in ("phases", "archive", "gates", "cut_short"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
         return out
@@ -124,7 +126,7 @@ class RunResult:
 
 
 def failed(exit_status: dict[str, Any]) -> bool:
-    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its envelope."""
+    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its result."""
     return exit_status.get("code", 0) != 0 or bool(exit_status.get("timed_out")) or bool(exit_status.get("is_error"))
 
 
@@ -247,6 +249,7 @@ def summarize(
         "per_provider": per_provider,
         "overall_mean": overall,
         "failed_repeats": failures,
+        "cut_short": [r.index for r in repeats if r.cut_short],
         "spread": spread,
         "self_judged": self_judged,
         "fallbacks": [fallbacks[k] for k in sorted(fallbacks)],
@@ -649,6 +652,14 @@ def report_text(run: RunResult) -> str:
     if summary["failed_repeats"]:
         failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
         lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
+    for repeat in run.repeats:
+        if repeat.cut_short:
+            left = ", ".join(repeat.cut_short)
+            lines += [
+                f"Repeat {repeat.index} was cut short by the run's spend cap: {left} did not run. It is not judged "
+                "and is in no mean, neither scored nor a failure.",
+                "",
+            ]
     if summary["self_judged"]:
         lines += [f"Note: {summary['self_judged']}.", ""]
 

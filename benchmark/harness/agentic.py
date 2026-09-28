@@ -61,6 +61,14 @@ it. A `missed` judgement names the budget and the figures in `error`,
 and no answer is invented for it. Every call on every provider carries
 the same output cap, `Budget.max_output_tokens`, reasoning included.
 
+The dollar budget is not a hard cap. The check before a call counts
+only the input it carries at least, since what the call answers is not
+known until it is made, and a submission is read whatever the budget.
+So a judgement can end above `max_usd` by what its last call adds past
+that check: its output, at most `max_output_tokens` at the output price,
+and the input the turn before it read, at most `Caps.chars` of each
+tool result, at the input price.
+
 A judgement's `status` is `ok`, `missed`, `error`, or `skipped`. It is
 `error` when the provider failed, the model refused, the model stopped
 without submitting after two reminders, or every submission missed the

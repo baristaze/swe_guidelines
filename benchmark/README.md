@@ -27,7 +27,7 @@ image first (see Where a scenario runs).
 
 | Flag | What it does |
 |------|--------------|
-| `--scenario` | a scenario from `scenarios/`, by the name `list` prints or its file's stem, or a path to a file |
+| `--scenario` | a scenario from `scenarios/`, by the name `list` prints, else by its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
@@ -102,7 +102,8 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
                            a skill subject's every turn
   streams/harness.jsonl    what the harness ran where the subject ran, when the
                            subject builds an output: checkpoints, the archive, the gates
-  streams/build.jsonl      the image build's output, with `--runtime container --build`
+  streams/build.jsonl      the image build's output, with `--runtime container --build`,
+                           for a skill or command subject
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
                            files under workspace/ at their own paths, byte for byte
@@ -155,8 +156,9 @@ run adds its row by hand; nothing generates it. `make runs`, part of
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
 (see Versions), on a run whose runtime its scenario does not list
-(see Where a scenario runs), and on a zip in a run folder that holds a
-string shaped like a key or does not open (see The workflow).
+(see Where a scenario runs), and on a compressed file in a run folder
+that holds a string shaped like a key, or that the scan cannot read, on
+a `.zip` that does not open, and on a `.git` folder (see The workflow).
 
 ## Versions
 
@@ -170,7 +172,7 @@ path on that machine:
 |-------|---------------|
 | `checkout` | the commit, the plugin's version from `.claude-plugin/plugin.json`, and whether the tree held changes no commit holds (`dirty`), with those paths and one hash over their content |
 | `claude_code` | what `claude --version` answers inside the runtime, for a skill subject |
-| `image` | the container image by name and by the id the engine gives it |
+| `image` | the container image by name and by the id the engine gives it, for a skill or command subject; a `qa` subject runs in no image |
 | `target` | the target by its path in the repository and a hash of the staged copy the subject read |
 | `expected` | the planted findings by their path in the repository and a hash of the file |
 | `references` | what agentic judges read beside the output: paths of the checkout and a hash of their copy, or a repository's URL, tag, commit, and the guideline release it pins (see Agentic judges) |
@@ -521,7 +523,7 @@ A relative path in a scenario is read from the scenario file's folder.
 A skill subject can run in `phases`: an ordered list of sessions, each
 with a prompt and bounds of its own, building one folder of the
 workspace, `output`. The harness commits that folder after every phase
-and archives its last commit.
+and archives the last of those commits.
 
 ```yaml
 subject:
@@ -549,7 +551,8 @@ subject:
 ```
 
 Every phase names its `name`, `prompt`, `max_turns`, `max_usd`, and
-`timeout_s`, and the subject names none of those four for all of them.
+`timeout_s`. The subject names no `prompt`, `max_turns`, `max_usd`, or
+`timeout_s` of its own: each phase's are the ones in effect.
 
 **Sessions.** A phase is `fresh` by default: a new `claude -p` with a new
 HOME and a new TMPDIR, so nothing carries over, no session, no Claude
@@ -578,8 +581,11 @@ is only the backstop:
 - the turn cap, `--max-turns`, which Claude Code holds. It counts the
   main agent's turns only, so a phase whose skill fans out to subagents
   is bounded by its spend;
-- the spend cap, `--max-budget-usd`, which Claude Code holds. The
-  harness also prices the usage of every assistant message the stream
+- the spend cap, `--max-budget-usd`, which Claude Code holds. It counts
+  only the spend of the call it is given to: a resumed session's earlier
+  spend is not counted against it. So a resumed phase's `max_usd` bounds
+  that phase's own spend, as a fresh phase's does. The harness also
+  prices the usage of every assistant message the stream
   carries, at the matrix's price for its model, and stops the phase
   when that passes the cap. A cache read is priced at a tenth of the
   input price, and a cache write at 1.25 times it, or twice it for a
@@ -587,39 +593,63 @@ is only the backstop:
   dearest Anthropic model, and named under `unpriced`. The stream shows
   what the session shows it, so a subagent the stream does not carry is
   held by Claude Code's cap alone;
-- the gate reruns, which the harness holds. A gate run is a Bash call
-  whose command runs a command the scenario lists under `gates`, as
-  whole words, read from the stream, and it fails when its result is an
-  error. After a failed run of a gate come at most `max_gate_reruns`
-  more, 3 by default: the first run plus at most 3 reruns. When the last
-  of them fails too, the harness stops the phase and records the gate
-  as failing. A run that passes ends the streak, so a later step that
-  runs the gates again starts with its first run.
+- the gate reruns, which the harness holds, reading each Bash call in
+  the stream. A command is split into simple commands the way the shell
+  splits it, and a gate run is one whose first words, after any
+  variable settings, are a command the scenario lists under `gates`.
+  So `cd acme && make check` runs the gate `make check`, and
+  `echo make check`, or a commit message that names it, does not. A
+  run's outcome is read from the call's result only when the call's
+  exit status is the gate's: nothing but `&&` follows the gate. Then
+  it fails when the result is an error. A run that pipes the gate
+  (`make check | tail`), or follows it with `;`, `||`, or `&`, is
+  counted as unread, and it neither fails nor passes. After a failed
+  run of a gate come at most `max_gate_reruns` more read runs, 3 by
+  default: the first run plus at most 3 reruns. When the last of them
+  fails too, the harness stops the phase and records the gate as
+  failing. A run that passes ends the streak, so a later step that runs
+  the gates again starts with its first run. A phase whose gate runs
+  are all unread is bounded by its turns and its spend.
 
 A phase that hits a bound ends as `capped`, and its record in
 `results.json` names the bound: `turns`, `spend`, or `gate_reruns`. The
 next phase still runs, unless the phase says `on_cap: stop`. A phase
 that fails, on a nonzero exit, an error result, or its timeout, ends the
 repeat, and the repeat fails and is not judged. A repeat whose phases
-all ended, finished or capped, is judged. A one-phase skill subject is
+all ended, finished or capped, is judged, unless the run's spend cap
+kept some from running (see The run's spend). A one-phase skill subject is
 one session under the same bounds, and a cap there fails its repeat, as
 a session that gave no answer.
 
 **Checkpoints.** After each phase, the harness commits the output folder
-where the subject runs, with every hook of the tree turned off and an
-identity of its own. The folder is made a repository if it is not one.
-A phase that fails keeps its checkpoint, so the checkpoints so far are
-never lost. Each phase's record names its commit.
+where the subject runs. The folder is made a repository if it is not
+one. A checkpoint leaves the output's branch, HEAD, and index as the
+subject left them. It stages the tree, the files git tracks and those
+it does not ignore, into an index of its own, commits that tree with an
+identity of its own, the message `checkpoint`, and no parent, and keeps
+the commit under `refs/checkpoints/<n>`. So the history exists, and a
+phase that lists every ref finds commits that say `checkpoint` and
+nothing more: no phase's name, no outcome. The branch's own history
+holds only what the subject committed, and a review with no argument
+reads the change the subject made, not the harness's. The phase before
+a checkpoint has ended, and its processes with it, so a lock git left
+in the repository is stale, and the checkpoint removes it. A phase that
+fails keeps its checkpoint, so the checkpoints so far are never lost.
+Each phase's record in `results.json` names its commit.
 
 **The output.** After the last phase that ran, the harness archives the
-last commit with `git archive --format=zip` and brings it back as
+last checkpoint with `git archive --format=zip` and brings it back as
 `artifacts/<repeat>/output.zip`, beside `MANIFEST.txt`: one line per
 file of the zip, its SHA-256, its size in bytes, and its path. So two
 runs' outputs diff as text. The zip is redacted member by member before
 its hash is taken, and `results.json` records its SHA-256, its size, its
-file count, and the commit, under `archive`. Files a scenario collects
-are copied byte for byte, and a binary one reaches the judges as its
-size, not its bytes.
+file count, and the commit, under `archive`. A zip the redaction cannot
+read is replaced by a line that says so, its record holds no file, and
+the run's notes say why; the run goes on to write its results. Files a
+scenario collects are copied byte for byte, and a binary one reaches
+the judges as its size, not its bytes. Nothing under a `.git` is
+collected: its objects are compressed, and the zip is the record of the
+output.
 
 **The gates.** Then the harness runs each command under `gates` in the
 output folder, where the subject ran, with no key, and records whether
@@ -634,7 +664,12 @@ spent that much. It stops nothing that is running: a phase that starts
 below it can spend up to its own `max_usd`, and the judges of a repeat
 still judge it. So a run can end above it, by about what one phase and
 one repeat's judges spend. The run's notes say where it stopped. A
-phase's spend is Claude Code's own figure, or the harness's estimate
+repeat whose phases the cap kept from running is cut short: its record
+names those phases under `cut_short`. It is not judged, since its
+output is not the one the scenario measures and a judge would spend
+past the cap, and it is in no mean, neither scored nor a failure. The
+summary names it under `cut_short`, and a run whose every repeat was cut
+short has no score. A phase's spend is Claude Code's own figure, or the harness's estimate
 when the session wrote no result. A resumed session's result carries
 the session's running total, so a resumed phase's spend is what it
 adds to that total. A repeat's is the sum of its phases'.
@@ -797,11 +832,16 @@ judge asks for a read after it was told none are left, when its wall
 time runs out, or when its next call would pass the input tokens or the
 dollars it may spend. That check comes before each call. The next call
 carries at least the last one's input, and costs at least that input at
-its price, so a call that would pass either budget is never made. The
-dollars are at the list prices in `models.yaml`. A model with no price
-there is held to the dearest price the file gives, so the check errs
-high. Every call on every provider carries the output cap,
-`max_output_tokens`. A `missed` judgement names the budget and its
+its price, so a call that would pass either budget that way is never
+made. The dollar budget is not a hard cap: what a call answers is not
+known until it is made, and a submission is read whatever the budget.
+So a judgement can end above `max_usd` by what its last call adds: its
+output, at most `max_output_tokens` at the output price, about $0.32 at
+16,000 tokens and $20 per million, and the input the turn before it
+read, at the input price. The dollars are at the list prices in
+`models.yaml`. A model with no price there is held to the dearest price
+the file gives, so the check errs high. Every call on every provider
+carries the output cap, `max_output_tokens`. A `missed` judgement names the budget and its
 figures in `error`, and scores nothing. The summary names it as it
 names every judgement that did not answer.
 
@@ -933,15 +973,23 @@ writes the summary or uploads the run folders, it runs
 file of every run folder as bytes, frames included, and replaces two
 things with `[redacted]`: the value of every provider key the harness
 knows by name, and anything shaped like a provider, GitHub, or AWS key.
-A zip is scanned member by member, names included, since a compressed
-member hides its text from a scan of the zip's bytes, and a zip inside
-it the same way, down to four levels. Then its bytes are scanned as
-they stand. A zip that held a key is written again, and its manifest
-and its record in `results.json` with it, so they describe the zip that
-is published. A zip too deep to unpack, or one that would unpack to
-more than 1 GiB, is replaced by a line that says so, since nothing
-could say it holds no key. The summary and the upload run only when the
-redaction succeeded.
+A compressed file hides its text from a scan of its bytes, so the scan
+unpacks the forms the standard library reads: a zip, member by member,
+names and comment included; a tar, member by member; and a gzip, bzip2,
+or xz stream. What it unpacks is scanned the same way, down to four
+levels, and then the file's bytes are scanned as they stand. A file
+that held a key is packed again in its own form, and a zip's manifest
+and its record in `results.json` are written again, so they describe
+the zip that is published. A file the scan cannot read is replaced by a
+line that says so, since nothing could say it holds no key: one too
+deep, one that would unpack to more than 1 GiB, a member that does not
+read (an encrypted one, or one in a compression the standard library
+does not know), a stream of those forms that breaks, and a form it
+cannot read at all (zstd, 7z, rar, lz4). A file that only looks like a
+zip and does not open as one is scanned as bytes. A file the command
+cannot read or write is named, the rest are redacted still, and the
+command exits 1. The summary and the upload run only when the redaction
+succeeded.
 
 ## Tests
 

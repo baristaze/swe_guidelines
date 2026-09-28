@@ -47,7 +47,7 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
 
-runs:              ## the index of the benchmark runs has one row per run folder, each ran on a runtime its scenario lists, and no zip holds a key
+runs:              ## the index of the benchmark runs has one row per run folder, each ran on a runtime its scenario lists, and no compressed file holds a key
 	$(PYTHON_YAML) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings
@@ -59,7 +59,7 @@ version:           ## every copy of the release version agrees with .claude-plug
 skills:            ## every skill has valid frontmatter and references files that exist
 	$(PYTHON) scripts/check_skills.py
 
-agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count)
+agents:            ## the reviewer agent mirrors the review template (decision words, report block, step count) and caps its turns
 	$(PYTHON) scripts/check_agents.py
 
 test:              ## the checkers and generators pass their own tests (pytest through uv, pinned)

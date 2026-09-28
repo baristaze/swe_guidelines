@@ -65,23 +65,29 @@ never run the harness from there.
    both when the prompt asks for a cap. When it asks what a run could
    spend, say that it can pass N by about the largest session cap and
    one repeat's judges. A dry run does not price one-shot judges. An
-   agentic judge makes no call that would pass its budget's `max_usd`,
-   so one repeat's agentic judges spend about that times the number of
-   judges. When the prompt names something with no flag behind it, say
-   so and run without it.
+   agentic judge's budget `max_usd` is not a hard cap: a judge can pass
+   it by what its last call adds, its output, at most
+   `max_output_tokens` at the model's output price, and the input the
+   turn before it read. So one repeat's agentic judges spend about
+   `max_usd` times the number of judges, and each judge can end above
+   its `max_usd` by that one call. When the prompt names something with
+   no flag behind it, say so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
    The harness refuses a runtime the scenario does not list with exit
-   7 and runs nothing. So when the prompt names a runtime that `list`
-   does not show for the scenario, run nothing, not even a dry run,
-   neither on that runtime nor on another, and say so. When the prompt
-   names no runtime, pass no `--runtime`.
+   7 and runs nothing. So when the prompt names a runtime the scenario
+   does not list, run nothing, not even a dry run, neither on that
+   runtime nor on another, and say so. The runtimes a scenario lists are
+   the ones `list` shows for it, or, for a scenario given by its path,
+   its file's `runtimes`. When the prompt names no runtime, pass no
+   `--runtime`.
 
    A `qa` subject runs no command on any runtime: the harness asks the
    model itself and builds no image for it, so it needs no engine, no
-   machine, and neither `--build` nor `--runtime-config`. For a skill
-   or command subject, the runtime the run takes, named or the
-   scenario's first, needs more:
+   machine, and no `--build`. On `vm` it still takes the
+   `--runtime-config` below, which every vm run needs, a dry run
+   included. For a skill or command subject, the runtime the run takes,
+   named or the scenario's first, needs more:
    - `container` runs the subject with `docker run` on this machine,
      so it needs a Docker engine here. Pass `--build`. The harness
      builds the image only when `--build` is passed, and nothing this
@@ -104,8 +110,8 @@ never run the harness from there.
 
    A scenario's requirements need no flag. A scenario that lists a
    runtime unable to provide what it requires does not load, so every
-   runtime `list` shows for a scenario provides what it requires. A
-   scenario that requires `docker` lists `vm` only. A dry run (step 6)
+   runtime a scenario lists provides what it requires. A scenario that
+   requires `docker` lists `vm` only. A dry run (step 6)
    builds nothing and asks no runtime anything, so it needs neither the
    engine nor the machine. Pass the flags a run would take anyway, so
    the command is the run's.

@@ -3,6 +3,8 @@
 Its prompt carries what it does, as `DO {json}` on the first line:
 
 - `write`: files to write, by a path relative to where it starts;
+- `git`: git commands to run where it starts, after the writes, each as its words; what each printed is in its answer;
+- `touch`: files to leave behind empty after the git commands, such as a lock;
 - `note`: text for the handoff note, at the path the hint names;
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
@@ -19,6 +21,7 @@ its HOME, so a later session in the same HOME finds it.
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import uuid
@@ -57,6 +60,12 @@ emit({"type": "system", "subtype": "init", "session_id": session, "model": "clau
 for path, text in todo.get("write", {}).items():
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(text, encoding="utf-8")
+seen["git"] = [
+    subprocess.run(["git", *words], capture_output=True, text=True, check=False).stdout.strip() for words in todo.get("git", [])
+]
+for path in todo.get("touch", []):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).touch()
 if "note" in todo and note_path:
     Path(note_path).write_text(todo["note"], encoding="utf-8")
 if home:

@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Bootstrap a whole new system in the guideline's shape into an empty folder: the monorepo skeleton, the first API, a worker, a portal, deployment, CI, then the first namespace and entity."
-allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make infra-reset), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-scaffold-new
@@ -161,19 +161,36 @@ so they stay here:
 8. When Docker is available, run the negative control of
    Cross-Cutting Conventions (Tests) once. Take the tenant predicate
    out of one query of a storage impl over Postgres (the first
-   entity's list with `--first`, else a tenancy list). Run
-   `make test-integration` with the table's policy in place: it stays
-   green, the second fence holding. Turn the policy off for that
-   table (`ALTER TABLE ... NO FORCE ROW LEVEL SECURITY` and `DISABLE
-   ROW LEVEL SECURITY`, through `uv run` over the local migration
-   login's URL, since only the owner alters a table), and run `make test-integration` again: it fails, and the
-   failures name the cross-tenant case of that method beside the
-   policy check. Put the predicate back, turn the policy on again the
-   same way (`ENABLE` and `FORCE ROW LEVEL SECURITY`), and run
-   `make test-integration` green. Record both runs in
-   `docs/runbooks/tenant-isolation.md`: the query, the table, and
-   what the suite reported each time. A run two that stays green is a
-   defect of the suite: name it in the output and stop.
+   entity's list with `--first`, else a tenancy list). Run one: run
+   `make test-integration` with the table's policy in place. It stays
+   green, the second fence holding. A failure in run one is fixed
+   without putting the predicate back, since it stays out until run
+   three. A failure of that method's cross-tenant case is fixed in the
+   migration that writes the table's policy, never in the database
+   alone, and takes the reset every migration fix takes (below) before
+   run one runs again. Run two:
+   turn the policy off for that table (`ALTER TABLE ... NO FORCE ROW
+   LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`, through `uv run`
+   over the local migration login's URL, since only the owner alters a
+   table), and run `make test-integration` again. It fails, and its
+   failures name both the cross-tenant case of that method and the
+   policy check. Run three: put the predicate back, turn the policy on
+   again the same way (`ENABLE` and `FORCE ROW LEVEL SECURITY`), and
+   run `make test-integration` green. Runs one and three each have
+   their own count, the first run plus at most 3 reruns; run two runs
+   once and is never fixed. A run-three failure that outlasts its
+   count is a defect of this skill, one that run two's change to the
+   database caused included.
+
+   Once run two has run, stop or not, record the last attempt of run
+   one and run two in `docs/runbooks/tenant-isolation.md`: the query,
+   the table, and what the suite reported each time, with every
+   failure of run two besides the cross-tenant case and the policy
+   check named there. A run two that stays green, or whose failures do
+   not name both of those, is a defect of the suite, and the skill
+   stops. Before any stop in this step, put the predicate back and
+   turn the policy on again, as run three does, and end the stop line
+   with `; predicate and policy restored`.
 9. When Docker is available, `make devx-up`, then
    `make test-telemetry`: the round trip starts the API as a real
    process, drives one session, and reads the counter, the trace, the
@@ -193,17 +210,52 @@ so they stay here:
     outside the gateway, a route that writes a durable row (201 or 202)
     without the `Idempotency-Key` dependency. Then read
     `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
-    and run it over the whole tree; the checker run and the git reads
-    it takes are in this skill's tools for that step. Close every high
-    finding and rerun `make check`; list the rest in the output for the
+    and run it over the whole tree, once: it does not run again after
+    the fixes below. The checker run and the git reads it takes are in
+    this skill's tools for that step. A group it reports as "not
+    reviewed" (its reviewer failed twice, a stop at the agent's turn
+    cap counting as a failure) is named in the output as not reviewed,
+    with its error, and is not run again here. Close every high
+    finding, within what After writing lets a fix change, then run
+    step 7's commands again and, when Docker is available, step 9's,
+    in order, under the same bound: the first run plus at most 3
+    reruns. A high finding is closed once they pass after its fix.
+    One whose fix would need an exception is not fixed and stays
+    open, and the step goes on in place of the stop After writing
+    orders. List the rest of the findings in the output for the
     person. A high
     finding on a fresh tree is a defect of this skill: name it in the
     output so it can be closed at the source.
 
-Stop at the first step whose gate fails and report where it stopped.
+A gate in these steps that fails on what this skill wrote is fixed,
+and its step's commands run again from the first, in order, as After
+writing states: the first run plus at most 3 reruns, within what it
+lets a fix change. Step 8 is the exception: a rerun there repeats
+only the run that failed. A fix that edits a migration takes a reset
+before its rerun, since `make migrate` does not apply an applied
+migration again: `make infra-reset`, `make migrate`, and `make seed`,
+then the operator's and the provisioner's tokens again
+(`uv run <root>-ops token --env local --identity operator`, and the
+same with `provisioner`). `make seed` keeps an env file that exists,
+and the reset removed the sessions its tokens name. The tree is new,
+so the reset loses nothing. The skill stops at the
+first stop After writing or step 8 orders. Nothing in a new tree is
+pre-existing, and a gate that still fails when its count runs out is
+a defect of this skill.
 
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
-plus one line: the tree is uncommitted, and the first commit is the
-user's.
+with these lines after the commands, in this order:
+
+- `High finding: <lens id> <path>:<line>: <closed | open>; a defect of this skill`, one per high finding of step 10;
+- `Finding: <lens id> <severity> <path>:<line>: <what breaks the rule>`, one per other finding of step 10;
+- `Not reviewed: <group>: <error>`, one per group step 10 could not review;
+- `The tree is uncommitted, and the first commit is the user's.`
+
+A stop closes the output with this skill's line in place of the
+conventions' `Stopped:` line:
+`Stopped at step <n>: <command>: <what went wrong>; <cause>`. The
+cause is one of the conventions' causes, with "the count ran out"
+written as "a defect of this skill", or "a defect of the suite" from
+step 8.

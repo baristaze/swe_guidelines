@@ -45,14 +45,24 @@ class CliStream:
         if stream not in ("out", "err"):
             raise ValueError(f"stream is 'out' or 'err', got {stream!r}")
         text = line.rstrip("\n")
+        self._append(stream, text, t)
+        listener = self.listener
+        if listener is None:
+            return
+        # A listener runs on the thread that reads the subject's pipe. An
+        # error in it must not end that thread, or the pipe fills and the
+        # subject blocks, so it is written down and the reading goes on.
+        try:
+            listener(stream, text)
+        except Exception as exc:
+            self._append("err", f"[harness] the stream's listener failed on a line and read on: {type(exc).__name__}: {exc}")
+
+    def _append(self, stream: str, text: str, t: float | None = None) -> None:
         record = {"t": time.time() if t is None else t, "s": stream, "line": text}
         with self._lock:
             self._fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             self._fh.flush()
             self.count += 1
-        listener = self.listener
-        if listener is not None:
-            listener(stream, text)
 
     def note(self, line: str) -> None:
         """A line the harness itself writes into the stream."""
