@@ -1502,8 +1502,9 @@ def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: b
     `outputs` maps each repeat to the files of its archive, or to None for a
     repeat that kept no archive. Every repeat keeps its answer, its collected
     report, and its own judge prompt. With `results`, results.json records
-    each archive, its SHA-256 and its commit, as a run records it. With
-    `rehearsal`, run.json is marked a rehearsal's.
+    each archive, its SHA-256 and its commit, and the phases each repeat
+    ran, scaffold and review, as a run records them. With `rehearsal`,
+    run.json is marked a rehearsal's.
     """
     src = runs / "20260927-233327-built-11435123"
     repeats = []
@@ -1514,6 +1515,7 @@ def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: b
         (art / "workspace" / "review" / "report.md").write_text("# Review\n", encoding="utf-8")
         (art / "judge-prompt.md").write_text("the source run's own prompt\n", encoding="utf-8")
         record: dict = {"index": index, "exit_status": {"code": 0}, "artifact_paths": [], "judgements": []}
+        record["phases"] = [{"name": "scaffold", "status": "ok"}, {"name": "review", "status": "ok"}]
         if files is not None:
             with zipfile.ZipFile(art / "output.zip", "w") as zf:
                 for name, text in files.items():
@@ -1558,7 +1560,14 @@ def test_judge_judges_a_run_s_archived_output_again_and_records_no_subject_sessi
     [(_, told)] = sent_results("anthropic", started[0].requests[1])
     assert "class Journalist" in told  # the judge read the tree the source run archived
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
-    assert results["source"] == {"run_id": src.name, "path": str(src.resolve()), "repeats": [0], "refused": [], "capped": []}
+    assert results["source"] == {
+        "run_id": src.name,
+        "path": str(src.resolve()),
+        "repeats": [0],
+        "refused": [],
+        "capped": [],
+        "rubric_groups": [{"repeat": 0, "groups": ["extras"]}],
+    }
     (repeat,) = results["repeats"]
     assert repeat["archive"]["sha256"] == run.A.digest(src / "artifacts" / "0" / "output.zip")
     assert repeat["archive"]["commit"] == "c" * 40
@@ -1620,6 +1629,50 @@ def test_judge_judges_a_repeat_never_judged_and_refuses_one_with_no_output(tmp_p
     assert run.main(["judge", "--source", str(empty)]) == 2
     assert list(empty.parent.iterdir()) == [empty] and len(started) == 3
     assert "holds no output to judge: no run folder was made and no judge started" in capsys.readouterr().err
+
+
+@needs_jsonschema
+def test_judge_tells_a_repeat_s_judges_only_the_groups_whose_phases_ran_in_it(tmp_path, monkeypatch, built):
+    src = source_run(tmp_path / "runs", {0: TREE, 1: TREE, 2: TREE, 3: TREE})
+    results = json.loads((src / "results.json").read_text(encoding="utf-8"))
+    scaffold_only = [{"name": "scaffold", "status": "incomplete"}]
+    # Repeat 0 ran both phases. Repeat 1 ended early after the scaffold, and the run's spend cap cut repeat 2 short
+    # after it. Repeat 3's record lists no phase.
+    results["repeats"][1] |= {
+        "phases": scaffold_only,
+        "ended_early": {"phase": "scaffold", "reason": "incomplete", "not_run": ["review"]},
+    }
+    results["repeats"][2] |= {"phases": scaffold_only, "cut_short": ["review"]}
+    del results["repeats"][3]["phases"]
+    (src / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    started = judges(monkeypatch)
+    out = tmp_path / "judged"
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "dry"), "--dry-run"]) == 0
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "run")]) == 0
+    resolved, judged, report = only_run(out / "run")
+    (made,) = (out / "run").iterdir()
+    prompts = [(made / "artifacts" / str(i) / "judge-prompt.md").read_text(encoding="utf-8") for i in range(4)]
+    sentence, review = "After the build, a review read the tree.", "Review acme."
+    # A repeat whose group phase ran keeps the group's sentence and its phase; one where it did not has no word of it.
+    assert sentence in prompts[0] and review in prompts[0]
+    for told in prompts[1:3]:
+        assert sentence not in told and review not in told and "Build acme." in told
+    # A repeat whose record lists no phase is judged as the source run took it.
+    assert sentence in prompts[3] and review in prompts[3]
+    # The record says which groups each repeat's rubric took, and a dry run shows it before any judge starts.
+    took = [
+        {"repeat": 0, "groups": ["extras"]},
+        {"repeat": 1, "groups": []},
+        {"repeat": 2, "groups": []},
+        {"repeat": 3, "groups": ["extras"]},
+    ]
+    assert judged["source"]["rubric_groups"] == took and resolved["source"]["rubric_groups"] == took
+    (dry,) = (out / "dry").iterdir()
+    assert json.loads((dry / "run.json").read_text(encoding="utf-8"))["source"]["rubric_groups"] == took
+    assert "Groups the rubric of repeat 1 took, those with a phase that ran in it: none." in report
+    assert "Groups the rubric of repeat 0 took, those with a phase that ran in it: `extras`." in report
+    # What the judges may spend is theirs alone, whatever the rubric took: one judge's $5 over the four repeats.
+    assert len(started) == 4 and resolved["max_spend_usd"] == 20
 
 
 def test_judge_refuses_an_archive_that_is_not_the_one_the_source_run_recorded(tmp_path, monkeypatch, built, capsys):
