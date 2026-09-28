@@ -383,8 +383,24 @@ or an interrupt, the harness kills that group through the prefix
 first, then the prefix here. A process that starts a session of its
 own leaves the group, and the kill does not reach it. Nor does it reach
 a container the subject starts, which is a child of Docker's daemon: it
-outlives the stop and the repeat, so a later repeat can find a port
-already allocated or a named volume already there.
+outlives the stop.
+
+So the harness removes what the subject's Docker made there. When the
+run takes the machine, it lists every container, network, and volume
+Docker holds there. After each repeat, once its gates ran and its
+workspace came back, it removes every one that was not on that list:
+the containers first, with their anonymous volumes, then the networks,
+then the volumes. It does so again when the run gives the machine back,
+so a run stopped in the middle of a repeat leaves none either. The
+run's notes name what went, and what could not be removed. So no repeat
+starts beside an earlier one's stack: no Compose project of the same
+name, no port already held, and no earlier subject's database within
+reach. What Docker held when the run took the machine stays, because
+the run did not make it, and a preflight refuses such a machine (see
+Preflight). Images stay too: they hold no subject's data. A Docker that
+does not answer when the run takes the machine leaves nothing to tell
+the run's containers from the rest, so the harness removes nothing, and
+the notes say so. A machine with no Docker holds nothing to remove.
 
 A step that fails there fails the repeat with a note, and the subject
 does not run: the machine stopped or held by another run, a copy, a
@@ -447,9 +463,10 @@ QEMU's user network gives the VM an IPv6 prefix that reaches this
 machine's loopback, and the rule refuses that prefix too.
 
 The machine persists between runs. The harness removes what a run left
-in its own folder, and nothing else: the containers, volumes, and
-images a subject made stay. The machine's user has sudo, so a subject
-can change the machine itself. Lima keeps the template as it read it
+in its own folder, and the containers, networks, and volumes its
+subjects' Docker made, and nothing else: the images a subject pulled or
+built stay. The machine's user has sudo, so a subject can change the
+machine itself. Lima keeps the template as it read it
 at create, so a change to the template, a pin or a package, takes a new
 machine: `limactl delete swe-benchmark`, then create it again.
 
@@ -1371,7 +1388,10 @@ succeeded.
 
 The harness logic is tested from the repository root, in
 `tests/test_benchmark_*.py`, with the standard library and fake judges,
-so `make test` and CI cover it with no key and no network.
+so `make test` and CI cover it with no key and no network. A test's
+other machine runs on the machine the test runs on, so every test runs
+the harness with a Docker command that is on no machine, and none
+reaches that machine's Docker.
 
 ```bash
 make test

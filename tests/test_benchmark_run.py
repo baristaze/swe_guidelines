@@ -16,6 +16,7 @@ from test_benchmark_agentic import FAKES, sent_results
 from test_benchmark_agentic import step as turn
 from test_benchmark_judge import FakeSdks
 from test_benchmark_references import acme_repository, git
+from test_benchmark_runtime import DOCKER_OWN, docker_holds, docker_removals, docker_stand_in
 
 needs_jsonschema = pytest.mark.skipif(importlib.util.find_spec("jsonschema") is None, reason="jsonschema is not installed")
 
@@ -1046,6 +1047,32 @@ def test_a_vm_run_keeps_the_subject_key_out_of_every_file_it_writes(tmp_path, mo
     assert not (tmp_path / "remote" / run_dir.name).exists()  # the key file went with the run's folder
 
 
+def test_a_vm_run_removes_what_each_repeats_docker_made_and_records_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    before = {*DOCKER_OWN, ("container", "c-kept", "kept-1")}
+    state = docker_stand_in(tmp_path, *before)
+    docker = str(state / "docker")
+    monkeypatch.setattr(run.RT, "DOCKER", docker)
+    # The subject says what Docker holds, then starts a database with its volume.
+    stack = f"{docker} ps -a; {docker} create container c-db acme-db-1; {docker} create volume acme_pgdata acme_pgdata"
+    scenario = {"name": "stack", "kind": "command", "subject": {"argv": ["sh", "-c", stack]}, "rubric": "r", "runtimes": ["vm"]}
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    config = tmp_path / "vm.json"
+    config.write_text(json.dumps(vm_config(tmp_path)), encoding="utf-8")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2", "--runtime-config", str(config)]
+    assert run.main(argv) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    for index in (0, 1):  # each repeat's subject starts beside none of an earlier one's stack
+        assert (run_dir / "artifacts" / str(index) / "answer.md").read_text(encoding="utf-8") == "container c-kept kept-1\n"
+    notes = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))["notes"]
+    removed = "removed what the subject's Docker made on the other machine: 1 container (acme-db-1), 1 volume (acme_pgdata)"
+    assert [n for n in notes if "Docker" in n] == [f"repeat 0: {removed}", f"repeat 1: {removed}"]
+    assert docker_holds(state) == before  # nothing that was there before the run went
+    assert docker_removals(state) == ["rm -f -v c-db", "volume rm -f acme_pgdata"] * 2
+
+
 def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
@@ -1083,7 +1110,7 @@ def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monke
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     called: list[list[str]] = []
 
-    def helper(self, argv, stdin=None):
+    def helper(self, argv, stdin=None, timeout_s=None, out=None):
         called.append(argv)
         return 0
 
