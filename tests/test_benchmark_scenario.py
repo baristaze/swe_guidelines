@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from harness import agentic as A
+from harness import judge as J
 from harness import scenario as S
 
 MINIMAL = {
@@ -27,7 +28,7 @@ def write(folder: Path, name: str, data: dict) -> Path:
 def test_a_minimal_scenario_takes_the_defaults(tmp_path):
     scn = S.load(write(tmp_path, "one.json", MINIMAL))
     assert scn.kind == "skill"
-    assert scn.subject.max_turns == 6
+    assert scn.subject.max_turns is None  # a turn count is no bound unless the scenario names one
     assert scn.artifact.stdout is True
     assert scn.judges.providers == "3"
     assert scn.judges.effort == "medium"
@@ -265,11 +266,15 @@ def test_a_subject_in_phases_takes_the_defaults_of_each_phase():
     assert scn.subject.output == "site"
 
 
-def test_every_phase_names_its_prompt_and_its_bounds():
-    for key in ("name", "prompt", "max_turns", "max_usd", "timeout_s"):
+def test_every_phase_names_its_prompt_and_its_bounds_of_money_and_time():
+    for key in ("name", "prompt", "max_usd", "timeout_s"):
         broken = {k: v for k, v in phase("scaffold").items() if k != key}
         with pytest.raises(S.ScenarioError, match=f"every phase names its {key}"):
             S.from_data(phased(broken))
+    # A turn count is no bound: a phase may name one, and needs none.
+    no_turns = {k: v for k, v in phase("scaffold").items() if k != "max_turns"}
+    assert S.from_data(phased(no_turns)).subject.phases[0].max_turns is None
+    assert S.from_data(phased(phase("scaffold"))).subject.phases[0].max_turns == 10
     with pytest.raises(S.ScenarioError, match=r"max_turns: a whole number of at least 1, got 0"):
         S.from_data(phased(phase("scaffold", max_turns=0)))
     with pytest.raises(S.ScenarioError, match="unknown key"):
@@ -308,6 +313,123 @@ def test_a_subject_in_phases_builds_an_output_folder_of_the_workspace():
         S.from_data(dict(MINIMAL, kind="command", subject={"argv": ["true"], "phases": [phase("a")]}))
 
 
+# Optional groups of phases --------------------------------------------------
+
+EXTRAS = {"extras": {"rubric": "Then a review read the tree."}, "polish": None}
+
+
+def grouped(**subject) -> dict:
+    """A subject in phases whose build runs by default, with two optional groups after it."""
+    return phased(
+        phase("scaffold", max_usd=60),
+        phase("mvp", max_usd=75),
+        phase("review", group="extras", max_usd=25),
+        phase("close", group="extras", max_usd=30),
+        phase("tidy", group="polish", max_usd=5),
+        groups=EXTRAS,
+        **subject,
+    )
+
+
+def test_a_phase_in_a_group_runs_only_in_a_run_that_takes_the_group():
+    scn = S.from_data(grouped())
+    assert [(g.name, g.rubric) for g in scn.subject.groups] == [("extras", "Then a review read the tree."), ("polish", "")]
+    assert [p.name for p in S.select(scn, []).subject.phases] == ["scaffold", "mvp"]
+    assert [p.name for p in S.select(scn, ["extras"]).subject.phases] == ["scaffold", "mvp", "review", "close"]
+    # The scenario's order, whatever the order of the flags, and a group taken twice is taken once.
+    both = S.select(scn, ["polish", "extras", "polish"])
+    assert [p.name for p in both.subject.phases] == ["scaffold", "mvp", "review", "close", "tidy"]
+    assert S.taken_groups(both) == ["extras", "polish"] and S.taken_groups(S.select(scn, [])) == []
+    data = scn.as_dict()["subject"]
+    assert data["groups"] == [{"name": "extras", "rubric": "Then a review read the tree."}, {"name": "polish", "rubric": ""}]
+    assert [p["group"] for p in data["phases"]] == [None, None, "extras", "extras", "polish"]
+
+
+def test_a_group_adds_its_sentence_to_the_rubric_and_one_not_taken_adds_nothing():
+    scn = S.from_data(grouped())
+    assert S.select(scn, []).rubric == scn.rubric
+    assert S.select(scn, ["extras"]).rubric == f"{scn.rubric}\n\nThen a review read the tree."
+    assert S.select(scn, ["polish"]).rubric == scn.rubric  # a group with no sentence adds none
+
+
+def test_a_run_that_takes_a_group_the_scenario_does_not_declare_is_refused():
+    with pytest.raises(S.ScenarioError, match=r"scenario one declares no group mvp; its groups: extras, polish"):
+        S.select(S.from_data(grouped()), ["mvp"])
+    with pytest.raises(S.ScenarioError, match=r"declares no group extras; its groups: none"):
+        S.select(S.from_data(phased(phase("scaffold"))), ["extras"])
+
+
+def test_the_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_that_run_unless_the_scenario_names_one_for_its_path():
+    scn = S.from_data(grouped())  # one-shot judges, which have no budget to add
+    assert S.spend_cap(S.select(scn, []), 1, 2) == 135.0
+    assert S.spend_cap(S.select(scn, ["extras"]), 1, 2) == 190.0
+    assert S.spend_cap(S.select(scn, ["extras", "polish"]), 2, 2) == 390.0  # every phase of every repeat
+    # The scenario's own cap is the cap of the path that takes no group; a run that takes one sums its phases.
+    named = S.from_data(dict(grouped(), max_spend_usd=100))
+    assert S.spend_cap(S.select(named, []), 3, 2) == 100.0
+    assert S.spend_cap(S.select(named, ["extras"]), 1, 2) == 190.0
+    # Agentic judges add their dollar budgets, one per judge the run selects, to every repeat.
+    judged = S.from_data(
+        dict(
+            grouped(),
+            judges={
+                "mode": "agentic",
+                "budget": {"max_usd": 10},
+                "references": [{"name": "guideline", "weight": 1, "paths": ["lenses"]}],
+            },
+        )
+    )
+    assert S.spend_cap(S.select(judged, []), 1, 4) == 175.0 and S.spend_cap(S.select(judged, []), 2, 1) == 290.0
+    # A subject in one session has no run cap unless the scenario names one.
+    assert S.spend_cap(S.from_data(MINIMAL), 3, 2) is None
+    assert S.spend_cap(S.from_data(dict(MINIMAL, max_spend_usd=4)), 3, 2) == 4.0
+
+
+@pytest.mark.parametrize(
+    ("subject", "said"),
+    [
+        ({"groups": {"extras": None}}, r"no phase is in the group extras"),
+        ({"groups": {}}, r"subject\.groups: a mapping of at least one group"),
+        ({"groups": ["extras"]}, r"subject\.groups: a mapping of at least one group"),
+        ({"groups": {"Extras": None}}, r"a group's name is a lowercase word, such as `extras`, got 'Extras'"),
+        ({"groups": {"extras": "a sentence"}}, r"subject\.groups\.extras holds a mapping"),
+        ({"groups": {"extras": {"rubric": 3}}}, r"subject\.groups\.extras\.rubric is a sentence the rubric takes"),
+        ({"groups": {"extras": {"cap": 3}}}, r"subject\.groups\.extras: unknown key\(s\) cap"),
+    ],
+)
+def test_a_group_the_harness_cannot_run_is_refused_when_the_scenario_loads(subject, said):
+    with pytest.raises(S.ScenarioError, match=said):
+        S.from_data(phased(phase("scaffold"), **subject))
+
+
+def test_a_phase_s_group_must_be_declared_and_a_run_that_takes_none_must_run_a_phase():
+    with pytest.raises(
+        S.ScenarioError, match=r"phases\[1\]\.group names a group subject\.groups declares \(none\), got 'extras'"
+    ):
+        S.from_data(phased(phase("scaffold"), phase("review", group="extras")))
+    with pytest.raises(S.ScenarioError, match=r"a run that takes no group runs the phases in none, and every phase is in one"):
+        S.from_data(phased(phase("review", group="extras"), groups={"extras": None}))
+    with pytest.raises(S.ScenarioError, match=r"subject\.groups: a group holds phases, and the subject runs in none"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_usd": 1, "groups": {"extras": None}}))
+
+
+def test_a_resumed_phase_needs_the_phase_before_it_in_every_run_that_takes_it():
+    # A phase of a group can resume a phase every run takes, or one of its own group.
+    S.from_data(phased(phase("scaffold"), phase("mvp", session="resume", group="extras"), groups={"extras": None}))
+    one = {"extras": None}
+    S.from_data(
+        phased(phase("scaffold"), phase("review", group="extras"), phase("fix", session="resume", group="extras"), groups=one)
+    )
+    with pytest.raises(S.ScenarioError, match=r"phases\[2\]: a resumed session needs the phase before it .* group extras"):
+        S.from_data(phased(phase("scaffold"), phase("review", group="extras"), phase("fix", session="resume"), groups=one))
+    with pytest.raises(S.ScenarioError, match=r"the phase before it .* in the group extras"):
+        S.from_data(
+            phased(
+                phase("scaffold"), phase("review", group="extras"), phase("tidy", session="resume", group="polish"), groups=EXTRAS
+            )
+        )
+
+
 def test_the_shipped_skill_scenarios_name_their_spend_caps():
     pytest.importorskip("yaml")
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
@@ -315,7 +437,7 @@ def test_the_shipped_skill_scenarios_name_their_spend_caps():
     # A subject in phases names a cap per phase, and none of its own.
     caps = {s.name: s.subject.max_usd or {p.name: p.max_usd for p in s.subject.phases} for s in skills}
     assert caps == {
-        "create-full-system": {"scaffold": 60.0, "mvp": 75.0, "review": 25.0, "close": 30.0},
+        "create-full-system": {"scaffold": 360.0, "mvp": 270.0, "review": 75.0, "close": 90.0},
         "explain-tenancy": 2.0,
         "review-om": 3.0,
     }
@@ -344,15 +466,37 @@ def test_a_run_s_spend_cap_that_is_not_an_amount_above_0_is_refused_when_the_sce
         S.from_data(dict(MINIMAL, max_spend_usd=bad))
 
 
-def test_the_full_system_scenario_runs_once_under_the_sum_of_its_phases_caps():
+def test_the_full_system_scenario_runs_once_under_the_sum_of_the_caps_of_the_phases_that_run():
     pytest.importorskip("yaml")
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     scenarios = {s.name: s for s in (S.load(p) for p in S.catalog(folder))}
     system = scenarios.pop("create-full-system")
-    assert system.repeat == 1
-    assert system.max_spend_usd == sum(p.max_usd for p in system.subject.phases) == 190.0
+    assert (system.repeat, system.max_spend_usd) == (1, None)
+    # The build by default, the scaffold and the MVP; the review and the close only with extras.
+    assert [g.name for g in system.subject.groups] == ["extras"]
+    build, extras = S.select(system, []), S.select(system, ["extras"])
+    # The run's cap covers the phases and the four judges' budgets: $630 and $180 for the build, $795 and $180 with extras.
+    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1, 4) == 810.0
+    assert [p.name for p in extras.subject.phases] == ["scaffold", "mvp", "review", "close"]
+    assert S.spend_cap(extras, 1, 4) == 975.0 and S.taken_groups(extras) == ["extras"]
+    # Money and time bound every phase and every judge; no step count does.
+    assert [(p.max_usd, p.timeout_s, p.max_turns) for p in extras.subject.phases] == [
+        (360.0, 16200, None),
+        (270.0, 16200, None),
+        (75.0, 5400, None),
+        (90.0, 8100, None),
+    ]
+    budget = system.judges.budget
+    assert budget is not None and (budget.max_usd, budget.wall_s) == (45.0, 5400.0)
+    # The counts the loop keeps are set past what money and time allow: the input tokens at the cheapest input price.
+    matrix = J.load_matrix(folder.parent / "models.yaml")
+    cheapest = min(p["input"] for spec in matrix.values() for p in spec.get("prices", {}).values())
+    assert budget.input_tokens * cheapest / 1e6 >= budget.max_usd and budget.tool_calls >= 10_000
+    assert build.rubric == system.rubric and extras.rubric.startswith(system.rubric)
+    assert extras.rubric.endswith("a last session closed the review's high findings.")
     # The others name neither, so a run of one takes 3 repeats and no run cap unless a flag says otherwise.
     assert {(s.repeat, s.max_spend_usd) for s in scenarios.values()} == {(None, None)}
+    assert {S.spend_cap(s, 3, 4) for s in scenarios.values()} == {None}
 
 
 def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
@@ -360,6 +504,7 @@ def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
     scn = S.load(Path(__file__).resolve().parent.parent / "benchmark" / "scenarios" / "create-full-system.yaml")
     phases = {p.name: p for p in scn.subject.phases}
     assert list(phases) == ["scaffold", "mvp", "review", "close"]
+    assert {n: p.group for n, p in phases.items()} == {"scaffold": None, "mvp": None, "review": "extras", "close": "extras"}
     assert {p.session for p in phases.values()} == {"fresh"}
     # The builders keep the handoff note and read the product spec; the review and the close start in the tree.
     assert [p.name for p in phases.values() if p.hint] == ["scaffold", "mvp"]

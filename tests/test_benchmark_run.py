@@ -192,6 +192,10 @@ def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsy
         encoding="utf-8",
     )
     (tmp_path / "four.json").write_text(json.dumps(dict(SKILL, name="four", max_spend_usd=0.5)), encoding="utf-8")
+    one = {"prompt": "p", "max_turns": 1, "max_usd": 1, "timeout_s": 60}
+    phases = [{"name": "build", **one}, {"name": "review", "group": "extras", **one}, {"name": "tidy", "group": "polish", **one}]
+    subject = {"skill": "arch-scaffold-new", "output": "site", "phases": phases, "groups": {"extras": None, "polish": None}}
+    (tmp_path / "five.json").write_text(json.dumps(dict(SKILL, name="five", runtimes=["vm"], subject=subject)), encoding="utf-8")
     assert run.main(["list", "--out", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "runtimes=container,host\n" in out  # a scenario that requires nothing says nothing of it
@@ -199,6 +203,8 @@ def test_the_listing_names_where_each_scenario_runs(tmp_path, monkeypatch, capsy
     # A scenario's repeats and its run's spend cap, each only when it names one.
     assert "runtimes=vm requires=docker repeat=1 max_spend_usd=190\n" in out
     assert "runtimes=host,container,vm max_spend_usd=0.5\n" in out
+    # Its optional groups, which a run takes with --with.
+    assert "runtimes=vm groups=extras,polish\n" in out
 
 
 WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "benchmark.yml"

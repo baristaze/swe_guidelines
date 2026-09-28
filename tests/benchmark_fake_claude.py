@@ -8,13 +8,19 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `note`: text for the handoff note, at the path the hint names;
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
+- `agents`: Agent calls as `[id, description, answered]`, each a tool use, and its result only when answered;
+- `launched`: Agent calls as `[id, description]` that start their subagent in the background, as Claude Code
+  writes them: the call with `run_in_background` set to "true", the launch notice as its result, then the
+  main agent's text as it ends its turn to wait;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
 - `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
+- `models`: each model's cost in its result's `modelUsage`, by name;
 - `exit`: its exit code.
 
 Its answer, the result's `result`, is a JSON object of what it saw: its
 HOME and what was in it, where it started, the session it resumed, the
-handoff note it found, and its arguments. It leaves a file of its own in
+handoff note it found, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, and its
+arguments. It leaves a file of its own in
 its HOME, so a later session in the same HOME finds it.
 """
 
@@ -48,6 +54,7 @@ seen = {
     "note_path": note_path,
     "note": Path(note_path).read_text(encoding="utf-8") if note_path and os.path.exists(note_path) else None,
     "handoff_in_reach": [p for p in ("HANDOFF.md", "../HANDOFF.md") if os.path.exists(p)],
+    "background_tasks": os.environ.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"),
     "args": args,
 }
 
@@ -79,6 +86,22 @@ for number, (command, failed) in enumerate(todo.get("bash", [])):
     emit({"type": "assistant", "message": {"id": f"msg_bash_{number}", "content": [call]}, "session_id": session})
     answer = {"type": "tool_result", "tool_use_id": f"toolu_{number}", "content": "out", "is_error": failed}
     emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for call_id, description, answered in todo.get("agents", []):
+    call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": {"description": description, "prompt": "p"}}
+    emit({"type": "assistant", "message": {"id": f"msg_{call_id}", "content": [call]}, "session_id": session})
+    if answered:
+        answer = {"type": "tool_result", "tool_use_id": call_id, "content": "done"}
+        emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for call_id, description in todo.get("launched", []):
+    asked = {"description": description, "prompt": "p", "run_in_background": "true", "subagent_type": "general-purpose"}
+    call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": asked}
+    emit({"type": "assistant", "message": {"id": f"msg_{call_id}", "content": [call]}, "session_id": session})
+    notice = f"Async agent launched successfully. The agent is working in the background. agentId: a{call_id[-6:]}"
+    answer = {"type": "tool_result", "tool_use_id": call_id, "content": [{"type": "text", "text": notice}]}
+    emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+if todo.get("launched"):
+    waiting = {"type": "text", "text": "The helpers are working in the background; I will wait for them."}
+    emit({"type": "assistant", "message": {"id": "msg_wait", "content": [waiting]}, "session_id": session})
 time.sleep(todo.get("sleep", 0))
 if todo.get("result", True):
     result = {
@@ -89,7 +112,7 @@ if todo.get("result", True):
         "session_id": session,
         "total_cost_usd": todo.get("cost", 0.25),
         "usage": todo.get("usage", {"input_tokens": 10, "output_tokens": 20}),
-        "modelUsage": {"claude-opus-5-5": {}},
+        "modelUsage": {m: {"costUSD": c} for m, c in todo["models"].items()} if "models" in todo else {"claude-opus-5-5": {}},
     }
     if result["subtype"] == "success":
         result["result"] = json.dumps(seen)

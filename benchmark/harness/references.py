@@ -39,6 +39,13 @@ never told the weights. The harness weighs the scores: the weighted
 score is the sum of each reference's score times its weight, to one
 decimal place, rounded half up.
 
+The judges of a repeat run in parallel, one daemon thread each. Each
+keeps its own budget, transcript, and error handling, so a provider that
+fails ends its own judgement and no other. An interrupt, such as Ctrl-C,
+sets one stop event every judge checks before its next call, and the
+caller raises it at once, waiting on no judge: a call in flight is
+abandoned, and no judge starts another.
+
 Like every harness module, this one imports the standard library only.
 """
 
@@ -48,6 +55,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import zipfile
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -73,6 +81,8 @@ GIT_TIMEOUT_S = 300
 GIT_PASSTHROUGH = ("PATH", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy", "SSL_CERT_FILE")
 # The harness's own files in a repeat's artifacts, which no judge reads as the subject's.
 HARNESS_FILES = ("judge-prompt.md", AR.ZIP, AR.MANIFEST)
+# How often the caller wakes while it waits on the judges, so an interrupt reaches it at once.
+POLL_S = 0.25
 
 
 class StageError(Exception):
@@ -423,17 +433,28 @@ def judge_all(
     matrix: dict[str, dict[str, Any]] | None = None,
     env: dict[str, str] | None = None,
     clients: dict[str, Any] | None = None,
+    stop: threading.Event | None = None,
 ) -> list[Judged]:
-    """Every selected provider's agentic judgement of one repeat, in flag order.
+    """Every selected provider's agentic judgement of one repeat, run in parallel and returned in flag order.
 
     Each transcript is `<index>-<provider>.jsonl` in `folder`, the run's
     `judgements/`. `clients` maps a provider to its SDK client; a provider
-    it does not name gets the one `judge.py` builds from its key.
+    it does not name gets the one `judge.py` builds from its key. A
+    judgement never raises on what its provider does, so one provider's
+    failure is its own judgement and the others run on.
+
+    Each judge runs in a daemon thread. An exception here, a
+    KeyboardInterrupt above all, sets `stop`, which every judge checks
+    before its next call, and is raised at once: no judge is waited on.
     """
     matrix = matrix or J.DEFAULT_MATRIX
     schema = answer_schema(list(weights))
-    out: list[Judged] = []
-    for provider in P.members(flags):
+    providers = P.members(flags)
+    stop = stop or threading.Event()
+    done: dict[int, Judged] = {}
+    raised: dict[int, BaseException] = {}
+
+    def judge(provider: P.Provider) -> Judged:
         name = P.name(provider)
         path = folder / f"{index}-{name}.jsonl"
         judgement = A.judge_agentic(
@@ -447,6 +468,29 @@ def judge_all(
             budget=budget,
             env=env,
             client=(clients or {}).get(name),
+            stop=stop,
         )
-        out.append(Judged.of(judgement, weights, f"{folder.name}/{path.name}"))
-    return out
+        return Judged.of(judgement, weights, f"{folder.name}/{path.name}")
+
+    def work(index: int, provider: P.Provider) -> None:
+        try:
+            done[index] = judge(provider)
+        except BaseException as exc:  # handed to the caller, which raises it
+            raised[index] = exc
+
+    threads = [
+        threading.Thread(target=work, args=(i, p), name=f"judge-{P.name(p)}", daemon=True) for i, p in enumerate(providers)
+    ]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            # A join with a timeout wakes the caller, so an interrupt is raised here at once.
+            while thread.is_alive():
+                thread.join(POLL_S)
+    except BaseException:
+        stop.set()
+        raise
+    if raised:
+        raise raised[min(raised)]
+    return [done[i] for i in range(len(providers))]

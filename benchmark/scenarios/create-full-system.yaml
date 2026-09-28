@@ -1,19 +1,24 @@
 name: create-full-system
 kind: skill
-# The scaffold skills end to end: a subject builds a whole system from a
-# product spec, reviews it with a standalone review, and closes the
-# review's high findings. Agentic judges score the tree against the
-# guideline and against the guideline's reference implementation.
+# The scaffold skills end to end. By default a run is the build: a
+# subject scaffolds a whole system from a product spec, then builds its
+# Initial MVP on it. With extras, a standalone review reads the tree and
+# a last session closes the review's high findings. Agentic judges score
+# the tree against the guideline and against the guideline's reference
+# implementation.
 #
 # On the vm runtime only. The subject runs Docker, which only that
 # runtime provides, and the machine keeps the judges' keys and this file
 # out of the subject's reach.
 #
-# It runs once, and its run's spend cap is $190, the sum of its phases'
-# caps. `repeat` and `max_spend_usd` below say both, so a run of it
-# passes neither flag. A preflight checks what the run needs first, and
-# before the first long run a rehearsal runs every phase small, for at
-# most $5, and is never checked in:
+# It runs once, which `repeat` below says. Its bounds are money and time
+# only: each phase has a spend cap and a timeout, and each judge a dollar
+# budget and a wall time. A step count is no bound. The run's spend cap
+# covers the phases that run and the four judges' budgets: $630 of phases
+# and $180 of judges, $810, for the build, and $795 and $180, $975, with
+# extras. A preflight checks what the run needs first, and before
+# the first long run a rehearsal runs every phase small, for at most $5,
+# and is never checked in. Each takes `--with extras` for that path:
 #
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml --preflight
@@ -21,10 +26,11 @@ kind: skill
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml
+#     uv run benchmark/run.py --scenario create-full-system \
+#       --runtime-config benchmark/runtime/lima/runtime-config.yaml --with extras
 runtimes: [vm]
 requires: [docker]
 repeat: 1
-max_spend_usd: 190
 # What `run.py --preflight` checks the machine has before a run spends
 # anything, beyond what every run needs: the registries a scaffolded tree
 # installs from, each answering from the machine, and room to build and
@@ -55,6 +61,13 @@ subject:
   # the scores. They never cap a score. The tree's `make check` runs
   # arch-check at the release its specs pin.
   gates: [make check, make test-integration]
+  # The review and the close run only with extras, and the judges are
+  # told so by the group's sentence in their rubric.
+  groups:
+    extras:
+      rubric: |-
+        After the build, a standalone architecture review read the tree,
+        and a last session closed the review's high findings.
   # Every phase is fresh: a new session with a new HOME. The builders keep
   # the handoff note. The review gets no note and no word of the scaffold
   # or of this benchmark. The close gets the review's report and the
@@ -62,8 +75,13 @@ subject:
   # names or points at the reference implementation.
   #
   # Each phase allows a gate its first run plus at most 3 reruns, the
-  # default. The spend caps are provisional until a measured run replaces
-  # them. The timeouts are the backstop, never the bound.
+  # default. The caps are sized from the first real run, then 1.5x. There,
+  # the scaffold's steps 1 and 2 of ten took 50 minutes and $36.40, by
+  # Claude Code's estimate. Then the dollars are doubled, so a good run is
+  # not cut short by money; the timeouts stay. The scaffold gets $360 and
+  # 16,200 s, the MVP $270 and 16,200 s, the review $75 and 5,400 s, and
+  # the close $90 and 8,100 s. They are provisional until more measured
+  # runs replace them.
   phases:
     - name: scaffold
       prompt: |-
@@ -73,9 +91,8 @@ subject:
 
         The product is described in {target}/product-spec.md. Read it before you start. The folder free-journalism is the whole system. Work only inside it. No one answers questions in this run, so decide, and record each decision in the tree where the guideline says decisions go. Every external provider the spec names (WorkOS, Stripe, Postmark or Resend, Twilio, a malware scanner) is reached through the twin the guideline prescribes for an external service. There are no live accounts and no keys.
       hint: true
-      max_turns: 400
-      max_usd: 60
-      timeout_s: 14400
+      max_usd: 360
+      timeout_s: 16200
     - name: mvp
       prompt: |-
         Build the Initial MVP of {target}/product-spec.md in free-journalism, in the guideline's shape. Add each namespace and entity with /swe-guidelines:arch-scaffold-namespace and /swe-guidelines:arch-scaffold-entity, and each worker kind with /swe-guidelines:arch-scaffold-worker. The MVP is three loops:
@@ -88,25 +105,25 @@ subject:
 
         Run the gates once, then at most 3 more times. If they still fail after the last run, stop and say which gate fails and why.
       hint: true
-      max_turns: 500
-      max_usd: 75
-      timeout_s: 21600
+      max_usd: 270
+      timeout_s: 16200
     - name: review
+      group: extras
       prompt: "/swe-guidelines:arch-review-full . Then write the full report to ../review/report.md."
       cwd: output
-      max_turns: 150
-      max_usd: 25
-      timeout_s: 7200
+      max_usd: 75
+      timeout_s: 5400
     - name: close
+      group: extras
       prompt: |-
         ../review/report.md is an architecture review of this repository. Close every high finding in it. Then run `make check` and `make test-integration` once, then at most 3 more times. If they still fail after the last run, stop and say which gate fails and why.
       cwd: output
-      max_turns: 200
-      max_usd: 30
-      timeout_s: 10800
+      max_usd: 90
+      timeout_s: 8100
 artifact:
   stdout: true
-  # The review's report, written beside the output folder, kept with the run.
+  # The review's report, written beside the output folder, kept with the run
+  # that takes extras.
   files: [review/report.md]
 rubric: |
   You judge a system an agent built in one run from a product spec, with
@@ -148,19 +165,21 @@ judges:
   mode: agentic
   # A whole system takes many reads, and every call carries every read
   # before it, so a judgement gets more than the default budget. It is
-  # provisional, until a measured run replaces it.
+  # bounded by money and time: $45 and 5,400 s, sized with the phases.
+  # When its next call would pass its dollars, the judge is told to
+  # submit, and gets that call as its last turn, with no read run on it.
+  # Wall time is the one bound with no last turn.
   #
-  # At one 400-line page a read, 3,000,000 input tokens last about 35 to
-  # 40 calls, so the tool calls and the input tokens run out near the same
-  # read. Either way the judge is told to submit, and gets one last turn
-  # to do it: a judge whose next call would pass its input tokens or its
-  # dollars gets that call as its last turn, and no read runs on it. Wall
-  # time is the one bound with no last turn.
+  # The loop also counts tool calls and input tokens, and they are set so
+  # money and time bind first. 60,000,000 input tokens cost $45 at the
+  # cheapest input price the matrix gives, $0.75 a million, so the dollars
+  # run out no later. 10,000 reads, at the few a turn a judge asks for,
+  # take more turns than 5,400 s holds, so the wall time runs out first.
   budget:
-    tool_calls: 35
-    input_tokens: 3000000
-    max_usd: 15
-    wall_s: 3600
+    tool_calls: 10000
+    input_tokens: 60000000
+    max_usd: 45
+    wall_s: 5400
   references:
     - name: guideline
       weight: 0.4

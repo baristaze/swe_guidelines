@@ -37,6 +37,17 @@ reads the stream as it is written and holds two bounds of its own:
 When either passes its bound, the watch sets `stop`, and the runtime
 stops the phase there.
 
+The watch also keeps each Agent call, the subagent tool (`Task` in older
+releases), until its result comes. The Agent calls with no result when
+the session's `result` event arrives are `pending`: the session ended
+while a subagent it asked for had not answered, so the phase is
+incomplete, however the result reads. A call that starts its subagent
+in the background, by its input's `run_in_background` or by a result
+that is the launch notice ("Async agent launched ..."), is answered by
+that notice and not by the subagent. So it stays pending to the end of
+the session. With background tasks off, no such launch should happen,
+and one that does means the setting did not hold.
+
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
 phase, the archive of the last checkpoint, and the gates on the final
@@ -51,7 +62,9 @@ message `checkpoint` and no parent, and keeps it under
 phases before it left it, its own history holds no commit of the
 harness's, and nothing in a commit names a phase or how it ended. The
 phase before the checkpoint has ended, its processes with it, so a lock
-git left in the repository is stale, and the checkpoint removes it.
+git left in the repository is stale, and the checkpoint removes it. A
+checkpoint whose tree holds no file says so, and the phase before it
+left no tree.
 """
 
 from __future__ import annotations
@@ -73,8 +86,13 @@ HINT = (
     "Keep a handoff note at {path} as you work: what is done, what you decided, "
     "and what is left. If it is there when you start, an earlier session wrote it; read it first."
 )
-# The bounds a phase can end at, besides finishing.
-CAPS = ("turns", "spend", "gate_reruns")
+# The bounds a phase can end at, besides finishing: money and time, the
+# gate reruns, and a turn cap when the phase names one.
+CAPS = ("spend", "time", "gate_reruns", "turns")
+# The tool a session starts a subagent with; older releases of Claude Code name it Task.
+AGENT_TOOLS = frozenset({"Agent", "Task"})
+# How the result of an Agent call that started its subagent in the background opens: a notice, not the answer.
+LAUNCH_NOTICE = "Async agent launched"
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
 # The multiples of a model's input price a cache read and a cache write are billed at.
 CACHE_READ = 0.1
@@ -88,7 +106,8 @@ GATE = 'cd -- "$1" || exit 125; exec sh -c "$2"'
 # The checkpoint of the output folder, the `n`th of the repeat: its tree
 # committed under refs/checkpoints/<n>, with no identity of this
 # machine's. Arguments: the folder, then n. The commit's id goes to
-# stdout. Exit 3: no output folder; exit 4: git failed.
+# stdout, after the line `empty` when the tree holds no file. Exit 3: no
+# output folder; exit 4: git failed.
 CHECKPOINT = (
     'cd -- "$1" 2>/dev/null || exit 3; '
     "{ [ -e .git ] || git init -q; } || exit 4; "
@@ -100,8 +119,11 @@ CHECKPOINT = (
     'tree=$(GIT_INDEX_FILE="$index" git write-tree) || exit 4; rm -f -- "$index"; '
     "commit=$(git -c user.name=checkpoint -c user.email=checkpoint@localhost -c commit.gpgsign=false "
     'commit-tree "$tree" -m checkpoint) || exit 4; '
-    'git update-ref "refs/checkpoints/$2" "$commit" || exit 4; echo "$commit"'
+    'git update-ref "refs/checkpoints/$2" "$commit" || exit 4; '
+    '[ -n "$(git ls-tree "$tree")" ] || echo empty; echo "$commit"'
 )
+# What the checkpoint prints when the tree it committed holds no file.
+EMPTY = "empty"
 # The archive of a checkpoint, into a path of the workspace. Arguments:
 # the folder, the path, the checkpoint's commit.
 ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive --format=zip -o "$out" "$3"'
@@ -146,6 +168,21 @@ def session_id(lines: list[str]) -> str | None:
         if isinstance(value, str) and value:
             return value
     return None
+
+
+def model_costs(result: dict[str, Any] | None) -> dict[str, float]:
+    """Each model a session's result reports under `modelUsage`, with its cost in US dollars as Claude Code prices it.
+
+    A session's helpers can run on another model than its main agent, so
+    the result names each. A model with no `costUSD` is left out.
+    """
+    usage = result.get("modelUsage") if result else None
+    out: dict[str, float] = {}
+    for model, figures in (usage if isinstance(usage, dict) else {}).items():
+        cost = figures.get("costUSD") if isinstance(figures, dict) else None
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            out[str(model)] = round(float(cost), 6)
+    return out
 
 
 def cap_of(result: dict[str, Any] | None) -> str | None:
@@ -202,6 +239,19 @@ def gate_runs(command: str, gates: list[str]) -> list[tuple[str, bool]]:
     return out
 
 
+def in_background(value: Any) -> bool:
+    """Whether an Agent call's `run_in_background` asks for the background: true, as a boolean or as the word."""
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def result_text(block: dict[str, Any]) -> str:
+    """A tool result's text: its content as a string, or its text items joined, stripped at the start."""
+    content = block.get("content")
+    if isinstance(content, list):
+        content = "".join(str(i.get("text") or "") for i in content if isinstance(i, dict))
+    return content.lstrip() if isinstance(content, str) else ""
+
+
 def _count(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
@@ -217,7 +267,8 @@ class Watch:
     `feed` takes each line the phase writes. `stop` is set once a bound
     is passed, and `capped` names it: `spend` or `gate_reruns`. The
     figures stay readable after the phase: `estimated_usd`, `usage()`,
-    and `gate_runs()`.
+    `gate_runs()`, and `pending`, the Agent calls with no result when
+    the session's result came.
     """
 
     def __init__(
@@ -242,6 +293,11 @@ class Watch:
         self._total = 0.0
         self._pending: dict[str, list[tuple[str, bool]]] = {}
         self._gates = {g: {"runs": 0, "failed": 0, "unread": 0, "streak": 0} for g in self.gates}
+        # Each Agent call with no result yet, by its id, with what it was asked; the ones started in the background,
+        # whose result is a launch notice, stay; and those still open when the session's result came.
+        self._agents: dict[str, str] = {}
+        self._background: set[str] = set()
+        self.pending: list[dict[str, str]] = []
         self._lock = threading.Lock()
 
     def feed(self, stream: str, line: str) -> None:
@@ -250,6 +306,10 @@ class Watch:
             return
         event = parse(line)
         if event is None:
+            return
+        if event.get("type") == "result":
+            with self._lock:
+                self.pending = [{"id": k, "description": v} for k, v in self._agents.items()]
             return
         message = event.get("message")
         if not isinstance(message, dict):
@@ -262,9 +322,23 @@ class Watch:
                         gates = self.gates_in(block.get("input"))
                         if gates and isinstance(block.get("id"), str):
                             self._pending[block["id"]] = gates
+                    if block.get("type") == "tool_use" and block.get("name") in AGENT_TOOLS and isinstance(block.get("id"), str):
+                        given = block.get("input")
+                        asked: dict[str, Any] = given if isinstance(given, dict) else {}
+                        self._agents[block["id"]] = str(asked.get("description") or asked.get("subagent_type") or "")
+                        if in_background(asked.get("run_in_background")):
+                            self._background.add(block["id"])
             elif event.get("type") == "user":
                 for block in _content(message):
-                    if block.get("type") == "tool_result" and block.get("tool_use_id") in self._pending:
+                    if block.get("type") != "tool_result":
+                        continue
+                    call = str(block.get("tool_use_id"))
+                    # A background launch's result is its notice; the subagent has not answered, so the call stays pending.
+                    if call in self._agents and (call in self._background or result_text(block).startswith(LAUNCH_NOTICE)):
+                        self._background.add(call)
+                    else:
+                        self._agents.pop(call, None)
+                    if block.get("tool_use_id") in self._pending:
                         for gate, read in self._pending.pop(block["tool_use_id"]):
                             self._ran(gate, failed=block.get("is_error") is True, read=read)
 

@@ -28,6 +28,7 @@ image first (see Where a scenario runs).
 | Flag | What it does |
 |------|--------------|
 | `--scenario` | a scenario from `scenarios/`, by the name `list` prints, else by its file's stem, or a path to a file |
+| `--with` | an optional group of the scenario's phases to run as well; repeat it for more. A run takes none by default (see A subject in phases) |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
 | `--repeat` | how many times the subject runs: the scenario's `repeat`, else 3; every repeat is judged by every provider |
@@ -37,7 +38,7 @@ image first (see Where a scenario runs).
 | `--out` | where run folders go; `benchmark/runs/` by default |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
-| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. The scenario's `max_spend_usd` when not given, else no cap |
+| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. When not given: the scenario's `max_spend_usd` on the path that takes no group; else, for a subject in phases, the sum of the caps of the phases that run and of the agentic judges' dollar budgets; else no cap |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--preflight` | resolve as `--dry-run` does, then check what the run needs where it runs, and stop at the first failure; exit 8 when a check fails. No paid endpoint is called (see Preflight) |
 | `--rehearsal` | run the scenario as it will really run, with every bound cut small and a spend cap of $5, after its preflight; never checked in (see Rehearsal) |
@@ -61,7 +62,8 @@ A repeat whose subject failed is not judged, and it is not dropped
 either. It counts as a failure: it scores 0 in every provider's mean,
 and a run whose every repeat failed scores 0. A subject fails on a
 nonzero exit, a timeout, or `is_error` in its result. A subject in
-phases fails when one of its phases does (see A subject in phases).
+phases fails when one of its phases does, or ends the run early (see A
+subject in phases).
 Dropping the failures would let a subject that fails one time in three
 keep the score of the two times it did not.
 
@@ -454,7 +456,7 @@ A scenario is YAML or JSON. Four ship here:
 
 | Scenario | Kind | Runtimes | What it measures |
 |----------|------|----------|------------------|
-| `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec, then a review and its fixes, judged against the guideline and its reference implementation |
+| `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec, and with extras a review and its fixes, judged against the guideline and its reference implementation |
 | `explain-tenancy` | `skill` | `container` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
 | `review-om` | `skill` | `container` | the `arch-review-om` skill over a checkout with eight planted defects |
 | `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
@@ -466,25 +468,32 @@ nothing it reaches.
 
 `create-full-system` requires `docker`, so it runs on the vm runtime
 only. Its subject builds `free-journalism` from
-`fixtures/create-full-system/product-spec.md` in four fresh phases: the
-scaffold, the MVP, a standalone review, and the fixes to the review's
-high findings (see A subject in phases). Agentic judges score the tree
-against the guideline and against the guideline's reference
-implementation (see Agentic judges). It runs once, and its run's spend
-cap is $190, the sum of its phases' caps. The scenario says both, with
-`repeat: 1` and `max_spend_usd: 190`, so a run of it passes neither
-flag. Run it with `--preflight` first. The preflight checks, among the
-rest, that the machine is up and carries its tools at their pins, that
-it reaches the registries a scaffolded tree installs from, and that it
-has 40 GiB of disk and 16 GiB of memory free (see Preflight). Before its
-first long run, rehearse it: every phase, the checkpoints, the archive,
-the gates, and the judges, for at most $5 (see Rehearsal):
+`fixtures/create-full-system/product-spec.md` in fresh phases (see A
+subject in phases). By default a run is the build: the scaffold, then
+the MVP. With extras, `--with extras`, a standalone review reads the
+tree and a last phase closes the review's high findings, and the rubric
+tells the judges so. Agentic judges score the tree against the guideline
+and against the guideline's reference implementation (see Agentic
+judges). It runs once, as its `repeat: 1` says. Its bounds are money
+and time only, and its scenario file says how they were sized. Its
+run's spend cap is the sum of the caps of the phases that run and of
+the four judges' budgets: $810 for the build, and $975 with extras.
+So a run of it passes no cap. Run it with
+`--preflight` first. The preflight checks, among the rest, that the
+machine is up and carries its tools at their pins, that it reaches the
+registries a scaffolded tree installs from, and that it has 40 GiB of
+disk and 16 GiB of memory free (see Preflight). Before its first long
+run, rehearse it: every phase, the checkpoints, the archive, the gates,
+and the judges, for at most $5 (see Rehearsal). Each takes `--with
+extras` for that path:
 
 ```bash
 uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml
+uv run benchmark/run.py --scenario create-full-system \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml --with extras
 ```
 
 The shape:
@@ -503,7 +512,7 @@ preflight:                  # optional; what --preflight checks beyond what ever
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
-  max_turns: 14
+  max_turns: 14             # optional; a turn cap, passed on only when named
   max_usd: 2                # the most the session may spend, in US dollars
   allowed_tools: [Read, Grep, Glob]
   target: null
@@ -527,17 +536,25 @@ payload, so the skills under test are the ones in the working tree, not
 the installed ones. It also gets `--model`: the subject's model is
 always pinned, because `claude -p` on its default model measures
 whatever that default is today. The run records the pin in `run.json`
-and in `subject.model`. The session runs with `--output-format
+and in `subject.model`. Every session runs under
+`env CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, on every runtime, so its
+subagents and the commands it starts run in the foreground, and each
+result returns to the session that asked for it. In print mode, a task
+left in the background ends the main agent's turn, and the session
+never gives it back. The runtimes hand the subject its environment each
+their own way, and a word of its command reaches it the same way on all
+three. The session runs with `--output-format
 stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
 and the answer, the models, and the spend are read from its last line,
 the result. Each repeat records `subject_models`, the models the result
 reports under `modelUsage`, and a run notes a repeat whose result does
 not report the pinned model. A result with `is_error` set is a failed
-repeat, whatever the exit code. A skill subject is bounded by count and
-by spend: `max_turns` goes to Claude Code as `--max-turns`, and
-`max_usd`, which every skill subject names, as `--max-budget-usd`.
-Claude Code stops the session at either. The harness also holds the
-spend from the stream (see A subject in phases). Each repeat records its
+repeat, whatever the exit code. A skill subject is bounded by money and
+time: `max_usd`, which every skill subject names, goes to Claude Code
+as `--max-budget-usd`, and `timeout_s` ends the session. A turn count is
+no bound. A scenario may name `max_turns`, and only then does Claude
+Code get `--max-turns`. The harness also holds the spend from the
+stream (see A subject in phases). Each repeat records its
 session under `phases`, with the bound that stopped it, if one did.
 `kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
@@ -547,9 +564,10 @@ a whole number of at least 1. It can also say the run's spend cap,
 `max_spend_usd`, an amount in US dollars above 0 (see The run's spend).
 A run takes each when its flag, `--repeat` or `--max-spend-usd`, is not
 given, and a flag overrides it. A scenario that names neither runs 3
-repeats with no run cap. `run.py list` prints each one a scenario names.
-A value outside those bounds is refused when the scenario loads, so no
-run of it starts.
+repeats, with no run cap unless its subject runs in phases (see The
+run's spend). `run.py list` prints each one a scenario names, and its
+optional groups. A value outside those bounds is refused when the
+scenario loads, so no run of it starts.
 
 A scenario can also say what `--preflight` checks for it, beyond what
 every run needs, under `preflight`. `registries` are the https URLs its
@@ -577,27 +595,48 @@ subject:
   output: acme                # a folder of the workspace the phases build
   gates: [make check, make test-integration]
   gate_timeout_s: 3600        # how long each gate may run on the final tree
+  groups:                     # optional; phases a run takes only with --with <group>
+    extras:
+      rubric: "After the build, a review read the tree."   # optional; added to the rubric
   phases:
     - name: scaffold
       prompt: "/swe-guidelines:arch-scaffold-new acme ... The product is described in {target}/spec.md."
       hint: true              # the handoff note; a builder keeps it
-      max_turns: 400
-      max_usd: 60             # passed to Claude Code as --max-budget-usd
+      max_usd: 360            # passed to Claude Code as --max-budget-usd
       max_gate_reruns: 3      # after a failed gate run, at most this many more
-      timeout_s: 14400        # the backstop, never the bound
+      timeout_s: 16200        # the session ends here, capped by time
     - name: review
+      group: extras           # runs only in a run that takes extras
       prompt: "/swe-guidelines:arch-review-full . Write the report to ../review/report.md."
       cwd: output             # starts in the output folder, not the workspace
       session: fresh          # the default; resume continues the phase before
       on_cap: continue        # the default; stop ends the repeat at a bound
-      max_turns: 150
-      max_usd: 25
-      timeout_s: 7200
+      max_turns: 150          # optional; a turn cap, passed on only when named
+      max_usd: 75
+      timeout_s: 5400
 ```
 
-Every phase names its `name`, `prompt`, `max_turns`, `max_usd`, and
-`timeout_s`. The subject names no `prompt`, `max_turns`, `max_usd`, or
-`timeout_s` of its own: each phase's are the ones in effect.
+Every phase names its `name`, `prompt`, `max_usd`, and `timeout_s`, and
+may name `max_turns`. The subject names no `prompt`, `max_turns`,
+`max_usd`, or `timeout_s` of its own: each phase's are the ones in
+effect.
+
+**Groups.** A subject in phases can declare named optional `groups`. A
+phase that names a `group` runs only in a run that takes it, with
+`--with <group>`; repeat the flag to take more. A run takes no group by
+default, so it runs the phases in none, and a scenario whose every phase
+is in a group does not load. The phases run in the scenario's order,
+whatever the order of the flags. A group can give a `rubric` sentence,
+which the rubric takes after its own when the run takes the group, so
+the judges know what was built. A group that no phase names, a phase
+that names a group the scenario does not declare, and a resumed phase
+whose phase before it is in another group are refused when the scenario
+loads. A run that takes a group the scenario does not declare is refused
+before it makes a run folder, with exit 2. `run.json` names the groups a
+run took under `groups`, `results.json` under `subject.groups`, and the
+report in its opening lines, each only for a scenario that declares
+groups; an empty list is the default path. `run.json` and
+`results.json` list only the phases that run.
 
 **Sessions.** A phase is `fresh` by default: a new `claude -p` with a new
 HOME and a new TMPDIR, so nothing carries over, no session, no Claude
@@ -620,12 +659,10 @@ the tree was scaffolded or what the run measures. The note is kept out
 of the paths the subject is given. On the host and on another machine,
 a subject that searches the machine can still find it.
 
-**Bounds.** A phase is bounded by count and by spend, and its wall time
-is only the backstop:
+**Bounds.** A phase is bounded by money and time. A turn or step count
+is no bound: a phase that names `max_turns` gets `--max-turns`, and one
+that names none gets no turn cap.
 
-- the turn cap, `--max-turns`, which Claude Code holds. It counts the
-  main agent's turns only, so a phase whose skill fans out to subagents
-  is bounded by its spend;
 - the spend cap, `--max-budget-usd`, which Claude Code holds. It counts
   only the spend of the call it is given to: a resumed session's earlier
   spend is not counted against it. So a resumed phase's `max_usd` bounds
@@ -638,6 +675,8 @@ is only the backstop:
   dearest Anthropic model, and named under `unpriced`. The stream shows
   what the session shows it, so a subagent the stream does not carry is
   held by Claude Code's cap alone;
+- the timeout, `timeout_s`, which the harness holds: it stops the
+  session and every process of its group;
 - the gate reruns, which the harness holds, reading each Bash call in
   the stream. A command is split into simple commands the way the shell
   splits it, and a gate run is one whose first words, after any
@@ -654,13 +693,13 @@ is only the backstop:
   fails too, the harness stops the phase and records the gate as
   failing. A run that passes ends the streak, so a later step that runs
   the gates again starts with its first run. A phase whose gate runs
-  are all unread is bounded by its turns and its spend.
+  are all unread is bounded by its spend and its time.
 
 A phase that hits a bound ends as `capped`, and its record in
-`results.json` names the bound: `turns`, `spend`, or `gate_reruns`. The
-next phase still runs, unless the phase says `on_cap: stop`. A phase
-that fails, on a nonzero exit, an error result, or its timeout, ends the
-repeat, and the repeat fails and is not judged. A repeat whose phases
+`results.json` names the bound: `spend`, `time`, `gate_reruns`, or
+`turns` when it names a turn cap. The next phase still runs, unless the
+phase says `on_cap: stop`. A phase that fails, on a nonzero exit or an
+error result, ends the repeat, and the repeat fails and is not judged. A repeat whose phases
 all ended, finished or capped, is judged, unless the run's spend cap
 kept some from running (see The run's spend). A one-phase skill subject is
 one session under the same bounds, and a cap there fails its repeat, as
@@ -680,7 +719,37 @@ reads the change the subject made, not the harness's. The phase before
 a checkpoint has ended, and its processes with it, so a lock git left
 in the repository is stale, and the checkpoint removes it. A phase that
 fails keeps its checkpoint, so the checkpoints so far are never lost.
-Each phase's record in `results.json` names its commit.
+Each phase's record in `results.json` names its commit; its wall time,
+`wall_s`: the session's, from its start to its end, without the
+checkpoint; and each model its session used with that model's cost,
+`model_cost_usd`, as the result's `modelUsage` gives them. A session's
+helpers can run on another model than its main agent, so a run says
+what it measured. For a resumed phase, each cost is what the phase
+added. The report's Phases table shows all three.
+
+**A phase that ends the run early.** Two things end the run after a
+phase: the phase leaves no tree, or its session ends with a subagent
+unanswered. Then the phases after it do not run, and the repeat is not
+judged. It is a failed repeat: it scores 0 in every mean, and the run
+exits 6. Its record names the phase, the reason, and the phases that
+did not run under `ended_early`, and no later repeat starts.
+
+- `no_tree`: after the phase, the output folder holds no file. There is
+  no folder, or its checkpoint's tree is empty. The phases after it
+  would spend on an empty tree.
+- `incomplete`: the stream shows an Agent call, the subagent tool
+  (`Task` in older releases), with no result when the session's
+  `result` event arrives. The session ended while work it asked for was
+  not done, whatever its result says, so the phase ends as
+  `incomplete`, not `ok`. A call that starts its subagent in the
+  background, by its `run_in_background` or by a result that is the
+  launch notice ("Async agent launched ..."), stays pending to the end
+  of the session: the notice answers the call, not the subagent. With
+  background tasks off, such a launch means the setting did not hold.
+  Its record names each such call, its id and what it was asked, under
+  `pending_agents`. The phases after it would
+  build on work the session never finished. A phase that hit a bound
+  ends `capped`, pending calls or not.
 
 **The output.** After the last phase that ran, the harness archives the
 last checkpoint with `git archive --format=zip` and brings it back as
@@ -702,11 +771,20 @@ it passed under `gates`, beside the scores. The gates never cap a score
 and never fail the run. `streams/harness.jsonl` holds what the
 checkpoints, the archive, and the gates printed.
 
-**The run's spend.** The run's spend cap, `--max-spend-usd` or else the
-scenario's `max_spend_usd`, bounds what one run spends on the subject
-and the judges together. The harness checks it before each repeat and
+**The run's spend.** The run's spend cap bounds what one run spends on
+the subject and the judges together. It is `--max-spend-usd`; else the
+scenario's `max_spend_usd`, which holds on the path that takes no
+group; else the sum of the caps of the phases that run and of the
+agentic judges' dollar budgets, one for each judge the run selects,
+over every repeat. So a run that takes a group is capped by the phases
+it runs and its judges, unless the flag names a cap. The harness checks it before each repeat and
 before each phase, and starts nothing more once the run has spent that
-much. It stops nothing that is running: a phase that starts
+much. A repeat of a skill subject starts only when what is left of the
+cap covers the sum of the caps of every phase it runs. Otherwise it, and
+every repeat after it, does not start, and the notes say why. So the
+judges of one repeat never leave the next too little room to finish, and
+a cap below one repeat's phases starts no repeat. It stops nothing that
+is running: a phase that starts
 below it can spend up to its own `max_usd`, and the judges of a repeat
 still judge it. So a run can end above it, by about what one phase and
 one repeat's judges spend. The run's notes say where it stopped. A
@@ -816,10 +894,10 @@ judges:
   effort: high
   mode: agentic
   budget:                     # optional; each key replaces its default
-    tool_calls: 40            # reads per judgement
-    input_tokens: 500000      # summed over every call
     max_usd: 3                # at the list price, summed over every call
     wall_s: 900
+    tool_calls: 40            # reads per judgement; set so money and time bind first
+    input_tokens: 500000      # summed over every call; the same
     submits: 3                # answers that miss the shape, and are sent back
     max_output_tokens: 16000  # each call, reasoning included, on every provider
   references:
@@ -873,9 +951,13 @@ reference under `references`: its weight, each provider's mean, the
 mean of those means, the range of its scores, and its gaps counted by
 severity. A failed repeat scores 0 against every reference.
 
-**The budget.** Each judgement has its own. Each tool result tells the
-judge how many tool calls are left, how many input tokens and dollars
-are left, and how many input tokens the last call carried. Every call
+**The budget.** Each judgement has its own, and it is bounded by money
+and time: `max_usd` and `wall_s`. The loop also counts tool calls and
+input tokens, and a scenario sets them past what its dollars and wall
+time allow, so money and time bind first (`create-full-system` says how
+it sized them). Each tool result tells the judge how many tool calls are
+left, how many input tokens and dollars are left, and how many input
+tokens the last call carried. Every call
 sends again all the judge has read, so the input tokens go faster with
 each read.
 
@@ -934,8 +1016,16 @@ tag, and records the commit and the release each pins in `run.json`.
 Fetching a public repository spends nothing. It calls no judge.
 
 An agentic judge takes no `evidence`: it reads its roots instead, and a
-scenario that names both does not load. The judges of a repeat run one
-after another.
+scenario that names both does not load.
+
+The judges of a repeat run in parallel, one thread each. Each keeps its
+own budget, its own transcript, and its own error handling, so a
+provider that fails ends its own judgement and no other. The results
+keep the order of the flag. An interrupt, such as Ctrl-C, stops every
+judge before its next call, and the run ends at once: it waits on no
+call in flight. Their spend counts toward the run's spend
+cap once the last of them has answered, as one repeat's judges always
+do (see The run's spend).
 
 ## Spend
 
@@ -992,7 +1082,7 @@ will take, so it checks that run.
 
 | Check | What passes |
 |-------|-------------|
-| `budgets` | the run has its spend cap, the flag's or the scenario's. Every session of a skill subject has its turn cap, its spend cap, and its timeout, and each phase its gate-rerun cap. A session with no spend bound fails |
+| `budgets` | the run has its spend cap: the flag's, the scenario's, or the sum of the caps of the phases that run and of the judges' budgets. Every session of a skill subject has its spend cap and its timeout, and each phase its gate-rerun cap. A turn cap is no bound, and none is needed. A session with no spend bound or no timeout fails |
 | `checkout` | the checkout holds no change a commit does not, in what decides a score: the `dirty` of `versions.checkout` is false. A run from a dirty checkout is never checked in (see Versions). A rehearsal skips it |
 | `references` | every reference of agentic judges was staged, and every repository reference, fetched at its tag, pins this checkout's release. A reference that a run refuses with exit 2 fails this check instead |
 | `awake` | on macOS, `caffeinate` is on the path, and the machine draws AC power |
@@ -1041,17 +1131,22 @@ uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 ```
 
-It keeps every prompt, the runtime, the gates, the judges with their
-models and their effort, and the references. It cuts every bound, and
-never raises one the scenario sets lower:
+It rehearses the path the run takes, so `--with` takes a group as a run
+does. It keeps the runtime, the gates, the judges with their models and
+their effort, and the references. It keeps every prompt and adds one
+line after each phase's, which a run that is not a rehearsal never
+sees: the budget is tiny, build only the smallest piece of the task,
+write its files in the first turns, and ask nothing. So the first phase
+leaves a tree, and the archive, the gates, and the judges see one. It
+cuts every bound, and never raises one the scenario sets lower:
 
 | What | In a rehearsal |
 |------|----------------|
 | the subject's model | the cheapest the matrix prices for its provider, input price first: `claude-sonnet-5` for a skill. `--subject-model` names another |
-| each session | at most 5 turns, $0.50, and a timeout of 1,800 seconds. A phase that hits a bound hands on to the next one, whatever its `on_cap`, so every phase starts |
+| each session | at most $0.50 and a timeout of 1,800 seconds: money and time, and no turn cap unless the scenario names one. A phase that hits a bound hands on to the next one, whatever its `on_cap`, so every phase starts |
 | each gate | a timeout of at most 600 seconds |
-| each agentic judgement | a stub budget: 3 tool calls, 60,000 input tokens, $0.50, 900 seconds, 2 submits, and 8,000 output tokens a call |
-| the run | one repeat, and a spend cap of $5 over the subject and the judges together. `--max-spend-usd` can lower it; a flag that asks for more, or for another repeat, is refused with exit 2 |
+| each agentic judgement | a stub budget: $0.50, 900 seconds, 2 submits, and 8,000 output tokens a call. The tool calls and the input tokens stay the scenario's, which money and time reach first |
+| the run | one repeat, and a spend cap of $5 over the subject and the judges together, or the path's own cap for one repeat when that is lower. `--max-spend-usd` can lower it; a flag that asks for more, or for another repeat, is refused with exit 2 |
 
 It runs the preflight first, and a check that fails stops it with exit
 8 before it spends anything (see Preflight). The preflight skips the
@@ -1060,19 +1155,19 @@ harness is worth rehearsing before it is committed.
 `--rehearsal --preflight` runs that preflight alone, and
 `--rehearsal --dry-run` resolves the rehearsal and runs nothing.
 
-A session this small can end before it makes the output folder. The
-phases after it that start in the folder would then fail, and the
-checkpoints, the archive, and the gates would have no tree. So after
-each phase, a rehearsal makes the folder, empty, when the phase left
-none, and its notes say so.
+A session this small can still end before it writes a file in the
+output folder. It then ends the rehearsal as it ends any run (see A
+subject in phases), and the rehearsal ends `failed`: it proved nothing
+past that phase.
 
 Its `run.json` holds `rehearsal: true`, and its `results.json` holds
 `rehearsal`: how it ended, the steps it did not prove, its cap, what it
 spent, and where the money went, each phase and each judge in the order
 they spent it. It ends in one of four ways:
 
-- `failed`: a phase failed.
-- `capped`: the run's spend cap kept a phase from running.
+- `failed`: a phase failed, or ended the run early.
+- `capped`: the run's spend cap kept a phase, or the repeat, from
+  running.
 - `incomplete`: a step it exists to prove did not happen. A phase left
   no checkpoint, the archive failed, no archive came back from the
   runtime, the gates did not run, or no judge answered. `missing` names
@@ -1080,7 +1175,8 @@ they spent it. It ends in one of four ways:
 - `completed`: none of these; every step it exists to prove happened.
 
 Only a `completed` rehearsal proved the pipeline to its end. A capped
-or an incomplete one exits 9. The console and the report's Rehearsal
+or an incomplete one exits 9, and a failed one exits 6, as a run whose
+subject failed does. The console and the report's Rehearsal
 section say how it ended, and name each step it did not prove. The cap
 is the run's spend cap, so a rehearsal can end above it by what one
 phase and its judges add (see The run's spend).

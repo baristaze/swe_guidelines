@@ -19,6 +19,8 @@
     uv run benchmark/run.py --scenario explain-tenancy --max-spend-usd 10 --build --preflight
     uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
       --rehearsal --out /tmp/rehearsals
+    uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
+      --with extras
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -29,7 +31,9 @@ file per judgement, and an agentic judge's transcript beside it,
 `--preflight` resolves the run as `--dry-run` does, then checks what it
 needs, where it runs, before it spends anything (`harness/preflight.py`).
 `--rehearsal` runs the scenario as it will really run, with every bound
-cut small, after its preflight (`harness/rehearsal.py`).
+cut small, after its preflight (`harness/rehearsal.py`). `--with <group>`
+takes an optional group of the scenario's phases, which a run takes none
+of by default.
 """
 
 from __future__ import annotations
@@ -98,6 +102,14 @@ HARNESS_SESSION = "_harness"
 # One run of a subject is an anecdote, so a run repeats it this many times
 # when neither `--repeat` nor the scenario's `repeat` says otherwise.
 REPEAT = 3
+# What a skill subject's Claude Code runs with, on every runtime: its
+# subagents and the commands it starts run in the foreground, so each
+# result returns to the session that asked for it. In print mode, a task
+# left in the background ends the main agent's turn, and the session
+# never gives it back. The runtimes carry the subject's environment each
+# their own way, so these reach it through `env` in its command, which
+# every runtime runs as it is.
+SUBJECT_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -291,10 +303,12 @@ def phase_argv(
     """The `claude -p` one session of a skill subject runs, with its bounds.
 
     The session writes every turn to stdout as a JSON line
-    (`--output-format stream-json --verbose`). Claude Code holds the turn
-    cap and the spend cap itself. A resumed session names the session it
-    continues. A phase that starts in the output folder is started there
-    by a shell, since the runtime starts every command in the workspace.
+    (`--output-format stream-json --verbose`). Claude Code holds the spend
+    cap itself, and a turn cap only when the phase names one; it runs
+    under `env` with `SUBJECT_ENV`.
+    A resumed session names the session it continues. A phase that starts
+    in the output folder is started there by a shell, since the runtime
+    starts every command in the workspace.
     """
     if scn.subject.phases:
         prompt, reads = phase_prompt(scn, phase, target)
@@ -302,6 +316,8 @@ def phase_argv(
         # The workspace is the subject's working directory; the target is outside it.
         prompt, reads = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip(), bool(target)
     argv = [
+        "env",
+        *(f"{name}={value}" for name, value in SUBJECT_ENV.items()),
         claude,
         "-p",
         prompt,
@@ -310,11 +326,12 @@ def phase_argv(
         "--output-format",
         "stream-json",
         "--verbose",
-        "--max-turns",
-        str(phase.max_turns),
         "--max-budget-usd",
         f"{phase.max_usd:g}",
     ]
+    # A turn count is no bound; a phase that names one passes it on.
+    if phase.max_turns is not None:
+        argv += ["--max-turns", str(phase.max_turns)]
     if model:
         argv += ["--model", model]
     if reads and target:
@@ -538,6 +555,11 @@ class Budget:
     def reached(self) -> bool:
         return self.cap is not None and self.spent >= self.cap
 
+    def covers(self, need: float | None) -> bool:
+        """Whether what is left of the cap covers `need`; a run with no cap, or a need no one knows, is covered."""
+        # A hair of tolerance, so a cap that is the sum of the phases' caps covers them.
+        return self.cap is None or need is None or self.cap - self.spent + 1e-9 >= need
+
     def says(self) -> str:
         return f"the run's spend cap of ${self.cap:g} was reached at ${self.spent:.4f}"
 
@@ -554,8 +576,6 @@ class Plan:
     prices: dict[str, dict[str, float]]
     budget: Budget
     env: dict[str, str]
-    # A rehearsal makes the output folder when a phase left none.
-    rehearsal: bool = False
 
 
 @dataclasses.dataclass
@@ -575,6 +595,9 @@ class SkillRepeat:
     cut_short: list[str] | None = None
     # Whether the archive command succeeded where the subject ran; None when there was no checkpoint to archive.
     archived: bool | None = None
+    # The phase that ended the run early, why, and the phases after it, which did not run: `no_tree`, the
+    # output folder held no file after it; `incomplete`, its session ended with an Agent call unanswered.
+    ended_early: dict[str, Any] | None = None
 
 
 def harness_run(
@@ -593,20 +616,23 @@ def harness_run(
 
 def checkpoint(
     rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, number: int, label: str
-) -> tuple[str | None, str | None]:
-    """Commit the output folder's tree as the `number`th checkpoint; the commit's id, or why there is none.
+) -> tuple[str | None, str | None, bool | None]:
+    """Commit the output folder's tree as the `number`th checkpoint.
 
-    The label goes to the harness's own stream only: the commit says
-    `checkpoint` and no more, so nothing in the repository names a phase.
+    Returns the commit's id, or why there is none, and whether the folder
+    holds a file the checkpoint commits: False when there is no folder or
+    its tree is empty, None when git failed and no one can say. The label
+    goes to the harness's own stream only: the commit says `checkpoint`
+    and no more, so nothing in the repository names a phase.
     """
     harness.note(f"[checkpoint {number}] {label}")
     status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, str(number)])
     commit = next((line.strip() for line in reversed(out) if re.fullmatch(r"[0-9a-f]{40,64}", line.strip())), None)
     if status.ok and commit:
-        return commit, None
+        return commit, None, PH.EMPTY not in (line.strip() for line in out)
     if status.code == 3:
-        return None, f"there is no output folder {folder} to commit"
-    return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl"
+        return None, f"there is no output folder {folder} to commit", False
+    return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl", None
 
 
 def run_skill(
@@ -616,9 +642,13 @@ def run_skill(
 
     Each phase runs with its bounds, watched through the stream. After
     each, the output folder is committed. A phase that fails ends the
-    repeat; one that hits a bound ends it only when it says so. The
-    run's spend cap is checked before each phase. After the last phase,
-    the harness archives the last commit and runs the gates on the tree.
+    repeat; one that hits a bound ends it only when it says so. A phase
+    whose session ended with an Agent call unanswered is `incomplete`,
+    and it ends the repeat, as does one after which the output folder
+    holds no file; the repeat fails. The run's spend cap is checked
+    before each phase.
+    After the last phase, the harness archives the last commit and runs
+    the gates on the tree.
     """
     folder = scn.subject.output
     phased = bool(scn.subject.phases)
@@ -634,11 +664,14 @@ def run_skill(
     duration = 0.0
     sessions: dict[str, str | None] = {}
     homes: dict[str, str] = {}
-    # Each session's running total so far, as its last result reported it or as the harness counted it.
+    # Each session's running total so far, as its last result reported it or as the harness counted it,
+    # and each model's cost in it, as the result's modelUsage gives it.
     running: dict[str, tuple[float, dict[str, int]]] = {}
+    running_models: dict[str, dict[str, float]] = {}
     commit: str | None = None
     before: S.Phase | None = None
     cut_short: list[str] | None = None
+    ended_early: dict[str, Any] | None = None
     every = phases_of(scn)
     for number, phase in enumerate(every, start=1):
         if plan.budget.reached():
@@ -662,7 +695,8 @@ def run_skill(
         argv = phase_argv(scn, phase, plan.name, plan.plugin, plan.target, plan.claude, plan.model, resume)
         watch = PH.Watch(phase.max_usd, plan.prices, scn.subject.gates, phase.max_gate_reruns)
         mark = streams.count
-        streams.note(f"[phase {phase.name}] {phase.session}, at most {phase.max_turns} turns and ${phase.max_usd:g}")
+        turns = f"{phase.max_turns} turns, " if phase.max_turns is not None else ""
+        streams.note(f"[phase {phase.name}] {phase.session}, at most {turns}${phase.max_usd:g} and {phase.timeout_s} s")
         streams.listener = watch.feed
         try:
             status = rt.run(argv, rt.workspace, plan.env, streams, timeout_s=phase.timeout_s, stop=watch.stop)
@@ -675,8 +709,12 @@ def run_skill(
         spent_usage, spent = read_envelope_spend(text) if result is not None else ({}, None)
         if is_error:
             status = dataclasses.replace(status, is_error=True)
-        cap = watch.capped or PH.cap_of(result)
-        outcome = "capped" if cap and not status.timed_out else "ok" if status.ok else "failed"
+        # Money and time are the bounds: a session its timeout stopped ended at a bound, as one its spend cap did.
+        cap = watch.capped or PH.cap_of(result) or ("time" if status.timed_out else None)
+        outcome = "capped" if cap else "ok" if status.ok else "failed"
+        if outcome == "ok" and watch.pending:
+            # The session ended while a subagent it asked for had not answered: its work is not done.
+            outcome = "incomplete"
         streams.note(f"[phase {phase.name}] {outcome}" + (f" at its {cap} cap" if outcome == "capped" else ""))
         if phase.hint:
             rt.hide(PH.HANDOFF)
@@ -684,6 +722,11 @@ def run_skill(
         # A resumed session's result carries the session's running total, the
         # phases before it included, so this phase's own is what it adds to it.
         earlier_cost, earlier_usage = running.get(homes[phase.name], (0.0, {})) if resume else (0.0, {})
+        earlier_models = running_models.get(homes[phase.name], {}) if resume else {}
+        by_model = PH.model_costs(result)
+        if by_model:
+            running_models[home] = dict(by_model)
+            by_model = {m: round(max(c - earlier_models.get(m, 0.0), 0.0), 6) for m, c in by_model.items()}
         if spent is not None:
             running[home] = (spent, dict(spent_usage))
             spent = round(max(spent - earlier_cost, 0.0), 6)
@@ -719,20 +762,20 @@ def run_skill(
             "models": sorted(found),
             "cost_usd": spent,
             "estimated_usd": estimated,
+            "wall_s": round(status.duration_s, 3),
         }
+        if by_model:
+            # The models the session used and what each cost, so the run says what it measured.
+            record["model_cost_usd"] = by_model
         if scn.subject.gates:
             record["gate_runs"] = watch.gate_runs()
+        if watch.pending:
+            record["pending_agents"] = list(watch.pending)
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
+        holds: bool | None = None
         if folder and harness is not None:
-            if plan.rehearsal:
-                _, said = harness_run(rt, harness, plan, ["sh", "-c", RH.MAKE_OUTPUT, "sh", folder])
-                if "made" in said:
-                    notes.append(
-                        f"repeat {index}: phase {phase.name} left no {folder}, so the rehearsal made it, empty, "
-                        "for the checkpoints, the phases after it, the archive, and the gates"
-                    )
-            made, why = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
+            made, why, holds = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
             record["checkpoint"] = made
             commit = made or commit
             if why:
@@ -744,6 +787,22 @@ def run_skill(
             failed = status
             if phased:
                 notes.append(f"repeat {index}: phase {phase.name} failed; the phases after it did not run")
+            break
+        not_run = [p.name for p in every[number:]]
+        left = f"; {', '.join(not_run)} did not run" if not_run else ""
+        if outcome == "incomplete":
+            # The phases after it would build on work the session never finished.
+            ended_early = {"phase": phase.name, "reason": "incomplete", "not_run": not_run}
+            calls = ", ".join(f"{a['id']} ({a['description']})" if a["description"] else a["id"] for a in watch.pending)
+            notes.append(
+                f"repeat {index}: phase {phase.name} ended with Agent calls that had no result: {calls}{left}, "
+                "and the repeat is not judged"
+            )
+            break
+        if holds is False:
+            # Nothing to build on, archive, gate, or judge: the phases after it would spend on an empty tree.
+            ended_early = {"phase": phase.name, "reason": "no_tree", "not_run": not_run}
+            notes.append(f"repeat {index}: phase {phase.name} left no file in {folder}{left}, and the repeat is not judged")
             break
         if outcome == "capped" and phase.on_cap == "stop":
             notes.append(f"repeat {index}: phase {phase.name} ended at its {cap} cap, and it stops the repeat there")
@@ -786,7 +845,13 @@ def run_skill(
         notes=notes,
         cut_short=cut_short,
         archived=archived_ok,
+        ended_early=ended_early,
     )
+
+
+def repeat_need(scn: S.Scenario) -> float | None:
+    """What one repeat's sessions may spend: the sum of the caps of every phase it runs; None for a subject with none."""
+    return round(sum(p.max_usd for p in phases_of(scn)), 6) if scn.kind == "skill" else None
 
 
 def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -819,6 +884,8 @@ def subject_bounds(scn: S.Scenario) -> dict[str, Any]:
     out: dict[str, Any] = {"max_usd": scn.subject.max_usd, "output": scn.subject.output, "gates": list(scn.subject.gates)}
     if scn.subject.phases:
         out["phases"] = [p.as_dict() for p in scn.subject.phases]
+    if scn.subject.groups:
+        out["groups"] = S.taken_groups(scn)
     return out
 
 
@@ -886,6 +953,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a scenario, list what there is, or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
+    parser.add_argument(
+        "--with",
+        dest="groups",
+        action="append",
+        default=None,
+        metavar="GROUP",
+        help="run an optional group of the scenario's phases as well; repeat it for more; a run takes none by default",
+    )
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
     parser.add_argument(
@@ -945,8 +1020,10 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
-            # What a scenario requires, how many repeats it runs, and its run's spend cap, each only when it names one.
+            # What a scenario requires, its optional groups, how many repeats it runs, and its run's spend cap,
+            # each only when it names one.
             named = f" requires={','.join(scn.requires)}" if scn.requires else ""
+            named += f" groups={','.join(g.name for g in scn.subject.groups)}" if scn.subject.groups else ""
             named += f" repeat={scn.repeat}" if scn.repeat else ""
             named += f" max_spend_usd={scn.max_spend_usd:g}" if scn.max_spend_usd else ""
             print(
@@ -1001,7 +1078,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        scn = S.load(S.find(args.scenario, SCENARIOS))
+        # The phases of no group, and those of each group --with takes.
+        scn = S.select(S.load(S.find(args.scenario, SCENARIOS)), args.groups or [])
         flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
         if scn.kind == "qa":
             context_text(scn)  # a missing context file stops the run before anything is spent
@@ -1021,13 +1099,13 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        scn = RH.scenario(scn, matrix)
+        scn = RH.scenario(scn, matrix, len(P.members(flags)))
     # A flag that is not given takes the scenario's value. From here on,
     # args.repeat and args.max_spend_usd are what the run takes.
     if args.repeat is None:
         args.repeat = scn.repeat or REPEAT
     if args.max_spend_usd is None:
-        args.max_spend_usd = scn.max_spend_usd
+        args.max_spend_usd = S.spend_cap(scn, args.repeat, len(P.members(flags)))
     # The scenario says where it runs. A runtime it does not list is refused
     # here, before a run folder is made.
     runtime = args.runtime or scn.runtimes[0]
@@ -1184,6 +1262,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         resolved["notes"] = list(staged.notes)
     if planned:
         resolved["phases"] = planned
+    if scn.subject.groups:
+        # The optional groups this run takes; none is the scenario's default.
+        resolved["groups"] = S.taken_groups(scn)
     if args.rehearsal:
         # Every bound above is the rehearsal's. A rehearsal is never checked in.
         resolved["rehearsal"] = True
@@ -1272,7 +1353,6 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         subject_prices(matrix),
         budget,
         env,
-        rehearsal=args.rehearsal,
     )
 
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
@@ -1281,10 +1361,23 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     failed_subjects: list[int] = []
     # Each repeat's archive command, for a rehearsal's outcome.
     archived: dict[int, bool | None] = {}
+    # A repeat starts only when what is left of the cap covers every phase it runs, so the cap
+    # never cuts short a repeat whose first phases it let spend. Judges count toward the spend.
+    need = repeat_need(scn)
+    held = False
     try:
         for index in range(args.repeat):
             if budget.reached():
                 notes.append(f"{budget.says()}; repeat {index} and after did not run")
+                held = True
+                break
+            if not budget.covers(need):
+                left = (budget.cap or 0.0) - budget.spent
+                notes.append(
+                    f"repeat {index} and after did not run: ${left:.4f} of the run's ${budget.cap:g} spend cap is left, "
+                    f"and the phases of a repeat may spend ${need:g}"
+                )
+                held = True
                 break
             mark = streams.count
             streams.note(f"[repeat {index}] start")
@@ -1358,12 +1451,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 )
                 continue
 
-            if not status.ok:
-                # A subject that failed or ran out of time produced no answer
-                # worth a judge's money, and a score of it would be a score of
-                # the failure. The repeat is recorded with no judgement.
+            ended = done.ended_early if done is not None else None
+            if not status.ok or ended:
+                # A subject that failed, ran out of time, left no tree, or
+                # left a subagent unanswered produced nothing worth a
+                # judge's money, and a score of it would be a score of the
+                # failure. The repeat is recorded with no judgement.
                 failed_subjects.append(index)
                 reason = "timed out" if status.timed_out else "is_error" if status.is_error else f"exit {status.code}"
+                if ended and status.ok:
+                    why = "left no tree" if ended["reason"] == "no_tree" else "ended with an Agent call unanswered"
+                    reason = f"phase {ended['phase']} {why}"
                 print(f"  repeat {index} subject failed ({reason}); not judged")
                 run.repeats.append(
                     R.RepeatResult(
@@ -1376,8 +1474,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                         phases=done.phases if done else None,
                         archive=archive,
                         gates=done.gates if done else None,
+                        ended_early=ended,
                     )
                 )
+                if ended and index + 1 < args.repeat:
+                    notes.append(f"repeat {index} ended early, so the run ends: repeat {index + 1} and after did not run")
+                    break
                 continue
 
             expected = E.named(expected_data, blob)
@@ -1435,7 +1537,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         notes.extend(rt.release())
     run.notes = notes
     if args.rehearsal:
-        run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived)
+        run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived, held=held)
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
     if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing

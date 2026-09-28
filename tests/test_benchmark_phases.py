@@ -29,6 +29,10 @@ def phase(name: str, action: dict | None = None, **extra) -> dict:
     return {"name": name, "prompt": do(action or {}), "max_turns": 5, "max_usd": 1, "timeout_s": 60, **extra}
 
 
+# What a first phase writes so the output folder holds a file; a phase after which it holds none ends the run.
+TREE = {"write": {"site/README.md": "r\n"}}
+
+
 def phased(*phases: dict, **subject) -> dict:
     return {
         "name": "system",
@@ -80,7 +84,7 @@ def seen(run_dir: Path) -> list[dict | None]:
 
 
 def test_each_fresh_phase_gets_a_new_home_and_a_resumed_one_continues_its_session(run_phases):
-    code, run_dir = run_phases(phased(phase("scaffold"), phase("mvp", session="resume"), phase("review")))
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp", session="resume"), phase("review")))
     assert code == 0
     first, second, third = seen(run_dir)
     assert first and second and third
@@ -137,7 +141,7 @@ def test_a_failed_phase_ends_the_repeat_and_its_checkpoints_are_kept(run_phases)
 
 
 def test_a_phase_that_hits_a_bound_is_capped_and_the_next_one_runs_unless_it_says_stop(run_phases):
-    turns = {"subtype": "error_max_turns", "is_error": True, "exit": 1}
+    turns = {**TREE, "subtype": "error_max_turns", "is_error": True, "exit": 1}
     code, run_dir = run_phases(phased(phase("scaffold", turns), phase("mvp")))
     assert code == 0  # a bound is not a failure: the repeat goes on and is judged
     phases = results(run_dir)["repeats"][0]["phases"]
@@ -146,7 +150,7 @@ def test_a_phase_that_hits_a_bound_is_capped_and_the_next_one_runs_unless_it_say
 
 
 def test_a_phase_that_says_stop_ends_the_repeat_at_its_bound(run_phases):
-    budget = {"subtype": "error_max_budget_usd", "is_error": True, "exit": 1}
+    budget = {**TREE, "subtype": "error_max_budget_usd", "is_error": True, "exit": 1}
     code, run_dir = run_phases(phased(phase("scaffold", budget, on_cap="stop"), phase("mvp")))
     assert code == 0
     data = results(run_dir)
@@ -156,7 +160,7 @@ def test_a_phase_that_says_stop_ends_the_repeat_at_its_bound(run_phases):
 
 def test_the_harness_stops_a_phase_whose_stream_passes_its_spend_cap(run_phases):
     usage = {"input_tokens": 150_000, "output_tokens": 0}  # $0.60 at the matrix's price
-    act = {"messages": [["m1", "claude-opus-5-5", usage], ["m2", "claude-opus-5-5-20260901", usage]], "sleep": 30}
+    act = {**TREE, "messages": [["m1", "claude-opus-5-5", usage], ["m2", "claude-opus-5-5-20260901", usage]], "sleep": 30}
     code, run_dir = run_phases(phased(phase("scaffold", act), phase("mvp")))
     assert code == 0
     repeat = results(run_dir)["repeats"][0]
@@ -171,7 +175,7 @@ def test_the_harness_stops_a_phase_whose_stream_passes_its_spend_cap(run_phases)
 
 def test_a_gate_that_fails_past_its_reruns_stops_the_phase_and_is_recorded_failing(run_phases):
     failing = [["cd site && make check 2>&1", True]] * 4 + [["make checks", True]]
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": failing, "sleep": 30}), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": failing, "sleep": 30}), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
@@ -181,7 +185,7 @@ def test_a_gate_that_fails_past_its_reruns_stops_the_phase_and_is_recorded_faili
 def test_a_passing_gate_run_starts_the_count_again(run_phases):
     # A failed run and two reruns that fail would pass the bound; a pass between them ends the streak.
     runs = [["make check", True]] * 2 + [["make check", False]] + [["make check", True]] * 2
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": runs}, max_gate_reruns=2), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": runs}, max_gate_reruns=2), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("ok", None)
@@ -221,7 +225,8 @@ def test_the_gates_run_on_the_final_tree_and_are_recorded_beside_the_scores(run_
 
 
 def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_phases):
-    scenario = phased(phase("scaffold"), phase("mvp"), phase("review"))
+    # Each phase spends $0.25, past its own $0.10 cap, so the run's cap is reached inside the repeat.
+    scenario = phased(*(phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review")))
     code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "0.3")
     assert code == 0
     data = results(run_dir)
@@ -232,7 +237,8 @@ def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_ph
 
 
 def test_a_run_takes_the_scenario_s_repeats_and_spend_cap_unless_a_flag_overrides_them(run_phases):
-    scenario = dict(phased(phase("scaffold"), phase("mvp"), phase("review")), repeat=2, max_spend_usd=0.3)
+    three = (phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review"))
+    scenario = dict(phased(*three), repeat=2, max_spend_usd=0.3)
     # No --repeat and no --max-spend-usd: the scenario's cap stops the run as the flag's would.
     code, run_dir = run_phases(scenario, "--runtime", "host")
     assert code == 0
@@ -284,7 +290,11 @@ def test_a_dry_run_resolves_the_phases_and_runs_nothing(tmp_path, monkeypatch):
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     scaffold, mvp, review = resolved["phases"]
     assert [p["name"] for p in (scaffold, mvp, review)] == ["scaffold", "mvp", "review"]
-    assert scaffold["argv"] == resolved["subject_argv"] and "handoff note at HANDOFF.md" in scaffold["argv"][2]
+    argv = scaffold["argv"]
+    assert argv == resolved["subject_argv"] and "handoff note at HANDOFF.md" in argv[argv.index("-p") + 1]
+    # The subject runs under env, with its subagents and commands in the foreground, on every runtime.
+    assert argv[:3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+    assert review["argv"][5:8] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
     assert mvp["argv"][mvp["argv"].index("--resume") + 1] == "<the session of scaffold>"
     assert review["argv"][:5] == ["sh", "-c", PH.IN_FOLDER, "sh", "site"]
     assert resolved["max_spend_usd"] == 20
@@ -413,9 +423,9 @@ def test_a_run_s_spend_cap_is_an_amount_above_zero(tmp_path, monkeypatch, capsys
 def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(run_phases):
     # Claude Code's result for a resumed session carries the session's total so far.
     scenario = phased(
-        phase("scaffold", {"cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}),
-        phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume"),
-        phase("review", {"cost": 0.1}),
+        phase("scaffold", {**TREE, "cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}, max_usd=0.25),
+        phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume", max_usd=0.25),
+        phase("review", {"cost": 0.1}, max_usd=0.25),
     )
     code, run_dir = run_phases(scenario, "--repeat", "1", "--max-spend-usd", "0.8")
     assert code == 0
@@ -460,13 +470,13 @@ def test_a_gate_run_is_the_gate_as_a_command_of_its_own_and_its_outcome_is_read_
 
 def test_a_run_whose_outcome_is_not_read_neither_fails_nor_passes(run_phases):
     piped = [["make check 2>&1 | tail -30", True]] * 6
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": piped}), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": piped}), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["gate_runs"]["make check"]) == ("ok", {"runs": 6, "failed": 0, "unread": 6, "failing": False})
     # A call that only names the gate is no gate run, so it ends no streak.
     named = [["make check", True]] * 2 + [["echo make check", False], ['git commit -m "make check passes"', False]]
-    act = {"bash": [*named, ["make check", True]], "sleep": 30}
+    act = {**TREE, "bash": [*named, ["make check", True]], "sleep": 30}
     code, run_dir = run_phases(phased(phase("scaffold", act, max_gate_reruns=2), gates=["make check"]))
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
@@ -542,9 +552,8 @@ def test_a_repeat_the_run_s_spend_cap_cuts_short_is_marked_and_not_judged(tmp_pa
         return []
 
     monkeypatch.setattr(run.J, "judge_all", judge_all)
-    code, run_dir = run_phases(
-        phased(phase("scaffold"), phase("mvp"), phase("review")), "--repeat", "1", "--max-spend-usd", "0.3"
-    )
+    three = (phase(n, TREE if n == "scaffold" else None, max_usd=0.1) for n in ("scaffold", "mvp", "review"))
+    code, run_dir = run_phases(phased(*three), "--repeat", "1", "--max-spend-usd", "0.3")
     assert code == 0 and judged == []
     data = results(run_dir)
     assert data["repeats"][0]["cut_short"] == ["review"] and data["summary"]["cut_short"] == [0]
@@ -626,3 +635,335 @@ def test_an_agentic_judge_reads_the_archived_tree_as_the_output(run_phases, monk
     assert seen_roots == {"output": ["README.md", "app/main.py"], "guideline": ["lenses/README.md"]}
     prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
     assert "- `output`: the tree the subject built, its output folder as its last commit holds it." in prompt
+
+
+# Optional groups of phases --------------------------------------------------
+
+
+def grouped(**subject) -> dict:
+    """The build by default, and a review in the group `extras`, whose sentence the rubric takes when a run takes it."""
+    return phased(
+        phase("scaffold", TREE),
+        phase("review", {"write": {"notes.md": "n"}}, cwd="output", group="extras"),
+        groups={"extras": {"rubric": "Then a review read the tree."}},
+        **subject,
+    )
+
+
+def test_a_run_takes_a_group_only_with_the_flag_and_names_the_groups_it_took(run_phases):
+    code, run_dir = run_phases(grouped())
+    assert code == 0
+    assert [p["name"] for p in results(run_dir)["repeats"][0]["phases"]] == ["scaffold"]
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["groups"] == [] and [p["name"] for p in resolved["phases"]] == ["scaffold"]
+    assert results(run_dir)["subject"]["groups"] == []
+    assert "Optional groups taken: none." in (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Then a review read the tree." not in (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+
+    code, run_dir = run_phases(grouped(), "--repeat", "1", "--with", "extras")
+    assert code == 0
+    data = results(run_dir)
+    assert [p["name"] for p in data["repeats"][0]["phases"]] == ["scaffold", "review"]
+    assert data["subject"]["groups"] == ["extras"] and [p["group"] for p in data["subject"]["phases"]] == [None, "extras"]
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["groups"] == ["extras"] and resolved["scenario"]["rubric"] == "r\n\nThen a review read the tree."
+    assert "Optional groups taken: `extras`." in (run_dir / "report.md").read_text(encoding="utf-8")
+    prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+    assert "r\n\nThen a review read the tree." in prompt and "2. review (fresh session)" in prompt
+
+
+def test_a_scenario_with_no_groups_names_none_in_its_records(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE)))
+    assert code == 0
+    assert "groups" not in json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert "groups" not in results(run_dir)["subject"]
+    assert "Optional groups" not in (run_dir / "report.md").read_text(encoding="utf-8")
+
+
+def test_a_group_the_scenario_does_not_declare_is_refused_before_a_run_folder_is_made(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(grouped()), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--with", "mvp", "--dry-run"]) == 2
+    assert "scenario system declares no group mvp; its groups: extras" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("flags", "cap"),
+    [
+        ((), 1.0),  # the scaffold's cap
+        (("--with", "extras"), 2.0),  # the scaffold's and the review's
+        (("--with", "extras", "--repeat", "2"), 4.0),  # every phase of every repeat
+        (("--with", "extras", "--max-spend-usd", "7"), 7.0),  # the flag names one for any path
+    ],
+)
+def test_a_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_it_runs_unless_a_flag_names_one(
+    tmp_path, monkeypatch, flags, cap
+):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(dict(grouped(), repeat=1)), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run", *flags]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == cap
+
+
+def test_the_scenario_s_own_spend_cap_holds_only_on_the_path_that_takes_no_group(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(dict(grouped(), repeat=1, max_spend_usd=0.5)), encoding="utf-8")
+    caps: list[float] = []
+    for flags in ((), ("--with", "extras")):
+        out = tmp_path / "runs" / str(len(caps))
+        assert run.main(["--scenario", str(path), "--out", str(out), "--dry-run", *flags]) == 0
+        (run_dir,) = out.iterdir()
+        caps.append(json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"])
+    assert caps == [0.5, 2.0]
+
+
+# A phase that leaves no tree ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        {},  # no output folder at all
+        {"git": [["init", "-q", "site"]]},  # a folder that holds a repository and no file
+    ],
+    ids=["no-folder", "empty-folder"],
+)
+def test_a_phase_that_leaves_no_tree_ends_the_run_unjudged(run_phases, monkeypatch, first):
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    scenario = phased(phase("scaffold", first), phase("mvp", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "2")
+    assert code == 6 and judged == []  # the subject built nothing, so the repeat failed and no judge was asked
+    data = results(run_dir)
+    (repeat,) = data["repeats"]  # the run ends: the second repeat never starts
+    assert [p["name"] for p in repeat["phases"]] == ["scaffold"] and len(seen(run_dir)) == 1
+    assert repeat["ended_early"] == {"phase": "scaffold", "reason": "no_tree", "not_run": ["mvp", "review"]}
+    assert data["summary"]["failed_repeats"] == [0] and data["summary"]["cut_short"] == []
+    assert any(
+        "phase scaffold left no file in site; mvp, review did not run, and the repeat is not judged" in n for n in data["notes"]
+    )
+    assert any("repeat 0 ended early, so the run ends: repeat 1 and after did not run" in n for n in data["notes"])
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Repeat 0 ended after phase scaffold, which left no file in the output folder. mvp, review did not run." in report
+
+
+def test_a_last_phase_that_leaves_no_tree_fails_its_repeat_too(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold")))
+    assert code == 6
+    assert results(run_dir)["repeats"][0]["ended_early"] == {"phase": "scaffold", "reason": "no_tree", "not_run": []}
+
+
+def test_a_phase_s_wall_time_is_in_its_record_and_the_report(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "sleep": 0.3})))
+    assert code == 0
+    (record,) = results(run_dir)["repeats"][0]["phases"]
+    assert record["wall_s"] >= 0.3 and record["wall_s"] == record["exit_status"]["duration_s"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| Repeat | Phase | Session | Status | Cap | Turns | Wall (s) | Cost (USD) | Models | Checkpoint |" in report
+    assert f"| 0 | scaffold | fresh | ok | - | 3 | {record['wall_s']:.1f} | $0.2500 |" in report
+
+
+# The run's spend cap and a repeat ---------------------------------------------
+
+
+def test_a_repeat_starts_only_when_what_is_left_of_the_cap_covers_its_phases(run_phases, monkeypatch):
+    # Two phases capped at $1 each and two repeats: the cap is $4. The first repeat's subject spends $0.50 and its
+    # judge $2, so $1.50 is left, less than the $2 the second repeat's phases may spend: it does not start.
+    def judge_all(*args, **kwargs):
+        usage = {"input_tokens": 1000, "output_tokens": 100}
+        return [run.J.Judgement(provider="anthropic", model="claude-opus-5-5", effort="medium", usage=usage, cost_usd=2.0)]
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp")), "--repeat", "2")
+    assert code == 0
+    data = results(run_dir)
+    (repeat,) = data["repeats"]
+    assert [p["name"] for p in repeat["phases"]] == ["scaffold", "mvp"] and "cut_short" not in repeat
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == 4.0
+    assert any(
+        "repeat 1 and after did not run: $1.5000 of the run's $4 spend cap is left, and the phases of a repeat may spend $2" in n
+        for n in data["notes"]
+    )
+    assert len(seen(run_dir)) == 2  # no session of the second repeat started
+
+
+def test_a_run_whose_cap_covers_no_repeat_starts_none_and_says_why(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp")), "--repeat", "1", "--max-spend-usd", "1.5")
+    assert code == 0
+    data = results(run_dir)
+    assert data["repeats"] == [] and seen(run_dir) == []
+    assert any("repeat 0 and after did not run: $1.5000 of the run's $1.5 spend cap is left" in n for n in data["notes"])
+
+
+# The subject's background tasks ------------------------------------------------
+
+
+def test_the_subject_runs_with_its_background_tasks_off_on_the_host_and_on_another_machine(tmp_path, run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", cwd="output")))
+    assert code == 0
+    assert [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1", "1"]
+    one = {
+        "name": "one",
+        "kind": "skill",
+        "subject": {"skill": "arch-explain", "prompt": do({}), "max_usd": 0.75, "max_turns": 4},
+        "rubric": "r",
+        "runtimes": ["host"],
+        "judges": {"providers": "anthropic"},
+    }
+    code, run_dir = run_phases(one)
+    assert code == 0 and [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1"]
+    # The vm prefix here starts each command in an empty environment, as a remote shell does: the variable
+    # reaches the subject through its command, not through this machine's environment.
+    config_path = tmp_path / "vm.json"
+    config_path.write_text(json.dumps(vm_config(tmp_path)), encoding="utf-8")
+    scenario = phased(phase("scaffold", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "1", "--runtime", "vm", "--runtime-config", str(config_path))
+    assert code == 0 and [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1", "1"]
+
+
+def test_a_container_runs_the_subject_under_env_with_its_background_tasks_off(tmp_path):
+    scn = S.from_data(phased(phase("scaffold"), phase("review", cwd="output")))
+    rt = run.RT.build("container", tmp_path, None, {"image": "img:1"})
+    rt.prepare()
+    for one in scn.subject.phases:
+        command = rt.command(run.phase_argv(scn, one, "swe-guidelines", "/plugin", None), rt.workspace)
+        inside = command[command.index("img:1") + 1 :]  # what the container runs
+        at = inside.index("env")
+        assert inside[at : at + 3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+
+
+# A phase with an Agent call left pending --------------------------------------
+
+
+def test_a_phase_whose_session_ends_with_an_agent_call_unanswered_is_incomplete_and_ends_the_run(run_phases, monkeypatch):
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    # Two helpers started, one answered; the session's result came while the other still worked.
+    agents = [["toolu_a", "read the spec", True], ["toolu_b", "scaffold the portal", False]]
+    scenario = phased(phase("scaffold", {**TREE, "agents": agents}), phase("mvp", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "2")
+    assert code == 6 and judged == []  # recorded as no success, and no judge is asked
+    data = results(run_dir)
+    (repeat,) = data["repeats"]  # the run stops before the next phase, and before the next repeat, spends
+    (scaffold,) = repeat["phases"]
+    assert (scaffold["status"], scaffold["capped"]) == ("incomplete", None) and scaffold["checkpoint"]
+    assert scaffold["pending_agents"] == [{"id": "toolu_b", "description": "scaffold the portal"}]
+    assert repeat["ended_early"] == {"phase": "scaffold", "reason": "incomplete", "not_run": ["mvp", "review"]}
+    assert len(seen(run_dir)) == 1 and data["summary"]["failed_repeats"] == [0]
+    assert any(
+        "phase scaffold ended with Agent calls that had no result: toolu_b (scaffold the portal); mvp, review did not run" in n
+        for n in data["notes"]
+    )
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| 0 | scaffold | fresh | incomplete | - |" in report
+    assert (
+        "Repeat 0 ended after phase scaffold, which ended with Agent calls that had no result. mvp, review did not run." in report
+    )
+
+
+def test_a_phase_whose_agent_calls_all_answered_is_a_success(run_phases):
+    agents = [["toolu_a", "read the spec", True], ["toolu_b", "scaffold the portal", True]]
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "agents": agents}), phase("mvp")))
+    assert code == 0
+    phases = results(run_dir)["repeats"][0]["phases"]
+    assert [p["status"] for p in phases] == ["ok", "ok"] and not any("pending_agents" in p for p in phases)
+
+
+def test_the_watch_names_the_agent_calls_with_no_result_when_the_result_came():
+    watch = PH.Watch(None, PRICES)
+    for call_id, name in (("t1", "Agent"), ("t2", "Task"), ("t3", "Bash")):
+        block = {"type": "tool_use", "id": call_id, "name": name, "input": {"subagent_type": "Explore"}}
+        watch.feed("out", line({"type": "assistant", "message": {"id": f"m{call_id}", "content": [block]}}))
+    answer = {"type": "tool_result", "tool_use_id": "t1", "content": "done"}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [answer]}}))
+    assert watch.pending == []  # nothing is pending before the result
+    watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
+    # An older release's Task is a subagent too; a Bash call is not.
+    assert watch.pending == [{"id": "t2", "description": "Explore"}]
+    late = {"type": "tool_result", "tool_use_id": "t2", "content": "done"}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [late]}}))
+    assert watch.pending == [{"id": "t2", "description": "Explore"}]  # a result after the session's is too late
+
+
+def test_a_phase_gets_a_turn_cap_only_when_it_names_one():
+    scn = S.from_data(phased(phase("scaffold", max_turns=None), phase("review", max_turns=7)))
+    free, capped = (run.phase_argv(scn, p, "swe-guidelines", "/plugin", None) for p in scn.subject.phases)
+    assert "--max-turns" not in free and free[free.index("--max-budget-usd") + 1] == "1"
+    assert capped[capped.index("--max-turns") + 1] == "7"
+
+
+def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "sleep": 30}, timeout_s=1), phase("mvp")))
+    assert code == 0  # time is a bound, as money is: the repeat goes on and is judged
+    first, second = results(run_dir)["repeats"][0]["phases"]
+    assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
+    assert second["status"] == "ok"
+
+
+# The models a session used ---------------------------------------------------
+
+
+def test_each_phase_records_the_models_its_session_used_and_what_each_cost(run_phases):
+    # The main agent on one model, its helpers on another; a resumed session reports its running total per model.
+    scenario = phased(
+        phase("scaffold", {**TREE, "cost": 0.5, "models": {"claude-opus-5-5": 0.4, "claude-sonnet-5": 0.1}}),
+        phase("mvp", {"cost": 0.8, "models": {"claude-opus-5-5": 0.6, "claude-sonnet-5": 0.2}}, session="resume"),
+        phase("review", {"cost": 0.1}),
+    )
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    scaffold, mvp, review = results(run_dir)["repeats"][0]["phases"]
+    assert scaffold["model_cost_usd"] == {"claude-opus-5-5": 0.4, "claude-sonnet-5": 0.1}
+    assert mvp["model_cost_usd"] == {"claude-opus-5-5": 0.2, "claude-sonnet-5": 0.1}  # what the resumed phase added
+    assert "model_cost_usd" not in review  # a result that prices no model names none
+    assert sorted(scaffold["models"]) == ["claude-opus-5-5", "claude-sonnet-5"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| `claude-opus-5-5` $0.4000; `claude-sonnet-5` $0.1000 |" in report
+
+
+def test_a_phase_that_starts_a_helper_in_the_background_is_incomplete_though_its_result_reads_success(run_phases):
+    # The shape Claude Code writes: the Agent call with run_in_background "true", the launch notice as its result,
+    # the main agent's text as it ends its turn to wait, and a `success` result.
+    scenario = phased(phase("scaffold", {**TREE, "launched": [["toolu_bg", "scaffold the portal"]]}), phase("mvp", TREE))
+    code, run_dir = run_phases(scenario)
+    assert code == 6
+    (scaffold,) = results(run_dir)["repeats"][0]["phases"]
+    assert scaffold["status"] == "incomplete" and scaffold["exit_status"]["code"] == 0
+    assert scaffold["pending_agents"] == [{"id": "toolu_bg", "description": "scaffold the portal"}]
+    assert results(run_dir)["repeats"][0]["ended_early"] == {"phase": "scaffold", "reason": "incomplete", "not_run": ["mvp"]}
+
+
+@pytest.mark.parametrize(
+    ("asked", "answer", "pending"),
+    [
+        ({"run_in_background": True}, "done", True),  # the setting, as a boolean, with any result
+        ({"run_in_background": "True"}, "done", True),  # and as the word
+        ({}, [{"type": "text", "text": "Async agent launched successfully. agentId: a1"}], True),  # the notice alone
+        ({}, "Async agent launched successfully.", True),  # the notice as a plain string
+        ({"run_in_background": "false"}, "done", False),  # a foreground call its answer closes
+        ({}, [{"type": "text", "text": "The portal is scaffolded."}], False),
+    ],
+)
+def test_an_agent_call_started_in_the_background_stays_pending_to_the_end_of_the_session(asked, answer, pending):
+    watch = PH.Watch(None, PRICES)
+    block = {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"description": "helper", **asked}}
+    watch.feed("out", line({"type": "assistant", "message": {"id": "m1", "content": [block]}}))
+    result = {"type": "tool_result", "tool_use_id": "t1", "content": answer}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [result]}}))
+    watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
+    assert watch.pending == ([{"id": "t1", "description": "helper"}] if pending else [])

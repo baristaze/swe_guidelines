@@ -30,8 +30,9 @@ never run the harness from there.
 `$ARGUMENTS` is one of:
 
 - a scenario name, with or without flags ("explain-tenancy",
-  "review-om with all four judges", "rehearse create-full-system"), or
-  the path of a scenario file, which `--scenario` takes as it is;
+  "review-om with all four judges", "rehearse create-full-system",
+  "create-full-system with extras"), or the path of a scenario file,
+  which `--scenario` takes as it is;
 - a question about what there is ("which scenarios are there?");
 - empty, which means: list the scenarios and the provider
   availability, and stop.
@@ -43,8 +44,10 @@ never run the harness from there.
 2. Run `uv run benchmark/run.py list`. It prints the scenarios with
    their kind, their default judges, the runtimes each runs on, and
    what each requires of its runtime when it requires anything. It
-   prints a scenario's `repeat` and `max_spend_usd` when it names them:
-   the repeats and the run's spend cap a run of it takes by default. It
+   prints a scenario's optional groups of phases, `groups=`, when it
+   declares any. It prints a scenario's `repeat` and `max_spend_usd`
+   when it names them: the repeats and the run's spend cap a run of it
+   takes by default. It
    prints each provider with its flag and whether its key is present.
    Report an absent key as absent; it is a provider that will be
    skipped, not a failure. It also shows whether the subject's own key,
@@ -52,20 +55,37 @@ never run the harness from there.
    and without it a `--strict` run refuses. `list` shows only the
    scenarios under `benchmark/scenarios/`. For a scenario given by its
    path, read its `kind`, `runtimes`, `requires`, `repeat`,
-   `max_spend_usd`, and `judges` from the file.
+   `max_spend_usd`, `judges`, and `subject.groups` from the file.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
    `high`. `--repeat N` runs the subject N times. Without it, the run
    takes the scenario's `repeat`, and 3 only when the scenario names
-   none. `--subject-model` pins the subject's model. `--max-spend-usd N`
-   is the run's spend cap in US dollars, over the subject and the judges
-   together. Without it, the run takes the scenario's `max_spend_usd`,
-   and has no run cap only when the scenario names none. A flag
-   overrides the scenario's value. The cap is not a hard ceiling: the
+   none. `--with <group>` runs an optional group of the scenario's
+   phases as well; repeat it for more. A prompt that asks for a group's
+   phases, by the group's name or by naming or describing its phases,
+   takes that group; a prompt that does not, takes none. Words that name
+   no phase, such as "end to end" or "the full system", take none. A
+   group the scenario does not declare is refused with exit 2.
+   `create-full-system` runs the build by default, the scaffold and then
+   the MVP, so a prompt that asks for the scaffold, the MVP, or the build
+   takes no flag. Its one group, `extras`, is the review and the close.
+   A prompt that asks for extras, the review, the close, or every phase
+   ("all four phases") takes `--with extras`. `--subject-model` pins the subject's model.
+   `--max-spend-usd N` is the run's spend cap in US dollars, over the
+   subject and the judges together. Without it, a run that takes no
+   group takes the scenario's `max_spend_usd`. Else a scenario in
+   phases is capped by the sum of the caps of the phases that run and
+   of the agentic judges' dollar budgets, over every repeat:
+   `create-full-system` by $810 for the build and $975
+   with extras. A run has no cap only when its subject runs in one
+   session and its scenario names none. A flag overrides the
+   scenario's value. The cap is not a hard ceiling: the
    harness checks it before each repeat and each phase and starts
    nothing more once it is reached, but what is running finishes, so a
-   run can end above N. Each session of a
+   run can end above N. A repeat starts only when what is left of N
+   covers the caps of all its phases, so a cap below one repeat's phases
+   runs nothing. Each session of a
    skill subject also has its own cap, which Claude Code holds: the
    subject's `max_usd`, or for a scenario in phases each phase's. Say
    both when the prompt asks for a cap. When it asks what a run could
@@ -140,8 +160,9 @@ never run the harness from there.
    `--rehearsal` and `--out /tmp/benchmark-rehearsals` added. It runs
    every phase with its bounds cut small, commits, archives, fetches
    the output back, runs the gates, and has the judges answer on a stub
-   budget, for at most $5 (`benchmark/README.md`, "Rehearsal"). It runs
-   its own preflight first, so it needs no separate one. It spends, so
+   budget, for at most $5 (`benchmark/README.md`, "Rehearsal"). It
+   takes the run's `--with`, so it rehearses the path the run takes. It
+   runs its own preflight first, so it needs no separate one. It spends, so
    run it only when the prompt asks for a rehearsal. A prompt that asks
    for a rehearsal alone gets the rehearsal and no long run. A prompt
    that asks for a rehearsal and then the run gets the rehearsal first,
@@ -153,9 +174,9 @@ never run the harness from there.
    the prompt has not said which judges, how many repeats, or what the
    run may spend, leave out `--providers`, `--effort`, `--repeat`, and
    `--max-spend-usd`. A run without those flags takes the scenario's
-   own: its judges, its effort, its `repeat`, and its `max_spend_usd`.
-   It takes 3 repeats only when the scenario names no `repeat`, and no
-   run cap only when it names no `max_spend_usd`. Say which they were.
+   own: its judges, its effort, its `repeat`, and its spend cap as step
+   3 says. It takes 3 repeats only when the scenario names no `repeat`.
+   Say which they were, and which groups the run took.
 6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
    `run.json`, and calls nothing. For agentic judges, it also copies
@@ -166,18 +187,22 @@ never run the harness from there.
    fallbacks each would use (`models` lists each provider's model
    first, then its fallbacks in order), the effort, the repeats
    (`repeat`), the run's spend cap (`max_spend_usd`) when there is one,
-   and the subject's `max_usd`. The top-level `repeat` and
+   the groups the run takes (`groups`, empty for the default path) when
+   the scenario declares any, and the subject's `max_usd`. The
+   top-level `repeat` and
    `max_spend_usd` are what the run takes, from its flags or its
-   scenario. For a scenario in phases, `run.json` lists each phase
-   under `phases`, and the
+   scenario. For a scenario in phases, `run.json` lists each phase the
+   run takes under `phases`, with its `group`, and the
    phases' bounds are the ones in effect: the subject's `max_usd` is
-   null, and its `max_turns` and `timeout_s` are defaults nothing uses.
+   null, and its `max_turns` is null and its `timeout_s` a default
+   nothing uses.
    `subject_argv` is only the first phase's command. Report each phase
    with the fields it holds: its `session` (`fresh`, or `resume` of the
    phase before), where it starts (`cwd`: the workspace or the output
    folder), whether it keeps the handoff note (`hint`), its bounds
-   (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
-   backstop), what follows a bound (`on_cap`), and what its `argv` runs:
+   (`max_usd` and `timeout_s`, money and time, `max_gate_reruns`, and
+   `max_turns` only when it names one, since a turn count is no bound),
+   what follows a bound (`on_cap`), and what its `argv` runs:
    the prompt as the `argv` carries it, with the target's path in it when
    the phase's prompt names `{target}` and the handoff sentence when it
    is hinted, and whether it gets `--add-dir` or `--resume`.
@@ -219,9 +244,9 @@ nothing was run and no paid endpoint was called. After a preflight the
 prompt stopped at, the same for a preflight that passed: each check and
 what it found.
 
-After a rehearsal, exit 0, 6, or 9: how it ended (`completed`,
-`failed`, `capped` by its spend cap, or `incomplete`, with each step it
-names under `missing`) and where its money went, as
+After a rehearsal, exit 0, 6, or 9: the groups it took; how it ended
+(`completed`, `failed`, `capped` by its spend cap, or `incomplete`,
+with each step it names under `missing`) and where its money went, as
 the report's Rehearsal section says; how each phase ended; the
 checkpoints, the zip and its manifest, and the gates; and which judges
 answered and which did not, each with its reason. Its scores mean
@@ -233,20 +258,26 @@ subject ran and no provider was called. There is no score to report.
 
 After exit 6, a subject that failed in some repeats: the measurement
 below, with the repeats that failed and the reason the stream
-`streams/cli.jsonl` gives for each. `report.md` scores a failed repeat 0
+`streams/cli.jsonl` gives for each. A repeat whose record names
+`ended_early` ended after one phase: its `reason` is `no_tree`, the
+phase left no file in the output folder, or `incomplete`, its session
+ended with the Agent calls its `pending_agents` names unanswered. Name
+that phase, the reason, the pending calls, and the phases that did not
+run, and say the run started no later repeat. `report.md` scores a failed repeat 0
 in every mean; say those zeros are failures no judge scored. When every
 repeat failed, as on a vm machine that does not answer, report the
 reason and no score.
 
 After a measurement, short, in prose:
 
-- the scenario, the runtime, the repeats, and the judges that answered,
-  each with its model id;
+- the scenario, the runtime, the repeats, the groups it took, and the
+  judges that answered, each with its model id;
 - the score per provider and the overall mean; for agentic judges, say
   that each score is the weighted score the harness computed, and give
   each reference's weight and mean;
-- for a scenario in phases, how each phase ended and the cap that
-  stopped any, and which gates passed on the final tree;
+- for a scenario in phases, how each phase ended, its wall time, the
+  models it used with each one's cost (`model_cost_usd`), and the cap
+  that stopped any, and which gates passed on the final tree;
 - the findings that matter, most severe first, in one line each; for
   agentic judges, the gaps, per reference;
 - any provider that did not answer, with the reason it gave, and for

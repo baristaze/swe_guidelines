@@ -29,15 +29,25 @@ beyond what every run needs: `preflight.registries`, the URLs its
 subject reaches, and `preflight.disk_gib` and `preflight.memory_gib`,
 the free disk and the available memory it needs where it runs.
 
-A skill subject is bounded by count and by spend: a turn cap and a cap in
-US dollars, `max_usd`, which every skill subject names. A skill subject
-can also run in `phases`, each a session of its own with its own prompt
+A skill subject is bounded by money and time: a cap in US dollars,
+`max_usd`, which every skill subject names, and a timeout. A turn count
+is no bound: a scenario may name `max_turns`, and only then does Claude
+Code get one. A skill subject can also run in `phases`, each a session of its own with its own prompt
 and bounds, building one `output` folder the harness commits after every
 phase. A phase is `fresh`, a new session with a new HOME, unless it says
 `resume`, which continues the session of the phase before it in the same
 HOME and the same working folder. The container runtime starts every
 phase in a new container, so a scenario that resumes a phase does not
 list it.
+
+A subject in phases can declare named optional `groups`. A phase that
+names a `group` runs only in a run that takes it, with `run.py --with
+<group>`, and a run takes none by default. A group can add a sentence to
+the rubric, so the judges know what was built. `select` returns the
+scenario as a run with its groups runs it. The run's spend cap is the
+scenario's `max_spend_usd` on the path it names, a run that takes no
+group; else, for a subject in phases, the sum of the caps of the phases
+that run and the budgets of the agentic judges (`spend_cap`).
 
 The judges are one-shot by default: one prompt, one verdict each. A
 scenario can ask for `agentic` judges instead, which read the subject's
@@ -51,6 +61,7 @@ sum to 1: the harness computes the weighted score from them.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import math
 import re
@@ -102,14 +113,17 @@ class Phase:
 
     name: str
     prompt: str
-    max_turns: int
     max_usd: float
     timeout_s: int
+    # A turn cap, when the scenario names one; a turn count is no bound unless named.
+    max_turns: int | None = None
     session: str = "fresh"
     cwd: str = "workspace"
     hint: bool = False
     max_gate_reruns: int = GATE_RERUNS
     on_cap: str = "continue"
+    # The optional group the phase belongs to; None for a phase every run takes.
+    group: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -123,7 +137,19 @@ class Phase:
             "timeout_s": self.timeout_s,
             "max_gate_reruns": self.max_gate_reruns,
             "on_cap": self.on_cap,
+            "group": self.group,
         }
+
+
+@dataclass(frozen=True)
+class Group:
+    """A named optional group of phases: a run takes it with `--with <name>`, and `rubric` is what it adds to the rubric."""
+
+    name: str
+    rubric: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "rubric": self.rubric}
 
 
 @dataclass(frozen=True)
@@ -133,7 +159,8 @@ class Subject:
     skill: str | None = None
     prompt: str = ""
     argv: list[str] = field(default_factory=list)
-    max_turns: int = 6
+    # A skill subject's turn cap, when the scenario names one.
+    max_turns: int | None = None
     allowed_tools: list[str] = field(default_factory=list)
     target: str | None = None
     model: str | None = None
@@ -148,6 +175,8 @@ class Subject:
     gates: list[str] = field(default_factory=list)
     gate_timeout_s: int = 3600
     phases: list[Phase] = field(default_factory=list)
+    # The optional groups of phases the subject declares, in the scenario's order.
+    groups: list[Group] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -293,6 +322,7 @@ class Scenario:
                 "gates": list(self.subject.gates),
                 "gate_timeout_s": self.subject.gate_timeout_s,
                 "phases": [p.as_dict() for p in self.subject.phases],
+                "groups": [g.as_dict() for g in self.subject.groups],
             },
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
@@ -350,12 +380,15 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     if not isinstance(raw_subject, dict):
         raise ScenarioError(f"scenario {name}: subject holds a mapping")
     _only(raw_subject, SUBJECT_KEYS, f"scenario {name}: subject")
-    phases = _phases(raw_subject, kind, runtimes, name)
+    groups = _groups(raw_subject, name)
+    phases = _phases(raw_subject, kind, runtimes, name, groups)
     subject = Subject(
         skill=raw_subject.get("skill"),
         prompt=str(raw_subject.get("prompt") or ""),
         argv=_strings(raw_subject.get("argv"), f"scenario {name}: subject.argv"),
-        max_turns=_int(raw_subject.get("max_turns") or 6, f"scenario {name}: subject.max_turns"),
+        max_turns=None
+        if raw_subject.get("max_turns") is None
+        else _int(raw_subject["max_turns"], f"scenario {name}: subject.max_turns"),
         allowed_tools=_strings(raw_subject.get("allowed_tools"), f"scenario {name}: subject.allowed_tools"),
         target=raw_subject.get("target"),
         model=raw_subject.get("model"),
@@ -367,6 +400,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         gates=_strings(raw_subject.get("gates"), f"scenario {name}: subject.gates"),
         gate_timeout_s=_whole(raw_subject.get("gate_timeout_s", 3600), f"scenario {name}: subject.gate_timeout_s"),
         phases=phases,
+        groups=groups,
     )
     if kind == "skill" and not subject.skill:
         raise ScenarioError(f"scenario {name}: kind skill needs subject.skill")
@@ -458,8 +492,23 @@ SUBJECT_KEYS = (
     "gates",
     "gate_timeout_s",
     "phases",
+    "groups",
 )
-PHASE_KEYS = ("name", "prompt", "max_turns", "max_usd", "timeout_s", "session", "cwd", "hint", "max_gate_reruns", "on_cap")
+PHASE_KEYS = (
+    "name",
+    "prompt",
+    "max_turns",
+    "max_usd",
+    "timeout_s",
+    "session",
+    "cwd",
+    "hint",
+    "max_gate_reruns",
+    "on_cap",
+    "group",
+)
+# A phase's name, and a group's: a lowercase word of its own.
+WORD = re.compile(r"[a-z0-9][a-z0-9-]*")
 # What a subject in phases takes from each phase instead, so a subject-wide one would be read by nothing.
 PER_PHASE = ("prompt", "max_turns", "timeout_s", "max_usd")
 
@@ -615,7 +664,31 @@ def _output(value: Any, name: str) -> str | None:
     return value
 
 
-def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str) -> list[Phase]:
+def _groups(raw: dict[str, Any], name: str) -> list[Group]:
+    """The optional groups of phases a subject declares, each a lowercase word with an optional rubric sentence."""
+    if raw.get("groups") is None:
+        return []
+    where = f"scenario {name}: subject.groups"
+    if raw.get("phases") is None:
+        raise ScenarioError(f"{where}: a group holds phases, and the subject runs in none")
+    if not isinstance(raw["groups"], dict) or not raw["groups"]:
+        raise ScenarioError(f"{where}: a mapping of at least one group, by its name")
+    groups: list[Group] = []
+    for key, item in raw["groups"].items():
+        if not isinstance(key, str) or not WORD.fullmatch(key):
+            raise ScenarioError(f"{where}: a group's name is a lowercase word, such as `extras`, got {key!r}")
+        item = {} if item is None else item
+        if not isinstance(item, dict):
+            raise ScenarioError(f"{where}.{key} holds a mapping")
+        _only(item, ("rubric",), f"{where}.{key}")
+        rubric = item.get("rubric") or ""
+        if not isinstance(rubric, str):
+            raise ScenarioError(f"{where}.{key}.rubric is a sentence the rubric takes, got {rubric!r}")
+        groups.append(Group(name=key, rubric=rubric.strip()))
+    return groups
+
+
+def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str, groups: list[Group]) -> list[Phase]:
     """The phases of a skill subject, each checked; none when the subject names none."""
     if raw.get("phases") is None:
         return []
@@ -633,13 +706,13 @@ def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str) -> l
         if not isinstance(item, dict):
             raise ScenarioError(f"{at}: a phase holds a mapping")
         _only(item, PHASE_KEYS, at)
-        missing = [k for k in ("name", "prompt", "max_turns", "max_usd", "timeout_s") if item.get(k) in (None, "")]
+        missing = [k for k in ("name", "prompt", "max_usd", "timeout_s") if item.get(k) in (None, "")]
         if missing:
             raise ScenarioError(f"{at}: every phase names its {', '.join(missing)}")
         phase = Phase(
             name=str(item["name"]),
             prompt=str(item["prompt"]),
-            max_turns=_whole(item["max_turns"], f"{at}.max_turns"),
+            max_turns=None if item.get("max_turns") is None else _whole(item["max_turns"], f"{at}.max_turns"),
             max_usd=_usd(item["max_usd"], f"{at}.max_usd") or 0.0,
             timeout_s=_whole(item["timeout_s"], f"{at}.timeout_s"),
             session=str(item.get("session", "fresh")),
@@ -647,6 +720,7 @@ def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str) -> l
             hint=item.get("hint", False),
             max_gate_reruns=_whole(item.get("max_gate_reruns", GATE_RERUNS), f"{at}.max_gate_reruns", least=0),
             on_cap=str(item.get("on_cap", "continue")),
+            group=item.get("group"),
         )
         for key, value, allowed in (
             ("session", phase.session, SESSIONS),
@@ -657,20 +731,80 @@ def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str) -> l
                 raise ScenarioError(f"{at}.{key} is one of {', '.join(allowed)}, got {value!r}")
         if not isinstance(phase.hint, bool):
             raise ScenarioError(f"{at}.hint is true or false, got {phase.hint!r}")
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", phase.name) or phase.name in (p.name for p in phases):
+        if not WORD.fullmatch(phase.name) or phase.name in (p.name for p in phases):
             raise ScenarioError(f"{at}.name is a lowercase word of its own, such as `scaffold`, got {phase.name!r}")
+        if phase.group is not None and phase.group not in (g.name for g in groups):
+            declared = ", ".join(g.name for g in groups) or "none"
+            raise ScenarioError(f"{at}.group names a group subject.groups declares ({declared}), got {phase.group!r}")
         if phase.session == "resume":
             if not phases:
                 raise ScenarioError(f"{at}: the first phase has no session before it to resume")
             if phase.cwd != phases[-1].cwd:
                 raise ScenarioError(f"{at}: a resumed session starts where the phase before it did, in its {phases[-1].cwd}")
+            if phases[-1].group not in (None, phase.group):
+                raise ScenarioError(
+                    f"{at}: a resumed session needs the phase before it in every run that takes it, "
+                    f"and that phase is in the group {phases[-1].group}"
+                )
             if "container" in runtimes:
                 raise ScenarioError(
                     f"{at}: the container runtime starts every phase in a new container, so no phase resumes there; "
                     "take it out of runtimes"
                 )
         phases.append(phase)
+    if groups:
+        empty = [g.name for g in groups if g.name not in (p.group for p in phases)]
+        if empty:
+            raise ScenarioError(f"{where}: no phase is in the group {', '.join(empty)}")
+        if all(p.group for p in phases):
+            raise ScenarioError(f"{where}: a run that takes no group runs the phases in none, and every phase is in one")
     return phases
+
+
+def select(scn: Scenario, taken: list[str]) -> Scenario:
+    """The scenario as a run that takes these groups runs it.
+
+    It holds the phases in no group and those of the groups taken, in the
+    scenario's order, and the rubric with each taken group's sentence
+    after it. The scenario's own `max_spend_usd` is the cap of a run that
+    takes no group, so a run that takes one drops it and takes the sum of
+    its phases' caps instead (`spend_cap`). A group the scenario does not
+    declare is a ScenarioError.
+    """
+    declared = [g.name for g in scn.subject.groups]
+    unknown = [g for g in taken if g not in declared]
+    if unknown:
+        known = ", ".join(declared) or "none"
+        raise ScenarioError(f"scenario {scn.name} declares no group {', '.join(unknown)}; its groups: {known}")
+    if not taken:
+        return dataclasses.replace(
+            scn, subject=dataclasses.replace(scn.subject, phases=[p for p in scn.subject.phases if not p.group])
+        )
+    groups = [g for g in scn.subject.groups if g.name in taken]
+    phases = [p for p in scn.subject.phases if p.group is None or p.group in taken]
+    rubric = "\n\n".join([scn.rubric, *(g.rubric for g in groups if g.rubric)])
+    return dataclasses.replace(scn, subject=dataclasses.replace(scn.subject, phases=phases), rubric=rubric, max_spend_usd=None)
+
+
+def taken_groups(scn: Scenario) -> list[str]:
+    """The groups a selected scenario's phases come from, in the scenario's order."""
+    return [g.name for g in scn.subject.groups if g.name in (p.group for p in scn.subject.phases)]
+
+
+def spend_cap(scn: Scenario, repeat: int, judges: int) -> float | None:
+    """The run's spend cap when no flag names one: the scenario's, else what the phases and the judges may spend.
+
+    That is, for a subject in phases, the sum of the caps of the phases
+    that run and the dollar budgets of its `judges` agentic judges, over
+    every repeat. One-shot judges have no budget, and add nothing. A
+    subject in one session has no run cap unless the scenario names one.
+    """
+    if scn.max_spend_usd is not None:
+        return scn.max_spend_usd
+    if not scn.subject.phases:
+        return None
+    judging = judges * scn.judges.budget.max_usd if scn.judges.agentic and scn.judges.budget else 0.0
+    return round((sum(p.max_usd for p in scn.subject.phases) + judging) * repeat, 6)
 
 
 def _bounded(subject: Subject, kind: str, name: str) -> None:
