@@ -847,23 +847,41 @@ reference under `references`: its weight, each provider's mean, the
 mean of those means, the range of its scores, and its gaps counted by
 severity. A failed repeat scores 0 against every reference.
 
-**The budget.** Each judgement has its own. It ends as `missed` when the
-judge asks for a read after it was told none are left, when its wall
-time runs out, or when its next call would pass the input tokens or the
-dollars it may spend. That check comes before each call. The next call
+**The budget.** Each judgement has its own. Each tool result tells the
+judge how many tool calls are left, how many input tokens and dollars
+are left, and how many input tokens the last call carried. Every call
+sends again all the judge has read, so the input tokens go faster with
+each read.
+
+When its tool calls run out, the judge is told to submit. A read it asks
+for after that ends the judgement as `missed`. The input tokens and the
+dollars end the same way, with one last turn. After each turn, the
+harness checks whether the next call would pass either one: that call
 carries at least the last one's input, and costs at least that input at
-its price, so a call that would pass either budget that way is never
-made. The dollar budget is not a hard cap: what a call answers is not
-known until it is made, and a submission is read whatever the budget.
-So a judgement can end above `max_usd` by what its last call adds: its
-output, at most `max_output_tokens` at the output price, about $0.32 at
-16,000 tokens and $20 per million, and the input the turn before it
-read, at the input price. The dollars are at the list prices in
-`models.yaml`. A model with no price there is held to the dearest price
-the file gives, so the check errs high. Every call on every provider
-carries the output cap, `max_output_tokens`. A `missed` judgement names the budget and its
-figures in `error`, and scores nothing. The summary names it as it
-names every judgement that did not answer.
+its price. When it would, that call is the judge's last turn. The reads
+the judge just asked for are not run, and each answer tells it to
+submit now. A submission on the last turn is the answer, and it is
+scored like any other. Anything else ends the judgement as `missed`.
+Wall time has no last turn: a judgement whose wall time runs out is
+`missed`, since no call has time left to run.
+
+Neither the input tokens nor the dollars are a hard cap, for two
+reasons. The check counts only what the next call carries at least, and
+a call also carries what the turn before it answered and read. And the
+last turn is a call made past the check, so that what the judge has read
+is not thrown away. So a judgement can end above `input_tokens` and
+`max_usd` by about one call: the last turn's input, which is about the
+input of the call before it, and what the turns around it answered and
+read, each answer at most `max_output_tokens` and each read at most
+40,000 characters. A last turn of 200,000 input tokens at $5 per million
+adds $1.
+
+The dollars are at the list prices in `models.yaml`. A model with no
+price there is held to the dearest price the file gives, so the check
+errs high. Every call on every provider carries the output cap,
+`max_output_tokens`. A `missed` judgement names the budget and its
+figures in `error`, and scores nothing. The summary names it as it names
+every judgement that did not answer.
 
 **Where it goes.** `judgements/<repeat>-<provider>.json` holds each
 judgement and the answer as the judge submitted it. Its transcript sits

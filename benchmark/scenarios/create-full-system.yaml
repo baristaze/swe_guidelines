@@ -129,10 +129,12 @@ judges:
   # before it, so a judgement gets more than the default budget. It is
   # provisional, until a measured run replaces it.
   #
-  # The tool calls run out before the input tokens do. At one 400-line
-  # page a read, 3,000,000 input tokens last about 35 to 40 calls. A judge
-  # that has used its tool calls is told to submit; a judge whose next
-  # call would pass its input tokens ends missed, with no turn to submit.
+  # At one 400-line page a read, 3,000,000 input tokens last about 35 to
+  # 40 calls, so the tool calls and the input tokens run out near the same
+  # read. Either way the judge is told to submit, and gets one last turn
+  # to do it: a judge whose next call would pass its input tokens or its
+  # dollars gets that call as its last turn, and no read runs on it. Wall
+  # time is the one bound with no last turn.
   budget:
     tool_calls: 35
     input_tokens: 3000000

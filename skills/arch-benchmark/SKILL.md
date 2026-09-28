@@ -71,12 +71,13 @@ never run the harness from there.
    both when the prompt asks for a cap. When it asks what a run could
    spend, say that it can pass N by about the largest session cap and
    one repeat's judges. A dry run does not price one-shot judges. An
-   agentic judge's budget `max_usd` is not a hard cap: a judge can pass
-   it by what its last call adds, its output, at most
-   `max_output_tokens` at the model's output price, and the input the
-   turn before it read. So one repeat's agentic judges spend about
-   `max_usd` times the number of judges, and each judge can end above
-   its `max_usd` by that one call. When the prompt names something with
+   agentic judge's budget `max_usd` is not a hard cap: when its next
+   call would pass it, the judge still gets that call, as a last turn to
+   submit. So a judge can pass it by about one call: an input about the
+   size of the call before it, at the model's input price, and its
+   output, at most `max_output_tokens` at the output price. One repeat's
+   agentic judges spend about `max_usd` times the number of judges, and
+   each judge can end above its `max_usd` by that one call. When the prompt names something with
    no flag behind it, say so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
