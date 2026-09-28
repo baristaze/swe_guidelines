@@ -472,7 +472,7 @@ def context_text(scn: S.Scenario) -> str:
 def run_subject_qa(
     scn: S.Scenario, streams: CliStream, env: dict[str, str], matrix: dict[str, Any], effort: str, model: str
 ) -> tuple[RT.ExitStatus, str, dict[str, int]]:
-    """A `qa` subject: one provider model answers the prompt itself, at the effort the run names.
+    """A `qa` subject: one provider model answers the prompt itself, at the effort the run names, within `timeout_s`.
 
     Returns the exit status, the answer, and the answer's usage.
     """
@@ -485,7 +485,9 @@ def run_subject_qa(
     prompt = scn.subject.prompt + context_text(scn)
     streams.note(f"[qa] {P.name(provider)} {model}")
     try:
-        text, usage = J.ask(provider, model, prompt, key, J.effort_for(matrix, P.name(provider), effort))
+        text, usage = J.ask(
+            provider, model, prompt, key, J.effort_for(matrix, P.name(provider), effort), timeout_s=scn.subject.timeout_s
+        )
     except Exception as exc:
         streams.note(f"[qa] {type(exc).__name__}: {exc}")
         return RT.ExitStatus(code=1, duration_s=time.monotonic() - started), "", {}

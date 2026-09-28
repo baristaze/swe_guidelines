@@ -9,6 +9,10 @@ shape, through its own structured-output path, so the scores compare.
 A provider without a key is skipped and named in the results. A
 provider that answers with an error keeps the error; nothing is
 invented for a provider that did not answer.
+
+Every call carries the output cap and a timeout. The SDKs' own retries
+are off, so a call is attempted at most RETRIES times, under
+`with_retries`: a judge's, and a `qa` subject's.
 """
 
 from __future__ import annotations
@@ -30,7 +34,12 @@ from . import providers as P
 EFFORTS = ("low", "medium", "high")
 VERDICTS = ("pass", "weak", "fail")
 ARTIFACT_LIMIT = 60_000
+# Every call on every provider carries this output cap, reasoning included.
 MAX_OUTPUT_TOKENS = 16_000
+# How long one judge call waits for its answer: twice the slowest one-shot
+# judgement the checked-in runs record, 239 s. Without it, the Anthropic and
+# OpenAI SDKs wait 600 s, and google-genai waits as long as the call takes.
+CALL_TIMEOUT_S = 480.0
 # A model under load answers 503 and means "ask again"; a model out of quota
 # answers 429 and means "ask something else". The first is retried here, the
 # second falls through to the next model in the matrix.
@@ -434,21 +443,25 @@ def _verdict_model():
     return VerdictModel
 
 
-# One client per provider, on the key given. Every caller builds its client
-# here: the one-shot judges, `ask`, and the agentic loop in `agentic.py`.
+# One client per provider, on the key given, with its SDK's own retries off.
+# Every caller builds its client here: the one-shot judges, `ask`, and the
+# agentic loop in `agentic.py`. The Anthropic and OpenAI SDKs, and so xAI's
+# client, retry a timeout and a 5xx twice on their own unless told not to,
+# each try with the whole timeout, under the harness's own attempts. So
+# `with_retries` is the only retry. google-genai retries only when asked.
 XAI_BASE_URL = "https://api.x.ai/v1"
 
 
 def anthropic_client(key: str) -> Any:
     from anthropic import Anthropic
 
-    return Anthropic(api_key=key)
+    return Anthropic(api_key=key, max_retries=0)
 
 
 def openai_client(key: str) -> Any:
     from openai import OpenAI
 
-    return OpenAI(api_key=key)
+    return OpenAI(api_key=key, max_retries=0)
 
 
 def gemini_client(key: str) -> Any:
@@ -474,7 +487,7 @@ def xai_client(key: str) -> Any:
     """xAI answers the OpenAI API at its own address, so its client is OpenAI's."""
     from openai import OpenAI
 
-    return OpenAI(api_key=key, base_url=XAI_BASE_URL)
+    return OpenAI(api_key=key, base_url=XAI_BASE_URL, max_retries=0)
 
 
 CLIENTS: dict[str, Callable[[str], Any]] = {
@@ -485,7 +498,13 @@ CLIENTS: dict[str, Callable[[str], Any]] = {
 }
 
 
+def gemini_timeout(timeout_s: float) -> dict[str, int]:
+    """A google-genai call's `http_options` for a timeout in seconds: google-genai takes milliseconds."""
+    return {"timeout": max(1, int(timeout_s * 1000))}
+
+
 # Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
+# Every call carries the output cap and CALL_TIMEOUT_S.
 
 
 def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
@@ -496,6 +515,7 @@ def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict
         messages=[{"role": "user", "content": prompt}],
         output_format=_verdict_model(),
         output_config={"effort": effort},
+        timeout=CALL_TIMEOUT_S,
     )
     parsed = response.parsed_output
     data = parsed.model_dump() if parsed is not None else {}
@@ -509,6 +529,8 @@ def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
         input=prompt,
         text_format=_verdict_model(),
         reasoning={"effort": effort},
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        timeout=CALL_TIMEOUT_S,
     )
     parsed = response.output_parsed
     data = parsed.model_dump() if parsed is not None else {}
@@ -524,6 +546,8 @@ def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
             "response_mime_type": "application/json",
             "response_schema": _verdict_model(),
             "thinking_config": {"thinking_level": effort},
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "http_options": gemini_timeout(CALL_TIMEOUT_S),
         },
     )
     parsed = response.parsed
@@ -538,6 +562,8 @@ def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str,
         messages=[{"role": "user", "content": prompt}],
         response_format=_verdict_model(),
         reasoning_effort=effort,
+        max_completion_tokens=MAX_OUTPUT_TOKENS,
+        timeout=CALL_TIMEOUT_S,
     )
     message = response.choices[0].message
     parsed = message.parsed
@@ -628,32 +654,84 @@ def judge_all(
     return [judge_one(p, prompt, effort, matrix, env, call) for p in P.members(flags)]
 
 
-def ask(provider: P.Provider, model: str, prompt: str, key: str, effort: str = "medium") -> tuple[str, dict[str, int]]:
-    """One free-text answer from a provider model: the subject of a `qa` scenario."""
-    name = P.name(provider)
-    if name == "anthropic":
-        client = anthropic_client(key)
-        with client.messages.stream(
-            model=model,
-            max_tokens=MAX_OUTPUT_TOKENS,
-            messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": effort},
-        ) as stream:
-            message = stream.get_final_message()
-        text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
-        return text, anthropic_usage(message.usage)
-    if name == "openai":
-        client = openai_client(key)
-        response = client.responses.create(model=model, input=prompt, reasoning={"effort": effort})
-        return response.output_text or "", openai_usage(response.usage)
-    if name == "gemini":
-        client = gemini_client(key)
-        response = client.models.generate_content(
-            model=model, contents=prompt, config={"thinking_config": {"thinking_level": effort}}
-        )
-        return response.text or "", gemini_usage(response.usage_metadata)
+# Each asks for one free-text answer and returns (text, usage). Every call
+# carries the output cap and the timeout it is given.
+
+
+def ask_anthropic(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
+    client = anthropic_client(key)
+    with client.messages.stream(
+        model=model,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        messages=[{"role": "user", "content": prompt}],
+        output_config={"effort": effort},
+        timeout=timeout_s,
+    ) as stream:
+        message = stream.get_final_message()
+    text = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
+    return text, anthropic_usage(message.usage)
+
+
+def ask_openai(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
+    client = openai_client(key)
+    response = client.responses.create(
+        model=model, input=prompt, reasoning={"effort": effort}, max_output_tokens=MAX_OUTPUT_TOKENS, timeout=timeout_s
+    )
+    return response.output_text or "", openai_usage(response.usage)
+
+
+def ask_gemini(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
+    client = gemini_client(key)
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config={
+            "thinking_config": {"thinking_level": effort},
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "http_options": gemini_timeout(timeout_s),
+        },
+    )
+    return response.text or "", gemini_usage(response.usage_metadata)
+
+
+def ask_xai(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
     client = xai_client(key)
     response = client.chat.completions.create(
-        model=model, messages=[{"role": "user", "content": prompt}], reasoning_effort=effort
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        reasoning_effort=effort,
+        max_completion_tokens=MAX_OUTPUT_TOKENS,
+        timeout=timeout_s,
     )
     return response.choices[0].message.content or "", xai_usage(response.usage)
+
+
+ASKS: dict[str, Callable[[str, str, str, str, float], tuple[str, dict[str, int]]]] = {
+    "anthropic": ask_anthropic,
+    "openai": ask_openai,
+    "gemini": ask_gemini,
+    "xai": ask_xai,
+}
+
+
+def ask(
+    provider: P.Provider, model: str, prompt: str, key: str, effort: str = "medium", timeout_s: float = CALL_TIMEOUT_S
+) -> tuple[str, dict[str, int]]:
+    """One free-text answer from a provider model: the subject of a `qa` scenario.
+
+    It is asked under `with_retries`, the policy every judge uses, and
+    `timeout_s` bounds it, a retry included: each attempt waits at most
+    the time left, and a transient error is asked again only while more
+    than the wait is left. Anthropic's answer streams, so there the
+    timeout bounds each wait for the next event, and the output cap
+    bounds the rest. Raises the last attempt's error.
+    """
+    name = P.name(provider)
+    deadline = time.monotonic() + timeout_s
+
+    def left() -> float:
+        return deadline - time.monotonic()
+
+    return with_retries(
+        lambda: ASKS[name](model, prompt, key, effort, max(left(), 0.001)), may_wait=lambda: left() > RETRY_WAIT_S
+    )
