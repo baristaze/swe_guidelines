@@ -557,7 +557,9 @@ Code get `--max-turns`. The harness also holds the spend from the
 stream (see A subject in phases). Each repeat records its
 session under `phases`, with the bound that stopped it, if one did.
 `kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
-`subject.model` of one provider, and the answer is the artifact.
+`subject.model` of one provider, and the answer is the artifact. The call
+carries the judges' output cap, and it is asked again after a transient
+error, as a judge is. `timeout_s` bounds it, the retry included.
 
 A scenario can say how many times a run repeats its subject, `repeat`,
 a whole number of at least 1. It can also say the run's spend cap,
@@ -877,6 +879,13 @@ from the model the matrix names.
  A provider that never answers is recorded with what it
 said and scores nothing. Nothing is invented for a provider that did
 not answer.
+
+A model is asked at most twice, because the SDKs' own retries are off:
+left on, the Anthropic and OpenAI SDKs try each call three times. Every
+one-shot call carries an output cap of 16,000 tokens, reasoning
+included, and a timeout of 480 seconds, twice the slowest one-shot
+judgement a checked-in run records. So one provider's judgement makes
+at most two capped calls per model in the matrix.
 
 ## Agentic judges
 
