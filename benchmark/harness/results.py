@@ -53,6 +53,8 @@ class RepeatResult:
     archive: dict[str, Any] | None = None
     # The scenario's gates, run on the final tree: each command and whether it passed.
     gates: list[dict[str, Any]] | None = None
+    # The phases the run's spend cap kept from running; such a repeat is not judged and scores nothing.
+    cut_short: list[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -66,7 +68,7 @@ class RepeatResult:
         }
         if self.expected is not None:
             out["expected"] = dict(self.expected)
-        for key in ("phases", "archive", "gates"):
+        for key in ("phases", "archive", "gates", "cut_short"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
         return out
@@ -212,6 +214,7 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
         "per_provider": per_provider,
         "overall_mean": overall,
         "failed_repeats": failures,
+        "cut_short": [r.index for r in repeats if r.cut_short],
         "spread": spread,
         "self_judged": self_judged,
         "fallbacks": [fallbacks[k] for k in sorted(fallbacks)],
@@ -476,6 +479,14 @@ def report_text(run: RunResult) -> str:
     if summary["failed_repeats"]:
         failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
         lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
+    for repeat in run.repeats:
+        if repeat.cut_short:
+            left = ", ".join(repeat.cut_short)
+            lines += [
+                f"Repeat {repeat.index} was cut short by the run's spend cap: {left} did not run. It is not judged "
+                "and is in no mean, neither scored nor a failure.",
+                "",
+            ]
     if summary["self_judged"]:
         lines += [f"Note: {summary['self_judged']}.", ""]
 

@@ -513,6 +513,25 @@ def test_an_output_zip_that_cannot_be_scanned_is_kept_as_a_line_and_the_results_
     assert (run_dir / "report.md").is_file()
 
 
+def test_a_repeat_the_run_s_spend_cap_cuts_short_is_marked_and_not_judged(tmp_path, monkeypatch, run_phases):
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    code, run_dir = run_phases(
+        phased(phase("scaffold"), phase("mvp"), phase("review")), "--repeat", "1", "--max-spend-usd", "0.3"
+    )
+    assert code == 0 and judged == []
+    data = results(run_dir)
+    assert data["repeats"][0]["cut_short"] == ["review"] and data["summary"]["cut_short"] == [0]
+    assert data["summary"]["failed_repeats"] == [] and data["summary"]["overall_mean"] is None
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Repeat 0 was cut short by the run's spend cap: review did not run. It is not judged" in report
+
+
 def test_a_listener_that_fails_on_a_line_does_not_end_the_reading(tmp_path):
     seen_lines: list[str] = []
 

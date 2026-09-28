@@ -120,6 +120,11 @@
             "type": "array",
             "items": { "$ref": "#/$defs/phase" }
           },
+          "cut_short": {
+            "description": "The phases the run's spend cap kept from running. Such a repeat is not judged and is in no mean.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "archive": {
             "description": "The output's last commit as a zip: its path and its manifest's in the run folder, its SHA-256, its size, how many files it holds, and the commit.",
             "type": "object",
@@ -269,6 +274,11 @@
           }
         },
         "overall_mean": { "type": ["number", "null"] },
+        "cut_short": {
+          "description": "The repeats the run's spend cap cut short; none is judged or in a mean.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
         "failed_repeats": {
           "description": "The repeats whose subject failed; each scores 0 in every provider's mean.",
           "type": "array",

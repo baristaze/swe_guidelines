@@ -548,6 +548,8 @@ class SkillRepeat:
     commit: str | None = None
     gates: list[dict[str, Any]] | None = None
     notes: list[str] = dataclasses.field(default_factory=list)
+    # The phases the run's spend cap kept from running, when it cut the repeat short.
+    cut_short: list[str] | None = None
 
 
 def harness_run(
@@ -611,9 +613,14 @@ def run_skill(
     running: dict[str, tuple[float, dict[str, int]]] = {}
     commit: str | None = None
     before: S.Phase | None = None
-    for number, phase in enumerate(phases_of(scn), start=1):
+    cut_short: list[str] | None = None
+    every = phases_of(scn)
+    for number, phase in enumerate(every, start=1):
         if plan.budget.reached():
-            notes.append(f"repeat {index}: {plan.budget.says()}; phase {phase.name} and after did not run")
+            cut_short = [p.name for p in every[number - 1 :]]
+            notes.append(
+                f"repeat {index}: {plan.budget.says()}; phase {phase.name} and after did not run, and the repeat is not judged"
+            )
             break
         home = phase.name if phase.session == "fresh" or before is None else homes[before.name]
         homes[phase.name] = home
@@ -743,6 +750,7 @@ def run_skill(
         commit=commit,
         gates=gates,
         notes=notes,
+        cut_short=cut_short,
     )
 
 
@@ -1117,6 +1125,27 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 if archive:
                     paths += [archive["path"], archive["manifest"]]
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
+
+            if done is not None and done.cut_short:
+                # The run's spend cap kept phases from running. The output is
+                # not the one the scenario measures, and a judge would spend
+                # past the cap, so the repeat is kept and not judged.
+                print(f"  repeat {index} cut short by the run's spend cap; not judged")
+                run.repeats.append(
+                    R.RepeatResult(
+                        index=index,
+                        exit_status=status.as_dict(),
+                        artifact_paths=paths,
+                        subject_models=models,
+                        subject_usage=subject_usage,
+                        subject_cost_usd=subject_cost,
+                        phases=done.phases,
+                        archive=archive,
+                        gates=done.gates,
+                        cut_short=done.cut_short,
+                    )
+                )
+                continue
 
             if not status.ok:
                 # A subject that failed or ran out of time produced no answer
