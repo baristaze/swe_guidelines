@@ -12,6 +12,10 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `launched`: Agent calls as `[id, description]` that start their subagent in the background, as Claude Code
   writes them: the call with `run_in_background` set to "true", the launch notice as its result, then the
   main agent's text as it ends its turn to wait;
+- `handed_back`: Agent calls as `[id, description]` that ask for the background but run in the foreground, as
+  Claude Code writes them with background tasks off: the call with `run_in_background` set to "true", its
+  `task_started` line, not backgrounded, its `task_notification` once the helper is done, then its one result,
+  the helper's hand-back;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
 - `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
 - `models`: each model's cost in its result's `modelUsage`, by name;
@@ -99,6 +103,22 @@ for call_id, description in todo.get("launched", []):
     notice = f"Async agent launched successfully. The agent is working in the background. agentId: a{call_id[-6:]}"
     answer = {"type": "tool_result", "tool_use_id": call_id, "content": [{"type": "text", "text": notice}]}
     emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for call_id, description in todo.get("handed_back", []):
+    asked = {"description": description, "subagent_type": "general-purpose", "run_in_background": "true", "prompt": "p"}
+    call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": asked, "caller": {"type": "direct"}}
+    message = {"id": f"msg_{call_id}", "content": [call]}
+    emit({"type": "assistant", "message": message, "parent_tool_use_id": None, "session_id": session})
+    task = {"task_id": f"a{call_id[-6:]}", "tool_use_id": call_id, "session_id": session}
+    started = {"description": description, "subagent_type": "general-purpose", "is_backgrounded": False}
+    emit({"type": "system", "subtype": "task_started", **task, **started})
+    emit({"type": "system", "subtype": "task_notification", **task, "status": "completed", "summary": "Done."})
+    report = (
+        "[Subagent hand-back] The text below is the final report of a subagent this session delegated to.\n"
+        f"  Done.\nagentId: a{call_id[-6:]}\n<usage>subagent_tokens: 1000\ntool_uses: 4\nduration_ms: 60000</usage>"
+    )
+    answer = {"tool_use_id": call_id, "type": "tool_result", "content": [{"type": "text", "text": report}]}
+    handed = {"status": "completed", "agentId": f"a{call_id[-6:]}", "agentType": "general-purpose"}
+    emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session, "tool_use_result": handed})
 if todo.get("launched"):
     waiting = {"type": "text", "text": "The helpers are working in the background; I will wait for them."}
     emit({"type": "assistant", "message": {"id": "msg_wait", "content": [waiting]}, "session_id": session})

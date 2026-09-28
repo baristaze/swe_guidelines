@@ -764,15 +764,17 @@ did not run under `ended_early`, and no later repeat starts.
   (`Task` in older releases), with no result when the session's
   `result` event arrives. The session ended while work it asked for was
   not done, whatever its result says, so the phase ends as
-  `incomplete`, not `ok`. A call that starts its subagent in the
-  background, by its `run_in_background` or by a result that is the
-  launch notice ("Async agent launched ..."), stays pending to the end
-  of the session: the notice answers the call, not the subagent. With
-  background tasks off, such a launch means the setting did not hold.
-  Its record names each such call, its id and what it was asked, under
-  `pending_agents`. The phases after it would
-  build on work the session never finished. A phase that hit a bound
-  ends `capped`, pending calls or not.
+  `incomplete`, not `ok`. A call whose result is the launch notice
+  ("Async agent launched ...") started its subagent in the background,
+  and stays pending to the end of the session: the notice answers the
+  call, not the subagent. With background tasks off, such a launch
+  means the setting did not hold. The call's input decides nothing: with
+  background tasks off, a call that asks for `run_in_background` runs in
+  the foreground, and its one result, the subagent's hand-back, answers
+  it. Its record names each pending call, its id and what it was asked,
+  under `pending_agents`. The phases after it would build on work the
+  session never finished. A phase that hit a bound ends `capped`,
+  pending calls or not.
 
 **The output.** After the last phase that ran, the harness archives the
 last checkpoint with `git archive --format=zip` and brings it back as
