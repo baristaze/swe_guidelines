@@ -10,9 +10,11 @@ A provider without a key is skipped and named in the results. A
 provider that answers with an error keeps the error; nothing is
 invented for a provider that did not answer.
 
-Every call carries the output cap and a timeout. The SDKs' own retries
-are off, so a call is attempted at most RETRIES times, under
-`with_retries`: a judge's, and a `qa` subject's.
+Money and time bound a judgement, never a token limit below what the
+model can write. Each call has a timeout. The SDKs' own retries are off,
+so a model is asked at most RETRIES times, under `with_retries`: by a
+judge, and by a `qa` subject. The run's spend cap bounds the run, and an
+agentic judge's dollar budget bounds its judgement.
 """
 
 from __future__ import annotations
@@ -33,8 +35,13 @@ from . import providers as P
 EFFORTS = ("low", "medium", "high")
 VERDICTS = ("pass", "weak", "fail")
 ARTIFACT_LIMIT = 60_000
-# Every call on every provider carries this output cap, reasoning included.
-MAX_OUTPUT_TOKENS = 16_000
+# Anthropic's API requires `max_tokens`, so an Anthropic call sends the model's
+# own maximum output, and never less: 128,000 tokens on every current Claude
+# model but Claude Haiku 4.5, which writes at most 64,000. The figures are
+# Anthropic's model documentation, which the Models API gives as each model's
+# `max_tokens`. No other provider is sent a token limit.
+ANTHROPIC_MAX_TOKENS = 128_000
+ANTHROPIC_LOWER_MAX_TOKENS = {"claude-haiku-4-5": 64_000}
 # How long one judge call waits for its answer: twice the slowest one-shot
 # judgement the checked-in runs record, 239 s. Without it, the Anthropic and
 # OpenAI SDKs wait 600 s, and google-genai waits as long as the call takes.
@@ -451,6 +458,11 @@ def _verdict_model():
 XAI_BASE_URL = "https://api.x.ai/v1"
 
 
+def anthropic_max_tokens(model: str) -> int:
+    """The `max_tokens` an Anthropic call sends: the model's own maximum output, so no answer is cut short."""
+    return next((n for prefix, n in ANTHROPIC_LOWER_MAX_TOKENS.items() if model.startswith(prefix)), ANTHROPIC_MAX_TOKENS)
+
+
 def anthropic_client(key: str) -> Any:
     from anthropic import Anthropic
 
@@ -503,14 +515,14 @@ def gemini_timeout(timeout_s: float) -> dict[str, int]:
 
 
 # Each call returns (data, raw_text, usage). `data` is the verdict as plain data.
-# Every call carries the output cap and CALL_TIMEOUT_S.
+# Every call carries CALL_TIMEOUT_S.
 
 
 def call_anthropic(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str, dict]:
     client = anthropic_client(key)
     response = client.messages.parse(
         model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=anthropic_max_tokens(model),
         messages=[{"role": "user", "content": prompt}],
         output_format=_verdict_model(),
         output_config={"effort": effort},
@@ -528,7 +540,6 @@ def call_openai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
         input=prompt,
         text_format=_verdict_model(),
         reasoning={"effort": effort},
-        max_output_tokens=MAX_OUTPUT_TOKENS,
         timeout=CALL_TIMEOUT_S,
     )
     parsed = response.output_parsed
@@ -545,7 +556,6 @@ def call_gemini(model: str, effort: str, prompt: str, key: str) -> tuple[dict, s
             "response_mime_type": "application/json",
             "response_schema": _verdict_model(),
             "thinking_config": {"thinking_level": effort},
-            "max_output_tokens": MAX_OUTPUT_TOKENS,
             "http_options": gemini_timeout(CALL_TIMEOUT_S),
         },
     )
@@ -561,7 +571,6 @@ def call_xai(model: str, effort: str, prompt: str, key: str) -> tuple[dict, str,
         messages=[{"role": "user", "content": prompt}],
         response_format=_verdict_model(),
         reasoning_effort=effort,
-        max_completion_tokens=MAX_OUTPUT_TOKENS,
         timeout=CALL_TIMEOUT_S,
     )
     message = response.choices[0].message
@@ -659,14 +668,14 @@ def judge_all(
 
 
 # Each asks for one free-text answer and returns (text, usage). Every call
-# carries the output cap and the timeout it is given.
+# carries the timeout it is given.
 
 
 def ask_anthropic(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
     client = anthropic_client(key)
     with client.messages.stream(
         model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=anthropic_max_tokens(model),
         messages=[{"role": "user", "content": prompt}],
         output_config={"effort": effort},
         timeout=timeout_s,
@@ -678,9 +687,7 @@ def ask_anthropic(model: str, prompt: str, key: str, effort: str, timeout_s: flo
 
 def ask_openai(model: str, prompt: str, key: str, effort: str, timeout_s: float) -> tuple[str, dict[str, int]]:
     client = openai_client(key)
-    response = client.responses.create(
-        model=model, input=prompt, reasoning={"effort": effort}, max_output_tokens=MAX_OUTPUT_TOKENS, timeout=timeout_s
-    )
+    response = client.responses.create(model=model, input=prompt, reasoning={"effort": effort}, timeout=timeout_s)
     return response.output_text or "", openai_usage(response.usage)
 
 
@@ -691,7 +698,6 @@ def ask_gemini(model: str, prompt: str, key: str, effort: str, timeout_s: float)
         contents=prompt,
         config={
             "thinking_config": {"thinking_level": effort},
-            "max_output_tokens": MAX_OUTPUT_TOKENS,
             "http_options": gemini_timeout(timeout_s),
         },
     )
@@ -704,7 +710,6 @@ def ask_xai(model: str, prompt: str, key: str, effort: str, timeout_s: float) ->
         model=model,
         messages=[{"role": "user", "content": prompt}],
         reasoning_effort=effort,
-        max_completion_tokens=MAX_OUTPUT_TOKENS,
         timeout=timeout_s,
     )
     return response.choices[0].message.content or "", xai_usage(response.usage)
@@ -727,8 +732,8 @@ def ask(
     `timeout_s` bounds it, a retry included: each attempt waits at most
     the time left, and a transient error is asked again only while more
     than the wait is left. Anthropic's answer streams, so there the
-    timeout bounds each wait for the next event, and the output cap
-    bounds the rest. Raises the last attempt's error.
+    timeout bounds each wait for the next event, not the whole answer.
+    Raises the last attempt's error.
     """
     name = P.name(provider)
     deadline = time.monotonic() + timeout_s

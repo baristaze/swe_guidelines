@@ -66,8 +66,10 @@ at the dearest model the matrix prices, so the dollar check errs high.
 A call in flight gets the time left as its timeout, and the SDK's own
 retries are off, so one call cannot run past it. A `missed` judgement
 names the budget and the figures in `error`, and no answer is invented
-for it. Every call on every provider carries the same output cap,
-`Budget.max_output_tokens`, reasoning included.
+for it. No call is sent a token limit below what the model can write:
+an Anthropic call sends the model's own maximum output, which its API
+requires, and the other providers are sent none. What bounds a call is
+its timeout, the time left.
 
 Neither the input-token budget nor the dollar budget is a hard cap, for
 two reasons. The check counts only what the next call carries at least,
@@ -76,9 +78,9 @@ the last turn is a call made past the check, so that what the judge has
 read is not thrown away. So a judgement can end above `input_tokens` and
 `max_usd` by about one call: the last turn's input, which is about the
 input of the call before it, and what the turns around it answered and
-read, each answer at most `max_output_tokens` and each read at most
-`Caps.chars`. A submission is read whatever the budget, since its call
-is paid for.
+read. Each read is at most `Caps.chars`, and each answer is what the
+model writes in the time left. A submission is read whatever the
+budget, since its call is paid for.
 
 A judgement's `status` is `ok`, `missed`, `error`, or `skipped`. It is
 `error` when the provider failed, the model refused, the model stopped
@@ -173,7 +175,6 @@ class Budget:
     wall_s: float = 900.0
     submits: int = 3
     max_usd: float = 3.0  # at the matrix's list price, over every call of the judgement
-    max_output_tokens: int = J.MAX_OUTPUT_TOKENS  # each call, reasoning included, on every provider
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -833,7 +834,7 @@ def make_call(call_id: Any, name: Any, raw_args: Any) -> Call:
 
 
 class Chat(Protocol):
-    """One model's side of the loop, in its provider's shape. Every call it sends carries the output cap it was built with."""
+    """One model's side of the loop, in its provider's shape. Every call it sends carries the timeout it is given."""
 
     model: str
 
@@ -847,17 +848,15 @@ class Chat(Protocol):
 class AnthropicChat:
     """Anthropic's Messages API: tools with an input schema, `tool_use` blocks, `tool_result` blocks."""
 
-    def __init__(
-        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
-    ) -> None:
-        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
+    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
+        self.client, self.model, self.effort, self.system = client, model, effort, system
         self.tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
         self.messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
     def send(self, timeout: float) -> Turn:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=self.max_output,
+            max_tokens=J.anthropic_max_tokens(self.model),
             system=self.system,
             messages=self.messages,
             tools=self.tools,
@@ -884,10 +883,8 @@ class AnthropicChat:
 class OpenAIChat:
     """OpenAI's Responses API: function tools, `function_call` items, `function_call_output` items."""
 
-    def __init__(
-        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
-    ) -> None:
-        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
+    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
+        self.client, self.model, self.effort, self.system = client, model, effort, system
         # Not strict: strict mode rewrites what a schema may say, and the answer is checked here instead.
         self.tools = [
             {
@@ -908,7 +905,6 @@ class OpenAIChat:
             input=self.input,
             tools=self.tools,
             reasoning={"effort": self.effort},
-            max_output_tokens=self.max_output,
             timeout=timeout,
         )
         items = list(response.output or [])
@@ -941,10 +937,8 @@ class GeminiChat:
 
     REFUSALS = frozenset({"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"})
 
-    def __init__(
-        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
-    ) -> None:
-        self.client, self.model, self.effort, self.system, self.max_output = client, model, effort, system, max_output
+    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
+        self.client, self.model, self.effort, self.system = client, model, effort, system
         declarations = [
             {"name": t["name"], "description": t["description"], "parameters_json_schema": t["parameters"]} for t in tools
         ]
@@ -959,7 +953,6 @@ class GeminiChat:
                 "system_instruction": self.system,
                 "tools": self.tools,
                 "thinking_config": {"thinking_level": self.effort},
-                "max_output_tokens": self.max_output,
                 "http_options": {"timeout": max(1, int(timeout * 1000))},
             },
         )
@@ -999,10 +992,8 @@ class GeminiChat:
 class XaiChat:
     """xAI through the OpenAI SDK's Chat Completions, as `judge.py` reaches it: tools, `tool_calls`, tool messages."""
 
-    def __init__(
-        self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]], max_output: int
-    ) -> None:
-        self.client, self.model, self.effort, self.max_output = client, model, effort, max_output
+    def __init__(self, client: Any, model: str, effort: str, system: str, prompt: str, tools: list[dict[str, Any]]) -> None:
+        self.client, self.model, self.effort = client, model, effort
         self.tools = [
             {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
             for t in tools
@@ -1015,7 +1006,6 @@ class XaiChat:
             messages=self.messages,
             tools=self.tools,
             reasoning_effort=self.effort,
-            max_completion_tokens=self.max_output,
             timeout=timeout,
         )
         choice = response.choices[0]
@@ -1048,7 +1038,7 @@ class XaiChat:
         self.messages.append({"role": "user", "content": text})
 
 
-CHATS: dict[str, Callable[[Any, str, str, str, str, list[dict[str, Any]], int], Chat]] = {
+CHATS: dict[str, Callable[[Any, str, str, str, str, list[dict[str, Any]]], Chat]] = {
     "anthropic": AnthropicChat,
     "openai": OpenAIChat,
     "gemini": GeminiChat,
@@ -1506,7 +1496,7 @@ def _run(
     for model in models:
         loop.log.model = model
         try:
-            chat = CHATS[name](client, model, result.effort, system, prompt, tools, loop.budget.max_output_tokens)
+            chat = CHATS[name](client, model, result.effort, system, prompt, tools)
             outcome = loop.converse(chat)
         except Exception as exc:
             # A fault of the harness itself still ends in a judgement and an `end` record.

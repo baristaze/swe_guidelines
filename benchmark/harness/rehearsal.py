@@ -23,9 +23,9 @@ never raises a bound the scenario sets:
 - a command subject gets the same timeout, and each gate at most
   `GATE_TIMEOUT_S`;
 - agentic judges get the stub budget, `JUDGE_BUDGET`: its dollars, wall
-  time, submissions, and output per call, each the smaller of the
-  scenario's and the stub's. The tool calls and the input tokens stay the
-  scenario's, which money and time reach first;
+  time, and submissions, each the smaller of the scenario's and the
+  stub's. The tool calls and the input tokens stay the scenario's, which
+  money and time reach first;
 - the run repeats once, and its spend cap, over the subject and the
   judges together, is `MAX_SPEND_USD`, or the run's own cap for one
   repeat when that is lower.
@@ -63,7 +63,7 @@ TIMEOUT_S = 1800
 GATE_TIMEOUT_S = 600
 # The stub budget of each agentic judgement: enough to read and to submit.
 # Its tool calls and input tokens are no bound: the scenario's stay.
-JUDGE_BUDGET = A.Budget(wall_s=900.0, submits=2, max_usd=0.5, max_output_tokens=8_000)
+JUDGE_BUDGET = A.Budget(wall_s=900.0, submits=2, max_usd=0.5)
 # The budget's counts, which money and time bind before, so the stub leaves them as the scenario sets them.
 COUNTS = ("tool_calls", "input_tokens")
 # The line each phase of a rehearsal gets after its prompt, and a real run never does.
