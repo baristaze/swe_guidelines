@@ -552,7 +552,7 @@ def panel(monkeypatch):
     def judge_all(flags, prompt, roots, folder, index, effort, weights, *args, **kwargs) -> list:
         names = [run.P.name(p) for p in run.P.members(flags)]
         tree = sorted(p.relative_to(roots["output"]).as_posix() for p in roots["output"].rglob("*") if p.is_file())
-        fake.calls.append({"names": names, "prompt": prompt, "tree": tree})
+        fake.calls.append({"names": names, "prompt": prompt, "tree": tree, "effort": effort})
         folder.mkdir(parents=True, exist_ok=True)
         out = []
         for name in names:
@@ -717,3 +717,21 @@ def test_a_resume_of_the_judges_caps_its_spend_at_the_budgets_of_the_judges_it_r
     assert record["repeats"] == [] and record["source"]["capped"] == [0] and record["spend"]["total_usd"] == 0
     why = "repeat 0 and after were not judged: $4.0000 of the run's $4 spend cap is left, and the judges of a repeat may spend $5"
     assert why in record["notes"]
+
+
+@needs_jsonschema
+def test_a_resume_of_the_judges_runs_them_at_the_source_s_effort_unless_one_is_named(bench, panel):
+    bench.write(four_judges())  # the scenario's effort is medium
+    panel.answers["openai"] = "error"
+    src = bench.source("--with", "extras", "--effort", "low")
+    panel.answers.clear()
+    assert resolved(src)["effort"] == "low" and panel.calls[0]["effort"] == "low"
+    # The judge it runs judges at low, as the carried ones did, and the run records it.
+    code, run_dir = bench.run("resume", "--source", str(src), "--judges", "openai")
+    assert code == 0 and run_dir is not None and panel.calls[-1]["effort"] == "low"
+    assert resolved(run_dir)["effort"] == "low"
+    assert {j["effort"] for j in results(run_dir)["repeats"][0]["judgements"]} == {"low"}
+    # --effort names another, and the judge it runs takes that one.
+    code, run_dir = bench.run("resume", "--source", str(src), "--judges", "openai", "--effort", "high")
+    assert code == 0 and run_dir is not None and panel.calls[-1]["effort"] == "high"
+    assert resolved(run_dir)["effort"] == "high"

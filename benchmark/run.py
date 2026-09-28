@@ -2644,9 +2644,10 @@ def resume_judges(
     judgements, marked carried. A judgement is carried only when the source
     judged the same archive, by the SHA-256 it recorded, with the task this
     run's judges get; a repeat that fails either is refused with its reason.
-    A source with nothing left to run makes no run folder. The run's spend
-    cap is the budgets of the judges it runs, unless `--max-spend-usd`
-    names one.
+    A source with nothing left to run makes no run folder. The judges it
+    runs judge at the source's effort, unless `--effort` names one. The
+    run's spend cap is the budgets of the judges it runs, unless
+    `--max-spend-usd` names one.
     """
     given = [flag for dest, flag in NOT_FOR_RESUMED_JUDGES.items() if getattr(args, dest) not in (None, False)]
     if given:
@@ -2669,6 +2670,9 @@ def resume_judges(
     except ValueError as exc:
         print(f"--judges: {exc}", file=sys.stderr)
         return 2
+    if args.effort is None and ran.get("effort") in J.EFFORTS:
+        # The judges it runs judge at the effort the carried ones did, unless --effort names another.
+        args.effort = ran["effort"]
     results = read_record(source / "results.json")
     repeats = source_repeats(source, results)
     plans: dict[int, Carry] = {}

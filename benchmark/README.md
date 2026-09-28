@@ -1468,10 +1468,12 @@ are the source's. `--judges` names the ones to run again, in the words
 `--providers` takes. With no `--judges`, it runs those whose judgement
 in the source did not answer: an `error`, a `missed`, or a `skipped`
 one. Each runs on the source's archive, as `judge` runs its judges (see
-Judge a run again). Every other judgement of the source is carried: the
-new run holds it as the source recorded it, marked `carried`. So its
-scores, its means, and its report hold every judge, and a mean is never
-over fewer judges than the run has. The weighted score is the
+Judge a run again), and at the effort the source's `run.json` records,
+the one its judgements were made at, unless `--effort` names another.
+Every other judgement of the source is carried: the new run holds it as
+the source recorded it, marked `carried`. So its scores, its means, and
+its report hold every judge, and a mean is never over fewer judges than
+the run has. The weighted score is the
 harness's, so a carried one is weighed with this checkout's weights. A
 source whose judges all answered has nothing to resume: it makes no run
 folder, starts no judge, and exits 2.
