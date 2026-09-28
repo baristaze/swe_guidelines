@@ -47,7 +47,9 @@ the rubric, so the judges know what was built. `select` returns the
 scenario as a run with its groups runs it. The run's spend cap is the
 scenario's `max_spend_usd` on the path it names, a run that takes no
 group; else, for a subject in phases, the sum of the caps of the phases
-that run and the budgets of the agentic judges (`spend_cap`).
+that run and the budgets of the agentic judges (`spend_cap`). A run that
+judges an earlier run's output again runs no phase, and its cap is the
+judges' budgets alone (`judging_cap`).
 
 The judges are one-shot by default: one prompt, one verdict each. A
 scenario can ask for `agentic` judges instead, which read the subject's
@@ -803,8 +805,23 @@ def spend_cap(scn: Scenario, repeat: int, judges: int) -> float | None:
         return scn.max_spend_usd
     if not scn.subject.phases:
         return None
-    judging = judges * scn.judges.budget.max_usd if scn.judges.agentic and scn.judges.budget else 0.0
-    return round((sum(p.max_usd for p in scn.subject.phases) + judging) * repeat, 6)
+    return round((sum(p.max_usd for p in scn.subject.phases) + judges_budget(scn, judges)) * repeat, 6)
+
+
+def judges_budget(scn: Scenario, judges: int) -> float:
+    """What `judges` agentic judges of one repeat may spend: each one's dollar budget. One-shot judges have none: 0."""
+    return judges * scn.judges.budget.max_usd if scn.judges.agentic and scn.judges.budget else 0.0
+
+
+def judging_cap(scn: Scenario, repeats: int, judges: int) -> float | None:
+    """The spend cap of a run that judges an earlier run's output again, when no flag names one.
+
+    It is the dollar budgets of its `judges` agentic judges over the
+    `repeats` it judges. No phase runs, so no phase's cap is in it, nor the
+    scenario's own `max_spend_usd`, which covers a subject too. One-shot
+    judges have no budget, so a run of them has no cap.
+    """
+    return round(judges_budget(scn, judges) * repeats, 6) if scn.judges.agentic and scn.judges.budget else None
 
 
 def _bounded(subject: Subject, kind: str, name: str) -> None:
