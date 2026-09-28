@@ -6,6 +6,14 @@ written. `report.md` is the same data for a person: a table per repeat,
 the summary, what the run spent, the findings with the most severe first,
 and the paths.
 
+A judgement is one-shot, with a verdict, or agentic, with a score per
+reference, the gaps behind each, and the weighted score the harness
+computed. Every mean, spread, and count reads a judgement's score the
+same way: the verdict's score, or the weighted score. An agentic run's
+summary also carries each reference's scores and its gaps by severity,
+and its report shows the scores per reference, the gaps, and where each
+judge's transcript is.
+
 Paths in the report are written as code spans, never as links: a run
 folder is served, uploaded, and checked in, and a link out of it would
 point at nothing.
@@ -21,6 +29,10 @@ from pathlib import Path
 from typing import Any
 
 from .judge import Judgement, half_up
+from .references import SEVERITIES, Judged
+
+# A judgement of either kind: one-shot, or agentic against references.
+AnyJudgement = Judgement | Judged
 
 SCHEMA_VERSION = 1
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -38,7 +50,7 @@ class RepeatResult:
     index: int
     exit_status: dict[str, Any]
     artifact_paths: list[str] = field(default_factory=list)
-    judgements: list[Judgement] = field(default_factory=list)
+    judgements: list[AnyJudgement] = field(default_factory=list)
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
@@ -91,6 +103,8 @@ class RunResult:
     subject: dict[str, Any] = field(default_factory=dict)
     repeats: list[RepeatResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Each reference's weight, by name, when the judges are agentic; empty when they are one-shot.
+    weights: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -105,7 +119,7 @@ class RunResult:
             "versions": self.versions,
             "subject": self.subject,
             "repeats": [r.as_dict() for r in self.repeats],
-            "summary": summarize(self.repeats, self.subject),
+            "summary": summarize(self.repeats, self.subject, self.weights),
             "spend": spend(self.repeats),
             "notes": list(self.notes),
         }
@@ -126,13 +140,33 @@ def is_claude(subject: dict[str, Any]) -> bool:
     return str(subject.get("model") or "").startswith("claude")
 
 
+def score_of(j: AnyJudgement) -> float | None:
+    """What a judgement scored: its verdict's score, or its weighted score; None when it did not answer."""
+    if j.status != "ok":
+        return None
+    if isinstance(j, Judged):
+        return j.score
+    return float(j.verdict.score) if j.verdict is not None else None
+
+
+def number(value: float) -> int | float:
+    """A score as the record keeps it: a whole number as an int, so a verdict's 72 stays 72."""
+    return int(value) if float(value).is_integer() else value
+
+
 def stdev(values: list[float]) -> float | None:
     """The sample standard deviation, to one place; None with fewer than two values."""
     return half_up(statistics.stdev(values), 1) if len(values) > 1 else None
 
 
-def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None) -> dict[str, Any]:
+def summarize(
+    repeats: list[RepeatResult], subject: dict[str, Any] | None = None, weights: dict[str, float] | None = None
+) -> dict[str, Any]:
     """Scores per provider over every repeat, their spread, who did not answer, and who missed some.
+
+    A judgement's score is its verdict's, or, for an agentic one, the
+    weighted score. With `weights`, the summary also holds `references`
+    (see `reference_summary`).
 
     A repeat whose subject failed is a failure, never a gap: it scores 0
     for every provider that scored the run, so a subject that fails one
@@ -150,24 +184,25 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
     judged by a panel that scores with Claude is named under `self_judged`,
     because a model may favor its own kind.
     """
-    scores: dict[str, list[int]] = {}
+    scores: dict[str, list[float]] = {}
     misses: dict[str, list[str]] = {}
     for repeat in repeats:
         for j in repeat.judgements:
-            if j.status == "ok" and j.verdict is not None:
-                scores.setdefault(j.provider, []).append(j.verdict.score)
+            score = score_of(j)
+            if score is not None:
+                scores.setdefault(j.provider, []).append(score)
             else:
                 misses.setdefault(j.provider, []).append(j.error or j.status)
     failures = [r.index for r in repeats if failed(r.exit_status)]
     for values in scores.values():
-        values.extend([0] * len(failures))
+        values.extend([0.0] * len(failures))
     per_provider = {
         provider: {
             "mean": half_up(statistics.fmean(values), 1),
-            "min": min(values),
-            "max": max(values),
+            "min": number(min(values)),
+            "max": number(max(values)),
             "n": len(values),
-            "stdev": stdev([float(v) for v in values]),
+            "stdev": stdev(values),
         }
         for provider, values in sorted(scores.items())
     }
@@ -181,7 +216,7 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
         if failed(repeat.exit_status):
             repeat_means.append(0.0)
             continue
-        answered = [j.verdict.score for j in repeat.judgements if j.status == "ok" and j.verdict is not None]
+        answered = [score for j in repeat.judgements if (score := score_of(j)) is not None]
         if answered:
             repeat_means.append(half_up(statistics.fmean(answered), 1))
     spread = (
@@ -210,7 +245,7 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
                     },
                 )
                 entry["count"] += 1
-    return {
+    out = {
         "per_provider": per_provider,
         "overall_mean": overall,
         "failed_repeats": failures,
@@ -221,6 +256,47 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
         "skipped": [{"provider": p, "reason": r[0]} for p, r in sorted(misses.items()) if p not in scores],
         "missed": [{"provider": p, "count": len(r), "reason": r[0]} for p, r in sorted(misses.items()) if p in scores],
     }
+    if weights:
+        out["references"] = reference_summary(repeats, weights)
+    return out
+
+
+def reference_summary(repeats: list[RepeatResult], weights: dict[str, float]) -> dict[str, Any]:
+    """Each reference's scores over every agentic judgement, in the scenario's order.
+
+    Per reference: its weight; each provider's mean; the mean of those
+    means, so each provider weighs once, as in the overall mean; the
+    minimum, the maximum, and how many scores; and its gaps counted by
+    severity. A failed repeat scores 0 against every reference, for every
+    provider that scored the run, as it does in the weighted score.
+    """
+    failures = sum(1 for r in repeats if failed(r.exit_status))
+    out: dict[str, Any] = {}
+    for name, weight in weights.items():
+        scores: dict[str, list[int]] = {}
+        gaps = {severity: 0 for severity in SEVERITIES}
+        for repeat in repeats:
+            for j in repeat.judgements:
+                entry = j.references.get(name) if isinstance(j, Judged) and j.score is not None else None
+                if entry is None:
+                    continue
+                scores.setdefault(j.provider, []).append(entry["score"])
+                for gap in entry["gaps"]:
+                    gaps[gap["severity"]] = gaps.get(gap["severity"], 0) + 1
+        for values in scores.values():
+            values.extend([0] * failures)
+        means = {p: half_up(statistics.fmean(v), 1) for p, v in sorted(scores.items())}
+        every = [v for values in scores.values() for v in values]
+        out[name] = {
+            "weight": weight,
+            "mean": half_up(statistics.fmean([statistics.fmean(v) for v in scores.values()]), 1) if scores else None,
+            "per_provider": means,
+            "min": min(every) if every else None,
+            "max": max(every) if every else None,
+            "n": len(every),
+            "gaps": gaps,
+        }
+    return out
 
 
 TOKENS = ("input_tokens", "output_tokens", "reasoning_tokens")
@@ -270,15 +346,27 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
 
 
 def findings_by_severity(repeats: list[RepeatResult]) -> list[dict[str, Any]]:
-    """Every finding, most severe first, each carrying who said it."""
+    """Every one-shot finding, most severe first, each carrying who said it."""
     out: list[dict[str, Any]] = []
     for repeat in repeats:
         for j in repeat.judgements:
-            if j.verdict is None:
+            if isinstance(j, Judged) or j.verdict is None:
                 continue
             for f in j.verdict.findings:
                 out.append({"severity": f.severity, "note": f.note, "provider": j.provider, "repeat": repeat.index})
     out.sort(key=lambda f: (SEVERITY_ORDER.get(str(f["severity"]).lower(), 3), f["provider"], f["repeat"]))
+    return out
+
+
+def gaps_by_severity(repeats: list[RepeatResult], name: str) -> list[dict[str, Any]]:
+    """Every gap agentic judges named against one reference, most severe first, each carrying who named it."""
+    out: list[dict[str, Any]] = []
+    for repeat in repeats:
+        for j in repeat.judgements:
+            entry = j.references.get(name) if isinstance(j, Judged) else None
+            for gap in entry["gaps"] if entry else []:
+                out.append({**gap, "provider": j.provider, "repeat": repeat.index})
+    out.sort(key=lambda g: (SEVERITY_ORDER.get(str(g["severity"]).lower(), 3), g["provider"], g["repeat"]))
     return out
 
 
@@ -427,13 +515,91 @@ def version_lines(versions: dict[str, Any]) -> list[str]:
         found = versions.get(key)
         if found:
             lines.append(f"- {label}: `{found['path']}`, sha256 `{found['sha256']}`.")
+    for name, ref in (versions.get("references") or {}).items():
+        if ref.get("source") == "repository":
+            pins = f", pins the guideline at `{ref['pins']}`" if ref.get("pins") else ", names no guideline release it pins"
+            lines.append(f"- Reference `{name}`: {ref['url']} at tag `{ref['tag']}`, commit `{ref['commit']}`{pins}.")
+        else:
+            paths = ", ".join(f"`{p}`" for p in ref["paths"])
+            lines.append(f"- Reference `{name}`: {paths} of the checkout, sha256 `{ref['sha256']}`.")
     return [*lines, ""]
+
+
+def agentic_score_lines(run: RunResult) -> list[str]:
+    """The report's table of agentic judgements: each reference's score, the weighted score, and the tool calls."""
+    names = list(run.weights)
+    header = [
+        "Repeat",
+        "Provider",
+        "Model",
+        "Effort",
+        *(f"`{n}`" for n in names),
+        "Weighted",
+        "Tool calls",
+        "Latency (s)",
+        "Status",
+    ]
+    lines = [_row(header), _row(["---"] * len(header))]
+    for repeat in run.repeats:
+        for j in repeat.judgements:
+            if not isinstance(j, Judged):
+                continue
+            scores = [str(j.references[n]["score"]) if n in j.references else "-" for n in names]
+            weighted = str(j.score) if j.score is not None else "-"
+            model = f"`{j.model}`" if j.model else "-"
+            cells = [str(repeat.index), j.provider, model, j.effort, *scores, weighted, str(j.tool_calls), f"{j.latency_s:.1f}"]
+            lines.append(_row([*cells, j.status]))
+    return lines
+
+
+def reference_lines(run: RunResult, summary: dict[str, Any]) -> list[str]:
+    """The report's summary of each reference: its weight, its mean over the providers, and its gaps by severity."""
+    refs = summary.get("references") or {}
+    providers = sorted({p for entry in refs.values() for p in entry["per_provider"]})
+    header = ["Reference", "Weight", "Mean", *providers, "Min", "Max", "n", "Gaps high / medium / low"]
+    lines = ["### References", "", _row(header), _row(["---"] * len(header))]
+    for name, entry in refs.items():
+        per = [str(entry["per_provider"].get(p, "-")) for p in providers]
+        gaps = " / ".join(str(entry["gaps"].get(s, 0)) for s in SEVERITIES)
+        cells = [f"`{name}`", f"{entry['weight']:g}", "-" if entry["mean"] is None else str(entry["mean"]), *per]
+        cells += ["-" if entry["min"] is None else str(entry["min"]), "-" if entry["max"] is None else str(entry["max"])]
+        lines.append(_row([*cells, str(entry["n"]), gaps]))
+    formula = " + ".join(f"{w:g} * `{n}`" for n, w in run.weights.items())
+    return [*lines, "", f"The harness weighs each judgement's scores: {formula}.", ""]
+
+
+def sentence(text: str) -> str:
+    """A judge's note as a sentence of the report: its own ending, or a period."""
+    text = text.strip()
+    return text if not text or text.endswith((".", "!", "?")) else f"{text}."
+
+
+def gap_lines(run: RunResult) -> list[str]:
+    """The report's gaps, per reference, most severe first, each with where it is in each tree."""
+    lines = ["## Gaps", ""]
+    for name, weight in run.weights.items():
+        lines += [f"### `{name}` (weight {weight:g})", ""]
+        gaps = gaps_by_severity(run.repeats, name)
+        for g in gaps:
+            lens = f" {g['lens']}" if g.get("lens") else ""
+            output = f"`{g['in_output']}`" if g["in_output"] else "nothing there"
+            reference = f"`{g['in_reference']}`" if g["in_reference"] else "not named"
+            where = f" In the output: {output}. In the reference: {reference}."
+            fix = f" Fix: {sentence(g['fix'])}" if g.get("fix") else ""
+            lines.append(
+                f"- **{g['severity']}**{lens} ({g['provider']}, repeat {g['repeat']}): {sentence(g['what'])}{where}{fix}"
+            )
+        if not gaps:
+            lines.append("No judge named a gap.")
+        lines.append("")
+    return lines
 
 
 def report_text(run: RunResult) -> str:
     """The Markdown report as one string."""
     data = run.as_dict()
     summary = data["summary"]
+    agentic = bool(run.weights)
     lines: list[str] = [
         f"# Benchmark run {run.run_id}",
         "",
@@ -444,11 +610,15 @@ def report_text(run: RunResult) -> str:
         "",
         "## Scores",
         "",
-        _row(["Repeat", "Provider", "Model", "Effort", "Score", "Verdict", "Latency (s)", "Status"]),
-        _row(["---"] * 8),
     ]
+    if agentic:
+        lines += agentic_score_lines(run)
+    else:
+        lines += [_row(["Repeat", "Provider", "Model", "Effort", "Score", "Verdict", "Latency (s)", "Status"]), _row(["---"] * 8)]
     for repeat in run.repeats:
         for j in repeat.judgements:
+            if isinstance(j, Judged):
+                continue
             verdict = j.verdict.verdict if j.verdict else "-"
             score = str(j.verdict.score) if j.verdict else "-"
             lines.append(
@@ -470,7 +640,10 @@ def report_text(run: RunResult) -> str:
         deviation = "-" if stats["stdev"] is None else str(stats["stdev"])
         lines.append(_row([provider, str(stats["mean"]), str(stats["min"]), str(stats["max"]), deviation, str(stats["n"])]))
     overall = summary["overall_mean"]
-    lines += ["", f"Overall mean: {overall if overall is not None else 'no score'}.", ""]
+    weighed = ", of the weighted scores" if agentic else ""
+    lines += ["", f"Overall mean{weighed}: {overall if overall is not None else 'no score'}.", ""]
+    if agentic:
+        lines += reference_lines(run, summary)
     spread = summary["spread"]
     if spread:
         deviation = "-" if spread["stdev"] is None else str(spread["stdev"])
@@ -521,22 +694,31 @@ def report_text(run: RunResult) -> str:
             missed = ", ".join(e["missed"]) or "none"
             lines.append(f"- repeat {index}: named {len(e['named'])} of {e['expected']}; missed: {missed}")
         lines.append("")
-    findings = findings_by_severity(run.repeats)
-    lines += ["## Findings", ""]
-    if findings:
-        lines += [f"- **{f['severity']}** ({f['provider']}, repeat {f['repeat']}): {f['note']}" for f in findings]
+    if agentic:
+        lines += gap_lines(run)
     else:
-        lines.append("No judge raised a finding.")
-    lines += ["", "## Strengths", ""]
-    strengths = [
-        f"- ({j.provider}) {s}" for repeat in run.repeats for j in repeat.judgements if j.verdict for s in j.verdict.strengths
-    ]
+        findings = findings_by_severity(run.repeats)
+        lines += ["## Findings", ""]
+        if findings:
+            lines += [f"- **{f['severity']}** ({f['provider']}, repeat {f['repeat']}): {f['note']}" for f in findings]
+        else:
+            lines.append("No judge raised a finding.")
+        lines.append("")
+    lines += ["## Strengths", ""]
+    strengths: list[str] = []
+    for repeat in run.repeats:
+        for j in repeat.judgements:
+            if isinstance(j, Judged):
+                strengths += [f"- ({j.provider}, `{n}`) {s}" for n, entry in j.references.items() for s in entry["strengths"]]
+            elif j.verdict:
+                strengths += [f"- ({j.provider}) {s}" for s in j.verdict.strengths]
     lines += strengths or ["No judge named a strength."]
     lines += ["", "## Rationales", ""]
     for repeat in run.repeats:
         for j in repeat.judgements:
-            if j.verdict and j.verdict.rationale:
-                lines.append(f"- **{j.provider}**, repeat {repeat.index}: {j.verdict.rationale}")
+            rationale = j.rationale if isinstance(j, Judged) else j.verdict.rationale if j.verdict else ""
+            if rationale:
+                lines.append(f"- **{j.provider}**, repeat {repeat.index}: {rationale}")
     lines += [""]
     if run.versions:
         lines += version_lines(run.versions)
@@ -544,6 +726,9 @@ def report_text(run: RunResult) -> str:
     for repeat in run.repeats:
         for path in repeat.artifact_paths:
             lines.append(f"- artifact, repeat {repeat.index}: `{path}`")
+        for j in repeat.judgements:
+            if isinstance(j, Judged):
+                lines.append(f"- transcript, repeat {repeat.index}, {j.provider}: `{j.transcript}`")
     lines += ["- streams: `streams/cli.jsonl`", "- results: `results.json`"]
     if run.notes:
         lines += ["", "## Notes", ""] + [f"- {n}" for n in run.notes]

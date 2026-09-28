@@ -20,7 +20,8 @@
 
 Everything a run produced lands in one folder under `--out`: the
 resolved scenario, the streams as they were written, the artifact, one
-file per judgement, `results.json` in the schema, and `report.md`.
+file per judgement, and an agentic judge's transcript beside it,
+`results.json` in the schema, and `report.md`.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ from harness import judge as J  # noqa: E402
 from harness import phases as PH  # noqa: E402
 from harness import providers as P  # noqa: E402
 from harness import redact as X  # noqa: E402
+from harness import references as RF  # noqa: E402
 from harness import results as R  # noqa: E402
 from harness import runtime as RT  # noqa: E402
 from harness import scenario as S  # noqa: E402
@@ -799,6 +801,46 @@ def describe_subject(scn: S.Scenario, argv: list[str]) -> str:
     return f"A model answered this prompt directly:\n\n{scn.subject.prompt}"
 
 
+def judge_agentic(
+    scn: S.Scenario,
+    rt: RT.BaseRuntime,
+    staged: RF.Staged,
+    art_dir: Path,
+    run_dir: Path,
+    index: int,
+    argv: list[str],
+    flags: P.Provider,
+    effort: str,
+    matrix: dict[str, Any],
+    notes: list[str],
+) -> list[RF.Judged]:
+    """One repeat's agentic judgements: the output staged as a root beside the references, and every judge's loop.
+
+    The output root is built in the sandbox from the repeat's artifacts,
+    and the task every judge gets is kept as the repeat's `judge-prompt.md`.
+    """
+    output = rt.sandbox / "judged" / str(index) / S.OUTPUT_ROOT
+    holds, why = RF.stage_output(art_dir, output, archived=bool(scn.subject.output))
+    if why:
+        notes.append(f"repeat {index}: {why}")
+    refs = scn.judges.references
+    prompt = RF.build_prompt(scn.rubric, describe_subject(scn, argv), holds, refs, staged.versions)
+    (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
+    roots = {S.OUTPUT_ROOT: output, **staged.roots}
+    return RF.judge_all(
+        flags, prompt, roots, run_dir / "judgements", index, effort, scn.judges.weights, scn.judges.budget, matrix
+    )
+
+
+def said(j: R.AnyJudgement) -> str:
+    """A judgement's score as the console shows it: the verdict's, or the weighted one with each reference's."""
+    if isinstance(j, RF.Judged):
+        if j.score is None:
+            return "-"
+        return f"{j.score} (" + ", ".join(f"{n} {e['score']}" for n, e in j.references.items()) + ")"
+    return str(j.verdict.score) if j.verdict else "-"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="benchmark/run.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -951,7 +993,13 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         rt.stage()
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
         planned = planned_phases(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
-    except (S.ScenarioError, ValueError) as exc:
+        # The agentic judges' references, staged in the sandbox: a path the
+        # checkout does not hold, or a tag that cannot be fetched, is refused
+        # here too. Fetching a public repository spends nothing, so a dry run does it.
+        staged = RF.Staged()
+        if scn.judges.agentic:
+            staged = RF.stage(scn.judges.references, ROOT, rt.sandbox / "references", V.plugin_version(ROOT))
+    except (S.ScenarioError, ValueError, RF.StageError) as exc:
         print(exc, file=sys.stderr)
         return 2
 
@@ -996,12 +1044,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         "versions": static_versions(target, rt.target, expected_path),
         "started_at": R.now(),
     }
+    if scn.judges.agentic:
+        resolved["versions"]["references"] = staged.versions
+        resolved["notes"] = list(staged.notes)
     if planned:
         resolved["phases"] = planned
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     print(f"run folder: {run_dir}")
     if expected_note:
         print(expected_note)
+    for note in staged.notes:
+        print(note)
 
     if args.dry_run:
         print(json.dumps(resolved, indent=2))
@@ -1031,6 +1084,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     probed, notes = probe_versions(scn, rt, args.claude)
     resolved["versions"].update(probed)
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
+    notes[:0] = staged.notes
     if expected_note:
         notes.insert(0, expected_note)
     screencast = None
@@ -1061,6 +1115,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             "allowed_tools": list(scn.subject.allowed_tools),
             **subject_bounds(scn),
         },
+        weights=scn.judges.weights if scn.judges.agentic else {},
     )
 
     env = subject_env(scn)
@@ -1169,22 +1224,30 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 )
                 continue
 
-            prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
             expected = E.named(expected_data, blob)
             if expected is not None:
                 print(f"  repeat {index} names {len(expected['named'])} of {expected['expected']} planted findings")
-            (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
-            judgements = J.judge_all(flags, prompt, effort, matrix)
+            judgements: list[R.AnyJudgement]
+            if scn.judges.agentic:
+                judgements = [
+                    *judge_agentic(scn, rt, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
+                ]
+            else:
+                prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
+                (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
+                judgements = [*J.judge_all(flags, prompt, effort, matrix)]
             budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
             for j in judgements:
                 record = j.as_dict()
-                record["raw"] = j.raw
+                if isinstance(j, RF.Judged):
+                    record["answer"] = j.answer
+                else:
+                    record["raw"] = j.raw
                 (run_dir / "judgements").mkdir(parents=True, exist_ok=True)
                 (run_dir / "judgements" / f"{index}-{j.provider}.json").write_text(
                     json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
                 )
-                score = j.verdict.score if j.verdict else "-"
-                print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {score}")
+                print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {said(j)}")
             run.repeats.append(
                 R.RepeatResult(
                     index=index,
@@ -1229,6 +1292,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     summary = data["summary"]
     for provider, stats in summary["per_provider"].items():
         print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
+    for name, stats in (summary.get("references") or {}).items():
+        gaps = ", ".join(f"{count} {severity}" for severity, count in stats["gaps"].items())
+        print(f"{name:10} weight {stats['weight']:g}, mean {stats['mean']} over {stats['n']} score(s), gaps: {gaps}")
     if summary["self_judged"]:
         print(f"note: {summary['self_judged']}")
     spent = data["spend"]

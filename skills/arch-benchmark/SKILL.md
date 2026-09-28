@@ -30,7 +30,8 @@ never run the harness from there.
 `$ARGUMENTS` is one of:
 
 - a scenario name, with or without flags ("explain-tenancy",
-  "review-om with all four judges");
+  "review-om with all four judges"), or the path of a scenario file,
+  which `--scenario` takes as it is;
 - a question about what there is ("which scenarios are there?");
 - empty, which means: list the scenarios and the provider
   availability, and stop.
@@ -46,7 +47,10 @@ never run the harness from there.
    Report an absent key as absent; it is a provider that will be
    skipped, not a failure. It also shows whether the subject's own key,
    `SUBJECT_ANTHROPIC_API_KEY`, is present; a skill scenario needs it,
-   and without it a `--strict` run refuses.
+   and without it a `--strict` run refuses. `list` shows only the
+   scenarios under `benchmark/scenarios/`. For a scenario given by its
+   path, read its `kind`, `runtimes`, `requires`, and `judges` from the
+   file.
 3. Map what the prompt asks to the flags that exist. The judges are a
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
@@ -60,15 +64,23 @@ never run the harness from there.
    subject's `max_usd`, or for a scenario in phases each phase's. Say
    both when the prompt asks for a cap. When it asks what a run could
    spend, say that it can pass N by about the largest session cap and
-   one repeat's judges, which a dry run does not price. When the prompt names something with no flag behind it, say
-   so and run without it.
+   one repeat's judges. A dry run does not price one-shot judges. An
+   agentic judge's budget `max_usd` is not a hard cap: a judge can pass
+   it by what its last call adds, its output, at most
+   `max_output_tokens` at the model's output price, and the input the
+   turn before it read. So one repeat's agentic judges spend about
+   `max_usd` times the number of judges, and each judge can end above
+   its `max_usd` by that one call. When the prompt names something with
+   no flag behind it, say so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
    The harness refuses a runtime the scenario does not list with exit
-   7 and runs nothing. So when the prompt names a runtime that `list`
-   does not show for the scenario, run nothing, not even a dry run,
-   neither on that runtime nor on another, and say so. When the prompt
-   names no runtime, pass no `--runtime`.
+   7 and runs nothing. So when the prompt names a runtime the scenario
+   does not list, run nothing, not even a dry run, neither on that
+   runtime nor on another, and say so. The runtimes a scenario lists are
+   the ones `list` shows for it, or, for a scenario given by its path,
+   its file's `runtimes`. When the prompt names no runtime, pass no
+   `--runtime`.
 
    A `qa` subject runs no command on any runtime: the harness asks the
    model itself and builds no image for it, so it needs no engine, no
@@ -98,8 +110,8 @@ never run the harness from there.
 
    A scenario's requirements need no flag. A scenario that lists a
    runtime unable to provide what it requires does not load, so every
-   runtime `list` shows for a scenario provides what it requires. A
-   scenario that requires `docker` lists `vm` only. A dry run (step 6)
+   runtime a scenario lists provides what it requires. A scenario that
+   requires `docker` lists `vm` only. A dry run (step 6)
    builds nothing and asks no runtime anything, so it needs neither the
    engine nor the machine. Pass the flags a run would take anyway, so
    the command is the run's.
@@ -107,14 +119,18 @@ never run the harness from there.
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges or how many repeats, use the
-   scenario's default judges and the default of 3 repeats, and say
-   which they were.
+   scenario's default judges and the default of 3 repeats, by leaving
+   out `--providers`, `--effort`, and `--repeat`, and say which they
+   were.
 6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
-   `run.json`, and calls nothing. A dry run leaves `run.json` and
+   `run.json`, and calls nothing. For agentic judges, it also copies
+   each reference and fetches each repository reference at its tag,
+   which spends nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
-   fallbacks each would use, the effort, the repeats, the run's spend
+   fallbacks each would use (`models` lists each provider's model
+   first, then its fallbacks in order), the effort, the repeats, the run's spend
    cap when one was given, and the subject's `max_usd`. For a scenario
    in phases, `run.json` lists each phase under `phases`, and the
    phases' bounds are the ones in effect: the subject's `max_usd` is
@@ -125,15 +141,23 @@ never run the harness from there.
    folder), whether it keeps the handoff note (`hint`), its bounds
    (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
    backstop), what follows a bound (`on_cap`), and what its `argv` runs:
-   the prompt as the `argv` carries it, with the target's path and the
-   handoff sentence in it, and whether it gets `--add-dir` or `--resume`.
+   the prompt as the `argv` carries it, with the target's path in it when
+   the phase's prompt names `{target}` and the handoff sentence when it
+   is hinted, and whether it gets `--add-dir` or `--resume`.
    Report the subject's `output` folder and its `gates`, which the
    harness runs on the final tree. `benchmark/README.md`, "A subject in
    phases", says what each field means and what follows when a phase
-   hits a bound or fails; answer from it when the prompt asks. There is
+   hits a bound or fails; answer from it when the prompt asks. When
+   `scenario.judges.mode` is `agentic`, report every key of the judges'
+   `budget` as `run.json` resolves it, defaults included, and
+   each reference with its weight, and what the run resolved for it
+   under `versions.references`: the paths of the checkout, or the
+   repository's URL, tag, commit, and the guideline release it pins
+   (`pins`). Report every line under `notes`. `benchmark/README.md`,
+   "Agentic judges", says what each field means. There is
    no score to report, and inventing one is the worst thing this skill
    could do.
-7. List the run folder the command printed with `ls`, then read
+7. After a measurement, list the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
    needs its source. A run that exits 4 leaves no `report.md`; the
    Output section says what to report then.
@@ -143,7 +167,9 @@ never run the harness from there.
 ## Output
 
 After a dry run: the resolved plan from `run.json`, in prose, and the
-sentence that nothing was executed and no provider was called.
+sentence that nothing was executed and no provider was called; for
+agentic judges, add that each repository reference was fetched at its
+tag.
 
 When the prompt names a runtime the scenario does not list: that
 runtime, the runtimes the scenario lists, and the sentence that nothing
@@ -165,11 +191,15 @@ After a measurement, short, in prose:
 
 - the scenario, the runtime, the repeats, and the judges that answered,
   each with its model id;
-- the score per provider and the overall mean;
+- the score per provider and the overall mean; for agentic judges, say
+  that each score is the weighted score the harness computed, and give
+  each reference's weight and mean;
 - for a scenario in phases, how each phase ended and the cap that
   stopped any, and which gates passed on the final tree;
-- the findings that matter, most severe first, in one line each;
-- any provider that did not answer, with the reason it gave;
+- the findings that matter, most severe first, in one line each; for
+  agentic judges, the gaps, per reference;
+- any provider that did not answer, with the reason it gave, and for
+  an agentic judge that ended `missed`, the budget it names;
 - the run folder path, and that it is checked in only once
   `run.py redact` has scanned it for keys.
 

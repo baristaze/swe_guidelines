@@ -10,6 +10,11 @@ from pathlib import Path
 import pytest
 
 from harness import scenario as S
+from test_benchmark_agentic import FAKES, sent_results
+from test_benchmark_agentic import step as turn
+from test_benchmark_references import acme_repository, git
+
+needs_jsonschema = pytest.mark.skipif(importlib.util.find_spec("jsonschema") is None, reason="jsonschema is not installed")
 
 RUN = Path(__file__).resolve().parent.parent / "benchmark" / "run.py"
 spec = importlib.util.spec_from_file_location("benchmark_run", RUN)
@@ -1072,3 +1077,156 @@ def test_a_scenario_outside_the_checkout_keeps_its_path(tmp_path, monkeypatch):
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
     (run_dir,) = (tmp_path / "runs").iterdir()
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["scenario"]["path"] == str(path.resolve())
+
+
+# Agentic judges against references ----------------------------------------
+
+JUDGED = {
+    "references": {
+        "guideline": {
+            "score": 64,
+            "gaps": [
+                {
+                    "severity": "high",
+                    "what": "The plan names no lens.",
+                    "in_output": "workspace/plan.md",
+                    "in_reference": "README.md",
+                }
+            ],
+            "strengths": ["It is short, in workspace/plan.md."],
+        },
+        "reference": {"score": 70, "gaps": [], "strengths": []},
+    },
+    "rationale": "A plan with no lens.",
+}
+
+
+def agentic_scenario(argv: list[str], **judges) -> dict:
+    """A command subject that writes a plan, judged by one agentic judge against this checkout and a repository."""
+    return {
+        "name": "agentic",
+        "kind": "command",
+        "subject": {"argv": argv},
+        "artifact": {"stdout": True, "files": ["*.md"]},
+        "rubric": "Judge the plan against the lenses.",
+        "runtimes": EVERYWHERE,
+        "judges": {
+            "providers": "anthropic",
+            "mode": "agentic",
+            "references": [
+                {"name": "guideline", "weight": 0.25, "paths": ["lenses/README.md"]},
+                {"name": "reference", "weight": 0.75, "repository": "https://github.com/acme/acme-system", "tag": "v1.0.0"},
+            ],
+            **judges,
+        },
+    }
+
+
+@pytest.fixture
+def acme(tmp_path, monkeypatch):
+    """The repository reference, fetched from a repository made here in place of its URL."""
+    repo = acme_repository(tmp_path, spec="(pinned at `v0.36.0`)")
+    fetched: list[tuple[str, str]] = []
+    fetch = run.RF.fetch
+
+    def local(url: str, tag: str, dest: Path) -> str:
+        fetched.append((url, tag))
+        return fetch(repo.as_uri(), tag, dest)
+
+    monkeypatch.setattr(run.RF, "fetch", local)
+    return repo, fetched
+
+
+def test_a_dry_run_resolves_the_references_and_calls_no_judge(tmp_path, monkeypatch, acme):
+    repo, fetched = acme
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    called: list[str] = []
+    monkeypatch.setattr(run.RF.A, "judge_agentic", lambda *args, **kwargs: called.append("judged"))
+    sandboxes: list[Path] = []
+    new_sandbox = run.RT.new_sandbox
+
+    def kept_sandbox() -> Path:
+        sandboxes.append(new_sandbox())
+        return sandboxes[-1]
+
+    monkeypatch.setattr(run.RT, "new_sandbox", kept_sandbox)
+    path = tmp_path / "agentic.json"
+    path.write_text(json.dumps(agentic_scenario(["true"])), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert fetched == [("https://github.com/acme/acme-system", "v1.0.0")] and called == []
+    judges = resolved["scenario"]["judges"]
+    assert judges["mode"] == "agentic" and judges["budget"]["max_usd"] == 3.0 and judges["budget"]["max_output_tokens"] == 16_000
+    references = resolved["versions"]["references"]
+    assert references["reference"] == {
+        "source": "repository",
+        "url": "https://github.com/acme/acme-system",
+        "tag": "v1.0.0",
+        "commit": git("rev-parse", "v1.0.0^{commit}", cwd=repo).strip(),
+        "pins": "v0.36.0",
+    }
+    guideline = references["guideline"]
+    assert guideline["source"] == "checkout" and guideline["paths"] == ["lenses/README.md"] and len(guideline["sha256"]) == 64
+    release = run.V.plugin_version(run.ROOT)
+    assert resolved["notes"] == [f"reference `reference` pins the guideline at v0.36.0, and this checkout is at v{release}"]
+    assert str(repo) not in json.dumps(resolved)  # the run names the reference by its URL
+    assert sandboxes and not sandboxes[0].exists()  # the fetched tree went with the sandbox
+
+
+def test_a_reference_that_cannot_be_staged_stops_the_run_before_anything_runs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    ran: list[str] = []
+    monkeypatch.setattr(run.RT.BaseRuntime, "run", lambda *args, **kwargs: ran.append("subject"))
+    scenario = agentic_scenario(["true"])
+    scenario["judges"]["references"][0]["paths"] = ["no-such-folder"]
+    path = tmp_path / "agentic.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs")]) == 2
+    assert "reference guideline: the checkout holds no file or folder 'no-such-folder'" in capsys.readouterr().err
+    assert ran == []
+
+
+@needs_jsonschema
+def test_an_agentic_run_judges_the_output_against_each_reference_and_weighs_the_scores(tmp_path, monkeypatch, acme):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    reads = [
+        ("read_file", {"root": "output", "path": "answer.md"}),
+        ("read_file", {"root": "output", "path": "workspace/plan.md"}),
+        ("read_file", {"root": "guideline", "path": "lenses/README.md", "end": 3}),
+        ("read_file", {"root": "reference", "path": "src/app.py"}),
+    ]
+    fake = FAKES["anthropic"]([turn(*reads), turn(("submit", JUDGED))])
+    monkeypatch.setitem(run.J.CLIENTS, "anthropic", lambda key: fake)
+    script = "import pathlib; pathlib.Path('plan.md').write_text('A plan.\\n'); print('planned')"
+    path = tmp_path / "agentic.json"
+    path.write_text(json.dumps(agentic_scenario([sys.executable, "-c", script])), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    # The judge read the subject's answer and file, this checkout's lens catalog, and the repository at its tag.
+    results_back = [text for _, text in sent_results("anthropic", fake.requests[1])]
+    assert "planned" in results_back[0] and "A plan." in results_back[1]
+    assert "lines 1-3 of" in results_back[2] and "TABLES = ['journalists']" in results_back[3]
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    (judged,) = results["repeats"][0]["judgements"]
+    assert judged["status"] == "ok" and judged["verdict"] is None
+    assert judged["judged"]["score"] == 68.5  # 0.25 * 64 + 0.75 * 70
+    assert judged["judged"]["references"]["guideline"]["weight"] == 0.25
+    assert judged["judged"]["transcript"] == "judgements/0-anthropic.jsonl"
+    assert results["summary"]["per_provider"]["anthropic"]["mean"] == 68.5
+    assert results["summary"]["references"]["guideline"]["gaps"] == {"high": 1, "medium": 0, "low": 0}
+    assert results["versions"]["references"]["reference"]["pins"] == "v0.36.0"
+    assert any("pins the guideline at v0.36.0" in note for note in results["notes"])
+    kept = json.loads((run_dir / "judgements" / "0-anthropic.json").read_text(encoding="utf-8"))
+    assert kept["answer"] == JUDGED and "raw" not in kept
+    transcript = (run_dir / "judgements" / "0-anthropic.jsonl").read_text(encoding="utf-8").splitlines()
+    assert (
+        json.loads(transcript[0])["roots"] == ["output", "guideline", "reference"] and json.loads(transcript[-1])["kind"] == "end"
+    )
+    prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+    assert "- `output`: the subject's answer" in prompt and "at tag v1.0.0" in prompt and "0.25" not in prompt
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| 0 | anthropic |" in report and "| 64 | 70 | 68.5 |" in report and "## Gaps" in report
+    assert "The harness weighs each judgement's scores: 0.25 * `guideline` + 0.75 * `reference`." in report
+    assert results["spend"]["judges"]["anthropic"]["cost_usd"] > 0

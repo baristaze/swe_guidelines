@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from harness import agentic as A
 from harness import judge as J
+from harness import references as RF
 from harness import results as R
 
 SCHEMA = Path(__file__).resolve().parent.parent / "benchmark" / "schema" / "result.schema.json"
@@ -405,3 +407,210 @@ def test_a_hash_that_is_not_one_is_refused_by_the_schema():
     run = a_run([R.RepeatResult(0, {"code": 0}, [], [judgement("anthropic", 50)])])
     run.versions = dict(VERSIONS, target={"path": "t", "sha256": "not-a-hash"})
     assert R.validate(run.as_dict(), SCHEMA)
+
+
+# Agentic judgements against references ------------------------------------
+
+WEIGHTS = {"guideline": 0.4, "reference": 0.6}
+
+
+def judged(provider, scores=None, status="ok", error=None, gaps=("high",)):
+    """An agentic judgement of each reference; `scores` maps a reference to its score, None when it has no answer."""
+    answer = None
+    if scores is not None:
+        gap = [{"severity": s, "what": f"a {s} gap", "in_output": "src/app.py", "in_reference": "Async"} for s in gaps]
+        entry = {
+            name: {"score": score, "gaps": gap, "strengths": [f"a strength against {name}"]} for name, score in scores.items()
+        }
+        answer = {"references": entry, "rationale": f"{provider} weighed it"}
+    judgement = A.AgenticJudgement(
+        provider=provider,
+        model="m",
+        effort="medium",
+        status=status,
+        latency_s=30.0,
+        usage={"input_tokens": 1000, "output_tokens": 100},
+        cost_usd=0.01,
+        error=error,
+        answer=answer,
+        tool_calls=9,
+        turns=10,
+    )
+    return RF.Judged.of(judgement, WEIGHTS, f"judgements/0-{provider}.jsonl")
+
+
+def agentic_run(repeats):
+    run = a_run(repeats)
+    run.weights = dict(WEIGHTS)
+    return run
+
+
+def test_an_agentic_judgement_scores_its_weighted_score_in_every_mean():
+    repeats = [
+        R.RepeatResult(
+            0,
+            {"code": 0},
+            [],
+            [judged("anthropic", {"guideline": 72, "reference": 66}), judged("openai", {"guideline": 80, "reference": 60})],
+        ),
+        R.RepeatResult(
+            1,
+            {"code": 0},
+            [],
+            [
+                judged("anthropic", {"guideline": 70, "reference": 70}),
+                judged("openai", None, "missed", "wall time: the budget of 900 s is spent"),
+            ],
+        ),
+    ]
+    summary = R.summarize(repeats, weights=WEIGHTS)
+    # anthropic: 68.4 and 70.0; openai: 68.0 once, and the miss named.
+    assert summary["per_provider"]["anthropic"] == {"mean": 69.2, "min": 68.4, "max": 70, "n": 2, "stdev": 1.1}
+    assert summary["per_provider"]["openai"] == {"mean": 68.0, "min": 68, "max": 68, "n": 1, "stdev": None}
+    assert summary["overall_mean"] == 68.6
+    assert summary["missed"] == [{"provider": "openai", "count": 1, "reason": "wall time: the budget of 900 s is spent"}]
+    assert summary["spread"]["repeat_means"] == [68.2, 70.0]
+    refs = summary["references"]
+    assert list(refs) == ["guideline", "reference"]
+    assert refs["guideline"] == {
+        "weight": 0.4,
+        "mean": 75.5,  # anthropic's 71, openai's 80
+        "per_provider": {"anthropic": 71.0, "openai": 80.0},
+        "min": 70,
+        "max": 80,
+        "n": 3,
+        "gaps": {"high": 3, "medium": 0, "low": 0},
+    }
+    assert refs["reference"]["mean"] == 64.0 and refs["reference"]["per_provider"] == {"anthropic": 68.0, "openai": 60.0}
+
+
+def test_a_failed_repeat_scores_zero_against_every_reference():
+    repeats = [
+        R.RepeatResult(0, {"code": 0}, [], [judged("anthropic", {"guideline": 80, "reference": 60})]),
+        R.RepeatResult(1, {"code": 1}, []),
+    ]
+    summary = R.summarize(repeats, weights=WEIGHTS)
+    assert summary["per_provider"]["anthropic"]["mean"] == 34.0  # 68.0 and a failure's 0
+    assert summary["references"]["guideline"]["per_provider"] == {"anthropic": 40.0}
+    assert summary["references"]["reference"]["min"] == 0 and summary["references"]["reference"]["n"] == 2
+
+
+def test_a_reference_no_judge_scored_has_no_mean():
+    summary = R.summarize([R.RepeatResult(0, {"code": 0}, [], [judged("xai", None, "skipped", "no key")])], weights=WEIGHTS)
+    assert summary["references"]["guideline"] == {
+        "weight": 0.4,
+        "mean": None,
+        "per_provider": {},
+        "min": None,
+        "max": None,
+        "n": 0,
+        "gaps": {"high": 0, "medium": 0, "low": 0},
+    }
+    assert summary["skipped"] == [{"provider": "xai", "reason": "no key"}] and summary["overall_mean"] is None
+
+
+REFERENCE_VERSIONS = {
+    "guideline": {"source": "checkout", "paths": ["architecture.md", "lenses"], "sha256": "b" * 64},
+    "reference": {
+        "source": "repository",
+        "url": "https://github.com/acme/acme-system",
+        "tag": "v0.7.0",
+        "commit": "a" * 40,
+        "pins": "v0.37.0",
+    },
+}
+
+
+def test_an_agentic_run_validates_against_the_schema_and_records_each_reference(tmp_path):
+    pytest.importorskip("jsonschema")
+    run = agentic_run(
+        [
+            R.RepeatResult(
+                0,
+                {"code": 0},
+                ["artifacts/0/output.zip"],
+                [
+                    judged("anthropic", {"guideline": 72, "reference": 66}, gaps=("high", "low")),
+                    judged("openai", None, "missed", "spend: $3"),
+                ],
+            )
+        ]
+    )
+    run.versions = dict(VERSIONS, references=REFERENCE_VERSIONS)
+    data = R.write_results(run, tmp_path / "results.json")
+    assert R.validate(data, SCHEMA) == []
+    first, second = data["repeats"][0]["judgements"]
+    assert first["verdict"] is None and first["judged"]["score"] == 68.4
+    assert (
+        first["judged"]["references"]["guideline"]["weight"] == 0.4
+        and len(first["judged"]["references"]["guideline"]["gaps"]) == 2
+    )
+    assert second["status"] == "missed" and second["judged"]["score"] is None and second["judged"]["references"] == {}
+    assert data["summary"]["references"]["reference"]["gaps"] == {"high": 1, "medium": 0, "low": 1}
+    assert data["versions"]["references"] == REFERENCE_VERSIONS
+    bad = json.loads(json.dumps(data))
+    bad["versions"]["references"]["reference"]["commit"] = "v0.7.0"
+    bad["repeats"][0]["judgements"][0]["judged"]["references"]["guideline"]["gaps"][0]["severity"] = "critical"
+    assert len(R.validate(bad, SCHEMA)) == 2
+
+
+def test_the_agentic_report_shows_each_reference_the_weighing_the_gaps_and_the_transcripts():
+    run = agentic_run(
+        [
+            R.RepeatResult(
+                0,
+                {"code": 0},
+                ["artifacts/0/output.zip"],
+                [
+                    judged("anthropic", {"guideline": 72, "reference": 66}, gaps=("low", "high")),
+                    judged("openai", None, "missed", "spend: $3"),
+                ],
+            )
+        ]
+    )
+    run.versions = dict(VERSIONS, references=REFERENCE_VERSIONS)
+    text = R.report_text(run)
+    assert (
+        "| Repeat | Provider | Model | Effort | `guideline` | `reference` | Weighted | Tool calls | Latency (s) | Status |"
+        in text
+    )
+    assert "| 0 | anthropic | `m` | medium | 72 | 66 | 68.4 | 9 | 30.0 | ok |" in text
+    assert "| 0 | openai | `m` | medium | - | - | - | 9 | 30.0 | missed |" in text
+    assert "Overall mean, of the weighted scores: 68.4." in text
+    assert "| `guideline` | 0.4 | 72.0 | 72.0 | 72 | 72 | 1 | 1 / 0 / 1 |" in text
+    assert "The harness weighs each judgement's scores: 0.4 * `guideline` + 0.6 * `reference`." in text
+    gaps = text[text.index("## Gaps") : text.index("## Strengths")]
+    assert "### `guideline` (weight 0.4)" in gaps and "### `reference` (weight 0.6)" in gaps
+    assert gaps.index("**high**") < gaps.index("**low**")  # most severe first
+    assert "- **high** (anthropic, repeat 0): a high gap. In the output: `src/app.py`. In the reference: `Async`." in gaps
+    assert "## Findings" not in text
+    assert "- (anthropic, `reference`) a strength against reference" in text
+    assert "- **anthropic**, repeat 0: anthropic weighed it" in text
+    assert "- transcript, repeat 0, anthropic: `judgements/0-anthropic.jsonl`" in text
+    assert "- transcript, repeat 0, openai: `judgements/0-openai.jsonl`" in text
+    assert "- Reference `guideline`: `architecture.md`, `lenses` of the checkout, sha256 `" + "b" * 64 + "`." in text
+    assert (
+        "- Reference `reference`: https://github.com/acme/acme-system at tag `v0.7.0`, commit `"
+        + "a" * 40
+        + "`, pins the guideline at `v0.37.0`."
+    ) in text
+
+
+def test_a_gap_in_the_report_reads_as_sentences_with_its_lens_and_its_fix():
+    j = judged("xai", {"guideline": 50, "reference": 50}, gaps=())
+    j.references["guideline"]["gaps"] = [
+        {
+            "severity": "medium",
+            "what": "No outbox",
+            "in_output": "",
+            "in_reference": "Async, The Outbox",
+            "lens": "ASY-03",
+            "fix": "Add one",
+        }
+    ]
+    text = R.report_text(agentic_run([R.RepeatResult(0, {"code": 0}, [], [j])]))
+    expected = (
+        "- **medium** ASY-03 (xai, repeat 0): No outbox. In the output: nothing there. In the reference: `Async, The Outbox`."
+    )
+    assert f"{expected} Fix: Add one." in text
+    assert "### `reference` (weight 0.6)\n\nNo judge named a gap." in text

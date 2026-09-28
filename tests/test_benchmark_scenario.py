@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from harness import agentic as A
 from harness import scenario as S
 
 MINIMAL = {
@@ -298,3 +299,107 @@ def test_the_shipped_skill_scenarios_name_their_spend_caps():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     caps = {p.stem: S.load(p).subject.max_usd for p in S.catalog(folder) if S.load(p).kind == "skill"}
     assert caps == {"explain-tenancy": 2.0, "review-om": 3.0}
+
+
+# Agentic judges and their references -------------------------------------
+
+GUIDELINE = {"name": "guideline", "weight": 0.4, "paths": ["architecture.md", "lenses", "skills"]}
+REPOSITORY = {"name": "reference", "weight": 0.6, "repository": "https://github.com/acme/acme-system", "tag": "v0.7.0"}
+
+
+def agentic(*refs: dict, **judges) -> dict:
+    """MINIMAL with agentic judges against the references given, the two above by default."""
+    return dict(MINIMAL, judges={"mode": "agentic", "references": list(refs or (GUIDELINE, REPOSITORY)), **judges})
+
+
+def test_agentic_judges_read_references_of_the_checkout_and_of_a_repository():
+    scn = S.from_data(agentic(budget={"tool_calls": 60, "wall_s": 1800, "max_usd": 5}))
+    judges = scn.judges
+    assert judges.agentic and judges.mode == "agentic"
+    assert judges.weights == {"guideline": 0.4, "reference": 0.6}
+    guideline, reference = judges.references
+    assert guideline.paths == ["architecture.md", "lenses", "skills"] and guideline.repository is None
+    assert (reference.repository, reference.tag, reference.paths) == ("https://github.com/acme/acme-system", "v0.7.0", [])
+    # What the scenario sets replaces a default; the rest stay.
+    assert judges.budget == A.Budget(tool_calls=60, wall_s=1800.0, max_usd=5.0)
+    assert judges.budget.max_output_tokens == 16_000 and judges.budget.submits == 3
+    assert scn.as_dict()["judges"] == {
+        "providers": "3",
+        "effort": "medium",
+        "mode": "agentic",
+        "budget": A.Budget(tool_calls=60, wall_s=1800.0, max_usd=5.0).as_dict(),
+        "references": [GUIDELINE, REPOSITORY],
+    }
+    assert S.from_data(agentic()).judges.budget == A.Budget()
+
+
+def test_one_shot_judges_are_the_default_and_have_no_budget_or_references():
+    judges = S.from_data(MINIMAL).judges
+    assert judges.mode == "one-shot" and not judges.agentic and judges.references == [] and judges.budget is None
+    assert S.from_data(MINIMAL).as_dict()["judges"] == {"providers": "3", "effort": "medium", "mode": "one-shot"}
+    with pytest.raises(S.ScenarioError, match=r"judges\.mode is one of one-shot, agentic, got 'tools'"):
+        S.from_data(dict(MINIMAL, judges={"mode": "tools"}))
+    with pytest.raises(S.ScenarioError, match="budget, references belong to agentic judges"):
+        S.from_data(dict(MINIMAL, judges={"budget": {}, "references": [GUIDELINE]}))
+
+
+@pytest.mark.parametrize(
+    ("refs", "message"),
+    [
+        ((), r"references: a list of at least one reference"),
+        ((dict(GUIDELINE, name="output"),), r"references\[0\]\.name 'output' is taken"),
+        ((GUIDELINE, dict(REPOSITORY, name="guideline")), r"references\[1\]\.name 'guideline' is taken"),
+        ((dict(GUIDELINE, name="The Guide"),), r"references\[0\]\.name: lowercase letters"),
+        ((dict(GUIDELINE, weight=0), dict(REPOSITORY, weight=1)), r"references\[0\]\.weight: a share above 0"),
+        ((dict(GUIDELINE, weight=True),), r"references\[0\]\.weight: a share above 0"),
+        ((dict(GUIDELINE, weight=1.5),), r"references\[0\]\.weight: a share above 0 and at most 1"),
+        ((GUIDELINE, dict(REPOSITORY, weight=0.5)), r"references: the weights sum to 1, got 0\.9"),
+        ((dict(GUIDELINE, repository=REPOSITORY["repository"]),), r"one of the two"),
+        (({"name": "guideline", "weight": 1},), r"one of the two"),
+        ((dict(GUIDELINE, tag="v1"),), r"tag pins a repository"),
+        ((dict(GUIDELINE, paths=[]),), r"paths: at least one path"),
+        ((dict(GUIDELINE, paths="lenses"),), r"paths: expected a list"),
+        ((dict(GUIDELINE, paths=["/etc"]),), r"paths: a file or a folder inside this checkout"),
+        ((dict(GUIDELINE, paths=["../outside"]),), r"paths: a file or a folder inside this checkout"),
+        ((dict(GUIDELINE, paths=["."]),), r"paths: a file or a folder inside this checkout"),
+        ((dict(REPOSITORY, repository="git@github.com:acme/acme-system.git"),), r"repository: a public repository's https"),
+        ((dict(REPOSITORY, repository="http://github.com/acme/acme-system"),), r"repository: a public repository's https"),
+        ((dict(REPOSITORY, repository="https://token@github.com/acme/acme-system"),), r"repository: a public"),
+        ((dict(REPOSITORY, repository="https://github.com/acme/acme-system?ref=x"),), r"repository: a public"),
+        ((dict(REPOSITORY, tag="-v1"),), r"tag: the tag the repository is pinned at"),
+        ((dict(REPOSITORY, tag="v1..2"),), r"tag: the tag the repository is pinned at"),
+        (({k: v for k, v in REPOSITORY.items() if k != "tag"},), r"tag: the tag the repository is pinned at"),
+        ((dict(REPOSITORY, branch="main"),), r"unknown key\(s\) branch"),
+    ],
+)
+def test_a_reference_is_checked_when_the_scenario_loads(refs, message):
+    data = agentic()
+    data["judges"]["references"] = list(refs)
+    with pytest.raises(S.ScenarioError, match=message):
+        S.from_data(data)
+
+
+@pytest.mark.parametrize(
+    ("budget", "message"),
+    [
+        ({"tool_calls": 0}, r"budget\.tool_calls: a whole number of at least 1, got 0"),
+        ({"input_tokens": 1.5}, r"budget\.input_tokens: a whole number"),
+        ({"max_output_tokens": True}, r"budget\.max_output_tokens: a whole number"),
+        ({"max_usd": 0}, r"budget\.max_usd: an amount above 0, got 0"),
+        ({"wall_s": float("inf")}, r"budget\.wall_s: an amount above 0"),
+        ({"max_usd": "3"}, r"budget\.max_usd: an amount above 0"),
+        ({"dollars": 3}, r"unknown key\(s\) dollars"),
+        ([], r"budget holds a mapping"),
+    ],
+)
+def test_an_agentic_budget_is_checked_when_the_scenario_loads(budget, message):
+    with pytest.raises(S.ScenarioError, match=message):
+        S.from_data(agentic(budget=budget))
+
+
+def test_agentic_judges_take_no_evidence_since_they_read_their_references():
+    data = agentic()
+    data["subject"] = dict(data["subject"], target="t")
+    with pytest.raises(S.ScenarioError, match="an agentic judge reads its references instead"):
+        S.from_data(dict(data, evidence={"files": ["**/*.py"]}))
+    assert S.from_data(data).judges.agentic

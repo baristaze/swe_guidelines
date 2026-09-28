@@ -27,17 +27,28 @@ phase. A phase is `fresh`, a new session with a new HOME, unless it says
 HOME and the same working folder. The container runtime starts every
 phase in a new container, so a scenario that resumes a phase does not
 list it.
+
+The judges are one-shot by default: one prompt, one verdict each. A
+scenario can ask for `agentic` judges instead, which read the subject's
+output and each of its `references` through tools, within a budget, and
+score the output against every reference. A reference is folders of
+this checkout, named by `paths`, or a public repository, named by its
+`https` URL and pinned at a `tag`. Each has a weight, and the weights
+sum to 1: the harness computes the weighted score from them.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import math
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field, fields
+from decimal import Decimal
+from pathlib import Path, PurePosixPath
 from typing import Any
 
+from . import agentic as A
 from . import phases as PH
 from . import providers as P
 from . import runtime as RT
@@ -52,6 +63,14 @@ WORKDIRS = ("workspace", "output")
 AFTER_CAP = ("continue", "stop")
 # A failed gate run is followed by at most this many more, unless the phase says otherwise.
 GATE_RERUNS = 3
+# How the judges judge: one prompt each, or a loop over tools that reads the output and the references.
+MODES = ("one-shot", "agentic")
+# The root an agentic judge reads the subject's output under; no reference takes its name.
+OUTPUT_ROOT = "output"
+REFERENCE_KEYS = ("name", "weight", "paths", "repository", "tag")
+# A public repository by its https URL: a host, a path, and no credentials, query, or fragment.
+REPOSITORY = re.compile(r"https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~-]+)+/?")
+TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+-]*")
 
 
 class ScenarioError(ValueError):
@@ -144,11 +163,54 @@ class EvidenceSpec:
 
 
 @dataclass(frozen=True)
+class Reference:
+    """What an agentic judge reads besides the subject's output, and how much its score weighs.
+
+    It is `paths` of this checkout, or a public `repository` pinned at
+    `tag`: one or the other.
+    """
+
+    name: str
+    weight: float
+    paths: list[str] = field(default_factory=list)
+    repository: str | None = None
+    tag: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        if self.repository:
+            return {"name": self.name, "weight": self.weight, "repository": self.repository, "tag": self.tag}
+        return {"name": self.name, "weight": self.weight, "paths": list(self.paths)}
+
+
+@dataclass(frozen=True)
 class JudgeSpec:
-    """The default judge selection of the scenario; the flags override it."""
+    """The default judge selection of the scenario; the flags override it.
+
+    `mode` is `one-shot` or `agentic`. Only agentic judges have a
+    `budget`, the bounds of each judgement, and `references`.
+    """
 
     providers: str = "3"
     effort: str = "medium"
+    mode: str = "one-shot"
+    budget: A.Budget | None = None
+    references: list[Reference] = field(default_factory=list)
+
+    @property
+    def agentic(self) -> bool:
+        return self.mode == "agentic"
+
+    @property
+    def weights(self) -> dict[str, float]:
+        """Each reference's weight, by name, in the scenario's order."""
+        return {r.name: r.weight for r in self.references}
+
+    def as_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"providers": self.providers, "effort": self.effort, "mode": self.mode}
+        if self.agentic:
+            out["budget"] = self.budget.as_dict() if self.budget else None
+            out["references"] = [r.as_dict() for r in self.references]
+        return out
 
 
 @dataclass(frozen=True)
@@ -199,7 +261,7 @@ class Scenario:
             },
             "artifact": {"stdout": self.artifact.stdout, "files": list(self.artifact.files)},
             "rubric": self.rubric,
-            "judges": {"providers": self.judges.providers, "effort": self.judges.effort},
+            "judges": self.judges.as_dict(),
             "runtimes": list(self.runtimes),
             "requires": list(self.requires),
             "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
@@ -293,20 +355,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     if not rubric:
         raise ScenarioError(f"scenario {name}: rubric is required")
 
-    raw_judges = data.get("judges") or {}
-    if not isinstance(raw_judges, dict):
-        raise ScenarioError(f"scenario {name}: judges holds a mapping")
-    _only(raw_judges, ("providers", "effort"), f"scenario {name}: judges")
-    judges = JudgeSpec(
-        providers=str(raw_judges.get("providers", "3")),
-        effort=str(raw_judges.get("effort", "medium")),
-    )
-    try:
-        P.parse(judges.providers)
-    except ValueError as exc:
-        raise ScenarioError(f"scenario {name}: judges.providers: {exc}") from exc
-    if judges.effort not in EFFORTS:
-        raise ScenarioError(f"scenario {name}: judges.effort is one of {', '.join(EFFORTS)}, got {judges.effort!r}")
+    judges = _judges(data.get("judges") or {}, name)
     raw_evidence = data.get("evidence") or {}
     if not isinstance(raw_evidence, dict):
         raise ScenarioError(f"scenario {name}: evidence holds a mapping")
@@ -317,6 +366,10 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     )
     if evidence.expected and not subject.target:
         raise ScenarioError(f"scenario {name}: evidence.expected describes a target, and subject.target names none")
+    if judges.agentic and not evidence.empty:
+        raise ScenarioError(
+            f"scenario {name}: evidence goes into a one-shot judge's prompt; an agentic judge reads its references instead"
+        )
     return Scenario(
         name=name,
         kind=kind,
@@ -351,6 +404,104 @@ SUBJECT_KEYS = (
 PHASE_KEYS = ("name", "prompt", "max_turns", "max_usd", "timeout_s", "session", "cwd", "hint", "max_gate_reruns", "on_cap")
 # What a subject in phases takes from each phase instead, so a subject-wide one would be read by nothing.
 PER_PHASE = ("prompt", "max_turns", "timeout_s", "max_usd")
+
+
+def _judges(raw: Any, name: str) -> JudgeSpec:
+    """The judges of a scenario: who judges, at what effort, and how; for agentic judges, their budget and references."""
+    where = f"scenario {name}: judges"
+    if not isinstance(raw, dict):
+        raise ScenarioError(f"{where} holds a mapping")
+    _only(raw, ("providers", "effort", "mode", "budget", "references"), where)
+    providers, effort = str(raw.get("providers", "3")), str(raw.get("effort", "medium"))
+    try:
+        P.parse(providers)
+    except ValueError as exc:
+        raise ScenarioError(f"{where}.providers: {exc}") from exc
+    if effort not in EFFORTS:
+        raise ScenarioError(f"{where}.effort is one of {', '.join(EFFORTS)}, got {effort!r}")
+    mode = raw.get("mode", "one-shot")
+    if mode not in MODES:
+        raise ScenarioError(f"{where}.mode is one of {', '.join(MODES)}, got {mode!r}")
+    if mode != "agentic":
+        extra = [k for k in ("budget", "references") if k in raw]
+        if extra:
+            raise ScenarioError(f"{where}: {', '.join(extra)} belong to agentic judges; set judges.mode: agentic")
+        return JudgeSpec(providers=providers, effort=effort)
+    return JudgeSpec(
+        providers=providers,
+        effort=effort,
+        mode=mode,
+        budget=_budget(raw.get("budget"), f"{where}.budget"),
+        references=_references(raw.get("references"), f"{where}.references"),
+    )
+
+
+# A budget's whole-number bounds; the rest, wall_s and max_usd, are amounts above 0.
+WHOLE_BOUNDS = ("tool_calls", "input_tokens", "submits", "max_output_tokens")
+
+
+def _budget(raw: Any, where: str) -> A.Budget:
+    """An agentic judgement's bounds: the defaults, each replaced by what the scenario sets."""
+    if raw is None:
+        return A.Budget()
+    if not isinstance(raw, dict):
+        raise ScenarioError(f"{where} holds a mapping")
+    _only(raw, tuple(f.name for f in fields(A.Budget)), where)
+    for key, value in raw.items():
+        if key in WHOLE_BOUNDS:
+            _whole(value, f"{where}.{key}")
+        elif isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < math.inf:
+            raise ScenarioError(f"{where}.{key}: an amount above 0, got {value!r}")
+    given: dict[str, Any] = {k: v if k in WHOLE_BOUNDS else float(v) for k, v in raw.items()}
+    return A.Budget(**given)
+
+
+def _references(raw: Any, where: str) -> list[Reference]:
+    """What agentic judges read besides the output: at least one reference, each named once, the weights summing to 1."""
+    if not isinstance(raw, list) or not raw:
+        raise ScenarioError(f"{where}: a list of at least one reference, each a folder of this checkout or a repository")
+    refs: list[Reference] = []
+    for index, item in enumerate(raw):
+        at = f"{where}[{index}]"
+        if not isinstance(item, dict):
+            raise ScenarioError(f"{at}: a reference holds a mapping")
+        _only(item, REFERENCE_KEYS, at)
+        ref_name = item.get("name")
+        if not isinstance(ref_name, str) or not A.ROOT_NAME.fullmatch(ref_name):
+            raise ScenarioError(f"{at}.name: lowercase letters, digits, - and _, at most 32, got {ref_name!r}")
+        if ref_name == OUTPUT_ROOT or ref_name in (r.name for r in refs):
+            raise ScenarioError(f"{at}.name {ref_name!r} is taken: the output, or another reference, reads under it")
+        weight = item.get("weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0 < weight <= 1:
+            raise ScenarioError(f"{at}.weight: a share above 0 and at most 1, got {weight!r}")
+        refs.append(_reference(item, ref_name, float(weight), at))
+    total = sum(Decimal(str(r.weight)) for r in refs)
+    if total != 1:
+        raise ScenarioError(f"{where}: the weights sum to 1, got {total}")
+    return refs
+
+
+def _reference(item: dict[str, Any], name: str, weight: float, at: str) -> Reference:
+    """One reference: paths of this checkout, or a repository at a tag, never both."""
+    if ("paths" in item) == ("repository" in item):
+        raise ScenarioError(f"{at}: a reference names paths of this checkout or a repository, one of the two")
+    if "paths" in item:
+        if "tag" in item:
+            raise ScenarioError(f"{at}.tag pins a repository, and this reference names paths of this checkout")
+        paths = _strings(item["paths"], f"{at}.paths")
+        if not paths:
+            raise ScenarioError(f"{at}.paths: at least one path of this checkout")
+        for path in paths:
+            parts = PurePosixPath(path).parts
+            if path.startswith("/") or not parts or any(p in (".", "..") for p in parts) or "\\" in path:
+                raise ScenarioError(f"{at}.paths: a file or a folder inside this checkout, such as `lenses`, got {path!r}")
+        return Reference(name=name, weight=weight, paths=paths)
+    url, tag = item.get("repository"), item.get("tag")
+    if not isinstance(url, str) or not REPOSITORY.fullmatch(url):
+        raise ScenarioError(f"{at}.repository: a public repository's https URL, with no credentials, got {url!r}")
+    if not isinstance(tag, str) or not TAG.fullmatch(tag) or ".." in tag or tag.endswith((".lock", "/")):
+        raise ScenarioError(f"{at}.tag: the tag the repository is pinned at, such as v1.2.0, got {tag!r}")
+    return Reference(name=name, weight=weight, repository=url, tag=tag)
 
 
 def _whole(value: Any, where: str, least: int = 1) -> int:
