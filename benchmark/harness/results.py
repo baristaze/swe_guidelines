@@ -658,7 +658,7 @@ def source_lines(source: dict[str, Any]) -> list[str]:
         ]
     for entry in source.get("rubric_groups", []):
         taken = ", ".join(f"`{g}`" for g in entry["groups"]) or "none"
-        lines += [f"Groups the rubric of repeat {entry['repeat']} took, those with a phase that ran in it: {taken}.", ""]
+        lines += [f"Groups the rubric of repeat {entry['repeat']} took, those whose every phase ran in it: {taken}.", ""]
     return lines
 
 

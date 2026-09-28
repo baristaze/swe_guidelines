@@ -794,19 +794,32 @@ def taken_groups(scn: Scenario) -> list[str]:
     return [g.name for g in scn.subject.groups if g.name in (p.group for p in scn.subject.phases)]
 
 
+def ran_groups(scn: Scenario, taken: list[str], ran: list[str] | None) -> list[str]:
+    """The taken groups every one of whose phases is named in `ran`, in the scenario's order; every taken one when None.
+
+    A group's sentence names all of its phases, so a group some of whose
+    phases did not run adds no sentence to a repeat's rubric.
+    """
+    return [
+        g.name
+        for g in scn.subject.groups
+        if g.name in taken and (ran is None or all(p.name in ran for p in scn.subject.phases if p.group == g.name))
+    ]
+
+
 def as_ran(scn: Scenario, taken: list[str], ran: list[str] | None) -> Scenario:
     """The scenario as one repeat of a run that took these groups ran it: only the phases named in `ran`.
 
-    It is `select` with each taken group one of those phases is in, and it
-    holds only those phases. So a group none of whose phases ran adds no
-    sentence to the rubric, and no phase that did not run is described.
-    With `ran` None, nothing says which phases ran, and it is `select`.
+    Its rubric is that of `select` with the groups `ran_groups` gives, and
+    it holds only the phases that ran, of no group or of a taken one. So a
+    group whose phases did not all run adds no sentence to the rubric, and
+    no phase that did not run is described. With `ran` None, nothing says
+    which phases ran, and it is `select`.
     """
     if ran is None:
         return select(scn, taken)
-    groups = [g for g in taken if any(p.group == g and p.name in ran for p in scn.subject.phases)]
-    selected = select(scn, groups)
-    phases = [p for p in selected.subject.phases if p.name in ran]
+    selected = select(scn, ran_groups(scn, taken, ran))
+    phases = [p for p in scn.subject.phases if p.name in ran and (p.group is None or p.group in taken)]
     return dataclasses.replace(selected, subject=dataclasses.replace(selected.subject, phases=phases))
 
 
