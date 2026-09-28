@@ -557,9 +557,10 @@ Code get `--max-turns`. The harness also holds the spend from the
 stream (see A subject in phases). Each repeat records its
 session under `phases`, with the bound that stopped it, if one did.
 `kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
-`subject.model` of one provider, and the answer is the artifact. The call
-carries the judges' output cap, and it is asked again after a transient
-error, as a judge is. `timeout_s` bounds it, the retry included.
+`subject.model` of one provider, and the answer is the artifact. It is
+asked again after a transient error, as a judge is, and `timeout_s`
+bounds it, the retry included. No token limit below what the model can
+write cuts its answer.
 
 A scenario can say how many times a run repeats its subject, `repeat`,
 a whole number of at least 1. It can also say the run's spend cap,
@@ -881,11 +882,14 @@ said and scores nothing. Nothing is invented for a provider that did
 not answer.
 
 A model is asked at most twice, because the SDKs' own retries are off:
-left on, the Anthropic and OpenAI SDKs try each call three times. Every
-one-shot call carries an output cap of 16,000 tokens, reasoning
-included, and a timeout of 480 seconds, twice the slowest one-shot
-judgement a checked-in run records. So one provider's judgement makes
-at most two capped calls per model in the matrix.
+left on, the Anthropic and OpenAI SDKs try each call three times. Each
+one-shot call has a timeout of 480 seconds, twice the slowest one-shot
+judgement a checked-in run records. No call is sent a token limit below
+what the model can write. Anthropic's API requires one, so an Anthropic
+call sends the model's own maximum, and the other providers are sent
+none. So time bounds one provider's judgement: at most two calls per
+model in the matrix, each within its timeout. The run's spend cap bounds
+the run (see The run's spend).
 
 ## Agentic judges
 
@@ -908,7 +912,6 @@ judges:
     tool_calls: 40            # reads per judgement; set so money and time bind first
     input_tokens: 500000      # summed over every call; the same
     submits: 3                # answers that miss the shape, and are sent back
-    max_output_tokens: 16000  # each call, reasoning included, on every provider
   references:
     - name: guideline
       weight: 0.4
@@ -989,14 +992,15 @@ last turn is a call made past the check, so that what the judge has read
 is not thrown away. So a judgement can end above `input_tokens` and
 `max_usd` by about one call: the last turn's input, which is about the
 input of the call before it, and what the turns around it answered and
-read, each answer at most `max_output_tokens` and each read at most
-40,000 characters. A last turn of 200,000 input tokens at $5 per million
-adds $1.
+read. Each read is at most 40,000 characters, and each answer is what the
+model writes in the time left. A last turn of 200,000 input tokens at $5
+per million adds $1, and its answer at the output price.
 
 The dollars are at the list prices in `models.yaml`. A model with no
 price there is held to the dearest price the file gives, so the check
-errs high. Every call on every provider carries the output cap,
-`max_output_tokens`. A `missed` judgement names the budget and its
+errs high. As for the one-shot judges, no call is sent a token limit
+below what the model can write, and a call's timeout is the wall time
+left. A `missed` judgement names the budget and its
 figures in `error`, and scores nothing. The summary names it as it names
 every judgement that did not answer.
 
@@ -1154,7 +1158,7 @@ cuts every bound, and never raises one the scenario sets lower:
 | the subject's model | the cheapest the matrix prices for its provider, input price first: `claude-sonnet-5` for a skill. `--subject-model` names another |
 | each session | at most $0.50 and a timeout of 1,800 seconds: money and time, and no turn cap unless the scenario names one. A phase that hits a bound hands on to the next one, whatever its `on_cap`, so every phase starts |
 | each gate | a timeout of at most 600 seconds |
-| each agentic judgement | a stub budget: $0.50, 900 seconds, 2 submits, and 8,000 output tokens a call. The tool calls and the input tokens stay the scenario's, which money and time reach first |
+| each agentic judgement | a stub budget: $0.50, 900 seconds, and 2 submits. The tool calls and the input tokens stay the scenario's, which money and time reach first |
 | the run | one repeat, and a spend cap of $5 over the subject and the judges together, or the path's own cap for one repeat when that is lower. `--max-spend-usd` can lower it; a flag that asks for more, or for another repeat, is refused with exit 2 |
 
 It runs the preflight first, and a check that fails stops it with exit
