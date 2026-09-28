@@ -152,7 +152,10 @@ never a value.
    aws sts get-caller-identity --profile acme-<env>-investigate
    ```
 
-5. Write the report.
+5. Write the report. A session follows at most 2 hops of Next. The
+   skill it starts with is hop zero; the report of the second hop
+   still names its next skill, and the session stops there and
+   reports.
 
 ## What it never does
 
