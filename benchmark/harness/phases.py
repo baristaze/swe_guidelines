@@ -41,7 +41,12 @@ The watch also keeps each Agent call, the subagent tool (`Task` in older
 releases), until its result comes. The Agent calls with no result when
 the session's `result` event arrives are `pending`: the session ended
 while a subagent it asked for had not answered, so the phase is
-incomplete, however the result reads.
+incomplete, however the result reads. A call that starts its subagent
+in the background, by its input's `run_in_background` or by a result
+that is the launch notice ("Async agent launched ..."), is answered by
+that notice and not by the subagent. So it stays pending to the end of
+the session. With background tasks off, no such launch should happen,
+and one that does means the setting did not hold.
 
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
@@ -86,6 +91,8 @@ HINT = (
 CAPS = ("spend", "time", "gate_reruns", "turns")
 # The tool a session starts a subagent with; older releases of Claude Code name it Task.
 AGENT_TOOLS = frozenset({"Agent", "Task"})
+# How the result of an Agent call that started its subagent in the background opens: a notice, not the answer.
+LAUNCH_NOTICE = "Async agent launched"
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
 # The multiples of a model's input price a cache read and a cache write are billed at.
 CACHE_READ = 0.1
@@ -232,6 +239,19 @@ def gate_runs(command: str, gates: list[str]) -> list[tuple[str, bool]]:
     return out
 
 
+def in_background(value: Any) -> bool:
+    """Whether an Agent call's `run_in_background` asks for the background: true, as a boolean or as the word."""
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def result_text(block: dict[str, Any]) -> str:
+    """A tool result's text: its content as a string, or its text items joined, stripped at the start."""
+    content = block.get("content")
+    if isinstance(content, list):
+        content = "".join(str(i.get("text") or "") for i in content if isinstance(i, dict))
+    return content.lstrip() if isinstance(content, str) else ""
+
+
 def _count(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
@@ -273,8 +293,10 @@ class Watch:
         self._total = 0.0
         self._pending: dict[str, list[tuple[str, bool]]] = {}
         self._gates = {g: {"runs": 0, "failed": 0, "unread": 0, "streak": 0} for g in self.gates}
-        # Each Agent call with no result yet, by its id, with what it was asked; and those when the result came.
+        # Each Agent call with no result yet, by its id, with what it was asked; the ones started in the background,
+        # whose result is a launch notice, stay; and those still open when the session's result came.
         self._agents: dict[str, str] = {}
+        self._background: set[str] = set()
         self.pending: list[dict[str, str]] = []
         self._lock = threading.Lock()
 
@@ -304,11 +326,18 @@ class Watch:
                         given = block.get("input")
                         asked: dict[str, Any] = given if isinstance(given, dict) else {}
                         self._agents[block["id"]] = str(asked.get("description") or asked.get("subagent_type") or "")
+                        if in_background(asked.get("run_in_background")):
+                            self._background.add(block["id"])
             elif event.get("type") == "user":
                 for block in _content(message):
                     if block.get("type") != "tool_result":
                         continue
-                    self._agents.pop(str(block.get("tool_use_id")), None)
+                    call = str(block.get("tool_use_id"))
+                    # A background launch's result is its notice; the subagent has not answered, so the call stays pending.
+                    if call in self._agents and (call in self._background or result_text(block).startswith(LAUNCH_NOTICE)):
+                        self._background.add(call)
+                    else:
+                        self._agents.pop(call, None)
                     if block.get("tool_use_id") in self._pending:
                         for gate, read in self._pending.pop(block["tool_use_id"]):
                             self._ran(gate, failed=block.get("is_error") is True, read=read)

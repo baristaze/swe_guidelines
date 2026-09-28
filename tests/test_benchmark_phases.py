@@ -934,3 +934,36 @@ def test_each_phase_records_the_models_its_session_used_and_what_each_cost(run_p
     assert sorted(scaffold["models"]) == ["claude-opus-5-5", "claude-sonnet-5"]
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "| `claude-opus-5-5` $0.4000; `claude-sonnet-5` $0.1000 |" in report
+
+
+def test_a_phase_that_starts_a_helper_in_the_background_is_incomplete_though_its_result_reads_success(run_phases):
+    # The shape Claude Code writes: the Agent call with run_in_background "true", the launch notice as its result,
+    # the main agent's text as it ends its turn to wait, and a `success` result.
+    scenario = phased(phase("scaffold", {**TREE, "launched": [["toolu_bg", "scaffold the portal"]]}), phase("mvp", TREE))
+    code, run_dir = run_phases(scenario)
+    assert code == 6
+    (scaffold,) = results(run_dir)["repeats"][0]["phases"]
+    assert scaffold["status"] == "incomplete" and scaffold["exit_status"]["code"] == 0
+    assert scaffold["pending_agents"] == [{"id": "toolu_bg", "description": "scaffold the portal"}]
+    assert results(run_dir)["repeats"][0]["ended_early"] == {"phase": "scaffold", "reason": "incomplete", "not_run": ["mvp"]}
+
+
+@pytest.mark.parametrize(
+    ("asked", "answer", "pending"),
+    [
+        ({"run_in_background": True}, "done", True),  # the setting, as a boolean, with any result
+        ({"run_in_background": "True"}, "done", True),  # and as the word
+        ({}, [{"type": "text", "text": "Async agent launched successfully. agentId: a1"}], True),  # the notice alone
+        ({}, "Async agent launched successfully.", True),  # the notice as a plain string
+        ({"run_in_background": "false"}, "done", False),  # a foreground call its answer closes
+        ({}, [{"type": "text", "text": "The portal is scaffolded."}], False),
+    ],
+)
+def test_an_agent_call_started_in_the_background_stays_pending_to_the_end_of_the_session(asked, answer, pending):
+    watch = PH.Watch(None, PRICES)
+    block = {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"description": "helper", **asked}}
+    watch.feed("out", line({"type": "assistant", "message": {"id": "m1", "content": [block]}}))
+    result = {"type": "tool_result", "tool_use_id": "t1", "content": answer}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [result]}}))
+    watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
+    assert watch.pending == ([{"id": "t1", "description": "helper"}] if pending else [])

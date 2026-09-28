@@ -9,6 +9,9 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
 - `agents`: Agent calls as `[id, description, answered]`, each a tool use, and its result only when answered;
+- `launched`: Agent calls as `[id, description]` that start their subagent in the background, as Claude Code
+  writes them: the call with `run_in_background` set to "true", the launch notice as its result, then the
+  main agent's text as it ends its turn to wait;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
 - `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
 - `models`: each model's cost in its result's `modelUsage`, by name;
@@ -89,6 +92,16 @@ for call_id, description, answered in todo.get("agents", []):
     if answered:
         answer = {"type": "tool_result", "tool_use_id": call_id, "content": "done"}
         emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for call_id, description in todo.get("launched", []):
+    asked = {"description": description, "prompt": "p", "run_in_background": "true", "subagent_type": "general-purpose"}
+    call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": asked}
+    emit({"type": "assistant", "message": {"id": f"msg_{call_id}", "content": [call]}, "session_id": session})
+    notice = f"Async agent launched successfully. The agent is working in the background. agentId: a{call_id[-6:]}"
+    answer = {"type": "tool_result", "tool_use_id": call_id, "content": [{"type": "text", "text": notice}]}
+    emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+if todo.get("launched"):
+    waiting = {"type": "text", "text": "The helpers are working in the background; I will wait for them."}
+    emit({"type": "assistant", "message": {"id": "msg_wait", "content": [waiting]}, "session_id": session})
 time.sleep(todo.get("sleep", 0))
 if todo.get("result", True):
     result = {

@@ -741,8 +741,13 @@ did not run under `ended_early`, and no later repeat starts.
   (`Task` in older releases), with no result when the session's
   `result` event arrives. The session ended while work it asked for was
   not done, whatever its result says, so the phase ends as
-  `incomplete`, not `ok`. Its record names each such call, its id and
-  what it was asked, under `pending_agents`. The phases after it would
+  `incomplete`, not `ok`. A call that starts its subagent in the
+  background, by its `run_in_background` or by a result that is the
+  launch notice ("Async agent launched ..."), stays pending to the end
+  of the session: the notice answers the call, not the subagent. With
+  background tasks off, such a launch means the setting did not hold.
+  Its record names each such call, its id and what it was asked, under
+  `pending_agents`. The phases after it would
   build on work the session never finished. A phase that hit a bound
   ends `capped`, pending calls or not.
 
