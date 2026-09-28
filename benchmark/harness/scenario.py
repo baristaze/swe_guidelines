@@ -24,6 +24,11 @@ when its flag, `--repeat` or `--max-spend-usd`, is not given, and a flag
 overrides it. A scenario that names neither runs 3 repeats with no run
 cap.
 
+A scenario can name what `run.py --preflight` checks its runtime has,
+beyond what every run needs: `preflight.registries`, the URLs its
+subject reaches, and `preflight.disk_gib` and `preflight.memory_gib`,
+the free disk and the available memory it needs where it runs.
+
 A skill subject is bounded by count and by spend: a turn cap and a cap in
 US dollars, `max_usd`, which every skill subject names. A skill subject
 can also run in `phases`, each a session of its own with its own prompt
@@ -77,6 +82,9 @@ REFERENCE_KEYS = ("name", "weight", "paths", "repository", "tag")
 # A public repository by its https URL: a host, a path, and no credentials, query, or fragment.
 REPOSITORY = re.compile(r"https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~-]+)+/?")
 TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+-]*")
+# A URL the subject reaches, as the preflight asks it: https, a host, and a path, with no credentials, query, or fragment.
+URL = re.compile(r"https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?")
+PREFLIGHT_KEYS = ("registries", "disk_gib", "memory_gib")
 
 
 class ScenarioError(ValueError):
@@ -169,6 +177,23 @@ class EvidenceSpec:
 
 
 @dataclass(frozen=True)
+class PreflightSpec:
+    """What `run.py --preflight` checks the runtime has for this scenario, beyond what every run needs.
+
+    `registries` are URLs the subject reaches, each of which must answer
+    from where it runs. `disk_gib` and `memory_gib` are the free disk and
+    the available memory it needs there.
+    """
+
+    registries: list[str] = field(default_factory=list)
+    disk_gib: float | None = None
+    memory_gib: float | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"registries": list(self.registries), "disk_gib": self.disk_gib, "memory_gib": self.memory_gib}
+
+
+@dataclass(frozen=True)
 class Reference:
     """What an agentic judge reads besides the subject's output, and how much its score weighs.
 
@@ -235,6 +260,7 @@ class Scenario:
     # The repeats and the run's spend cap a run takes when no flag names them; None when the scenario names none.
     repeat: int | None = None
     max_spend_usd: float | None = None
+    preflight: PreflightSpec = field(default_factory=PreflightSpec)
     path: Path | None = None
 
     def resolve(self, value: str | None) -> Path | None:
@@ -275,6 +301,7 @@ class Scenario:
             "requires": list(self.requires),
             "repeat": self.repeat,
             "max_spend_usd": self.max_spend_usd,
+            "preflight": self.preflight.as_dict(),
             "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
             "path": str(self.path) if self.path else None,
         }
@@ -317,6 +344,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     runtimes, requires = _runtimes(data, name)
     repeat = None if data.get("repeat") is None else _whole(data["repeat"], f"scenario {name}: repeat")
     max_spend_usd = _usd(data.get("max_spend_usd"), f"scenario {name}: max_spend_usd")
+    preflight = _preflight(data.get("preflight"), f"scenario {name}: preflight")
 
     raw_subject = data.get("subject") or {}
     if not isinstance(raw_subject, dict):
@@ -395,6 +423,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         requires=requires,
         repeat=repeat,
         max_spend_usd=max_spend_usd,
+        preflight=preflight,
         path=path,
     )
 
@@ -410,6 +439,7 @@ SCENARIO_KEYS = (
     "requires",
     "repeat",
     "max_spend_usd",
+    "preflight",
     "evidence",
 )
 SUBJECT_KEYS = (
@@ -532,6 +562,26 @@ def _reference(item: dict[str, Any], name: str, weight: float, at: str) -> Refer
     return Reference(name=name, weight=weight, repository=url, tag=tag)
 
 
+def _preflight(raw: Any, where: str) -> PreflightSpec:
+    """What the preflight checks for the scenario: the URLs its subject reaches, and the disk and memory it needs."""
+    if raw is None:
+        return PreflightSpec()
+    if not isinstance(raw, dict):
+        raise ScenarioError(f"{where} holds a mapping")
+    _only(raw, PREFLIGHT_KEYS, where)
+    registries = _strings(raw.get("registries"), f"{where}.registries")
+    for url in registries:
+        if not URL.fullmatch(url):
+            raise ScenarioError(
+                f"{where}.registries: an https URL with no credentials, such as https://pypi.org/simple/, got {url!r}"
+            )
+    return PreflightSpec(
+        registries=registries,
+        disk_gib=_amount(raw.get("disk_gib"), f"{where}.disk_gib", "an amount of GiB above 0"),
+        memory_gib=_amount(raw.get("memory_gib"), f"{where}.memory_gib", "an amount of GiB above 0"),
+    )
+
+
 def _whole(value: Any, where: str, least: int = 1) -> int:
     """A whole number of at least `least`, or a ScenarioError that says where."""
     if isinstance(value, bool) or not isinstance(value, int) or value < least:
@@ -541,10 +591,15 @@ def _whole(value: Any, where: str, least: int = 1) -> int:
 
 def _usd(value: Any, where: str) -> float | None:
     """A cap in US dollars, above zero; None when the scenario names none."""
+    return _amount(value, where, "an amount in US dollars above 0")
+
+
+def _amount(value: Any, where: str, what: str) -> float | None:
+    """A number above zero, which `what` describes when it is refused; None when the scenario names none."""
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0 or value == float("inf"):
-        raise ScenarioError(f"{where}: an amount in US dollars above 0, got {value!r}")
+        raise ScenarioError(f"{where}: {what}, got {value!r}")
     return float(value)
 
 

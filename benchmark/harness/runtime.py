@@ -386,8 +386,11 @@ class BaseRuntime:
             stopped=stopped,
         )
 
-    def probe_command(self, argv: list[str]) -> list[str]:
-        """The command a probe runs on this machine. The host runs it as it is."""
+    def probe_command(self, argv: list[str], network: bool = False) -> list[str]:
+        """The command a probe runs on this machine. The host runs it as it is, with this machine's network.
+
+        `network` asks for the network where a probe has none by default: in a container.
+        """
         return list(argv)
 
     def probe(self, argv: list[str], timeout_s: int = 120) -> str | None:
@@ -616,9 +619,9 @@ class ContainerRuntime(BaseRuntime):
         """Docker carries the keys by name, so the local environment holds them."""
         return dict(env)
 
-    def probe_command(self, argv: list[str]) -> list[str]:
-        """A probe runs in a container of the same image, with no mount, no key, and no network."""
-        return [self.docker, "run", "--rm", "--network", "none", self.image, *argv]
+    def probe_command(self, argv: list[str], network: bool = False) -> list[str]:
+        """A probe runs in a container of the same image, with no mount, no key, and no network unless it asks for one."""
+        return [self.docker, "run", "--rm", *([] if network else ["--network", "none"]), self.image, *argv]
 
     def image_version(self) -> dict | None:
         """The image's name and the id the engine gives it; the id is None when the engine does not answer.
@@ -805,8 +808,8 @@ class VmRuntime(BaseRuntime):
             raise ValueError("the vm runtime needs exec_prefix in its runtime config")
         super().stage()
 
-    def probe_command(self, argv: list[str]) -> list[str]:
-        """A probe runs on the other machine, through the prefix, outside any workspace."""
+    def probe_command(self, argv: list[str], network: bool = False) -> list[str]:
+        """A probe runs on the other machine, through the prefix, outside any workspace, with that machine's network."""
         return [*self.vm.exec_prefix, *argv]
 
     def plugin_path(self) -> str | None:

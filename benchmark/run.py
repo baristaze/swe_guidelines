@@ -16,12 +16,16 @@
 """Run one scenario and have the frontier models judge what came out.
 
     uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build
+    uv run benchmark/run.py --scenario explain-tenancy --max-spend-usd 10 --build --preflight
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
 resolved scenario, the streams as they were written, the artifact, one
 file per judgement, and an agentic judge's transcript beside it,
 `results.json` in the schema, and `report.md`.
+
+`--preflight` resolves the run as `--dry-run` does, then checks what it
+needs, where it runs, before it spends anything (`harness/preflight.py`).
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ from harness import archive as A  # noqa: E402
 from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
 from harness import phases as PH  # noqa: E402
+from harness import preflight as PF  # noqa: E402
 from harness import providers as P  # noqa: E402
 from harness import redact as X  # noqa: E402
 from harness import references as RF  # noqa: E402
@@ -72,6 +77,9 @@ VERSIONED = (*RT.PLUGIN_PAYLOAD, "benchmark", ":(exclude)benchmark/runs")
 # was made or spent, and the benchmark workflow reads it as a scenario to
 # skip, not one that failed.
 NOT_LISTED = 7
+# The exit status of a preflight that failed a check. Nothing was run and
+# no paid endpoint was called.
+PREFLIGHT_FAILED = 8
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -886,7 +894,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="once the run has spent this many US dollars, subject and judges, it starts no further repeat or phase; "
         "the scenario's max_spend_usd when not given",
     )
-    parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
+    resolve_only = parser.add_mutually_exclusive_group()
+    resolve_only.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
+    resolve_only.add_argument(
+        "--preflight",
+        action="store_true",
+        help="resolve as --dry-run does, then check what the run needs and stop at the first failure; call no paid endpoint",
+    )
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
     parser.add_argument(
         "--build", action="store_true", help="build the container image before running, for a skill or command subject"
@@ -999,9 +1013,61 @@ def main(argv: list[str] | None = None) -> int:
     # repository's CLAUDE.md is in its reach.
     rt = RT.build(runtime, run_dir, target, config, plugin=ROOT if scn.kind != "qa" else None, sandbox=RT.new_sandbox())
     try:
-        return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
+        # A run that can spend holds this machine awake until it ends; one that only resolves or checks does not.
+        with PF.held_awake(not (args.dry_run or args.preflight)) as note:
+            if note:
+                print(note, file=sys.stderr)
+            return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
     finally:
         rt.teardown()
+
+
+def preflight(
+    args: argparse.Namespace,
+    scn: S.Scenario,
+    rt: RT.BaseRuntime,
+    run_dir: Path,
+    resolved: dict[str, Any],
+    staged: RF.Staged,
+    stage_error: str | None,
+    flags: P.Provider,
+) -> int:
+    """Check what the run needs, in order, up to the first failure; 0 when every check passed, else PREFLIGHT_FAILED.
+
+    Every check that ran goes into `run.json` under `preflight`, with the
+    names of those that did not run. Nothing runs a subject or asks a
+    judge, and the keys are checked against the providers' model lists,
+    which cost nothing.
+    """
+    ctx = PF.Context(
+        scenario=scn,
+        runtime=rt,
+        sessions=phases_of(scn) if scn.kind == "skill" else [],
+        max_spend_usd=args.max_spend_usd,
+        providers=flags,
+        claude=args.claude,
+        build=args.build,
+        release=V.plugin_version(ROOT),
+        checkout=resolved["versions"]["checkout"],
+        references=staged.versions,
+        stage_error=stage_error,
+        run_dir=run_dir,
+    )
+    print(f"preflight of {scn.name} on the {rt.name} runtime:")
+    record = PF.run(ctx)
+    resolved["preflight"] = record
+    (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
+    if record["passed"]:
+        skipped = sum(1 for c in record["checks"] if c["status"] == PF.SKIP)
+        passed = len(record["checks"]) - skipped
+        print(f"preflight passed: {passed} checks passed and {skipped} did not apply; ", end="")
+        print("nothing was run and no paid endpoint was called")
+        return 0
+    left = f"; not run: {', '.join(record['not_run'])}" if record["not_run"] else ""
+    sys.stdout.flush()  # the checks first, then why the run may not start
+    print(f"preflight failed at {record['failed']}{left}", file=sys.stderr)
+    print("nothing was run and no paid endpoint was called", file=sys.stderr)
+    return PREFLIGHT_FAILED
 
 
 def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix) -> int:
@@ -1012,15 +1078,23 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         rt.stage()
         argv_subject = subject_argv(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
         planned = planned_phases(scn, plugin_name(ROOT), rt.plugin_path(), rt.target_path(), args.claude, model)
-        # The agentic judges' references, staged in the sandbox: a path the
-        # checkout does not hold, or a tag that cannot be fetched, is refused
-        # here too. Fetching a public repository spends nothing, so a dry run does it.
-        staged = RF.Staged()
-        if scn.judges.agentic:
-            staged = RF.stage(scn.judges.references, ROOT, rt.sandbox / "references", V.plugin_version(ROOT))
-    except (S.ScenarioError, ValueError, RF.StageError) as exc:
+    except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 2
+    # The agentic judges' references, staged in the sandbox: a path the
+    # checkout does not hold, or a tag that cannot be fetched, is refused
+    # here too. Fetching a public repository spends nothing, so a dry run
+    # does it. A preflight records the refusal as its failed check instead.
+    staged = RF.Staged()
+    stage_error: str | None = None
+    if scn.judges.agentic:
+        try:
+            staged = RF.stage(scn.judges.references, ROOT, rt.sandbox / "references", V.plugin_version(ROOT))
+        except RF.StageError as exc:
+            if not args.preflight:
+                print(exc, file=sys.stderr)
+                return 2
+            stage_error = str(exc)
 
     # The evidence the judges get. The source is read from the target as
     # the runtime staged it, the copy the subject reads, so the judges and
@@ -1079,6 +1153,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(json.dumps(resolved, indent=2))
         print("dry run: nothing was executed and no provider was called")
         return 0
+    if args.preflight:
+        return preflight(args, scn, rt, run_dir, resolved, staged, stage_error, flags)
 
     missing = [P.name(p) for p in P.members(flags) if not P.available(p)]
     if missing and args.strict:

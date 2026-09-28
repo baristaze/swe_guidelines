@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1295,3 +1296,133 @@ def test_a_judge_that_submits_on_its_last_turn_at_its_input_tokens_is_scored(tmp
     assert judged["status"] == "ok" and judged["judged"]["score"] == 68.5  # 0.25 * 64 + 0.75 * 70
     assert judged["judged"]["tool_calls"] == 1 and judged["judged"]["turns"] == 3
     assert results["summary"]["per_provider"]["anthropic"]["mean"] == 68.5
+
+
+# The preflight ------------------------------------------------------------
+
+CLEAN = {"commit": "c" * 40, "plugin_version": "0.37.0", "dirty": False, "dirty_paths": [], "dirty_sha256": None}
+
+
+@pytest.fixture
+def preflight_host(tmp_path, monkeypatch):
+    """A host that has what a skill run needs, as fakes: the model lists, a clean checkout, Claude Code, and curl.
+
+    It returns the argv a preflight starts with, and what ran: no subject and no judge may.
+    """
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.PF, "http_status", lambda url, headers, timeout_s=20: 200)
+    monkeypatch.setattr(run.PF, "system", lambda: "linux")
+    monkeypatch.setattr(run.V, "checkout", lambda root, scope: dict(CLEAN))
+    monkeypatch.setenv("SUBJECT_ANTHROPIC_API_KEY", "subject-key-of-its-own")
+    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"):
+        monkeypatch.setenv(name, f"judge-{name.lower()}")
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    curl = folder / "curl"
+    curl.write_text("#!/bin/sh\nprintf 200\n", encoding="utf-8")
+    curl.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}:/usr/bin:/bin")
+    ran: list[str] = []
+    monkeypatch.setattr(run.RT.BaseRuntime, "run", lambda *args, **kwargs: ran.append("subject"))
+
+    def judged(*args, **kwargs) -> list:
+        ran.append("judged")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judged)
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(dict(SKILL, max_spend_usd=5)), encoding="utf-8")
+    claude = fake_claude(tmp_path, "2.1.283 (Claude Code)")
+    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--claude", claude, "--preflight"]
+    return argv, ran
+
+
+def preflight_of(tmp_path) -> dict:
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    return json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["preflight"]
+
+
+def test_a_preflight_that_passes_records_every_check_and_runs_nothing(tmp_path, preflight_host, capsys):
+    argv, ran = preflight_host
+    assert run.main(argv) == 0
+    record = preflight_of(tmp_path)
+    assert record["passed"] is True and record["failed"] is None and record["not_run"] == []
+    assert [c["name"] for c in record["checks"]] == [name for name, _ in run.PF.CHECKS]
+    assert ran == []  # no subject, no judge
+    out = capsys.readouterr().out
+    assert "preflight passed: 8 checks passed and 4 did not apply; nothing was run and no paid endpoint was called" in out
+
+
+def test_a_preflight_stops_at_its_first_failure_and_exits_8(tmp_path, preflight_host, monkeypatch, capsys):
+    argv, ran = preflight_host
+    monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY")
+    assert run.main(argv) == run.PREFLIGHT_FAILED == 8
+    record = preflight_of(tmp_path)
+    assert record["passed"] is False and record["failed"] == "subject_key"
+    assert record["checks"][-1]["fix"].startswith("set SUBJECT_ANTHROPIC_API_KEY")
+    assert record["not_run"] == ["judge_keys", "runtime", "workspace", "tools", "resources", "network", "requires"]
+    assert "preflight failed at subject_key; not run: judge_keys, runtime" in capsys.readouterr().err
+    assert ran == []
+
+
+def test_a_preflight_reads_the_dirty_checkout_the_run_records(tmp_path, preflight_host, monkeypatch):
+    argv, _ = preflight_host
+    dirty = dict(CLEAN, dirty=True, dirty_paths=["skills/arch-review-om/SKILL.md"])
+    monkeypatch.setattr(run.V, "checkout", lambda root, scope: dict(dirty))
+    assert run.main(argv) == run.PREFLIGHT_FAILED
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["preflight"]["failed"] == "checkout"
+    assert resolved["preflight"]["checks"][-1]["facts"]["dirty_paths"] == resolved["versions"]["checkout"]["dirty_paths"]
+
+
+def test_a_preflight_records_a_reference_it_cannot_stage_as_its_failed_check(tmp_path, preflight_host):
+    argv, _ = preflight_host
+    scenario = dict(agentic_scenario(["true"]), max_spend_usd=5)
+    scenario["judges"]["references"][0]["paths"] = ["no-such-folder"]
+    path = tmp_path / "agentic.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    argv[argv.index("--scenario") + 1] = str(path)
+    assert run.main(argv) == run.PREFLIGHT_FAILED  # a run stops at exit 2 with the same words
+    record = preflight_of(tmp_path)
+    assert record["failed"] == "references"
+    assert "the checkout holds no file or folder 'no-such-folder'" in record["checks"][-1]["detail"]
+
+
+def test_a_preflight_is_not_a_dry_run(tmp_path, preflight_host):
+    argv, _ = preflight_host
+    with pytest.raises(SystemExit) as exited:
+        run.main([*argv, "--dry-run"])
+    assert exited.value.code == 2
+
+
+def test_a_run_that_spends_holds_this_machine_awake_and_a_dry_run_does_not(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
+    log = tmp_path / "caffeinate.log"
+    caffeinate = tmp_path / "caffeinate"
+    caffeinate.write_text(
+        f"#!{sys.executable}\nimport sys, time\nopen({str(log)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\ntime.sleep(60)\n",
+        encoding="utf-8",
+    )
+    caffeinate.chmod(0o755)
+    monkeypatch.setattr(run.PF, "system", lambda: "darwin")
+    monkeypatch.setattr(run.PF.shutil, "which", lambda name: str(caffeinate) if name == "caffeinate" else None)
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    base = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]
+    assert run.main([*base, "--dry-run"]) == 0
+    assert not log.exists()
+    claude = fake_claude(tmp_path, "2.1.283 (Claude Code)")
+
+    def slow_claude(*args, **kwargs):
+        # The subject runs while caffeinate holds the machine: wait for it to say so.
+        for _ in range(100):
+            if log.exists():
+                break
+            time.sleep(0.05)
+        return run.RT.ExitStatus(code=0)
+
+    monkeypatch.setattr(run.RT.BaseRuntime, "run", slow_claude)
+    run.main([*base, "--claude", claude, "--subject-model", "claude-opus-5"])
+    assert log.read_text(encoding="utf-8") == f"-i -s -w {os.getpid()}\n"

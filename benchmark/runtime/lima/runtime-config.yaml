@@ -23,9 +23,24 @@
 # changed, removed, or added fails it. It catches a change made by
 # accident or in passing. It cannot stop a subject with sudo that means
 # to get around it: such a subject can rewrite the saved listing too.
+#
+# `tools` is what `run.py --preflight` asks the machine, each with the
+# version `benchmark.yaml` pins, so a machine made from another template
+# is caught before a run spends anything. make and git come from
+# Ubuntu's archive at no pin of ours, so only their answer is checked.
 exec_prefix: [limactl, shell, --workdir, /, swe-benchmark, --]
 copy: [limactl, copy, --backend, rsync, -r, "{local}", "swe-benchmark:{remote}"]
 fetch: [limactl, copy, --backend, rsync, -r, "swe-benchmark:{remote}", "{local}"]
 remote_workspace: /var/tmp/swe-benchmark
 prefix_env: [HOME, LIMA_HOME]
 check: [sh, -c, "sudo -n nft list table inet swe_benchmark | cmp -s - /etc/swe-benchmark-firewall.nft"]
+tools:
+  - {argv: [claude, --version], version: 2.1.283}
+  - {argv: [uv, --version], version: 0.12.17}
+  - {argv: [node, --version], version: "24"}
+  - {argv: [pnpm, --version], version: 12.6.0}
+  - {argv: [terraform, version], version: 1.16.4}
+  - {argv: [docker, version, --format, "{{.Server.Version}}"], version: 29.8.1}
+  - {argv: [docker, compose, version], version: 5.5.1}
+  - {argv: [make, --version]}
+  - {argv: [git, --version]}

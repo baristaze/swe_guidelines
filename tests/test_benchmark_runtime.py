@@ -848,6 +848,9 @@ def test_each_runtime_probes_where_its_subject_runs(tmp_path):
     assert container.probe_command(["claude", "--version"]) == [
         "docker", "run", "--rm", "--network", "none", "img:1", "claude", "--version",
     ]  # fmt: skip
+    # A probe that asks for the network gets it in a container; elsewhere it has it anyway.
+    assert container.probe_command(["curl", "-sS"], network=True) == ["docker", "run", "--rm", "img:1", "curl", "-sS"]
+    assert host.probe_command(["curl"], network=True) == ["curl"]
     vm = RT.build("vm", tmp_path / "v", config={"exec_prefix": ["limactl", "shell", "default", "--"]})
     assert vm.probe_command(["claude", "--version"]) == ["limactl", "shell", "default", "--", "claude", "--version"]
 

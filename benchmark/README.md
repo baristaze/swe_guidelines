@@ -39,6 +39,7 @@ image first (see Where a scenario runs).
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. The scenario's `max_spend_usd` when not given, else no cap |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
+| `--preflight` | resolve as `--dry-run` does, then check what the run needs where it runs, and stop at the first failure; exit 8 when a check fails. No paid endpoint is called (see Preflight) |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
@@ -287,7 +288,8 @@ A run takes the other machine alone. A lock, the folder
 `<remote_workspace>/.lock`, names the run that holds it. A second run
 there fails every repeat with a note until the first gives the machine
 back at its end. A harness that dies before its end leaves the lock;
-remove the folder once no run is using the machine.
+remove the folder once no run is using the machine. A preflight finds
+it (see Preflight).
 
 Each run gets a folder of its own there, under `remote_workspace`,
 named after the run folder. It is made with mode 0700, so no other
@@ -330,6 +332,7 @@ The runtime config names the commands that reach it:
 | `prefix_env` | optional; the names the prefix takes from this machine's environment besides `PATH` and the subject's own; `HOME` by default |
 | `helper_timeout_s` | optional; how long a command other than the subject may take; 600 seconds by default |
 | `check` | optional; a command run there before every repeat; a repeat whose check fails runs no subject |
+| `tools` | optional; what `--preflight` asks there, each `{argv, version}`: the command that prints a tool's version, and the version pinned, left out where none is |
 
 The prefix has to hand its words on as words, as `limactl shell` and
 `docker exec` do. `ssh` joins them into one remote shell line and needs
@@ -405,7 +408,10 @@ pins, and pnpm and Terraform at pins of their own. It carries make and
 git from Ubuntu's archive. A tree the scaffold skills make runs its
 gates, `make check` and `make test-integration`, with make, git, uv,
 Node, pnpm, and Docker Compose. The readiness probe runs each of them,
-so a machine that lacks one never reports ready. uv runs the Python the
+so a machine that lacks one never reports ready. `runtime-config.yaml`
+lists them under `tools`, each at the version the template pins, and a
+preflight asks each one. So a machine made from an older template,
+whose probe asked for less, is caught before a run starts. uv runs the Python the
 tree names: Ubuntu's own when its release matches, else one uv fetches.
 
 Nothing of this machine is in it. It runs in Lima's plain mode, which
@@ -465,7 +471,10 @@ against the guideline and against the guideline's reference
 implementation (see Agentic judges). It runs once, and its run's spend
 cap is $190, the sum of its phases' caps. The scenario says both, with
 `repeat: 1` and `max_spend_usd: 190`, so a run of it passes neither
-flag:
+flag. Run it with `--preflight` first. The preflight checks, among the
+rest, that the machine is up and carries its tools at their pins, that
+it reaches the registries a scaffolded tree installs from, and that it
+has 40 GiB of disk and 16 GiB of memory free (see Preflight):
 
 ```bash
 uv run benchmark/run.py --scenario create-full-system \
@@ -481,6 +490,10 @@ runtimes: [container]       # required: where it may run; a run takes the first
 requires: []                # what the runtime must provide: docker
 repeat: 3                   # optional; how many times a run repeats the subject, 3 by default
 max_spend_usd: null         # optional; the run's spend cap in US dollars, none by default
+preflight:                  # optional; what --preflight checks beyond what every run needs
+  registries: []            # https URLs the subject reaches, each answering from where it runs
+  disk_gib: null            # the free disk it needs there
+  memory_gib: null          # the available memory it needs there
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
@@ -531,6 +544,13 @@ given, and a flag overrides it. A scenario that names neither runs 3
 repeats with no run cap. `run.py list` prints each one a scenario names.
 A value outside those bounds is refused when the scenario loads, so no
 run of it starts.
+
+A scenario can also say what `--preflight` checks for it, beyond what
+every run needs, under `preflight`. `registries` are the https URLs its
+subject reaches, each of which must answer from where it runs. A URL
+with credentials in it is refused. `disk_gib` and `memory_gib` are the
+free disk and the available memory it needs there, in GiB (see
+Preflight).
 
 An unknown key in a scenario file is refused rather than ignored: a
 misspelled key is a scenario that silently measures something else.
@@ -944,6 +964,61 @@ cost, the subject's, and `total_usd`. `report.md` shows the same in its
 Spend section. A model with no price keeps its tokens, and is named
 under `unpriced`. Its cost is in no figure, so a total with anything
 unpriced is a lower bound. No price is invented for it.
+
+## Preflight
+
+A run that dies an hour in, on a missing tool, a key that expired, or a
+laptop that went to sleep, has wasted what it spent before. A dry run
+only resolves the run. `--preflight` resolves it the same way, then
+checks what the run needs where it runs, before it spends anything:
+
+```bash
+uv run benchmark/run.py --scenario create-full-system \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml --preflight
+```
+
+It runs the checks in the order below and stops at the first that
+fails. The failed check says what is wrong and how to fix it, and the
+preflight exits 8. One that passes exits 0. It calls no paid endpoint:
+no subject runs, no judge is asked, and each key is checked against its
+provider's model list, which costs nothing. It takes the flags the run
+will take, so it checks that run.
+
+| Check | What passes |
+|-------|-------------|
+| `budgets` | the run has its spend cap, the flag's or the scenario's. Every session of a skill subject has its turn cap, its spend cap, and its timeout, and each phase its gate-rerun cap. A session with no spend bound fails |
+| `checkout` | the checkout holds no change a commit does not, in what decides a score: the `dirty` of `versions.checkout` is false. A run from a dirty checkout is never checked in (see Versions) |
+| `references` | every reference of agentic judges was staged, and every repository reference, fetched at its tag, pins this checkout's release. A reference that a run refuses with exit 2 fails this check instead |
+| `awake` | on macOS, `caffeinate` is on the path, and the machine draws AC power |
+| `subject_key` | `SUBJECT_ANTHROPIC_API_KEY` is set, is no judge's key, and Anthropic's model list takes it. For a `qa` subject, its provider's key |
+| `judge_keys` | every judge the run selects has a key, and its provider's model list takes it |
+| `runtime` | on `vm`, the machine answers through `exec_prefix`, and the config's `check` passes there. On `container`, the engine answers and the image is there; with `--build`, the preflight builds it first. On `host`, always |
+| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read |
+| `tools` | every tool the runtime config lists under `tools` answers where the subject runs, at its pinned version, and a skill's Claude Code answers. A container run whose config lists none asks the three its Dockerfile pins |
+| `resources` | the free disk and the available memory where the subject works are at least the scenario's `preflight.disk_gib` and `preflight.memory_gib` |
+| `network` | the model API, for a skill, and every URL under the scenario's `preflight.registries`, answer from where the subject runs, whatever the status |
+| `requires` | for `docker`, a Compose stack of one small service starts, turns healthy within 120 seconds, and stops |
+
+A check that does not apply to the run is a `skip`, and says why: the
+`awake` check off macOS, the `workspace` check off `vm`, and the
+runtime checks of a `qa` subject, which runs no command.
+
+`run.json` records every check that ran under `preflight`: its name,
+its status, what it found, the fix when it failed, and the facts it
+read, such as each tool's answer and each URL's status. It names the
+checks that did not run too. A key is recorded by the name of its
+variable, never by its value. Like a dry run, a preflight leaves a run
+folder that holds `run.json` alone, and `make runs` fails on it under
+`benchmark/runs/`. Remove it, or pass `--out` elsewhere.
+
+The Compose check pulls a small public image, `busybox`, and leaves it
+on the machine. No other check leaves anything there.
+
+A run that spends holds this machine awake until it ends. On macOS, the
+harness starts `caffeinate -i -s` for its own process, so the machine
+does not idle to sleep, nor sleep at all on AC power. A closed lid still
+sleeps a laptop. Elsewhere, keep the machine awake yourself. A dry run
+and a preflight hold nothing.
 
 ## Streams
 

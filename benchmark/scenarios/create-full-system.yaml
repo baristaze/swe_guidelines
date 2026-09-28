@@ -11,14 +11,31 @@ kind: skill
 #
 # It runs once, and its run's spend cap is $190, the sum of its phases'
 # caps. `repeat` and `max_spend_usd` below say both, so a run of it
-# passes neither flag:
+# passes neither flag. A preflight checks what the run needs first:
 #
+#     uv run benchmark/run.py --scenario create-full-system \
+#       --runtime-config benchmark/runtime/lima/runtime-config.yaml --preflight
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml
 runtimes: [vm]
 requires: [docker]
 repeat: 1
 max_spend_usd: 190
+# What `run.py --preflight` checks the machine has before a run spends
+# anything, beyond what every run needs: the registries a scaffolded tree
+# installs from, each answering from the machine, and room to build and
+# run it. The sizes are provisional, until a measured run replaces them.
+preflight:
+  registries:
+    - https://pypi.org/simple/
+    - https://files.pythonhosted.org/
+    - https://registry.npmjs.org/
+    - https://registry-1.docker.io/v2/
+    - https://github.com/
+    - https://registry.terraform.io/
+    - https://releases.hashicorp.com/
+  disk_gib: 40
+  memory_gib: 16
 subject:
   skill: arch-scaffold-new
   # The product spec is the target's one file. The two builder phases
