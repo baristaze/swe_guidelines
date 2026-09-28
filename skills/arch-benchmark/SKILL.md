@@ -126,10 +126,12 @@ never run the harness from there.
    every flag the same, with `--preflight` and
    `--out /tmp/benchmark-preflight` added, since its run folder is never
    checked in. It checks what the run needs where it runs, and calls no
-   paid endpoint (`benchmark/README.md`, "Preflight"). Exit 0 means every
-   check passed. Exit 8 means a check failed: then run nothing that
-   spends, and report the failed check, what it found, and the line the
-   console prints after `fix:`. When the prompt asks to stop before
+   paid endpoint (`benchmark/README.md`, "Preflight"). The run that
+   spends starts only when the preflight exits 0. Any other exit stops
+   there, with nothing spent, and is reported: exit 8, a failed check,
+   with what it found and the line the console prints after `fix:`; exit
+   2, a flag the harness refused or a config it could not read, with the
+   message it printed. When the prompt asks to stop before
    anything is spent, stop after the preflight, whatever it answered,
    and report it.
 
@@ -140,8 +142,10 @@ never run the harness from there.
    the output back, runs the gates, and has the judges answer on a stub
    budget, for at most $5 (`benchmark/README.md`, "Rehearsal"). It runs
    its own preflight first, so it needs no separate one. It spends, so
-   run it only when the prompt asks for a rehearsal, and then in place
-   of the long run, never before it.
+   run it only when the prompt asks for a rehearsal. A prompt that asks
+   for a rehearsal alone gets the rehearsal and no long run. A prompt
+   that asks for a rehearsal and then the run gets the rehearsal first,
+   and the long run only when the rehearsal ended `completed`.
 
    Then run the scenario, for example
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
@@ -216,7 +220,8 @@ prompt stopped at, the same for a preflight that passed: each check and
 what it found.
 
 After a rehearsal, exit 0, 6, or 9: how it ended (`completed`,
-`failed`, or `capped` by its spend cap) and where its money went, as
+`failed`, `capped` by its spend cap, or `incomplete`, with each step it
+names under `missing`) and where its money went, as
 the report's Rehearsal section says; how each phase ended; the
 checkpoints, the zip and its manifest, and the gates; and which judges
 answered and which did not, each with its reason. Its scores mean
