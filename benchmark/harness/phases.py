@@ -285,7 +285,8 @@ class Watch:
                         if gates and isinstance(block.get("id"), str):
                             self._pending[block["id"]] = gates
                     if block.get("type") == "tool_use" and block.get("name") in AGENT_TOOLS and isinstance(block.get("id"), str):
-                        asked = block.get("input") if isinstance(block.get("input"), dict) else {}
+                        given = block.get("input")
+                        asked: dict[str, Any] = given if isinstance(given, dict) else {}
                         self._agents[block["id"]] = str(asked.get("description") or asked.get("subagent_type") or "")
             elif event.get("type") == "user":
                 for block in _content(message):
