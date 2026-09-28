@@ -372,13 +372,9 @@ def test_an_answered_judgement_carries_its_cost():
 # The provider SDKs as fakes, so every call the harness makes is seen as it is sent.
 
 KEYS = {"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k", "GEMINI_API_KEY": "k", "XAI_API_KEY": "k"}
-# Where each provider's request carries the output cap, and its timeout in seconds.
-CAP: dict[str, Callable[[dict], Any]] = {
-    "anthropic": lambda r: r["max_tokens"],
-    "openai": lambda r: r["max_output_tokens"],
-    "gemini": lambda r: r["config"]["max_output_tokens"],
-    "xai": lambda r: r["max_completion_tokens"],
-}
+# Every field a provider reads a token limit from.
+LIMIT_FIELDS = ("max_tokens", "max_output_tokens", "max_completion_tokens")
+# Where each provider's request carries its timeout, in seconds.
 TIMEOUT: dict[str, Callable[[dict], Any]] = {
     "anthropic": lambda r: r["timeout"],
     "openai": lambda r: r["timeout"],
@@ -407,6 +403,12 @@ ANSWER = NS(
     usage=NS(input_tokens=1, output_tokens=2, prompt_tokens=1, completion_tokens=2),
     usage_metadata=NS(prompt_token_count=1, candidates_token_count=2),
 )
+
+
+def token_limit(request: dict) -> Any:
+    """The token limit a request is sent, in whichever field its provider reads, or None when it is sent none."""
+    fields = {**request, **(request.get("config") or {})}
+    return next((fields[k] for k in LIMIT_FIELDS if fields.get(k) is not None), None)
 
 
 def module(name: str, **attrs: Any) -> types.ModuleType:
@@ -473,12 +475,22 @@ class FakeSdks:
 
 
 @EVERY_PROVIDER
-def test_every_one_shot_judge_call_and_every_qa_answer_carries_the_output_cap(provider, monkeypatch):
+def test_no_one_shot_judge_call_or_qa_answer_is_sent_a_token_limit_below_what_the_model_can_write(provider, monkeypatch):
     sdks = FakeSdks(monkeypatch)
+    model = J.models_for(J.DEFAULT_MATRIX, P.name(provider))[0]
     judgement = J.judge_one(provider, "p", "high", J.DEFAULT_MATRIX, env=KEYS)
-    text, _ = J.ask(provider, "m", "p", "k", "high", timeout_s=600)
+    text, _ = J.ask(provider, model, "p", "k", "high", timeout_s=600)
     assert judgement.status == "ok" and text == "an answer"
-    assert [CAP[P.name(provider)](request) for _, request in sdks.requests] == [16_000, 16_000] == [J.MAX_OUTPUT_TOKENS] * 2
+    limits = [token_limit(request) for _, request in sdks.requests]
+    # Anthropic's API requires max_tokens, so it gets the model's own maximum; the other providers get none.
+    assert limits == ([128_000] * 2 if P.name(provider) == "anthropic" else [None] * 2)
+
+
+def test_an_anthropic_call_sends_the_models_own_maximum_output(monkeypatch):
+    sdks = FakeSdks(monkeypatch)
+    for model in ("claude-opus-5-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-haiku-4-5-20251001"):
+        J.ask(P.Provider.ANTHROPIC, model, "p", "k", timeout_s=600)
+    assert [token_limit(request) for _, request in sdks.requests] == [128_000, 128_000, 128_000, 64_000, 64_000]
 
 
 @EVERY_PROVIDER

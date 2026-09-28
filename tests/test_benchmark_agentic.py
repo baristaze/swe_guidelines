@@ -22,6 +22,7 @@ import pytest
 from harness import agentic as A
 from harness import judge as J
 from harness import providers as P
+from test_benchmark_judge import token_limit
 
 needs_jsonschema = pytest.mark.skipif(importlib.util.find_spec("jsonschema") is None, reason="jsonschema is not installed")
 
@@ -348,7 +349,7 @@ def test_each_provider_gets_the_five_tools_the_callers_schema_and_the_rules(prov
     assert 0 < sent_timeout(name, first) <= A.Budget().wall_s
     effort = J.effort_for(J.DEFAULT_MATRIX, name, "medium")
     if name == "anthropic":
-        assert first["output_config"] == {"effort": effort} and first["max_tokens"] == J.MAX_OUTPUT_TOKENS
+        assert first["output_config"] == {"effort": effort} and first["max_tokens"] == J.anthropic_max_tokens(first["model"])
     elif name == "openai":
         assert first["reasoning"] == {"effort": effort}
         assert all(t["strict"] is False for t in first["tools"])
@@ -795,25 +796,14 @@ def test_every_submission_missing_the_schema_is_an_error_never_an_answer(provide
     assert judgement.error == "malformed answer, 2 submissions: (answer): 'score' is a required property"
 
 
-def sent_output_cap(name: str, request: dict[str, Any]) -> int:
-    """The output cap a request carries, in its provider's own field."""
-    if name == "anthropic":
-        return request["max_tokens"]
-    if name == "openai":
-        return request["max_output_tokens"]
-    if name == "gemini":
-        return request["config"]["max_output_tokens"]
-    return request["max_completion_tokens"]
-
-
 @needs_jsonschema
 @pytest.mark.parametrize("provider", PROVIDERS, ids=NAMES)
-def test_every_call_on_every_provider_carries_the_output_cap(provider, roots, tmp_path):
+def test_no_call_is_sent_a_token_limit_below_what_the_model_can_write(provider, roots, tmp_path):
     name = P.name(provider)
     _, fake, _ = run(provider, READS, roots, tmp_path)
-    assert [sent_output_cap(name, r) for r in fake.requests] == [J.MAX_OUTPUT_TOKENS] * 3 == [A.Budget().max_output_tokens] * 3
-    _, fake, _ = run(provider, READS, roots, tmp_path, budget=A.Budget(max_output_tokens=1234))
-    assert [sent_output_cap(name, r) for r in fake.requests] == [1234] * 3
+    limits = [token_limit(r) for r in fake.requests]
+    # Anthropic's API requires max_tokens, so it gets the model's own maximum; the other providers get none.
+    assert limits == ([128_000] * 3 if name == "anthropic" else [None] * 3)
 
 
 @needs_jsonschema
