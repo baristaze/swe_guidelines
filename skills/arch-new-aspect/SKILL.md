@@ -143,8 +143,9 @@ for the aspect in one message and stop.
    snippet with the same pattern, a second place that mentions the
    same noun without the link, a second table that lists what the
    first one lists. Fix them in the same change.
-7. Run `make check` and fix what it reports. Report a pre-existing
-   failure and stop rather than editing unrelated files.
+7. Run `make check` and fix what it reports: the first run plus at
+   most 3 reruns, then stop and say which gate fails and why. Report a
+   pre-existing failure and stop rather than editing unrelated files.
 
 Never commit. Never edit a file outside the checkout. Never add a rule
 the aspect does not state.

@@ -7,7 +7,7 @@ line each: its SHA-256, its size in bytes, and its path, in path order.
 So the outputs of two runs diff as text. `results.json` records the
 zip's own SHA-256, its size, and how many files it holds.
 
-A zip is redacted member by member (`redact.redact_zip`), because a key
+A zip is redacted member by member (`redact.redact_blob`), because a key
 inside a compressed member is not in the zip's bytes as it was written.
 The harness redacts the zip before it takes the hash and the manifest.
 When `run.py redact` rewrites a zip later, `refresh` writes its manifest
@@ -36,8 +36,22 @@ def digest(path: Path) -> str:
     return sha.hexdigest()
 
 
+def readable(path: Path) -> bool:
+    """Whether a file opens as a zip; one redaction replaced does not."""
+    try:
+        with zipfile.ZipFile(path):
+            return True
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
 def manifest_text(path: Path) -> str:
-    """One line per file of the zip, in path order: its SHA-256, its size in bytes, and its path."""
+    """One line per file of the zip, in path order: its SHA-256, its size in bytes, and its path.
+
+    A zip that does not open has no line.
+    """
+    if not readable(path):
+        return ""
     lines = []
     with zipfile.ZipFile(path) as zf:
         for info in sorted(zf.infolist(), key=lambda i: i.filename):
@@ -55,10 +69,15 @@ def write_manifest(path: Path) -> Path:
 
 
 def record(path: Path, run_dir: Path) -> dict[str, Any]:
-    """What `results.json` records of a zip: its path and its manifest's in the run folder, its hash, its size, its files."""
+    """What `results.json` records of a zip: its path and its manifest's in the run folder, its hash, its size, its files.
+
+    A zip that does not open holds no file the record can name.
+    """
     path = Path(path)
-    with zipfile.ZipFile(path) as zf:
-        files = sum(1 for info in zf.infolist() if not info.is_dir())
+    files = 0
+    if readable(path):
+        with zipfile.ZipFile(path) as zf:
+            files = sum(1 for info in zf.infolist() if not info.is_dir())
     return {
         "path": path.relative_to(run_dir).as_posix(),
         "manifest": path.with_name(MANIFEST).relative_to(run_dir).as_posix(),
@@ -75,10 +94,9 @@ def refresh(path: Path) -> None:
     any more: its manifest is emptied, and its record says it holds no file.
     """
     path = Path(path)
-    readable = zipfile.is_zipfile(path)
     manifest = path.with_name(MANIFEST)
     if manifest.is_file():
-        manifest.write_text(manifest_text(path) if readable else "", encoding="utf-8")
+        write_manifest(path)
     for folder in path.parents:
         results = folder / "results.json"
         if not results.is_file():
@@ -90,7 +108,7 @@ def refresh(path: Path) -> None:
             archive = repeat.get("archive") if isinstance(repeat, dict) else None
             if isinstance(archive, dict) and archive.get("path") == rel:
                 archive.update(sha256=digest(path), bytes=path.stat().st_size)
-                if not readable:
+                if not readable(path):
                     archive["files"] = 0
                 changed = True
         if changed:

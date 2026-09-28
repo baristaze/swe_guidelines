@@ -150,9 +150,10 @@ def probe_versions(scn: S.Scenario, rt: RT.BaseRuntime, claude: str) -> tuple[di
     """What only the runtime can answer: its Claude Code and its image. Returns them and the notes they call for.
 
     Claude Code is asked inside the runtime, because a container or another
-    machine carries its own. Only a skill runs it.
+    machine carries its own. Only a skill runs it. The image is asked only
+    for a subject that runs a command: a qa subject never runs in it.
     """
-    found: dict = {"claude_code": None, "image": rt.image_version()}
+    found: dict = {"claude_code": None, "image": rt.image_version() if scn.kind != "qa" else None}
     notes: list[str] = []
     if scn.kind == "skill":
         found["claude_code"] = rt.probe([claude, "--version"])
@@ -362,9 +363,9 @@ def token_count(value: Any) -> int | None:
 
 
 def envelope_thinking(usage: Any, models: Any) -> int | None:
-    """The thinking tokens an envelope reports, or None when it reports none.
+    """The thinking tokens a session's result reports, or None when it reports none.
 
-    The envelope's usage names them under `output_tokens_details`; each
+    The result's usage names them under `output_tokens_details`; each
     model in `modelUsage` names its own as `thinkingTokens`, so the sum is
     the fallback when the first is absent.
     """
@@ -387,7 +388,7 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     cached or not, with the cached ones also named on their own.
     `output_tokens` already counts the thinking, and `reasoning_tokens`
     names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
-    `thinkingTokens` over `modelUsage`, and no key when the envelope reports
+    `thinkingTokens` over `modelUsage`, and no key when the result reports
     neither. Output with no result spent nothing the run can see: no
     tokens, cost None.
     """
@@ -484,13 +485,28 @@ def collect_files(rt: RT.BaseRuntime, files: list[Path], art_dir: Path, index: i
     return paths, parts
 
 
-def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | None) -> dict[str, Any]:
-    """Move the output's zip into the repeat's artifacts, redacted, with its manifest; return its record."""
+def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Move the output's zip into the repeat's artifacts, redacted, with its manifest; its record, and a note if it is not whole.
+
+    A zip redaction cannot read is replaced by a line that says so, and
+    its record says it holds no file. An error here never ends the run:
+    the results are written either way.
+    """
     kept = art_dir / A.ZIP
-    shutil.move(str(zip_file), str(kept))
-    X.redact_zip(kept, X.key_values())
-    A.write_manifest(kept)
-    return {**A.record(kept, run_dir), "commit": commit}
+    try:
+        shutil.move(str(zip_file), str(kept))
+        _, places = X.redact_file(kept, X.key_values())
+        A.write_manifest(kept)
+        record = {**A.record(kept, run_dir), "commit": commit}
+    except (*X.READ_ERRORS, MemoryError) as exc:
+        return None, f"the output's zip could not be kept: {type(exc).__name__}: {exc}"
+    unread = [p for p in places if "(not scanned:" in p]
+    if not A.readable(kept):
+        why = f" and was replaced by a line that says so: {unread[0]}" if unread else ""
+        return record, f"the output's zip does not open as a zip{why}; its record holds no file"
+    if unread:
+        return record, f"part of the output's zip could not be scanned for keys and was replaced: {', '.join(unread)}"
+    return record, None
 
 
 @dataclasses.dataclass
@@ -534,6 +550,8 @@ class SkillRepeat:
     commit: str | None = None
     gates: list[dict[str, Any]] | None = None
     notes: list[str] = dataclasses.field(default_factory=list)
+    # The phases the run's spend cap kept from running, when it cut the repeat short.
+    cut_short: list[str] | None = None
 
 
 def harness_run(
@@ -550,10 +568,16 @@ def harness_run(
     return status, [r["line"] for r in CliStream.read(harness.path)[mark:] if r.get("s") == "out"]
 
 
-def checkpoint(rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, message: str) -> tuple[str | None, str | None]:
-    """Commit every change in the output folder; the commit's id, or why there is none."""
-    harness.note(f"[checkpoint] {message}")
-    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, message])
+def checkpoint(
+    rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, number: int, label: str
+) -> tuple[str | None, str | None]:
+    """Commit the output folder's tree as the `number`th checkpoint; the commit's id, or why there is none.
+
+    The label goes to the harness's own stream only: the commit says
+    `checkpoint` and no more, so nothing in the repository names a phase.
+    """
+    harness.note(f"[checkpoint {number}] {label}")
+    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, str(number)])
     commit = next((line.strip() for line in reversed(out) if re.fullmatch(r"[0-9a-f]{40,64}", line.strip())), None)
     if status.ok and commit:
         return commit, None
@@ -591,9 +615,14 @@ def run_skill(
     running: dict[str, tuple[float, dict[str, int]]] = {}
     commit: str | None = None
     before: S.Phase | None = None
-    for number, phase in enumerate(phases_of(scn), start=1):
+    cut_short: list[str] | None = None
+    every = phases_of(scn)
+    for number, phase in enumerate(every, start=1):
         if plan.budget.reached():
-            notes.append(f"repeat {index}: {plan.budget.says()}; phase {phase.name} and after did not run")
+            cut_short = [p.name for p in every[number - 1 :]]
+            notes.append(
+                f"repeat {index}: {plan.budget.says()}; phase {phase.name} and after did not run, and the repeat is not judged"
+            )
             break
         home = phase.name if phase.session == "fresh" or before is None else homes[before.name]
         homes[phase.name] = home
@@ -673,7 +702,7 @@ def run_skill(
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
         if folder and harness is not None:
-            made, why = checkpoint(rt, harness, plan, folder, f"checkpoint {number}: {phase.name}, {outcome}")
+            made, why = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
             record["checkpoint"] = made
             commit = made or commit
             if why:
@@ -695,7 +724,7 @@ def run_skill(
         if commit is None:
             notes.append(f"repeat {index}: no commit of {folder} to archive, and no tree to run the gates on")
         else:
-            archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE])
+            archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE, commit])
             if not archived.ok:
                 notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
             gates = []
@@ -723,6 +752,7 @@ def run_skill(
         commit=commit,
         gates=gates,
         notes=notes,
+        cut_short=cut_short,
     )
 
 
@@ -851,7 +881,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dry-run", action="store_true", help="resolve everything, write run.json, call nothing")
     parser.add_argument("--strict", action="store_true", help="a provider without a key fails the run")
-    parser.add_argument("--build", action="store_true", help="build the container image before running")
+    parser.add_argument(
+        "--build", action="store_true", help="build the container image before running, for a skill or command subject"
+    )
     parser.add_argument(
         "--screencast-port", type=int, default=None, help="capture frames from a Chrome already listening on this port"
     )
@@ -883,12 +915,20 @@ def command_list(out: Path) -> int:
 
 
 def command_redact(out: Path) -> int:
-    """Redact every key value and every key-shaped string from the run folders, in place."""
-    found = X.redact_folder(out, X.key_values())
+    """Redact every key value and every key-shaped string from the run folders, in place.
+
+    A file that cannot be read or written is named, the rest are redacted
+    still, and the command exits 1, so nothing unredacted is shown or
+    uploaded after it.
+    """
+    failed: dict[Path, str] = {}
+    found = X.redact_folder(out, X.key_values(), failed)
     for path, count in found.items():
         print(f"redacted {count} key(s) in {path.relative_to(out)}")
     print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
-    return 0
+    for path, reason in failed.items():
+        print(f"could not redact {path.relative_to(out)}: {reason}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1115,7 +1155,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 if is_error:
                     status = dataclasses.replace(status, is_error=True)
             if scn.kind != "qa" and model and models and not any(m.startswith(model) for m in models):
-                notes.append(f"repeat {index}: the subject was pinned to {model}, and the envelope reports {', '.join(models)}")
+                notes.append(f"repeat {index}: the subject was pinned to {model}, and its result reports {', '.join(models)}")
             streams.note(f"[repeat {index}] exit {status.code}")
 
             art_dir = run_dir / "artifacts" / str(index)
@@ -1134,9 +1174,33 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             parts += file_parts
             archive = None
             if zip_file in found:
-                archive = keep_archive(zip_file, art_dir, run_dir, done.commit if done else None)
-                paths += [archive["path"], archive["manifest"]]
+                archive, kept_note = keep_archive(zip_file, art_dir, run_dir, done.commit if done else None)
+                if kept_note:
+                    notes.append(f"repeat {index}: {kept_note}")
+                if archive:
+                    paths += [archive["path"], archive["manifest"]]
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
+
+            if done is not None and done.cut_short:
+                # The run's spend cap kept phases from running. The output is
+                # not the one the scenario measures, and a judge would spend
+                # past the cap, so the repeat is kept and not judged.
+                print(f"  repeat {index} cut short by the run's spend cap; not judged")
+                run.repeats.append(
+                    R.RepeatResult(
+                        index=index,
+                        exit_status=status.as_dict(),
+                        artifact_paths=paths,
+                        subject_models=models,
+                        subject_usage=subject_usage,
+                        subject_cost_usd=subject_cost,
+                        phases=done.phases,
+                        archive=archive,
+                        gates=done.gates,
+                        cut_short=done.cut_short,
+                    )
+                )
+                continue
 
             if not status.ok:
                 # A subject that failed or ran out of time produced no answer
