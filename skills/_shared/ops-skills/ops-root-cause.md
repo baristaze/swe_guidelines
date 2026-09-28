@@ -1,7 +1,7 @@
 ---
 name: ops-root-cause
 description: "Find the root cause of one tenant's problem in one environment: read that tenant's rows through the operator plane's read routes with a read-only operator token, correlate them with the logs, the trace, and the error event by request id, at most five ids and one pass each, and report the cause and the fix, or that none was found. Takes the org id and optionally a user id. Never a database login, never a write, never another tenant's data."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*), Bash(sleep:*)
 ---
 
 # ops-root-cause
@@ -130,9 +130,11 @@ another filter.
 
    The feed pages by `after_seq`, 200 events a page, and the skill
    reads at most 5 pages. When the fifth page is full, it stops
-   reading the feed: the report says the feed was cut at the fifth
-   page and names the last `seq` read, and a shorter `--since` or a
-   `--request-id` narrows the next run.
+   reading the feed. The report says the feed was cut at the fifth
+   page, and names the last `seq` read and that event's time, so it
+   shows whether the window was reached. The error tracker of step 4
+   still names the window's failing requests, and a `--request-id`
+   narrows the next run.
 4. The error tracker, by request id or by tenant window:
 
    ```bash
@@ -161,11 +163,12 @@ another filter.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
-   Poll `get-query-results` at most 10 times for one query. When its
-   status is still `Scheduled` or `Running` after the tenth, stop
-   polling: the pass writes its log leg as "not read: the query did
-   not finish in 10 polls", with the query id, and goes on to the
-   trace.
+   Poll `get-query-results` at most 10 times for one query, each poll
+   after `sleep 5` in the same command, so ten polls cover about a
+   minute. When its status is still `Scheduled` or `Running` after
+   the tenth, stop polling: the pass writes its log leg as "not read:
+   the query did not finish in 10 polls", with the query id, and goes
+   on to the trace.
 
    Local: `docker compose -f deployment/local/docker-compose.yml -f
    deployment/local/docker-compose.full.yml logs --since <since> api
@@ -217,7 +220,7 @@ another filter.
    first of those that disagrees with the code's intent; read the
    code at the file and line the error names with `Read` and `Grep`.
    When none disagrees, the pass ends with "not found" for its id,
-   and the next id's pass starts.
+   naming each leg it could not read, and the next id's pass starts.
 9. Write the report once the last pass ends, the fifth at most. The
    fix is a pull request, a setting, or a resource, named; it is never
    applied here.
@@ -244,7 +247,7 @@ another filter.
 # Root cause: <env>, org <org_id>[, user <user_id>]
 
 **Credential.** <profile and Arn, or local>; operator <email domain only>, READ
-**Tenant.** <name>, <members> members, <n> events in the last <since>[, feed cut at the fifth page after seq <seq>]
+**Tenant.** <name>, <members> members, <n> events in the last <since>[, feed cut at the fifth page after seq <seq>, <its time>]
 **Requests.** <n> given or found, <m> followed (at most 5)
 
 - <request id>, <route>, <status>, <when>: <cause found | not found>

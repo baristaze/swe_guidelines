@@ -1,7 +1,7 @@
 ---
 name: ops-investigate
 description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes, the pool, the queue, the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*), Bash(sleep:*)
 ---
 
 # ops-investigate
@@ -194,10 +194,12 @@ leave `maintenance` out of every command below.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
-   Poll `get-query-results` at most 10 times. When the status is still
-   `Scheduled` or `Running` after the tenth, stop polling: the report
-   reads the logs as "not read: the query did not finish in 10 polls",
-   with the query id, and the next step starts.
+   Poll `get-query-results` at most 10 times, each poll after
+   `sleep 5` in the same command, so ten polls cover about a minute.
+   When the status is still `Scheduled` or `Running` after the tenth,
+   stop polling: the report reads the logs as "not read: the query did
+   not finish in 10 polls", with the query id, and the next step
+   starts.
 
    Local: `docker compose -f deployment/local/docker-compose.yml -f
    deployment/local/docker-compose.full.yml logs --since <since> api
