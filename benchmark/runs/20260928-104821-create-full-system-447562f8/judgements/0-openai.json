@@ -1,0 +1,522 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 1894.477,
+  "usage": {
+    "input_tokens": 14958341,
+    "output_tokens": 20349,
+    "reasoning_tokens": 9383
+  },
+  "cost_usd": 30.120172,
+  "error": null,
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": 73.2,
+    "references": {
+      "guideline": {
+        "weight": 0.4,
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The deployed notifier is given provider secrets but no ACME_INTEGRATIONS_* backend selections. It therefore constructs the default twins, which refuse a staging or production environment; notifications cannot run there. It also receives unrelated API credentials.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-06",
+            "lens": "DEL-06",
+            "fix": "Configure the notifier's required real provider and credentials explicitly in both environments, supply only its necessary secrets, and test a cloud-settings boot."
+          },
+          {
+            "severity": "high",
+            "what": "The deployed grant-operator task cannot boot its API container: grant_secrets omits the two required ApiSettings credentials, and its integrations default to twins outside local. This breaks the pipeline path that grants and mints operator credentials.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-45",
+            "lens": "DEL-45",
+            "fix": "Give the grant task a purpose-specific boot path or a complete, cloud-safe configuration with only the credentials it needs; verify the actual grant command in a deployment test."
+          },
+          {
+            "severity": "high",
+            "what": "The signed payment webhook settles the pledge in the HTTP request rather than acknowledging a durable inbound queue message. The SQS webhook queue is provisioned but has no consumer, and an unknown pledge is acknowledged without a dead-letter record; the ADR documents rather than closes this departure.",
+            "in_output": "services/api/src/acme/services/api/impl/support.py",
+            "in_reference": "lenses/async.md#ASY-12",
+            "lens": "ASY-12",
+            "fix": "Verify the signature at the edge, enqueue the delivery with its provider key, and settle it in an idempotent worker with audited, counted dead letters."
+          },
+          {
+            "severity": "high",
+            "what": "A socket's recheck task only catches NotAuthenticated. An infrastructure exception kills that task without resolving the close future, leaving the accepted socket registered and able to receive hints without further authority checks; an initial head-read failure likewise has no close path.",
+            "in_output": "services/api/src/acme/services/api/realtime/socket.py",
+            "in_reference": "lenses/context.md#CTX-27",
+            "lens": "CTX-27",
+            "fix": "Supervise the read, drain and recheck tasks, close and unregister the socket on any unexpected failure, and exercise a failed recheck and failed initial head in tests."
+          },
+          {
+            "severity": "high",
+            "what": "Anonymous intake and source-thread operations do tenant reads and writes directly under RequestContext instead of transitioning the verified public or reply-secret evidence into a constrained authority for the recipient desk. The recorded exception is for edge idempotency, not this context-stage rule.",
+            "in_output": "om/src/acme/om/reports/impl/manager.py",
+            "in_reference": "lenses/context.md#CTX-16",
+            "lens": "CTX-16",
+            "fix": "Make the public intake and reply-secret admission explicit transitions or narrowly scoped authenticated capabilities before tenant work; test that they cannot confer authority over a different desk."
+          },
+          {
+            "severity": "high",
+            "what": "The portal's deployed CSP permits images from arbitrary HTTPS origins (`img-src ... https:`), rather than only the app and specified object-store origins; this leaves an unnecessary exfiltration route in an app handling decrypted reports.",
+            "in_output": "deployment/terraform/modules/static_site/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-30",
+            "lens": "DEL-30",
+            "fix": "Restrict image and connection sources to the enumerated app, API, tracker and object-store origins, and test the emitted policy."
+          },
+          {
+            "severity": "medium",
+            "what": "Soft-deleted organizations, journalist profiles and follows have no retention-driven hard purge, and archived submissions and sealed reports have no expiry path. The sweep purges infrastructure rows but never these domain records.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "lenses/storage.md#STO-32",
+            "lens": "STO-32",
+            "fix": "Define per-entity retention and bounded, idempotent purges, including ciphertext and personal fields, wired into the maintenance sweep and tested on both storage implementations."
+          },
+          {
+            "severity": "medium",
+            "what": "The Postgres session funnel accepts org_id=None by default; several identity and global-table calls consequently open transactions without explicitly naming the system scope. This weakens the required no-default, explicitly scoped transaction boundary.",
+            "in_output": "om/src/acme/om/storage/impl/pg_base.py",
+            "in_reference": "lenses/context.md#CTX-32",
+            "lens": "CTX-32",
+            "fix": "Require an explicit org_id on every funnel and shared read/write primitive; pass EMPTY_UUID at enumerated system operations and use the explicit identity/user narrowing settings where appropriate."
+          },
+          {
+            "severity": "medium",
+            "what": "A report can carry up to eight million characters of ciphertext, including inline attachments, in a core database text column and through the API process, although bucket and presigning capabilities exist. Large encrypted bytes never use the bounded direct-transfer path.",
+            "in_output": "om/src/acme/om/reports/storage/tables/sealed_reports.py",
+            "in_reference": "lenses/async.md#ASY-08",
+            "lens": "ASY-08",
+            "fix": "Keep encrypted report metadata and object references in the OM, transfer bounded ciphertext/attachments with tenant-scoped presigned bucket URLs, and test the local bucket twin."
+          },
+          {
+            "severity": "medium",
+            "what": "Only the maintenance worker runs the housekeeping sweep; the notifier's loop explicitly omits it. The guideline requires each always-on worker to run the same idempotent, database-serialized sweep, so its recurrence depends on the separate worker remaining up.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "lenses/async.md#ASY-19",
+            "lens": "ASY-19",
+            "fix": "Extract and inject a shared bounded sweep into every worker loop, with concurrency tests across worker instances."
+          },
+          {
+            "severity": "medium",
+            "what": "Inbox, messages, follows and other growing lists expose only a clamped first page; neither their routes nor their storage contracts offer an opaque cursor. Rows after the cap cannot be retrieved.",
+            "in_output": "services/api/src/acme/services/api/routers/reports.py",
+            "in_reference": "lenses/network.md#NET-13",
+            "lens": "NET-13",
+            "fix": "Add an opaque cursor over a stable order to growing lists, thread it through manager and storage interfaces, and test consecutive pages."
+          },
+          {
+            "severity": "medium",
+            "what": "Unauthenticated limits hash request.client.host, but the cloud ingress and server provide no trusted-proxy/client-address configuration. Behind the load balancer unrelated visitors can share one intake or sign-in budget.",
+            "in_output": "services/api/src/acme/services/api/gateway/ratelimit.py",
+            "in_reference": "lenses/network.md#NET-08",
+            "lens": "NET-08",
+            "fix": "Resolve the viewer address at a trusted edge using configured proxy hops, reject spoofed forwarded headers, and test requests from distinct viewers behind the same ingress."
+          },
+          {
+            "severity": "medium",
+            "what": "The pledge has a version and CAS storage write, but its public view and cancel request provide no caller's expected version; the manager re-reads a fresh version and reports a stale transition as 409 rather than the specified 412.",
+            "in_output": "om/src/acme/om/support/impl/manager.py",
+            "in_reference": "lenses/storage.md#STO-22",
+            "lens": "STO-22",
+            "fix": "Expose the version, require an If-Match or expected_version for contended edits, compare that supplied value, and return PreconditionFailed on mismatch."
+          },
+          {
+            "severity": "medium",
+            "what": "The request middleware resets the correlation context before writing the access line. The telemetry round-trip therefore cannot find that line by request id; its telemetry marker is excluded from both normal gates and CI does not invoke the separate telemetry target.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "lenses/ops.md#OPS-22",
+            "lens": "OPS-22",
+            "fix": "Write the access line before resetting the request-id variable, assert its field in the signal round-trip, and run that target in the CI integration environment."
+          },
+          {
+            "severity": "medium",
+            "what": "Payment-driven outbox rows are assigned UUID v5 ids and the relayed work item uses that row id as its entity id; receipts also use UUID v5. These are not time-ordered entity ids despite the recorded exception and the system's reliance on v7 ids for feeds.",
+            "in_output": "om/src/acme/om/work/impl/manager.py",
+            "in_reference": "lenses/om.md#OM-12",
+            "lens": "OM-12",
+            "fix": "Keep replay determinism in separately unique idempotency keys, mint work and receipt entity ids as v7 (or use a documented deterministic time-ordered v7 derivation)."
+          }
+        ],
+        "strengths": [
+          "`om/src/acme/om/base.py` and the namespace packages define a single frozen, mixin-based domain model with pure rules and separate read models.",
+          "`om/src/acme/om/root.py` and `services/api/src/acme/services/api/container.py` assemble interface-typed managers, storage, infrastructure and services once at boot.",
+          "`om/src/acme/om/storage/roles.py`, `storage/impl/pg_base.py` and the migration tree provide database roles, scoped RLS transactions and distinct memory/Postgres implementations.",
+          "`om/tests/contracts/` runs substantive tenant-isolation, uniqueness and race cases over memory and Postgres, with a documented negative-control run in `docs/runbooks/tenant-isolation.md`.",
+          "`om/src/acme/om/outbox/impl/manager.py` and `om/src/acme/om/work/impl/manager.py` provide a transactional outbox and a leased, claim-token-fenced work queue.",
+          "`integrations/src/acme/integrations/` provides real clients and locally guarded twins for each named external provider.",
+          "`services/api/src/acme/services/api/gateway/` centralizes credentials, error envelopes, rate limits and durable request idempotency, while `realtime/` and `apps/portal/src/realtime/` implement a replayable hint channel.",
+          "`apps/portal/src/features/`, `apps/portal/src/crypto/` and `services/api/tests/test_loop_*.py` give the three loops view-models, device-side encryption and exercised integration paths.",
+          "`deployment/terraform/`, `.github/workflows/` and `.claude/skills/` provide two cloud environments, release workflows, operational roles, alarms and agent-operable skills."
+        ]
+      },
+      "reference": {
+        "weight": 0.6,
+        "score": 74,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "Unlike the reference's cloud worker wiring, the notifier receives no provider selection and therefore tries to instantiate prohibited twins in staging and production; the grant task also lacks required API settings for its actual command.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "deployment/terraform/modules/environment/main.tf",
+            "lens": "DEL-06",
+            "fix": "Wire cloud-safe, purpose-specific settings and secrets for both processes and boot-test their deployed command configurations."
+          },
+          {
+            "severity": "high",
+            "what": "The equivalent externally produced payment delivery is settled inline instead of being durably queued, consumed with a delivery key and made visible on final failure.",
+            "in_output": "services/api/src/acme/services/api/impl/support.py",
+            "in_reference": "services/api/src/tadas/services/api/services/impl/billing.py",
+            "lens": "ASY-12",
+            "fix": "Send verified deliveries to the queue at the edge and process them in a deduplicating worker with dead-letter telemetry."
+          },
+          {
+            "severity": "high",
+            "what": "The socket waits only for its explicit close future, so a failed recheck or initial stream-head read can leave an accepted connection open without continuing authority checks; the reference supervises all socket tasks and closes on unexpected failure.",
+            "in_output": "services/api/src/acme/services/api/realtime/socket.py",
+            "in_reference": "services/api/src/tadas/services/api/realtime/socket.py",
+            "lens": "CTX-27",
+            "fix": "Observe task completion as well as revocation/expiry, and close and detach on any failed check or setup."
+          },
+          {
+            "severity": "high",
+            "what": "The reference enumerates object-store origins in its CSP, while the output permits images from any HTTPS origin despite handling decrypted source material.",
+            "in_output": "deployment/terraform/modules/static_site/main.tf",
+            "in_reference": "deployment/terraform/modules/static_site/main.tf",
+            "lens": "DEL-30",
+            "fix": "Replace the wildcard HTTPS image source with explicit required origins."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference wires per-namespace and per-tenant retention purges into its worker; the output sweeps only outbox, queue and credentials, leaving soft-deleted domain rows and sealed reports indefinitely.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/loop.py",
+            "lens": "STO-32",
+            "fix": "Implement named bounded domain purges and hook them into the worker's recurrent sweep."
+          },
+          {
+            "severity": "medium",
+            "what": "The output's storage funnel permits a missing org scope and uses it for global and identity operations, whereas the reference makes a scope compulsory for every session and explicitly passes the system sentinel.",
+            "in_output": "om/src/acme/om/storage/impl/pg_base.py",
+            "in_reference": "om/src/tadas/om/storage/impl/pg_base.py",
+            "lens": "CTX-32",
+            "fix": "Require explicit scope at session creation, including for identity lookups and system tables."
+          },
+          {
+            "severity": "medium",
+            "what": "The output passes and stores multi-megabyte encrypted reports in SQL and API bodies; the reference models large content as bucket objects with size-bounded presigned uploads and downloads.",
+            "in_output": "om/src/acme/om/reports/storage/tables/sealed_reports.py",
+            "in_reference": "om/src/tadas/om/media/impl/manager.py",
+            "lens": "ASY-08",
+            "fix": "Move large encrypted bytes via a tenant-scoped object store and persist their ids and metadata."
+          },
+          {
+            "severity": "medium",
+            "what": "The output's capped lists do not page beyond their first batch, whereas the reference exposes stable continuation for lists that can grow past the limit.",
+            "in_output": "services/api/src/acme/services/api/routers/reports.py",
+            "in_reference": "services/api/src/tadas/services/api/types/tasks.py",
+            "lens": "NET-13",
+            "fix": "Carry an opaque cursor through the wire, manager and bounded storage query."
+          },
+          {
+            "severity": "medium",
+            "what": "The output trusts request.client.host for public rate limits without configuring the viewer's identity through the cloud ingress; the reference explicitly verifies its edge hop and corrects the client address.",
+            "in_output": "services/api/src/acme/services/api/gateway/ratelimit.py",
+            "in_reference": "services/api/src/tadas/services/api/gateway/edge.py",
+            "lens": "NET-08",
+            "fix": "Introduce trusted proxy/edge address resolution before rate-limit dependencies run."
+          },
+          {
+            "severity": "medium",
+            "what": "The output clears the request-id log variable before logging access and excludes its telemetry round-trip from CI; the reference logs while the request context is still installed and runs its signal test in CI.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "services/api/src/tadas/services/api/gateway/observability.py; .github/workflows/ci.yml",
+            "lens": "OPS-22",
+            "fix": "Move reset after the access log and gate the read-back of logs, metrics, trace and errors."
+          },
+          {
+            "severity": "medium",
+            "what": "The output's contended pledge transition compares the version it just read and answers a conflict; the reference's contended edit takes the caller's version and returns a failed precondition when it is stale.",
+            "in_output": "om/src/acme/om/support/impl/manager.py",
+            "in_reference": "services/api/src/tadas/services/api/types/tasks.py",
+            "lens": "STO-22",
+            "fix": "Supply and compare the caller's version, expose it on the view, and map a mismatch to 412."
+          },
+          {
+            "severity": "low",
+            "what": "The reference keeps work-item entity ids v7 and uses an outbox id as their separate deduplication key; the output makes some work entity ids the UUID v5 outbox id.",
+            "in_output": "om/src/acme/om/work/impl/manager.py",
+            "in_reference": "om/src/tadas/om/work/impl/manager.py",
+            "lens": "OM-12",
+            "fix": "Give work items v7 entity ids while retaining stable idempotency keys."
+          }
+        ],
+        "strengths": [
+          "`om/src/acme/om/` mirrors the reference's per-namespace interfaces, implementations, immutable types, memory storage and relational storage.",
+          "`om/src/acme/om/storage/roles.py` and `om/tests/contracts/` reproduce the reference's role-separated database and shared two-backend contract-test pattern.",
+          "`services/api/src/acme/services/api/` follows the reference's single API process with namespace routers, service interfaces, a gateway and an app container.",
+          "`om/src/acme/om/outbox/` and `om/src/acme/om/work/` implement the reference's durable outbox-to-event/work handoff and fenced leased worker pattern.",
+          "`apps/portal/src/` follows the reference's Vite/React, generated OpenAPI facade, TanStack Query, Zustand and view/model/hook separation.",
+          "`deployment/terraform/`, `ops/`, `.claude/skills/` and the deploy workflows preserve the reference's substantial local/cloud deployment and operational scaffolding."
+        ]
+      }
+    },
+    "rationale": "The output is a substantial implementation, not just a scaffold: the domain layering, two storage backends, RLS, outbox, work leases, client architecture, operations and three exercised MVP paths are close to the prescribed shape. The scores are held down chiefly by cloud configurations that cannot boot the notifier or grant task, an explicitly deviating inline webhook, and a socket that can stop checking authority without closing. Retention, explicit transaction scope, large-blob transfer, pagination, edge address resolution and the broken telemetry access line are further structural departures. The reference score is slightly higher because the common architecture is recognizable throughout; it does not penalize the output for the reference product's additional entities or integrations.",
+    "tool_calls": 216,
+    "turns": 56,
+    "transcript": "judgements/0-openai.jsonl"
+  },
+  "answer": {
+    "references": {
+      "guideline": {
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "lens": "DEL-06",
+            "what": "The deployed notifier is given provider secrets but no ACME_INTEGRATIONS_* backend selections. It therefore constructs the default twins, which refuse a staging or production environment; notifications cannot run there. It also receives unrelated API credentials.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-06",
+            "fix": "Configure the notifier's required real provider and credentials explicitly in both environments, supply only its necessary secrets, and test a cloud-settings boot."
+          },
+          {
+            "severity": "high",
+            "lens": "DEL-45",
+            "what": "The deployed grant-operator task cannot boot its API container: grant_secrets omits the two required ApiSettings credentials, and its integrations default to twins outside local. This breaks the pipeline path that grants and mints operator credentials.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-45",
+            "fix": "Give the grant task a purpose-specific boot path or a complete, cloud-safe configuration with only the credentials it needs; verify the actual grant command in a deployment test."
+          },
+          {
+            "severity": "high",
+            "lens": "ASY-12",
+            "what": "The signed payment webhook settles the pledge in the HTTP request rather than acknowledging a durable inbound queue message. The SQS webhook queue is provisioned but has no consumer, and an unknown pledge is acknowledged without a dead-letter record; the ADR documents rather than closes this departure.",
+            "in_output": "services/api/src/acme/services/api/impl/support.py",
+            "in_reference": "lenses/async.md#ASY-12",
+            "fix": "Verify the signature at the edge, enqueue the delivery with its provider key, and settle it in an idempotent worker with audited, counted dead letters."
+          },
+          {
+            "severity": "high",
+            "lens": "CTX-27",
+            "what": "A socket's recheck task only catches NotAuthenticated. An infrastructure exception kills that task without resolving the close future, leaving the accepted socket registered and able to receive hints without further authority checks; an initial head-read failure likewise has no close path.",
+            "in_output": "services/api/src/acme/services/api/realtime/socket.py",
+            "in_reference": "lenses/context.md#CTX-27",
+            "fix": "Supervise the read, drain and recheck tasks, close and unregister the socket on any unexpected failure, and exercise a failed recheck and failed initial head in tests."
+          },
+          {
+            "severity": "high",
+            "lens": "CTX-16",
+            "what": "Anonymous intake and source-thread operations do tenant reads and writes directly under RequestContext instead of transitioning the verified public or reply-secret evidence into a constrained authority for the recipient desk. The recorded exception is for edge idempotency, not this context-stage rule.",
+            "in_output": "om/src/acme/om/reports/impl/manager.py",
+            "in_reference": "lenses/context.md#CTX-16",
+            "fix": "Make the public intake and reply-secret admission explicit transitions or narrowly scoped authenticated capabilities before tenant work; test that they cannot confer authority over a different desk."
+          },
+          {
+            "severity": "high",
+            "lens": "DEL-30",
+            "what": "The portal's deployed CSP permits images from arbitrary HTTPS origins (`img-src ... https:`), rather than only the app and specified object-store origins; this leaves an unnecessary exfiltration route in an app handling decrypted reports.",
+            "in_output": "deployment/terraform/modules/static_site/main.tf",
+            "in_reference": "lenses/delivery.md#DEL-30",
+            "fix": "Restrict image and connection sources to the enumerated app, API, tracker and object-store origins, and test the emitted policy."
+          },
+          {
+            "severity": "medium",
+            "lens": "STO-32",
+            "what": "Soft-deleted organizations, journalist profiles and follows have no retention-driven hard purge, and archived submissions and sealed reports have no expiry path. The sweep purges infrastructure rows but never these domain records.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "lenses/storage.md#STO-32",
+            "fix": "Define per-entity retention and bounded, idempotent purges, including ciphertext and personal fields, wired into the maintenance sweep and tested on both storage implementations."
+          },
+          {
+            "severity": "medium",
+            "lens": "CTX-32",
+            "what": "The Postgres session funnel accepts org_id=None by default; several identity and global-table calls consequently open transactions without explicitly naming the system scope. This weakens the required no-default, explicitly scoped transaction boundary.",
+            "in_output": "om/src/acme/om/storage/impl/pg_base.py",
+            "in_reference": "lenses/context.md#CTX-32",
+            "fix": "Require an explicit org_id on every funnel and shared read/write primitive; pass EMPTY_UUID at enumerated system operations and use the explicit identity/user narrowing settings where appropriate."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-08",
+            "what": "A report can carry up to eight million characters of ciphertext, including inline attachments, in a core database text column and through the API process, although bucket and presigning capabilities exist. Large encrypted bytes never use the bounded direct-transfer path.",
+            "in_output": "om/src/acme/om/reports/storage/tables/sealed_reports.py",
+            "in_reference": "lenses/async.md#ASY-08",
+            "fix": "Keep encrypted report metadata and object references in the OM, transfer bounded ciphertext/attachments with tenant-scoped presigned bucket URLs, and test the local bucket twin."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-19",
+            "what": "Only the maintenance worker runs the housekeeping sweep; the notifier's loop explicitly omits it. The guideline requires each always-on worker to run the same idempotent, database-serialized sweep, so its recurrence depends on the separate worker remaining up.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "lenses/async.md#ASY-19",
+            "fix": "Extract and inject a shared bounded sweep into every worker loop, with concurrency tests across worker instances."
+          },
+          {
+            "severity": "medium",
+            "lens": "NET-13",
+            "what": "Inbox, messages, follows and other growing lists expose only a clamped first page; neither their routes nor their storage contracts offer an opaque cursor. Rows after the cap cannot be retrieved.",
+            "in_output": "services/api/src/acme/services/api/routers/reports.py",
+            "in_reference": "lenses/network.md#NET-13",
+            "fix": "Add an opaque cursor over a stable order to growing lists, thread it through manager and storage interfaces, and test consecutive pages."
+          },
+          {
+            "severity": "medium",
+            "lens": "NET-08",
+            "what": "Unauthenticated limits hash request.client.host, but the cloud ingress and server provide no trusted-proxy/client-address configuration. Behind the load balancer unrelated visitors can share one intake or sign-in budget.",
+            "in_output": "services/api/src/acme/services/api/gateway/ratelimit.py",
+            "in_reference": "lenses/network.md#NET-08",
+            "fix": "Resolve the viewer address at a trusted edge using configured proxy hops, reject spoofed forwarded headers, and test requests from distinct viewers behind the same ingress."
+          },
+          {
+            "severity": "medium",
+            "lens": "STO-22",
+            "what": "The pledge has a version and CAS storage write, but its public view and cancel request provide no caller's expected version; the manager re-reads a fresh version and reports a stale transition as 409 rather than the specified 412.",
+            "in_output": "om/src/acme/om/support/impl/manager.py",
+            "in_reference": "lenses/storage.md#STO-22",
+            "fix": "Expose the version, require an If-Match or expected_version for contended edits, compare that supplied value, and return PreconditionFailed on mismatch."
+          },
+          {
+            "severity": "medium",
+            "lens": "OPS-22",
+            "what": "The request middleware resets the correlation context before writing the access line. The telemetry round-trip therefore cannot find that line by request id; its telemetry marker is excluded from both normal gates and CI does not invoke the separate telemetry target.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "lenses/ops.md#OPS-22",
+            "fix": "Write the access line before resetting the request-id variable, assert its field in the signal round-trip, and run that target in the CI integration environment."
+          },
+          {
+            "severity": "medium",
+            "lens": "OM-12",
+            "what": "Payment-driven outbox rows are assigned UUID v5 ids and the relayed work item uses that row id as its entity id; receipts also use UUID v5. These are not time-ordered entity ids despite the recorded exception and the system's reliance on v7 ids for feeds.",
+            "in_output": "om/src/acme/om/work/impl/manager.py",
+            "in_reference": "lenses/om.md#OM-12",
+            "fix": "Keep replay determinism in separately unique idempotency keys, mint work and receipt entity ids as v7 (or use a documented deterministic time-ordered v7 derivation)."
+          }
+        ],
+        "strengths": [
+          "`om/src/acme/om/base.py` and the namespace packages define a single frozen, mixin-based domain model with pure rules and separate read models.",
+          "`om/src/acme/om/root.py` and `services/api/src/acme/services/api/container.py` assemble interface-typed managers, storage, infrastructure and services once at boot.",
+          "`om/src/acme/om/storage/roles.py`, `storage/impl/pg_base.py` and the migration tree provide database roles, scoped RLS transactions and distinct memory/Postgres implementations.",
+          "`om/tests/contracts/` runs substantive tenant-isolation, uniqueness and race cases over memory and Postgres, with a documented negative-control run in `docs/runbooks/tenant-isolation.md`.",
+          "`om/src/acme/om/outbox/impl/manager.py` and `om/src/acme/om/work/impl/manager.py` provide a transactional outbox and a leased, claim-token-fenced work queue.",
+          "`integrations/src/acme/integrations/` provides real clients and locally guarded twins for each named external provider.",
+          "`services/api/src/acme/services/api/gateway/` centralizes credentials, error envelopes, rate limits and durable request idempotency, while `realtime/` and `apps/portal/src/realtime/` implement a replayable hint channel.",
+          "`apps/portal/src/features/`, `apps/portal/src/crypto/` and `services/api/tests/test_loop_*.py` give the three loops view-models, device-side encryption and exercised integration paths.",
+          "`deployment/terraform/`, `.github/workflows/` and `.claude/skills/` provide two cloud environments, release workflows, operational roles, alarms and agent-operable skills."
+        ]
+      },
+      "reference": {
+        "score": 74,
+        "gaps": [
+          {
+            "severity": "high",
+            "lens": "DEL-06",
+            "what": "Unlike the reference's cloud worker wiring, the notifier receives no provider selection and therefore tries to instantiate prohibited twins in staging and production; the grant task also lacks required API settings for its actual command.",
+            "in_output": "deployment/terraform/environments/staging/main.tf",
+            "in_reference": "deployment/terraform/modules/environment/main.tf",
+            "fix": "Wire cloud-safe, purpose-specific settings and secrets for both processes and boot-test their deployed command configurations."
+          },
+          {
+            "severity": "high",
+            "lens": "ASY-12",
+            "what": "The equivalent externally produced payment delivery is settled inline instead of being durably queued, consumed with a delivery key and made visible on final failure.",
+            "in_output": "services/api/src/acme/services/api/impl/support.py",
+            "in_reference": "services/api/src/tadas/services/api/services/impl/billing.py",
+            "fix": "Send verified deliveries to the queue at the edge and process them in a deduplicating worker with dead-letter telemetry."
+          },
+          {
+            "severity": "high",
+            "lens": "CTX-27",
+            "what": "The socket waits only for its explicit close future, so a failed recheck or initial stream-head read can leave an accepted connection open without continuing authority checks; the reference supervises all socket tasks and closes on unexpected failure.",
+            "in_output": "services/api/src/acme/services/api/realtime/socket.py",
+            "in_reference": "services/api/src/tadas/services/api/realtime/socket.py",
+            "fix": "Observe task completion as well as revocation/expiry, and close and detach on any failed check or setup."
+          },
+          {
+            "severity": "high",
+            "lens": "DEL-30",
+            "what": "The reference enumerates object-store origins in its CSP, while the output permits images from any HTTPS origin despite handling decrypted source material.",
+            "in_output": "deployment/terraform/modules/static_site/main.tf",
+            "in_reference": "deployment/terraform/modules/static_site/main.tf",
+            "fix": "Replace the wildcard HTTPS image source with explicit required origins."
+          },
+          {
+            "severity": "medium",
+            "lens": "STO-32",
+            "what": "The reference wires per-namespace and per-tenant retention purges into its worker; the output sweeps only outbox, queue and credentials, leaving soft-deleted domain rows and sealed reports indefinitely.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/loop.py",
+            "fix": "Implement named bounded domain purges and hook them into the worker's recurrent sweep."
+          },
+          {
+            "severity": "medium",
+            "lens": "CTX-32",
+            "what": "The output's storage funnel permits a missing org scope and uses it for global and identity operations, whereas the reference makes a scope compulsory for every session and explicitly passes the system sentinel.",
+            "in_output": "om/src/acme/om/storage/impl/pg_base.py",
+            "in_reference": "om/src/tadas/om/storage/impl/pg_base.py",
+            "fix": "Require explicit scope at session creation, including for identity lookups and system tables."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-08",
+            "what": "The output passes and stores multi-megabyte encrypted reports in SQL and API bodies; the reference models large content as bucket objects with size-bounded presigned uploads and downloads.",
+            "in_output": "om/src/acme/om/reports/storage/tables/sealed_reports.py",
+            "in_reference": "om/src/tadas/om/media/impl/manager.py",
+            "fix": "Move large encrypted bytes via a tenant-scoped object store and persist their ids and metadata."
+          },
+          {
+            "severity": "medium",
+            "lens": "NET-13",
+            "what": "The output's capped lists do not page beyond their first batch, whereas the reference exposes stable continuation for lists that can grow past the limit.",
+            "in_output": "services/api/src/acme/services/api/routers/reports.py",
+            "in_reference": "services/api/src/tadas/services/api/types/tasks.py",
+            "fix": "Carry an opaque cursor through the wire, manager and bounded storage query."
+          },
+          {
+            "severity": "medium",
+            "lens": "NET-08",
+            "what": "The output trusts request.client.host for public rate limits without configuring the viewer's identity through the cloud ingress; the reference explicitly verifies its edge hop and corrects the client address.",
+            "in_output": "services/api/src/acme/services/api/gateway/ratelimit.py",
+            "in_reference": "services/api/src/tadas/services/api/gateway/edge.py",
+            "fix": "Introduce trusted proxy/edge address resolution before rate-limit dependencies run."
+          },
+          {
+            "severity": "medium",
+            "lens": "OPS-22",
+            "what": "The output clears the request-id log variable before logging access and excludes its telemetry round-trip from CI; the reference logs while the request context is still installed and runs its signal test in CI.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "services/api/src/tadas/services/api/gateway/observability.py; .github/workflows/ci.yml",
+            "fix": "Move reset after the access log and gate the read-back of logs, metrics, trace and errors."
+          },
+          {
+            "severity": "medium",
+            "lens": "STO-22",
+            "what": "The output's contended pledge transition compares the version it just read and answers a conflict; the reference's contended edit takes the caller's version and returns a failed precondition when it is stale.",
+            "in_output": "om/src/acme/om/support/impl/manager.py",
+            "in_reference": "services/api/src/tadas/services/api/types/tasks.py",
+            "fix": "Supply and compare the caller's version, expose it on the view, and map a mismatch to 412."
+          },
+          {
+            "severity": "low",
+            "lens": "OM-12",
+            "what": "The reference keeps work-item entity ids v7 and uses an outbox id as their separate deduplication key; the output makes some work entity ids the UUID v5 outbox id.",
+            "in_output": "om/src/acme/om/work/impl/manager.py",
+            "in_reference": "om/src/tadas/om/work/impl/manager.py",
+            "fix": "Give work items v7 entity ids while retaining stable idempotency keys."
+          }
+        ],
+        "strengths": [
+          "`om/src/acme/om/` mirrors the reference's per-namespace interfaces, implementations, immutable types, memory storage and relational storage.",
+          "`om/src/acme/om/storage/roles.py` and `om/tests/contracts/` reproduce the reference's role-separated database and shared two-backend contract-test pattern.",
+          "`services/api/src/acme/services/api/` follows the reference's single API process with namespace routers, service interfaces, a gateway and an app container.",
+          "`om/src/acme/om/outbox/` and `om/src/acme/om/work/` implement the reference's durable outbox-to-event/work handoff and fenced leased worker pattern.",
+          "`apps/portal/src/` follows the reference's Vite/React, generated OpenAPI facade, TanStack Query, Zustand and view/model/hook separation.",
+          "`deployment/terraform/`, `ops/`, `.claude/skills/` and the deploy workflows preserve the reference's substantial local/cloud deployment and operational scaffolding."
+        ]
+      }
+    },
+    "rationale": "The output is a substantial implementation, not just a scaffold: the domain layering, two storage backends, RLS, outbox, work leases, client architecture, operations and three exercised MVP paths are close to the prescribed shape. The scores are held down chiefly by cloud configurations that cannot boot the notifier or grant task, an explicitly deviating inline webhook, and a socket that can stop checking authority without closing. Retention, explicit transaction scope, large-blob transfer, pagination, edge address resolution and the broken telemetry access line are further structural departures. The reference score is slightly higher because the common architecture is recognizable throughout; it does not penalize the output for the reference product's additional entities or integrations."
+  }
+}

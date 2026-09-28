@@ -39,6 +39,25 @@ harness kept its spend or its versions has none to show.
 Judges: `claude-opus-5-5`, `gpt-6-sol`, `gemini-3.1-pro-preview`, and
 `grok-4.7`, unless a row says otherwise.
 
+## create-full-system
+
+It measures the scaffold skills building a whole system from a product spec, and with extras a review and its fixes, judged against the guideline and its reference implementation.
+
+The three rows are one run, with extras. The oldest ran the scaffold,
+and the harness ended its repeat there, so no judge scored it; its
+`results.json` counts the repeat as failed, at 0. The middle one resumed
+from the scaffold's milestone and ran the MVP, the review, the close,
+and the four judges, of which the openai judge hit a rate limit and
+scored nothing. The newest resumed those judges: it ran the openai judge
+and carried the other three, so its 82.8 is the run's score. The three
+spent $200.41 together.
+
+| Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Cost (USD) | Commit | Claude Code |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [create-full-system-447562f8](20260928-104821-create-full-system-447562f8/report.md) | 2026-09-28 17:48 | `claude-opus-5-5` | high | 1 | 81.2 | 73.2 | 97.0 | 79.6 | **82.8** | $30.12 | `09aad2f` | — |
+| [create-full-system-0a609288](20260928-065025-create-full-system-0a609288/report.md) | 2026-09-28 13:50 | `claude-opus-5-5` | high | 1 | 81.2 | — | 97.0 | 79.6 | **85.9** | $87.76 | `7e03524` | 2.1.283 |
+| [create-full-system-11435123](20260927-233327-create-full-system-11435123/report.md) | 2026-09-28 06:33 | `claude-opus-5-5` | high | 1 | — | — | — | — | — | $82.53 | `3009fa9` | 2.1.283 |
+
 ## explain-tenancy
 
 It measures the `arch-explain` skill on one question about the tenant fence.

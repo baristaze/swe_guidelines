@@ -1,0 +1,247 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 165.29,
+  "usage": {
+    "input_tokens": 1795354,
+    "output_tokens": 11713,
+    "reasoning_tokens": 3834
+  },
+  "cost_usd": 7.415676,
+  "error": null,
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": 81.2,
+    "references": {
+      "guideline": {
+        "weight": 0.4,
+        "score": 83,
+        "gaps": [
+          {
+            "severity": "medium",
+            "what": "The per-request log line does not carry the request id. RequestIdMiddleware resets request_id_var in its finally block before it calls logger.info, so the correlation filter logs request_id null. Session 1 stopped on exactly this at make test-telemetry, and the two later sessions left it unfixed.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "lenses/delivery.md DEL-39; services/api/src/tadas/services/api/gateway/observability.py and tests/test_access_log.py in the reference",
+            "lens": "DEL-39",
+            "fix": "Emit the access log line before request_id_var.reset(token), add an access-log test that asserts the request id, and run make test-telemetry."
+          },
+          {
+            "severity": "medium",
+            "what": "The payment webhook settles the pledge inside the request instead of going onto Queues.WEBHOOKS for a consumer. The deviation is recorded in ADR 0010 and softened (one CAS write plus outbox rows, UUID v5 keys), but a high-severity lens is still bypassed, and dead letters rely on the provider's dashboard rather than an audit entry plus a metric.",
+            "in_output": "services/api/src/acme/services/api/routers/support.py",
+            "in_reference": "lenses/async.md ASY-12; Infrastructure, Queues",
+            "lens": "ASY-12",
+            "fix": "Enqueue the verified delivery on Queues.WEBHOOKS and settle it in a worker consumer that dedupes on the delivery key, audits dead letters and counts them."
+          },
+          {
+            "severity": "medium",
+            "what": "The notifier worker was copied from the maintenance loop with the sweep removed. The guideline says every worker runs the idempotent sweep on its own timer, with no single designated runner.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "lenses/async.md ASY-19; Worker Roles, Maintenance Without a Scheduler",
+            "lens": "ASY-19",
+            "fix": "Run the same sweep timer in the notifier's loop (it is idempotent and serialized by the database), or share the loop so that every worker role runs it."
+          },
+          {
+            "severity": "medium",
+            "what": "The whole sealed report, attachments included, is stored as base64 in a Postgres text column (sealed_reports.ciphertext). The guideline sends blobs to buckets keyed by a fixed enum and moved by presigned URLs.",
+            "in_output": "om/src/acme/om/reports/types/sealed_report.py",
+            "in_reference": "lenses/async.md ASY-08",
+            "lens": "ASY-08",
+            "fix": "Keep the report header ciphertext in the row, and put attachment ciphertexts in a bucket under a fixed bucket enum with presigned upload and download URLs."
+          },
+          {
+            "severity": "low",
+            "what": "The local stack sends traces straight to Jaeger with no OpenTelemetry collector, while the deployed tasks run a collector sidecar, so local and deployed collection paths differ.",
+            "in_output": "deployment/local/docker-compose.yml",
+            "in_reference": "lenses/delivery.md DEL-32",
+            "lens": "DEL-32",
+            "fix": "Add a local otel-collector that fans traces and metrics out to Jaeger and Prometheus, as the deployed task template does."
+          }
+        ],
+        "strengths": [
+          "om/src/acme/om/<namespace>/ follows the prescribed namespace shape (manager interface, impl, storage interface with Postgres and memory impls, tables, types) for journalists, follows, updates, support, reports, work, tenancy, outbox, events, audit and idempotency.",
+          "om/src/acme/om/storage/impl/pg_base.py funnels every statement through one session that routes by role, picks the system login for EMPTY_UUID and sets app.org_id/user_id/identity_id per transaction; om/migrations/sql/** enable and FORCE row-level security on every tenant table, and om/tests/integration/test_database_fence.py checks each policy against its declared scope.",
+          "om/src/acme/om/follows/impl/manager.py and reports/impl/manager.py follow authorize, verify, copy, write: the outbox rows land in the same transaction, a relay runs after commit, and a replayed create returns the row as stored.",
+          "workers/notifier/src/acme/workers/notifier/handler.py is idempotent on the item's key through per-address work receipts plus a provider idempotency key, and loop.py claims within capacity, renews leases, cancels on Conflict and hands work back on shutdown.",
+          "Every external provider (WorkOS, Stripe, Postmark/Resend, Twilio, the malware scanner) sits behind an interface with a twin and a real client in integrations/src/acme/integrations/*, as ADR 0005 records.",
+          "Decisions are ADRs in docs/adr/0001-0012, and deviations quote the lens they depart from (0010 quotes ASY-12, 0012 covers the OM-12 exception); arch-check exceptions are scoped in pyproject.toml.",
+          "services/api/tests/test_loop_follow_and_support.py, test_loop_tip.py and test_loop_inbox_and_reply.py drive each MVP loop end to end over Postgres with the real notifier loop and on-device sealing, including cross-desk negative assertions.",
+          "The delivery chain is complete: .github/workflows/deploy-production.yml promotes digests and never rebuilds, release.yml moves release by fast-forward only, and deployment/terraform has bootstrap and environment roots per account with narrow smoke and investigate roles."
+        ]
+      },
+      "reference": {
+        "weight": 0.6,
+        "score": 80,
+        "gaps": [
+          {
+            "severity": "medium",
+            "what": "The reference sends its processor webhook onto Queues.WEBHOOKS through a WebhooksService and consumes it in the maintenance worker. The output settles inline in a domain router's route.",
+            "in_output": "services/api/src/acme/services/api/routers/support.py",
+            "in_reference": "services/api/src/tadas/services/api/routers/webhooks.py; services/api/src/tadas/services/api/services/impl/billing.py (queues.send(Queues.WEBHOOKS, ...)); workers/maintenance/src/tadas/workers/maintenance/deliveries.py",
+            "lens": "ASY-12",
+            "fix": "Add a dedicated webhooks router and service that enqueue the verified delivery, with a worker consumer for it."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference has an access-log test that pins the request id on the per-request line. The output has no such test, and its line carries a null request id.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "services/api/tests/test_access_log.py",
+            "lens": "DEL-39",
+            "fix": "Fix the reset ordering and add an access-log test like the reference's."
+          },
+          {
+            "severity": "low",
+            "what": "The output adds a second worker whose loop is a hand copy of the maintenance loop without the sweep. The reference keeps one worker role and routes kinds to handler modules within it.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/ (handler.py routing to deliveries.py, slack_posts.py, reminders.py)",
+            "lens": "ASY-19",
+            "fix": "Either host SEND_NOTIFICATION as a handler in the maintenance worker, or share one loop implementation that keeps the sweep."
+          },
+          {
+            "severity": "low",
+            "what": "The Terraform modules put variables and outputs in main.tf and have no tftest.hcl coverage. The reference splits variables.tf and outputs.tf per module and tests the service, alarms, dashboard and static_site modules.",
+            "in_output": "deployment/terraform/modules/",
+            "in_reference": "deployment/terraform/modules/service/tests/*.tftest.hcl; modules/alarms/tests; modules/static_site/tests",
+            "lens": "DEL-03",
+            "fix": "Split the module interfaces into variables.tf and outputs.tf, and add terraform test files for the service, observability and static_site modules."
+          },
+          {
+            "severity": "low",
+            "what": "The reference's local stack includes an otel-collector config. The output's local stack does not.",
+            "in_output": "deployment/local/docker-compose.yml",
+            "in_reference": "deployment/local/otel-collector/collector.yml",
+            "lens": "DEL-32",
+            "fix": "Add the local collector service and its config."
+          }
+        ],
+        "strengths": [
+          "The repository layout matches the reference role for role: apps/portal, clients/python, deployment/{docker,local,terraform,cloud}, infra, integrations, om (with migrations/sql up/down), ops (audit, stress, signals, traffic), services/api, workers, docs/adr, specs, and .claude/skills.",
+          "services/api/src/acme/services/api/ has the reference's gateway/routers/services/types/realtime split, with gateway modules for auth, admin, errors, idempotency, ratelimit and webhooks.",
+          "deployment/terraform/{bootstrap,environments}/{staging,prod} plus modules mirror the reference's one-account-per-environment layout, and the account IAM carries the same build/plan/deploy/smoke/investigate roles.",
+          "om/tests/contracts/* run the same contract cases over memory (unit) and Postgres (integration), including cross-tenant cases, the way the reference's storage suites do.",
+          "apps/portal/src/features/*/ uses the reference's view / view-model hook / model-module triplet, with a query layer, a Zustand store and a typed realtime router."
+        ]
+      }
+    },
+    "rationale": "The output is a thorough realization of the guideline. It has the full namespace shape in om, one storage funnel that sets the tenant scope, forced row-level security on every tenant table, outbox relays in the same transaction, provider twins, a promote-don't-rebuild deploy chain with per-account Terraform, ADRs for every decision, and end-to-end integration tests for all three MVP loops. Points come off for a few real departures rather than broad structural failure. The per-request log line still logs a null request id because the context var is reset before the log call; this was found in session 1 and never fixed. The payment webhook settles inline instead of going through the inbound queue: the deviation is recorded in ADR 0010 but still bypasses a high-severity lens, and the reference routes the same thing through Queues.WEBHOOKS to a worker. The notifier worker drops the sweep that every worker is meant to run, and report ciphertext with attachments sits in a Postgres column rather than a bucket. Against the reference the layout, layering and ops tooling match closely; the differences are the webhook path, a copied worker loop, thinner Terraform tests, and the missing access-log test and local collector.",
+    "tool_calls": 48,
+    "turns": 31,
+    "transcript": "judgements/0-anthropic.jsonl"
+  },
+  "carried": true,
+  "answer": {
+    "references": {
+      "guideline": {
+        "score": 83,
+        "strengths": [
+          "om/src/acme/om/<namespace>/ follows the prescribed namespace shape (manager interface, impl, storage interface with Postgres and memory impls, tables, types) for journalists, follows, updates, support, reports, work, tenancy, outbox, events, audit and idempotency.",
+          "om/src/acme/om/storage/impl/pg_base.py funnels every statement through one session that routes by role, picks the system login for EMPTY_UUID and sets app.org_id/user_id/identity_id per transaction; om/migrations/sql/** enable and FORCE row-level security on every tenant table, and om/tests/integration/test_database_fence.py checks each policy against its declared scope.",
+          "om/src/acme/om/follows/impl/manager.py and reports/impl/manager.py follow authorize, verify, copy, write: the outbox rows land in the same transaction, a relay runs after commit, and a replayed create returns the row as stored.",
+          "workers/notifier/src/acme/workers/notifier/handler.py is idempotent on the item's key through per-address work receipts plus a provider idempotency key, and loop.py claims within capacity, renews leases, cancels on Conflict and hands work back on shutdown.",
+          "Every external provider (WorkOS, Stripe, Postmark/Resend, Twilio, the malware scanner) sits behind an interface with a twin and a real client in integrations/src/acme/integrations/*, as ADR 0005 records.",
+          "Decisions are ADRs in docs/adr/0001-0012, and deviations quote the lens they depart from (0010 quotes ASY-12, 0012 covers the OM-12 exception); arch-check exceptions are scoped in pyproject.toml.",
+          "services/api/tests/test_loop_follow_and_support.py, test_loop_tip.py and test_loop_inbox_and_reply.py drive each MVP loop end to end over Postgres with the real notifier loop and on-device sealing, including cross-desk negative assertions.",
+          "The delivery chain is complete: .github/workflows/deploy-production.yml promotes digests and never rebuilds, release.yml moves release by fast-forward only, and deployment/terraform has bootstrap and environment roots per account with narrow smoke and investigate roles."
+        ],
+        "gaps": [
+          {
+            "severity": "medium",
+            "lens": "DEL-39",
+            "what": "The per-request log line does not carry the request id. RequestIdMiddleware resets request_id_var in its finally block before it calls logger.info, so the correlation filter logs request_id null. Session 1 stopped on exactly this at make test-telemetry, and the two later sessions left it unfixed.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "lenses/delivery.md DEL-39; services/api/src/tadas/services/api/gateway/observability.py and tests/test_access_log.py in the reference",
+            "fix": "Emit the access log line before request_id_var.reset(token), add an access-log test that asserts the request id, and run make test-telemetry."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-12",
+            "what": "The payment webhook settles the pledge inside the request instead of going onto Queues.WEBHOOKS for a consumer. The deviation is recorded in ADR 0010 and softened (one CAS write plus outbox rows, UUID v5 keys), but a high-severity lens is still bypassed, and dead letters rely on the provider's dashboard rather than an audit entry plus a metric.",
+            "in_output": "services/api/src/acme/services/api/routers/support.py",
+            "in_reference": "lenses/async.md ASY-12; Infrastructure, Queues",
+            "fix": "Enqueue the verified delivery on Queues.WEBHOOKS and settle it in a worker consumer that dedupes on the delivery key, audits dead letters and counts them."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-19",
+            "what": "The notifier worker was copied from the maintenance loop with the sweep removed. The guideline says every worker runs the idempotent sweep on its own timer, with no single designated runner.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "lenses/async.md ASY-19; Worker Roles, Maintenance Without a Scheduler",
+            "fix": "Run the same sweep timer in the notifier's loop (it is idempotent and serialized by the database), or share the loop so that every worker role runs it."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY-08",
+            "what": "The whole sealed report, attachments included, is stored as base64 in a Postgres text column (sealed_reports.ciphertext). The guideline sends blobs to buckets keyed by a fixed enum and moved by presigned URLs.",
+            "in_output": "om/src/acme/om/reports/types/sealed_report.py",
+            "in_reference": "lenses/async.md ASY-08",
+            "fix": "Keep the report header ciphertext in the row, and put attachment ciphertexts in a bucket under a fixed bucket enum with presigned upload and download URLs."
+          },
+          {
+            "severity": "low",
+            "lens": "DEL-32",
+            "what": "The local stack sends traces straight to Jaeger with no OpenTelemetry collector, while the deployed tasks run a collector sidecar, so local and deployed collection paths differ.",
+            "in_output": "deployment/local/docker-compose.yml",
+            "in_reference": "lenses/delivery.md DEL-32",
+            "fix": "Add a local otel-collector that fans traces and metrics out to Jaeger and Prometheus, as the deployed task template does."
+          }
+        ]
+      },
+      "reference": {
+        "score": 80,
+        "strengths": [
+          "The repository layout matches the reference role for role: apps/portal, clients/python, deployment/{docker,local,terraform,cloud}, infra, integrations, om (with migrations/sql up/down), ops (audit, stress, signals, traffic), services/api, workers, docs/adr, specs, and .claude/skills.",
+          "services/api/src/acme/services/api/ has the reference's gateway/routers/services/types/realtime split, with gateway modules for auth, admin, errors, idempotency, ratelimit and webhooks.",
+          "deployment/terraform/{bootstrap,environments}/{staging,prod} plus modules mirror the reference's one-account-per-environment layout, and the account IAM carries the same build/plan/deploy/smoke/investigate roles.",
+          "om/tests/contracts/* run the same contract cases over memory (unit) and Postgres (integration), including cross-tenant cases, the way the reference's storage suites do.",
+          "apps/portal/src/features/*/ uses the reference's view / view-model hook / model-module triplet, with a query layer, a Zustand store and a typed realtime router."
+        ],
+        "gaps": [
+          {
+            "severity": "medium",
+            "lens": "ASY-12",
+            "what": "The reference sends its processor webhook onto Queues.WEBHOOKS through a WebhooksService and consumes it in the maintenance worker. The output settles inline in a domain router's route.",
+            "in_output": "services/api/src/acme/services/api/routers/support.py",
+            "in_reference": "services/api/src/tadas/services/api/routers/webhooks.py; services/api/src/tadas/services/api/services/impl/billing.py (queues.send(Queues.WEBHOOKS, ...)); workers/maintenance/src/tadas/workers/maintenance/deliveries.py",
+            "fix": "Add a dedicated webhooks router and service that enqueue the verified delivery, with a worker consumer for it."
+          },
+          {
+            "severity": "medium",
+            "lens": "DEL-39",
+            "what": "The reference has an access-log test that pins the request id on the per-request line. The output has no such test, and its line carries a null request id.",
+            "in_output": "services/api/src/acme/services/api/gateway/observability.py",
+            "in_reference": "services/api/tests/test_access_log.py",
+            "fix": "Fix the reset ordering and add an access-log test like the reference's."
+          },
+          {
+            "severity": "low",
+            "lens": "ASY-19",
+            "what": "The output adds a second worker whose loop is a hand copy of the maintenance loop without the sweep. The reference keeps one worker role and routes kinds to handler modules within it.",
+            "in_output": "workers/notifier/src/acme/workers/notifier/loop.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/ (handler.py routing to deliveries.py, slack_posts.py, reminders.py)",
+            "fix": "Either host SEND_NOTIFICATION as a handler in the maintenance worker, or share one loop implementation that keeps the sweep."
+          },
+          {
+            "severity": "low",
+            "lens": "DEL-03",
+            "what": "The Terraform modules put variables and outputs in main.tf and have no tftest.hcl coverage. The reference splits variables.tf and outputs.tf per module and tests the service, alarms, dashboard and static_site modules.",
+            "in_output": "deployment/terraform/modules/",
+            "in_reference": "deployment/terraform/modules/service/tests/*.tftest.hcl; modules/alarms/tests; modules/static_site/tests",
+            "fix": "Split the module interfaces into variables.tf and outputs.tf, and add terraform test files for the service, observability and static_site modules."
+          },
+          {
+            "severity": "low",
+            "lens": "DEL-32",
+            "what": "The reference's local stack includes an otel-collector config. The output's local stack does not.",
+            "in_output": "deployment/local/docker-compose.yml",
+            "in_reference": "deployment/local/otel-collector/collector.yml",
+            "fix": "Add the local collector service and its config."
+          }
+        ]
+      }
+    },
+    "rationale": "The output is a thorough realization of the guideline. It has the full namespace shape in om, one storage funnel that sets the tenant scope, forced row-level security on every tenant table, outbox relays in the same transaction, provider twins, a promote-don't-rebuild deploy chain with per-account Terraform, ADRs for every decision, and end-to-end integration tests for all three MVP loops. Points come off for a few real departures rather than broad structural failure. The per-request log line still logs a null request id because the context var is reset before the log call; this was found in session 1 and never fixed. The payment webhook settles inline instead of going through the inbound queue: the deviation is recorded in ADR 0010 but still bypasses a high-severity lens, and the reference routes the same thing through Queues.WEBHOOKS to a worker. The notifier worker drops the sweep that every worker is meant to run, and report ciphertext with attachments sits in a Postgres column rather than a bucket. Against the reference the layout, layering and ops tooling match closely; the differences are the webhook path, a copied worker loop, thinner Terraform tests, and the missing access-log test and local collector."
+  }
+}
