@@ -20,6 +20,10 @@ on:
         description: "how many times each subject runs, from 1 to 5"
         default: "3"
         type: string
+      max_spend_usd:
+        description: "once a scenario's run has spent this many US dollars, subject and judges, it starts no further repeat or phase; a whole number from 1 to 50"
+        default: "10"
+        type: string
 
 permissions:
   contents: read
@@ -90,6 +94,7 @@ jobs:
           PROVIDERS: ${{ inputs.providers }}
           EFFORT: ${{ inputs.effort }}
           REPEAT: ${{ inputs.repeat }}
+          MAX_SPEND_USD: ${{ inputs.max_spend_usd }}
           UV_OFFLINE: "1"
         run: |
           set -uo pipefail
@@ -111,6 +116,12 @@ jobs:
             echo "::error::repeat is a whole number from 1 to 5, got '$REPEAT'"
             exit 2
           fi
+          # Each scenario's run stops before a repeat, or a phase, once it
+          # has spent this much on its subject and its judges.
+          if ! [[ "$MAX_SPEND_USD" =~ ^([1-9]|[1-4][0-9]|50)$ ]]; then
+            echo "::error::max_spend_usd is a whole number of US dollars from 1 to 50, got '$MAX_SPEND_USD'"
+            exit 2
+          fi
           if [ "$SCENARIOS" = "all" ]; then
             # The suffixes benchmark/harness/scenario.py catalogs; one name per stem.
             names=$(find benchmark/scenarios -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.json' \) \
@@ -127,7 +138,7 @@ jobs:
             code=0
             uv run --locked benchmark/run.py --scenario "$name" \
               ${judges[@]+"${judges[@]}"} \
-              --strict --repeat "$REPEAT" --out benchmark/runs \
+              --strict --repeat "$REPEAT" --max-spend-usd "$MAX_SPEND_USD" --out benchmark/runs \
               --runtime container --claude claude || code=$?
             if [ "$code" -eq 7 ]; then
               skipped+=("$name")

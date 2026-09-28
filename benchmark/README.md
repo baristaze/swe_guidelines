@@ -37,6 +37,7 @@ image first (see Where a scenario runs).
 | `--out` | where run folders go; `benchmark/runs/` by default |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
+| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
@@ -57,9 +58,10 @@ so each provider weighs once, however many judgements it answered.
 A repeat whose subject failed is not judged, and it is not dropped
 either. It counts as a failure: it scores 0 in every provider's mean,
 and a run whose every repeat failed scores 0. A subject fails on a
-nonzero exit, a timeout, or `is_error` in its envelope. Dropping the
-failures would let a subject that fails one time in three keep the
-score of the two times it did not.
+nonzero exit, a timeout, or `is_error` in its result. A subject in
+phases fails when one of its phases does (see A subject in phases).
+Dropping the failures would let a subject that fails one time in three
+keep the score of the two times it did not.
 
 One run of a subject is an anecdote, so `--repeat` is 3 by default.
 The summary reports the spread: each provider's standard deviation,
@@ -96,12 +98,17 @@ Runtimes).
 ```text
 runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   run.json                 the resolved scenario, runtime, models, argv, and versions
-  streams/cli.jsonl        one JSON line per output line, written as it happens
+  streams/cli.jsonl        one JSON line per output line, written as it happens:
+                           a skill subject's every turn
+  streams/harness.jsonl    what the harness ran where the subject ran, when the
+                           subject builds an output: checkpoints, the archive, the gates
   streams/build.jsonl      the image build's output, with `--runtime container --build`,
                            for a skill or command subject
   streams/browser/         frames and index.jsonl, when something captured them
   artifacts/<repeat>/      the answer, the judge prompt, and the collected
-                           files under workspace/ at their own paths
+                           files under workspace/ at their own paths, byte for byte
+  artifacts/<repeat>/output.zip, MANIFEST.txt
+                           the output's last commit, whole, and a line per file
   judgements/<repeat>-<provider>.json
   results.json             the record, in schema/result.schema.json
   report.md                the same run for a person
@@ -122,7 +129,9 @@ outside the checkout, a fresh temporary folder per run:
   target/                  a copy of the target folder, tests included,
                            without its siblings
   workspace/<repeat>/      what the subject worked in, empty at the start
-  home/<repeat>/, tmp/<repeat>/  the host runtime's private HOME and TMPDIR
+  home/<repeat>/, tmp/<repeat>/  the host runtime's private HOME and TMPDIR,
+                           one folder in each per session of a subject in phases
+  hidden/<repeat>/         the handoff note, while a phase without a hint runs
 ```
 
 So no answer key, no earlier repeat's judge prompt, and no
@@ -144,8 +153,10 @@ run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
-(see Versions), and on a run whose runtime its scenario does not list
-(see Where a scenario runs).
+(see Versions), on a run whose runtime its scenario does not list
+(see Where a scenario runs), and on a compressed file in a run folder
+that holds a string shaped like a key, or that the scan cannot read, on
+a `.zip` that does not open, and on a `.git` folder (see The workflow).
 
 ## Versions
 
@@ -285,7 +296,9 @@ mirrors the sandbox:
   <run>/
     plugin/, target/       copies of the staged plugin and target, afresh before every repeat
     workspace/<repeat>/    what the subject works in, empty at the start
-    home/<repeat>/, tmp/<repeat>/  the subject's private HOME and TMPDIR
+    home/<repeat>/, tmp/<repeat>/  the subject's private HOME and TMPDIR,
+                           one folder in each per session of a subject in phases
+    hidden/<repeat>/       the handoff note, while a phase without a hint runs
     keys/<repeat>/         one file per key the repeat's subject is handed
     group/<repeat>         the process group the subject runs in
 ```
@@ -442,6 +455,7 @@ subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
   max_turns: 14
+  max_usd: 2                # the most the session may spend, in US dollars
   allowed_tools: [Read, Grep, Glob]
   target: null
 artifact:
@@ -463,10 +477,18 @@ payload, so the skills under test are the ones in the working tree, not
 the installed ones. It also gets `--model`: the subject's model is
 always pinned, because `claude -p` on its default model measures
 whatever that default is today. The run records the pin in `run.json`
-and in `subject.model`. Each repeat records `subject_models`, the models
-the JSON envelope reports under `modelUsage`, and a run notes a repeat
-whose envelope does not report the pinned model. An envelope with
-`is_error` set is a failed repeat, whatever the exit code.
+and in `subject.model`. The session runs with `--output-format
+stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
+and the answer, the models, and the spend are read from its last line,
+the result. Each repeat records `subject_models`, the models the result
+reports under `modelUsage`, and a run notes a repeat whose result does
+not report the pinned model. A result with `is_error` set is a failed
+repeat, whatever the exit code. A skill subject is bounded by count and
+by spend: `max_turns` goes to Claude Code as `--max-turns`, and
+`max_usd`, which every skill subject names, as `--max-budget-usd`.
+Claude Code stops the session at either. The harness also holds the
+spend from the stream (see A subject in phases). Each repeat records its
+session under `phases`, with the bound that stopped it, if one did.
 `kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
 
@@ -474,6 +496,166 @@ An unknown key in a scenario file is refused rather than ignored: a
 misspelled key is a scenario that silently measures something else.
 
 A relative path in a scenario is read from the scenario file's folder.
+
+## A subject in phases
+
+A skill subject can run in `phases`: an ordered list of sessions, each
+with a prompt and bounds of its own, building one folder of the
+workspace, `output`. The harness commits that folder after every phase
+and archives the last of those commits.
+
+```yaml
+subject:
+  skill: arch-scaffold-new
+  target: ../fixtures/acme-spec
+  output: acme                # a folder of the workspace the phases build
+  gates: [make check, make test-integration]
+  gate_timeout_s: 3600        # how long each gate may run on the final tree
+  phases:
+    - name: scaffold
+      prompt: "/swe-guidelines:arch-scaffold-new acme ... The product is described in {target}/spec.md."
+      hint: true              # the handoff note; a builder keeps it
+      max_turns: 400
+      max_usd: 60             # passed to Claude Code as --max-budget-usd
+      max_gate_reruns: 3      # after a failed gate run, at most this many more
+      timeout_s: 14400        # the backstop, never the bound
+    - name: review
+      prompt: "/swe-guidelines:arch-review-full . Write the report to ../review/report.md."
+      cwd: output             # starts in the output folder, not the workspace
+      session: fresh          # the default; resume continues the phase before
+      on_cap: continue        # the default; stop ends the repeat at a bound
+      max_turns: 150
+      max_usd: 25
+      timeout_s: 7200
+```
+
+Every phase names its `name`, `prompt`, `max_turns`, `max_usd`, and
+`timeout_s`. The subject names no `prompt`, `max_turns`, `max_usd`, or
+`timeout_s` of its own: each phase's are the ones in effect.
+
+**Sessions.** A phase is `fresh` by default: a new `claude -p` with a new
+HOME and a new TMPDIR, so nothing carries over, no session, no Claude
+Code memory, and no note. `resume` continues the session of the phase
+before it, with `--resume`, in the same HOME and the same working
+folder, and the first phase cannot resume. The container runtime starts
+every phase in a new container, whose HOME is new each time, so a
+scenario that resumes a phase does not list it. A phase starts in the
+workspace, or in the output folder with `cwd: output`.
+
+**What a phase is told.** A phase gets its prompt and nothing added to
+it. It is told of the target only where its prompt names `{target}`,
+and only then gets `--add-dir` for it. A phase with `hint: true` is
+also told to keep a handoff note, `HANDOFF.md` in the workspace beside
+the output folder, and to read it first when it is there. The harness
+takes the note out of the workspace while a phase without the hint
+runs, and puts it back for the next hinted one. So a phase that reviews
+the tree reads its prompt and the repository, and nothing that says
+the tree was scaffolded or what the run measures. The note is kept out
+of the paths the subject is given. On the host and on another machine,
+a subject that searches the machine can still find it.
+
+**Bounds.** A phase is bounded by count and by spend, and its wall time
+is only the backstop:
+
+- the turn cap, `--max-turns`, which Claude Code holds. It counts the
+  main agent's turns only, so a phase whose skill fans out to subagents
+  is bounded by its spend;
+- the spend cap, `--max-budget-usd`, which Claude Code holds. It counts
+  only the spend of the call it is given to: a resumed session's earlier
+  spend is not counted against it. So a resumed phase's `max_usd` bounds
+  that phase's own spend, as a fresh phase's does. The harness also
+  prices the usage of every assistant message the stream
+  carries, at the matrix's price for its model, and stops the phase
+  when that passes the cap. A cache read is priced at a tenth of the
+  input price, and a cache write at 1.25 times it, or twice it for a
+  one-hour write. A model the matrix does not price is priced at its
+  dearest Anthropic model, and named under `unpriced`. The stream shows
+  what the session shows it, so a subagent the stream does not carry is
+  held by Claude Code's cap alone;
+- the gate reruns, which the harness holds, reading each Bash call in
+  the stream. A command is split into simple commands the way the shell
+  splits it, and a gate run is one whose first words, after any
+  variable settings, are a command the scenario lists under `gates`.
+  So `cd acme && make check` runs the gate `make check`, and
+  `echo make check`, or a commit message that names it, does not. A
+  run's outcome is read from the call's result only when the call's
+  exit status is the gate's: nothing but `&&` follows the gate. Then
+  it fails when the result is an error. A run that pipes the gate
+  (`make check | tail`), or follows it with `;`, `||`, or `&`, is
+  counted as unread, and it neither fails nor passes. After a failed
+  run of a gate come at most `max_gate_reruns` more read runs, 3 by
+  default: the first run plus at most 3 reruns. When the last of them
+  fails too, the harness stops the phase and records the gate as
+  failing. A run that passes ends the streak, so a later step that runs
+  the gates again starts with its first run. A phase whose gate runs
+  are all unread is bounded by its turns and its spend.
+
+A phase that hits a bound ends as `capped`, and its record in
+`results.json` names the bound: `turns`, `spend`, or `gate_reruns`. The
+next phase still runs, unless the phase says `on_cap: stop`. A phase
+that fails, on a nonzero exit, an error result, or its timeout, ends the
+repeat, and the repeat fails and is not judged. A repeat whose phases
+all ended, finished or capped, is judged, unless the run's spend cap
+kept some from running (see The run's spend). A one-phase skill subject is
+one session under the same bounds, and a cap there fails its repeat, as
+a session that gave no answer.
+
+**Checkpoints.** After each phase, the harness commits the output folder
+where the subject runs. The folder is made a repository if it is not
+one. A checkpoint leaves the output's branch, HEAD, and index as the
+subject left them. It stages the tree, the files git tracks and those
+it does not ignore, into an index of its own, commits that tree with an
+identity of its own, the message `checkpoint`, and no parent, and keeps
+the commit under `refs/checkpoints/<n>`. So the history exists, and a
+phase that lists every ref finds commits that say `checkpoint` and
+nothing more: no phase's name, no outcome. The branch's own history
+holds only what the subject committed, and a review with no argument
+reads the change the subject made, not the harness's. The phase before
+a checkpoint has ended, and its processes with it, so a lock git left
+in the repository is stale, and the checkpoint removes it. A phase that
+fails keeps its checkpoint, so the checkpoints so far are never lost.
+Each phase's record in `results.json` names its commit.
+
+**The output.** After the last phase that ran, the harness archives the
+last checkpoint with `git archive --format=zip` and brings it back as
+`artifacts/<repeat>/output.zip`, beside `MANIFEST.txt`: one line per
+file of the zip, its SHA-256, its size in bytes, and its path. So two
+runs' outputs diff as text. The zip is redacted member by member before
+its hash is taken, and `results.json` records its SHA-256, its size, its
+file count, and the commit, under `archive`. A zip the redaction cannot
+read is replaced by a line that says so, its record holds no file, and
+the run's notes say why; the run goes on to write its results. Files a
+scenario collects are copied byte for byte, and a binary one reaches
+the judges as its size, not its bytes. Nothing under a `.git` is
+collected: its objects are compressed, and the zip is the record of the
+output.
+
+**The gates.** Then the harness runs each command under `gates` in the
+output folder, where the subject ran, with no key, and records whether
+it passed under `gates`, beside the scores. The gates never cap a score
+and never fail the run. `streams/harness.jsonl` holds what the
+checkpoints, the archive, and the gates printed.
+
+**The run's spend.** `--max-spend-usd` bounds what one run spends on the
+subject and the judges together. The harness checks it before each
+repeat and before each phase, and starts nothing more once the run has
+spent that much. It stops nothing that is running: a phase that starts
+below it can spend up to its own `max_usd`, and the judges of a repeat
+still judge it. So a run can end above it, by about what one phase and
+one repeat's judges spend. The run's notes say where it stopped. A
+repeat whose phases the cap kept from running is cut short: its record
+names those phases under `cut_short`. It is not judged, since its
+output is not the one the scenario measures and a judge would spend
+past the cap, and it is in no mean, neither scored nor a failure. The
+summary names it under `cut_short`, and a run whose every repeat was cut
+short has no score. A phase's spend is Claude Code's own figure, or the harness's estimate
+when the session wrote no result. A resumed session's result carries
+the session's running total, so a resumed phase's spend is what it
+adds to that total. A repeat's is the sum of its phases'.
+
+`run.json` records every phase with the command it runs, so a dry run
+shows them. A resumed phase's command names the session it continues
+by the phase before it, since the id is known only once that phase ran.
 
 ## Target and evidence
 
@@ -571,11 +753,12 @@ so a provider's cache discount makes the true bill lower, never higher.
 A judgement's `cost_usd` is its usage at those prices.
 
 The subject's spend is on each repeat, as `subject_usage` and
-`subject_cost_usd`. A skill's figures come from the `claude -p`
-envelope, and its cost is the one Claude Code reports, caching
-included. Its `reasoning_tokens` are the thinking tokens the envelope
-reports, which its output already counts. A `qa` answer is priced like a
-judgement.
+`subject_cost_usd`. A skill's figures come from each session's result,
+and its cost is the one Claude Code reports, caching included. A
+session the harness stopped wrote no result, and its cost is the
+harness's estimate from the stream, which the run's notes name. Its
+`reasoning_tokens` are the thinking tokens the result reports, which
+its output already counts. A `qa` answer is priced like a judgement.
 
 `results.json` totals it all under `spend`: each judge's tokens and
 cost, the subject's, and `total_usd`. `report.md` shows the same in its
@@ -587,7 +770,9 @@ unpriced is a lower bound. No price is invented for it.
 
 `streams/cli.jsonl` holds one record per output line,
 `{"t": <unix>, "s": "out"|"err", "line": ...}`, flushed as the subject
-runs. The subject's output is read as UTF-8, and a byte that is not
+runs. A skill subject's `out` lines are its session, one JSON event
+each, so the stream is the whole session, every turn and every tool
+call. The subject's output is read as UTF-8, and a byte that is not
 UTF-8 becomes U+FFFD, so the reader never stops early. A record ends at
 a newline and nowhere else, so a U+2028 in an answer stays in it.
 
@@ -621,8 +806,11 @@ file here.
 
 `.github/workflows/benchmark.yml` runs on demand every scenario that
 lists the container runtime, in that runtime. It skips the rest and
-names them in a notice. Its `repeat` input is 1 to 5, which bounds what
-one dispatch spends on a scenario.
+names them in a notice. Its `repeat` input is 1 to 5, and each scenario
+runs with `--max-spend-usd` at its `max_spend_usd` input, a whole number
+of US dollars from 1 to 50, 10 by default. Together they bound what one
+dispatch spends on a scenario: past that amount, no further repeat of it
+starts.
 
 Its job runs in a GitHub environment named `benchmark`, and the
 workflow does not create it. Create it under the repository's
@@ -644,7 +832,23 @@ writes the summary or uploads the run folders, it runs
 file of every run folder as bytes, frames included, and replaces two
 things with `[redacted]`: the value of every provider key the harness
 knows by name, and anything shaped like a provider, GitHub, or AWS key.
-The summary and the upload run only when the redaction succeeded.
+A compressed file hides its text from a scan of its bytes, so the scan
+unpacks the forms the standard library reads: a zip, member by member,
+names and comment included; a tar, member by member; and a gzip, bzip2,
+or xz stream. What it unpacks is scanned the same way, down to four
+levels, and then the file's bytes are scanned as they stand. A file
+that held a key is packed again in its own form, and a zip's manifest
+and its record in `results.json` are written again, so they describe
+the zip that is published. A file the scan cannot read is replaced by a
+line that says so, since nothing could say it holds no key: one too
+deep, one that would unpack to more than 1 GiB, a member that does not
+read (an encrypted one, or one in a compression the standard library
+does not know), a stream of those forms that breaks, and a form it
+cannot read at all (zstd, 7z, rar, lz4). A file that only looks like a
+zip and does not open as one is scanned as bytes. A file the command
+cannot read or write is named, the rest are redacted still, and the
+command exits 1. The summary and the upload run only when the redaction
+succeeded.
 
 ## Tests
 

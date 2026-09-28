@@ -29,7 +29,15 @@ and the run folders together:
   scenario no longer lists measured something the scenario no longer
   stands behind. A run of a scenario no file there names, or whose file
   does not load, or that two files name, fails too, since nothing says
-  where it runs.
+  where it runs;
+- no compressed file in a run folder holds a string shaped like a key:
+  a zip, a tar, and a gzip, bzip2, or xz stream are read the way
+  `run.py redact` reads them, member by member and down the levels, since
+  a compressed member hides its text from a scan of the bytes. A
+  compressed form the scan cannot read, a part of one it cannot unpack,
+  and a `.zip` that does not open fail too, since no one can say they
+  hold no key. So does a `.git` folder in a run folder: its objects are
+  compressed, and the output's zip is the record of the output.
 
 A row is a table line of the index, and its run is the folder its
 `](<folder>/report.md)` link names. Its section is the nearest `## `
@@ -58,6 +66,7 @@ from _common import CLOSING, HEADING, ROOT, parser, unfenced
 # here are the ones run.py admits.
 if str(ROOT / "benchmark") not in sys.path:
     sys.path.insert(0, str(ROOT / "benchmark"))
+from harness import redact as X
 from harness import scenario as S
 
 RUNS = ROOT / "benchmark" / "runs"
@@ -198,6 +207,35 @@ def unclean(name: str) -> str | None:
     return f"ran on changes no commit holds ({paths})"
 
 
+def packed_keys(name: str) -> list[str]:
+    """Why a run folder's compressed files fail: a key, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
+    out = []
+    for path in sorted((RUNS / name).rglob("*")):
+        shown = path.relative_to(ROOT)
+        if path.name == ".git":
+            out.append(f"{shown}: a run folder holds no .git; its objects are compressed, and the output's zip is the record")
+            continue
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            data = path.read_bytes()
+            kind = X.form(data)
+            if path.suffix == ".zip" and kind != "zip":
+                out.append(f"{shown}: does not open as a zip, so no one can say it holds no key")
+                continue
+            places = X.keys_in(data) if kind else []
+        except (*X.READ_ERRORS, MemoryError) as exc:
+            out.append(f"{shown}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
+            continue
+        for place in places:
+            if "(not scanned:" in place:
+                out.append(f"{shown}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
+            else:
+                where = f"{shown}: {place}" if place else str(shown)
+                out.append(f"{where} holds a string shaped like a key; run `run.py redact`")
+    return out
+
+
 def check(errors: list[str]) -> int:
     """Add every mismatch to `errors` and return the number of run folders."""
     folders = sorted(p.name for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
@@ -226,6 +264,7 @@ def check(errors: list[str]) -> int:
         reason = unlisted(name, ran[name], scenarios)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}")
+        errors.extend(packed_keys(name))
         if ran[name] and ran[name] not in headed:
             unheaded[ran[name]].append(name)
     for missing in sorted(unheaded):
@@ -268,7 +307,10 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         print(f"\n{len(errors)} run index mismatch(es)")
         return 1
-    print(f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists")
+    print(
+        f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists, "
+        "no key in a compressed file"
+    )
     return 0
 
 

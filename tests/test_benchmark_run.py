@@ -15,6 +15,7 @@ RUN = Path(__file__).resolve().parent.parent / "benchmark" / "run.py"
 spec = importlib.util.spec_from_file_location("benchmark_run", RUN)
 assert spec is not None and spec.loader is not None
 run = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = run  # its dataclasses look their module up by name
 spec.loader.exec_module(run)
 
 # Every runtime, the host first, so a run that names none runs on the host.
@@ -22,7 +23,7 @@ EVERYWHERE = ["host", "container", "vm"]
 SKILL = {
     "name": "one",
     "kind": "skill",
-    "subject": {"skill": "arch-review-om", "prompt": "Review it."},
+    "subject": {"skill": "arch-review-om", "prompt": "Review it.", "max_usd": 1},
     "rubric": "r",
     "runtimes": EVERYWHERE,
 }
@@ -45,7 +46,7 @@ def test_a_skill_with_no_target_is_told_of_none():
 
 
 def test_the_target_placeholder_is_filled_and_refused_when_there_is_no_target():
-    scn = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review {target}/om."}))
+    scn = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review {target}/om.", "max_usd": 1}))
     assert run.subject_prompt(scn, "/target") == "Review /target/om."
     with pytest.raises(S.ScenarioError, match="has no target"):
         run.subject_prompt(scn, None)
@@ -238,7 +239,7 @@ def scenario_step(tmp_path):
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "UV_LOG": str(tmp_path / "uv.log"),
             "ARGV_LOG": str(tmp_path / "argv.log"),
-            **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", **inputs},
+            **{"SCENARIOS": "all", "PROVIDERS": "3", "EFFORT": "medium", "REPEAT": "1", "MAX_SPEND_USD": "10", **inputs},
         }
         (tmp_path / "uv.log").unlink(missing_ok=True)
         # As Actions runs a step that names no shell: `bash -e {0}`.
@@ -283,6 +284,11 @@ def test_a_failed_scenario_ends_nothing_after_it(scenario_step):
         {"REPEAT": "6"},
         {"REPEAT": "10"},
         {"REPEAT": "1 --dry-run"},
+        {"MAX_SPEND_USD": "0"},
+        {"MAX_SPEND_USD": "51"},
+        {"MAX_SPEND_USD": "100"},
+        {"MAX_SPEND_USD": "2.5"},
+        {"MAX_SPEND_USD": ""},
     ],
 )
 def test_the_workflow_refuses_inputs_outside_their_pattern(scenario_step, tmp_path, inputs):
@@ -337,6 +343,42 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
     assert not (run_dir / "home").exists() and not (run_dir / "workspace").exists()
 
 
+def test_a_collected_file_is_kept_as_its_bytes_and_a_binary_one_is_not_shown_to_the_judges(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    prompts: list[str] = []
+
+    def judge_all(flags, prompt, *args, **kwargs):
+        prompts.append(prompt)
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    image = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256))
+    script = (
+        "import pathlib; "
+        f"pathlib.Path('shot.png').write_bytes({image!r}); "
+        "pathlib.Path('notes.md').write_bytes(b'caf\\xc3\\xa9 \\xff')"
+    )
+    scenario = {
+        "name": "bytes",
+        "kind": "command",
+        "subject": {"argv": [sys.executable, "-c", script]},
+        "artifact": {"stdout": False, "files": ["*.png", "*.md"]},
+        "rubric": "r",
+        "runtimes": EVERYWHERE,
+        "judges": {"providers": "anthropic"},
+    }
+    path = tmp_path / "bytes.json"
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    kept = run_dir / "artifacts" / "0" / "workspace"
+    assert (kept / "shot.png").read_bytes() == image
+    assert (kept / "notes.md").read_bytes() == b"caf\xc3\xa9 \xff"  # as written, not decoded and written again
+    (prompt,) = prompts
+    assert f"### File: shot.png\n\n(binary, {len(image)} bytes; not shown)" in prompt
+    assert "### File: notes.md\n\ncaf\u00e9 \ufffd" in prompt
+
+
 def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")  # the built-in matrix, no pyyaml needed
 
@@ -376,6 +418,14 @@ def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch
     assert "skills" in answer and "no skills" not in answer
     assert "target" in answer and "no target" not in answer
     assert "seen:\n" in answer, answer
+
+
+def test_the_workflow_gives_every_scenario_the_run_s_spend_cap(scenario_step, tmp_path):
+    code, ran, _ = scenario_step(SCENARIOS="a c", MAX_SPEND_USD="25")
+    logged = (tmp_path / "argv.log").read_text(encoding="utf-8").split()
+    assert code == 0 and ran == ["a", "c"] and logged[logged.index("--max-spend-usd") + 1] == "25"
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert 'default: "10"' in workflow[workflow.index("      max_spend_usd:") :].split("\n\n")[0]
 
 
 def test_the_workflow_passes_judges_and_effort_only_when_given(scenario_step, tmp_path):
@@ -615,7 +665,9 @@ def test_a_skill_subject_runs_on_the_model_it_is_pinned_to():
 def test_the_subject_model_defaults_to_the_scenario_then_the_matrix():
     matrix = run.J.DEFAULT_MATRIX
     assert run.subject_model(S.from_data(SKILL), None, matrix) == matrix["anthropic"]["model"]
-    pinned = S.from_data(dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review it.", "model": "claude-sonnet-5"}))
+    pinned = S.from_data(
+        dict(SKILL, subject={"skill": "arch-review-om", "prompt": "Review it.", "model": "claude-sonnet-5", "max_usd": 1})
+    )
     assert run.subject_model(pinned, None, matrix) == "claude-sonnet-5"
     assert run.subject_model(pinned, "claude-haiku-5", matrix) == "claude-haiku-5"
     command = S.from_data({"name": "c", "kind": "command", "subject": {"argv": ["true"]}, "rubric": "r", "runtimes": EVERYWHERE})
@@ -977,7 +1029,10 @@ def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monke
     # `--runtime`, it runs on the vm, its first runtime.
     target = str(run.BENCHMARK / "fixtures" / "review-om")
     scenario = dict(
-        SKILL, runtimes=["vm"], requires=["docker"], subject={"skill": "arch-review-om", "prompt": "Review it.", "target": target}
+        SKILL,
+        runtimes=["vm"],
+        requires=["docker"],
+        subject={"skill": "arch-review-om", "prompt": "Review it.", "target": target, "max_usd": 1},
     )
     path = tmp_path / "system.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")

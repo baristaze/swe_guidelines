@@ -1,6 +1,8 @@
 """scripts/check_runs.py: the index of the benchmark runs names every run folder once, in its scenario's section."""
 
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -368,3 +370,76 @@ def test_a_name_a_loaded_file_bears_and_a_broken_file_s_stem_shares_fails(repo, 
     assert runs.main() == 1
     out = capsys.readouterr().out
     assert "alpha is the name of beta.json and the stem of alpha.json, which does not load, so none says where it runs" in out
+
+
+def a_zip(repo, name, members):
+    path = repo.root / "benchmark" / "runs" / name / "artifacts" / "0" / "output.zip"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for member, data in members.items():
+            zf.writestr(member, data)
+    return path
+
+
+def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_run(repo, ONE_B, "2026-01-01T07:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n", "app/.env": "KEY=sk-ant-api03-" + "a1B2" * 12 + "\n"})
+    a_zip(repo, ONE_B, {"README.md": "clean\n"})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, ONE_B))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/{ONE_A}/artifacts/0/output.zip: app/.env holds a string shaped like a key" in out
+    assert "1 run index mismatch(es)" in out  # the clean zip passes
+
+
+def test_a_checked_in_zip_that_does_not_open_fails(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n"}).write_bytes(b"not a zip")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "output.zip: does not open as a zip, so no one can say it holds no key" in capsys.readouterr().out
+
+
+def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"README.md": "clean\n"})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 0
+    assert "no key in a compressed file" in capsys.readouterr().out
+
+
+def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as zf:
+        zf.writestr(".env", "KEY=ghp_" + "k" * 36)
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_zip(repo, ONE_A, {"bundle.zip": inner.getvalue()})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    assert "output.zip: bundle.zip!.env holds a string shaped like a key" in capsys.readouterr().out
+
+
+def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_fails(repo, runs, capsys):
+    import gzip
+
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    folder = repo.root / "benchmark" / "runs" / ONE_A / "artifacts" / "0" / "workspace"
+    (folder / "site" / ".git" / "objects").mkdir(parents=True)
+    (folder / "site" / ".git" / "objects" / "ab").write_bytes(b"x")
+    (folder / "env.json.gz").write_bytes(gzip.compress(b'{"key": "sk-ant-api03-' + b"a1B2" * 12 + b'"}'))
+    (folder / "bundle.zst").write_bytes(b"\x28\xb5\x2f\xfd" + b"frame")
+    (folder / "notes.md").write_text("plain text is redact's to scan\n", encoding="utf-8")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    workspace = f"benchmark/runs/{ONE_A}/artifacts/0/workspace"
+    assert f"{workspace}/site/.git: a run folder holds no .git" in out
+    assert f"{workspace}/env.json.gz holds a string shaped like a key" in out
+    assert f"{workspace}/bundle.zst: (not scanned: a compressed form the scan cannot read)" in out
+    assert "3 run index mismatch(es)" in out

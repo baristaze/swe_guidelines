@@ -15,6 +15,7 @@ import base64
 import json
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,12 +36,29 @@ class CliStream:
         self._lock = threading.Lock()
         self._fh = self.path.open("x", encoding="utf-8")
         self.count = 0
+        # Called with each line once it is written, when set: the harness
+        # watches a phase's bounds through it.
+        self.listener: Callable[[str, str], None] | None = None
 
     def write(self, stream: str, line: str, t: float | None = None) -> None:
         """Append one line. `stream` is `out` or `err`."""
         if stream not in ("out", "err"):
             raise ValueError(f"stream is 'out' or 'err', got {stream!r}")
-        record = {"t": time.time() if t is None else t, "s": stream, "line": line.rstrip("\n")}
+        text = line.rstrip("\n")
+        self._append(stream, text, t)
+        listener = self.listener
+        if listener is None:
+            return
+        # A listener runs on the thread that reads the subject's pipe. An
+        # error in it must not end that thread, or the pipe fills and the
+        # subject blocks, so it is written down and the reading goes on.
+        try:
+            listener(stream, text)
+        except Exception as exc:
+            self._append("err", f"[harness] the stream's listener failed on a line and read on: {type(exc).__name__}: {exc}")
+
+    def _append(self, stream: str, text: str, t: float | None = None) -> None:
+        record = {"t": time.time() if t is None else t, "s": stream, "line": text}
         with self._lock:
             self._fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             self._fh.flush()

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -883,3 +884,68 @@ def test_an_image_the_engine_does_not_know_has_no_id(tmp_path):
     rt = RT.build("container", tmp_path / "run", config={"docker": docker, "image": "img:latest"})
     assert rt.image_version() == {"name": "img:latest", "id": None}
     assert RT.build("host", tmp_path / "h").image_version() is None
+
+
+def test_a_session_gets_a_home_and_a_tmpdir_of_its_own_in_the_repeat(tmp_path, monkeypatch):
+    monkeypatch.setattr(RT.VmRuntime, "helper", lambda self, argv, stdin=None, timeout_s=None: 0)
+    rt = RT.build("vm", tmp_path / "run-1", None, {"exec_prefix": ["fake-shell", "--"], "remote_workspace": "/opt/work"})
+    assert isinstance(rt, RT.VmRuntime)
+    workspace = rt.prepare_repeat(0)
+    rt.use_session("scaffold")
+    parts = rt.command(["claude"], workspace)[6:11]
+    assert parts == [f"/opt/work/run-1/{p}" for p in ("keys/0", "home/0/scaffold", "tmp/0/scaffold", "workspace/0", "group/0")]
+    rt.prepare_repeat(1)  # a new repeat starts with the repeat's own again
+    assert rt.remote_part("home") == "/opt/work/run-1/home/1"
+    host = RT.build("host", tmp_path / "run-2", None, {}, sandbox=tmp_path / "sandbox")
+    host.prepare_repeat(0)
+    host.use_session("review")
+    env = host.environment({})
+    assert (
+        env["HOME"] == str(tmp_path / "sandbox" / "home" / "0" / "review")
+        and (tmp_path / "sandbox" / "tmp" / "0" / "review").is_dir()
+    )
+
+
+def test_the_harness_moves_a_path_out_of_the_workspace_and_back(tmp_path, monkeypatch):
+    rt = RT.build("host", tmp_path / "run", None, {}, sandbox=tmp_path / "sandbox")
+    workspace = rt.prepare_repeat(0)
+    (workspace / "NOTE.md").write_text("n", encoding="utf-8")
+    rt.hide("NOTE.md")
+    assert not (workspace / "NOTE.md").exists() and (tmp_path / "sandbox" / "hidden" / "0" / "NOTE.md").is_file()
+    (workspace / "NOTE.md").write_text("written meanwhile", encoding="utf-8")
+    rt.show("NOTE.md")  # the hidden one comes back in its place
+    assert (workspace / "NOTE.md").read_text(encoding="utf-8") == "n"
+    rt.show("NOTE.md")  # nothing hidden: nothing moves
+    assert (workspace / "NOTE.md").read_text(encoding="utf-8") == "n"
+    ran: list[list[str]] = []
+
+    def helper(self, argv, stdin=None, timeout_s=None):
+        ran.append(argv)
+        return 0
+
+    monkeypatch.setattr(RT.VmRuntime, "helper", helper)
+    vm = RT.build("vm", tmp_path / "run-1", None, {"exec_prefix": ["fake-shell", "--"], "remote_workspace": "/opt/work"})
+    assert isinstance(vm, RT.VmRuntime)
+    vm.prepare_repeat(0)
+    vm.hide("NOTE.md")
+    assert ran[-1] == [
+        "fake-shell",
+        "--",
+        "sh",
+        "-c",
+        RT.MOVE,
+        "sh",
+        "/opt/work/run-1/workspace/0/NOTE.md",
+        "/opt/work/run-1/hidden/0/NOTE.md",
+    ]
+
+
+def test_a_stop_the_harness_sets_ends_the_command_as_stopped(tmp_path):
+    rt = RT.build("host", tmp_path / "run", None, {}, sandbox=tmp_path / "sandbox")
+    workspace = rt.prepare_repeat(0)
+    stop = threading.Event()
+    threading.Timer(0.3, stop.set).start()
+    with CliStream(tmp_path / "cli.jsonl") as streams:
+        status = rt.run(["sleep", "30"], workspace, {"PATH": "/usr/bin:/bin"}, streams, timeout_s=60, stop=stop)
+    assert status.stopped and not status.timed_out and not status.ok and status.duration_s < 10
+    assert "stopped by the harness at a bound" in (tmp_path / "cli.jsonl").read_text(encoding="utf-8")

@@ -42,11 +42,19 @@ class RepeatResult:
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
-    # The models the subject's envelope reports it ran on; empty when it reports none.
+    # The models the subject's result reports it ran on; empty when it reports none.
     subject_models: list[str] = field(default_factory=list)
     # What the subject spent: its tokens, and their cost in US dollars, None when unknown.
     subject_usage: dict[str, int] = field(default_factory=dict)
     subject_cost_usd: float | None = None
+    # A skill subject's sessions, each with how it ended and what it spent; None for another kind.
+    phases: list[dict[str, Any]] | None = None
+    # The output's zip: its path, its manifest's, its SHA-256, its size, its files, and the commit.
+    archive: dict[str, Any] | None = None
+    # The scenario's gates, run on the final tree: each command and whether it passed.
+    gates: list[dict[str, Any]] | None = None
+    # The phases the run's spend cap kept from running; such a repeat is not judged and scores nothing.
+    cut_short: list[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -60,6 +68,9 @@ class RepeatResult:
         }
         if self.expected is not None:
             out["expected"] = dict(self.expected)
+        for key in ("phases", "archive", "gates", "cut_short"):
+            if getattr(self, key) is not None:
+                out[key] = getattr(self, key)
         return out
 
 
@@ -101,7 +112,7 @@ class RunResult:
 
 
 def failed(exit_status: dict[str, Any]) -> bool:
-    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its envelope."""
+    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its result."""
     return exit_status.get("code", 0) != 0 or bool(exit_status.get("timed_out")) or bool(exit_status.get("is_error"))
 
 
@@ -203,6 +214,7 @@ def summarize(repeats: list[RepeatResult], subject: dict[str, Any] | None = None
         "per_provider": per_provider,
         "overall_mean": overall,
         "failed_repeats": failures,
+        "cut_short": [r.index for r in repeats if r.cut_short],
         "spread": spread,
         "self_judged": self_judged,
         "fallbacks": [fallbacks[k] for k in sorted(fallbacks)],
@@ -326,6 +338,71 @@ def spend_lines(spent: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _cost(phase: dict[str, Any]) -> str:
+    if phase.get("cost_usd") is not None:
+        return _usd(phase["cost_usd"])
+    return f"{_usd(phase['estimated_usd'])} (estimated)" if phase.get("estimated_usd") else "-"
+
+
+def phase_lines(repeats: list[RepeatResult]) -> list[str]:
+    """The report's sections on a skill subject's sessions, its output, and its gates."""
+    lines: list[str] = []
+    ran = [r for r in repeats if r.phases]
+    if ran:
+        lines += [
+            "## Phases",
+            "",
+            "Each session of the subject: how it ended, the bound that ended it, its turns, and what it spent.",
+            "",
+            _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Cost (USD)", "Checkpoint"]),
+            _row(["---"] * 8),
+        ]
+        for repeat in ran:
+            for phase in repeat.phases or []:
+                turns = phase.get("turns")
+                commit = phase.get("checkpoint")
+                lines.append(
+                    _row(
+                        [
+                            str(repeat.index),
+                            phase["name"],
+                            phase["session"],
+                            phase["status"],
+                            phase.get("capped") or "-",
+                            str(turns) if turns is not None else "-",
+                            _cost(phase),
+                            f"`{commit[:12]}`" if commit else "-",
+                        ]
+                    )
+                )
+        lines.append("")
+    kept = [r for r in repeats if r.archive]
+    if kept:
+        lines += ["## Output", "", "The output's last commit, archived whole; `results.json` has each zip's SHA-256.", ""]
+        for repeat in kept:
+            a = repeat.archive or {}
+            lines.append(
+                f"- repeat {repeat.index}: `{a['path']}`, {a['files']} file(s), {a['bytes']:,} bytes; manifest `{a['manifest']}`"
+            )
+        lines.append("")
+    gated = [r for r in repeats if r.gates]
+    if gated:
+        lines += [
+            "## Gates",
+            "",
+            "The scenario's gates, run on the final tree. They are recorded beside the scores and cap none.",
+            "",
+        ]
+        for repeat in gated:
+            for gate in repeat.gates or []:
+                verdict = (
+                    "passed" if gate["passed"] else "timed out" if gate.get("timed_out") else f"failed, exit {gate['exit_code']}"
+                )
+                lines.append(f"- repeat {repeat.index}: `{gate['command']}` {verdict}")
+        lines.append("")
+    return lines
+
+
 def version_lines(versions: dict[str, Any]) -> list[str]:
     """The report's section on what ran: each version as a reference, and what is not known."""
     lines = ["## Versions", ""]
@@ -402,6 +479,14 @@ def report_text(run: RunResult) -> str:
     if summary["failed_repeats"]:
         failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
         lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
+    for repeat in run.repeats:
+        if repeat.cut_short:
+            left = ", ".join(repeat.cut_short)
+            lines += [
+                f"Repeat {repeat.index} was cut short by the run's spend cap: {left} did not run. It is not judged "
+                "and is in no mean, neither scored nor a failure.",
+                "",
+            ]
     if summary["self_judged"]:
         lines += [f"Note: {summary['self_judged']}.", ""]
 
@@ -422,6 +507,7 @@ def report_text(run: RunResult) -> str:
         lines += [f"- `{m['provider']}`: {m['count']} judgement(s) missed, first: {m['reason']}" for m in summary["missed"]]
         lines += [""]
     lines += spend_lines(data["spend"])
+    lines += phase_lines(run.repeats)
     checked = [(r.index, r.expected) for r in run.repeats if r.expected is not None]
     if checked:
         lines += [

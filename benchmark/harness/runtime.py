@@ -53,6 +53,14 @@ target are as the subject sees them, and the subject is told those
 paths, never the ones on this machine. For the same reason a runtime
 answers what it carries, such as `claude --version`, by a probe that
 runs where the subject runs.
+
+A subject in phases runs several sessions in one workspace. Each session
+gets a HOME and a TMPDIR of its own, named by `use_session`, so a fresh
+session finds nothing an earlier one left there, and a resumed one finds
+its own. The container runtime starts every command in a new container,
+whose HOME is new each time. The harness can stop a command before it
+ends, through the `stop` event `run` takes, and it can move a path of the
+workspace out of the subject's reach and back (`hide`, `show`).
 """
 
 from __future__ import annotations
@@ -164,13 +172,14 @@ class ExitStatus:
     signal: int | None = None
     duration_s: float = 0.0
     timed_out: bool = False
-    # The subject exited cleanly and said it failed: `is_error` in the
-    # `claude --output-format json` envelope.
+    # The subject exited cleanly and said it failed: `is_error` in its result.
     is_error: bool = False
+    # The harness stopped it at a bound before it ended.
+    stopped: bool = False
 
     @property
     def ok(self) -> bool:
-        return self.code == 0 and not self.timed_out and not self.is_error
+        return self.code == 0 and not self.timed_out and not self.is_error and not self.stopped
 
     def as_dict(self) -> dict:
         return {
@@ -179,6 +188,7 @@ class ExitStatus:
             "duration_s": round(self.duration_s, 3),
             "timed_out": self.timed_out,
             "is_error": self.is_error,
+            "stopped": self.stopped,
         }
 
 
@@ -193,7 +203,15 @@ class Runtime(Protocol):
 
     def target_path(self) -> str | None: ...
 
-    def run(self, argv: list[str], cwd: Path, env: dict[str, str], streams: CliStream, timeout_s: int = 900) -> ExitStatus: ...
+    def run(
+        self,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        streams: CliStream,
+        timeout_s: int = 900,
+        stop: threading.Event | None = None,
+    ) -> ExitStatus: ...
 
     def collect(self, globs: list[str]) -> list[Path]: ...
 
@@ -225,6 +243,8 @@ class BaseRuntime:
         self.config = dict(config or {})
         self.workspace = self.sandbox / "workspace"
         self.slot: str | None = None
+        # The session within the repeat whose HOME and TMPDIR the next command gets; None for the repeat's own.
+        self.session: str | None = None
         self.prepared = False
         self.live: set[int] = set()
 
@@ -255,7 +275,24 @@ class BaseRuntime:
     def prepare_repeat(self, index: int) -> Path:
         """A fresh workspace for one repeat, so no repeat sees another's files."""
         self.slot = str(index)
+        self.session = None
         return self.prepare(self.sandbox / "workspace" / self.slot)
+
+    def use_session(self, name: str | None) -> None:
+        """Give the next commands the HOME and TMPDIR of the named session of this repeat; None for the repeat's own."""
+        self.session = name
+
+    def hidden(self, rel: str) -> Path:
+        """Where `hide` keeps a path of the workspace: outside it, in the repeat's own folder."""
+        return self.sandbox / "hidden" / (self.slot or "run") / rel
+
+    def hide(self, rel: str) -> None:
+        """Move a path of the workspace out of it, when it is there; the subject is not given where it goes."""
+        _move(self.workspace / rel, self.hidden(rel))
+
+    def show(self, rel: str) -> None:
+        """Move a hidden path back into the workspace, when one is hidden."""
+        _move(self.hidden(rel), self.workspace / rel)
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
@@ -265,8 +302,20 @@ class BaseRuntime:
         """The environment the command sees on this machine."""
         return dict(env)
 
-    def run(self, argv: list[str], cwd: Path, env: dict[str, str], streams: CliStream, timeout_s: int = 900) -> ExitStatus:
-        """Spawn the composed command and write both its streams as they come."""
+    def run(
+        self,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        streams: CliStream,
+        timeout_s: int = 900,
+        stop: threading.Event | None = None,
+    ) -> ExitStatus:
+        """Spawn the composed command and write both its streams as they come.
+
+        A `stop` event the harness sets ends the command as a timeout
+        does: its whole group is killed, and the status says `stopped`.
+        """
         command = self.command(argv, cwd)
         streams.note(f"[{self.name}] {' '.join(command)}")
         environment, dropped = scrub(self.environment(env))
@@ -302,12 +351,23 @@ class BaseRuntime:
         ]
         for r in readers:
             r.start()
-        timed_out = False
+        timed_out = stopped = False
+        deadline = started + timeout_s
         try:
-            proc.wait(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            streams.note(f"[{self.name}] timed out after {timeout_s}s; stopping the subject")
+            while True:
+                left = deadline - time.monotonic()
+                try:
+                    proc.wait(timeout=max(0.0, min(left, 0.2) if stop is not None else left))
+                    break
+                except subprocess.TimeoutExpired:
+                    if stop is not None and stop.is_set():
+                        stopped = True
+                        streams.note(f"[{self.name}] stopped by the harness at a bound")
+                        break
+                    if time.monotonic() >= deadline:
+                        timed_out = True
+                        streams.note(f"[{self.name}] timed out after {timeout_s}s; stopping the subject")
+                        break
         finally:
             # Every way out stops the whole group: a timeout, a clean exit
             # that left a child running, and an interrupt of the harness.
@@ -323,6 +383,7 @@ class BaseRuntime:
             signal=signal,
             duration_s=time.monotonic() - started,
             timed_out=timed_out,
+            stopped=stopped,
         )
 
     def probe_command(self, argv: list[str]) -> list[str]:
@@ -369,12 +430,16 @@ class BaseRuntime:
         """Every workspace file one of the globs names, once, in path order.
 
         A file outside the workspace, reached through `..` or a symlink, is
-        not the subject's output and is left out.
+        not the subject's output and is left out. So is anything under a
+        `.git`: its objects are compressed where no redaction reads them,
+        and the output's zip is the record of the output.
         """
         root = self.workspace.resolve()
         found: set[Path] = set()
         for pattern in globs:
             for path in self.workspace.glob(pattern):
+                if ".git" in path.relative_to(self.workspace).parts:
+                    continue
                 if path.is_file() and path.resolve().is_relative_to(root):
                     found.add(path)
         return sorted(found)
@@ -390,6 +455,18 @@ class BaseRuntime:
             self.live.discard(pgid)
         if self.owns_sandbox and self.sandbox != self.run_dir:
             shutil.rmtree(self.sandbox, ignore_errors=True)
+
+
+def _move(source: Path, dest: Path) -> None:
+    """Move a file or a folder to a path, replacing what is there; nothing when the source is not there."""
+    if not (source.exists() or source.is_symlink()):
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_dir() and not dest.is_symlink():
+        shutil.rmtree(dest)
+    elif dest.exists() or dest.is_symlink():
+        dest.unlink()
+    shutil.move(str(source), str(dest))
 
 
 def kill_group(pgid: int) -> None:
@@ -419,9 +496,11 @@ class HostRuntime(BaseRuntime):
     name = "host"
 
     def private(self, name: str) -> Path:
-        """The private HOME or TMPDIR, one per repeat once a repeat is prepared."""
+        """The private HOME or TMPDIR, one per repeat once a repeat is prepared, and one per session in it."""
         base = self.sandbox / name
-        return base / self.slot if self.slot is not None else base
+        if self.slot is None:
+            return base
+        return base / self.slot / self.session if self.session else base / self.slot
 
     def prepare(self, workspace: Path | None = None) -> Path:
         path = super().prepare(workspace)
@@ -431,8 +510,9 @@ class HostRuntime(BaseRuntime):
 
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         out = dict(env)
-        out["HOME"] = str(self.private("home"))
-        out["TMPDIR"] = str(self.private("tmp"))
+        for name, variable in (("home", "HOME"), ("tmp", "TMPDIR")):
+            self.private(name).mkdir(parents=True, exist_ok=True)
+            out[variable] = str(self.private(name))
         return out
 
 
@@ -637,6 +717,8 @@ KILL = (
 )
 # The end of a run: its folder goes, then the lock it holds.
 RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
+# A path moved to another, replacing what is there; nothing when it is not there.
+MOVE = '[ -e "$1" ] || [ -L "$1" ] || exit 0; mkdir -p -- "${2%/*}" && rm -rf -- "$2" && mv -- "$1" "$2"'
 
 
 def fill(words: list[str], local: str, remote: str) -> list[str]:
@@ -768,9 +850,32 @@ class VmRuntime(BaseRuntime):
         return f"{self.remote_base()}/{self.run_dir.name}"
 
     def remote_part(self, name: str) -> str:
-        """The workspace, HOME, TMPDIR, keys, or group file there: one per repeat once a repeat is prepared."""
+        """The workspace, HOME, TMPDIR, keys, or group file there: one per repeat once a repeat is prepared.
+
+        HOME and TMPDIR are one per session of the repeat, when a session is named.
+        """
         base = f"{self.remote_run()}/{name}"
-        return f"{base}/{self.slot}" if self.slot is not None else base
+        if self.slot is None:
+            return base
+        if self.session and name in ("home", "tmp"):
+            return f"{base}/{self.slot}/{self.session}"
+        return f"{base}/{self.slot}"
+
+    def hide(self, rel: str) -> None:
+        """Move a path of the workspace there into the run's folder there, outside the workspace."""
+        self.move(f"{self.remote()}/{rel}", f"{self.remote_part('hidden')}/{rel}")
+
+    def show(self, rel: str) -> None:
+        """Move a hidden path there back into the workspace there."""
+        self.move(f"{self.remote_part('hidden')}/{rel}", f"{self.remote()}/{rel}")
+
+    def move(self, source: str, dest: str) -> None:
+        """Move a path there, noting a move that failed."""
+        if self.failure is not None:
+            return
+        code = self.helper(self.there(MOVE, source, dest))
+        if code != 0:
+            self.notes.append(f"[{self.name}] moving {source} to {dest} there failed (exit {code})")
 
     def remote(self) -> str:
         """The workspace on the other machine."""
@@ -885,7 +990,15 @@ class VmRuntime(BaseRuntime):
             streams.note(f"[{self.name}] {name} reaches the subject through a file of the repeat's, not the command line")
         return None
 
-    def run(self, argv: list[str], cwd: Path, env: dict[str, str], streams: CliStream, timeout_s: int = 900) -> ExitStatus:
+    def run(
+        self,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        streams: CliStream,
+        timeout_s: int = 900,
+        stop: threading.Event | None = None,
+    ) -> ExitStatus:
         """Hand the subject its keys through files there, then run the command with none of them here.
 
         A repeat whose preparation failed there does not run, and says
@@ -905,7 +1018,7 @@ class VmRuntime(BaseRuntime):
         if failed is not None:
             return failed
         self.names = list(keys)
-        return super().run(argv, cwd, {k: v for k, v in env.items() if k not in keys}, streams, timeout_s)
+        return super().run(argv, cwd, {k: v for k, v in env.items() if k not in keys}, streams, timeout_s, stop)
 
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         """The prefix's environment here: the subject's, with PATH and `prefix_env` from this machine's.

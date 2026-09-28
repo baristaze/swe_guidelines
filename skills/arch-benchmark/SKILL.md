@@ -51,8 +51,17 @@ never run the harness from there.
    bit flag: `3` is Anthropic and OpenAI, `7` adds Gemini, `15` adds
    xAI; names joined by commas work too. Effort is `low`, `medium`, or
    `high`. `--repeat N` runs the subject N times, 3 by default.
-   `--subject-model` pins the subject's model. When the prompt names
-   something with no flag behind it, say so and run without it.
+   `--subject-model` pins the subject's model. `--max-spend-usd N` is
+   the run's spend cap in US dollars, over the subject and the judges
+   together. It is not a hard ceiling: the harness checks it before each
+   repeat and each phase and starts nothing more once it is reached, but
+   what is running finishes, so a run can end above N. Each session of a
+   skill subject also has its own cap, which Claude Code holds: the
+   subject's `max_usd`, or for a scenario in phases each phase's. Say
+   both when the prompt asks for a cap. When it asks what a run could
+   spend, say that it can pass N by about the largest session cap and
+   one repeat's judges, which a dry run does not price. When the prompt names something with no flag behind it, say
+   so and run without it.
 4. Choose the runtime. `--runtime` is `host`, `container`, or `vm`,
    and one the scenario lists: its first when the flag is not given.
    The harness refuses a runtime the scenario does not list with exit
@@ -105,8 +114,24 @@ never run the harness from there.
    `run.json`, and calls nothing. A dry run leaves `run.json` and
    nothing else, so read that file and report the resolved plan: the
    subject command, the runtime, the judges with the model and the
-   fallbacks each would use, the effort, and the repeats. There is no
-   score to report, and inventing one is the worst thing this skill
+   fallbacks each would use, the effort, the repeats, the run's spend
+   cap when one was given, and the subject's `max_usd`. For a scenario
+   in phases, `run.json` lists each phase under `phases`, and the
+   phases' bounds are the ones in effect: the subject's `max_usd` is
+   null, and its `max_turns` and `timeout_s` are defaults nothing uses.
+   `subject_argv` is only the first phase's command. Report each phase
+   with the fields it holds: its `session` (`fresh`, or `resume` of the
+   phase before), where it starts (`cwd`: the workspace or the output
+   folder), whether it keeps the handoff note (`hint`), its bounds
+   (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
+   backstop), what follows a bound (`on_cap`), and what its `argv` runs:
+   the prompt as the `argv` carries it, with the target's path and the
+   handoff sentence in it, and whether it gets `--add-dir` or `--resume`.
+   Report the subject's `output` folder and its `gates`, which the
+   harness runs on the final tree. `benchmark/README.md`, "A subject in
+   phases", says what each field means and what follows when a phase
+   hits a bound or fails; answer from it when the prompt asks. There is
+   no score to report, and inventing one is the worst thing this skill
    could do.
 7. List the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
@@ -141,6 +166,8 @@ After a measurement, short, in prose:
 - the scenario, the runtime, the repeats, and the judges that answered,
   each with its model id;
 - the score per provider and the overall mean;
+- for a scenario in phases, how each phase ended and the cap that
+  stopped any, and which gates passed on the final tree;
 - the findings that matter, most severe first, in one line each;
 - any provider that did not answer, with the reason it gave;
 - the run folder path, and that it is checked in only once

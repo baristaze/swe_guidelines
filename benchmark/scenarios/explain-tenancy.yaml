@@ -7,6 +7,8 @@ subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
   max_turns: 14
+  # About ten times what one answer has cost; Claude Code stops the session there.
+  max_usd: 2
   allowed_tools: [Read, Grep, Glob]
   target: null
   timeout_s: 900
