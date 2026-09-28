@@ -102,6 +102,14 @@ HARNESS_SESSION = "_harness"
 # One run of a subject is an anecdote, so a run repeats it this many times
 # when neither `--repeat` nor the scenario's `repeat` says otherwise.
 REPEAT = 3
+# What a skill subject's Claude Code runs with, on every runtime: its
+# subagents and the commands it starts run in the foreground, so each
+# result returns to the session that asked for it. In print mode, a task
+# left in the background ends the main agent's turn, and the session
+# never gives it back. The runtimes carry the subject's environment each
+# their own way, so these reach it through `env` in its command, which
+# every runtime runs as it is.
+SUBJECT_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -296,9 +304,10 @@ def phase_argv(
 
     The session writes every turn to stdout as a JSON line
     (`--output-format stream-json --verbose`). Claude Code holds the turn
-    cap and the spend cap itself. A resumed session names the session it
-    continues. A phase that starts in the output folder is started there
-    by a shell, since the runtime starts every command in the workspace.
+    cap and the spend cap itself, and runs under `env` with `SUBJECT_ENV`.
+    A resumed session names the session it continues. A phase that starts
+    in the output folder is started there by a shell, since the runtime
+    starts every command in the workspace.
     """
     if scn.subject.phases:
         prompt, reads = phase_prompt(scn, phase, target)
@@ -306,6 +315,8 @@ def phase_argv(
         # The workspace is the subject's working directory; the target is outside it.
         prompt, reads = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip(), bool(target)
     argv = [
+        "env",
+        *(f"{name}={value}" for name, value in SUBJECT_ENV.items()),
         claude,
         "-p",
         prompt,

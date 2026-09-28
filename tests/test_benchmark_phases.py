@@ -290,7 +290,11 @@ def test_a_dry_run_resolves_the_phases_and_runs_nothing(tmp_path, monkeypatch):
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     scaffold, mvp, review = resolved["phases"]
     assert [p["name"] for p in (scaffold, mvp, review)] == ["scaffold", "mvp", "review"]
-    assert scaffold["argv"] == resolved["subject_argv"] and "handoff note at HANDOFF.md" in scaffold["argv"][2]
+    argv = scaffold["argv"]
+    assert argv == resolved["subject_argv"] and "handoff note at HANDOFF.md" in argv[argv.index("-p") + 1]
+    # The subject runs under env, with its subagents and commands in the foreground, on every runtime.
+    assert argv[:3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+    assert review["argv"][5:8] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
     assert mvp["argv"][mvp["argv"].index("--resume") + 1] == "<the session of scaffold>"
     assert review["argv"][:5] == ["sh", "-c", PH.IN_FOLDER, "sh", "site"]
     assert resolved["max_spend_usd"] == 20
@@ -787,8 +791,7 @@ def test_a_repeat_starts_only_when_what_is_left_of_the_cap_covers_its_phases(run
     assert [p["name"] for p in repeat["phases"]] == ["scaffold", "mvp"] and "cut_short" not in repeat
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == 4.0
     assert any(
-        "repeat 1 and after did not run: $1.5000 of the run's $4 spend cap is left, and the phases of a repeat may spend $2"
-        in n
+        "repeat 1 and after did not run: $1.5000 of the run's $4 spend cap is left, and the phases of a repeat may spend $2" in n
         for n in data["notes"]
     )
     assert len(seen(run_dir)) == 2  # no session of the second repeat started
@@ -800,3 +803,40 @@ def test_a_run_whose_cap_covers_no_repeat_starts_none_and_says_why(run_phases):
     data = results(run_dir)
     assert data["repeats"] == [] and seen(run_dir) == []
     assert any("repeat 0 and after did not run: $1.5000 of the run's $1.5 spend cap is left" in n for n in data["notes"])
+
+
+# The subject's background tasks ------------------------------------------------
+
+
+def test_the_subject_runs_with_its_background_tasks_off_on_the_host_and_on_another_machine(tmp_path, run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", cwd="output")))
+    assert code == 0
+    assert [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1", "1"]
+    one = {
+        "name": "one",
+        "kind": "skill",
+        "subject": {"skill": "arch-explain", "prompt": do({}), "max_usd": 0.75, "max_turns": 4},
+        "rubric": "r",
+        "runtimes": ["host"],
+        "judges": {"providers": "anthropic"},
+    }
+    code, run_dir = run_phases(one)
+    assert code == 0 and [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1"]
+    # The vm prefix here starts each command in an empty environment, as a remote shell does: the variable
+    # reaches the subject through its command, not through this machine's environment.
+    config_path = tmp_path / "vm.json"
+    config_path.write_text(json.dumps(vm_config(tmp_path)), encoding="utf-8")
+    scenario = phased(phase("scaffold", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "1", "--runtime", "vm", "--runtime-config", str(config_path))
+    assert code == 0 and [s["background_tasks"] if s else None for s in seen(run_dir)] == ["1", "1"]
+
+
+def test_a_container_runs_the_subject_under_env_with_its_background_tasks_off(tmp_path):
+    scn = S.from_data(phased(phase("scaffold"), phase("review", cwd="output")))
+    rt = run.RT.build("container", tmp_path, None, {"image": "img:1"})
+    rt.prepare()
+    for one in scn.subject.phases:
+        command = rt.command(run.phase_argv(scn, one, "swe-guidelines", "/plugin", None), rt.workspace)
+        inside = command[command.index("img:1") + 1 :]  # what the container runs
+        at = inside.index("env")
+        assert inside[at : at + 3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]

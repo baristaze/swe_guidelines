@@ -14,7 +14,8 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 
 Its answer, the result's `result`, is a JSON object of what it saw: its
 HOME and what was in it, where it started, the session it resumed, the
-handoff note it found, and its arguments. It leaves a file of its own in
+handoff note it found, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, and its
+arguments. It leaves a file of its own in
 its HOME, so a later session in the same HOME finds it.
 """
 
@@ -48,6 +49,7 @@ seen = {
     "note_path": note_path,
     "note": Path(note_path).read_text(encoding="utf-8") if note_path and os.path.exists(note_path) else None,
     "handoff_in_reach": [p for p in ("HANDOFF.md", "../HANDOFF.md") if os.path.exists(p)],
+    "background_tasks": os.environ.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"),
     "args": args,
 }
 

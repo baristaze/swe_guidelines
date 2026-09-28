@@ -534,7 +534,14 @@ payload, so the skills under test are the ones in the working tree, not
 the installed ones. It also gets `--model`: the subject's model is
 always pinned, because `claude -p` on its default model measures
 whatever that default is today. The run records the pin in `run.json`
-and in `subject.model`. The session runs with `--output-format
+and in `subject.model`. Every session runs under
+`env CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, on every runtime, so its
+subagents and the commands it starts run in the foreground, and each
+result returns to the session that asked for it. In print mode, a task
+left in the background ends the main agent's turn, and the session
+never gives it back. The runtimes hand the subject its environment each
+their own way, and a word of its command reaches it the same way on all
+three. The session runs with `--output-format
 stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
 and the answer, the models, and the spend are read from its last line,
 the result. Each repeat records `subject_models`, the models the result
