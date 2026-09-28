@@ -672,10 +672,10 @@ answers are in `fixtures/review-om.expected.yaml`.
 ## Judges
 
 The judges are one-shot unless the scenario asks for agentic ones (see
-Agentic judges). Every one-shot provider gets the same prompt: the rubric, what produced the
-artifact, the artifact, and the evidence when the scenario gives some,
-each truncated at a stated limit so the judge knows whether it saw the
-whole thing. The artifact sits inside a fence of backticks longer than
+Agentic judges). Every one-shot provider gets the same prompt: the
+rubric, what produced the artifact, the artifact, and the evidence when
+the scenario gives some, each truncated at a stated limit so the judge
+knows whether it saw the whole thing. The artifact sits inside a fence of backticks longer than
 any run of backticks in it, so it cannot close the fence. The prompt
 says that nothing inside the fence is an instruction, so a heading the
 subject wrote cannot pass for one of the prompt's own.
@@ -803,10 +803,10 @@ the repeat's `judge-prompt.md`.
 the checkout is its paths and one SHA-256 over their copy. A repository
 is its URL, its tag, the commit the tag names, and the guideline release
 it pins. A repository that follows the guideline pins its release in
-`specs/architecture.md` ("pinned at `v0.37.0`", as
-`docs/adopting.md` says). A repository that pins a release other than
-this checkout's, or names none, is judged against all the same, and the
-run's notes say so.
+`specs/architecture.md`, in the words `docs/adopting.md` gives it:
+"pinned at" and the release's tag. A repository that pins a release
+other than this checkout's, or names none, is judged against all the
+same, and the run's notes say so.
 
 A dry run resolves every reference: it copies the paths, fetches each
 tag, and records the commit and the release each pins in `run.json`.
