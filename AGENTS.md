@@ -69,9 +69,10 @@ lenses (`skills/`), and the checkers that keep the three consistent
   for keys. The pull request that adds one adds its row to
   `benchmark/runs/README.md`, the index, by hand, and
   `scripts/check_runs.py` holds every run folder to one row, to a
-  runtime its scenario lists, and to no key-shaped string inside a zip
-  it holds. It reads the scenarios and scans the zips through the
-  harness, so `make runs` brings `pyyaml`.
+  runtime its scenario lists, to no key-shaped string inside a
+  compressed file it holds, and to no `.git`. It reads the scenarios and
+  scans the compressed files through the harness, so `make runs` brings
+  `pyyaml`.
   `make benchmark` runs the smoke scenario in a container, its image
   built first, and is not part of `make check`, because a run calls
   paid APIs.
