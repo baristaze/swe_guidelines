@@ -117,7 +117,7 @@
           "finished_at": {
             "type": "string",
             "format": "date-time",
-            "description": "when the page showed the answer complete; approximate when read off a relative time"
+            "description": "when the page showed the answer complete; approximate when read off a relative time; the moment of recording for not-signed-in and not-run"
           },
           "score": {
             "type": [

@@ -111,20 +111,19 @@ Facts that decide how the steps below go. Read them before the browser.
 1. Read `prompt.md`, which holds both the prompt and the contract, and
    `sizes.yaml`. The browser README is for people and is not an input.
    Resolve, per site, the model and effort labels the sizes ask for.
-   Say them before touching the browser. They also go into the run's
-   `note` in `results.json`, whether or not anyone watches the run.
-2. Note the run's start with `date -u +%Y-%m-%dT%H:%M:%SZ`; make the
-   run folder `~/Downloads/benchmark_browser/<YYYYMMDD-HHMMSS>/` from
-   the same moment, in UTC. Every file of the run goes there. Then read
+   Say them before touching the browser, and always put them in the
+   run's `note` in `results.json`.
+2. Note the run's start with `date -u +%Y-%m-%dT%H:%M:%SZ`, the form
+   of every time the run records; make the run folder
+   `~/Downloads/benchmark_browser/<YYYYMMDD-HHMMSS>/` from the same
+   moment, in UTC. Every file of the run goes there. Then read
    the commit the repository's default branch points at, with
    `git ls-remote <url> HEAD`, where `<url>` is the repository URL in
    the prompt. The first field it prints is the run's
-   `repository_head`: what the repository was minutes before the first
-   send, whatever each answer says it read. When the command fails,
-   `repository_head` is `unknown` and the run's `note` gives the error.
-3. Call `tabs_context_mcp` with `createIfEmpty`. An empty tab it makes
-   holds the tab group open and is not one of the run's tabs: never use
-   it or close it. Then `tabs_create_mcp` one tab per site, and
+   `repository_head`, whatever each answer says it read. When the
+   command fails, it is `unknown` and the run's `note` gives the error.
+3. Call `tabs_context_mcp` with `createIfEmpty`; never use or close an
+   empty tab it makes. Then `tabs_create_mcp` one tab per site, and
    navigate each to its new-chat URL:
    `https://chatgpt.com/`, `https://claude.ai/new`,
    `https://gemini.google.com/app`, `https://grok.com/`. Take a
@@ -133,10 +132,9 @@ Facts that decide how the steps below go. Read them before the browser.
    which site to sign in to, and go on with the sites that are. Never
    type an email or a password, ever.
 4. Per site, first look, with `find` or a screenshot, for a line that
-   says the product can act on the person's machine: claude.ai writes
-   "Computer actions available", and a line on any site that says it
-   can run commands or control the computer counts the same. When one
-   shows, set nothing and send nothing: the session is `not-run`, and
+   says the product can act on the person's machine, such as
+   claude.ai's "Computer actions available". When one shows, on any
+   site, set nothing and send nothing: the session is `not-run`, and
    its `note` asks the person to turn that setting off. Never change
    it yourself.
 
@@ -161,9 +159,10 @@ Facts that decide how the steps below go. Read them before the browser.
    record the label the page shows and go on: the results carry what
    was actually used, never what was asked for.
 
-   A locked model, mode, or effort is the exception, on every site.
-   Close what opened. Then go down that site's entries in `sizes.yaml`,
-   in the same map (model or effort), one size at a time: skip an entry
+   A locked model, mode, or effort is the exception, on every site, and
+   is not tried once more. Close what opened. Then take that site's
+   entries in `sizes.yaml`, in the same map (model or effort), for the
+   smaller sizes, from the next smaller one down to `xs`: skip an entry
    already tried, and click the first one that stays checked (Fast on
    grok.com, for Expert or Heavy). Record that entry, name the locked
    one in `note` ("Expert needs a SuperGrok plan"), and step 7 records
@@ -197,13 +196,15 @@ Facts that decide how the steps below go. Read them before the browser.
      done.
 
    Done is the signal named above. Record the finish time from `date -u`
-   when the signal is seen. On grok.com, run `date -u` at every poll:
-   the finish time is the first of the two polls that matched. When an
-   answer is already done at the first poll, the finish time is the send
-   time plus the site's own "Worked for" figure where it shows one,
-   except on grok.com, or else the first poll's time, and `note` says
-   which. After thirty polls or thirty minutes, record `timed-out` with
-   what the page shows so far.
+   when the signal is seen. On grok.com, run `date -u` at the end of
+   every poll: the finish time is the first of the two polls that
+   matched. An error the product prints in place of an answer ends the
+   polling of that attempt, and step 7's `errored` says what follows.
+   When an answer is already done at the first poll, the finish time is
+   the send time plus the site's own "Worked for" figure where it shows
+   one, except on grok.com, or else the first poll's time, and `note`
+   says which. After thirty polls or thirty minutes from the send,
+   record `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
    `tabs_context_mcp` and drop its query string. Read the answer with
    `get_page_text`, or from screenshots where that is refused. Find the
@@ -242,39 +243,39 @@ Facts that decide how the steps below go. Read them before the browser.
      gives elsewhere goes in `note`.
    - `refused`: the product declined.
    - `errored`: the product printed its own error in place of an answer
-     ("I seem to be encountering an error"). Try once more: navigate
-     the site's tab to its new-chat URL, do step 4 again without
-     clicking a locked entry, do step 5, and poll as step 6 says. The
-     session records the second attempt only: its `url`, its
-     `started_at` and `finished_at`, its status, and its `polls`,
-     counted from 0, with thirty polls and thirty minutes of its own.
-     `note` keeps the
-     first attempt: the error in the page's words, its URL, and its
-     poll count. When the second attempt errors too, the session is
-     `errored`, and there is no third.
+     ("I seem to be encountering an error"). Read that attempt's URL
+     from `tabs_context_mcp`, without its query string, and try once
+     more: navigate the site's tab to its new-chat URL, do step 4 again
+     without clicking a locked entry, do step 5, and poll as step 6
+     says. Every field of the session is the second attempt's, and its
+     `polls` count from 0, with thirty polls and thirty minutes of its
+     own. `note` keeps the first attempt, as one remark: the error in
+     the page's words, its URL, and its poll count. When the second
+     attempt errors too, the session is `errored`, and there is no
+     third.
    - `timed-out`: as in step 6.
    - `not-signed-in` and `not-run`: as in steps 3 and 4. There is no
      answer. `url` is the address the tab shows, without its query
      string; `model_label` and `effort_label` are `not set`;
      `read_version` is `not stated`; `score` is null; `polls` is 0;
-     both times are the moment of recording; and `<site>.md` holds the
-     header only.
+     both times are the moment step 3 or step 4 found it; and
+     `<site>.md` holds the header only.
 
    An answer cut short by a tool-use limit that still satisfies the
    contract is `ok` with a `note`; do not press Continue. `note` holds
    every remark on the session, in the order they arose, separated by
-   "; ".
+   "; ". A session with no remark has no `note` key.
 8. Write `results.json` in the run folder in the schema, with `python3`:
    `run_id` is the folder name, `started_at` and `repository_head` from
    step 2, `finished_at` from the moment of writing, `prompt` and
    `contract` the two texts as typed, `sizes` the two sizes, `note`
-   with the labels step 1 resolved, and one entry per site. Read it
-   back with `python3` and hold it to the schema file, at the top and
-   in each session: every required key is there, no key is there that
-   the schema does not list, and each value is inside the `type`,
-   `enum`, `minimum`, and `maximum` the schema gives its key. A value
-   outside them is corrected from what the page showed, never bent to
-   fit.
+   with the labels step 1 resolved, and one entry per site, whose
+   `response_path` is `<site>.md`. Read it back with `python3` and hold
+   it to the schema file, at the top and in each session: every
+   required key is there, no key is there that the schema does not
+   list, and each value is inside the `type`, `enum`, `minimum`,
+   `maximum`, and `format` the schema gives its key. A value outside
+   them is corrected from what the page showed, never bent to fit.
 9. Per site that has an answer, bring its score line into view, or its
    first line where it has none. Click an empty margin of the page to
    clear a stray selection or menu, `find` the line, and `scroll_to`
