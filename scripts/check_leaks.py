@@ -15,7 +15,10 @@ The guideline stands alone: nothing in it may name or lean on the
 reference implementation, whose name is refused in every tracked text
 file (a file holding a NUL byte or bytes that are not UTF-8 is binary
 and skipped) except the closing Next section of architecture.md, which links it
-on purpose, and the changelog, which is history.
+on purpose, the changelog, which is history, and the benchmark scenario
+that judges the scaffold skills' output against it. That scenario's
+fixture is what its subject reads, so the name stays refused there. The
+benchmark's run folders are records, and this check reads none of them.
 The `product` group's terms are also refused in the published text that
 is not Markdown: the workflows and templates under `.github/`, the plugin
 manifests, the YAML and JSON of the skills, the agents, and the
@@ -74,8 +77,14 @@ REFUSED_TERMS: dict[str, list[str]] = {
 }
 
 # The reference implementation's name is refused in every tracked text file,
-# Markdown or not, whatever its suffix, everywhere but the places named below.
-REFERENCE_ALLOWED_FILES = frozenset({"CHANGELOG.md", "scripts/check_leaks.py", "tests/test_check_leaks.py"})
+# Markdown or not, whatever its suffix, everywhere but the places named below:
+# the changelog, this script and its tests, and the benchmark scenario that
+# judges against the reference. Its fixture is what the subject reads, so the
+# name stays refused there. Its runs, like every run folder, are records and
+# are not read (`_common.skipped`).
+REFERENCE_ALLOWED_FILES = frozenset(
+    {"CHANGELOG.md", "scripts/check_leaks.py", "tests/test_check_leaks.py", "benchmark/scenarios/create-full-system.yaml"}
+)
 NEXT_SECTION = "## Next: An End-to-End Reference Implementation"
 
 # scope -> the term groups refused there. A scope ending in "/" is a

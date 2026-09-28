@@ -143,6 +143,27 @@ def test_the_next_section_exempts_the_reference_in_the_guideline_only(repo, leak
     assert leaks.main() == 0
 
 
+def test_reference_name_is_allowed_in_the_scenario_that_judges_against_it(repo, leaks):
+    repo.write("benchmark/scenarios/create-full-system.yaml", "name: create-full-system\n# judged against Tadas\n")
+    assert leaks.main() == 0
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        # The fixture is what the subject reads, so it never names the reference.
+        "benchmark/fixtures/create-full-system/product-spec.md",
+        "benchmark/scenarios/review-om.yaml",
+        "benchmark/scenarios/create-full-system.json",
+        "benchmark/runs/README.md",
+    ],
+)
+def test_reference_name_fails_beside_that_scenario(repo, leaks, capsys, rel):
+    repo.write(rel, "Tadas\n")
+    assert leaks.main() == 1
+    assert f"{rel}:1: reference term 'Tadas'" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("rel", [".github/PULL_REQUEST_TEMPLATE.md", ".github/ISSUE_TEMPLATE/bug-report.md"])
 def test_the_github_templates_are_scanned_for_product_terms(repo, leaks, capsys, rel):
     repo.write(rel, "# Report\n\nWhat did the lens miss?\n")
