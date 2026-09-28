@@ -453,7 +453,9 @@ class FakeSdks:
         return NS(
             messages=NS(parse=partial(send, "messages.parse"), stream=partial(self.stream, send)),
             responses=NS(parse=partial(send, "responses.parse"), create=partial(send, "responses.create")),
-            chat=NS(completions=NS(parse=partial(send, "chat.completions.parse"), create=partial(send, "chat.completions.create"))),
+            chat=NS(
+                completions=NS(parse=partial(send, "chat.completions.parse"), create=partial(send, "chat.completions.create"))
+            ),
             models=NS(generate_content=partial(send, "models.generate_content")),
         )
 
