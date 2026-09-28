@@ -39,9 +39,19 @@ stops the phase there.
 
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
-phase, the archive of the last commit, and the gates on the final tree.
-The scripts are below; each takes its paths as arguments, never spliced
-into the script.
+phase, the archive of the last checkpoint, and the gates on the final
+tree. The scripts are below; each takes its paths as arguments, never
+spliced into the script.
+
+A checkpoint does not touch the output's branch, HEAD, or index. It
+stages the tree as the subject left it, the files git tracks and those
+it does not ignore, into an index of its own, commits that tree with the
+message `checkpoint` and no parent, and keeps it under
+`refs/checkpoints/<n>`. So a later phase finds the repository as the
+phases before it left it, its own history holds no commit of the
+harness's, and nothing in a commit names a phase or how it ended. The
+phase before the checkpoint has ended, its processes with it, so a lock
+git left in the repository is stale, and the checkpoint removes it.
 """
 
 from __future__ import annotations
@@ -75,18 +85,26 @@ CACHE_WRITE_1H = 2.0
 # folder is the output folder, and the gates. Exit 125: no such folder.
 IN_FOLDER = 'cd -- "$1" || exit 125; shift; exec "$@"'
 GATE = 'cd -- "$1" || exit 125; exec sh -c "$2"'
-# The checkpoint: every change in the output folder, committed, with no
-# hook of the tree's run and no identity of this machine's. The commit's
-# id goes to stdout. Exit 3: no output folder; exit 4: git failed.
+# The checkpoint of the output folder, the `n`th of the repeat: its tree
+# committed under refs/checkpoints/<n>, with no identity of this
+# machine's. Arguments: the folder, then n. The commit's id goes to
+# stdout. Exit 3: no output folder; exit 4: git failed.
 CHECKPOINT = (
     'cd -- "$1" 2>/dev/null || exit 3; '
-    "{ [ -e .git ] || git init -q; } && git add -A && "
-    "git -c user.name=checkpoint -c user.email=checkpoint@localhost -c commit.gpgsign=false "
-    '-c core.hooksPath=/dev/null commit -q --allow-empty --no-verify -m "$2" || exit 4; '
-    "git rev-parse HEAD"
+    "{ [ -e .git ] || git init -q; } || exit 4; "
+    "git_dir=$(git rev-parse --absolute-git-dir) || exit 4; "
+    "find \"$git_dir\" -name '*.lock' -type f -exec rm -f -- {} + 2>/dev/null; "
+    'index="$git_dir/checkpoint-index"; rm -f -- "$index"; '
+    '{ [ ! -f "$git_dir/index" ] || cp -- "$git_dir/index" "$index"; } || exit 4; '
+    'GIT_INDEX_FILE="$index" git add -A || exit 4; '
+    'tree=$(GIT_INDEX_FILE="$index" git write-tree) || exit 4; rm -f -- "$index"; '
+    "commit=$(git -c user.name=checkpoint -c user.email=checkpoint@localhost -c commit.gpgsign=false "
+    'commit-tree "$tree" -m checkpoint) || exit 4; '
+    'git update-ref "refs/checkpoints/$2" "$commit" || exit 4; echo "$commit"'
 )
-# The archive of the output folder's last commit, into a path of the workspace.
-ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive --format=zip -o "$out" HEAD'
+# The archive of a checkpoint, into a path of the workspace. Arguments:
+# the folder, the path, the checkpoint's commit.
+ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive --format=zip -o "$out" "$3"'
 
 
 def events(lines: list[str]) -> list[dict[str, Any]]:

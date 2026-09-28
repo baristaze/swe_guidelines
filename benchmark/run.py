@@ -564,10 +564,16 @@ def harness_run(
     return status, [r["line"] for r in CliStream.read(harness.path)[mark:] if r.get("s") == "out"]
 
 
-def checkpoint(rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, message: str) -> tuple[str | None, str | None]:
-    """Commit every change in the output folder; the commit's id, or why there is none."""
-    harness.note(f"[checkpoint] {message}")
-    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, message])
+def checkpoint(
+    rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, number: int, label: str
+) -> tuple[str | None, str | None]:
+    """Commit the output folder's tree as the `number`th checkpoint; the commit's id, or why there is none.
+
+    The label goes to the harness's own stream only: the commit says
+    `checkpoint` and no more, so nothing in the repository names a phase.
+    """
+    harness.note(f"[checkpoint {number}] {label}")
+    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, str(number)])
     commit = next((line.strip() for line in reversed(out) if re.fullmatch(r"[0-9a-f]{40,64}", line.strip())), None)
     if status.ok and commit:
         return commit, None
@@ -687,7 +693,7 @@ def run_skill(
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
         if folder and harness is not None:
-            made, why = checkpoint(rt, harness, plan, folder, f"checkpoint {number}: {phase.name}, {outcome}")
+            made, why = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
             record["checkpoint"] = made
             commit = made or commit
             if why:
@@ -709,7 +715,7 @@ def run_skill(
         if commit is None:
             notes.append(f"repeat {index}: no commit of {folder} to archive, and no tree to run the gates on")
         else:
-            archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE])
+            archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE, commit])
             if not archived.ok:
                 notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
             gates = []

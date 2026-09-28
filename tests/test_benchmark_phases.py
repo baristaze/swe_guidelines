@@ -217,7 +217,7 @@ def test_the_gates_run_on_the_final_tree_and_are_recorded_beside_the_scores(run_
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "- repeat 0: `test -f README.md` passed" in report and "- repeat 0: `exit 3` failed, exit 3" in report
     harness = (run_dir / "streams" / "harness.jsonl").read_text(encoding="utf-8")
-    assert "[gate] exit 3" in harness and "[checkpoint] checkpoint 1: scaffold, ok" in harness
+    assert "[gate] exit 3" in harness and "[checkpoint 1] after scaffold, ok" in harness
 
 
 def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_phases):
@@ -450,6 +450,44 @@ def test_a_run_whose_outcome_is_not_read_neither_fails_nor_passes(run_phases):
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
     assert first["gate_runs"]["make check"] == {"runs": 3, "failed": 3, "unread": 0, "failing": True}
+
+
+def test_a_checkpoint_leaves_the_branch_head_and_index_as_the_subject_left_them(run_phases):
+    log = ["log", "--all", "--format=%an|%s"]
+    scenario = phased(
+        phase(
+            "scaffold",
+            {
+                "write": {"site/README.md": "r\n", "site/draft.md": "d\n"},
+                "git": [
+                    ["-C", "site", "init", "-q"],
+                    ["-C", "site", "add", "README.md"],
+                    ["-C", "site", "-c", "user.name=builder", "-c", "user.email=b@localhost", "commit", "-qm", "own work"],
+                ],
+                # Left behind as a stopped git would leave it.
+                "touch": ["site/.git/index.lock"],
+            },
+        ),
+        phase(
+            "review",
+            {"write": {"notes.md": "n"}, "git": [log, ["log", "--format=%s"], ["add", "notes.md"], ["status", "--porcelain"]]},
+            cwd="output",
+        ),
+    )
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    _, review = seen(run_dir)
+    assert review
+    everything, branch, _, status = review["git"]
+    # The branch holds the subject's own commit only; the checkpoints are named nothing but `checkpoint`.
+    assert branch == "own work"
+    assert sorted(everything.splitlines()) == ["builder|own work", "checkpoint|checkpoint"]
+    # The index is the subject's, draft.md still untracked; and the stale lock went, so `git add` works.
+    assert sorted(status.splitlines()) == ["?? draft.md", "A  notes.md"]
+    repeat = results(run_dir)["repeats"][0]
+    assert all(p["checkpoint"] for p in repeat["phases"])
+    with zipfile.ZipFile(run_dir / repeat["archive"]["path"]) as zf:
+        assert sorted(zf.namelist()) == ["README.md", "draft.md", "notes.md"]
 
 
 def test_nothing_under_a_git_folder_is_collected(run_phases):
