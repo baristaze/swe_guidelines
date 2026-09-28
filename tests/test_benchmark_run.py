@@ -1496,13 +1496,14 @@ def built(tmp_path, monkeypatch):
     monkeypatch.setattr(run.RT.BaseRuntime, "run", no_subject)
 
 
-def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: bool = True) -> Path:
+def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: bool = True, rehearsal: bool = False) -> Path:
     """A run folder as a run of BUILT with extras leaves it, under `runs`.
 
     `outputs` maps each repeat to the files of its archive, or to None for a
     repeat that kept no archive. Every repeat keeps its answer, its collected
     report, and its own judge prompt. With `results`, results.json records
-    each archive, its SHA-256 and its commit, as a run records it.
+    each archive, its SHA-256 and its commit, as a run records it. With
+    `rehearsal`, run.json is marked a rehearsal's.
     """
     src = runs / "20260927-233327-built-11435123"
     repeats = []
@@ -1527,6 +1528,8 @@ def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: b
         "groups": ["extras"],
         "subject_model": "claude-opus-5",
     }
+    if rehearsal:
+        resolved["rehearsal"] = True
     (src / "run.json").write_text(json.dumps(resolved), encoding="utf-8")
     if results:
         (src / "results.json").write_text(json.dumps({"run_id": src.name, "repeats": repeats}), encoding="utf-8")
@@ -1673,6 +1676,40 @@ def test_judge_starts_no_judge_on_a_repeat_its_cap_does_not_cover(tmp_path, monk
     assert len(started) == 1 and [r["index"] for r in results["repeats"]] == [0]
     assert results["source"]["repeats"] == [0] and results["source"]["capped"] == [1]
     assert any(n.startswith("repeat 1 and after were not judged") for n in results["notes"])
+
+
+def test_judge_judges_a_rehearsal_s_output_within_a_rehearsal_s_bounds(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {i: TREE for i in range(6)}, rehearsal=True)
+    out = tmp_path / "judged"
+    budgets: list = []
+    judge_agentic = run.RF.A.judge_agentic
+
+    def spy(*args, **kwargs):
+        budgets.append(kwargs["budget"])
+        return judge_agentic(*args, **kwargs)
+
+    monkeypatch.setattr(run.RF.A, "judge_agentic", spy)
+    started = judges(monkeypatch)
+    # Two judges at the stub's $0.50 over six repeats is $6, and a rehearsal's cap is $5.
+    both = ["--providers", "anthropic,openai"]
+    assert run.main(["judge", "--source", str(src), *both, "--out", str(out / "dry"), "--dry-run"]) == 0
+    (dry,) = (out / "dry").iterdir()  # a dry run writes run.json alone
+    resolved = json.loads((dry / "run.json").read_text(encoding="utf-8"))
+    assert resolved["max_spend_usd"] == 5 and resolved["rehearsal"] is True
+    assert {k: resolved["scenario"]["judges"]["budget"][k] for k in ("max_usd", "wall_s", "submits")} == {
+        "max_usd": 0.5,
+        "wall_s": 900.0,
+        "submits": 2,
+    }
+    # A flag can lower that cap, never raise it.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "high"), "--max-spend-usd", "7"]) == 2
+    assert not (out / "high").exists() and "would raise it" in capsys.readouterr().err
+    # Judged: every judge gets the stub budget, the cap is the stub's over the repeats, and the folder is a rehearsal's.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "run")]) == 0
+    resolved, results, _ = only_run(out / "run")
+    assert len(started) == 6 and [r["index"] for r in results["repeats"]] == list(range(6))
+    assert all((b.max_usd, b.wall_s, b.submits) == (0.5, 900.0, 2) for b in budgets) and len(budgets) == 6
+    assert resolved["max_spend_usd"] == 3 and resolved["rehearsal"] is True
 
 
 def test_judge_refuses_a_flag_of_the_subject_and_a_run_refuses_a_source(tmp_path, monkeypatch, built, capsys):

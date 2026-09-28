@@ -1737,7 +1737,20 @@ def command_judge(args: argparse.Namespace) -> int:
     if not judged:
         print(f"{source} holds no output to judge: no run folder was made and no judge started", file=sys.stderr)
         return 2
+    if resolved.get("rehearsal"):
+        # A rehearsal's output is judged within a rehearsal's bounds: each judge's budget cut as a rehearsal
+        # cuts it, and the run capped at a rehearsal's cap, which a flag can lower and never raise.
+        if args.max_spend_usd is not None and args.max_spend_usd > RH.MAX_SPEND_USD:
+            print(
+                f"the source is a rehearsal, whose judges spend at most ${RH.MAX_SPEND_USD:g}; --max-spend-usd can lower that, "
+                f"and {args.max_spend_usd:g} would raise it",
+                file=sys.stderr,
+            )
+            return 2
+        scn = dataclasses.replace(scn, judges=dataclasses.replace(scn.judges, budget=RH.budget(scn.judges.budget)))
     cap = args.max_spend_usd if args.max_spend_usd is not None else S.judging_cap(scn, len(judged), len(P.members(flags)))
+    if resolved.get("rehearsal") and cap is not None:
+        cap = min(cap, RH.MAX_SPEND_USD)
     out = Path(args.out).resolve() if args.out else source.parent
     run_id, run_dir = new_run_dir(out, scn.name)
     sandbox = RT.new_sandbox()
