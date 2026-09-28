@@ -247,7 +247,7 @@ def test_a_run_that_is_not_a_rehearsal_makes_no_output_folder(tmp_path, monkeypa
     path = tmp_path / "scenario.json"
     path.write_text(json.dumps(phased(phase("scaffold"), phase("review", cwd="output"))), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--claude", phase_claude(tmp_path), "--repeat", "1"]
-    assert run.main(argv) == 6  # the review has no folder to start in
+    assert run.main(argv) == 6  # the second phase has no folder to start in
     (run_dir,) = (tmp_path / "runs").iterdir()
     assert "rehearsal" not in results(run_dir)
 
