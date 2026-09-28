@@ -480,3 +480,42 @@ def test_agentic_judges_take_no_evidence_since_they_read_their_references():
     with pytest.raises(S.ScenarioError, match="an agentic judge reads its references instead"):
         S.from_data(dict(data, evidence={"files": ["**/*.py"]}))
     assert S.from_data(data).judges.agentic
+
+
+def test_a_scenario_names_what_its_preflight_checks():
+    scn = S.from_data(MINIMAL)
+    assert scn.preflight == S.PreflightSpec() and scn.as_dict()["preflight"] == {
+        "registries": [],
+        "disk_gib": None,
+        "memory_gib": None,
+    }
+    named = {"registries": ["https://pypi.org/simple/", "https://github.com"], "disk_gib": 40, "memory_gib": 0.5}
+    scn = S.from_data(dict(MINIMAL, preflight=named))
+    assert scn.preflight == S.PreflightSpec(
+        registries=["https://pypi.org/simple/", "https://github.com"], disk_gib=40.0, memory_gib=0.5
+    )
+    assert scn.as_dict()["preflight"]["disk_gib"] == 40.0
+
+
+@pytest.mark.parametrize(
+    ("preflight", "said"),
+    [
+        ({"registries": ["http://pypi.org/simple/"]}, r"preflight\.registries: an https URL"),
+        ({"registries": ["https://user:secret@pypi.org/"]}, r"preflight\.registries: an https URL"),
+        ({"registries": "https://pypi.org/"}, r"preflight\.registries: expected a list"),
+        ({"disk_gib": 0}, r"preflight\.disk_gib: an amount of GiB above 0"),
+        ({"memory_gib": "16"}, r"preflight\.memory_gib: an amount of GiB above 0"),
+        ({"cpus": 8}, r"preflight: unknown key\(s\) cpus"),
+        (["https://pypi.org/"], r"preflight holds a mapping"),
+    ],
+)
+def test_a_preflight_the_harness_cannot_check_is_refused_when_the_scenario_loads(preflight, said):
+    with pytest.raises(S.ScenarioError, match=said):
+        S.from_data(dict(MINIMAL, preflight=preflight))
+
+
+def test_the_shipped_full_system_names_the_registries_and_the_room_it_needs():
+    pytest.importorskip("yaml")
+    scn = S.load(Path(__file__).resolve().parent.parent / "benchmark" / "scenarios" / "create-full-system.yaml")
+    assert "https://pypi.org/simple/" in scn.preflight.registries and "https://registry.npmjs.org/" in scn.preflight.registries
+    assert scn.preflight.disk_gib and scn.preflight.memory_gib
