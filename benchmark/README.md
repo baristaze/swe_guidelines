@@ -456,7 +456,7 @@ A scenario is YAML or JSON. Four ship here:
 
 | Scenario | Kind | Runtimes | What it measures |
 |----------|------|----------|------------------|
-| `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec, then a review and its fixes, judged against the guideline and its reference implementation |
+| `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec, and with extras a review and its fixes, judged against the guideline and its reference implementation |
 | `explain-tenancy` | `skill` | `container` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
 | `review-om` | `skill` | `container` | the `arch-review-om` skill over a checkout with eight planted defects |
 | `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
@@ -468,25 +468,30 @@ nothing it reaches.
 
 `create-full-system` requires `docker`, so it runs on the vm runtime
 only. Its subject builds `free-journalism` from
-`fixtures/create-full-system/product-spec.md` in four fresh phases: the
-scaffold, the MVP, a standalone review, and the fixes to the review's
-high findings (see A subject in phases). Agentic judges score the tree
-against the guideline and against the guideline's reference
-implementation (see Agentic judges). It runs once, and its run's spend
-cap is $190, the sum of its phases' caps. The scenario says both, with
-`repeat: 1` and `max_spend_usd: 190`, so a run of it passes neither
-flag. Run it with `--preflight` first. The preflight checks, among the
-rest, that the machine is up and carries its tools at their pins, that
-it reaches the registries a scaffolded tree installs from, and that it
-has 40 GiB of disk and 16 GiB of memory free (see Preflight). Before its
-first long run, rehearse it: every phase, the checkpoints, the archive,
-the gates, and the judges, for at most $5 (see Rehearsal):
+`fixtures/create-full-system/product-spec.md` in fresh phases (see A
+subject in phases). By default a run is the build: the scaffold, then
+the MVP. With extras, `--with extras`, a standalone review reads the
+tree and a last phase closes the review's high findings, and the rubric
+tells the judges so. Agentic judges score the tree against the guideline
+and against the guideline's reference implementation (see Agentic
+judges). It runs once, as its `repeat: 1` says. Its run's spend cap is
+the sum of the caps of the phases that run: $135 for the build, and
+$190 with extras. So a run of it passes no cap. Run it with
+`--preflight` first. The preflight checks, among the rest, that the
+machine is up and carries its tools at their pins, that it reaches the
+registries a scaffolded tree installs from, and that it has 40 GiB of
+disk and 16 GiB of memory free (see Preflight). Before its first long
+run, rehearse it: every phase, the checkpoints, the archive, the gates,
+and the judges, for at most $5 (see Rehearsal). Each takes `--with
+extras` for that path:
 
 ```bash
 uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml
+uv run benchmark/run.py --scenario create-full-system \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml --with extras
 ```
 
 The shape:

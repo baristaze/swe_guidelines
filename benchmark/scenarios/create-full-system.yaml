@@ -1,19 +1,21 @@
 name: create-full-system
 kind: skill
-# The scaffold skills end to end: a subject builds a whole system from a
-# product spec, reviews it with a standalone review, and closes the
-# review's high findings. Agentic judges score the tree against the
-# guideline and against the guideline's reference implementation.
+# The scaffold skills end to end. By default a run is the build: a
+# subject scaffolds a whole system from a product spec, then builds its
+# Initial MVP on it. With extras, a standalone review reads the tree and
+# a last session closes the review's high findings. Agentic judges score
+# the tree against the guideline and against the guideline's reference
+# implementation.
 #
 # On the vm runtime only. The subject runs Docker, which only that
 # runtime provides, and the machine keeps the judges' keys and this file
 # out of the subject's reach.
 #
-# It runs once, and its run's spend cap is $190, the sum of its phases'
-# caps. `repeat` and `max_spend_usd` below say both, so a run of it
-# passes neither flag. A preflight checks what the run needs first, and
-# before the first long run a rehearsal runs every phase small, for at
-# most $5, and is never checked in:
+# It runs once, which `repeat` below says. Its run's spend cap is the sum
+# of the caps of the phases that run: $135 for the build, and $190 with
+# extras. A preflight checks what the run needs first, and before the
+# first long run a rehearsal runs every phase small, for at most $5, and
+# is never checked in. Each takes `--with extras` for that path:
 #
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml --preflight
@@ -21,10 +23,11 @@ kind: skill
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml
+#     uv run benchmark/run.py --scenario create-full-system \
+#       --runtime-config benchmark/runtime/lima/runtime-config.yaml --with extras
 runtimes: [vm]
 requires: [docker]
 repeat: 1
-max_spend_usd: 190
 # What `run.py --preflight` checks the machine has before a run spends
 # anything, beyond what every run needs: the registries a scaffolded tree
 # installs from, each answering from the machine, and room to build and
@@ -55,6 +58,13 @@ subject:
   # the scores. They never cap a score. The tree's `make check` runs
   # arch-check at the release its specs pin.
   gates: [make check, make test-integration]
+  # The review and the close run only with extras, and the judges are
+  # told so by the group's sentence in their rubric.
+  groups:
+    extras:
+      rubric: |-
+        After the build, a standalone architecture review read the tree,
+        and a last session closed the review's high findings.
   # Every phase is fresh: a new session with a new HOME. The builders keep
   # the handoff note. The review gets no note and no word of the scaffold
   # or of this benchmark. The close gets the review's report and the
@@ -92,12 +102,14 @@ subject:
       max_usd: 75
       timeout_s: 21600
     - name: review
+      group: extras
       prompt: "/swe-guidelines:arch-review-full . Then write the full report to ../review/report.md."
       cwd: output
       max_turns: 150
       max_usd: 25
       timeout_s: 7200
     - name: close
+      group: extras
       prompt: |-
         ../review/report.md is an architecture review of this repository. Close every high finding in it. Then run `make check` and `make test-integration` once, then at most 3 more times. If they still fail after the last run, stop and say which gate fails and why.
       cwd: output
@@ -106,7 +118,8 @@ subject:
       timeout_s: 10800
 artifact:
   stdout: true
-  # The review's report, written beside the output folder, kept with the run.
+  # The review's report, written beside the output folder, kept with the run
+  # that takes extras.
   files: [review/report.md]
 rubric: |
   You judge a system an agent built in one run from a product spec, with

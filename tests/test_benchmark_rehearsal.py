@@ -358,3 +358,11 @@ def test_a_rehearsal_s_cap_is_its_path_s_own_for_one_repeat_when_that_is_lower_t
         caps.append(resolved["max_spend_usd"])
         prompts.append([p["prompt"].endswith(RH.LINE) for p in resolved["phases"]])
     assert caps == [1.0, 3.5] and prompts == [[True], [True, True]]
+
+
+def test_a_rehearsal_of_either_path_of_the_shipped_system_spends_at_most_5():
+    scn = S.load(SHIPPED / "create-full-system.yaml")
+    for taken in ([], ["extras"]):
+        small = RH.scenario(S.select(scn, taken), J.load_matrix(None))
+        assert small.max_spend_usd == RH.MAX_SPEND_USD
+        assert all(p.prompt.endswith(RH.LINE) for p in small.subject.phases)

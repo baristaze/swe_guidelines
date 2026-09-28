@@ -449,15 +449,23 @@ def test_a_run_s_spend_cap_that_is_not_an_amount_above_0_is_refused_when_the_sce
         S.from_data(dict(MINIMAL, max_spend_usd=bad))
 
 
-def test_the_full_system_scenario_runs_once_under_the_sum_of_its_phases_caps():
+def test_the_full_system_scenario_runs_once_under_the_sum_of_the_caps_of_the_phases_that_run():
     pytest.importorskip("yaml")
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     scenarios = {s.name: s for s in (S.load(p) for p in S.catalog(folder))}
     system = scenarios.pop("create-full-system")
-    assert system.repeat == 1
-    assert system.max_spend_usd == sum(p.max_usd for p in system.subject.phases) == 190.0
+    assert (system.repeat, system.max_spend_usd) == (1, None)
+    # The build by default, the scaffold and the MVP; the review and the close only with extras.
+    assert [g.name for g in system.subject.groups] == ["extras"]
+    build, extras = S.select(system, []), S.select(system, ["extras"])
+    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1) == 135.0
+    assert [p.name for p in extras.subject.phases] == ["scaffold", "mvp", "review", "close"]
+    assert S.spend_cap(extras, 1) == 190.0 and S.taken_groups(extras) == ["extras"]
+    assert build.rubric == system.rubric and extras.rubric.startswith(system.rubric)
+    assert extras.rubric.endswith("a last session closed the review's high findings.")
     # The others name neither, so a run of one takes 3 repeats and no run cap unless a flag says otherwise.
     assert {(s.repeat, s.max_spend_usd) for s in scenarios.values()} == {(None, None)}
+    assert {S.spend_cap(s, 3) for s in scenarios.values()} == {None}
 
 
 def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
@@ -465,6 +473,7 @@ def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
     scn = S.load(Path(__file__).resolve().parent.parent / "benchmark" / "scenarios" / "create-full-system.yaml")
     phases = {p.name: p for p in scn.subject.phases}
     assert list(phases) == ["scaffold", "mvp", "review", "close"]
+    assert {n: p.group for n, p in phases.items()} == {"scaffold": None, "mvp": None, "review": "extras", "close": "extras"}
     assert {p.session for p in phases.values()} == {"fresh"}
     # The builders keep the handoff note and read the product spec; the review and the close start in the tree.
     assert [p.name for p in phases.values() if p.hint] == ["scaffold", "mvp"]
