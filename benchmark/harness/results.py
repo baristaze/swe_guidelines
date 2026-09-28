@@ -42,7 +42,7 @@ class RepeatResult:
     # Which planted findings the artifact names, from `harness.evidence.named`;
     # None when the scenario plants none.
     expected: dict[str, Any] | None = None
-    # The models the subject's envelope reports it ran on; empty when it reports none.
+    # The models the subject's result reports it ran on; empty when it reports none.
     subject_models: list[str] = field(default_factory=list)
     # What the subject spent: its tokens, and their cost in US dollars, None when unknown.
     subject_usage: dict[str, int] = field(default_factory=dict)
@@ -112,7 +112,7 @@ class RunResult:
 
 
 def failed(exit_status: dict[str, Any]) -> bool:
-    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its envelope."""
+    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its result."""
     return exit_status.get("code", 0) != 0 or bool(exit_status.get("timed_out")) or bool(exit_status.get("is_error"))
 
 

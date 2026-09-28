@@ -361,9 +361,9 @@ def token_count(value: Any) -> int | None:
 
 
 def envelope_thinking(usage: Any, models: Any) -> int | None:
-    """The thinking tokens an envelope reports, or None when it reports none.
+    """The thinking tokens a session's result reports, or None when it reports none.
 
-    The envelope's usage names them under `output_tokens_details`; each
+    The result's usage names them under `output_tokens_details`; each
     model in `modelUsage` names its own as `thinkingTokens`, so the sum is
     the fallback when the first is absent.
     """
@@ -386,7 +386,7 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     cached or not, with the cached ones also named on their own.
     `output_tokens` already counts the thinking, and `reasoning_tokens`
     names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
-    `thinkingTokens` over `modelUsage`, and no key when the envelope reports
+    `thinkingTokens` over `modelUsage`, and no key when the result reports
     neither. Output with no result spent nothing the run can see: no
     tokens, cost None.
     """
@@ -1100,7 +1100,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 if is_error:
                     status = dataclasses.replace(status, is_error=True)
             if scn.kind != "qa" and model and models and not any(m.startswith(model) for m in models):
-                notes.append(f"repeat {index}: the subject was pinned to {model}, and the envelope reports {', '.join(models)}")
+                notes.append(f"repeat {index}: the subject was pinned to {model}, and its result reports {', '.join(models)}")
             streams.note(f"[repeat {index}] exit {status.code}")
 
             art_dir = run_dir / "artifacts" / str(index)

@@ -91,7 +91,42 @@
         "target": { "type": ["string", "null"] },
         "plugin": { "type": ["string", "null"] },
         "max_turns": { "type": "integer" },
-        "allowed_tools": { "type": "array", "items": { "type": "string" } }
+        "allowed_tools": { "type": "array", "items": { "type": "string" } },
+        "max_usd": {
+          "description": "A skill subject's spend cap in US dollars, passed to Claude Code as --max-budget-usd; null for a subject in phases, whose phases name their own.",
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0
+        },
+        "output": {
+          "description": "The folder of the workspace a skill subject builds, committed after every phase and archived at the end; null when it builds none.",
+          "type": ["string", "null"]
+        },
+        "gates": {
+          "description": "The commands the harness runs in the output folder on the final tree, and counts as gate runs in each phase's stream.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "phases": {
+          "description": "A subject in phases: each phase as the scenario declares it.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "prompt", "session", "cwd", "hint", "max_turns", "max_usd", "timeout_s", "max_gate_reruns", "on_cap"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "prompt": { "type": "string" },
+              "session": { "type": "string", "enum": ["fresh", "resume"] },
+              "cwd": { "type": "string", "enum": ["workspace", "output"] },
+              "hint": { "type": "boolean" },
+              "max_turns": { "type": "integer", "minimum": 1 },
+              "max_usd": { "type": "number", "exclusiveMinimum": 0 },
+              "timeout_s": { "type": "integer", "minimum": 1 },
+              "max_gate_reruns": { "type": "integer", "minimum": 0 },
+              "on_cap": { "type": "string", "enum": ["continue", "stop"] }
+            }
+          }
+        }
       }
     },
     "repeats": {
@@ -156,7 +191,7 @@
             }
           },
           "subject_models": {
-            "description": "The models the subject's envelope reports it ran on.",
+            "description": "The models the subject's result reports it ran on.",
             "type": "array",
             "items": { "type": "string" }
           },
