@@ -71,10 +71,8 @@ no profile and no env file.
    and sum to any number; the generator normalizes them.
 4. Read it back and check every field is set and the total holds.
    Say in the output that a real run is the platform developer's
-   choice and that the run skill is `stress-test-run`. A session
-   follows at most 2 hops of Next. The skill it starts with is hop
-   zero; the report of the second hop still names its next skill, and
-   the session stops there and reports.
+   choice and that the run skill is `stress-test-run`. Its Next is
+   the person's to run, never the session's.
 
 ## What it never does
 
