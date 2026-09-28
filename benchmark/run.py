@@ -483,13 +483,28 @@ def collect_files(rt: RT.BaseRuntime, files: list[Path], art_dir: Path, index: i
     return paths, parts
 
 
-def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | None) -> dict[str, Any]:
-    """Move the output's zip into the repeat's artifacts, redacted, with its manifest; return its record."""
+def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Move the output's zip into the repeat's artifacts, redacted, with its manifest; its record, and a note if it is not whole.
+
+    A zip redaction cannot read is replaced by a line that says so, and
+    its record says it holds no file. An error here never ends the run:
+    the results are written either way.
+    """
     kept = art_dir / A.ZIP
-    shutil.move(str(zip_file), str(kept))
-    X.redact_zip(kept, X.key_values())
-    A.write_manifest(kept)
-    return {**A.record(kept, run_dir), "commit": commit}
+    try:
+        shutil.move(str(zip_file), str(kept))
+        _, places = X.redact_file(kept, X.key_values())
+        A.write_manifest(kept)
+        record = {**A.record(kept, run_dir), "commit": commit}
+    except (*X.READ_ERRORS, MemoryError) as exc:
+        return None, f"the output's zip could not be kept: {type(exc).__name__}: {exc}"
+    unread = [p for p in places if "(not scanned:" in p]
+    if not A.readable(kept):
+        why = f" and was replaced by a line that says so: {unread[0]}" if unread else ""
+        return record, f"the output's zip does not open as a zip{why}; its record holds no file"
+    if unread:
+        return record, f"part of the output's zip could not be scanned for keys and was replaced: {', '.join(unread)}"
+    return record, None
 
 
 @dataclasses.dataclass
@@ -844,12 +859,20 @@ def command_list(out: Path) -> int:
 
 
 def command_redact(out: Path) -> int:
-    """Redact every key value and every key-shaped string from the run folders, in place."""
-    found = X.redact_folder(out, X.key_values())
+    """Redact every key value and every key-shaped string from the run folders, in place.
+
+    A file that cannot be read or written is named, the rest are redacted
+    still, and the command exits 1, so nothing unredacted is shown or
+    uploaded after it.
+    """
+    failed: dict[Path, str] = {}
+    found = X.redact_folder(out, X.key_values(), failed)
     for path, count in found.items():
         print(f"redacted {count} key(s) in {path.relative_to(out)}")
     print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
-    return 0
+    for path, reason in failed.items():
+        print(f"could not redact {path.relative_to(out)}: {reason}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1082,8 +1105,11 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             parts += file_parts
             archive = None
             if zip_file in found:
-                archive = keep_archive(zip_file, art_dir, run_dir, done.commit if done else None)
-                paths += [archive["path"], archive["manifest"]]
+                archive, kept_note = keep_archive(zip_file, art_dir, run_dir, done.commit if done else None)
+                if kept_note:
+                    notes.append(f"repeat {index}: {kept_note}")
+                if archive:
+                    paths += [archive["path"], archive["manifest"]]
             blob = "\n\n".join(p for p in parts if p.strip()) or "(the subject produced nothing)"
 
             if not status.ok:

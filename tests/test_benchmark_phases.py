@@ -56,9 +56,10 @@ def run_phases(tmp_path, monkeypatch):
     def go(scenario: dict, *extra: str) -> tuple[int, Path]:
         path = tmp_path / "scenario.json"
         path.write_text(json.dumps(scenario), encoding="utf-8")
-        argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--claude", fake_claude(tmp_path)]
+        out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
+        argv = ["--scenario", str(path), "--out", str(out), "--claude", fake_claude(tmp_path)]
         code = run.main([*argv, "--subject-model", "claude-opus-5-5", *(extra or ("--repeat", "1"))])
-        (run_dir,) = (tmp_path / "runs").iterdir()
+        (run_dir,) = out.iterdir()
         return code, run_dir
 
     return go
@@ -408,3 +409,43 @@ def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(
     }
     # The run's cap saw 0.25 and 0.35 before the third phase, not 0.25 and 0.6.
     assert repeat["phases"][2]["status"] == "ok"
+
+
+def test_nothing_under_a_git_folder_is_collected(run_phases):
+    scenario = phased(phase("scaffold", {"write": {"site/README.md": "r\n"}}))
+    scenario["artifact"] = {"stdout": False, "files": ["**/*"]}
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    paths = results(run_dir)["repeats"][0]["artifact_paths"]
+    assert "artifacts/0/workspace/site/README.md" in paths
+    assert not [p for p in paths if "/.git/" in p]
+    assert not list((run_dir / "artifacts").rglob(".git"))
+
+
+def test_an_output_zip_that_cannot_be_scanned_is_kept_as_a_line_and_the_results_are_written(run_phases, monkeypatch):
+    monkeypatch.setattr(run.X, "UNPACKED", 4)
+    code, run_dir = run_phases(phased(phase("scaffold", {"write": {"site/README.md": "more than four bytes\n"}})))
+    assert code == 0
+    data = results(run_dir)
+    archive = data["repeats"][0]["archive"]
+    assert archive["files"] == 0 and (run_dir / archive["path"]).read_bytes() == run.X.UNREADABLE
+    assert (run_dir / archive["manifest"]).read_text(encoding="utf-8") == ""
+    assert any("does not open as a zip and was replaced by a line that says so" in n for n in data["notes"])
+    assert (run_dir / "report.md").is_file()
+
+
+def test_run_py_redact_names_a_file_it_cannot_redact_and_exits_1(tmp_path, monkeypatch, capsys):
+    folder = tmp_path / "runs" / "one"
+    folder.mkdir(parents=True)
+    (folder / "a.md").write_text("fine\n", encoding="utf-8")
+    (folder / "b.md").write_text("fine\n", encoding="utf-8")
+    real = run.X.redact_file
+
+    def redact_file(path, values):
+        if path.name == "a.md":
+            raise PermissionError("denied")
+        return real(path, values)
+
+    monkeypatch.setattr(run.X, "redact_file", redact_file)
+    assert run.main(["redact", "--out", str(tmp_path / "runs")]) == 1
+    assert "could not redact one/a.md: PermissionError: denied" in capsys.readouterr().err

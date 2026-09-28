@@ -409,7 +409,7 @@ def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
     a_zip(repo, ONE_A, {"README.md": "clean\n"})
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 0
-    assert "no key in a zip" in capsys.readouterr().out
+    assert "no key in a compressed file" in capsys.readouterr().out
 
 
 def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
@@ -422,3 +422,24 @@ def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     assert "output.zip: bundle.zip!.env holds a string shaped like a key" in capsys.readouterr().out
+
+
+def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_fails(repo, runs, capsys):
+    import gzip
+
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    folder = repo.root / "benchmark" / "runs" / ONE_A / "artifacts" / "0" / "workspace"
+    (folder / "site" / ".git" / "objects").mkdir(parents=True)
+    (folder / "site" / ".git" / "objects" / "ab").write_bytes(b"x")
+    (folder / "env.json.gz").write_bytes(gzip.compress(b'{"key": "sk-ant-api03-' + b"a1B2" * 12 + b'"}'))
+    (folder / "bundle.zst").write_bytes(b"\x28\xb5\x2f\xfd" + b"frame")
+    (folder / "notes.md").write_text("plain text is redact's to scan\n", encoding="utf-8")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    workspace = f"benchmark/runs/{ONE_A}/artifacts/0/workspace"
+    assert f"{workspace}/site/.git: a run folder holds no .git" in out
+    assert f"{workspace}/env.json.gz holds a string shaped like a key" in out
+    assert f"{workspace}/bundle.zst: (not scanned: a compressed form the scan cannot read)" in out
+    assert "3 run index mismatch(es)" in out

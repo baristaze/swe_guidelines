@@ -430,12 +430,16 @@ class BaseRuntime:
         """Every workspace file one of the globs names, once, in path order.
 
         A file outside the workspace, reached through `..` or a symlink, is
-        not the subject's output and is left out.
+        not the subject's output and is left out. So is anything under a
+        `.git`: its objects are compressed where no redaction reads them,
+        and the output's zip is the record of the output.
         """
         root = self.workspace.resolve()
         found: set[Path] = set()
         for pattern in globs:
             for path in self.workspace.glob(pattern):
+                if ".git" in path.relative_to(self.workspace).parts:
+                    continue
                 if path.is_file() and path.resolve().is_relative_to(root):
                     found.add(path)
         return sorted(found)
