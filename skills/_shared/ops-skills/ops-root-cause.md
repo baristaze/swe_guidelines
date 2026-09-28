@@ -250,8 +250,9 @@ do not use up the first pass's one read of each signal.
   second org id "for comparison".
 - No `terraform apply`, no console clicks.
 - No unbounded search: never more than 5 request ids, never a second
-  pass over one, never more than 10 polls of a query, never a feed
-  event read from before the window.
+  pass over one, never more than 10 polls of a query, never a page of
+  the feed read from before the window's first `seq` (the one-event
+  probes that find it aside).
 
 ## Output
 
