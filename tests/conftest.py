@@ -31,6 +31,25 @@ CHECKERS = Path(__file__).resolve().parent.parent / "checkers" / "src"
 if str(CHECKERS) not in sys.path:
     sys.path.insert(0, str(CHECKERS))
 
+# A Docker command that is on no machine: where the harness runs it, the
+# machine reads as one with no Docker.
+NO_DOCKER = "/nonexistent/docker"
+
+
+@pytest.fixture(autouse=True)
+def no_docker_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reaches the Docker of the machine it runs on.
+
+    The vm runtime lists and removes what Docker holds on the other
+    machine, and a test's other machine runs on this one. So every test
+    runs the harness with a Docker command that is on no machine, and a
+    test of that removal points it at a stand-in of its own.
+    """
+    from harness import runtime
+
+    monkeypatch.setattr(runtime, "DOCKER", NO_DOCKER)
+
+
 GUIDELINE = """\
 # Software Design and Architecture Guidelines
 

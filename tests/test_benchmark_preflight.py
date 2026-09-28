@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from harness import preflight as PF
 from harness import providers as P
 from harness import runtime as RT
 from harness import scenario as S
+from test_benchmark_runtime import DOCKER_OWN, docker_stand_in
 
 BENCHMARK = Path(__file__).resolve().parent.parent / "benchmark"
 EVERYWHERE = ["host", "container", "vm"]
@@ -464,6 +466,45 @@ def test_what_an_earlier_run_left_there_fails(tmp_path):
     check = PF.workspace(context(scenario(), machine(tmp_path)))
     assert check.status == PF.FAIL and "20260926-000000-built-1234abcd" in check.detail
     assert check.fix is not None and check.fix.endswith(f"sudo rm -rf -- {tmp_path / 'remote'}`")
+
+
+def test_a_machine_whose_docker_holds_a_container_or_a_volume_fails_and_names_them_and_how_to_clear_them(tmp_path, monkeypatch):
+    left = (("container", "c-db", "acme-db-1"), ("container", "c-web", "acme-web-1"), ("volume", "acme_pgdata", "acme_pgdata"))
+    state = docker_stand_in(tmp_path, *DOCKER_OWN, ("network", "n-acme", "acme_default"), *left)
+    monkeypatch.setattr(RT, "DOCKER", str(state / "docker"))
+    rt = machine(tmp_path)
+    check = PF.workspace(context(scenario(), rt))
+    assert check.status == PF.FAIL
+    assert check.detail == (
+        "the machine's Docker holds what earlier runs left, and the next subject would start beside it: "
+        "2 containers (acme-db-1, acme-web-1), 1 volume (acme_pgdata)"
+    )
+    assert check.facts["docker"] == {"containers": ["acme-db-1", "acme-web-1"], "volumes": ["acme_pgdata"]}
+    clear = "env -i PATH=/usr/bin:/bin sh -c " + shlex.quote(PF.CLEAR_DOCKER)
+    assert check.fix == f"no run holds the machine, so clear its Docker: `{clear}`"
+    assert "docker ps -aq | xargs -r docker rm -f -v" in PF.CLEAR_DOCKER and "docker volume prune --all" in PF.CLEAR_DOCKER
+    (tmp_path / "remote" / "20260926-000000-built-1234abcd").mkdir(parents=True)
+    both = PF.workspace(context(scenario(), rt))  # one failure names both, so one fix clears the machine
+    assert both.detail.startswith(f"{tmp_path / 'remote'} there holds what earlier runs left") and both.detail.endswith(
+        check.detail
+    )
+    assert both.fix is not None and both.fix.endswith(check.fix)
+
+
+def test_a_machine_whose_docker_holds_only_networks_holds_nothing_a_subject_starts_beside(tmp_path, monkeypatch):
+    state = docker_stand_in(tmp_path, *DOCKER_OWN, ("network", "n-acme", "acme_default"))
+    monkeypatch.setattr(RT, "DOCKER", str(state / "docker"))
+    check = PF.workspace(context(scenario(), machine(tmp_path)))
+    assert check.status == PF.PASS
+    assert check.detail.endswith("holds nothing, and the machine's Docker holds no container and no volume")
+
+
+def test_a_machine_whose_docker_does_not_answer_fails(tmp_path, monkeypatch):
+    folder = tools_folder(tmp_path, docker="exit 1")
+    monkeypatch.setattr(RT, "DOCKER", str(folder / "docker"))
+    check = PF.workspace(context(scenario(), machine(tmp_path)))
+    assert check.status == PF.FAIL and check.detail == "the machine's Docker did not answer (exit 3)"
+    assert check.fix is not None and "docker ps -a` fails" in check.fix
 
 
 # the tools ----------------------------------------------------------------

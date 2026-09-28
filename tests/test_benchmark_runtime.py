@@ -194,7 +194,7 @@ def test_the_vm_runs_behind_the_prefix_and_fills_the_sync_paths(tmp_path):
 def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch):
     ran: list[list[str]] = []
 
-    def helper(self, argv, stdin=None, timeout_s=None):
+    def helper(self, argv, stdin=None, timeout_s=None, out=None):
         ran.append(list(argv))
         return 0
 
@@ -210,6 +210,7 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
     first = rt.prepare_repeat(0)
     assert ran == [
         ["fake-shell", "--", "sh", "-c", RT.LOCK, "sh", "/opt/work", "run-1"],
+        ["fake-shell", "--", "sh", "-c", RT.DOCKER_LIST, "sh", RT.DOCKER],  # what Docker held before the run
         ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/0"],
         ["fake-copy", f"{first}/", "station:/opt/work/run-1/workspace/0/"],
@@ -217,7 +218,7 @@ def test_the_vm_gives_each_repeat_its_own_remote_workspace(tmp_path, monkeypatch
     assert rt.command(["claude"], first)[-2:] == ["0", "claude"]
     assert "/opt/work/run-1/workspace/0" in rt.command(["claude"], first)
     second = rt.prepare_repeat(1)
-    assert ran[4:] == [  # the lock is taken once, for every repeat
+    assert ran[5:] == [  # the lock is taken, and Docker listed, once, for every repeat
         ["fake-shell", "--", "sh", "-c", RT.PREPARE, "sh", "/opt/work/run-1"],
         ["fake-shell", "--", "mkdir", "-p", "/opt/work/run-1/workspace/1"],
         ["fake-copy", f"{second}/", "station:/opt/work/run-1/workspace/1/"],
@@ -684,6 +685,127 @@ def test_the_end_of_a_run_removes_its_folder_with_sudo_there_and_notes_what_stay
         (remote / "run" / "workspace").chmod(0o700)
 
 
+DOCKER_STAND_IN = """#!/bin/sh
+state=STATE
+printf '%s\\n' "$*" >> "$state/calls.log"
+for last; do :; done
+list() { for f in "$state/$1"/*; do [ -f "$f" ] && printf '%s %s %s\\n' "$1" "${f##*/}" "$(cat "$f")"; done; return 0; }
+remove() { case $last in stuck*) exit 1;; esac; [ -f "$state/$1/$last" ] || exit 1; rm -f "$state/$1/$last"; }
+case "$1 $2" in
+  "ps -a") list container;;
+  "network ls") list network;;
+  "volume ls") list volume;;
+  "create "*) printf '%s\\n' "$4" > "$state/$2/$3";;
+  "rm -f") remove container;;
+  "network rm") remove network;;
+  "volume rm") remove volume;;
+  *" inspect") [ -f "$state/$1/$last" ];;
+  *) exit 2;;
+esac
+"""
+# The networks Docker makes itself, which every machine with Docker holds.
+DOCKER_OWN = (("network", "n-bridge", "bridge"), ("network", "n-host", "host"), ("network", "n-none", "none"))
+
+
+def docker_stand_in(tmp_path: Path, *held: tuple[str, str, str]) -> Path:
+    """A Docker stand-in that keeps what it holds as files, and the folder that holds them, the stand-in first.
+
+    Each container, network, and volume is a file under `<kind>/`, named by
+    its id and holding its name. `create <kind> <id> <name>` makes one, as a
+    subject's `docker run` or Compose would. An id that starts with `stuck`
+    is never removed. Every call is logged in `calls.log`.
+    """
+    state = tmp_path / "docker-state"
+    for kind in RT.DOCKER_KINDS:
+        (state / kind).mkdir(parents=True, exist_ok=True)
+    for kind, ident, name in held:
+        (state / kind / ident).write_text(name + "\n", encoding="utf-8")
+    stand_in = state / "docker"
+    stand_in.write_text(DOCKER_STAND_IN.replace("STATE", str(state)), encoding="utf-8")
+    stand_in.chmod(0o755)
+    return state
+
+
+def docker_holds(state: Path) -> set[tuple[str, str, str]]:
+    """What the stand-in holds now."""
+    return {(k, f.name, f.read_text(encoding="utf-8").strip()) for k in RT.DOCKER_KINDS for f in (state / k).iterdir()}
+
+
+def docker_removals(state: Path) -> list[str]:
+    """Every removal the stand-in was asked for, in order."""
+    calls = (state / "calls.log").read_text(encoding="utf-8").splitlines()
+    return [c for c in calls if c.startswith(("rm ", "network rm ", "volume rm "))]
+
+
+def test_the_vm_removes_what_the_subjects_docker_made_after_each_repeat_and_when_it_gives_the_machine_back(tmp_path, monkeypatch):
+    # `env` stands in for the prefix: it runs its words on this machine, as a remote shell would there.
+    before = {*DOCKER_OWN, ("container", "c-kept", "kept-1"), ("volume", "kept", "kept")}
+    state = docker_stand_in(tmp_path, *before)
+    docker = str(state / "docker")
+    monkeypatch.setattr(RT, "DOCKER", docker)
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote")})
+    assert isinstance(rt, RT.VmRuntime)
+    # The subject lists what Docker holds, then starts a stack: a database, its network, and its volume.
+    stack = (
+        f"{docker} ps -a; {docker} create container c-db acme-db-1; "
+        f"{docker} create network n-acme acme_default; {docker} create volume acme_pgdata acme_pgdata"
+    )
+    removed = "1 container (acme-db-1), 1 network (acme_default), 1 volume (acme_pgdata)"
+    seen = []
+    for index in (0, 1):
+        rt.prepare_repeat(index)
+        with CliStream(tmp_path / f"cli-{index}.jsonl") as stream:
+            assert rt.run(["sh", "-c", stack], tmp_path, {"PATH": "/usr/bin:/bin"}, stream).ok
+        seen.append([r["line"] for r in CliStream.read(tmp_path / f"cli-{index}.jsonl") if r["s"] == "out"])
+        assert ("container", "c-db", "acme-db-1") in docker_holds(state)
+        if index == 0:
+            assert rt.remove_docker() == [f"removed what the subject's Docker made on the other machine: {removed}"]
+            assert docker_holds(state) == before
+    assert seen[1] == seen[0] == ["container c-kept kept-1"]  # the second repeat starts beside none of the first's stack
+    # The last repeat's removal never ran, as in a run stopped mid-repeat; giving the machine back removes it.
+    made = f"removed what the subject's Docker made on the other machine: {removed}"
+    assert rt.release() == [f"[vm] when the run gave the machine back, {made}"]
+    assert docker_holds(state) == before
+    once = ["rm -f -v c-db", "network rm n-acme", "volume rm -f acme_pgdata"]
+    assert docker_removals(state) == once * 2  # the containers first, and nothing that was there before the run
+
+
+def test_what_the_subjects_docker_made_and_could_not_be_removed_is_named(tmp_path, monkeypatch):
+    state = docker_stand_in(tmp_path, *DOCKER_OWN)
+    docker = str(state / "docker")
+    monkeypatch.setattr(RT, "DOCKER", docker)
+    rt = RT.build("vm", tmp_path / "run", None, {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote")})
+    assert isinstance(rt, RT.VmRuntime)
+    rt.prepare_repeat(0)
+    for ident, name in (("stuck-api", "acme-api-1"), ("c-db", "acme-db-1")):
+        subprocess.run([docker, "create", "container", ident, name], check=True)
+    assert rt.remove_docker() == [
+        "removed what the subject's Docker made on the other machine: 1 container (acme-db-1)",
+        "what the subject's Docker made on the other machine could not be removed: 1 container (acme-api-1)",
+    ]
+
+
+def test_a_docker_that_did_not_answer_when_the_run_took_the_machine_has_nothing_removed_and_says_so_once(tmp_path, monkeypatch):
+    config = {"exec_prefix": ["env"], "remote_workspace": str(tmp_path / "remote")}
+    none = RT.build("vm", tmp_path / "run-1", None, config)
+    assert isinstance(none, RT.VmRuntime)
+    none.prepare_repeat(0)
+    assert none.remove_docker() == [] and none.release() == []  # a machine with no Docker holds nothing to remove
+    down = tmp_path / "down"
+    down.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    down.chmod(0o755)
+    monkeypatch.setattr(RT, "DOCKER", str(down))
+    rt = RT.build("vm", tmp_path / "run-2", None, config)
+    assert isinstance(rt, RT.VmRuntime)
+    rt.prepare_repeat(0)
+    assert rt.remove_docker() == [
+        "the machine's Docker did not answer when the run took the machine (exit 3), "
+        "so the harness cannot tell what the run's subjects made there, and removes none of it"
+    ]
+    rt.prepare_repeat(1)
+    assert rt.remove_docker() == [] and rt.release() == []
+
+
 def test_collect_takes_every_glob_once_in_path_order(tmp_path):
     rt = RT.build("host", tmp_path)
     rt.prepare()
@@ -907,7 +1029,7 @@ def test_an_image_the_engine_does_not_know_has_no_id(tmp_path):
 
 
 def test_a_session_gets_a_home_and_a_tmpdir_of_its_own_in_the_repeat(tmp_path, monkeypatch):
-    monkeypatch.setattr(RT.VmRuntime, "helper", lambda self, argv, stdin=None, timeout_s=None: 0)
+    monkeypatch.setattr(RT.VmRuntime, "helper", lambda self, argv, stdin=None, timeout_s=None, out=None: 0)
     rt = RT.build("vm", tmp_path / "run-1", None, {"exec_prefix": ["fake-shell", "--"], "remote_workspace": "/opt/work"})
     assert isinstance(rt, RT.VmRuntime)
     workspace = rt.prepare_repeat(0)
@@ -939,7 +1061,7 @@ def test_the_harness_moves_a_path_out_of_the_workspace_and_back(tmp_path, monkey
     assert (workspace / "NOTE.md").read_text(encoding="utf-8") == "n"
     ran: list[list[str]] = []
 
-    def helper(self, argv, stdin=None, timeout_s=None):
+    def helper(self, argv, stdin=None, timeout_s=None, out=None):
         ran.append(argv)
         return 0
 

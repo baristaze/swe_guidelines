@@ -395,8 +395,24 @@ or an interrupt, the harness kills that group through the prefix
 first, then the prefix here. A process that starts a session of its
 own leaves the group, and the kill does not reach it. Nor does it reach
 a container the subject starts, which is a child of Docker's daemon: it
-outlives the stop and the repeat, so a later repeat can find a port
-already allocated or a named volume already there.
+outlives the stop.
+
+So the harness removes what the subject's Docker made there. When the
+run takes the machine, it lists every container, network, and volume
+Docker holds there. After each repeat, once its gates ran and its
+workspace came back, it removes every one that was not on that list:
+the containers first, with their anonymous volumes, then the networks,
+then the volumes. It does so again when the run gives the machine back,
+so a run stopped in the middle of a repeat leaves none either. The
+run's notes name what went, and what could not be removed. So no repeat
+starts beside an earlier one's stack: no Compose project of the same
+name, no port already held, and no earlier subject's database within
+reach. What Docker held when the run took the machine stays, because
+the run did not make it, and a preflight refuses such a machine (see
+Preflight). Images stay too: they hold no subject's data. A Docker that
+does not answer when the run takes the machine leaves nothing to tell
+the run's containers from the rest, so the harness removes nothing, and
+the notes say so. A machine with no Docker holds nothing to remove.
 
 A step that fails there fails the repeat with a note, and the subject
 does not run: the machine stopped or held by another run, a copy, a
@@ -459,9 +475,10 @@ QEMU's user network gives the VM an IPv6 prefix that reaches this
 machine's loopback, and the rule refuses that prefix too.
 
 The machine persists between runs. The harness removes what a run left
-in its own folder, and nothing else: the containers, volumes, and
-images a subject made stay. The machine's user has sudo, so a subject
-can change the machine itself. Lima keeps the template as it read it
+in its own folder, and the containers, networks, and volumes its
+subjects' Docker made, and nothing else: the images a subject pulled or
+built stay. The machine's user has sudo, so a subject can change the
+machine itself. Lima keeps the template as it read it
 at create, so a change to the template, a pin or a package, takes a new
 machine: `limactl delete swe-benchmark`, then create it again.
 
@@ -1139,7 +1156,7 @@ will take, so it checks that run.
 | `subject_key` | `SUBJECT_ANTHROPIC_API_KEY` is set, is no judge's key, and Anthropic's model list takes it. For a `qa` subject, its provider's key |
 | `judge_keys` | every judge the run selects has a key, and its provider's model list takes it |
 | `runtime` | on `vm`, the machine answers through `exec_prefix`, and the config's `check` passes there. On `container`, the engine answers and the image is there; with `--build`, the preflight builds it first. On `host`, always |
-| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read |
+| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read. And the machine's Docker holds no container and no volume, which the next subject would start beside. A failure names each one and the command that clears them |
 | `tools` | every tool the runtime config lists under `tools` answers where the subject runs, at its pinned version, and a skill's Claude Code answers. A container run whose config lists none asks the three its Dockerfile pins |
 | `resources` | the free disk and the available memory where the subject works are at least the scenario's `preflight.disk_gib` and `preflight.memory_gib` |
 | `network` | the model API, for a skill, and every URL under the scenario's `preflight.registries`, answer from where the subject runs, whatever the status |
@@ -1249,9 +1266,8 @@ uv run benchmark/run.py judge --source benchmark/runs/<run folder>
 It reads three things from the source run's `run.json`: the scenario's
 name, the groups the run took, and the runtime it ran on. The scenario,
 its rubric, its judges, and its references are this checkout's, so a
-change to the judges reaches the score. The rubric takes the sentences
-of the groups the source run took. `--providers` and `--effort` choose
-the judges, as they do for a run.
+change to the judges reaches the score. `--providers` and `--effort`
+choose the judges, as they do for a run.
 
 It judges the archive of an output folder with agentic judges. A
 scenario whose subject builds no output folder, or whose judges are
@@ -1270,6 +1286,16 @@ judge started, when:
 
 A source with no repeat to judge makes no run folder, and exits 2.
 
+**What the judges are told.** A repeat's judges are told of the phases
+that ran in it, the ones the source run's `results.json` lists for the
+repeat. Its rubric takes the sentence of a group the source run took
+only when every one of the group's phases ran in it, since the sentence
+stands for them all. So a repeat that ended early, or was cut short,
+before every phase of a group ran is judged with no sentence of that
+group: its judges are not told of work that never happened. A repeat
+the source's `results.json` lists no phases for is judged as the source
+run took it, with every phase and every group.
+
 **Where it goes.** The judgement lands in a new run folder beside the
 source, or under `--out`. Each repeat judged gets the source's
 artifacts, all but its judge prompt: the archive, its manifest, the
@@ -1277,14 +1303,19 @@ answer, and the collected files. The judges read the archive's tree, as
 a run's judges do, and the repeat's `judge-prompt.md` is this run's
 own. `results.json` names the source under `source`: its run folder,
 its path, the repeats judged, each repeat refused with why, and the
-repeats the run's spend cap kept from being judged, under `capped`. Each
+repeats the run's spend cap kept from being judged, under `capped`. For
+a scenario that declares groups, it also names the groups each repeat's
+rubric took, under `rubric_groups`, and so does `run.json`. Each
 repeat records its archive, its SHA-256 included, and its judgements.
-No subject ran, so a repeat records no session and no subject spend,
-and its exit status is 0. How the subject ended is in the source run's
+No subject ran, so a repeat records no subject spend, and its exit
+status is 0. Its `phases` are the ones its source's repeat ran, each
+with its name, session, status, and cap, and none of its spend. So a
+folder `judge` wrote, judged again, tells its judges what its own
+source ran. The rest of how the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
-report opens with the source, the repeats refused, and the repeats the
-cap kept from being judged.
+report opens with the source, the repeats refused, the repeats the cap
+kept from being judged, and the groups each repeat's rubric took.
 
 **Its spend.** The run's spend cap is the sum of the selected judges'
 dollar budgets over the repeats it judges: four judges at $45 over one
@@ -1338,7 +1369,10 @@ bounds, gates, rubric, and judges are the ones that run.
 default it is the last phase with a milestone. The new run runs only
 the phases after it, each with its own bounds, then the gates, the
 archive, and the judges. The judges are told of every phase the output
-went through, the carried ones included. A resume after the last phase
+went through, the carried ones included, and a carried phase counts as
+one that ran: the rubric takes the sentence of each group the source
+took. On the vm runtime, what the subject's Docker made is removed after
+a resumed repeat, as after any repeat. A resume after the last phase
 has nothing to run and is refused: `judge` judges that output. So is a
 resume whose next phase continues the session of the one before, which
 only the source run held.
@@ -1491,7 +1525,10 @@ succeeded.
 
 The harness logic is tested from the repository root, in
 `tests/test_benchmark_*.py`, with the standard library and fake judges,
-so `make test` and CI cover it with no key and no network.
+so `make test` and CI cover it with no key and no network. A test's
+other machine runs on the machine the test runs on, so every test runs
+the harness with a Docker command that is on no machine, and none
+reaches that machine's Docker.
 
 ```bash
 make test

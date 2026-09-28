@@ -352,6 +352,26 @@ def test_a_group_adds_its_sentence_to_the_rubric_and_one_not_taken_adds_nothing(
     assert S.select(scn, ["polish"]).rubric == scn.rubric  # a group with no sentence adds none
 
 
+def test_a_repeat_s_rubric_takes_a_group_only_when_every_one_of_its_phases_ran_in_it():
+    scn = S.from_data(grouped())
+    taken = ["extras", "polish"]
+    # The repeat ended after the scaffold: no word of the review, the close, or the tidy, and no MVP either.
+    early = S.as_ran(scn, taken, ["scaffold"])
+    assert early.rubric == scn.rubric and [p.name for p in early.subject.phases] == ["scaffold"]
+    assert S.ran_groups(scn, taken, ["scaffold"]) == []
+    # The review ran and the close did not: the sentence, which names both, is left out, and the review is described.
+    cut = S.as_ran(scn, taken, ["scaffold", "mvp", "review"])
+    assert cut.rubric == scn.rubric and S.ran_groups(scn, taken, ["scaffold", "mvp", "review"]) == []
+    assert [p.name for p in cut.subject.phases] == ["scaffold", "mvp", "review"]
+    # Every phase ran: the scenario as the run took it. A group the run did not take stays out, whatever the list says.
+    assert S.as_ran(scn, taken, [p.name for p in scn.subject.phases]) == S.select(scn, taken)
+    both = S.as_ran(scn, ["extras"], ["scaffold", "review", "close", "tidy"])
+    assert both.rubric == f"{scn.rubric}\n\nThen a review read the tree." and S.taken_groups(both) == ["extras"]
+    assert [p.name for p in both.subject.phases] == ["scaffold", "review", "close"]
+    # Nothing says which phases ran: the scenario as the run took it.
+    assert S.as_ran(scn, taken, None) == S.select(scn, taken) and S.ran_groups(scn, taken, None) == taken
+
+
 def test_a_run_that_takes_a_group_the_scenario_does_not_declare_is_refused():
     with pytest.raises(S.ScenarioError, match=r"scenario one declares no group mvp; its groups: extras, polish"):
         S.select(S.from_data(grouped()), ["mvp"])

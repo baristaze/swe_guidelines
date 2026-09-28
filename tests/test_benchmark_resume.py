@@ -22,6 +22,7 @@ import pytest
 from harness import archive as A
 from test_benchmark_phases import do, fake_claude, results, seen
 from test_benchmark_run import needs_jsonschema, run, vm_config
+from test_benchmark_runtime import DOCKER_OWN, docker_holds, docker_stand_in
 
 
 def phase(name: str, action: dict | None = None, **extra) -> dict:
@@ -323,6 +324,71 @@ def test_on_another_machine_the_note_is_kept_and_given_back_hidden(bench, tmp_pa
     review, mvp = seen(run_dir)
     assert review is not None and review["handoff_in_reach"] == [] and "HANDOFF.md" not in review["tree"]
     assert mvp is not None and mvp["note"] == NOTE
+
+
+# Where resume meets the rest of a run -------------------------------------------------
+
+SENTENCE = "After the build, a review read the tree, and a last session closed its findings."
+
+
+def grouped() -> dict:
+    """Four phases, the last two in the group `extras`, judged by one agentic judge."""
+    data = scenario(
+        phase("scaffold", {"write": {"site/a.txt": "a"}}),
+        phase("mvp", {"write": {"site/b.txt": "b"}}),
+        phase("review", {"write": {"review/report.md": "r"}}, group="extras"),
+        phase("close", group="extras"),
+        judges={
+            "providers": "anthropic",
+            "mode": "agentic",
+            "budget": {"max_usd": 5},
+            "references": [{"name": "guideline", "weight": 1, "paths": ["lenses/README.md"]}],
+        },
+    )
+    data["subject"]["groups"] = {"extras": {"rubric": SENTENCE}}
+    return data
+
+
+@needs_jsonschema
+def test_a_resumed_run_s_carried_phases_count_as_run_for_the_rubric_s_groups(bench):
+    bench.write(grouped())
+    src = bench.source("--with", "extras")
+    # Resumed after scaffold, the group's phases all run here; after review, one of them is carried.
+    for after in ("scaffold", "review"):
+        code, run_dir = bench.run("resume", "--source", str(src), "--after", after)
+        assert code == 0 and run_dir is not None
+        prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+        assert SENTENCE in prompt
+        assert all(f"{n}. {name} (fresh session)" in prompt for n, name in enumerate(("scaffold", "mvp", "review", "close"), 1))
+        assert resolved(run_dir)["groups"] == ["extras"] and results(run_dir)["subject"]["groups"] == ["extras"]
+    # A judge of the resumed run reads its phases, the carried ones included, and takes the group too.
+    code, judged = bench.run("judge", "--source", str(run_dir))
+    assert code == 0 and judged is not None
+    assert results(judged)["source"]["rubric_groups"] == [{"repeat": 0, "groups": ["extras"]}]
+    assert SENTENCE in (judged / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+
+
+def test_a_resumed_repeat_on_another_machine_removes_what_its_docker_made(bench, tmp_path, monkeypatch):
+    bench.write(FOUR)
+    src = bench.source()
+    state = docker_stand_in(tmp_path, *DOCKER_OWN)
+    docker = str(state / "docker")
+    monkeypatch.setattr(run.RT, "DOCKER", docker)
+    # The machine's check runs after the run lists what Docker holds, so it stands in for a subject's stack here.
+    made = vm_config(
+        tmp_path, fetch=["cp", "-R", "{remote}/.", "{local}"], check=[docker, "create", "container", "c-db", "acme-db-1"]
+    )
+    config = tmp_path / "vm.json"
+    config.write_text(json.dumps(made), encoding="utf-8")
+    record = resolved(src)
+    record["runtime"]["name"] = "vm"
+    (src / "run.json").write_text(json.dumps(record), encoding="utf-8")
+    code, run_dir = bench.run("resume", "--source", str(src), "--after", "mvp", "--runtime-config", str(config))
+    assert code == 0 and run_dir is not None and len(seen(run_dir)) == 2
+    notes = results(run_dir)["notes"]
+    removed = "removed what the subject's Docker made on the other machine: 1 container (acme-db-1)"
+    assert f"repeat 0: {removed}" in notes
+    assert docker_holds(state) == set(DOCKER_OWN)  # nothing that was there before the run went
 
 
 # What resume may spend ---------------------------------------------------------------
