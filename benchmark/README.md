@@ -50,6 +50,10 @@ image first (see Where a scenario runs).
 `judge --source <run folder>` judges an earlier run's archived output
 again, and runs no subject (see Judge a run again).
 
+`resume --source <run folder> [--after <phase>]` starts a new run from
+the milestone an earlier run kept after a phase, and runs only the
+phases after it (see Resume from a milestone).
+
 A provider whose key is absent is skipped, named in the results, and
 does not fail the run. That is a choice: a run with three judges is
 worth more than no run at all. `--strict` reverses it.
@@ -117,6 +121,10 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
                            files under workspace/ at their own paths, byte for byte
   artifacts/<repeat>/output.zip, MANIFEST.txt
                            the output's last commit, whole, and a line per file
+  artifacts/<repeat>/milestones/<phase>/
+                           what a phase left: its checkpoint as output.zip, with
+                           MANIFEST.txt, the collected files under workspace/, and
+                           HANDOFF.md when a hinted phase had kept the note
   judgements/<repeat>-<provider>.json
   judgements/<repeat>-<provider>.jsonl
                            an agentic judge's transcript, one line per step
@@ -348,7 +356,11 @@ target and has neither `copy` nor the override, is refused before it
 starts.
 
 The copies are made afresh before every repeat, so no repeat reads what
-an earlier one changed in them. A dry run makes none. They are the
+an earlier one changed in them. A dry run makes none. A repeat that
+resumes an earlier run starts with that run's milestone in its workspace
+(see Resume from a milestone). The harness puts it there by `sync`, or,
+with no `sync`, by `copy`, which makes the repeat's workspace there as
+it makes `plugin/`. They are the
 staged payload, so `versions` describes what the subject read, and no
 answer file is among them. An override replaces a copy with whatever
 the operator put there. Nothing makes it afresh, no version describes
@@ -789,6 +801,26 @@ scenario collects are copied byte for byte, and a binary one reaches
 the judges as its size, not its bytes. Nothing under a `.git` is
 collected: its objects are compressed, and the zip is the record of the
 output.
+
+**Milestones.** A subject in phases also keeps what each phase left, its
+milestone, so a later run can start from it (see Resume from a
+milestone). After a phase whose checkpoint holds a file, the harness
+archives that checkpoint where the subject ran and brings it back with
+the files the scenario collects, as they stand after that phase. It
+keeps the handoff note too, as it stands, once a hinted phase has kept
+one. The note is hidden between phases, so it is read where it is
+hidden; on another machine it is copied into the workspace there for the
+fetch, and removed with the zip. They go under
+`artifacts/<repeat>/milestones/<phase>/`: `output.zip` with its
+`MANIFEST.txt`, the collected files under `workspace/`, and
+`HANDOFF.md`. The zip is redacted and recorded as the output's is, under
+the phase's `milestone` in `results.json`, with the commit, the paths of
+the collected files, and the note's path under `handoff`.
+Then the harness removes the zip from the workspace, so no later phase
+finds it. A phase that failed keeps its milestone too, since its
+checkpoint is kept. A phase after which the output folder holds no file
+leaves none. The workspace is gone once the run ends, and what each
+phase left stays in the run folder.
 
 **The gates.** Then the harness runs each command under `gates` in the
 output folder, where the subject ran, with no key, and records whether
@@ -1314,6 +1346,95 @@ Rehearsal), and the run's cap is the judges' stub budgets over the
 repeats, at most $5. `--max-spend-usd` can lower that cap, and a flag
 that would raise it is refused with exit 2. The run folder is marked a
 rehearsal, and `make runs` refuses it too.
+
+## Resume from a milestone
+
+A run in phases that ends early, on a failed phase or a defect of the
+harness, has paid for the phases before. `resume` starts a new run from
+the milestone one of them left, and pays for none of them again:
+
+```bash
+uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold --dry-run
+uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold
+```
+
+It reads from the source run's `run.json` the scenario's name, the
+groups the run took, the runtime and its config, the target, and the
+subject's model. The scenario is this checkout's, so its prompts,
+bounds, gates, rubric, and judges are the ones that run.
+`--runtime-config` replaces the source's config. `--providers` and
+`--effort` choose the judges, as they do for a run.
+
+`--after` names the phase whose milestone the new run starts from. By
+default it is the last phase with a milestone. The new run runs only
+the phases after it, each with its own bounds, then the gates, the
+archive, and the judges. The judges are told of every phase the output
+went through, the carried ones included, and a carried phase counts as
+one that ran: the rubric takes the sentence of each group the source
+took. On the vm runtime, what the subject's Docker made is removed after
+a resumed repeat, as after any repeat. A resume after the last phase
+has nothing to run and is refused: `judge` judges that output. So is a
+resume whose next phase continues the session of the one before, which
+only the source run held.
+
+Every repeat the source recorded is resumed, each from its own
+milestone. Its workspace starts with the milestone's tree as the output
+folder, each file with its executable bit and each symlink as a link,
+and with the collected files at their paths. The handoff note the
+milestone kept is hidden before the first phase, as the phases before
+left it: the next hinted phase is shown it, and a phase without the hint
+never sees it. It starts in no git repository: the zip holds the tree,
+not its history. Before the first
+phase, the harness counts the output folder's files where the subject
+runs. When they are not the milestone's, no phase runs, and the repeat
+fails with a note, so nothing is built on another tree. A repeat is
+refused, with its reason and no phase started, when:
+
+- the source kept no milestone after that phase;
+- its zip does not open, holds no file, or names a path outside its tree;
+- its SHA-256 is not the one the source recorded, or the commit
+  `git archive` wrote in it is not the recorded one;
+- the source recorded a handoff note with it and kept none.
+
+A source with no repeat to resume makes no run folder, and exits 2.
+
+A run recorded before phases kept milestones names none. Its archive is
+then the milestone of its last phase, when the archive's commit is that
+phase's checkpoint, and `artifacts/<repeat>/output.zip` is restored with
+the collected files beside it. Such a run kept no handoff note, so none
+is restored. An archive of another commit is refused.
+
+**What it records.** The new run lands beside the source, or under
+`--out`. Each repeat keeps the number it had in the source. Its phases
+start with the source's records of the phases up to the milestone, each
+marked `carried`, and then those it ran. The milestone it restored is
+copied into its own `milestones/`, and the carried record of that phase
+names the copy; an earlier phase's milestone stays in the source's
+folder. `results.json` and `run.json` name the source under `source`:
+its run folder, its path, the phase it resumed after, the source's
+checkout, which ran the carried phases, and each milestone restored,
+with its SHA-256 and commit. `versions` names this checkout, which ran
+the rest. `run.json` lists the phases it runs. The report opens with
+the source and marks each carried phase.
+
+**Its spend.** The run's spend cap is the sum of the caps of the phases
+it runs and of the selected judges' dollar budgets, over the repeats it
+resumes: mvp, review, and close at $270, $75, and $90, and four judges
+at $45, is $615 for one repeat. No carried phase's cap is in it, and
+neither is the scenario's `max_spend_usd`, which covers a run from its
+first phase. `--max-spend-usd` overrides it. A repeat starts only when
+what is left of the cap covers its phases and its judges. Otherwise it,
+and every repeat after it, does not start: the notes say why, and
+`source` names them under `capped`. What the run spent is what its own
+phases and judges spent; a carried phase's cost is in its record, and
+in no total. `--dry-run` resolves the source, the milestones, and the
+cap, writes `run.json`, and runs nothing. `--preflight` checks the run
+as it checks any run.
+
+`resume` takes no flag that the source decides: `--scenario`, `--with`,
+`--repeat`, `--runtime`, `--target`, and `--subject-model` are refused
+with exit 2, and so is `--rehearsal`. A source that is a rehearsal is
+refused too: its bounds were cut small. `--after` is for `resume` alone.
 
 ## Streams
 

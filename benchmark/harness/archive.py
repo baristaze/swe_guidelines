@@ -12,7 +12,8 @@ inside a compressed member is not in the zip's bytes as it was written.
 The harness redacts the zip before it takes the hash and the manifest.
 When `run.py redact` rewrites a zip later, `refresh` writes its manifest
 and its record in `results.json` again, so both describe the zip that is
-published.
+published. A phase's milestone is a zip of the same kind, with a
+manifest and a record of its own, under the phase in `results.json`.
 """
 
 from __future__ import annotations
@@ -105,12 +106,17 @@ def refresh(path: Path) -> None:
         rel = path.relative_to(folder).as_posix()
         changed = False
         for repeat in data.get("repeats", []) if isinstance(data, dict) else []:
-            archive = repeat.get("archive") if isinstance(repeat, dict) else None
-            if isinstance(archive, dict) and archive.get("path") == rel:
-                archive.update(sha256=digest(path), bytes=path.stat().st_size)
-                if not readable(path):
-                    archive["files"] = 0
-                changed = True
+            if not isinstance(repeat, dict):
+                continue
+            # The output's zip, and each phase's milestone, which is a zip of its checkpoint.
+            phases = repeat.get("phases")
+            kept = [p.get("milestone") for p in phases if isinstance(p, dict)] if isinstance(phases, list) else []
+            for archive in [repeat.get("archive"), *kept]:
+                if isinstance(archive, dict) and archive.get("path") == rel:
+                    archive.update(sha256=digest(path), bytes=path.stat().st_size)
+                    if not readable(path):
+                        archive["files"] = 0
+                    changed = True
         if changed:
             results.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return

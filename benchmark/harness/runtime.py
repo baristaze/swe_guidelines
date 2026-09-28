@@ -61,6 +61,11 @@ its own. The container runtime starts every command in a new container,
 whose HOME is new each time. The harness can stop a command before it
 ends, through the `stop` event `run` takes, and it can move a path of the
 workspace out of the subject's reach and back (`hide`, `show`).
+
+A repeat that resumes an earlier run starts with a seed: its workspace
+holds a copy of a folder the harness made, the milestone it resumes
+from. Every runtime starts the repeat's workspace with it where the
+subject runs.
 """
 
 from __future__ import annotations
@@ -246,6 +251,8 @@ class BaseRuntime:
         # The session within the repeat whose HOME and TMPDIR the next command gets; None for the repeat's own.
         self.session: str | None = None
         self.prepared = False
+        # Whether the prepared repeat's workspace started with a seed, a copy of a folder the harness made.
+        self.seeded = False
         self.live: set[int] = set()
 
     def stage(self) -> None:
@@ -272,11 +279,15 @@ class BaseRuntime:
         self.prepared = True
         return self.workspace
 
-    def prepare_repeat(self, index: int) -> Path:
-        """A fresh workspace for one repeat, so no repeat sees another's files."""
+    def prepare_repeat(self, index: int, seed: Path | None = None) -> Path:
+        """A fresh workspace for one repeat, so no repeat sees another's files; with `seed`, it starts as a copy of it."""
         self.slot = str(index)
         self.session = None
-        return self.prepare(self.sandbox / "workspace" / self.slot)
+        workspace = self.sandbox / "workspace" / self.slot
+        self.seeded = seed is not None
+        if seed is not None:
+            shutil.copytree(seed, workspace, symlinks=True, dirs_exist_ok=True)
+        return self.prepare(workspace)
 
     def use_session(self, name: str | None) -> None:
         """Give the next commands the HOME and TMPDIR of the named session of this repeat; None for the repeat's own."""
@@ -293,6 +304,16 @@ class BaseRuntime:
     def show(self, rel: str) -> None:
         """Move a hidden path back into the workspace, when one is hidden."""
         _move(self.hidden(rel), self.workspace / rel)
+
+    def hidden_copy(self, rel: str, into: str) -> Path | None:
+        """Where a hidden file can be read on this machine after the next collection; None when none is hidden.
+
+        Here the hidden folder is on this machine, so it is the file itself,
+        read where it lies, and `into` is not used. Nothing moves, so the
+        phases see the workspace as they would have.
+        """
+        path = self.hidden(rel)
+        return path if path.is_file() else None
 
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
@@ -573,6 +594,11 @@ class ContainerRuntime(BaseRuntime):
         """
         path = super().prepare(workspace)
         path.chmod(0o777)
+        if self.seeded:
+            # What a seed brought is this machine's user's; the image's user writes it too.
+            for item in path.rglob("*"):
+                if not item.is_symlink():
+                    item.chmod(item.stat().st_mode | (0o777 if item.is_dir() else 0o666))
         return path
 
     def plugin_path(self) -> str | None:
@@ -722,6 +748,9 @@ KILL = (
 RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
 # A path moved to another, replacing what is there; nothing when it is not there.
 MOVE = '[ -e "$1" ] || [ -L "$1" ] || exit 0; mkdir -p -- "${2%/*}" && rm -rf -- "$2" && mv -- "$1" "$2"'
+# A hidden file copied into a path of the workspace, for the collection to
+# fetch. Exit 3: nothing is hidden there.
+COPY_HIDDEN = '[ -f "$1" ] || exit 3; mkdir -p -- "${2%/*}" && cp -- "$1" "$2"'
 # What the machine's Docker holds: one line per container, network, and
 # volume, each its kind, its id, and its name; a volume's id is its name.
 # A machine with no Docker holds none. Argument: the Docker command. Exit
@@ -799,7 +828,9 @@ class VmRuntime(BaseRuntime):
     an earlier one left there: `{local}` is the staged folder here and
     `{remote}` the path its copy takes there. The folders above it
     outlast the repeat and the run. The sync
-    and fetch commands take the repeat's workspace here and there.
+    and fetch commands take the repeat's workspace here and there. A
+    workspace that starts with a seed goes there by the sync, or by the
+    copy when there is no sync.
     `remote_plugin` and `remote_target` override the copies with paths
     the operator placed on that machine, which nothing copies and no
     version names.
@@ -933,6 +964,21 @@ class VmRuntime(BaseRuntime):
         """Move a hidden path there back into the workspace there."""
         self.move(f"{self.remote_part('hidden')}/{rel}", f"{self.remote()}/{rel}")
 
+    def hidden_copy(self, rel: str, into: str) -> Path | None:
+        """Copy a hidden file there into the workspace at `into`, and say where the next collection brings it here.
+
+        None when none is hidden, or the copy failed, which is noted. The
+        caller removes the copy from the workspace there once it is back.
+        """
+        if self.failure is not None:
+            return None
+        code = self.helper(self.there(COPY_HIDDEN, f"{self.remote_part('hidden')}/{rel}", f"{self.remote()}/{into}"))
+        if code == 0:
+            return self.workspace / into
+        if code != 3:
+            self.notes.append(f"[{self.name}] copying the hidden {rel} there for the collection failed (exit {code})")
+        return None
+
     def move(self, source: str, dest: str) -> None:
         """Move a path there, noting a move that failed."""
         if self.failure is not None:
@@ -1046,6 +1092,14 @@ class VmRuntime(BaseRuntime):
             # The repeat's remote folder is new, and a sync may not make its parents.
             self.helper([*self.vm.exec_prefix, "mkdir", "-p", self.remote()])
             self.helper(self.sync_command())
+        elif self.seeded:
+            # A seeded workspace goes there as a staged folder does: the copy makes the path it names.
+            if not self.vm.copy:
+                return 2, "the vm runtime needs sync or copy in its runtime config to start a repeat from a seed"
+            self.helper([*self.vm.exec_prefix, "mkdir", "-p", f"{self.remote_run()}/workspace"])
+            code = self.helper(fill(self.vm.copy, str(self.workspace), self.remote()))
+            if code != 0:
+                return code, f"the copy of the repeat's seed to the other machine failed (exit {code})"
         return None
 
     def hand_keys(self, keys: dict[str, str], streams: CliStream) -> ExitStatus | None:

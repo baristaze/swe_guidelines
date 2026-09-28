@@ -3,6 +3,10 @@
 Its prompt carries what it does, as `DO {json}` on the first line:
 
 - `write`: files to write, by a path relative to where it starts;
+- `read`: files to read before it writes, by a path relative to where it starts; each one's text, or null, is in
+  its answer under `read`;
+- `tree`: a folder to list before it writes, by a path relative to where it starts; every file under it, by its
+  path in it, with `.git` left out, is in its answer under `tree`;
 - `git`: git commands to run where it starts, after the writes, each as its words; what each printed is in its answer;
 - `touch`: files to leave behind empty after the git commands, such as a lock;
 - `note`: text for the handoff note, at the path the hint names;
@@ -68,6 +72,12 @@ def emit(event):
 
 
 emit({"type": "system", "subtype": "init", "session_id": session, "model": "claude-opus-5-5"})
+seen["read"] = {path: Path(path).read_text(encoding="utf-8") if Path(path).is_file() else None for path in todo.get("read", [])}
+if "tree" in todo:
+    top = Path(todo["tree"])
+    seen["tree"] = sorted(
+        p.relative_to(top).as_posix() for p in top.rglob("*") if p.is_file() and ".git" not in p.relative_to(top).parts
+    )
 for path, text in todo.get("write", {}).items():
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(text, encoding="utf-8")

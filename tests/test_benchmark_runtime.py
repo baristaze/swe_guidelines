@@ -149,6 +149,23 @@ def test_the_container_user_can_write_the_workspace_whatever_its_uid(tmp_path):
     assert workspace.stat().st_mode & 0o777 == 0o777
 
 
+def test_a_repeat_that_starts_from_a_seed_holds_a_copy_of_it_the_container_user_writes(tmp_path):
+    seed = tmp_path / "seed"
+    (seed / "site" / "bin").mkdir(parents=True)
+    (seed / "site" / "bin" / "run.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    (seed / "site" / "bin" / "run.sh").chmod(0o755)
+    (seed / "site" / "README.md").write_text("r\n", encoding="utf-8")
+    (seed / "site" / "README.md").chmod(0o644)
+    rt = RT.build("container", tmp_path / "run", sandbox=tmp_path / "sandbox")
+    workspace = rt.prepare_repeat(0, seed)
+    assert (workspace / "site" / "README.md").read_text(encoding="utf-8") == "r\n"
+    assert (workspace / "site" / "bin").stat().st_mode & 0o777 == 0o777
+    assert (workspace / "site" / "README.md").stat().st_mode & 0o777 == 0o666
+    assert (workspace / "site" / "bin" / "run.sh").stat().st_mode & 0o777 == 0o777
+    # The next repeat starts empty again: a seed is one repeat's.
+    assert list(rt.prepare_repeat(1).iterdir()) == []
+
+
 def test_the_container_build_command_names_the_dockerfile(tmp_path):
     rt = RT.build("container", tmp_path, None, {"image": "img:1", "dockerfile": tmp_path / "runtime" / "Dockerfile"})
     assert isinstance(rt, RT.ContainerRuntime)

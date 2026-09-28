@@ -121,13 +121,33 @@
       }
     },
     "source": {
-      "description": "The run whose archived output this run judged again, with no subject run: that run's folder by name and path, the repeats judged, each repeat refused with why, the repeats the run's spend cap kept from being judged, and the groups each repeat's rubric took. Only a run that judges another run's output again has it.",
+      "description": "The earlier run this run started from: that run's folder by name and path, the repeats taken, each repeat refused with why, and the repeats the run's spend cap kept from starting. A run that judges another run's output again, with no subject run, has it, with the groups each repeat's rubric took; so does a run that resumes another after a phase, which also names that phase, the source's checkout, and each milestone it restored.",
       "type": "object",
       "required": ["run_id", "path", "repeats", "refused", "capped"],
       "additionalProperties": false,
       "properties": {
         "run_id": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
+        "after": { "description": "For a resumed run: the phase of the source it resumed after.", "type": "string", "minLength": 1 },
+        "checkout": {
+          "description": "For a resumed run: the source's checkout, which ran the phases it carries; null when the source recorded none.",
+          "type": ["object", "null"]
+        },
+        "milestones": {
+          "description": "For a resumed run: each milestone it restored, by repeat, with its path in the source's folder, its SHA-256, and its commit.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repeat", "path", "sha256", "commit"],
+            "additionalProperties": false,
+            "properties": {
+              "repeat": { "type": "integer", "minimum": 0 },
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "commit": { "type": ["string", "null"] }
+            }
+          }
+        },
         "repeats": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
         "refused": {
           "type": "array",
@@ -142,7 +162,7 @@
           }
         },
         "capped": {
-          "description": "The repeats with an archive that the run's spend cap kept from being judged: what was left of it did not cover their judges' budgets.",
+          "description": "The repeats the run's spend cap kept from starting: what was left of it did not cover their judges' budgets, and for a resumed run their phases' caps too.",
           "type": "array",
           "items": { "type": "integer", "minimum": 0 }
         },
@@ -629,6 +649,23 @@
           }
         },
         "checkpoint": { "description": "The commit made in the output folder after the phase; null when none was.", "type": ["string", "null"] },
+        "milestone": {
+          "description": "What the phase left, kept in the run folder: its checkpoint as a zip, with its manifest, its SHA-256, its size, its files, and the commit; the files the scenario collects as they stood after it, by their paths in the workspace; and the handoff note as it stood, when a hinted phase had kept one.",
+          "type": "object",
+          "required": ["path", "manifest", "sha256", "bytes", "files", "commit", "collected"],
+          "additionalProperties": false,
+          "properties": {
+            "path": { "type": "string" },
+            "manifest": { "type": "string" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "bytes": { "type": "integer", "minimum": 0 },
+            "files": { "type": "integer", "minimum": 0 },
+            "commit": { "type": ["string", "null"] },
+            "collected": { "type": "array", "items": { "type": "string" } },
+            "handoff": { "description": "The handoff note's path in the run folder.", "type": "string" }
+          }
+        },
+        "carried": { "description": "The phase ran in the source run this run resumed, not in this one.", "const": true },
         "pending_agents": {
           "description": "The Agent calls with no result when the session's result came: each call's id and what it was asked.",
           "type": "array",
