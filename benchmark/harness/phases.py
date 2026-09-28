@@ -50,9 +50,12 @@ and one that does means the setting did not hold.
 
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
-phase, the archive of the last checkpoint, and the gates on the final
-tree. The scripts are below; each takes its paths as arguments, never
-spliced into the script.
+phase, that checkpoint's archive, the phase's milestone, which the
+harness brings back and then removes from the workspace, the archive of
+the last checkpoint, and the gates on the final tree. A run that resumes
+another counts the files of the output folder it restored. The scripts
+are below; each takes its paths as arguments, never spliced into the
+script.
 
 A checkpoint does not touch the output's branch, HEAD, or index. It
 stages the tree as the subject left it, the files git tracks and those
@@ -127,6 +130,16 @@ EMPTY = "empty"
 # The archive of a checkpoint, into a path of the workspace. Arguments:
 # the folder, the path, the checkpoint's commit.
 ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive --format=zip -o "$out" "$3"'
+# A phase's milestone: its checkpoint archived into this path of the
+# workspace, brought back, and removed with its folder (DROP) before the
+# next phase starts, so no phase finds it.
+MILESTONE = ".archive/milestone.zip"
+# A path of the workspace removed. Argument: the path.
+DROP = 'rm -rf -- "$1"'
+# How many files the output folder holds, less its .git, a symlink counted
+# as a file: for a milestone restored there. Argument: the folder. Exit 3:
+# no such folder.
+COUNT = 'cd -- "$1" 2>/dev/null || exit 3; find . -path ./.git -prune -o ! -type d -print | wc -l'
 
 
 def events(lines: list[str]) -> list[dict[str, Any]]:

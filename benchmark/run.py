@@ -22,6 +22,7 @@
     uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
       --with extras
     uv run benchmark/run.py judge --source benchmark/runs/<run folder> --dry-run
+    uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold --dry-run
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -39,6 +40,11 @@ of by default.
 `judge --source <run folder>` judges an earlier run's archived output
 again with this checkout's judges, and runs no subject: the judgement
 lands in a new run folder beside the source.
+
+`resume --source <run folder> [--after <phase>]` starts a new run from
+a phase's milestone: it restores what that phase left into a fresh
+workspace, runs the phases after it, then the gates, the archive, and
+the judges, and carries the earlier phases' records.
 """
 
 from __future__ import annotations
@@ -50,11 +56,13 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
 import uuid
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 BENCHMARK = Path(__file__).resolve().parent
@@ -104,6 +112,8 @@ HELPER_TIMEOUT_S = 600
 ONE_PHASE = "subject"
 # The session the harness's own commands run in, a name no phase can take.
 HARNESS_SESSION = "_harness"
+# The folder of a repeat's artifacts that holds each phase's milestone, one folder per phase.
+MILESTONES = "milestones"
 # One run of a subject is an anecdote, so a run repeats it this many times
 # when neither `--repeat` nor the scenario's `repeat` says otherwise.
 REPEAT = 3
@@ -642,6 +652,43 @@ def checkpoint(
     return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl", None
 
 
+def keep_milestone(
+    rt: RT.BaseRuntime, harness: CliStream, plan: Plan, scn: S.Scenario, name: str, commit: str, index: int
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Keep what phase `name` left in the run folder: its checkpoint as a zip, and the files the scenario collects.
+
+    Returns the milestone's record, and a note when it is not whole. The
+    checkpoint is archived into the workspace where the subject runs,
+    brought back with the collected files as they stand, and removed from
+    the workspace, so the next phase finds nothing of it there. It goes
+    under `artifacts/<repeat>/milestones/<phase>/`: `output.zip`, its
+    manifest, and the collected files under `workspace/`.
+    """
+    folder = str(scn.subject.output)
+    zip_file = rt.workspace / PH.MILESTONE
+    try:
+        archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.MILESTONE, commit])
+        found = rt.collect([PH.MILESTONE, *scn.artifact.files]) if archived.ok else []
+        if zip_file not in found:
+            why = f"the archive failed (exit {archived.code})" if not archived.ok else "its zip did not come back"
+            return None, f"its milestone was not kept: {why}"
+        dest = rt.run_dir / "artifacts" / str(index) / MILESTONES / name
+        collected = []
+        for file in found:
+            if file == zip_file:
+                continue
+            rel = file.relative_to(rt.workspace).as_posix()
+            (dest / "workspace" / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(file, dest / "workspace" / rel)
+            collected.append(rel)
+        dest.mkdir(parents=True, exist_ok=True)
+        record, why = keep_archive(zip_file, dest, rt.run_dir, commit)
+        return ({**record, "collected": collected} if record else None), why
+    finally:
+        # Once it is back, or whatever went wrong, no later phase finds it in the workspace.
+        harness_run(rt, harness, plan, ["sh", "-c", PH.DROP, "sh", posixpath.dirname(PH.MILESTONE)])
+
+
 def run_skill(
     scn: S.Scenario, rt: RT.BaseRuntime, streams: CliStream, harness: CliStream | None, plan: Plan, index: int
 ) -> SkillRepeat:
@@ -653,7 +700,8 @@ def run_skill(
     whose session ended with an Agent call unanswered is `incomplete`,
     and it ends the repeat, as does one after which the output folder
     holds no file; the repeat fails. The run's spend cap is checked
-    before each phase.
+    before each phase. A subject in phases keeps each phase's milestone,
+    when its checkpoint holds a file.
     After the last phase, the harness archives the last commit and runs
     the gates on the tree.
     """
@@ -787,6 +835,13 @@ def run_skill(
             commit = made or commit
             if why:
                 notes.append(f"repeat {index}: after phase {phase.name}, {why}")
+            if phased and made and holds:
+                # What the phase left, kept in the run folder, so a later run can start from it.
+                milestone, why = keep_milestone(rt, harness, plan, scn, phase.name, made, index)
+                if milestone:
+                    record["milestone"] = milestone
+                if why:
+                    notes.append(f"repeat {index}: after phase {phase.name}, {why}")
         records.append(record)
         duration += status.duration_s
         last = status
@@ -1007,13 +1062,22 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="run",
-        choices=["run", "judge", "list", "redact"],
-        help="run a scenario, judge a run's archived output again, list what there is, "
-        "or redact every key from the run folders under --out",
+        choices=["run", "judge", "resume", "list", "redact"],
+        help="run a scenario, judge a run's archived output again, resume a run from a phase's milestone, "
+        "list what there is, or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument(
-        "--source", default=None, help="for judge: the run folder whose archived output is judged again, with no subject run"
+        "--source",
+        default=None,
+        help="for judge: the run folder whose archived output is judged again, with no subject run; "
+        "for resume: the run folder a new run starts from",
+    )
+    parser.add_argument(
+        "--after",
+        default=None,
+        metavar="PHASE",
+        help="for resume: the phase whose milestone the new run starts from; the last phase with one by default",
     )
     parser.add_argument(
         "--with",
@@ -1040,7 +1104,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
     parser.add_argument(
-        "--out", default=None, help="folder the run folders are written under; benchmark/runs, and for judge the source's folder"
+        "--out",
+        default=None,
+        help="folder the run folders are written under; benchmark/runs, and for judge and resume the source's folder",
     )
     parser.add_argument(
         "--claude", default=os.environ.get("CLAUDE_BIN", "claude"), help="the Claude Code binary the subject runs"
@@ -1134,10 +1200,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_spend_usd is not None and not 0 < args.max_spend_usd < float("inf"):
         print(f"--max-spend-usd is an amount in US dollars above 0, got {args.max_spend_usd}", file=sys.stderr)
         return 2
+    if args.after and args.command != "resume":
+        print("--after is for resume, which starts a new run from a phase's milestone", file=sys.stderr)
+        return 2
     if args.command == "judge":
         return command_judge(args)
+    if args.command == "resume":
+        return command_resume(args)
     if args.source:
-        print("--source is for judge; a run of a scenario runs its subject", file=sys.stderr)
+        print("--source is for judge and resume; a run of a scenario runs its subject from its start", file=sys.stderr)
         return 2
     if not args.scenario:
         print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
@@ -1194,6 +1265,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.runtime_config:
         path = Path(args.runtime_config)
         config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
+    return launch(args, scn, runtime, config, run_dir, run_id, target, own_target, flags, effort, matrix)
+
+
+def launch(
+    args: argparse.Namespace,
+    scn: S.Scenario,
+    runtime: str,
+    config: dict,
+    run_dir: Path,
+    run_id: str,
+    target: Path | None,
+    own_target: Path | None,
+    flags: P.Provider,
+    effort: str,
+    matrix: dict[str, Any],
+    resume: Resume | None = None,
+) -> int:
+    """Make the runtime, run everything in it, and tear it down whatever happens."""
     if runtime == "container":
         config.setdefault("keys", [n for n in subject_keys(scn) if os.environ.get(RT.SUBJECT_KEYS[n])])
     # The subject lives outside the checkout, with copies of the plugin
@@ -1205,7 +1294,7 @@ def main(argv: list[str] | None = None) -> int:
         with PF.held_awake(not (args.dry_run or args.preflight)) as note:
             if note:
                 print(note, file=sys.stderr)
-            return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix)
+            return execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix, resume)
     finally:
         rt.teardown()
 
@@ -1259,9 +1348,17 @@ def preflight(
     return PREFLIGHT_FAILED
 
 
-def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix) -> int:
-    """Everything after the runtime exists: the caller tears the runtime down whatever happens here."""
+def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, effort, matrix, resume=None) -> int:
+    """Everything after the runtime exists: the caller tears the runtime down whatever happens here.
+
+    A run that resumes an earlier one runs the phases after its milestone
+    in `scn`. Each repeat starts from its milestone and carries the source's
+    records of the phases before, and the judges are told of every phase
+    the source took.
+    """
     model = subject_model(scn, args.subject_model, matrix)
+    # The scenario as the judges are told of it: a resumed run's phases are only the last of those that built the output.
+    told = resume.scenario if resume is not None else scn
     try:
         # A runtime config that cannot run is refused here, before anything is spent.
         rt.stage()
@@ -1333,12 +1430,16 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         resolved["phases"] = planned
     if scn.subject.groups:
         # The optional groups this run takes; none is the scenario's default.
-        resolved["groups"] = S.taken_groups(scn)
+        resolved["groups"] = S.taken_groups(told)
+    if resume is not None:
+        resolved["source"] = resume.origin
     if args.rehearsal:
         # Every bound above is the rehearsal's. A rehearsal is never checked in.
         resolved["rehearsal"] = True
     (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
     print(f"run folder: {run_dir}")
+    if resume is not None:
+        print(resume.says(scn, args.max_spend_usd))
     if expected_note:
         print(expected_note)
     for note in staged.notes:
@@ -1409,7 +1510,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             **subject_bounds(scn),
         },
         weights=scn.judges.weights if scn.judges.agentic else {},
+        source=resume.origin if resume is not None else None,
     )
+    if scn.subject.groups:
+        run.subject["groups"] = S.taken_groups(told)
 
     env = subject_env(scn)
     budget = Budget(args.max_spend_usd)
@@ -1433,24 +1537,35 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     # A repeat starts only when what is left of the cap covers every phase it runs, so the cap
     # never cuts short a repeat whose first phases it let spend. Judges count toward the spend.
     need = repeat_need(scn)
+    spenders = "the phases"
+    if resume is not None and need is not None:
+        # A resumed repeat starts only when what is left covers its judges too.
+        need = round(need + S.judges_budget(scn, len(P.members(flags))), 6)
+        spenders = "the phases and the judges"
+    # A resumed run's repeats keep the numbers they had in the source.
+    order = sorted(resume.repeats) if resume is not None else list(range(args.repeat))
     held = False
     try:
-        for index in range(args.repeat):
+        for position, index in enumerate(order):
             if budget.reached():
                 notes.append(f"{budget.says()}; repeat {index} and after did not run")
                 held = True
-                break
-            if not budget.covers(need):
+            elif not budget.covers(need):
                 left = (budget.cap or 0.0) - budget.spent
                 notes.append(
                     f"repeat {index} and after did not run: ${left:.4f} of the run's ${budget.cap:g} spend cap is left, "
-                    f"and the phases of a repeat may spend ${need:g}"
+                    f"and {spenders} of a repeat may spend ${need:g}"
                 )
                 held = True
+            if held:
+                if resume is not None:
+                    resume.origin["capped"] = order[position:]
                 break
             mark = streams.count
             streams.note(f"[repeat {index}] start")
-            rt.prepare_repeat(index)  # every repeat starts in an empty workspace of its own
+            # Every repeat starts in a workspace of its own, empty, or holding the milestone a resumed run starts from.
+            seed = resume.seed(index, rt.sandbox / "seed" / str(index), str(scn.subject.output)) if resume else None
+            rt.prepare_repeat(index, seed)
             done: SkillRepeat | None = None
             if scn.kind == "qa":
                 status, artifact, subject_usage = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
@@ -1459,7 +1574,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 subject_cost = J.cost_usd(matrix, qa_provider, model or "", subject_usage) if subject_usage else None
                 budget.spent += subject_cost or 0.0
             elif scn.kind == "skill":
-                done = run_skill(scn, rt, streams, harness, plan, index)
+                why = None
+                if resume is not None and seed is not None and harness is not None:
+                    # Nothing runs on a tree other than the milestone's.
+                    why = restored(rt, harness, plan, str(scn.subject.output), files_in(seed / str(scn.subject.output)))
+                if why:
+                    failed_start = RT.ExitStatus(code=2)
+                    done = SkillRepeat(failed_start, "", [], {}, None, [], notes=[f"repeat {index}: {why}; no phase ran"])
+                else:
+                    done = run_skill(scn, rt, streams, harness, plan, index)
+                if resume is not None:
+                    done.phases = [*resume.carry(index, run_dir), *done.phases]
                 status, artifact, models = done.status, done.answer, done.models
                 subject_usage, subject_cost = done.usage, done.cost
                 notes.extend(done.notes)
@@ -1546,8 +1671,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                         ended_early=ended,
                     )
                 )
-                if ended and index + 1 < args.repeat:
-                    notes.append(f"repeat {index} ended early, so the run ends: repeat {index + 1} and after did not run")
+                if ended and position + 1 < len(order):
+                    notes.append(
+                        f"repeat {index} ended early, so the run ends: repeat {order[position + 1]} and after did not run"
+                    )
                     break
                 continue
 
@@ -1557,10 +1684,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             judgements: list[R.AnyJudgement]
             if scn.judges.agentic:
                 judgements = [
-                    *judge_agentic(scn, rt.sandbox, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
+                    *judge_agentic(told, rt.sandbox, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
                 ]
             else:
-                prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
+                prompt = J.build_prompt(scn.rubric, describe_subject(told, argv_subject), blob, evidence=evidence_text)
                 (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
                 judgements = [*J.judge_all(flags, prompt, effort, matrix)]
             budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
@@ -1590,6 +1717,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
 
     if failed_subjects:
         notes.append(f"subject failed in repeat(s) {', '.join(map(str, failed_subjects))}; not judged")
+    if resume is not None:
+        resume.origin["repeats"] = [r.index for r in run.repeats]
     if isinstance(rt, RT.VmRuntime):
         # The other machine is given back before the results are written,
         # so a folder that stayed there, or a fetch that failed, is noted.
@@ -1886,6 +2015,379 @@ def judge_again(
     if args.strict and data["summary"]["skipped"]:
         return 3
     return 0
+
+
+# Resuming a run from a milestone -------------------------------------------
+
+# The flags `resume` does not take: what the source run decides, and a rehearsal's cut bounds.
+NOT_FOR_RESUME = {
+    "scenario": "--scenario",
+    "groups": "--with",
+    "repeat": "--repeat",
+    "runtime": "--runtime",
+    "target": "--target",
+    "subject_model": "--subject-model",
+    "rehearsal": "--rehearsal",
+}
+
+
+@dataclasses.dataclass
+class Milestone:
+    """What a phase of the source run left, and the source's records up to it: what a resumed repeat restores and carries.
+
+    `zip` is the phase's checkpoint as a zip, and `files` the folder of the
+    files the scenario collected after the phase. `sha256` and `commit` are
+    what the source run recorded of the zip.
+    """
+
+    phase: str
+    zip: Path
+    files: Path
+    sha256: str | None
+    commit: str | None
+    carried: list[dict[str, Any]]
+
+
+def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int, tuple[dict[str, Milestone], dict[str, str]]]:
+    """Each repeat the source run recorded: the milestone of each phase that left one, and why a phase's is refused.
+
+    A phase's record names its milestone. A run recorded before phases
+    kept milestones names none. Its archive is then the milestone of its
+    last phase, when the archive's commit is that phase's checkpoint, and
+    refused otherwise.
+    """
+    out: dict[int, tuple[dict[str, Milestone], dict[str, str]]] = {}
+    listed = (results or {}).get("repeats")
+    for repeat in listed if isinstance(listed, list) else []:
+        if not isinstance(repeat, dict) or not isinstance(repeat.get("index"), int):
+            continue
+        index = repeat["index"]
+        phases = repeat.get("phases")
+        records = (
+            [p for p in phases if isinstance(p, dict) and isinstance(p.get("name"), str)] if isinstance(phases, list) else []
+        )
+        found: dict[str, Milestone] = {}
+        refused: dict[str, str] = {}
+        for at, record in enumerate(records):
+            kept = record.get("milestone")
+            if isinstance(kept, dict) and isinstance(kept.get("path"), str):
+                zip_file = source / kept["path"]
+                found[record["name"]] = Milestone(
+                    record["name"],
+                    zip_file,
+                    zip_file.parent / "workspace",
+                    kept.get("sha256"),
+                    kept.get("commit"),
+                    records[: at + 1],
+                )
+        if records and not any("milestone" in r for r in records):
+            last = records[-1]
+            archive = repeat.get("archive") if isinstance(repeat.get("archive"), dict) else {}
+            if not last.get("checkpoint"):
+                refused[last["name"]] = f"its last phase, {last['name']}, left no checkpoint"
+            elif archive.get("commit") != last["checkpoint"]:
+                refused[last["name"]] = (
+                    f"its archive holds the commit {archive.get('commit')}, not the checkpoint of its last phase, "
+                    f"{last['name']}, which is {last['checkpoint']}"
+                )
+            else:
+                zip_file = source / "artifacts" / str(index) / A.ZIP
+                found[last["name"]] = Milestone(
+                    last["name"], zip_file, zip_file.parent / "workspace", archive.get("sha256"), archive["commit"], records
+                )
+        out[index] = (found, refused)
+    return out
+
+
+def within(name: str) -> bool:
+    """Whether a zip member's name is a path inside its tree: not absolute, and never climbing out with `..`."""
+    return bool(name) and not name.startswith("/") and ".." not in PurePosixPath(name).parts
+
+
+def milestone_refusal(milestone: Milestone, source: Path) -> str | None:
+    """Why a repeat cannot start from this milestone, or None when it can.
+
+    It must be a zip in the source's folder that opens and holds a file,
+    whose SHA-256 is the one the source run recorded, and whose commit,
+    which `git archive` writes as the zip's comment, is the one recorded.
+    Every member is a path inside the tree.
+    """
+    if not milestone.zip.resolve().is_relative_to(source):
+        return "its milestone's path leaves the source run's folder"
+    shown = milestone.zip.relative_to(source).as_posix()
+    if not milestone.zip.is_file():
+        return f"the source run kept no zip of its milestone at {shown}"
+    if not A.readable(milestone.zip):
+        return f"its milestone, {shown}, does not open as a zip"
+    found = A.record(milestone.zip, source)
+    if not found["files"]:
+        return f"its milestone, {shown}, holds no file"
+    if not milestone.sha256:
+        return f"the source run recorded no SHA-256 of its milestone, {shown}, so nothing says it is the one that run made"
+    if milestone.sha256 != found["sha256"]:
+        return f"its milestone's SHA-256 is {found['sha256']}, and the source run recorded {milestone.sha256}"
+    with zipfile.ZipFile(milestone.zip) as zf:
+        comment = zf.comment.decode("utf-8", errors="replace").strip()
+        outside = next((i.filename for i in zf.infolist() if not within(i.filename)), None)
+    if comment and milestone.commit and comment != milestone.commit:
+        return f"its milestone holds the commit {comment}, and the source run recorded {milestone.commit}"
+    if outside is not None:
+        return f"its milestone names a path outside its tree: {outside}"
+    return None
+
+
+def unpack(zip_file: Path, dest: Path) -> None:
+    """Unpack a checkpoint's zip as `git archive` wrote it: each file with its executable bit, each symlink a link.
+
+    Every member is a path inside the tree (`milestone_refusal` refuses any
+    other), and the links are made last, so no file is written through one.
+    """
+    links: list[tuple[Path, str]] = []
+    with zipfile.ZipFile(zip_file) as zf:
+        for info in zf.infolist():
+            path = dest / info.filename
+            # git archive writes a Unix mode only where it matters: an executable file, and a symlink.
+            mode = info.external_attr >> 16 if info.create_system == 3 else 0
+            if info.is_dir():
+                path.mkdir(parents=True, exist_ok=True)
+            elif stat.S_ISLNK(mode):
+                links.append((path, zf.read(info).decode("utf-8")))
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(zf.read(info))
+                if mode & 0o111:
+                    path.chmod(0o755)
+    for path, points in links:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(points)
+
+
+def files_in(folder: Path) -> int:
+    """How many files a folder holds, less its .git, counted as `PH.COUNT` counts them where the subject runs.
+
+    A symlink is a file, to a folder or not, and is not followed.
+    """
+    count = 0
+    for root, dirs, names in os.walk(folder):
+        if Path(root) == folder:
+            dirs[:] = [d for d in dirs if d != ".git"]
+        count += len(names) + sum(1 for d in dirs if os.path.islink(os.path.join(root, d)))
+    return count
+
+
+def restored(rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, want: int) -> str | None:
+    """Why the output folder where the subject runs does not hold the `want` files restored into it, or None when it does."""
+    status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.COUNT, "sh", folder])
+    count = next((int(line.strip()) for line in reversed(out) if line.strip().isdigit()), None)
+    if status.ok and count == want:
+        return None
+    held = f"holds {count}" if count is not None else f"could not be counted (exit {status.code}; see streams/harness.jsonl)"
+    return (
+        f"the milestone did not arrive whole where the subject runs: it holds {want} file(s) of {folder}, and that folder {held}"
+    )
+
+
+@dataclasses.dataclass
+class Resume:
+    """A run that starts from an earlier run's milestones: what each repeat restores, and what it carries.
+
+    `scenario` holds every phase the source took, which the judges are
+    told of. `origin` is what `run.json` and `results.json` name the
+    source by. `repeats` holds each repeat resumed, by the number it had
+    in the source, with its milestone.
+    """
+
+    scenario: S.Scenario
+    after: str
+    origin: dict[str, Any]
+    repeats: dict[int, Milestone]
+
+    def says(self, scn: S.Scenario, cap: float | None) -> str:
+        """One line on what the run resumes and what it may spend, for the console."""
+        each = "; ".join(f"repeat {i} from {m.zip}, sha256 {m.sha256}" for i, m in sorted(self.repeats.items()))
+        runs = ", ".join(p.name for p in scn.subject.phases)
+        capped = f"${cap:g}" if cap is not None else "none"
+        return f"resume of {self.origin['run_id']} after {self.after}: runs {runs}; {each}; spend cap {capped}"
+
+    def seed(self, index: int, dest: Path, folder: str) -> Path:
+        """What a repeat's workspace starts as: the milestone's tree as the output folder, and its collected files."""
+        milestone = self.repeats[index]
+        unpack(milestone.zip, dest / folder)
+        if milestone.files.is_dir():
+            shutil.copytree(milestone.files, dest, dirs_exist_ok=True)
+        return dest
+
+    def carry(self, index: int, run_dir: Path) -> list[dict[str, Any]]:
+        """The source's records of the phases up to the milestone, each marked carried, with the milestone copied into this run.
+
+        The milestone the repeat restored goes under this run's
+        `artifacts/<repeat>/milestones/<phase>/`, and its phase's record names
+        that copy. An earlier phase's milestone stays in the source's folder,
+        which `source` names, and its record here names none.
+        """
+        milestone = self.repeats[index]
+        dest = run_dir / "artifacts" / str(index) / MILESTONES / milestone.phase
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(milestone.zip, dest / A.ZIP)
+        A.write_manifest(dest / A.ZIP)
+        collected: list[str] = []
+        if milestone.files.is_dir():
+            shutil.copytree(milestone.files, dest / "workspace", dirs_exist_ok=True)
+            collected = sorted(p.relative_to(milestone.files).as_posix() for p in milestone.files.rglob("*") if p.is_file())
+        kept = {**A.record(dest / A.ZIP, run_dir), "commit": milestone.commit, "collected": collected}
+        out = []
+        for record in milestone.carried:
+            copy = {k: v for k, v in record.items() if k != "milestone"}
+            if copy["name"] == milestone.phase:
+                copy["milestone"] = kept
+            out.append({**copy, "carried": True})
+        return out
+
+
+def command_resume(args: argparse.Namespace) -> int:
+    """Start a new run from a phase's milestone of an earlier run: the phases after it, the gates, the archive, the judges.
+
+    The scenario is this checkout's, found by the name the source run
+    records, with the groups it took. The runtime, its config unless
+    `--runtime-config` names one, the target, and the subject's model are
+    the source's. Every repeat the source recorded is resumed from its
+    milestone after the phase, and one without a milestone that can be
+    restored is refused with its reason. The run's spend cap is the caps of
+    the phases it runs and the judges' budgets, over the repeats it resumes,
+    unless `--max-spend-usd` names one.
+    """
+    given = [flag for dest, flag in NOT_FOR_RESUME.items() if getattr(args, dest) not in (None, False)]
+    if given:
+        told = ", ".join(given)
+        print(
+            f"resume takes its scenario, groups, runtime, target, and subject model from the source run; {told} is not for it",
+            file=sys.stderr,
+        )
+        return 2
+    if not args.source:
+        print("resume needs --source, the run folder a new run starts from", file=sys.stderr)
+        return 2
+    source = Path(args.source).resolve()
+    ran = read_record(source / "run.json") or {}
+    scenario, runtime, groups = ran.get("scenario"), ran.get("runtime"), ran.get("groups")
+    name = scenario.get("name") if isinstance(scenario, dict) else None
+    ran_on = runtime.get("name") if isinstance(runtime, dict) else None
+    if not isinstance(name, str) or not isinstance(runtime, dict) or ran_on not in RT.NAMES:
+        print(f"{source} is not a run folder: it holds no run.json that names its scenario and its runtime", file=sys.stderr)
+        return 2
+    if ran.get("rehearsal"):
+        print(
+            f"{source} is a rehearsal, whose every bound was cut small; run the scenario rather than resume it", file=sys.stderr
+        )
+        return 2
+    try:
+        whole = S.select(S.load(S.find(name, SCENARIOS)), [str(g) for g in groups] if isinstance(groups, list) else [])
+        flags = P.parse(args.providers if args.providers is not None else whole.judges.providers)
+    except (S.ScenarioError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if not (whole.subject.phases and whole.subject.output):
+        print(
+            f"scenario {whole.name}: resume continues a subject in phases that builds an output folder, and this one does not",
+            file=sys.stderr,
+        )
+        return 2
+    names = [p.name for p in whole.subject.phases]
+    kept = source_milestones(source, read_record(source / "results.json"))
+    after = args.after or next((n for n in reversed(names) if any(n in found for found, _ in kept.values())), None)
+    if after is None:
+        print(f"{source} kept no milestone of a phase to resume from: no run folder was made", file=sys.stderr)
+        return 2
+    if after not in names:
+        print(f"--after names {after}, and the phases of the source run are {', '.join(names)}", file=sys.stderr)
+        return 2
+    rest = whole.subject.phases[names.index(after) + 1 :]
+    if not rest:
+        print(
+            f"{after} is the source run's last phase, so no phase is left to run; "
+            f"`run.py judge --source {args.source}` judges its output",
+            file=sys.stderr,
+        )
+        return 2
+    if rest[0].session == "resume":
+        print(
+            f"phase {rest[0].name} continues the session of {after}, which only the source run held, "
+            "so it cannot start from a milestone",
+            file=sys.stderr,
+        )
+        return 2
+    resumed: dict[int, Milestone] = {}
+    refused: list[dict[str, Any]] = []
+    for index, (found, why) in sorted(kept.items()):
+        milestone = found.get(after)
+        reason = (
+            milestone_refusal(milestone, source)
+            if milestone is not None
+            else why.get(after, f"the source run kept no milestone after {after}")
+        )
+        if reason:
+            refused.append({"repeat": index, "reason": reason})
+            print(f"repeat {index} is not resumed: {reason}", file=sys.stderr)
+        else:
+            resumed[index] = milestone  # type: ignore[assignment]
+    if not resumed:
+        print(
+            f"{source} holds no milestone to resume after {after}: no run folder was made and no phase started", file=sys.stderr
+        )
+        return 2
+    # The phases after the milestone, and no cap of the scenario's own: that one covers a run from its first phase.
+    scn = dataclasses.replace(whole, subject=dataclasses.replace(whole.subject, phases=list(rest)), max_spend_usd=None)
+    if ran_on not in scn.runtimes:
+        print(f"scenario {scn.name} runs on {', '.join(scn.runtimes)}, not on {ran_on}, where the source ran", file=sys.stderr)
+        return NOT_LISTED
+    config: dict = {}
+    if args.runtime_config:
+        path = Path(args.runtime_config)
+        config = S.parse_text(path.read_text(encoding="utf-8"), path.suffix) or {}
+    elif isinstance(runtime.get("config"), dict):
+        config = dict(runtime["config"])  # the config the source ran with, as its run.json recorded it
+    shown = runtime.get("target")
+    target = (ROOT / shown).resolve() if isinstance(shown, str) else None
+    if target is not None and not target.is_dir():
+        print(f"the target the source ran on, {shown}, is not a folder here", file=sys.stderr)
+        return 2
+    args.repeat = len(resumed)
+    args.subject_model = ran.get("subject_model") if isinstance(ran.get("subject_model"), str) else None
+    if args.max_spend_usd is None:
+        args.max_spend_usd = S.spend_cap(scn, len(resumed), len(P.members(flags)))
+    versions = ran.get("versions")
+    checkout = versions.get("checkout") if isinstance(versions, dict) else None
+    origin: dict[str, Any] = {
+        "run_id": str(ran.get("run_id") or source.name),
+        "path": V.shown(source, ROOT),
+        "after": after,
+        "checkout": checkout if isinstance(checkout, dict) else None,
+        "milestones": [
+            {"repeat": i, "path": m.zip.relative_to(source).as_posix(), "sha256": m.sha256, "commit": m.commit}
+            for i, m in sorted(resumed.items())
+        ],
+        "repeats": sorted(resumed),
+        "refused": refused,
+        "capped": [],
+    }
+    out = Path(args.out).resolve() if args.out else source.parent
+    run_id, run_dir = new_run_dir(out, scn.name)
+    effort = args.effort or scn.judges.effort
+    resume = Resume(whole, after, origin, resumed)
+    return launch(
+        args,
+        scn,
+        str(ran_on),
+        config,
+        run_dir,
+        run_id,
+        target,
+        scn.resolve(scn.subject.target),
+        flags,
+        effort,
+        J.load_matrix(MODELS),
+        resume,
+    )
 
 
 if __name__ == "__main__":

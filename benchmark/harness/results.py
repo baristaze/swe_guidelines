@@ -110,9 +110,9 @@ class RunResult:
     weights: dict[str, float] = field(default_factory=dict)
     # A rehearsal's outcome and where its money went; None for a run that is not one.
     rehearsal: dict[str, Any] | None = None
-    # The run whose archived output this run judged again, with no subject run: its folder, the repeats
-    # judged, each repeat refused with why, and the repeats its spend cap kept from being judged; None for
-    # a run that ran its subject.
+    # The earlier run this run started from: its folder, the repeats taken, each repeat refused with why,
+    # and the repeats its spend cap kept from starting. A run that judges another run's output again has it,
+    # and so does a run that resumes another after a phase, with that phase; None for a run from its start.
     source: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -460,7 +460,8 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
             "## Phases",
             "",
             "Each session of the subject: how it ended, the bound that ended it, its turns, its wall time, what it spent,",
-            "and each model it used with that model's cost, as Claude Code's result reports them.",
+            "and each model it used with that model's cost, as Claude Code's result reports them. A carried phase ran",
+            "in the run this one resumed.",
             "",
             _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Wall (s)", "Cost (USD)", "Models", "Checkpoint"]),
             _row(["---"] * 10),
@@ -477,7 +478,7 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
                             str(repeat.index),
                             phase["name"],
                             phase["session"],
-                            phase["status"],
+                            f"{phase['status']} (carried)" if phase.get("carried") else phase["status"],
                             phase.get("capped") or "-",
                             str(turns) if turns is not None else "-",
                             f"{wall:.1f}" if wall is not None else "-",
@@ -489,13 +490,18 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
                 )
         lines.append("")
     kept = [r for r in repeats if r.archive]
-    if kept:
+    milestones = [(r.index, p) for r in repeats for p in r.phases or [] if p.get("milestone")]
+    if kept or milestones:
         lines += ["## Output", "", "The output's last commit, archived whole; `results.json` has each zip's SHA-256.", ""]
         for repeat in kept:
             a = repeat.archive or {}
             lines.append(
                 f"- repeat {repeat.index}: `{a['path']}`, {a['files']} file(s), {a['bytes']:,} bytes; manifest `{a['manifest']}`"
             )
+        # What each phase left, which a later run can resume from.
+        for index, phase in milestones:
+            m = phase["milestone"]
+            lines.append(f"- repeat {index}, the milestone of {phase['name']}: `{m['path']}`, {m['files']} file(s)")
         lines.append("")
     gated = [r for r in repeats if r.gates]
     if gated:
@@ -638,20 +644,29 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
 
 
 def source_lines(source: dict[str, Any]) -> list[str]:
-    """The opening lines of a run that judged another run's output again: where the output is, and what was refused."""
-    lines = [
-        f"This run judged again the archived output of the run `{source['run_id']}`, at `{source['path']}`. "
-        "No subject ran: the output, and how its subject ended, are that run's.",
-        "",
-    ]
-    for refused in source["refused"]:
-        lines += [f"Repeat {refused['repeat']} of it was not judged: {sentence(refused['reason'])}", ""]
-    if source["capped"]:
-        named = ", ".join(str(i) for i in source["capped"])
-        lines += [
-            f"Repeat(s) {named} of it were not judged: what was left of the run's spend cap did not cover their judges' budgets.",
+    """The opening lines of a run that started from another: that run, what this one took of it, and what was refused."""
+    if "after" in source:
+        lines = [
+            f"This run resumed the run `{source['run_id']}`, at `{source['path']}`, after its phase `{source['after']}`. "
+            "Each repeat started from that phase's milestone, and the phases up to it are that run's, carried.",
             "",
         ]
+        commit = (source.get("checkout") or {}).get("commit")
+        if commit:
+            lines += [f"That run's checkout, `{commit}`, ran the carried phases; this run's checkout ran the rest.", ""]
+        verb, covered = "resumed", "their phases' caps and their judges' budgets"
+    else:
+        lines = [
+            f"This run judged again the archived output of the run `{source['run_id']}`, at `{source['path']}`. "
+            "No subject ran: the output, and how its subject ended, are that run's.",
+            "",
+        ]
+        verb, covered = "judged", "their judges' budgets"
+    for refused in source["refused"]:
+        lines += [f"Repeat {refused['repeat']} of it was not {verb}: {sentence(refused['reason'])}", ""]
+    if source["capped"]:
+        named = ", ".join(str(i) for i in source["capped"])
+        lines += [f"Repeat(s) {named} of it were not {verb}: what was left of the run's spend cap did not cover {covered}.", ""]
     return lines
 
 
