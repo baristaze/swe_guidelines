@@ -175,7 +175,7 @@ def test_a_gate_that_fails_past_its_reruns_stops_the_phase_and_is_recorded_faili
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
-    assert first["gate_runs"] == {"make check": {"runs": 4, "failed": 4, "failing": True}}
+    assert first["gate_runs"] == {"make check": {"runs": 4, "failed": 4, "unread": 0, "failing": True}}
 
 
 def test_a_passing_gate_run_starts_the_count_again(run_phases):
@@ -185,7 +185,7 @@ def test_a_passing_gate_run_starts_the_count_again(run_phases):
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("ok", None)
-    assert first["gate_runs"]["make check"] == {"runs": 5, "failed": 4, "failing": True}
+    assert first["gate_runs"]["make check"] == {"runs": 5, "failed": 4, "unread": 0, "failing": True}
 
 
 def test_the_handoff_note_reaches_only_a_hinted_phase(run_phases):
@@ -411,6 +411,47 @@ def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(
     assert repeat["phases"][2]["status"] == "ok"
 
 
+@pytest.mark.parametrize(
+    ("command", "runs"),
+    [
+        ("make check", [("make check", True)]),
+        ("cd site && make check 2>&1", [("make check", True)]),
+        ("echo start; make check", [("make check", True)]),
+        ("(make check)", [("make check", True)]),
+        ("A=1 make check -j4", [("make check", True)]),
+        ("make check && make test-integration", [("make check", True), ("make test-integration", True)]),
+        ("make check 2>&1 | tail -30", [("make check", False)]),
+        ("make check; echo done", [("make check", False)]),
+        ("make check || true", [("make check", False)]),
+        ("(make check) | tail", [("make check", False)]),
+        ("make check &", [("make check", False)]),
+        ("make check\nmake test-integration", [("make check", False), ("make test-integration", True)]),
+        ("echo make check", []),
+        ('git commit -m "fix: make check passes"', []),
+        ("make checks", []),
+        ("make check-fast", []),
+        ("echo 'unclosed", []),
+    ],
+)
+def test_a_gate_run_is_the_gate_as_a_command_of_its_own_and_its_outcome_is_read_only_when_it_is_the_call_s(command, runs):
+    assert PH.gate_runs(command, ["make check", "make test-integration"]) == runs
+
+
+def test_a_run_whose_outcome_is_not_read_neither_fails_nor_passes(run_phases):
+    piped = [["make check 2>&1 | tail -30", True]] * 6
+    code, run_dir = run_phases(phased(phase("scaffold", {"bash": piped}), gates=["make check"]))
+    assert code == 0
+    first = results(run_dir)["repeats"][0]["phases"][0]
+    assert (first["status"], first["gate_runs"]["make check"]) == ("ok", {"runs": 6, "failed": 0, "unread": 6, "failing": False})
+    # A call that only names the gate is no gate run, so it ends no streak.
+    named = [["make check", True]] * 2 + [["echo make check", False], ['git commit -m "make check passes"', False]]
+    act = {"bash": [*named, ["make check", True]], "sleep": 30}
+    code, run_dir = run_phases(phased(phase("scaffold", act, max_gate_reruns=2), gates=["make check"]))
+    first = results(run_dir)["repeats"][0]["phases"][0]
+    assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
+    assert first["gate_runs"]["make check"] == {"runs": 3, "failed": 3, "unread": 0, "failing": True}
+
+
 def test_nothing_under_a_git_folder_is_collected(run_phases):
     scenario = phased(phase("scaffold", {"write": {"site/README.md": "r\n"}}))
     scenario["artifact"] = {"stdout": False, "files": ["**/*"]}
@@ -432,6 +473,38 @@ def test_an_output_zip_that_cannot_be_scanned_is_kept_as_a_line_and_the_results_
     assert (run_dir / archive["manifest"]).read_text(encoding="utf-8") == ""
     assert any("does not open as a zip and was replaced by a line that says so" in n for n in data["notes"])
     assert (run_dir / "report.md").is_file()
+
+
+def test_a_listener_that_fails_on_a_line_does_not_end_the_reading(tmp_path):
+    seen_lines: list[str] = []
+
+    def listener(stream, line):
+        if line == "bad":
+            raise KeyError("boom")
+        seen_lines.append(line)
+
+    with CliStream(tmp_path / "cli.jsonl") as streams:
+        streams.listener = listener
+        for line in ("one", "bad", "two"):
+            streams.write("out", line)
+    assert seen_lines == ["one", "two"]
+    lines = [r["line"] for r in CliStream.read(tmp_path / "cli.jsonl")]
+    assert lines[:2] == ["one", "bad"] and lines[-1] == "two"
+    assert any("listener failed on a line and read on: KeyError" in line for line in lines)
+
+
+def test_a_usage_field_that_changes_shape_between_lines_is_read_and_the_total_kept_as_it_goes():
+    watch = PH.Watch(None, PRICES)
+    first = {"id": "m", "model": "claude-opus-5-5", "usage": {"input_tokens": 1000, "cache_creation": 5}}
+    later = {
+        "id": "m",
+        "model": "claude-opus-5-5",
+        "usage": {"input_tokens": 1000, "cache_creation": {"ephemeral_1h_input_tokens": 0}},
+    }
+    watch.feed("out", line({"type": "assistant", "message": first}))
+    watch.feed("out", line({"type": "assistant", "message": later}))
+    watch.feed("out", line({"type": "assistant", "message": {**later, "id": "n"}}))
+    assert watch.estimated_usd == pytest.approx(0.008)  # two messages of 1000 input tokens, the first counted once
 
 
 def test_run_py_redact_names_a_file_it_cannot_redact_and_exits_1(tmp_path, monkeypatch, capsys):

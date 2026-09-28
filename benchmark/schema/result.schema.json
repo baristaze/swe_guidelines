@@ -364,15 +364,16 @@
         },
         "unpriced": { "type": "array", "items": { "type": "string" } },
         "gate_runs": {
-          "description": "Each gate's runs in the session, its failures, and whether its last run failed.",
+          "description": "Each gate's runs in the session, its failures, the runs whose outcome was not read, and whether its last read run failed.",
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["runs", "failed", "failing"],
+            "required": ["runs", "failed", "unread", "failing"],
             "additionalProperties": false,
             "properties": {
               "runs": { "type": "integer", "minimum": 0 },
               "failed": { "type": "integer", "minimum": 0 },
+              "unread": { "description": "Runs whose outcome is not the call's: the gate piped, or followed by ;, ||, or &.", "type": "integer", "minimum": 0 },
               "failing": { "type": "boolean" }
             }
           }

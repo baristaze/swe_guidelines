@@ -18,14 +18,21 @@ reads the stream as it is written and holds two bounds of its own:
   it for a write the usage names as a one-hour write. A model the matrix
   has no price for is priced at the matrix's dearest Anthropic model, so
   the estimate errs high. A message is counted once however many lines
-  carry it. The stream shows what the session shows it, so a subagent the
-  stream does not carry is held by Claude Code's own cap alone;
-- the gate reruns. A gate run is a Bash call whose command runs a command
-  the scenario lists under `gates`, read from the call in the stream, and
-  it fails when its result is an error. A failed run of a gate is followed
-  by at most `max_gate_reruns` more; the phase is stopped when the last of
-  them fails too. A run that passes ends the streak, so a later step that
-  runs the gates again starts with its first run.
+  carry it, and the total is kept as it goes. The stream shows what the
+  session shows it, so a subagent the stream does not carry is held by
+  Claude Code's own cap alone;
+- the gate reruns. A gate run is a Bash call one of whose commands is the
+  gate itself: the command's first words, after any variable settings,
+  are the gate's words. `echo make check` and a commit message that names
+  the gate are not gate runs. A run's outcome is read from the call's
+  result only when the call's exit status is the gate's: nothing but `&&`
+  follows the gate. Then it fails when the result is an error. A run that
+  pipes the gate, or follows it with `;`, `||`, or `&`, is counted, and
+  its outcome is not read: it neither fails nor passes. A failed run of a
+  gate is followed by at most `max_gate_reruns` more; the phase is
+  stopped when the last of them fails too. A run that passes ends the
+  streak, so a later step that runs the gates again starts with its first
+  run.
 
 When either passes its bound, the watch sets `stop`, and the runtime
 stops the phase there.
@@ -41,6 +48,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import threading
 from typing import Any
 
@@ -127,10 +135,53 @@ def cap_of(result: dict[str, Any] | None) -> str | None:
     return SUBTYPE_CAPS.get(str(result.get("subtype"))) if result else None
 
 
-def gate_pattern(gate: str) -> re.Pattern[str]:
-    """A gate's words, found as whole shell words in a command: `make check` in `cd x && make check`, not in `make checks`."""
-    words = r"\s+".join(re.escape(w) for w in gate.split())
-    return re.compile(rf"(?:^|[\s;&|(]){words}(?=$|[\s;&|)])")
+# The shell's control operators, as `shlex` splits them, and those that
+# let the gate's exit status be the call's when they follow the gate.
+OPERATORS = frozenset({"&&", "||", "|", "|&", ";", ";;", "&", "(", ")"})
+KEEPS_STATUS = frozenset({"&&", ")"})
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def commands(command: str) -> list[tuple[list[str], list[str]]]:
+    """Each simple command of a shell command line: its words, and the operators that follow it to the end.
+
+    A line of its own is a command of its own, as `;` makes one. A line
+    that does not split as shell words is left out.
+    """
+    tokens: list[str] = []
+    for line in command.split("\n"):
+        try:
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+            lexer.whitespace_split = True
+            words = list(lexer)
+        except ValueError:
+            words = []
+        if words:
+            tokens += [*words, ";"]
+    # Every line ends in a `;` of its own; the last line's is no operator of the command's.
+    out: list[tuple[list[str], list[str]]] = []
+    current: list[str] = []
+    for at, token in enumerate(tokens):
+        if token in OPERATORS:
+            if current:
+                out.append((current, [t for t in tokens[at:-1] if t in OPERATORS]))
+            current = []
+        else:
+            current.append(token)
+    return out
+
+
+def gate_runs(command: str, gates: list[str]) -> list[tuple[str, bool]]:
+    """The gates a command runs as commands of their own, each with whether the call's status is that run's."""
+    out: list[tuple[str, bool]] = []
+    for words, after in commands(command):
+        while words and ASSIGNMENT.match(words[0]):
+            words = words[1:]
+        for gate in gates:
+            wanted = gate.split()
+            if words[: len(wanted)] == wanted:
+                out.append((gate, all(op in KEEPS_STATUS for op in after)))
+    return out
 
 
 def _count(value: Any) -> int:
@@ -162,14 +213,17 @@ class Watch:
         self.prices = dict(prices)
         # The dearest model the matrix prices, for a model it does not.
         self.dearest = max(self.prices.values(), key=lambda p: (p["input"], p["output"])) if self.prices else None
-        self.patterns = {g: gate_pattern(g) for g in gates or []}
+        self.gates = list(gates or [])
         self.max_gate_reruns = max_gate_reruns
         self.stop = threading.Event()
         self.capped: str | None = None
         self.unpriced: set[str] = set()
+        # Each message's model, its usage at its largest, and what that cost; and the total, kept as it goes.
         self._messages: dict[str, tuple[str, dict[str, Any]]] = {}
-        self._pending: dict[str, list[str]] = {}
-        self._gates = {g: {"runs": 0, "failed": 0, "streak": 0} for g in self.patterns}
+        self._costs: dict[str, float] = {}
+        self._total = 0.0
+        self._pending: dict[str, list[tuple[str, bool]]] = {}
+        self._gates = {g: {"runs": 0, "failed": 0, "unread": 0, "streak": 0} for g in self.gates}
         self._lock = threading.Lock()
 
     def feed(self, stream: str, line: str) -> None:
@@ -193,19 +247,20 @@ class Watch:
             elif event.get("type") == "user":
                 for block in _content(message):
                     if block.get("type") == "tool_result" and block.get("tool_use_id") in self._pending:
-                        for gate in self._pending.pop(block["tool_use_id"]):
-                            self._ran(gate, failed=block.get("is_error") is True)
+                        for gate, read in self._pending.pop(block["tool_use_id"]):
+                            self._ran(gate, failed=block.get("is_error") is True, read=read)
 
-    def gates_in(self, tool_input: Any) -> list[str]:
-        """The gates a Bash call's command runs, in the scenario's order."""
+    def gates_in(self, tool_input: Any) -> list[tuple[str, bool]]:
+        """The gates a Bash call's command runs, each with whether the call's result is that run's outcome."""
         command = tool_input.get("command") if isinstance(tool_input, dict) else None
-        if not isinstance(command, str):
-            return []
-        return [g for g, pattern in self.patterns.items() if pattern.search(command)]
+        return gate_runs(command, self.gates) if isinstance(command, str) else []
 
-    def _ran(self, gate: str, failed: bool) -> None:
+    def _ran(self, gate: str, failed: bool, read: bool) -> None:
         counts = self._gates[gate]
         counts["runs"] += 1
+        if not read:
+            counts["unread"] += 1
+            return
         if not failed:
             counts["streak"] = 0
             return
@@ -224,11 +279,16 @@ class Watch:
         _, seen = self._messages.get(key, (model, {}))
         merged = dict(seen)
         for name, value in usage.items():
+            before = merged.get(name)
             if isinstance(value, dict):
-                merged[name] = {k: max(_count(v), _count(merged.get(name, {}).get(k))) for k, v in value.items()}
-            else:
-                merged[name] = max(_count(value), _count(seen.get(name)))
+                earlier = before if isinstance(before, dict) else {}
+                merged[name] = {**earlier, **{k: max(_count(v), _count(earlier.get(k))) for k, v in value.items()}}
+            elif not isinstance(before, dict):
+                merged[name] = max(_count(value), _count(before))
         self._messages[key] = (model, merged)
+        cost = self.cost(model, merged)
+        self._total += cost - self._costs.get(key, 0.0)
+        self._costs[key] = cost
         if self.max_usd is not None and self.estimated_usd > self.max_usd:
             self._cap("spend")
 
@@ -247,25 +307,26 @@ class Watch:
         self.unpriced.add(model or "unknown")
         return self.dearest
 
+    def cost(self, model: str, usage: dict[str, Any]) -> float:
+        """What one message's usage costs at the model's price."""
+        price = self.price(model)
+        if price is None:
+            return 0.0
+        split = usage.get("cache_creation")
+        hour = _count(split.get("ephemeral_1h_input_tokens")) if isinstance(split, dict) else 0
+        written = _count(usage.get("cache_creation_input_tokens"))
+        return (
+            _count(usage.get("input_tokens")) * price["input"]
+            + _count(usage.get("cache_read_input_tokens")) * price["input"] * CACHE_READ
+            + max(written - hour, 0) * price["input"] * CACHE_WRITE
+            + hour * price["input"] * CACHE_WRITE_1H
+            + _count(usage.get("output_tokens")) * price["output"]
+        ) / 1e6
+
     @property
     def estimated_usd(self) -> float:
         """What the messages seen so far cost at the matrix's prices."""
-        total = 0.0
-        for model, usage in self._messages.values():
-            price = self.price(model)
-            if price is None:
-                continue
-            split = usage.get("cache_creation")
-            hour = _count(split.get("ephemeral_1h_input_tokens")) if isinstance(split, dict) else 0
-            written = _count(usage.get("cache_creation_input_tokens"))
-            total += (
-                _count(usage.get("input_tokens")) * price["input"]
-                + _count(usage.get("cache_read_input_tokens")) * price["input"] * CACHE_READ
-                + max(written - hour, 0) * price["input"] * CACHE_WRITE
-                + hour * price["input"] * CACHE_WRITE_1H
-                + _count(usage.get("output_tokens")) * price["output"]
-            ) / 1e6
-        return round(total, 6)
+        return round(max(self._total, 0.0), 6)
 
     def usage(self) -> dict[str, int]:
         """The tokens of the messages seen so far, in the shape a result's usage is recorded in."""
@@ -281,5 +342,8 @@ class Watch:
         }
 
     def gate_runs(self) -> dict[str, dict[str, Any]]:
-        """Each gate's runs and failures, and whether its last run failed."""
-        return {gate: {"runs": c["runs"], "failed": c["failed"], "failing": c["streak"] > 0} for gate, c in self._gates.items()}
+        """Each gate's runs, its failures, the runs whose outcome was not read, and whether its last read run failed."""
+        return {
+            gate: {"runs": c["runs"], "failed": c["failed"], "unread": c["unread"], "failing": c["streak"] > 0}
+            for gate, c in self._gates.items()
+        }
