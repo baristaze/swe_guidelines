@@ -403,9 +403,9 @@ carries uv, Node, and Claude Code at the versions `runtime/Dockerfile`
 pins, and pnpm and Terraform at pins of their own. It carries make and
 git from Ubuntu's archive. A tree the scaffold skills make runs its
 gates, `make check` and `make test-integration`, with make, git, uv,
-Node, pnpm, and Docker Compose, and uv fetches the Python the tree
-names. The readiness probe runs each of them, so a machine that lacks
-one never reports ready.
+Node, pnpm, and Docker Compose. The readiness probe runs each of them,
+so a machine that lacks one never reports ready. uv runs the Python the
+tree names: Ubuntu's own when its release matches, else one uv fetches.
 
 Nothing of this machine is in it. It runs in Lima's plain mode, which
 mounts no folder, forwards no port, and runs no guest agent. SSH

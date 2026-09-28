@@ -30,8 +30,9 @@
 #
 # A tree the scaffold skills make runs its gates, `make check` and
 # `make test-integration`, with make, git, uv, Node, pnpm, and Docker
-# Compose, and uv fetches the Python the tree names. The readiness probe
-# runs each of them, so a machine that lacks one never reports ready.
+# Compose. The readiness probe runs each of them, so a machine that
+# lacks one never reports ready. uv runs the Python the tree names:
+# Ubuntu's own when its release matches, else one uv fetches.
 #
 # Lima keeps the copy of this file it read at create, so a change to it,
 # a pin or a package, takes a new machine: `limactl delete
