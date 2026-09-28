@@ -1,6 +1,6 @@
 ---
 name: ops-watch
-description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it polls for the whole window and reports when the window ends or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
+description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it polls for the whole window, at most 30 batches, and reports when the window ends, the 30th batch closes, or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
 allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*), Bash(sleep:*)
 ---
 
@@ -24,11 +24,21 @@ the time cap.
 `--env local|staging|production [--for 15m] [--interval 60s] [--cap 50] [--filter <text>]`
 
 `--env` is required; ask for it when missing. `--for` is the window,
-fifteen minutes by default; the skill ends when it passes. `--interval`
-is the batch length, at most five minutes, so one wait never nears
-the shell's time cap. `--cap` is the most lines one batch reports;
-what is over the cap is counted, not printed. `--filter` narrows the
-read to lines containing the text (a request id, a route, a level).
+fifteen minutes by default. `--interval` is the batch length, at least
+30 seconds, so a batch is worth its calls, and at most five minutes,
+so one wait never nears the shell's time cap. A shorter interval is
+raised to 30 seconds, and a longer one lowered to five minutes.
+`--cap` is the most lines one batch reports; what is over the cap is
+counted, not printed. `--filter` narrows the read to lines containing
+the text (a request id, a route, a level).
+
+A watch runs at most 30 batches. When `--for` holds more than 30
+intervals, the interval is widened to `--for` divided by 30, up to
+five minutes: an hour asked at 10 seconds runs 30 batches of two
+minutes. The watch ends when the window passes or when its 30th batch
+closes, whichever comes first. A window longer than 30 batches of five
+minutes ends at the 30th: the watch stops there, and its report names
+the part of the window it did not watch.
 
 Spawn it in a sub-agent. The invoker names the window and reads the
 report; the sub-agent does the polling.
@@ -84,14 +94,29 @@ ask for either in the conversation.
 
 ## Procedure
 
+A batch makes at most 20 tool calls. Its main path is six: the wait,
+the credential check, one log read per process (two in a tree with a
+worker), the alarms, and one `get-metric-data` call with a query per
+signal. The bound sits well above that, so a retry of each read and
+the reads of step 6 fit in it; only a batch that loops reaches it. A
+tree with more than two processes reads all their logs in one
+command. Locally there is no credential check, and the Prometheus
+queries of step 4 run as one command, as do those of step 5. A retry
+counts as a call. A read that would be the 21st call is not made: the
+batch stops there, writes that read as not read, and the watch goes
+on to the next batch. The first credential
+check and the size read of step 2 come before the first batch, and
+are not counted in it.
+
 1. Verify the credential as Role and credential states. A chained
    session lasts an hour at most, so every interval reads the profile
    again and checks `sts get-caller-identity`; when the person's
    session behind it has ended, the watch stops and says so in its
    report, rather than retrying on a credential that is gone. Note
    the start time; every batch is
-   `[start + k * interval, start + (k + 1) * interval)`, read once
-   that interval has closed, and no batch is read twice.
+   `[start + k * interval, start + (k + 1) * interval)`, with `k` from
+   0 to at most 29, read once that interval has closed, and no batch
+   is read twice.
 2. Read the platform's size once:
 
    ```bash
@@ -146,8 +171,13 @@ ask for either in the conversation.
    nothing more: the request count, the 5xx count, the p95, the
    worker failures and the oldest waiting item's age (where there is a
    worker; a tree built with `--no-worker` has no queue), and the
-   outbox's lag, through `get-metric-data` with `--period` equal
-   to the interval, or the same as a Prometheus range query. A burst
+   outbox's lag, through `get-metric-data`, or the same as a
+   Prometheus range query. The `--period` passed to `get-metric-data`
+   is a whole minute whatever the batch interval: the interval rounded
+   down to a multiple of 60 seconds, and never under 60, since
+   CloudWatch refuses any other period for a regular-resolution
+   metric. A batch's count is the sum of its datapoints, and its p95
+   the highest among them. A burst
    is a count in the batch, never a line per event: the batch's lines
    over `--cap` are counted by level and dropped.
 6. The first responder rule. An alarm transition is read against the
@@ -159,8 +189,12 @@ ask for either in the conversation.
    watch goes on. Anything else is an escalation: the batch is closed early, the report is written
    with the alarm at the top, and the sub-agent returns so the
    invoker can act.
-7. When the window passes, write the report with
-   every batch in order.
+7. When the window passes or the 30th batch closes, write the report
+   with every batch in order. The sub-agent names its Next and never
+   runs it; the invoking session decides. A session follows at most 2
+   hops of Next. The skill it starts with is hop zero; the report of
+   the second hop still names its next skill, and the session stops
+   there and reports.
 
 ## What it never does
 
@@ -172,6 +206,8 @@ ask for either in the conversation.
 - No `terraform apply`, no console clicks.
 - No unbounded output: never more than `--cap` lines per batch, never
   the same window twice, never a read past `--for`.
+- No unbounded loop: never more than 30 batches, never a batch
+  shorter than 30 seconds, never more than 20 tool calls in a batch.
 - No command that does not return: no `--follow`, no `-f`, no wait
   longer than one interval.
 
@@ -182,7 +218,7 @@ ask for either in the conversation.
 
 **Credential.** <profile and the Arn it resolved to, or local>
 **Size.** <tenants> tenants, <users> users, <n> written in the last day
-**Ended.** <window passed | escalated on <alarm> at <time>>
+**Ended.** <window passed | 30th batch, <start> to <end> not watched | escalated on <alarm> at <time> | credential ended at <time>>
 
 ## Alarms
 

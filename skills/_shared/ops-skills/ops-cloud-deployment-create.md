@@ -152,7 +152,9 @@ never a value.
    aws sts get-caller-identity --profile acme-<env>-investigate
    ```
 
-5. Write the report.
+5. Write the report. Its Next is the person's to run, never the
+   session's: the next run of Order acts on another account, and
+   `grant-operator.yml` grants an operator.
 
 ## What it never does
 

@@ -71,7 +71,8 @@ no profile and no env file.
    and sum to any number; the generator normalizes them.
 4. Read it back and check every field is set and the total holds.
    Say in the output that a real run is the platform developer's
-   choice and that the run skill is `stress-test-run`.
+   choice and that the run skill is `stress-test-run`. Its Next is
+   the person's to run, never the session's.
 
 ## What it never does
 
