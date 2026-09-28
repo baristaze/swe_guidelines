@@ -62,13 +62,16 @@ never run the harness from there.
    `high`. `--repeat N` runs the subject N times. Without it, the run
    takes the scenario's `repeat`, and 3 only when the scenario names
    none. `--with <group>` runs an optional group of the scenario's
-   phases as well; repeat it for more. A run takes no group unless the
-   prompt asks for one by name, and a group the scenario does not
-   declare is refused with exit 2. `create-full-system` runs the build
-   by default, the scaffold and then the MVP, so a prompt that asks for
-   the scaffold, the MVP, or the build takes no flag. Its one group,
-   `extras`, is the review and the close: "with extras" is
-   `--with extras`. `--subject-model` pins the subject's model.
+   phases as well; repeat it for more. A prompt that asks for a group's
+   phases, by the group's name or by naming or describing its phases,
+   takes that group; a prompt that does not, takes none. Words that name
+   no phase, such as "end to end" or "the full system", take none. A
+   group the scenario does not declare is refused with exit 2.
+   `create-full-system` runs the build by default, the scaffold and then
+   the MVP, so a prompt that asks for the scaffold, the MVP, or the build
+   takes no flag. Its one group, `extras`, is the review and the close.
+   A prompt that asks for extras, the review, the close, or every phase
+   ("all four phases") takes `--with extras`. `--subject-model` pins the subject's model.
    `--max-spend-usd N` is the run's spend cap in US dollars, over the
    subject and the judges together. Without it, a run that takes no
    group takes the scenario's `max_spend_usd`. Else a scenario in
