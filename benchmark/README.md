@@ -815,11 +815,16 @@ judge asks for a read after it was told none are left, when its wall
 time runs out, or when its next call would pass the input tokens or the
 dollars it may spend. That check comes before each call. The next call
 carries at least the last one's input, and costs at least that input at
-its price, so a call that would pass either budget is never made. The
-dollars are at the list prices in `models.yaml`. A model with no price
-there is held to the dearest price the file gives, so the check errs
-high. Every call on every provider carries the output cap,
-`max_output_tokens`. A `missed` judgement names the budget and its
+its price, so a call that would pass either budget that way is never
+made. The dollar budget is not a hard cap: what a call answers is not
+known until it is made, and a submission is read whatever the budget.
+So a judgement can end above `max_usd` by what its last call adds: its
+output, at most `max_output_tokens` at the output price, about $0.32 at
+16,000 tokens and $20 per million, and the input the turn before it
+read, at the input price. The dollars are at the list prices in
+`models.yaml`. A model with no price there is held to the dearest price
+the file gives, so the check errs high. Every call on every provider
+carries the output cap, `max_output_tokens`. A `missed` judgement names the budget and its
 figures in `error`, and scores nothing. The summary names it as it
 names every judgement that did not answer.
 
