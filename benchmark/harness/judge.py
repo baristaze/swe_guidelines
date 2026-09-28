@@ -46,12 +46,25 @@ ANTHROPIC_LOWER_MAX_TOKENS = {"claude-haiku-4-5": 64_000}
 # judgement the checked-in runs record, 239 s. Without it, the Anthropic and
 # OpenAI SDKs wait 600 s, and google-genai waits as long as the call takes.
 CALL_TIMEOUT_S = 480.0
-# A model under load answers 503 and means "ask again"; a model out of quota
-# answers 429 and means "ask something else". The first is retried here, the
-# second falls through to the next model in the matrix.
+# A model under load answers 503 and means "ask again". A model at a per-minute
+# rate limit answers 429, names the wait, and means "ask again after it". A
+# model out of quota answers 429 with `insufficient_quota` and means "ask
+# something else". The first two are retried here; the third falls through to
+# the next model in the matrix.
 TRANSIENT = ("503", "unavailable", "overloaded", "high demand", "timeout", "timed out", "temporarily")
 RETRIES = 2
 RETRY_WAIT_S = 4.0
+# What marks a 429 as a limit per minute: OpenAI's "tokens per min (TPM)",
+# Anthropic's "input tokens per minute", and Gemini's quota ids, such as
+# "...PerModelPerMinute". What marks it as quota that no wait brings back.
+PER_MINUTE = ("per min", "perminute")
+EXHAUSTED = ("insufficient_quota",)
+# The wait a provider names in words: OpenAI's "Please try again in 135ms"
+# or "in 1m30s", and Gemini's "Please retry in 35.5s".
+NAMED_WAIT = re.compile(r"(?:try again|retry) in ((?:\d+(?:\.\d+)?(?:ms|m|s))+)")
+WAIT_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0}
+# A per-minute limit frees up within a minute, so a longer named wait is not waited.
+RATE_LIMIT_MAX_WAIT_S = 60.0
 T = TypeVar("T")
 
 # The matrix a monthly run redefines. `models.yaml` beside `run.py` is the
@@ -258,17 +271,43 @@ def is_transient(exc: Exception) -> bool:
     return any(word in text for word in TRANSIENT)
 
 
+def rate_limit_wait(exc: Exception) -> float | None:
+    """The wait in seconds a per-minute rate limit names, or None when the error is not one to wait out.
+
+    It is one when the provider answered 429 and its error names a limit
+    per minute, names no exhausted quota, and names the wait: a
+    `retry-after` header in seconds, or words such as "try again in 135ms".
+    A wait longer than RATE_LIMIT_MAX_WAIT_S is none. The Anthropic and
+    OpenAI SDKs, and so xAI's client, give the status as `status_code`;
+    google-genai gives it as `code`.
+    """
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    text = str(exc).lower()
+    if status != 429 or not any(word in text for word in PER_MINUTE) or any(word in text for word in EXHAUSTED):
+        return None
+    headers: Any = getattr(getattr(exc, "response", None), "headers", None)
+    try:
+        wait: float | None = float(headers.get("retry-after"))
+    except Exception:  # no response, no header, or a header that is not a number of seconds
+        wait = None
+    if wait is None and (named := NAMED_WAIT.search(text)):
+        wait = sum(float(n) * WAIT_UNITS[unit] for n, unit in re.findall(r"(\d+(?:\.\d+)?)(ms|m|s)", named.group(1)))
+    return wait if wait is not None and 0 <= wait <= RATE_LIMIT_MAX_WAIT_S else None
+
+
 def with_retries(
     call: Callable[[], T],
     on_error: Callable[[Exception], None] | None = None,
-    sleep: Callable[[float], None] | None = None,
-    may_wait: Callable[[], bool] | None = None,
+    sleep: Callable[[float], object] | None = None,
+    may_wait: Callable[[float], bool] | None = None,
 ) -> T:
-    """One call, asked again when its error is transient: the one retry policy of every judge.
+    """One call, asked again when its error says to: the one retry policy of every judge.
 
-    There are RETRIES attempts in all, RETRY_WAIT_S apart. `on_error` hears
-    every failed attempt, `sleep` does the waiting, and `may_wait` can turn
-    a wait down, as a deadline does. Raises the last error.
+    There are RETRIES attempts in all. A transient error waits RETRY_WAIT_S
+    before the next, and a per-minute rate limit waits what it names
+    (`rate_limit_wait`). `on_error` hears every failed attempt, `sleep` does
+    the waiting, and `may_wait` hears each wait in seconds and can turn it
+    down, as a deadline does. Raises the last error.
     """
     attempt = 1
     while True:
@@ -277,9 +316,12 @@ def with_retries(
         except Exception as exc:
             if on_error is not None:
                 on_error(exc)
-            if attempt < RETRIES and is_transient(exc) and (may_wait is None or may_wait()):
+            wait = rate_limit_wait(exc)
+            if wait is None and is_transient(exc):
+                wait = RETRY_WAIT_S
+            if attempt < RETRIES and wait is not None and (may_wait is None or may_wait(wait)):
                 attempt += 1
-                (sleep or time.sleep)(RETRY_WAIT_S)
+                (sleep or time.sleep)(wait)
                 continue
             raise
 
@@ -730,8 +772,8 @@ def ask(
 
     It is asked under `with_retries`, the policy every judge uses, and
     `timeout_s` bounds it, a retry included: each attempt waits at most
-    the time left, and a transient error is asked again only while more
-    than the wait is left. Anthropic's answer streams, so there the
+    the time left, and an error is asked again only while more than its
+    wait is left. Anthropic's answer streams, so there the
     timeout bounds each wait for the next event, not the whole answer.
     Raises the last attempt's error.
     """
@@ -741,6 +783,4 @@ def ask(
     def left() -> float:
         return deadline - time.monotonic()
 
-    return with_retries(
-        lambda: ASKS[name](model, prompt, key, effort, max(left(), 0.001)), may_wait=lambda: left() > RETRY_WAIT_S
-    )
+    return with_retries(lambda: ASKS[name](model, prompt, key, effort, max(left(), 0.001)), may_wait=lambda wait: left() > wait)

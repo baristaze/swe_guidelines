@@ -90,11 +90,15 @@ on its first call falls back to the next model in the matrix, as in
 `judge.py`. A model that fails after it has answered once ends the
 judgement as `error`, because starting over would spend the budget twice.
 A transient error is asked again under `judge.with_retries`, the policy
-every judge uses, with the wait on the loop's clock.
+every judge uses, with the wait on the loop's clock. A per-minute rate
+limit is waited out the same way, for the wait its error names. When
+that wait is longer than the time left, the judgement is `missed` at
+once, without waiting, since no call could follow it.
 
 A `stop` event the caller sets ends the judgement before its next call,
-and before a retry, as `error`: the run was stopped. A call already in
-flight is not waited on by the caller.
+and before a retry, as `error`: the run was stopped. The wait before a
+retry is a wait on the event, so a stop ends it at once, and the retry
+is not sent. A call already in flight is not waited on by the caller.
 
 Every step is appended to a JSONL transcript as it happens, and flushed.
 Each record carries the time, the provider, the model, and its kind:
@@ -196,6 +200,10 @@ class Caps:
 
 class ToolError(Exception):
     """A tool call refused: a path out of its root, a bad argument, a missing file."""
+
+
+class Stopped(Exception):
+    """A retry not sent: the run was stopped while the judge waited to send it."""
 
 
 # The tools --------------------------------------------------------------
@@ -1174,17 +1182,20 @@ class Loop:
         budget: Budget,
         log: Transcript,
         clock: Callable[[], float],
-        sleep: Callable[[float], None],
+        sleep: Callable[[float], None] | None,
         price: Callable[[str], dict[str, float]],
         stop: threading.Event | None = None,
     ) -> None:
         """`price` gives a model's list price in US dollars per million input and output tokens.
 
-        `stop`, once set, ends the loop before its next call.
+        `stop`, once set, ends the loop before its next call and before a
+        retry. `sleep` is the wait before a retry; when None, the loop waits
+        on `stop`, so setting it ends the wait at once.
         """
-        self.tree, self.check, self.budget, self.log, self.clock, self.sleep = tree, check, budget, log, clock, sleep
+        self.tree, self.check, self.budget, self.log, self.clock = tree, check, budget, log, clock
         self.price = price
         self.stop = stop or threading.Event()
+        self.sleep: Callable[[float], object] = sleep or self.stop.wait
         self.spent = Spent()
         self.started = clock()
 
@@ -1214,13 +1225,28 @@ class Loop:
         return self.out_of_input() or self.out_of_usd()
 
     def send(self, chat: Chat) -> Turn:
-        """One call under the one retry policy, waiting on the loop's clock, and only while time is left."""
+        """One call under the one retry policy, waiting on the loop's clock, and only while time is left.
+
+        Raises Stopped, and sends nothing, when `stop` is set by the time a
+        retry would go out: a stop during the wait ends the judgement there.
+        """
+
+        def call() -> Turn:
+            if self.stop.is_set():
+                raise Stopped(STOPPED)
+            return chat.send(timeout=max(self.left_s(), 0.001))
+
         return J.with_retries(
-            lambda: chat.send(timeout=max(self.left_s(), 0.001)),
-            on_error=lambda exc: self.log.write("error", error=f"{type(exc).__name__}: {str(exc)[:400]}"),
+            call,
+            on_error=self.note_error,
             sleep=self.sleep,
-            may_wait=lambda: self.left_s() > J.RETRY_WAIT_S and not self.stop.is_set(),
+            may_wait=lambda wait: self.left_s() > wait and not self.stop.is_set(),
         )
+
+    def note_error(self, exc: Exception) -> None:
+        """A failed call, as the transcript keeps it. A retry that a stop kept from going out is no call."""
+        if not isinstance(exc, Stopped):
+            self.log.write("error", error=f"{type(exc).__name__}: {str(exc)[:400]}")
 
     def converse(self, chat: Chat) -> Outcome:
         """One model's loop, until it submits, fails, or the budget runs out.
@@ -1238,10 +1264,17 @@ class Loop:
                 return Outcome("missed", self.out_of_time())
             try:
                 turn = self.send(chat)
+            except Stopped:
+                return Outcome("error", STOPPED)
             except Exception as exc:
                 error = f"{chat.model}: {type(exc).__name__}: {str(exc)[:400]}"
-                if self.left_s() <= 0:
+                left = self.left_s()
+                if left <= 0:
                     return Outcome("missed", f"{self.out_of_time()} ({error})")
+                wait = J.rate_limit_wait(exc)
+                if wait is not None and wait >= left:
+                    over = f"wall time: the rate limit asks for a wait of {wait:g} s, and {left:g} s are left"
+                    return Outcome("missed", f"{over} ({error})")
                 return Outcome("error", error, first_call_failed=not answered)
             answered = True
             spent.turns += 1
@@ -1382,7 +1415,7 @@ def judge_agentic(
     env: dict[str, str] | None = None,
     client: Any = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
     stop: threading.Event | None = None,
 ) -> AgenticJudgement:
     """One provider's agentic judgement, with every step in the transcript.
@@ -1390,8 +1423,10 @@ def judge_agentic(
     `prompt` is the task: the rubric and what each root holds. `roots` names
     the folders the judge may read. `client` is the provider's SDK client;
     when None it is built from the key, as `judge.py` builds it. Either way
-    its own retries are turned off. `clock` and `sleep` are the loop's time.
-    `stop`, once set, ends the judgement before its next call.
+    its own retries are turned off. `clock` and `sleep` are the loop's time;
+    when `sleep` is None, a wait before a retry is a wait on `stop`.
+    `stop`, once set, ends the judgement before its next call and before a
+    retry.
 
     Raises ValueError before any call on what the caller got wrong: a root
     that is not a folder, an answer schema that is not a JSON schema of an
