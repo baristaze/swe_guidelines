@@ -168,6 +168,18 @@ def test_the_shipped_scenarios_say_where_they_run():
     }
 
 
+def test_the_vm_machine_s_probe_asks_each_command_a_vm_gate_starts_for_its_version():
+    yaml = pytest.importorskip("yaml")
+    benchmark = Path(__file__).resolve().parent.parent / "benchmark"
+    machine = yaml.safe_load((benchmark / "runtime" / "lima" / "benchmark.yaml").read_text(encoding="utf-8"))
+    probes = "\n".join(probe["script"] for probe in machine["probes"])
+    scenarios = [S.load(p) for p in S.catalog(benchmark / "scenarios")]
+    started = {gate.split()[0] for scn in scenarios if "vm" in scn.runtimes for gate in scn.subject.gates}
+    assert "make" in started
+    for command in sorted(started):
+        assert re.search(rf"^{re.escape(command)} (--)?version$", probes, re.M), command
+
+
 def test_evidence_is_read_and_its_unknown_keys_refused(tmp_path):
     data = dict(
         MINIMAL,
