@@ -948,18 +948,48 @@ def test_a_phase_that_starts_a_helper_in_the_background_is_incomplete_though_its
     assert results(run_dir)["repeats"][0]["ended_early"] == {"phase": "scaffold", "reason": "incomplete", "not_run": ["mvp"]}
 
 
+def test_an_agent_call_that_asks_for_the_background_and_returns_its_helpers_hand_back_is_answered(run_phases):
+    # The shape Claude Code writes with background tasks off: each Agent call asks run_in_background "true", runs in
+    # the foreground, and its one result is the helper's hand-back, before the session's `result` event.
+    helpers = [["toolu_ops", "Write Terraform"], ["toolu_audit", "Write the audit tools"], ["toolu_portal", "Build the portal"]]
+    scenario = phased(phase("scaffold", {**TREE, "handed_back": helpers}), phase("mvp", TREE))
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    repeat = results(run_dir)["repeats"][0]
+    assert [p["status"] for p in repeat["phases"]] == ["ok", "ok"] and "ended_early" not in repeat
+    assert not any("pending_agents" in p for p in repeat["phases"])
+
+
+def test_a_launch_notice_and_a_call_with_no_result_still_end_the_phase_incomplete(run_phases):
+    action = {
+        **TREE,
+        "agents": [["toolu_open", "scaffold the worker", False]],  # no result by the session's result event
+        "launched": [["toolu_bg", "scaffold the portal"]],  # the launch notice is its only result
+        "handed_back": [["toolu_done", "scaffold the api"]],  # answered by its hand-back
+    }
+    code, run_dir = run_phases(phased(phase("scaffold", action), phase("mvp", TREE)))
+    assert code == 6
+    (scaffold,) = results(run_dir)["repeats"][0]["phases"]
+    assert (scaffold["status"], scaffold["capped"]) == ("incomplete", None)
+    assert scaffold["pending_agents"] == [
+        {"id": "toolu_open", "description": "scaffold the worker"},
+        {"id": "toolu_bg", "description": "scaffold the portal"},
+    ]
+
+
 @pytest.mark.parametrize(
     ("asked", "answer", "pending"),
     [
-        ({"run_in_background": True}, "done", True),  # the setting, as a boolean, with any result
-        ({"run_in_background": "True"}, "done", True),  # and as the word
         ({}, [{"type": "text", "text": "Async agent launched successfully. agentId: a1"}], True),  # the notice alone
         ({}, "Async agent launched successfully.", True),  # the notice as a plain string
-        ({"run_in_background": "false"}, "done", False),  # a foreground call its answer closes
+        ({"run_in_background": "true"}, "Async agent launched successfully.", True),  # the notice, whatever was asked
+        ({"run_in_background": True}, "done", False),  # the input asks for the background; the result answers it
+        ({"run_in_background": "true"}, [{"type": "text", "text": "[Subagent hand-back] The portal is built."}], False),
+        ({"run_in_background": "false"}, "done", False),
         ({}, [{"type": "text", "text": "The portal is scaffolded."}], False),
     ],
 )
-def test_an_agent_call_started_in_the_background_stays_pending_to_the_end_of_the_session(asked, answer, pending):
+def test_an_agent_call_stays_pending_to_the_end_of_the_session_only_when_its_result_is_the_launch_notice(asked, answer, pending):
     watch = PH.Watch(None, PRICES)
     block = {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"description": "helper", **asked}}
     watch.feed("out", line({"type": "assistant", "message": {"id": "m1", "content": [block]}}))
