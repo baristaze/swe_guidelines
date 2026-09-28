@@ -638,7 +638,11 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
 
 
 def source_lines(source: dict[str, Any]) -> list[str]:
-    """The opening lines of a run that judged another run's output again: where the output is, and what was refused."""
+    """The opening lines of a run that judged another run's output again.
+
+    They say where the output is, what was refused, and the groups each
+    repeat's rubric took.
+    """
     lines = [
         f"This run judged again the archived output of the run `{source['run_id']}`, at `{source['path']}`. "
         "No subject ran: the output, and how its subject ended, are that run's.",
@@ -652,6 +656,9 @@ def source_lines(source: dict[str, Any]) -> list[str]:
             f"Repeat(s) {named} of it were not judged: what was left of the run's spend cap did not cover their judges' budgets.",
             "",
         ]
+    for entry in source.get("rubric_groups", []):
+        taken = ", ".join(f"`{g}`" for g in entry["groups"]) or "none"
+        lines += [f"Groups the rubric of repeat {entry['repeat']} took, those whose every phase ran in it: {taken}.", ""]
     return lines
 
 

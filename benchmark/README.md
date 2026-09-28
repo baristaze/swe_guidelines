@@ -1217,9 +1217,8 @@ uv run benchmark/run.py judge --source benchmark/runs/<run folder>
 It reads three things from the source run's `run.json`: the scenario's
 name, the groups the run took, and the runtime it ran on. The scenario,
 its rubric, its judges, and its references are this checkout's, so a
-change to the judges reaches the score. The rubric takes the sentences
-of the groups the source run took. `--providers` and `--effort` choose
-the judges, as they do for a run.
+change to the judges reaches the score. `--providers` and `--effort`
+choose the judges, as they do for a run.
 
 It judges the archive of an output folder with agentic judges. A
 scenario whose subject builds no output folder, or whose judges are
@@ -1238,6 +1237,16 @@ judge started, when:
 
 A source with no repeat to judge makes no run folder, and exits 2.
 
+**What the judges are told.** A repeat's judges are told of the phases
+that ran in it, the ones the source run's `results.json` lists for the
+repeat. Its rubric takes the sentence of a group the source run took
+only when every one of the group's phases ran in it, since the sentence
+stands for them all. So a repeat that ended early, or was cut short,
+before every phase of a group ran is judged with no sentence of that
+group: its judges are not told of work that never happened. A repeat
+the source's `results.json` lists no phases for is judged as the source
+run took it, with every phase and every group.
+
 **Where it goes.** The judgement lands in a new run folder beside the
 source, or under `--out`. Each repeat judged gets the source's
 artifacts, all but its judge prompt: the archive, its manifest, the
@@ -1245,14 +1254,19 @@ answer, and the collected files. The judges read the archive's tree, as
 a run's judges do, and the repeat's `judge-prompt.md` is this run's
 own. `results.json` names the source under `source`: its run folder,
 its path, the repeats judged, each repeat refused with why, and the
-repeats the run's spend cap kept from being judged, under `capped`. Each
+repeats the run's spend cap kept from being judged, under `capped`. For
+a scenario that declares groups, it also names the groups each repeat's
+rubric took, under `rubric_groups`, and so does `run.json`. Each
 repeat records its archive, its SHA-256 included, and its judgements.
-No subject ran, so a repeat records no session and no subject spend,
-and its exit status is 0. How the subject ended is in the source run's
+No subject ran, so a repeat records no subject spend, and its exit
+status is 0. Its `phases` are the ones its source's repeat ran, each
+with its name, session, status, and cap, and none of its spend. So a
+folder `judge` wrote, judged again, tells its judges what its own
+source ran. The rest of how the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
-report opens with the source, the repeats refused, and the repeats the
-cap kept from being judged.
+report opens with the source, the repeats refused, the repeats the cap
+kept from being judged, and the groups each repeat's rubric took.
 
 **Its spend.** The run's spend cap is the sum of the selected judges'
 dollar budgets over the repeats it judges: four judges at $45 over one

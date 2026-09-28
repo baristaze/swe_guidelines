@@ -44,12 +44,13 @@ A subject in phases can declare named optional `groups`. A phase that
 names a `group` runs only in a run that takes it, with `run.py --with
 <group>`, and a run takes none by default. A group can add a sentence to
 the rubric, so the judges know what was built. `select` returns the
-scenario as a run with its groups runs it. The run's spend cap is the
-scenario's `max_spend_usd` on the path it names, a run that takes no
-group; else, for a subject in phases, the sum of the caps of the phases
-that run and the budgets of the agentic judges (`spend_cap`). A run that
-judges an earlier run's output again runs no phase, and its cap is the
-judges' budgets alone (`judging_cap`).
+scenario as a run with its groups runs it, and `as_ran` as one repeat
+of that run ran it, when the repeat ran only some of its phases. The
+run's spend cap is the scenario's `max_spend_usd` on the path it names,
+a run that takes no group; else, for a subject in phases, the sum of the
+caps of the phases that run and the budgets of the agentic judges
+(`spend_cap`). A run that judges an earlier run's output again runs no
+phase, and its cap is the judges' budgets alone (`judging_cap`).
 
 The judges are one-shot by default: one prompt, one verdict each. A
 scenario can ask for `agentic` judges instead, which read the subject's
@@ -791,6 +792,35 @@ def select(scn: Scenario, taken: list[str]) -> Scenario:
 def taken_groups(scn: Scenario) -> list[str]:
     """The groups a selected scenario's phases come from, in the scenario's order."""
     return [g.name for g in scn.subject.groups if g.name in (p.group for p in scn.subject.phases)]
+
+
+def ran_groups(scn: Scenario, taken: list[str], ran: list[str] | None) -> list[str]:
+    """The taken groups every one of whose phases is named in `ran`, in the scenario's order; every taken one when None.
+
+    A group's sentence names all of its phases, so a group some of whose
+    phases did not run adds no sentence to a repeat's rubric.
+    """
+    return [
+        g.name
+        for g in scn.subject.groups
+        if g.name in taken and (ran is None or all(p.name in ran for p in scn.subject.phases if p.group == g.name))
+    ]
+
+
+def as_ran(scn: Scenario, taken: list[str], ran: list[str] | None) -> Scenario:
+    """The scenario as one repeat of a run that took these groups ran it: only the phases named in `ran`.
+
+    Its rubric is that of `select` with the groups `ran_groups` gives, and
+    it holds only the phases that ran, of no group or of a taken one. So a
+    group whose phases did not all run adds no sentence to the rubric, and
+    no phase that did not run is described. With `ran` None, nothing says
+    which phases ran, and it is `select`.
+    """
+    if ran is None:
+        return select(scn, taken)
+    selected = select(scn, ran_groups(scn, taken, ran))
+    phases = [p for p in scn.subject.phases if p.name in ran and (p.group is None or p.group in taken)]
+    return dataclasses.replace(selected, subject=dataclasses.replace(selected.subject, phases=phases))
 
 
 def spend_cap(scn: Scenario, repeat: int, judges: int) -> float | None:
