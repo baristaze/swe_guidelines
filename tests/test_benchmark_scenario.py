@@ -1,6 +1,7 @@
 """benchmark/harness/scenario.py: the scenario file and its defaults."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -111,9 +112,9 @@ def test_find_takes_the_name_a_scenario_file_gives_itself(tmp_path):
         S.find("beta", tmp_path)  # a file that does not load has no name to match
 
 
-def test_the_shipped_scenarios_are_a_catalog_of_three():
+def test_the_shipped_scenarios_are_a_catalog_of_four():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
-    assert [p.stem for p in S.catalog(folder)] == ["explain-tenancy", "review-om", "support-turn"]
+    assert [p.stem for p in S.catalog(folder)] == ["create-full-system", "explain-tenancy", "review-om", "support-turn"]
 
 
 def test_a_scenario_without_runtimes_does_not_load():
@@ -146,6 +147,7 @@ def test_the_shipped_scenarios_say_where_they_run():
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
     declared = {p.stem: (S.load(p).runtimes, S.load(p).requires) for p in S.catalog(folder)}
     assert declared == {
+        "create-full-system": (["vm"], ["docker"]),
         "explain-tenancy": (["container"], []),
         "review-om": (["container"], []),
         "support-turn": (["host", "container"], []),
@@ -283,8 +285,37 @@ def test_a_subject_in_phases_builds_an_output_folder_of_the_workspace():
 def test_the_shipped_skill_scenarios_name_their_spend_caps():
     pytest.importorskip("yaml")
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
-    caps = {p.stem: S.load(p).subject.max_usd for p in S.catalog(folder) if S.load(p).kind == "skill"}
-    assert caps == {"explain-tenancy": 2.0, "review-om": 3.0}
+    skills = [S.load(p) for p in S.catalog(folder) if S.load(p).kind == "skill"]
+    # A subject in phases names a cap per phase, and none of its own.
+    caps = {s.name: s.subject.max_usd or {p.name: p.max_usd for p in s.subject.phases} for s in skills}
+    assert caps == {
+        "create-full-system": {"scaffold": 60.0, "mvp": 75.0, "review": 25.0, "close": 30.0},
+        "explain-tenancy": 2.0,
+        "review-om": 3.0,
+    }
+
+
+def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():
+    pytest.importorskip("yaml")
+    scn = S.load(Path(__file__).resolve().parent.parent / "benchmark" / "scenarios" / "create-full-system.yaml")
+    phases = {p.name: p for p in scn.subject.phases}
+    assert list(phases) == ["scaffold", "mvp", "review", "close"]
+    assert {p.session for p in phases.values()} == {"fresh"}
+    # The builders keep the handoff note and read the product spec; the review and the close start in the tree.
+    assert [p.name for p in phases.values() if p.hint] == ["scaffold", "mvp"]
+    assert [p.name for p in phases.values() if "{target}" in p.prompt] == ["scaffold", "mvp"]
+    assert phases["review"].cwd == phases["close"].cwd == "output"
+    # The review and the close get no word of the scaffold or of the benchmark.
+    for name in ("review", "close"):
+        assert not re.search(r"scaffold|benchmark", phases[name].prompt, re.IGNORECASE)
+    # No prompt names or points at the reference the judges read.
+    repository = next(r.repository for r in scn.judges.references if r.repository)
+    assert repository is not None
+    project = repository.rstrip("/").rsplit("/", 1)[-1].lower()
+    for phase in phases.values():
+        assert repository not in phase.prompt and project not in phase.prompt.lower()
+    assert scn.judges.weights == {"guideline": 0.4, "reference": 0.6}
+    assert scn.subject.gates == ["make check", "make test-integration"]
 
 
 # Agentic judges and their references -------------------------------------
