@@ -21,6 +21,7 @@
       --rehearsal --out /tmp/rehearsals
     uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
       --with extras
+    uv run benchmark/run.py judge --source benchmark/runs/<run folder> --dry-run
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -34,6 +35,10 @@ needs, where it runs, before it spends anything (`harness/preflight.py`).
 cut small, after its preflight (`harness/rehearsal.py`). `--with <group>`
 takes an optional group of the scenario's phases, which a run takes none
 of by default.
+
+`judge --source <run folder>` judges an earlier run's archived output
+again with this checkout's judges, and runs no subject: the judgement
+lands in a new run folder beside the source.
 """
 
 from __future__ import annotations
@@ -905,7 +910,7 @@ def describe_subject(scn: S.Scenario, argv: list[str]) -> str:
 
 def judge_agentic(
     scn: S.Scenario,
-    rt: RT.BaseRuntime,
+    sandbox: Path,
     staged: RF.Staged,
     art_dir: Path,
     run_dir: Path,
@@ -918,10 +923,11 @@ def judge_agentic(
 ) -> list[RF.Judged]:
     """One repeat's agentic judgements: the output staged as a root beside the references, and every judge's loop.
 
-    The output root is built in the sandbox from the repeat's artifacts,
-    and the task every judge gets is kept as the repeat's `judge-prompt.md`.
+    The output root is built in the run's sandbox from the repeat's
+    artifacts, and the task every judge gets is kept as the repeat's
+    `judge-prompt.md`.
     """
-    output = rt.sandbox / "judged" / str(index) / S.OUTPUT_ROOT
+    output = sandbox / "judged" / str(index) / S.OUTPUT_ROOT
     holds, why = RF.stage_output(art_dir, output, archived=bool(scn.subject.output))
     if why:
         notes.append(f"repeat {index}: {why}")
@@ -932,6 +938,56 @@ def judge_agentic(
     return RF.judge_all(
         flags, prompt, roots, run_dir / "judgements", index, effort, scn.judges.weights, scn.judges.budget, matrix
     )
+
+
+def keep_judgements(run_dir: Path, index: int, judgements: list[R.AnyJudgement]) -> None:
+    """Write each judgement of a repeat to `judgements/<repeat>-<provider>.json`, with its answer, and print its score."""
+    for j in judgements:
+        record = j.as_dict()
+        if isinstance(j, RF.Judged):
+            record["answer"] = j.answer
+        else:
+            record["raw"] = j.raw
+        (run_dir / "judgements").mkdir(parents=True, exist_ok=True)
+        (run_dir / "judgements" / f"{index}-{j.provider}.json").write_text(
+            json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {said(j)}")
+
+
+def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[str]]:
+    """Write `results.json` and `report.md`, print the summary, and return the results and what the schema refused."""
+    data = R.write_results(run, run_dir / "results.json")
+    problems = R.validate(data, SCHEMA)
+    if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing
+        print(R.UNVALIDATED, file=sys.stderr)
+        problems = []
+    if problems:
+        print("results.json does not match the schema:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+    R.write_report(run, run_dir / "report.md")
+
+    summary = data["summary"]
+    for provider, stats in summary["per_provider"].items():
+        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
+    for name, stats in (summary.get("references") or {}).items():
+        gaps = ", ".join(f"{count} {severity}" for severity, count in stats["gaps"].items())
+        print(f"{name:10} weight {stats['weight']:g}, mean {stats['mean']} over {stats['n']} score(s), gaps: {gaps}")
+    if summary["self_judged"]:
+        print(f"note: {summary['self_judged']}")
+    spent = data["spend"]
+    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
+    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
+    for fallback in summary["fallbacks"]:
+        print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
+
+    for skipped in summary["skipped"]:
+        print(f"{skipped['provider']:10} not answered: {skipped['reason']}")
+    if run.rehearsal:
+        print(RH.says(run.rehearsal))
+    print(f"report: {run_dir / 'report.md'}")
+    return data, problems
 
 
 def said(j: R.AnyJudgement) -> str:
@@ -951,10 +1007,14 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="run",
-        choices=["run", "list", "redact"],
-        help="run a scenario, list what there is, or redact every key from the run folders under --out",
+        choices=["run", "judge", "list", "redact"],
+        help="run a scenario, judge a run's archived output again, list what there is, "
+        "or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
+    parser.add_argument(
+        "--source", default=None, help="for judge: the run folder whose archived output is judged again, with no subject run"
+    )
     parser.add_argument(
         "--with",
         dest="groups",
@@ -979,7 +1039,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--runtime-config", default=None, help="JSON or YAML file with the runtime's settings")
     parser.add_argument("--target", default=None, help="a checkout the subject works on")
-    parser.add_argument("--out", default=str(DEFAULT_OUT), help="folder the run folders are written under")
+    parser.add_argument(
+        "--out", default=None, help="folder the run folders are written under; benchmark/runs, and for judge the source's folder"
+    )
     parser.add_argument(
         "--claude", default=os.environ.get("CLAUDE_BIN", "claude"), help="the Claude Code binary the subject runs"
     )
@@ -1064,16 +1126,21 @@ def command_redact(out: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    out = Path(args.out).resolve()
+    out = Path(args.out).resolve() if args.out else DEFAULT_OUT
     if args.command == "list":
         return command_list(out)
     if args.command == "redact":
         return command_redact(out)
-    if not args.scenario:
-        print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
-        return 2
     if args.max_spend_usd is not None and not 0 < args.max_spend_usd < float("inf"):
         print(f"--max-spend-usd is an amount in US dollars above 0, got {args.max_spend_usd}", file=sys.stderr)
+        return 2
+    if args.command == "judge":
+        return command_judge(args)
+    if args.source:
+        print("--source is for judge; a run of a scenario runs its subject", file=sys.stderr)
+        return 2
+    if not args.scenario:
+        print("--scenario is required; `run.py list` shows the scenarios", file=sys.stderr)
         return 2
     if args.repeat is not None and args.repeat < 1:
         print(f"--repeat is a whole number of at least 1, got {args.repeat}", file=sys.stderr)
@@ -1490,24 +1557,14 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             judgements: list[R.AnyJudgement]
             if scn.judges.agentic:
                 judgements = [
-                    *judge_agentic(scn, rt, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
+                    *judge_agentic(scn, rt.sandbox, staged, art_dir, run_dir, index, argv_subject, flags, effort, matrix, notes)
                 ]
             else:
                 prompt = J.build_prompt(scn.rubric, describe_subject(scn, argv_subject), blob, evidence=evidence_text)
                 (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
                 judgements = [*J.judge_all(flags, prompt, effort, matrix)]
             budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
-            for j in judgements:
-                record = j.as_dict()
-                if isinstance(j, RF.Judged):
-                    record["answer"] = j.answer
-                else:
-                    record["raw"] = j.raw
-                (run_dir / "judgements").mkdir(parents=True, exist_ok=True)
-                (run_dir / "judgements" / f"{index}-{j.provider}.json").write_text(
-                    json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-                )
-                print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {said(j)}")
+            keep_judgements(run_dir, index, judgements)
             run.repeats.append(
                 R.RepeatResult(
                     index=index,
@@ -1540,36 +1597,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     run.notes = notes
     if args.rehearsal:
         run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived, held=held)
-    data = R.write_results(run, run_dir / "results.json")
-    problems = R.validate(data, SCHEMA)
-    if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing
-        print(R.UNVALIDATED, file=sys.stderr)
-        problems = []
-    if problems:
-        print("results.json does not match the schema:", file=sys.stderr)
-        for problem in problems:
-            print(f"  {problem}", file=sys.stderr)
-    R.write_report(run, run_dir / "report.md")
-
+    data, problems = write_record(run, run_dir)
     summary = data["summary"]
-    for provider, stats in summary["per_provider"].items():
-        print(f"{provider:10} mean {stats['mean']} over {stats['n']} judgement(s), stdev {stats['stdev']}")
-    for name, stats in (summary.get("references") or {}).items():
-        gaps = ", ".join(f"{count} {severity}" for severity, count in stats["gaps"].items())
-        print(f"{name:10} weight {stats['weight']:g}, mean {stats['mean']} over {stats['n']} score(s), gaps: {gaps}")
-    if summary["self_judged"]:
-        print(f"note: {summary['self_judged']}")
-    spent = data["spend"]
-    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
-    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
-    for fallback in summary["fallbacks"]:
-        print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
-
-    for skipped in summary["skipped"]:
-        print(f"{skipped['provider']:10} not answered: {skipped['reason']}")
-    if run.rehearsal:
-        print(RH.says(run.rehearsal))
-    print(f"report: {run_dir / 'report.md'}")
     if problems:
         return 5
     if failed_subjects:
@@ -1584,6 +1613,277 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         print(f"the rehearsal did not prove the pipeline to its end: {why}", file=sys.stderr)
         return REHEARSAL_UNPROVEN
     if args.strict and summary["skipped"]:
+        return 3
+    return 0
+
+
+# Judging a run's output again ----------------------------------------------
+
+# The flags `judge` does not take: the subject's and the runtime's, and the groups, which are the source run's.
+NOT_FOR_JUDGE = {
+    "scenario": "--scenario",
+    "groups": "--with",
+    "repeat": "--repeat",
+    "runtime": "--runtime",
+    "runtime_config": "--runtime-config",
+    "target": "--target",
+    "subject_model": "--subject-model",
+    "preflight": "--preflight",
+    "rehearsal": "--rehearsal",
+    "build": "--build",
+    "screencast_port": "--screencast-port",
+}
+
+
+@dataclasses.dataclass
+class SourceRepeat:
+    """A repeat of the run judged again: its index, the commit its archive holds, and why it is refused, when it is."""
+
+    index: int
+    commit: str | None = None
+    refused: str | None = None
+
+
+def read_record(path: Path) -> dict[str, Any] | None:
+    """A JSON object a run folder holds, or None when the file is not there or holds no object."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def source_repeats(source: Path, results: dict[str, Any] | None) -> list[SourceRepeat]:
+    """Every repeat the source run recorded or kept artifacts for, in order, each refused when its output cannot be judged.
+
+    A repeat is refused when it kept no archive, when its archive does not
+    open as a zip or holds no file, and when the archive's SHA-256 is not
+    the one the source run recorded: that output is not the one the run
+    made. A repeat that was never judged, because a phase failed, the run
+    ended early, or a judge missed, is judged like any other.
+    """
+    recorded: dict[int, dict[str, Any]] = {}
+    listed = (results or {}).get("repeats")
+    for repeat in listed if isinstance(listed, list) else []:
+        if isinstance(repeat, dict) and isinstance(repeat.get("index"), int):
+            archive = repeat.get("archive")
+            recorded[repeat["index"]] = archive if isinstance(archive, dict) else {}
+    folder = source / "artifacts"
+    kept = {int(d.name) for d in folder.iterdir() if d.is_dir() and d.name.isdigit()} if folder.is_dir() else set()
+    out: list[SourceRepeat] = []
+    for index in sorted({*kept, *recorded}):
+        zip_file = folder / str(index) / A.ZIP
+        was = recorded.get(index, {})
+        if not zip_file.is_file():
+            out.append(SourceRepeat(index, refused="the source run kept no archive of its output"))
+        elif not A.readable(zip_file):
+            out.append(SourceRepeat(index, refused="its archive does not open as a zip"))
+        elif not (found := A.record(zip_file, source))["files"]:
+            out.append(SourceRepeat(index, refused="its archive holds no file"))
+        elif was.get("sha256") and was["sha256"] != found["sha256"]:
+            why = f"its archive's SHA-256 is {found['sha256']}, and the source run recorded {was['sha256']}"
+            out.append(SourceRepeat(index, refused=why))
+        else:
+            commit = was.get("commit")
+            out.append(SourceRepeat(index, commit=commit if isinstance(commit, str) else None))
+    return out
+
+
+def command_judge(args: argparse.Namespace) -> int:
+    """Judge an earlier run's archived output again, with this checkout's judges and no subject run.
+
+    The scenario is this checkout's, found by the name the source run
+    records, with the groups the source run took, so the rubric takes their
+    sentences. Every repeat whose archive can be judged is staged as a run
+    stages it before its judges. The others are refused with their reason,
+    and a source with nothing to judge makes no run folder. The run's spend
+    cap is the judges' budgets over the repeats it judges, unless
+    `--max-spend-usd` names one.
+    """
+    given = [flag for dest, flag in NOT_FOR_JUDGE.items() if getattr(args, dest) not in (None, False)]
+    if given:
+        told = ", ".join(given)
+        print(f"judge takes its scenario, groups, and output from the source run; {told} is not for it", file=sys.stderr)
+        return 2
+    if not args.source:
+        print("judge needs --source, the run folder whose archived output it judges again", file=sys.stderr)
+        return 2
+    source = Path(args.source).resolve()
+    resolved = read_record(source / "run.json") or {}
+    scenario, runtime, groups = resolved.get("scenario"), resolved.get("runtime"), resolved.get("groups")
+    name = scenario.get("name") if isinstance(scenario, dict) else None
+    ran_on = runtime.get("name") if isinstance(runtime, dict) else None
+    if not isinstance(name, str) or ran_on not in RT.NAMES:
+        print(f"{source} is not a run folder: it holds no run.json that names its scenario and its runtime", file=sys.stderr)
+        return 2
+    try:
+        scn = S.select(S.load(S.find(name, SCENARIOS)), [str(g) for g in groups] if isinstance(groups, list) else [])
+        flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
+    except (S.ScenarioError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if not (scn.subject.output and scn.judges.agentic):
+        print(
+            f"scenario {scn.name}: judge has agentic judges read the archive of an output folder, "
+            "and this scenario builds no output folder or has no agentic judges",
+            file=sys.stderr,
+        )
+        return 2
+    repeats = source_repeats(source, read_record(source / "results.json"))
+    for repeat in repeats:
+        if repeat.refused:
+            print(f"repeat {repeat.index} is not judged: {repeat.refused}", file=sys.stderr)
+    judged = [r for r in repeats if not r.refused]
+    if not judged:
+        print(f"{source} holds no output to judge: no run folder was made and no judge started", file=sys.stderr)
+        return 2
+    if resolved.get("rehearsal"):
+        # A rehearsal's output is judged within a rehearsal's bounds: each judge's budget cut as a rehearsal
+        # cuts it, and the run capped at a rehearsal's cap, which a flag can lower and never raise.
+        if args.max_spend_usd is not None and args.max_spend_usd > RH.MAX_SPEND_USD:
+            print(
+                f"the source is a rehearsal, whose judges spend at most ${RH.MAX_SPEND_USD:g}; --max-spend-usd can lower that, "
+                f"and {args.max_spend_usd:g} would raise it",
+                file=sys.stderr,
+            )
+            return 2
+        scn = dataclasses.replace(scn, judges=dataclasses.replace(scn.judges, budget=RH.budget(scn.judges.budget)))
+    cap = args.max_spend_usd if args.max_spend_usd is not None else S.judging_cap(scn, len(judged), len(P.members(flags)))
+    if resolved.get("rehearsal") and cap is not None:
+        cap = min(cap, RH.MAX_SPEND_USD)
+    out = Path(args.out).resolve() if args.out else source.parent
+    run_id, run_dir = new_run_dir(out, scn.name)
+    sandbox = RT.new_sandbox()
+    try:
+        # A run that can spend holds this machine awake until it ends; a dry run does not.
+        with PF.held_awake(not args.dry_run) as note:
+            if note:
+                print(note, file=sys.stderr)
+            return judge_again(args, scn, source, resolved, repeats, run_id, run_dir, sandbox, flags, cap, str(ran_on))
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+def judge_again(
+    args: argparse.Namespace,
+    scn: S.Scenario,
+    source: Path,
+    ran: dict[str, Any],
+    repeats: list[SourceRepeat],
+    run_id: str,
+    run_dir: Path,
+    sandbox: Path,
+    flags: P.Provider,
+    cap: float | None,
+    runtime: str,
+) -> int:
+    """Everything after the run folder of `judge` exists: the caller removes the sandbox whatever happens here.
+
+    Each repeat judged gets the source's artifacts but its judge prompt: the
+    archive, its manifest, the answer, and the collected files. The judges
+    read the archive's tree, as a run's judges do. The repeat records the
+    archive and the judgements, and no session, since no subject ran.
+    """
+    effort = args.effort or scn.judges.effort
+    matrix = J.load_matrix(MODELS)
+    try:
+        staged = RF.stage(scn.judges.references, ROOT, sandbox / "references", V.plugin_version(ROOT))
+    except RF.StageError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    # The repeats to judge; once the run ends, the repeats judged, and the rest under `capped`.
+    origin: dict[str, Any] = {
+        "run_id": str(ran.get("run_id") or source.name),
+        "path": V.shown(source, ROOT),
+        "repeats": [r.index for r in repeats if not r.refused],
+        "refused": [{"repeat": r.index, "reason": r.refused} for r in repeats if r.refused],
+        "capped": [],
+    }
+    notes = list(staged.notes)
+    resolved: dict[str, Any] = {
+        "run_id": run_id,
+        "source": origin,
+        "scenario": {**scn.as_dict(), "path": V.shown(scn.path, ROOT)},
+        "runtime": {"name": runtime},
+        "providers": {"flags": int(flags), "names": [P.name(p) for p in P.members(flags)]},
+        "effort": effort,
+        "models": {P.name(p): J.models_for(matrix, P.name(p)) for p in P.members(flags)},
+        "subject_model": ran.get("subject_model"),
+        "max_spend_usd": cap,
+        "guideline_sha": git_sha(ROOT),
+        "versions": {**static_versions(None, None, None), "references": staged.versions},
+        "notes": list(notes),
+        "started_at": R.now(),
+    }
+    if scn.subject.groups:
+        resolved["groups"] = S.taken_groups(scn)
+    if ran.get("rehearsal"):
+        # A rehearsal's output stays a rehearsal's, whoever judges it, and is never checked in.
+        resolved["rehearsal"] = True
+    (run_dir / "run.json").write_text(json.dumps(resolved, indent=2) + "\n", encoding="utf-8")
+    print(f"run folder: {run_dir}")
+    for note in notes:
+        print(note)
+    if args.dry_run:
+        print(json.dumps(resolved, indent=2))
+        print("dry run: no judge was called")
+        return 0
+    missing = [P.name(p) for p in P.members(flags) if not P.available(p)]
+    if missing and args.strict:
+        print(f"strict: no key for {', '.join(missing)}", file=sys.stderr)
+        return 3
+
+    run = R.RunResult(
+        run_id=run_id,
+        scenario=scn.name,
+        runtime=runtime,
+        started_at=resolved["started_at"],
+        guideline_sha=resolved["guideline_sha"],
+        versions=resolved["versions"],
+        subject={
+            "kind": scn.kind,
+            "skill": scn.subject.skill,
+            "prompt": scn.subject.prompt,
+            "model": resolved["subject_model"],
+            **subject_bounds(scn),
+        },
+        weights=scn.judges.weights,
+        source=origin,
+    )
+    budget = Budget(cap)
+    # A repeat's judges start only when what is left of the cap covers their budgets, so no judge is handed
+    # dollars the cap does not hold. The judges of a repeat that started still judge it.
+    need = S.judges_budget(scn, len(P.members(flags)))
+    to_judge = [r.index for r in repeats if not r.refused]
+    for repeat in (r for r in repeats if not r.refused):
+        if not budget.covers(need):
+            origin["capped"] = to_judge[to_judge.index(repeat.index) :]
+            left = (budget.cap or 0.0) - budget.spent
+            notes.append(
+                f"repeat {repeat.index} and after were not judged: ${left:.4f} of the run's ${budget.cap:g} spend cap is left, "
+                f"and the judges of a repeat may spend ${need:g}"
+            )
+            break
+        index = repeat.index
+        kept = source / "artifacts" / str(index)
+        art_dir = run_dir / "artifacts" / str(index)
+        shutil.copytree(kept, art_dir, symlinks=True)
+        (art_dir / "judge-prompt.md").unlink(missing_ok=True)  # the source's own; this run writes its own
+        paths = sorted(p.relative_to(run_dir).as_posix() for p in art_dir.rglob("*") if p.is_file())
+        archive = {**A.record(art_dir / A.ZIP, run_dir), "commit": repeat.commit}
+        judgements = judge_agentic(scn, sandbox, staged, art_dir, run_dir, index, [], flags, effort, matrix, notes)
+        budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
+        keep_judgements(run_dir, index, [*judgements])
+        # No subject ran, so the repeat carries no session and no subject spend, and its exit status is 0.
+        run.repeats.append(
+            R.RepeatResult(index=index, exit_status={"code": 0}, artifact_paths=paths, judgements=[*judgements], archive=archive)
+        )
+    origin["repeats"] = [r.index for r in run.repeats]
+    run.notes = notes
+    data, problems = write_record(run, run_dir)
+    if problems:
+        return 5
+    if args.strict and data["summary"]["skipped"]:
         return 3
     return 0
 

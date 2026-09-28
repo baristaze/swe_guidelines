@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -1443,3 +1444,279 @@ def test_a_run_that_spends_holds_this_machine_awake_and_a_dry_run_does_not(tmp_p
     monkeypatch.setattr(run.RT.BaseRuntime, "run", slow_claude)
     run.main([*base, "--claude", claude, "--subject-model", "claude-opus-5"])
     assert log.read_text(encoding="utf-8") == f"-i -s -w {os.getpid()}\n"
+
+
+# Judging a run's output again -----------------------------------------------
+
+# A subject in phases that builds an output folder, with a group whose sentence the rubric takes, and one agentic judge.
+BUILT = {
+    "name": "built",
+    "kind": "skill",
+    "runtimes": ["vm"],
+    "max_spend_usd": 999,
+    "subject": {
+        "skill": "arch-scaffold-new",
+        "output": "acme",
+        "groups": {"extras": {"rubric": "After the build, a review read the tree."}},
+        "phases": [
+            {"name": "scaffold", "prompt": "Build acme.", "max_usd": 100, "timeout_s": 60},
+            {"name": "review", "group": "extras", "prompt": "Review acme.", "max_usd": 50, "timeout_s": 60},
+        ],
+    },
+    "artifact": {"stdout": True, "files": ["review/report.md"]},
+    "rubric": "Judge the tree against the lenses.",
+    "judges": {
+        "providers": "anthropic",
+        "mode": "agentic",
+        "budget": {"max_usd": 5},
+        "references": [{"name": "guideline", "weight": 1, "paths": ["lenses/README.md"]}],
+    },
+}
+TREE = {"README.md": "# acme\n", "om/entity.py": "class Journalist: ...\n"}
+JUDGED_TREE = {
+    "references": {"guideline": {"score": 81, "gaps": [], "strengths": ["It names its entity, in om/entity.py."]}},
+    "rationale": "A small tree in the guideline's shape.",
+}
+
+
+def no_subject(*args, **kwargs):
+    raise AssertionError("judge made a runtime or ran a subject")
+
+
+@pytest.fixture
+def built(tmp_path, monkeypatch):
+    """This checkout's scenario, found by the name a source run records; the built-in matrix; a judge key; no runtime."""
+    folder = tmp_path / "scenarios"
+    folder.mkdir()
+    (folder / "built.json").write_text(json.dumps(BUILT), encoding="utf-8")
+    monkeypatch.setattr(run, "SCENARIOS", folder)
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setattr(run.RT, "build", no_subject)
+    monkeypatch.setattr(run.RT.BaseRuntime, "run", no_subject)
+
+
+def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: bool = True, rehearsal: bool = False) -> Path:
+    """A run folder as a run of BUILT with extras leaves it, under `runs`.
+
+    `outputs` maps each repeat to the files of its archive, or to None for a
+    repeat that kept no archive. Every repeat keeps its answer, its collected
+    report, and its own judge prompt. With `results`, results.json records
+    each archive, its SHA-256 and its commit, as a run records it. With
+    `rehearsal`, run.json is marked a rehearsal's.
+    """
+    src = runs / "20260927-233327-built-11435123"
+    repeats = []
+    for index, files in outputs.items():
+        art = src / "artifacts" / str(index)
+        (art / "workspace" / "review").mkdir(parents=True)
+        (art / "answer.md").write_text("## scaffold\n\nBuilt.\n", encoding="utf-8")
+        (art / "workspace" / "review" / "report.md").write_text("# Review\n", encoding="utf-8")
+        (art / "judge-prompt.md").write_text("the source run's own prompt\n", encoding="utf-8")
+        record: dict = {"index": index, "exit_status": {"code": 0}, "artifact_paths": [], "judgements": []}
+        if files is not None:
+            with zipfile.ZipFile(art / "output.zip", "w") as zf:
+                for name, text in files.items():
+                    zf.writestr(name, text)
+            run.A.write_manifest(art / "output.zip")
+            record["archive"] = {**run.A.record(art / "output.zip", src), "commit": "c" * 40}
+        repeats.append(record)
+    resolved: dict = {
+        "run_id": src.name,
+        "scenario": {"name": "built"},
+        "runtime": {"name": "vm"},
+        "groups": ["extras"],
+        "subject_model": "claude-opus-5",
+    }
+    if rehearsal:
+        resolved["rehearsal"] = True
+    (src / "run.json").write_text(json.dumps(resolved), encoding="utf-8")
+    if results:
+        (src / "results.json").write_text(json.dumps({"run_id": src.name, "repeats": repeats}), encoding="utf-8")
+    return src
+
+
+def judges(monkeypatch, *reads) -> list:
+    """Each judgement gets a fake Anthropic judge of its own, which reads `reads` and submits; returns those started."""
+    started: list = []
+
+    def client(key: str):
+        script = [turn(*reads), turn(("submit", JUDGED_TREE))] if reads else [turn(("submit", JUDGED_TREE))]
+        started.append(FAKES["anthropic"](script))
+        return started[-1]
+
+    monkeypatch.setitem(run.J.CLIENTS, "anthropic", client)
+    return started
+
+
+@needs_jsonschema
+def test_judge_judges_a_run_s_archived_output_again_and_records_no_subject_session(tmp_path, monkeypatch, built):
+    src = source_run(tmp_path / "runs", {0: TREE})
+    started = judges(monkeypatch, ("read_file", {"root": "output", "path": "om/entity.py"}))
+    assert run.main(["judge", "--source", str(src)]) == 0
+    (run_dir,) = [d for d in src.parent.iterdir() if d != src]  # a new run folder beside the source
+    [(_, told)] = sent_results("anthropic", started[0].requests[1])
+    assert "class Journalist" in told  # the judge read the tree the source run archived
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert results["source"] == {"run_id": src.name, "path": str(src.resolve()), "repeats": [0], "refused": [], "capped": []}
+    (repeat,) = results["repeats"]
+    assert repeat["archive"]["sha256"] == run.A.digest(src / "artifacts" / "0" / "output.zip")
+    assert repeat["archive"]["commit"] == "c" * 40
+    (judged,) = repeat["judgements"]
+    assert judged["status"] == "ok" and judged["judged"]["score"] == 81
+    assert results["summary"]["per_provider"]["anthropic"]["mean"] == 81
+    # No subject session: no phase, no subject spend. What the run spent is the judge's.
+    assert "phases" not in repeat and repeat["subject_usage"] == {} and repeat["subject_cost_usd"] is None
+    spend = results["spend"]
+    assert spend["subject"]["cost_usd"] == 0 and spend["total_usd"] == spend["judges"]["anthropic"]["cost_usd"] > 0
+    # The source's artifacts but its judge prompt, and a prompt of this run's own, whose rubric takes the source's group.
+    assert repeat["artifact_paths"] == [
+        "artifacts/0/MANIFEST.txt",
+        "artifacts/0/answer.md",
+        "artifacts/0/output.zip",
+        "artifacts/0/workspace/review/report.md",
+    ]
+    prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+    assert "After the build, a review read the tree." in prompt and "the source run's own prompt" not in prompt
+    assert "- `output`: the tree the subject built" in prompt
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["source"] == results["source"] and resolved["groups"] == ["extras"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert f"This run judged again the archived output of the run `{src.name}`" in report
+
+
+@needs_jsonschema
+def test_judge_judges_a_repeat_never_judged_and_refuses_one_with_no_output(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {0: TREE, 1: TREE, 2: TREE, 3: None, 4: {}})
+    results = json.loads((src / "results.json").read_text(encoding="utf-8"))
+    # None of the three was judged: a phase failed, the run ended early after one, and the one judge missed.
+    results["repeats"][0]["exit_status"] = {"code": 1}
+    results["repeats"][1]["ended_early"] = {"phase": "review", "reason": "incomplete", "not_run": []}
+    results["repeats"][2]["judgements"] = [
+        {"provider": "anthropic", "model": "m", "effort": "high", "status": "missed", "latency_s": 1, "verdict": None}
+    ]
+    (src / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    started = judges(monkeypatch)
+    assert run.main(["judge", "--source", str(src)]) == 0
+    (run_dir,) = [d for d in src.parent.iterdir() if d != src]
+    judged = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    assert [r["index"] for r in judged["repeats"]] == [0, 1, 2]
+    assert all(r["judgements"][0]["judged"]["score"] == 81 for r in judged["repeats"])
+    assert judged["source"]["refused"] == [
+        {"repeat": 3, "reason": "the source run kept no archive of its output"},
+        {"repeat": 4, "reason": "its archive holds no file"},
+    ]
+    # No judge started on a repeat with no output: one judge for each of the three, and no transcript, no artifacts else.
+    assert len(started) == 3
+    assert sorted(p.name for p in (run_dir / "judgements").glob("*.jsonl")) == [f"{i}-anthropic.jsonl" for i in range(3)]
+    assert sorted(p.name for p in (run_dir / "artifacts").iterdir()) == ["0", "1", "2"]
+    err = capsys.readouterr().err
+    assert "repeat 3 is not judged: the source run kept no archive of its output" in err
+    assert "repeat 4 is not judged: its archive holds no file" in err
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Repeat 4 of it was not judged: its archive holds no file." in report
+    # A source with nothing to judge makes no run folder and starts no judge.
+    empty = source_run(tmp_path / "other", {0: None, 1: {}})
+    assert run.main(["judge", "--source", str(empty)]) == 2
+    assert list(empty.parent.iterdir()) == [empty] and len(started) == 3
+    assert "holds no output to judge: no run folder was made and no judge started" in capsys.readouterr().err
+
+
+def test_judge_refuses_an_archive_that_is_not_the_one_the_source_run_recorded(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {0: TREE})
+    with zipfile.ZipFile(src / "artifacts" / "0" / "output.zip", "a") as zf:
+        zf.writestr("planted.py", "print('not built by the subject')\n")
+    started = judges(monkeypatch)
+    assert run.main(["judge", "--source", str(src)]) == 2
+    assert started == [] and list(src.parent.iterdir()) == [src]
+    assert "repeat 0 is not judged: its archive's SHA-256 is " in capsys.readouterr().err
+
+
+def test_judge_caps_its_spend_at_the_judges_budgets_over_the_repeats_it_judges(tmp_path, monkeypatch, built):
+    src = source_run(tmp_path / "runs", {0: TREE, 1: TREE, 2: None})
+    out = tmp_path / "judged"
+    base = ["judge", "--source", str(src), "--providers", "anthropic,openai", "--out", str(out)]
+
+    def cap_of(*flags: str) -> float:
+        before = set(out.iterdir()) if out.exists() else set()
+        assert run.main([*base, *flags, "--dry-run"]) == 0
+        (made,) = set(out.iterdir()) - before
+        return json.loads((made / "run.json").read_text(encoding="utf-8"))["max_spend_usd"]
+
+    # Two judges at $5 each over the two repeats it judges: no phase's cap ($150 a repeat), not the scenario's $999.
+    assert cap_of() == 20
+    assert cap_of("--max-spend-usd", "7") == 7
+
+
+def only_run(folder: Path) -> tuple[dict, dict, str]:
+    """The run.json, the results.json, and the report of the one run folder under `folder`."""
+    (made,) = folder.iterdir()
+    read = [json.loads((made / name).read_text(encoding="utf-8")) for name in ("run.json", "results.json")]
+    return read[0], read[1], (made / "report.md").read_text(encoding="utf-8")
+
+
+def test_judge_starts_no_judge_on_a_repeat_its_cap_does_not_cover(tmp_path, monkeypatch, built):
+    src = source_run(tmp_path / "runs", {0: TREE, 1: TREE})
+    out = tmp_path / "judged"
+    started = judges(monkeypatch)
+    # $4 does not cover one repeat's judge budget, $5: no judge starts, and the notes say why.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "below"), "--max-spend-usd", "4"]) == 0
+    _, results, report = only_run(out / "below")
+    assert started == [] and results["repeats"] == []
+    assert results["source"]["repeats"] == [] and results["source"]["capped"] == [0, 1]
+    why = "repeat 0 and after were not judged: $4.0000 of the run's $4 spend cap is left, and the judges of a repeat may spend $5"
+    assert why in results["notes"]
+    assert (
+        "Repeat(s) 0, 1 of it were not judged: what was left of the run's spend cap did not cover their judges' budgets."
+        in report
+    )
+    # $5.001 covers the first repeat's judge; what that judge spent leaves too little for the second's.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "one"), "--max-spend-usd", "5.001"]) == 0
+    _, results, _ = only_run(out / "one")
+    assert len(started) == 1 and [r["index"] for r in results["repeats"]] == [0]
+    assert results["source"]["repeats"] == [0] and results["source"]["capped"] == [1]
+    assert any(n.startswith("repeat 1 and after were not judged") for n in results["notes"])
+
+
+def test_judge_judges_a_rehearsal_s_output_within_a_rehearsal_s_bounds(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {i: TREE for i in range(6)}, rehearsal=True)
+    out = tmp_path / "judged"
+    budgets: list = []
+    judge_agentic = run.RF.A.judge_agentic
+
+    def spy(*args, **kwargs):
+        budgets.append(kwargs["budget"])
+        return judge_agentic(*args, **kwargs)
+
+    monkeypatch.setattr(run.RF.A, "judge_agentic", spy)
+    started = judges(monkeypatch)
+    # Two judges at the stub's $0.50 over six repeats is $6, and a rehearsal's cap is $5.
+    both = ["--providers", "anthropic,openai"]
+    assert run.main(["judge", "--source", str(src), *both, "--out", str(out / "dry"), "--dry-run"]) == 0
+    (dry,) = (out / "dry").iterdir()  # a dry run writes run.json alone
+    resolved = json.loads((dry / "run.json").read_text(encoding="utf-8"))
+    assert resolved["max_spend_usd"] == 5 and resolved["rehearsal"] is True
+    assert {k: resolved["scenario"]["judges"]["budget"][k] for k in ("max_usd", "wall_s", "submits")} == {
+        "max_usd": 0.5,
+        "wall_s": 900.0,
+        "submits": 2,
+    }
+    # A flag can lower that cap, never raise it.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "high"), "--max-spend-usd", "7"]) == 2
+    assert not (out / "high").exists() and "would raise it" in capsys.readouterr().err
+    # Judged: every judge gets the stub budget, the cap is the stub's over the repeats, and the folder is a rehearsal's.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "run")]) == 0
+    resolved, results, _ = only_run(out / "run")
+    assert len(started) == 6 and [r["index"] for r in results["repeats"]] == list(range(6))
+    assert all((b.max_usd, b.wall_s, b.submits) == (0.5, 900.0, 2) for b in budgets) and len(budgets) == 6
+    assert resolved["max_spend_usd"] == 3 and resolved["rehearsal"] is True
+
+
+def test_judge_refuses_a_flag_of_the_subject_and_a_run_refuses_a_source(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {0: TREE})
+    started = judges(monkeypatch)
+    assert run.main(["judge", "--source", str(src), "--with", "extras", "--repeat", "2"]) == 2
+    assert "--with, --repeat is not for it" in capsys.readouterr().err
+    assert run.main(["--scenario", "built", "--source", str(src)]) == 2  # a run of the scenario would run its subject
+    assert "--source is for judge" in capsys.readouterr().err
+    assert started == [] and list(src.parent.iterdir()) == [src]
