@@ -18,6 +18,12 @@ none. `requires` names what its runtime must provide. A
 scenario that lists a runtime unable to provide what it requires is
 refused when it loads, so no run of it starts there.
 
+A scenario can name how many times a run repeats its subject, `repeat`,
+and the run's spend cap in US dollars, `max_spend_usd`. A run takes each
+when its flag, `--repeat` or `--max-spend-usd`, is not given, and a flag
+overrides it. A scenario that names neither runs 3 repeats with no run
+cap.
+
 A skill subject is bounded by count and by spend: a turn cap and a cap in
 US dollars, `max_usd`, which every skill subject names. A skill subject
 can also run in `phases`, each a session of its own with its own prompt
@@ -226,6 +232,9 @@ class Scenario:
     runtimes: list[str]
     evidence: EvidenceSpec = field(default_factory=EvidenceSpec)
     requires: list[str] = field(default_factory=list)
+    # The repeats and the run's spend cap a run takes when no flag names them; None when the scenario names none.
+    repeat: int | None = None
+    max_spend_usd: float | None = None
     path: Path | None = None
 
     def resolve(self, value: str | None) -> Path | None:
@@ -264,6 +273,8 @@ class Scenario:
             "judges": self.judges.as_dict(),
             "runtimes": list(self.runtimes),
             "requires": list(self.requires),
+            "repeat": self.repeat,
+            "max_spend_usd": self.max_spend_usd,
             "evidence": {"files": list(self.evidence.files), "expected": self.evidence.expected},
             "path": str(self.path) if self.path else None,
         }
@@ -296,7 +307,7 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     """Build a scenario from parsed data."""
     if not isinstance(data, dict):
         raise ScenarioError("a scenario file holds a mapping at the top level")
-    _only(data, ("name", "kind", "subject", "artifact", "rubric", "judges", "runtimes", "requires", "evidence"), "scenario")
+    _only(data, SCENARIO_KEYS, "scenario")
     name = str(data.get("name") or (path.stem if path else ""))
     if not name:
         raise ScenarioError("scenario: name is required")
@@ -304,6 +315,8 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
     if kind not in KINDS:
         raise ScenarioError(f"scenario {name}: kind {kind!r} is not one of {', '.join(KINDS)}")
     runtimes, requires = _runtimes(data, name)
+    repeat = None if data.get("repeat") is None else _whole(data["repeat"], f"scenario {name}: repeat")
+    max_spend_usd = _usd(data.get("max_spend_usd"), f"scenario {name}: max_spend_usd")
 
     raw_subject = data.get("subject") or {}
     if not isinstance(raw_subject, dict):
@@ -380,10 +393,25 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         runtimes=runtimes,
         evidence=evidence,
         requires=requires,
+        repeat=repeat,
+        max_spend_usd=max_spend_usd,
         path=path,
     )
 
 
+SCENARIO_KEYS = (
+    "name",
+    "kind",
+    "subject",
+    "artifact",
+    "rubric",
+    "judges",
+    "runtimes",
+    "requires",
+    "repeat",
+    "max_spend_usd",
+    "evidence",
+)
 SUBJECT_KEYS = (
     "skill",
     "prompt",

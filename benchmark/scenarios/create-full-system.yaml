@@ -9,12 +9,16 @@ kind: skill
 # runtime provides, and the machine keeps the judges' keys and this file
 # out of the subject's reach.
 #
-# It runs once. Its phases' spend caps sum to $190, the run's cap:
+# It runs once, and its run's spend cap is $190, the sum of its phases'
+# caps. `repeat` and `max_spend_usd` below say both, so a run of it
+# passes neither flag:
 #
-#     uv run benchmark/run.py --scenario create-full-system --repeat 1 --max-spend-usd 190 \
+#     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml
 runtimes: [vm]
 requires: [docker]
+repeat: 1
+max_spend_usd: 190
 subject:
   skill: arch-scaffold-new
   # The product spec is the target's one file. The two builder phases
