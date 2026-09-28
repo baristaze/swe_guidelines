@@ -1642,7 +1642,8 @@ def test_judge_judges_a_repeat_never_judged_and_refuses_one_with_no_output(tmp_p
 def test_judge_tells_a_repeat_s_judges_only_the_groups_whose_phases_all_ran_in_it(tmp_path, monkeypatch, built):
     # The group holds a review and a close, and its sentence stands for both.
     close = {"name": "close", "group": "extras", "prompt": "Close the findings.", "max_usd": 50, "timeout_s": 60}
-    grouped = {**BUILT, "subject": {**BUILT["subject"], "phases": [*BUILT["subject"]["phases"], close]}}
+    grouped = json.loads(json.dumps(BUILT))
+    grouped["subject"]["phases"].append(close)
     (tmp_path / "scenarios" / "built.json").write_text(json.dumps(grouped), encoding="utf-8")
     src = source_run(tmp_path / "runs", {0: TREE, 1: TREE, 2: TREE, 3: TREE})
     results = json.loads((src / "results.json").read_text(encoding="utf-8"))
