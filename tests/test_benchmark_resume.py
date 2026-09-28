@@ -278,6 +278,53 @@ def test_a_milestone_that_is_not_the_one_recorded_is_refused(bench, capsys):
     assert "repeat 0 is not resumed: its milestone's SHA-256 is " in capsys.readouterr().err
 
 
+# The handoff note ----------------------------------------------------------------------
+
+NOTE = "what scaffold did, decided, and left"
+# Two builders that keep the note, and between them a phase no one tells of it.
+NOTED = scenario(
+    phase("scaffold", {"note": NOTE, "write": {"site/a.txt": "a"}}, hint=True),
+    phase("review", {"tree": "."}),
+    phase("mvp", {"write": {"site/b.txt": "b"}}, hint=True),
+)
+
+
+@needs_jsonschema
+def test_a_resumed_builder_gets_the_note_the_builder_before_it_left_and_no_other_phase_sees_it(bench):
+    bench.write(NOTED)
+    src = bench.source()
+    _, review, mvp = seen(src)
+    # The unbroken run: mvp reads the note, and the review never finds it.
+    assert mvp is not None and mvp["note"] == NOTE
+    assert review is not None and review["handoff_in_reach"] == [] and "HANDOFF.md" not in review["tree"]
+    # Each milestone keeps the note as it stood after its phase, the review's included.
+    for record in results(src)["repeats"][0]["phases"]:
+        assert (src / record["milestone"]["handoff"]).read_text(encoding="utf-8") == NOTE
+    for after in ("scaffold", "review"):
+        code, run_dir = bench.run("resume", "--source", str(src), "--after", after)
+        assert code == 0 and run_dir is not None
+        *before, resumed = seen(run_dir)
+        assert resumed is not None and resumed["note"] == NOTE  # as the unbroken run's mvp read it
+        for other in before:  # the review, when it runs: no note in reach, and none in its tree
+            assert other is not None and other["handoff_in_reach"] == [] and "HANDOFF.md" not in other["tree"]
+        (carried,) = [p for p in results(run_dir)["repeats"][0]["phases"] if p["name"] == after]
+        assert carried["carried"] and (run_dir / carried["milestone"]["handoff"]).read_text(encoding="utf-8") == NOTE
+
+
+def test_on_another_machine_the_note_is_kept_and_given_back_hidden(bench, tmp_path):
+    bench.write(NOTED)
+    config = tmp_path / "vm.json"
+    config.write_text(json.dumps(vm_config(tmp_path, fetch=["cp", "-R", "{remote}/.", "{local}"])), encoding="utf-8")
+    src = bench.source("--runtime", "vm", "--runtime-config", str(config))
+    scaffold = results(src)["repeats"][0]["phases"][0]
+    assert (src / scaffold["milestone"]["handoff"]).read_text(encoding="utf-8") == NOTE
+    code, run_dir = bench.run("resume", "--source", str(src), "--after", "scaffold")  # the config the source recorded
+    assert code == 0 and run_dir is not None
+    review, mvp = seen(run_dir)
+    assert review is not None and review["handoff_in_reach"] == [] and "HANDOFF.md" not in review["tree"]
+    assert mvp is not None and mvp["note"] == NOTE
+
+
 # What resume may spend ---------------------------------------------------------------
 
 

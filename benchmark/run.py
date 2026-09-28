@@ -655,19 +655,22 @@ def checkpoint(
 def keep_milestone(
     rt: RT.BaseRuntime, harness: CliStream, plan: Plan, scn: S.Scenario, name: str, commit: str, index: int
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Keep what phase `name` left in the run folder: its checkpoint as a zip, and the files the scenario collects.
+    """Keep what phase `name` left in the run folder: its checkpoint as a zip, the files the scenario collects, the note.
 
     Returns the milestone's record, and a note when it is not whole. The
     checkpoint is archived into the workspace where the subject runs,
     brought back with the collected files as they stand, and removed from
-    the workspace, so the next phase finds nothing of it there. It goes
-    under `artifacts/<repeat>/milestones/<phase>/`: `output.zip`, its
-    manifest, and the collected files under `workspace/`.
+    the workspace, so the next phase finds nothing of it there. The
+    handoff note a hinted phase kept is hidden between phases, and kept as
+    it stands too. It all goes under `artifacts/<repeat>/milestones/<phase>/`:
+    `output.zip`, its manifest, the collected files under `workspace/`,
+    and `HANDOFF.md`.
     """
     folder = str(scn.subject.output)
     zip_file = rt.workspace / PH.MILESTONE
     try:
         archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.MILESTONE, commit])
+        note = rt.hidden_copy(PH.HANDOFF, PH.MILESTONE_NOTE) if archived.ok else None
         found = rt.collect([PH.MILESTONE, *scn.artifact.files]) if archived.ok else []
         if zip_file not in found:
             why = f"the archive failed (exit {archived.code})" if not archived.ok else "its zip did not come back"
@@ -682,8 +685,15 @@ def keep_milestone(
             (dest / "workspace" / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(file, dest / "workspace" / rel)
             collected.append(rel)
-        record, note = keep_archive(zip_file, dest, rt.run_dir, commit)
-        return ({**record, "collected": collected} if record else None), note
+        kept: dict[str, Any] = {"collected": collected}
+        if note is not None and note.is_file():
+            # Hidden where it lies, it stays there; a copy another machine's collection brought here goes.
+            shutil.copyfile(note, dest / PH.HANDOFF)
+            if note.is_relative_to(rt.workspace):
+                note.unlink()
+            kept["handoff"] = (dest / PH.HANDOFF).relative_to(rt.run_dir).as_posix()
+        record, said = keep_archive(zip_file, dest, rt.run_dir, commit)
+        return ({**record, **kept} if record else None), said
     finally:
         # Once it is back, or whatever went wrong, no later phase finds it in the workspace.
         harness_run(rt, harness, plan, ["sh", "-c", PH.DROP, "sh", posixpath.dirname(PH.MILESTONE)])
@@ -1566,6 +1576,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             # Every repeat starts in a workspace of its own, empty, or holding the milestone a resumed run starts from.
             seed = resume.seed(index, rt.sandbox / "seed" / str(index), str(scn.subject.output)) if resume else None
             rt.prepare_repeat(index, seed)
+            if resume is not None and resume.repeats[index].note is not None:
+                # Hidden as the phases before left it: the next hinted phase is shown it, and no other phase sees it.
+                rt.hide(PH.HANDOFF)
             done: SkillRepeat | None = None
             if scn.kind == "qa":
                 status, artifact, subject_usage = run_subject_qa(scn, streams, dict(os.environ), matrix, effort, model or "")
@@ -2037,7 +2050,8 @@ class Milestone:
 
     `zip` is the phase's checkpoint as a zip, and `files` the folder of the
     files the scenario collected after the phase. `sha256` and `commit` are
-    what the source run recorded of the zip.
+    what the source run recorded of the zip. `note` is the handoff note as
+    it stood after the phase, when a hinted phase had kept one.
     """
 
     phase: str
@@ -2046,6 +2060,7 @@ class Milestone:
     sha256: str | None
     commit: str | None
     carried: list[dict[str, Any]]
+    note: Path | None = None
 
 
 def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int, tuple[dict[str, Milestone], dict[str, str]]]:
@@ -2079,6 +2094,7 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
                     kept.get("sha256"),
                     kept.get("commit"),
                     records[: at + 1],
+                    source / kept["handoff"] if isinstance(kept.get("handoff"), str) else None,
                 )
         if records and not any("milestone" in r for r in records):
             last = records[-1]
@@ -2134,6 +2150,9 @@ def milestone_refusal(milestone: Milestone, source: Path) -> str | None:
         return f"its milestone holds the commit {comment}, and the source run recorded {milestone.commit}"
     if outside is not None:
         return f"its milestone names a path outside its tree: {outside}"
+    note = milestone.note
+    if note is not None and not (note.resolve().is_relative_to(source) and note.is_file()):
+        return "the source run recorded a handoff note with its milestone, and kept none in its folder"
     return None
 
 
@@ -2216,6 +2235,9 @@ class Resume:
         unpack(milestone.zip, dest / folder)
         if milestone.files.is_dir():
             shutil.copytree(milestone.files, dest, dirs_exist_ok=True)
+        if milestone.note is not None:
+            # Beside the output folder, where the harness hides it before the first phase runs.
+            shutil.copyfile(milestone.note, dest / PH.HANDOFF)
         return dest
 
     def carry(self, index: int, run_dir: Path) -> list[dict[str, Any]]:
@@ -2236,6 +2258,9 @@ class Resume:
             shutil.copytree(milestone.files, dest / "workspace", dirs_exist_ok=True)
             collected = sorted(p.relative_to(milestone.files).as_posix() for p in milestone.files.rglob("*") if p.is_file())
         kept = {**A.record(dest / A.ZIP, run_dir), "commit": milestone.commit, "collected": collected}
+        if milestone.note is not None:
+            shutil.copyfile(milestone.note, dest / PH.HANDOFF)
+            kept["handoff"] = (dest / PH.HANDOFF).relative_to(run_dir).as_posix()
         out = []
         for record in milestone.carried:
             copy = {k: v for k, v in record.items() if k != "milestone"}

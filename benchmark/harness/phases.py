@@ -136,6 +136,9 @@ ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive 
 # workspace, brought back, and removed with its folder (DROP) before the
 # next phase starts, so no phase finds it.
 MILESTONE = ".archive/milestone.zip"
+# Where the handoff note is copied beside it, on a machine whose hidden
+# folder is not this one's, so the collection brings it back too.
+MILESTONE_NOTE = ".archive/HANDOFF.md"
 # A path of the workspace removed. Argument: the path.
 DROP = 'rm -rf -- "$1"'
 # How many files the output folder holds, less its .git, a symlink counted

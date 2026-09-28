@@ -123,7 +123,8 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
                            the output's last commit, whole, and a line per file
   artifacts/<repeat>/milestones/<phase>/
                            what a phase left: its checkpoint as output.zip, with
-                           MANIFEST.txt, and the collected files under workspace/
+                           MANIFEST.txt, the collected files under workspace/, and
+                           HANDOFF.md when a hinted phase had kept the note
   judgements/<repeat>-<provider>.json
   judgements/<repeat>-<provider>.jsonl
                            an agentic judge's transcript, one line per step
@@ -788,11 +789,16 @@ output.
 milestone, so a later run can start from it (see Resume from a
 milestone). After a phase whose checkpoint holds a file, the harness
 archives that checkpoint where the subject ran and brings it back with
-the files the scenario collects, as they stand after that phase. They go
-under `artifacts/<repeat>/milestones/<phase>/`: `output.zip` with its
-`MANIFEST.txt`, and the collected files under `workspace/`. The zip is
-redacted and recorded as the output's is, under the phase's `milestone`
-in `results.json`, with the commit and the paths of the collected files.
+the files the scenario collects, as they stand after that phase. It
+keeps the handoff note too, as it stands, once a hinted phase has kept
+one. The note is hidden between phases, so it is read where it is
+hidden; on another machine it is copied into the workspace there for the
+fetch, and removed with the zip. They go under
+`artifacts/<repeat>/milestones/<phase>/`: `output.zip` with its
+`MANIFEST.txt`, the collected files under `workspace/`, and
+`HANDOFF.md`. The zip is redacted and recorded as the output's is, under
+the phase's `milestone` in `results.json`, with the commit, the paths of
+the collected files, and the note's path under `handoff`.
 Then the harness removes the zip from the workspace, so no later phase
 finds it. A phase that failed keeps its milestone too, since its
 checkpoint is kept. A phase after which the output folder holds no file
@@ -1340,8 +1346,11 @@ only the source run held.
 Every repeat the source recorded is resumed, each from its own
 milestone. Its workspace starts with the milestone's tree as the output
 folder, each file with its executable bit and each symlink as a link,
-and with the collected files at their paths. It starts in no git
-repository: the zip holds the tree, not its history. Before the first
+and with the collected files at their paths. The handoff note the
+milestone kept is hidden before the first phase, as the phases before
+left it: the next hinted phase is shown it, and a phase without the hint
+never sees it. It starts in no git repository: the zip holds the tree,
+not its history. Before the first
 phase, the harness counts the output folder's files where the subject
 runs. When they are not the milestone's, no phase runs, and the repeat
 fails with a note, so nothing is built on another tree. A repeat is
@@ -1350,14 +1359,16 @@ refused, with its reason and no phase started, when:
 - the source kept no milestone after that phase;
 - its zip does not open, holds no file, or names a path outside its tree;
 - its SHA-256 is not the one the source recorded, or the commit
-  `git archive` wrote in it is not the recorded one.
+  `git archive` wrote in it is not the recorded one;
+- the source recorded a handoff note with it and kept none.
 
 A source with no repeat to resume makes no run folder, and exits 2.
 
 A run recorded before phases kept milestones names none. Its archive is
 then the milestone of its last phase, when the archive's commit is that
 phase's checkpoint, and `artifacts/<repeat>/output.zip` is restored with
-the collected files beside it. An archive of another commit is refused.
+the collected files beside it. Such a run kept no handoff note, so none
+is restored. An archive of another commit is refused.
 
 **What it records.** The new run lands beside the source, or under
 `--out`. Each repeat keeps the number it had in the source. Its phases

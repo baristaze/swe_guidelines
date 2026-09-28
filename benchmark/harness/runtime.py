@@ -305,6 +305,16 @@ class BaseRuntime:
         """Move a hidden path back into the workspace, when one is hidden."""
         _move(self.hidden(rel), self.workspace / rel)
 
+    def hidden_copy(self, rel: str, into: str) -> Path | None:
+        """Where a hidden file can be read on this machine after the next collection; None when none is hidden.
+
+        Here the hidden folder is on this machine, so it is the file itself,
+        read where it lies, and `into` is not used. Nothing moves, so the
+        phases see the workspace as they would have.
+        """
+        path = self.hidden(rel)
+        return path if path.is_file() else None
+
     def command(self, argv: list[str], cwd: Path) -> list[str]:
         """The command this machine runs. The host runs the subject itself."""
         return list(argv)
@@ -738,6 +748,9 @@ KILL = (
 RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
 # A path moved to another, replacing what is there; nothing when it is not there.
 MOVE = '[ -e "$1" ] || [ -L "$1" ] || exit 0; mkdir -p -- "${2%/*}" && rm -rf -- "$2" && mv -- "$1" "$2"'
+# A hidden file copied into a path of the workspace, for the collection to
+# fetch. Exit 3: nothing is hidden there.
+COPY_HIDDEN = '[ -f "$1" ] || exit 3; mkdir -p -- "${2%/*}" && cp -- "$1" "$2"'
 
 
 def fill(words: list[str], local: str, remote: str) -> list[str]:
@@ -889,6 +902,21 @@ class VmRuntime(BaseRuntime):
     def show(self, rel: str) -> None:
         """Move a hidden path there back into the workspace there."""
         self.move(f"{self.remote_part('hidden')}/{rel}", f"{self.remote()}/{rel}")
+
+    def hidden_copy(self, rel: str, into: str) -> Path | None:
+        """Copy a hidden file there into the workspace at `into`, and say where the next collection brings it here.
+
+        None when none is hidden, or the copy failed, which is noted. The
+        caller removes the copy from the workspace there once it is back.
+        """
+        if self.failure is not None:
+            return None
+        code = self.helper(self.there(COPY_HIDDEN, f"{self.remote_part('hidden')}/{rel}", f"{self.remote()}/{into}"))
+        if code == 0:
+            return self.workspace / into
+        if code != 3:
+            self.notes.append(f"[{self.name}] copying the hidden {rel} there for the collection failed (exit {code})")
+        return None
 
     def move(self, source: str, dest: str) -> None:
         """Move a path there, noting a move that failed."""

@@ -637,7 +637,7 @@
         },
         "checkpoint": { "description": "The commit made in the output folder after the phase; null when none was.", "type": ["string", "null"] },
         "milestone": {
-          "description": "What the phase left, kept in the run folder: its checkpoint as a zip, with its manifest, its SHA-256, its size, its files, and the commit, and the files the scenario collects as they stood after it, by their paths in the workspace.",
+          "description": "What the phase left, kept in the run folder: its checkpoint as a zip, with its manifest, its SHA-256, its size, its files, and the commit; the files the scenario collects as they stood after it, by their paths in the workspace; and the handoff note as it stood, when a hinted phase had kept one.",
           "type": "object",
           "required": ["path", "manifest", "sha256", "bytes", "files", "commit", "collected"],
           "additionalProperties": false,
@@ -648,7 +648,8 @@
             "bytes": { "type": "integer", "minimum": 0 },
             "files": { "type": "integer", "minimum": 0 },
             "commit": { "type": ["string", "null"] },
-            "collected": { "type": "array", "items": { "type": "string" } }
+            "collected": { "type": "array", "items": { "type": "string" } },
+            "handoff": { "description": "The handoff note's path in the run folder.", "type": "string" }
           }
         },
         "carried": { "description": "The phase ran in the source run this run resumed, not in this one.", "const": true },
