@@ -256,9 +256,11 @@ subject ran and no provider was called. There is no score to report.
 After exit 6, a subject that failed in some repeats: the measurement
 below, with the repeats that failed and the reason the stream
 `streams/cli.jsonl` gives for each. A repeat whose record names
-`no_tree` ended after a phase that left no file in the output folder:
-name that phase and the phases that did not run, and say the run
-started no later repeat. `report.md` scores a failed repeat 0
+`ended_early` ended after one phase: its `reason` is `no_tree`, the
+phase left no file in the output folder, or `incomplete`, its session
+ended with the Agent calls its `pending_agents` names unanswered. Name
+that phase, the reason, the pending calls, and the phases that did not
+run, and say the run started no later repeat. `report.md` scores a failed repeat 0
 in every mean; say those zeros are failures no judge scored. When every
 repeat failed, as on a vm machine that does not answer, report the
 reason and no score.

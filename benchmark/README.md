@@ -62,7 +62,7 @@ A repeat whose subject failed is not judged, and it is not dropped
 either. It counts as a failure: it scores 0 in every provider's mean,
 and a run whose every repeat failed scores 0. A subject fails on a
 nonzero exit, a timeout, or `is_error` in its result. A subject in
-phases fails when one of its phases does, or leaves no tree (see A
+phases fails when one of its phases does, or ends the run early (see A
 subject in phases).
 Dropping the failures would let a subject that fails one time in three
 keep the score of the two times it did not.
@@ -720,13 +720,24 @@ Each phase's record in `results.json` names its commit, and its wall
 time, `wall_s`: the session's, from its start to its end, without the
 checkpoint. The report's Phases table shows both.
 
-**A phase that leaves no tree.** A phase after which the output folder
-holds no file ends the run. There is no folder, or its checkpoint's
-tree is empty. The phases after it do not run, since they would spend on
-an empty tree, and the repeat is not judged. It is a failed repeat: it
-scores 0 in every mean, and the run exits 6. Its record names the phase
-and the phases that did not run under `no_tree`, and no later repeat
-starts.
+**A phase that ends the run early.** Two things end the run after a
+phase: the phase leaves no tree, or its session ends with a subagent
+unanswered. Then the phases after it do not run, and the repeat is not
+judged. It is a failed repeat: it scores 0 in every mean, and the run
+exits 6. Its record names the phase, the reason, and the phases that
+did not run under `ended_early`, and no later repeat starts.
+
+- `no_tree`: after the phase, the output folder holds no file. There is
+  no folder, or its checkpoint's tree is empty. The phases after it
+  would spend on an empty tree.
+- `incomplete`: the stream shows an Agent call, the subagent tool
+  (`Task` in older releases), with no result when the session's
+  `result` event arrives. The session ended while work it asked for was
+  not done, whatever its result says, so the phase ends as
+  `incomplete`, not `ok`. Its record names each such call, its id and
+  what it was asked, under `pending_agents`. The phases after it would
+  build on work the session never finished. A phase that hit a bound
+  ends `capped`, pending calls or not.
 
 **The output.** After the last phase that ran, the harness archives the
 last checkpoint with `git archive --format=zip` and brings it back as
@@ -1137,7 +1148,7 @@ Its `run.json` holds `rehearsal: true`, and its `results.json` holds
 spent, and where the money went, each phase and each judge in the order
 they spent it. It ends in one of four ways:
 
-- `failed`: a phase failed, or left no tree.
+- `failed`: a phase failed, or ended the run early.
 - `capped`: the run's spend cap kept a phase, or the repeat, from
   running.
 - `incomplete`: a step it exists to prove did not happen. A phase left

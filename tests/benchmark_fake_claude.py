@@ -8,6 +8,7 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `note`: text for the handoff note, at the path the hint names;
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
+- `agents`: Agent calls as `[id, description, answered]`, each a tool use, and its result only when answered;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
 - `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
 - `exit`: its exit code.
@@ -81,6 +82,12 @@ for number, (command, failed) in enumerate(todo.get("bash", [])):
     emit({"type": "assistant", "message": {"id": f"msg_bash_{number}", "content": [call]}, "session_id": session})
     answer = {"type": "tool_result", "tool_use_id": f"toolu_{number}", "content": "out", "is_error": failed}
     emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for call_id, description, answered in todo.get("agents", []):
+    call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": {"description": description, "prompt": "p"}}
+    emit({"type": "assistant", "message": {"id": f"msg_{call_id}", "content": [call]}, "session_id": session})
+    if answered:
+        answer = {"type": "tool_result", "tool_use_id": call_id, "content": "done"}
+        emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
 time.sleep(todo.get("sleep", 0))
 if todo.get("result", True):
     result = {

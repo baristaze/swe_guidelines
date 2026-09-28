@@ -297,7 +297,7 @@ def test_a_rehearsal_whose_phase_leaves_no_tree_ends_failed_and_makes_no_folder_
     data = results(run_dir)
     (repeat,) = data["repeats"]
     assert [p["name"] for p in repeat["phases"]] == ["scaffold"] and "gates" not in repeat
-    assert repeat["no_tree"] == {"phase": "scaffold", "not_run": ["review"]}
+    assert repeat["ended_early"] == {"phase": "scaffold", "reason": "no_tree", "not_run": ["review"]}
     assert data["rehearsal"]["status"] == "failed" and data["summary"]["failed_repeats"] == [0]
     assert not any("the rehearsal made it" in n for n in data["notes"])
     assert "the rehearsal ended failed" in capsys.readouterr().out

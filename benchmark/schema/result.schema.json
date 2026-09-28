@@ -223,13 +223,14 @@
             "type": "array",
             "items": { "type": "string" }
           },
-          "no_tree": {
-            "description": "The phase after which the output folder held no file, and the phases after it, which did not run. Such a repeat failed: it is not judged, it scores 0, and the run ends with it.",
+          "ended_early": {
+            "description": "The phase that ended the run early, and the phases after it, which did not run. The reason is no_tree, the output folder held no file after it, or incomplete, its session ended with an Agent call unanswered. Such a repeat failed: it is not judged, it scores 0, and the run ends with it.",
             "type": "object",
-            "required": ["phase", "not_run"],
+            "required": ["phase", "reason", "not_run"],
             "additionalProperties": false,
             "properties": {
               "phase": { "type": "string" },
+              "reason": { "type": "string", "enum": ["no_tree", "incomplete"] },
               "not_run": { "type": "array", "items": { "type": "string" } }
             }
           },
@@ -533,7 +534,11 @@
       "properties": {
         "name": { "type": "string" },
         "session": { "type": "string", "enum": ["fresh", "resume"] },
-        "status": { "type": "string", "enum": ["ok", "capped", "failed"] },
+        "status": {
+          "description": "How the session ended: ok, capped at a bound, failed, or incomplete, with an Agent call unanswered when its result came.",
+          "type": "string",
+          "enum": ["ok", "capped", "failed", "incomplete"]
+        },
         "capped": { "type": ["string", "null"], "enum": ["turns", "spend", "gate_reruns", null] },
         "exit_status": { "type": "object" },
         "session_id": { "type": ["string", "null"] },
@@ -570,7 +575,17 @@
             }
           }
         },
-        "checkpoint": { "description": "The commit made in the output folder after the phase; null when none was.", "type": ["string", "null"] }
+        "checkpoint": { "description": "The commit made in the output folder after the phase; null when none was.", "type": ["string", "null"] },
+        "pending_agents": {
+          "description": "The Agent calls with no result when the session's result came: each call's id and what it was asked.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "description"],
+            "additionalProperties": false,
+            "properties": { "id": { "type": "string" }, "description": { "type": "string" } }
+          }
+        }
       }
     },
     "content": {

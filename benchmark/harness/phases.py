@@ -37,6 +37,12 @@ reads the stream as it is written and holds two bounds of its own:
 When either passes its bound, the watch sets `stop`, and the runtime
 stops the phase there.
 
+The watch also keeps each Agent call, the subagent tool (`Task` in older
+releases), until its result comes. The Agent calls with no result when
+the session's `result` event arrives are `pending`: the session ended
+while a subagent it asked for had not answered, so the phase is
+incomplete, however the result reads.
+
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
 phase, the archive of the last checkpoint, and the gates on the final
@@ -77,6 +83,8 @@ HINT = (
 )
 # The bounds a phase can end at, besides finishing.
 CAPS = ("turns", "spend", "gate_reruns")
+# The tool a session starts a subagent with; older releases of Claude Code name it Task.
+AGENT_TOOLS = frozenset({"Agent", "Task"})
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
 # The multiples of a model's input price a cache read and a cache write are billed at.
 CACHE_READ = 0.1
@@ -223,7 +231,8 @@ class Watch:
     `feed` takes each line the phase writes. `stop` is set once a bound
     is passed, and `capped` names it: `spend` or `gate_reruns`. The
     figures stay readable after the phase: `estimated_usd`, `usage()`,
-    and `gate_runs()`.
+    `gate_runs()`, and `pending`, the Agent calls with no result when
+    the session's result came.
     """
 
     def __init__(
@@ -248,6 +257,9 @@ class Watch:
         self._total = 0.0
         self._pending: dict[str, list[tuple[str, bool]]] = {}
         self._gates = {g: {"runs": 0, "failed": 0, "unread": 0, "streak": 0} for g in self.gates}
+        # Each Agent call with no result yet, by its id, with what it was asked; and those when the result came.
+        self._agents: dict[str, str] = {}
+        self.pending: list[dict[str, str]] = []
         self._lock = threading.Lock()
 
     def feed(self, stream: str, line: str) -> None:
@@ -256,6 +268,10 @@ class Watch:
             return
         event = parse(line)
         if event is None:
+            return
+        if event.get("type") == "result":
+            with self._lock:
+                self.pending = [{"id": k, "description": v} for k, v in self._agents.items()]
             return
         message = event.get("message")
         if not isinstance(message, dict):
@@ -268,9 +284,15 @@ class Watch:
                         gates = self.gates_in(block.get("input"))
                         if gates and isinstance(block.get("id"), str):
                             self._pending[block["id"]] = gates
+                    if block.get("type") == "tool_use" and block.get("name") in AGENT_TOOLS and isinstance(block.get("id"), str):
+                        asked = block.get("input") if isinstance(block.get("input"), dict) else {}
+                        self._agents[block["id"]] = str(asked.get("description") or asked.get("subagent_type") or "")
             elif event.get("type") == "user":
                 for block in _content(message):
-                    if block.get("type") == "tool_result" and block.get("tool_use_id") in self._pending:
+                    if block.get("type") != "tool_result":
+                        continue
+                    self._agents.pop(str(block.get("tool_use_id")), None)
+                    if block.get("tool_use_id") in self._pending:
                         for gate, read in self._pending.pop(block["tool_use_id"]):
                             self._ran(gate, failed=block.get("is_error") is True, read=read)
 

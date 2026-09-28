@@ -593,8 +593,9 @@ class SkillRepeat:
     cut_short: list[str] | None = None
     # Whether the archive command succeeded where the subject ran; None when there was no checkpoint to archive.
     archived: bool | None = None
-    # The phase after which the output folder held no file, and the phases after it, which did not run.
-    no_tree: dict[str, Any] | None = None
+    # The phase that ended the run early, why, and the phases after it, which did not run: `no_tree`, the
+    # output folder held no file after it; `incomplete`, its session ended with an Agent call unanswered.
+    ended_early: dict[str, Any] | None = None
 
 
 def harness_run(
@@ -640,8 +641,10 @@ def run_skill(
     Each phase runs with its bounds, watched through the stream. After
     each, the output folder is committed. A phase that fails ends the
     repeat; one that hits a bound ends it only when it says so. A phase
-    after which the output folder holds no file ends it too, and the
-    repeat fails. The run's spend cap is checked before each phase.
+    whose session ended with an Agent call unanswered is `incomplete`,
+    and it ends the repeat, as does one after which the output folder
+    holds no file; the repeat fails. The run's spend cap is checked
+    before each phase.
     After the last phase, the harness archives the last commit and runs
     the gates on the tree.
     """
@@ -664,7 +667,7 @@ def run_skill(
     commit: str | None = None
     before: S.Phase | None = None
     cut_short: list[str] | None = None
-    no_tree: dict[str, Any] | None = None
+    ended_early: dict[str, Any] | None = None
     every = phases_of(scn)
     for number, phase in enumerate(every, start=1):
         if plan.budget.reached():
@@ -703,6 +706,9 @@ def run_skill(
             status = dataclasses.replace(status, is_error=True)
         cap = watch.capped or PH.cap_of(result)
         outcome = "capped" if cap and not status.timed_out else "ok" if status.ok else "failed"
+        if outcome == "ok" and watch.pending:
+            # The session ended while a subagent it asked for had not answered: its work is not done.
+            outcome = "incomplete"
         streams.note(f"[phase {phase.name}] {outcome}" + (f" at its {cap} cap" if outcome == "capped" else ""))
         if phase.hint:
             rt.hide(PH.HANDOFF)
@@ -749,6 +755,8 @@ def run_skill(
         }
         if scn.subject.gates:
             record["gate_runs"] = watch.gate_runs()
+        if watch.pending:
+            record["pending_agents"] = list(watch.pending)
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
         holds: bool | None = None
@@ -766,10 +774,20 @@ def run_skill(
             if phased:
                 notes.append(f"repeat {index}: phase {phase.name} failed; the phases after it did not run")
             break
+        not_run = [p.name for p in every[number:]]
+        left = f"; {', '.join(not_run)} did not run" if not_run else ""
+        if outcome == "incomplete":
+            # The phases after it would build on work the session never finished.
+            ended_early = {"phase": phase.name, "reason": "incomplete", "not_run": not_run}
+            calls = ", ".join(f"{a['id']} ({a['description']})" if a["description"] else a["id"] for a in watch.pending)
+            notes.append(
+                f"repeat {index}: phase {phase.name} ended with Agent calls that had no result: {calls}{left}, "
+                "and the repeat is not judged"
+            )
+            break
         if holds is False:
             # Nothing to build on, archive, gate, or judge: the phases after it would spend on an empty tree.
-            no_tree = {"phase": phase.name, "not_run": [p.name for p in every[number:]]}
-            left = f"; {', '.join(no_tree['not_run'])} did not run" if no_tree["not_run"] else ""
+            ended_early = {"phase": phase.name, "reason": "no_tree", "not_run": not_run}
             notes.append(f"repeat {index}: phase {phase.name} left no file in {folder}{left}, and the repeat is not judged")
             break
         if outcome == "capped" and phase.on_cap == "stop":
@@ -813,7 +831,7 @@ def run_skill(
         notes=notes,
         cut_short=cut_short,
         archived=archived_ok,
-        no_tree=no_tree,
+        ended_early=ended_early,
     )
 
 
@@ -1419,16 +1437,17 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 )
                 continue
 
-            no_tree = done.no_tree if done is not None else None
-            if not status.ok or no_tree:
-                # A subject that failed, ran out of time, or left no tree
-                # produced nothing worth a judge's money, and a score of it
-                # would be a score of the failure. The repeat is recorded
-                # with no judgement.
+            ended = done.ended_early if done is not None else None
+            if not status.ok or ended:
+                # A subject that failed, ran out of time, left no tree, or
+                # left a subagent unanswered produced nothing worth a
+                # judge's money, and a score of it would be a score of the
+                # failure. The repeat is recorded with no judgement.
                 failed_subjects.append(index)
                 reason = "timed out" if status.timed_out else "is_error" if status.is_error else f"exit {status.code}"
-                if no_tree and status.ok:
-                    reason = f"phase {no_tree['phase']} left no tree"
+                if ended and status.ok:
+                    why = "left no tree" if ended["reason"] == "no_tree" else "ended with an Agent call unanswered"
+                    reason = f"phase {ended['phase']} {why}"
                 print(f"  repeat {index} subject failed ({reason}); not judged")
                 run.repeats.append(
                     R.RepeatResult(
@@ -1441,11 +1460,11 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                         phases=done.phases if done else None,
                         archive=archive,
                         gates=done.gates if done else None,
-                        no_tree=no_tree,
+                        ended_early=ended,
                     )
                 )
-                if no_tree and index + 1 < args.repeat:
-                    notes.append(f"repeat {index} left no tree, so the run ends: repeat {index + 1} and after did not run")
+                if ended and index + 1 < args.repeat:
+                    notes.append(f"repeat {index} ended early, so the run ends: repeat {index + 1} and after did not run")
                     break
                 continue
 

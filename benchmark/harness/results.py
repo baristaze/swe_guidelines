@@ -67,9 +67,9 @@ class RepeatResult:
     gates: list[dict[str, Any]] | None = None
     # The phases the run's spend cap kept from running; such a repeat is not judged and scores nothing.
     cut_short: list[str] | None = None
-    # The phase after which the output folder held no file, and the phases after it, which did not run;
-    # such a repeat failed, and is not judged.
-    no_tree: dict[str, Any] | None = None
+    # The phase that ended the run early, why (`no_tree` or `incomplete`), and the phases after it, which
+    # did not run; such a repeat failed, and is not judged.
+    ended_early: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -83,7 +83,7 @@ class RepeatResult:
         }
         if self.expected is not None:
             out["expected"] = dict(self.expected)
-        for key in ("phases", "archive", "gates", "cut_short", "no_tree"):
+        for key in ("phases", "archive", "gates", "cut_short", "ended_early"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
         return out
@@ -139,8 +139,8 @@ def failed(exit_status: dict[str, Any]) -> bool:
 
 
 def failed_repeat(repeat: RepeatResult) -> bool:
-    """Whether a repeat failed: its subject failed, or a phase left no tree to judge."""
-    return failed(repeat.exit_status) or repeat.no_tree is not None
+    """Whether a repeat failed: its subject failed, or a phase ended the run early."""
+    return failed(repeat.exit_status) or repeat.ended_early is not None
 
 
 def is_claude(subject: dict[str, Any]) -> bool:
@@ -691,12 +691,18 @@ def report_text(run: RunResult) -> str:
         failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
         lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
     for repeat in run.repeats:
-        if repeat.no_tree:
-            left = ", ".join(repeat.no_tree["not_run"])
+        if repeat.ended_early:
+            ended = repeat.ended_early
+            left = ", ".join(ended["not_run"])
             after = f" {left} did not run." if left else ""
+            why = (
+                "left no file in the output folder"
+                if ended["reason"] == "no_tree"
+                else "ended with Agent calls that had no result"
+            )
             lines += [
-                f"Repeat {repeat.index} ended after phase {repeat.no_tree['phase']}, which left no file in the output "
-                f"folder.{after} It is not judged, and it scores 0 as a failed repeat.",
+                f"Repeat {repeat.index} ended after phase {ended['phase']}, which {why}.{after} "
+                "It is not judged, and it scores 0 as a failed repeat.",
                 "",
             ]
         if repeat.cut_short:

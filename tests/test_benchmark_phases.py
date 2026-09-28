@@ -747,12 +747,12 @@ def test_a_phase_that_leaves_no_tree_ends_the_run_unjudged(run_phases, monkeypat
     data = results(run_dir)
     (repeat,) = data["repeats"]  # the run ends: the second repeat never starts
     assert [p["name"] for p in repeat["phases"]] == ["scaffold"] and len(seen(run_dir)) == 1
-    assert repeat["no_tree"] == {"phase": "scaffold", "not_run": ["mvp", "review"]}
+    assert repeat["ended_early"] == {"phase": "scaffold", "reason": "no_tree", "not_run": ["mvp", "review"]}
     assert data["summary"]["failed_repeats"] == [0] and data["summary"]["cut_short"] == []
     assert any(
         "phase scaffold left no file in site; mvp, review did not run, and the repeat is not judged" in n for n in data["notes"]
     )
-    assert any("repeat 0 left no tree, so the run ends: repeat 1 and after did not run" in n for n in data["notes"])
+    assert any("repeat 0 ended early, so the run ends: repeat 1 and after did not run" in n for n in data["notes"])
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "Repeat 0 ended after phase scaffold, which left no file in the output folder. mvp, review did not run." in report
 
@@ -760,7 +760,7 @@ def test_a_phase_that_leaves_no_tree_ends_the_run_unjudged(run_phases, monkeypat
 def test_a_last_phase_that_leaves_no_tree_fails_its_repeat_too(run_phases):
     code, run_dir = run_phases(phased(phase("scaffold")))
     assert code == 6
-    assert results(run_dir)["repeats"][0]["no_tree"] == {"phase": "scaffold", "not_run": []}
+    assert results(run_dir)["repeats"][0]["ended_early"] == {"phase": "scaffold", "reason": "no_tree", "not_run": []}
 
 
 def test_a_phase_s_wall_time_is_in_its_record_and_the_report(run_phases):
@@ -840,3 +840,61 @@ def test_a_container_runs_the_subject_under_env_with_its_background_tasks_off(tm
         inside = command[command.index("img:1") + 1 :]  # what the container runs
         at = inside.index("env")
         assert inside[at : at + 3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+
+
+# A phase with an Agent call left pending --------------------------------------
+
+
+def test_a_phase_whose_session_ends_with_an_agent_call_unanswered_is_incomplete_and_ends_the_run(run_phases, monkeypatch):
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    # Two helpers started, one answered; the session's result came while the other still worked.
+    agents = [["toolu_a", "read the spec", True], ["toolu_b", "scaffold the portal", False]]
+    scenario = phased(phase("scaffold", {**TREE, "agents": agents}), phase("mvp", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "2")
+    assert code == 6 and judged == []  # recorded as no success, and no judge is asked
+    data = results(run_dir)
+    (repeat,) = data["repeats"]  # the run stops before the next phase, and before the next repeat, spends
+    (scaffold,) = repeat["phases"]
+    assert (scaffold["status"], scaffold["capped"]) == ("incomplete", None) and scaffold["checkpoint"]
+    assert scaffold["pending_agents"] == [{"id": "toolu_b", "description": "scaffold the portal"}]
+    assert repeat["ended_early"] == {"phase": "scaffold", "reason": "incomplete", "not_run": ["mvp", "review"]}
+    assert len(seen(run_dir)) == 1 and data["summary"]["failed_repeats"] == [0]
+    assert any(
+        "phase scaffold ended with Agent calls that had no result: toolu_b (scaffold the portal); mvp, review did not run" in n
+        for n in data["notes"]
+    )
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| 0 | scaffold | fresh | incomplete | - |" in report
+    assert (
+        "Repeat 0 ended after phase scaffold, which ended with Agent calls that had no result. mvp, review did not run." in report
+    )
+
+
+def test_a_phase_whose_agent_calls_all_answered_is_a_success(run_phases):
+    agents = [["toolu_a", "read the spec", True], ["toolu_b", "scaffold the portal", True]]
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "agents": agents}), phase("mvp")))
+    assert code == 0
+    phases = results(run_dir)["repeats"][0]["phases"]
+    assert [p["status"] for p in phases] == ["ok", "ok"] and not any("pending_agents" in p for p in phases)
+
+
+def test_the_watch_names_the_agent_calls_with_no_result_when_the_result_came():
+    watch = PH.Watch(None, PRICES)
+    for call_id, name in (("t1", "Agent"), ("t2", "Task"), ("t3", "Bash")):
+        block = {"type": "tool_use", "id": call_id, "name": name, "input": {"subagent_type": "Explore"}}
+        watch.feed("out", line({"type": "assistant", "message": {"id": f"m{call_id}", "content": [block]}}))
+    answer = {"type": "tool_result", "tool_use_id": "t1", "content": "done"}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [answer]}}))
+    assert watch.pending == []  # nothing is pending before the result
+    watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
+    # An older release's Task is a subagent too; a Bash call is not.
+    assert watch.pending == [{"id": "t2", "description": "Explore"}]
+    late = {"type": "tool_result", "tool_use_id": "t2", "content": "done"}
+    watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [late]}}))
+    assert watch.pending == [{"id": "t2", "description": "Explore"}]  # a result after the session's is too late
