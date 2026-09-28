@@ -124,8 +124,13 @@ judges:
   # A whole system takes many reads, and every call carries every read
   # before it, so a judgement gets more than the default budget. It is
   # provisional, until a measured run replaces it.
+  #
+  # The tool calls run out before the input tokens do. At one 400-line
+  # page a read, 3,000,000 input tokens last about 35 to 40 calls. A judge
+  # that has used its tool calls is told to submit; a judge whose next
+  # call would pass its input tokens ends missed, with no turn to submit.
   budget:
-    tool_calls: 80
+    tool_calls: 35
     input_tokens: 3000000
     max_usd: 15
     wall_s: 3600
