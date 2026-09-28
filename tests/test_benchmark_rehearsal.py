@@ -40,7 +40,7 @@ def test_a_rehearsal_of_the_shipped_system_keeps_its_prompts_adds_its_line_and_c
     # The judges' dollars and wall time are the stub's; their counts stay the scenario's, which money and time reach first.
     given, stub = scn.judges.budget, small.judges.budget
     assert given is not None and stub is not None
-    assert (stub.max_usd, stub.wall_s, stub.submits, stub.max_output_tokens) == (0.5, 900.0, 2, 8_000)
+    assert (stub.max_usd, stub.wall_s, stub.submits) == (0.5, 900.0, 2)
     assert (stub.tool_calls, stub.input_tokens) == (given.tool_calls, given.input_tokens)
     assert (small.judges.providers, small.judges.effort, small.judges.references) == (
         scn.judges.providers,

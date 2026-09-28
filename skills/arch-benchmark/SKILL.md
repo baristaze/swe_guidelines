@@ -95,7 +95,8 @@ never run the harness from there.
    call would pass it, the judge still gets that call, as a last turn to
    submit. So a judge can pass it by about one call: an input about the
    size of the call before it, at the model's input price, and its
-   output, at most `max_output_tokens` at the output price. One repeat's
+   output at the output price, what the model writes in the time the
+   judge has left. One repeat's
    agentic judges spend about `max_usd` times the number of judges, and
    each judge can end above its `max_usd` by that one call. When the prompt names something with
    no flag behind it, say so and run without it.

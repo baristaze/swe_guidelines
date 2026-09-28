@@ -13,6 +13,7 @@ import pytest
 from harness import scenario as S
 from test_benchmark_agentic import FAKES, sent_results
 from test_benchmark_agentic import step as turn
+from test_benchmark_judge import FakeSdks
 from test_benchmark_references import acme_repository, git
 
 needs_jsonschema = pytest.mark.skipif(importlib.util.find_spec("jsonschema") is None, reason="jsonschema is not installed")
@@ -102,6 +103,16 @@ def test_a_missing_qa_context_file_is_a_scenario_error(tmp_path):
     scn = S.from_data(QA, tmp_path / "q.json")
     with pytest.raises(S.ScenarioError, match=r"subject\.context 'notes/why\.md' is not a file"):
         run.context_text(scn)
+
+
+def test_a_qa_subject_asks_within_its_scenarios_timeout(tmp_path, monkeypatch):
+    sdks = FakeSdks(monkeypatch)
+    monkeypatch.setattr(run.J.time, "monotonic", lambda: 100.0)
+    scn = S.from_data(dict(QA, subject={"prompt": "Why?", "timeout_s": 42}))
+    with run.CliStream(tmp_path / "cli.jsonl") as streams:
+        status, text, _ = run.run_subject_qa(scn, streams, {"ANTHROPIC_API_KEY": "k"}, run.J.DEFAULT_MATRIX, "medium", "m")
+    assert status.code == 0 and text == "an answer"
+    assert [(method, request["timeout"]) for method, request in sdks.requests] == [("messages.stream", 42)]
 
 
 def test_a_scenario_that_does_not_load_exits_2_with_its_message(tmp_path, capsys, monkeypatch):
@@ -1203,7 +1214,7 @@ def test_a_dry_run_resolves_the_references_and_calls_no_judge(tmp_path, monkeypa
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert fetched == [("https://github.com/acme/acme-system", "v1.0.0")] and called == []
     judges = resolved["scenario"]["judges"]
-    assert judges["mode"] == "agentic" and judges["budget"]["max_usd"] == 3.0 and judges["budget"]["max_output_tokens"] == 16_000
+    assert judges["mode"] == "agentic" and judges["budget"]["max_usd"] == 3.0 and "max_output_tokens" not in judges["budget"]
     references = resolved["versions"]["references"]
     assert references["reference"] == {
         "source": "repository",
