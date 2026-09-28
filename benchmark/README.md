@@ -40,6 +40,7 @@ image first (see Where a scenario runs).
 | `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. The scenario's `max_spend_usd` when not given, else no cap |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--preflight` | resolve as `--dry-run` does, then check what the run needs where it runs, and stop at the first failure; exit 8 when a check fails. No paid endpoint is called (see Preflight) |
+| `--rehearsal` | run the scenario as it will really run, with every bound cut small and a spend cap of $5, after its preflight; never checked in (see Rehearsal) |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
 | `--screencast-port` | capture frames from a Chrome already listening on that debugging port |
@@ -158,9 +159,10 @@ run adds its row by hand; nothing generates it. `make runs`, part of
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
 (see Versions), on a run whose runtime its scenario does not list
-(see Where a scenario runs), and on a compressed file in a run folder
-that holds a string shaped like a key, or that the scan cannot read, on
-a `.zip` that does not open, and on a `.git` folder (see The workflow).
+(see Where a scenario runs), on a rehearsal (see Rehearsal), and on a
+compressed file in a run folder that holds a string shaped like a key,
+or that the scan cannot read, on a `.zip` that does not open, and on a
+`.git` folder (see The workflow).
 
 ## Versions
 
@@ -474,9 +476,13 @@ cap is $190, the sum of its phases' caps. The scenario says both, with
 flag. Run it with `--preflight` first. The preflight checks, among the
 rest, that the machine is up and carries its tools at their pins, that
 it reaches the registries a scaffolded tree installs from, and that it
-has 40 GiB of disk and 16 GiB of memory free (see Preflight):
+has 40 GiB of disk and 16 GiB of memory free (see Preflight). Before its
+first long run, rehearse it: every phase, the checkpoints, the archive,
+the gates, and the judges, for at most $5 (see Rehearsal):
 
 ```bash
+uv run benchmark/run.py --scenario create-full-system \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml
 ```
@@ -987,7 +993,7 @@ will take, so it checks that run.
 | Check | What passes |
 |-------|-------------|
 | `budgets` | the run has its spend cap, the flag's or the scenario's. Every session of a skill subject has its turn cap, its spend cap, and its timeout, and each phase its gate-rerun cap. A session with no spend bound fails |
-| `checkout` | the checkout holds no change a commit does not, in what decides a score: the `dirty` of `versions.checkout` is false. A run from a dirty checkout is never checked in (see Versions) |
+| `checkout` | the checkout holds no change a commit does not, in what decides a score: the `dirty` of `versions.checkout` is false. A run from a dirty checkout is never checked in (see Versions). A rehearsal skips it |
 | `references` | every reference of agentic judges was staged, and every repository reference, fetched at its tag, pins this checkout's release. A reference that a run refuses with exit 2 fails this check instead |
 | `awake` | on macOS, `caffeinate` is on the path, and the machine draws AC power |
 | `subject_key` | `SUBJECT_ANTHROPIC_API_KEY` is set, is no judge's key, and Anthropic's model list takes it. For a `qa` subject, its provider's key |
@@ -1000,8 +1006,9 @@ will take, so it checks that run.
 | `requires` | for `docker`, a Compose stack of one small service starts, turns healthy within 120 seconds, and stops |
 
 A check that does not apply to the run is a `skip`, and says why: the
-`awake` check off macOS, the `workspace` check off `vm`, and the
-runtime checks of a `qa` subject, which runs no command.
+`awake` check off macOS, the `workspace` check off `vm`, the runtime
+checks of a `qa` subject, which runs no command, and the `checkout`
+check of a rehearsal, which is never checked in.
 
 `run.json` records every check that ran under `preflight`: its name,
 its status, what it found, the fix when it failed, and the facts it
@@ -1019,6 +1026,58 @@ harness starts `caffeinate -i -s` for its own process, so the machine
 does not idle to sleep, nor sleep at all on AC power. A closed lid still
 sleeps a laptop. Elsewhere, keep the machine awake yourself. A dry run
 and a preflight hold nothing.
+
+## Rehearsal
+
+A run that takes hours and many dollars should not be the first
+time its pipeline runs end to end. `--rehearsal` runs the scenario as it
+will really run, only small, so a few dollars prove that the run
+starts, moves from phase to phase, commits, archives, fetches the
+output back, runs the gates, and has the judges answer. The scores mean
+nothing.
+
+```bash
+uv run benchmark/run.py --scenario create-full-system \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
+```
+
+It keeps every prompt, the runtime, the gates, the judges with their
+models and their effort, and the references. It cuts every bound, and
+never raises one the scenario sets lower:
+
+| What | In a rehearsal |
+|------|----------------|
+| the subject's model | the cheapest the matrix prices for its provider, input price first: `claude-sonnet-5` for a skill. `--subject-model` names another |
+| each session | at most 5 turns, $0.50, and a timeout of 1,800 seconds. A phase that hits a bound hands on to the next one, whatever its `on_cap`, so every phase starts |
+| each gate | a timeout of at most 600 seconds |
+| each agentic judgement | a stub budget: 3 tool calls, 60,000 input tokens, $0.50, 900 seconds, 2 submits, and 8,000 output tokens a call |
+| the run | one repeat, and a spend cap of $5 over the subject and the judges together. `--max-spend-usd` can lower it; a flag that asks for more, or for another repeat, is refused with exit 2 |
+
+It runs the preflight first, and a check that fails stops it with exit
+8 before it spends anything (see Preflight). The preflight skips the
+`checkout` check: a rehearsal is never checked in, and a change to the
+harness is worth rehearsing before it is committed.
+`--rehearsal --preflight` runs that preflight alone, and
+`--rehearsal --dry-run` resolves the rehearsal and runs nothing.
+
+A session this small can end before it makes the output folder. The
+phases after it that start in the folder would then fail, and the
+checkpoints, the archive, and the gates would have no tree. So after
+each phase, a rehearsal makes the folder, empty, when the phase left
+none, and its notes say so.
+
+Its `run.json` holds `rehearsal: true`, and its `results.json` holds
+`rehearsal`: how it ended, its cap, what it spent, and where the money
+went, each phase and each judge in the order they spent it. It ends
+`completed`, `failed` when a phase failed, or `capped` when the run's
+spend cap kept a phase from running. A capped rehearsal did not prove
+the pipeline to its end, and it exits 9. The console and the report's
+Rehearsal section say the same. The cap is the run's spend cap, so a
+rehearsal can end above it by what one phase and its judges add (see The
+run's spend).
+
+`make runs` fails on a run folder marked `rehearsal`, so pass `--out`
+outside `benchmark/runs/`.
 
 ## Streams
 

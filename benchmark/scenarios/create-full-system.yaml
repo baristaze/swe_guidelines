@@ -11,10 +11,14 @@ kind: skill
 #
 # It runs once, and its run's spend cap is $190, the sum of its phases'
 # caps. `repeat` and `max_spend_usd` below say both, so a run of it
-# passes neither flag. A preflight checks what the run needs first:
+# passes neither flag. A preflight checks what the run needs first, and
+# before the first long run a rehearsal runs every phase small, for at
+# most $5, and is never checked in:
 #
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml --preflight
+#     uv run benchmark/run.py --scenario create-full-system \
+#       --runtime-config benchmark/runtime/lima/runtime-config.yaml --rehearsal --out /tmp/rehearsals
 #     uv run benchmark/run.py --scenario create-full-system \
 #       --runtime-config benchmark/runtime/lima/runtime-config.yaml
 runtimes: [vm]
