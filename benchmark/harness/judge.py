@@ -13,7 +13,6 @@ invented for a provider that did not answer.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import math
 import re
@@ -576,16 +575,21 @@ def judge_one(
         )
     dispatch = call or CALLS[name]
     errors: list[str] = []
+    # Why the model the matrix puts first did not answer: the error of its last
+    # attempt, the one after which the harness moved on. A transient error that
+    # a retry replaced is not the reason.
+    reason = ""
     for model in models:
-        data: dict = {}
-        usage: dict[str, int] = {}
-        raw, latency = "", 0.0
-        # `note_error` records every failed attempt, an answer of the wrong shape
-        # included, so the suppressed error is never lost; `data` stays empty.
-        with contextlib.suppress(Exception):
+        if model != models[0] and not reason:
+            reason = errors[-1] if errors else ""
+        try:
             data, raw, usage, latency = with_retries(
                 partial(timed_call, dispatch, model, wanted, prompt, key), on_error=partial(note_error, errors, model)
             )
+        except Exception:
+            # `note_error` recorded every failed attempt, in order, an answer of
+            # the wrong shape included, so no error is lost.
+            continue
         if not data:
             errors.append(f"{model}: no parsed verdict")
             continue
@@ -604,7 +608,7 @@ def judge_one(
             raw=raw,
             verdict=verdict,
             cost_usd=cost_usd(matrix, name, model, usage),
-            fallback={"from": models[0], "reason": errors[0] if errors else ""} if model != models[0] else None,
+            fallback={"from": models[0], "reason": reason} if model != models[0] else None,
         )
     return Judgement(
         provider=name,
