@@ -383,8 +383,24 @@ or an interrupt, the harness kills that group through the prefix
 first, then the prefix here. A process that starts a session of its
 own leaves the group, and the kill does not reach it. Nor does it reach
 a container the subject starts, which is a child of Docker's daemon: it
-outlives the stop and the repeat, so a later repeat can find a port
-already allocated or a named volume already there.
+outlives the stop.
+
+So the harness removes what the subject's Docker made there. When the
+run takes the machine, it lists every container, network, and volume
+Docker holds there. After each repeat, once its gates ran and its
+workspace came back, it removes every one that was not on that list:
+the containers first, with their anonymous volumes, then the networks,
+then the volumes. It does so again when the run gives the machine back,
+so a run stopped in the middle of a repeat leaves none either. The
+run's notes name what went, and what could not be removed. So no repeat
+starts beside an earlier one's stack: no Compose project of the same
+name, no port already held, and no earlier subject's database within
+reach. What Docker held when the run took the machine stays, because
+the run did not make it, and a preflight refuses such a machine (see
+Preflight). Images stay too: they hold no subject's data. A Docker that
+does not answer when the run takes the machine leaves nothing to tell
+the run's containers from the rest, so the harness removes nothing, and
+the notes say so. A machine with no Docker holds nothing to remove.
 
 A step that fails there fails the repeat with a note, and the subject
 does not run: the machine stopped or held by another run, a copy, a
@@ -447,9 +463,10 @@ QEMU's user network gives the VM an IPv6 prefix that reaches this
 machine's loopback, and the rule refuses that prefix too.
 
 The machine persists between runs. The harness removes what a run left
-in its own folder, and nothing else: the containers, volumes, and
-images a subject made stay. The machine's user has sudo, so a subject
-can change the machine itself. Lima keeps the template as it read it
+in its own folder, and the containers, networks, and volumes its
+subjects' Docker made, and nothing else: the images a subject pulled or
+built stay. The machine's user has sudo, so a subject can change the
+machine itself. Lima keeps the template as it read it
 at create, so a change to the template, a pin or a package, takes a new
 machine: `limactl delete swe-benchmark`, then create it again.
 
@@ -1107,7 +1124,7 @@ will take, so it checks that run.
 | `subject_key` | `SUBJECT_ANTHROPIC_API_KEY` is set, is no judge's key, and Anthropic's model list takes it. For a `qa` subject, its provider's key |
 | `judge_keys` | every judge the run selects has a key, and its provider's model list takes it |
 | `runtime` | on `vm`, the machine answers through `exec_prefix`, and the config's `check` passes there. On `container`, the engine answers and the image is there; with `--build`, the preflight builds it first. On `host`, always |
-| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read |
+| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read. And the machine's Docker holds no container and no volume, which the next subject would start beside. A failure names each one and the command that clears them |
 | `tools` | every tool the runtime config lists under `tools` answers where the subject runs, at its pinned version, and a skill's Claude Code answers. A container run whose config lists none asks the three its Dockerfile pins |
 | `resources` | the free disk and the available memory where the subject works are at least the scenario's `preflight.disk_gib` and `preflight.memory_gib` |
 | `network` | the model API, for a skill, and every URL under the scenario's `preflight.registries`, answer from where the subject runs, whatever the status |
@@ -1387,7 +1404,10 @@ succeeded.
 
 The harness logic is tested from the repository root, in
 `tests/test_benchmark_*.py`, with the standard library and fake judges,
-so `make test` and CI cover it with no key and no network.
+so `make test` and CI cover it with no key and no network. A test's
+other machine runs on the machine the test runs on, so every test runs
+the harness with a Docker command that is on no machine, and none
+reaches that machine's Docker.
 
 ```bash
 make test

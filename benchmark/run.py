@@ -1486,6 +1486,10 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
             # One collection, so another machine's workspace is fetched once: the files and the archive.
             wanted = [*scn.artifact.files, *([PH.ARCHIVE] if scn.subject.output else [])]
             found = rt.collect(wanted) if wanted else []
+            if isinstance(rt, RT.VmRuntime):
+                # The repeat is over there: its gates ran and its workspace came back. What its
+                # subject's Docker made goes now, so the next repeat starts beside none of it.
+                notes.extend(f"repeat {index}: {note}" for note in rt.remove_docker())
             zip_file = rt.workspace / PH.ARCHIVE
             file_paths, file_parts = collect_files(rt, [f for f in found if f != zip_file], art_dir, index)
             paths += file_paths
@@ -1592,7 +1596,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         notes.append(f"subject failed in repeat(s) {', '.join(map(str, failed_subjects))}; not judged")
     if isinstance(rt, RT.VmRuntime):
         # The other machine is given back before the results are written,
-        # so a folder that stayed there, or a fetch that failed, is noted.
+        # so what it removed there, a folder that stayed, or a fetch that
+        # failed, is noted.
         notes.extend(rt.release())
     run.notes = notes
     if args.rehearsal:

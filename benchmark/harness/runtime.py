@@ -722,6 +722,56 @@ KILL = (
 RELEASE = REMOVE + 'remove "$1"; rm -rf -- "$2"; [ ! -e "$1" ]'
 # A path moved to another, replacing what is there; nothing when it is not there.
 MOVE = '[ -e "$1" ] || [ -L "$1" ] || exit 0; mkdir -p -- "${2%/*}" && rm -rf -- "$2" && mv -- "$1" "$2"'
+# What the machine's Docker holds: one line per container, network, and
+# volume, each its kind, its id, and its name; a volume's id is its name.
+# A machine with no Docker holds none. Argument: the Docker command. Exit
+# 3: Docker is there and did not answer.
+DOCKER_LIST = (
+    'docker=$1; command -v "$docker" >/dev/null 2>&1 || exit 0; '
+    '"$docker" ps -a --no-trunc --format "container {{.ID}} {{.Names}}" || exit 3; '
+    '"$docker" network ls --no-trunc --format "network {{.ID}} {{.Name}}" || exit 3; '
+    '"$docker" volume ls --format "volume {{.Name}} {{.Name}}" || exit 3'
+)
+# The removal of what a subject's Docker made: the containers first, with
+# their anonymous volumes, so nothing holds a network or a volume; then the
+# networks; then the volumes. Then each item that is still there, one per
+# line. Arguments: the Docker command, then each item as `<kind>:<id>`.
+DOCKER_REMOVE = (
+    'docker=$1; shift; for kind in container network volume; do for item in "$@"; do '
+    '[ "${item%%:*}" = "$kind" ] || continue; id=${item#*:}; case $kind in '
+    'container) "$docker" rm -f -v "$id";; network) "$docker" network rm "$id";; volume) "$docker" volume rm -f "$id";; '
+    "esac >/dev/null 2>&1; done; done; "
+    'for item in "$@"; do "$docker" "${item%%:*}" inspect "${item#*:}" >/dev/null 2>&1 && printf "%s\\n" "$item"; done; exit 0'
+)
+DOCKER_KINDS = ("container", "network", "volume")
+# The command that reaches the machine's Docker there. A test points it at
+# a stand-in: a test's other machine runs on the machine the test runs on,
+# and no test may reach that machine's Docker.
+DOCKER = "docker"
+
+# One item a machine's Docker holds: its kind, its id, and its name.
+DockerItem = tuple[str, str, str]
+
+
+def docker_items(lines: list[str]) -> list[DockerItem]:
+    """What a listing of the machine's Docker names, in its order: each item's kind, id, and name."""
+    out: list[DockerItem] = []
+    for line in lines:
+        kind, _, rest = line.strip().partition(" ")
+        ident, _, name = rest.partition(" ")
+        if kind in DOCKER_KINDS and ident:
+            out.append((kind, ident, name or ident))
+    return out
+
+
+def described(items: list[DockerItem]) -> str:
+    """Items by kind, each kind with its count and its names: `2 containers (a, b), 1 volume (c)`."""
+    parts = []
+    for kind in DOCKER_KINDS:
+        names = [name for k, _, name in items if k == kind]
+        if names:
+            parts.append(f"{len(names)} {kind}{'' if len(names) == 1 else 's'} ({', '.join(names)})")
+    return ", ".join(parts)
 
 
 def fill(words: list[str], local: str, remote: str) -> list[str]:
@@ -767,6 +817,12 @@ class VmRuntime(BaseRuntime):
     there before the prefix here, because the prefix going does not stop
     what it started there. Every command other than the subject has a
     timeout, and a timeout is noted.
+
+    A container the subject starts is a child of Docker's daemon there,
+    so no stop reaches it. When the run takes the machine, the harness
+    lists what Docker holds there. After each repeat (`remove_docker`),
+    and when the run gives the machine back, it removes every container,
+    network, and volume that was not on that list, and notes what went.
     """
 
     name = "vm"
@@ -795,6 +851,11 @@ class VmRuntime(BaseRuntime):
         )
         self.locked = False
         self.released = False
+        # What the machine's Docker held when the run took the machine, by
+        # kind and id: none of it is the run's to remove. None when Docker
+        # did not answer then, and `docker_unread` says how.
+        self.docker_before: set[tuple[str, str]] | None = None
+        self.docker_unread: str | None = None
         # Why the prepared repeat cannot run, with the exit code that said so.
         self.failure: tuple[int, str] | None = None
         # The key names the wrapper exports for the repeat that runs.
@@ -905,27 +966,32 @@ class VmRuntime(BaseRuntime):
         """A probe's prefix runs with what the helpers get, nothing more of this machine's."""
         return self.own_env()
 
-    def helper(self, argv: list[str], stdin: str | None = None, timeout_s: int | None = None) -> int:
+    def helper(
+        self, argv: list[str], stdin: str | None = None, timeout_s: int | None = None, out: list[str] | None = None
+    ) -> int:
         """Run a command other than the subject here and return its exit code.
 
-        It reads `stdin` or nothing, never the harness's own input. One
-        that cannot start is exit 127, as the shell records it. One past
-        its timeout is stopped with its whole group, noted, and exit 124,
-        as `timeout` records it.
+        It reads `stdin` or nothing, never the harness's own input. When
+        `out` is given, the lines it prints go there. One that cannot start
+        is exit 127, as the shell records it. One past its timeout is
+        stopped with its whole group, noted, and exit 124, as `timeout`
+        records it.
         """
         limit = timeout_s or self.vm.helper_timeout_s
         try:
             proc = subprocess.Popen(
                 argv,
                 stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
-                text=True,
+                stdout=subprocess.PIPE if out is not None else None,
+                encoding="utf-8",
+                errors="replace",
                 env=self.own_env(),
                 start_new_session=True,
             )
         except OSError:
             return 127
         try:
-            proc.communicate(stdin, timeout=limit)
+            printed, _ = proc.communicate(stdin, timeout=limit)
         except subprocess.TimeoutExpired:
             kill_group(proc.pid)
             proc.wait()
@@ -937,6 +1003,8 @@ class VmRuntime(BaseRuntime):
             kill_group(proc.pid)
             proc.wait()
             raise
+        if out is not None:
+            out.extend(line for line in (printed or "").splitlines() if line.strip())
         return proc.returncode
 
     def take_notes(self) -> list[str]:
@@ -961,6 +1029,10 @@ class VmRuntime(BaseRuntime):
             if code != 0:
                 return code, f"the other machine did not answer: taking {self.remote_base()} failed with exit {code}"
             self.locked = True
+            # What Docker holds before the run's first subject, which the run did not make and never removes.
+            held, code = self.docker_held()
+            self.docker_before = None if held is None else {(kind, ident) for kind, ident, _ in held}
+            self.docker_unread = None if held is not None else f"exit {code}"
         code = self.helper(self.there(PREPARE, self.remote_run(), *self.vm.check))
         if code == 4:
             return code, f"the machine's check failed there: {' '.join(self.vm.check)}"
@@ -1048,15 +1120,63 @@ class VmRuntime(BaseRuntime):
                 self.notes.append(f"[{self.name}] fetching the workspace of repeat {self.slot} failed (exit {code})")
         return super().collect(globs)
 
-    def release(self) -> list[str]:
-        """Remove the run's folder there and give the machine back, once; the notes on what went wrong.
+    def docker_held(self) -> tuple[list[DockerItem] | None, int]:
+        """What the machine's Docker holds there, and the listing's exit code; None when Docker did not answer."""
+        out: list[str] = []
+        code = self.helper(self.there(DOCKER_LIST, DOCKER), out=out)
+        return (docker_items(out) if code == 0 else None), code
 
-        The run records these notes. A folder that stays there is named,
+    def remove_docker(self) -> list[str]:
+        """Remove every container, network, and volume Docker holds there that it did not hold when the run took the machine.
+
+        The subject's Docker is the machine's, and what it makes outlives
+        the subject: a stack whose ports stay held and whose volumes keep a
+        database. So the run removes what it made, and nothing that was
+        there before it. Returns the notes that record it: what went, what
+        stayed, or why nothing could be told apart. A run that never took
+        the machine made nothing there.
+        """
+        if not self.locked:
+            return []
+        if self.docker_before is None:
+            if self.docker_unread is None:
+                return []  # said once already
+            unread, self.docker_unread = self.docker_unread, None
+            return [
+                f"the machine's Docker did not answer when the run took the machine ({unread}), "
+                "so the harness cannot tell what the run's subjects made there, and removes none of it"
+            ]
+        held, code = self.docker_held()
+        if held is None:
+            return [f"the machine's Docker did not answer (exit {code}), so what the subject made there stays"]
+        before = self.docker_before
+        made = [item for item in held if (item[0], item[1]) not in before]
+        if not made:
+            return []
+        out: list[str] = []
+        code = self.helper(self.there(DOCKER_REMOVE, DOCKER, *(f"{kind}:{ident}" for kind, ident, _ in made)), out=out)
+        if code != 0:
+            return [f"removing what the subject's Docker made there failed (exit {code}), and it may stay: {described(made)}"]
+        stayed = set(out)
+        gone = [item for item in made if f"{item[0]}:{item[1]}" not in stayed]
+        kept = [item for item in made if f"{item[0]}:{item[1]}" in stayed]
+        notes = [f"removed what the subject's Docker made on the other machine: {described(gone)}"] if gone else []
+        if kept:
+            notes.append(f"what the subject's Docker made on the other machine could not be removed: {described(kept)}")
+        return notes
+
+    def release(self) -> list[str]:
+        """Remove what the run made there and give the machine back, once; the notes on what it did and what went wrong.
+
+        The run records these notes. Docker's containers, networks, and
+        volumes go first, then the run's folder. What stays is named,
         because it holds what the subject wrote. A run that never took the
         machine made nothing there, and removes nothing.
         """
         if self.locked and self.vm.exec_prefix and not self.released:
             self.released = True
+            for note in self.remove_docker():
+                self.notes.append(f"[{self.name}] when the run gave the machine back, {note}")
             code = self.helper(self.there(RELEASE, self.remote_run(), f"{self.remote_base()}/.lock"))
             if code != 0:
                 self.notes.append(f"[{self.name}] the run's folder {self.remote_run()} was not removed there (exit {code})")
