@@ -46,8 +46,10 @@ lenses (`skills/`), and the checkers that keep the three consistent
   to. Its procedure and report shape mirror the review template, and
   `scripts/check_agents.py` holds the two together: the four decision
   words, the report block, and the count of procedure steps must
-  agree. The sentence "Never edit, stage, or commit" is repeated in
-  every review skill on purpose.
+  agree. It also holds the agent's `maxTurns`, the count of turns
+  after which the host stops it, since the host accepts the agent with
+  that key missing or misspelled. The sentence "Never edit, stage, or
+  commit" is repeated in every review skill on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests. The
   repository root is the plugin. `plugin.json` carries the one release
   version. `scripts/check_version.py` holds every copy to it: the
@@ -156,6 +158,22 @@ lenses (`skills/`), and the checkers that keep the three consistent
   step names is an orphan and an error, and a skill body past the word
   bound is an error whose fix is to move reference material into a
   step's file.
+- A step that fixes and runs again states its count bound. A skill
+  run by a strong model fixes and reruns until something stops it,
+  and with no count only its session's turns or wall time would. For
+  a gate the wording is one: the first run plus at most 3 reruns,
+  then stop and say which gate fails and why. A step with a smaller
+  unit (a dependency row, an audit's own flows file) states its own
+  count in the same shape and says what happens past it.
+  `scripts/check_skills.py` holds a paragraph or list item under
+  `skills/` that says fix beside a rerun, or beside a `make <target>`
+  it runs, to an `at most <n> reruns` in the same paragraph or item.
+  A rerun is `rerun`, or `run` with `again` anywhere after it: the
+  span is the whole paragraph or item, so a block that says fix, run,
+  and again without a loop is reworded so it does not. It pairs a fix
+  and a rerun only inside one paragraph or item, so a fix in a step
+  with its rerun in a nested bullet is not paired. That loop, and a
+  loop said in other words, is held by hand.
 - The release version is written once, in `.claude-plugin/plugin.json`;
   every other copy is checked against it.
 - Scaffold skills share `skills/_shared/scaffold-conventions.md`.
