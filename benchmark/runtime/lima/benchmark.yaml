@@ -22,12 +22,20 @@
 # subject runs `docker` without sudo. The VM is the boundary, not the
 # daemon: the VM's user has sudo in a Lima machine either way.
 #
-# The tools are pinned. uv, Node's major, and Claude Code are at the
-# versions runtime/Dockerfile pins; pnpm, Terraform, and Docker are at
+# uv, Node's major, and Claude Code are at the versions
+# runtime/Dockerfile pins; pnpm, Terraform, and Docker are at pins of
 # their own. uv and Terraform are checked against the release's SHA-256.
-# Lima keeps the copy of this file it read at create, so a changed pin
-# takes a new machine: `limactl delete swe-benchmark`, then create it
-# again.
+# make, git, and the other packages of the first `apt-get install` come
+# from Ubuntu's archive, at the versions the release carries.
+#
+# A tree the scaffold skills make runs its gates, `make check` and
+# `make test-integration`, with make, git, uv, Node, pnpm, and Docker
+# Compose, and uv fetches the Python the tree names. The readiness probe
+# runs each of them, so a machine that lacks one never reports ready.
+#
+# Lima keeps the copy of this file it read at create, so a change to it,
+# a pin or a package, takes a new machine: `limactl delete
+# swe-benchmark`, then create it again.
 
 minimumLimaVersion: 2.0.0
 
@@ -89,7 +97,7 @@ provision:
     esac
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get install -y --no-install-recommends ca-certificates curl git gnupg ripgrep rsync unzip
+    apt-get install -y --no-install-recommends ca-certificates curl git gnupg make ripgrep rsync unzip
     install -m 0755 -d /etc/apt/keyrings
     # Node from NodeSource, as runtime/Dockerfile installs it.
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
@@ -166,7 +174,7 @@ provision:
     nft list table inet swe_benchmark >/etc/swe-benchmark-firewall.nft
 
 probes:
-- description: the pinned tools answer and the firewall holds
+- description: the tools answer and the firewall holds
   script: |
     #!/bin/bash
     set -eux -o pipefail
@@ -183,4 +191,8 @@ probes:
     pnpm --version
     terraform version
     docker version
+    # What a scaffolded tree's gates run besides.
+    make --version
+    git --version
+    docker compose version
   hint: See "/var/log/cloud-init-output.log" in the guest.
