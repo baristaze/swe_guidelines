@@ -94,14 +94,17 @@ ask for either in the conversation.
 
 ## Procedure
 
-A batch makes at most 6 tool calls: the wait, the credential check,
-one log read per process, the alarms, and one `get-metric-data` call
-with a query per signal. A tree with more than two processes reads
-all their logs in one command. Locally there is no credential check,
-and the Prometheus queries of step 4 run as one command, as do those
-of step 5. A retry counts as a call. A read that would be a seventh
-call is not made: the batch stops there, writes that read as not
-read, and the watch goes on to the next batch. The first credential
+A batch makes at most 20 tool calls. Its main path is six: the wait,
+the credential check, one log read per process (two in a tree with a
+worker), the alarms, and one `get-metric-data` call with a query per
+signal. The bound sits well above that, so a retry of each read and
+the reads of step 6 fit in it; only a batch that loops reaches it. A
+tree with more than two processes reads all their logs in one
+command. Locally there is no credential check, and the Prometheus
+queries of step 4 run as one command, as do those of step 5. A retry
+counts as a call. A read that would be the 21st call is not made: the
+batch stops there, writes that read as not read, and the watch goes
+on to the next batch. The first credential
 check and the size read of step 2 come before the first batch, and
 are not counted in it.
 
@@ -168,8 +171,13 @@ are not counted in it.
    nothing more: the request count, the 5xx count, the p95, the
    worker failures and the oldest waiting item's age (where there is a
    worker; a tree built with `--no-worker` has no queue), and the
-   outbox's lag, through `get-metric-data` with `--period` equal
-   to the interval, or the same as a Prometheus range query. A burst
+   outbox's lag, through `get-metric-data`, or the same as a
+   Prometheus range query. The `--period` passed to `get-metric-data`
+   is a whole minute whatever the batch interval: the interval rounded
+   down to a multiple of 60 seconds, and never under 60, since
+   CloudWatch refuses any other period for a regular-resolution
+   metric. A batch's count is the sum of its datapoints, and its p95
+   the highest among them. A burst
    is a count in the batch, never a line per event: the batch's lines
    over `--cap` are counted by level and dropped.
 6. The first responder rule. An alarm transition is read against the
@@ -199,7 +207,7 @@ are not counted in it.
 - No unbounded output: never more than `--cap` lines per batch, never
   the same window twice, never a read past `--for`.
 - No unbounded loop: never more than 30 batches, never a batch
-  shorter than 30 seconds, never more than 6 tool calls in a batch.
+  shorter than 30 seconds, never more than 20 tool calls in a batch.
 - No command that does not return: no `--follow`, no `-f`, no wait
   longer than one interval.
 
