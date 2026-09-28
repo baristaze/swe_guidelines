@@ -275,8 +275,9 @@ After a measurement, short, in prose:
 - the score per provider and the overall mean; for agentic judges, say
   that each score is the weighted score the harness computed, and give
   each reference's weight and mean;
-- for a scenario in phases, how each phase ended, its wall time, and
-  the cap that stopped any, and which gates passed on the final tree;
+- for a scenario in phases, how each phase ended, its wall time, the
+  models it used with each one's cost (`model_cost_usd`), and the cap
+  that stopped any, and which gates passed on the final tree;
 - the findings that matter, most severe first, in one line each; for
   agentic judges, the gaps, per reference;
 - any provider that did not answer, with the reason it gave, and for

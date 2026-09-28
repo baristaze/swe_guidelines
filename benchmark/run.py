@@ -664,8 +664,10 @@ def run_skill(
     duration = 0.0
     sessions: dict[str, str | None] = {}
     homes: dict[str, str] = {}
-    # Each session's running total so far, as its last result reported it or as the harness counted it.
+    # Each session's running total so far, as its last result reported it or as the harness counted it,
+    # and each model's cost in it, as the result's modelUsage gives it.
     running: dict[str, tuple[float, dict[str, int]]] = {}
+    running_models: dict[str, dict[str, float]] = {}
     commit: str | None = None
     before: S.Phase | None = None
     cut_short: list[str] | None = None
@@ -720,6 +722,11 @@ def run_skill(
         # A resumed session's result carries the session's running total, the
         # phases before it included, so this phase's own is what it adds to it.
         earlier_cost, earlier_usage = running.get(homes[phase.name], (0.0, {})) if resume else (0.0, {})
+        earlier_models = running_models.get(homes[phase.name], {}) if resume else {}
+        by_model = PH.model_costs(result)
+        if by_model:
+            running_models[home] = dict(by_model)
+            by_model = {m: round(max(c - earlier_models.get(m, 0.0), 0.0), 6) for m, c in by_model.items()}
         if spent is not None:
             running[home] = (spent, dict(spent_usage))
             spent = round(max(spent - earlier_cost, 0.0), 6)
@@ -757,6 +764,9 @@ def run_skill(
             "estimated_usd": estimated,
             "wall_s": round(status.duration_s, 3),
         }
+        if by_model:
+            # The models the session used and what each cost, so the run says what it measured.
+            record["model_cost_usd"] = by_model
         if scn.subject.gates:
             record["gate_runs"] = watch.gate_runs()
         if watch.pending:

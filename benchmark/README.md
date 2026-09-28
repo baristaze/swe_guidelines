@@ -719,9 +719,13 @@ reads the change the subject made, not the harness's. The phase before
 a checkpoint has ended, and its processes with it, so a lock git left
 in the repository is stale, and the checkpoint removes it. A phase that
 fails keeps its checkpoint, so the checkpoints so far are never lost.
-Each phase's record in `results.json` names its commit, and its wall
-time, `wall_s`: the session's, from its start to its end, without the
-checkpoint. The report's Phases table shows both.
+Each phase's record in `results.json` names its commit; its wall time,
+`wall_s`: the session's, from its start to its end, without the
+checkpoint; and each model its session used with that model's cost,
+`model_cost_usd`, as the result's `modelUsage` gives them. A session's
+helpers can run on another model than its main agent, so a run says
+what it measured. For a resumed phase, each cost is what the phase
+added. The report's Phases table shows all three.
 
 **A phase that ends the run early.** Two things end the run after a
 phase: the phase leaves no tree, or its session ends with a subagent

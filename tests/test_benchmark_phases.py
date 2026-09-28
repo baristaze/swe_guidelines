@@ -769,7 +769,7 @@ def test_a_phase_s_wall_time_is_in_its_record_and_the_report(run_phases):
     (record,) = results(run_dir)["repeats"][0]["phases"]
     assert record["wall_s"] >= 0.3 and record["wall_s"] == record["exit_status"]["duration_s"]
     report = (run_dir / "report.md").read_text(encoding="utf-8")
-    assert "| Repeat | Phase | Session | Status | Cap | Turns | Wall (s) | Cost (USD) | Checkpoint |" in report
+    assert "| Repeat | Phase | Session | Status | Cap | Turns | Wall (s) | Cost (USD) | Models | Checkpoint |" in report
     assert f"| 0 | scaffold | fresh | ok | - | 3 | {record['wall_s']:.1f} | $0.2500 |" in report
 
 
@@ -913,3 +913,24 @@ def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run
     first, second = results(run_dir)["repeats"][0]["phases"]
     assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
     assert second["status"] == "ok"
+
+
+# The models a session used ---------------------------------------------------
+
+
+def test_each_phase_records_the_models_its_session_used_and_what_each_cost(run_phases):
+    # The main agent on one model, its helpers on another; a resumed session reports its running total per model.
+    scenario = phased(
+        phase("scaffold", {**TREE, "cost": 0.5, "models": {"claude-opus-5-5": 0.4, "claude-sonnet-5": 0.1}}),
+        phase("mvp", {"cost": 0.8, "models": {"claude-opus-5-5": 0.6, "claude-sonnet-5": 0.2}}, session="resume"),
+        phase("review", {"cost": 0.1}),
+    )
+    code, run_dir = run_phases(scenario)
+    assert code == 0
+    scaffold, mvp, review = results(run_dir)["repeats"][0]["phases"]
+    assert scaffold["model_cost_usd"] == {"claude-opus-5-5": 0.4, "claude-sonnet-5": 0.1}
+    assert mvp["model_cost_usd"] == {"claude-opus-5-5": 0.2, "claude-sonnet-5": 0.1}  # what the resumed phase added
+    assert "model_cost_usd" not in review  # a result that prices no model names none
+    assert sorted(scaffold["models"]) == ["claude-opus-5-5", "claude-sonnet-5"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| `claude-opus-5-5` $0.4000; `claude-sonnet-5` $0.1000 |" in report

@@ -11,6 +11,7 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `agents`: Agent calls as `[id, description, answered]`, each a tool use, and its result only when answered;
 - `sleep`: seconds to wait after the messages, so the harness can stop it;
 - `subtype`, `is_error`, `cost`, `usage`: what its result line says; `result: false` writes none;
+- `models`: each model's cost in its result's `modelUsage`, by name;
 - `exit`: its exit code.
 
 Its answer, the result's `result`, is a JSON object of what it saw: its
@@ -98,7 +99,7 @@ if todo.get("result", True):
         "session_id": session,
         "total_cost_usd": todo.get("cost", 0.25),
         "usage": todo.get("usage", {"input_tokens": 10, "output_tokens": 20}),
-        "modelUsage": {"claude-opus-5-5": {}},
+        "modelUsage": {m: {"costUSD": c} for m, c in todo["models"].items()} if "models" in todo else {"claude-opus-5-5": {}},
     }
     if result["subtype"] == "success":
         result["result"] = json.dumps(seen)

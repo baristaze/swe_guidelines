@@ -163,6 +163,21 @@ def session_id(lines: list[str]) -> str | None:
     return None
 
 
+def model_costs(result: dict[str, Any] | None) -> dict[str, float]:
+    """Each model a session's result reports under `modelUsage`, with its cost in US dollars as Claude Code prices it.
+
+    A session's helpers can run on another model than its main agent, so
+    the result names each. A model with no `costUSD` is left out.
+    """
+    usage = result.get("modelUsage") if result else None
+    out: dict[str, float] = {}
+    for model, figures in (usage if isinstance(usage, dict) else {}).items():
+        cost = figures.get("costUSD") if isinstance(figures, dict) else None
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            out[str(model)] = round(float(cost), 6)
+    return out
+
+
 def cap_of(result: dict[str, Any] | None) -> str | None:
     """The bound a result says stopped the session, or None."""
     return SUBTYPE_CAPS.get(str(result.get("subtype"))) if result else None

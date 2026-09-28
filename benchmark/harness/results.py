@@ -453,15 +453,17 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
         lines += [
             "## Phases",
             "",
-            "Each session of the subject: how it ended, the bound that ended it, its turns, its wall time, and what it spent.",
+            "Each session of the subject: how it ended, the bound that ended it, its turns, its wall time, what it spent,",
+            "and each model it used with that model's cost, as Claude Code's result reports them.",
             "",
-            _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Wall (s)", "Cost (USD)", "Checkpoint"]),
-            _row(["---"] * 9),
+            _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Wall (s)", "Cost (USD)", "Models", "Checkpoint"]),
+            _row(["---"] * 10),
         ]
         for repeat in ran:
             for phase in repeat.phases or []:
                 turns = phase.get("turns")
                 wall = phase.get("wall_s")
+                models = "; ".join(f"`{m}` {_usd(c)}" for m, c in (phase.get("model_cost_usd") or {}).items()) or "-"
                 commit = phase.get("checkpoint")
                 lines.append(
                     _row(
@@ -474,6 +476,7 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
                             str(turns) if turns is not None else "-",
                             f"{wall:.1f}" if wall is not None else "-",
                             _cost(phase),
+                            models,
                             f"`{commit[:12]}`" if commit else "-",
                         ]
                     )

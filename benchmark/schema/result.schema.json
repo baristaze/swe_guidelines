@@ -561,6 +561,11 @@
           "type": "number",
           "minimum": 0
         },
+        "model_cost_usd": {
+          "description": "Each model the session used and its cost in US dollars, from Claude Code's modelUsage; for a resumed session, what each added. Absent when the result reports none.",
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        },
         "wall_s": {
           "description": "The session's wall time in seconds, from its start to its end; its checkpoint is not in it.",
           "type": "number",
