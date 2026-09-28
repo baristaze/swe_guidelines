@@ -10,7 +10,7 @@
     "reasoning_tokens": 368
   },
   "cost_usd": 1.660084,
-  "error": "gpt-6-sol: RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-6-sol in organization org-JM1wKFuLVoBA7dR8Ak8jTzDV on tokens per min (TPM): Limit 500000, Used 351145, Requested 149984. Please try again in 135ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+  "error": "gpt-6-sol: RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-6-sol in organization [redacted] on tokens per min (TPM): Limit 500000, Used 351145, Requested 149984. Please try again in 135ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
   "fallback": null,
   "verdict": null,
   "judged": {
