@@ -86,6 +86,24 @@ def test_a_key_inside_a_zip_member_is_redacted_and_the_zip_written_again(tmp_pat
     assert archive["sha256"] == A.digest(zipped) != before and archive["bytes"] == zipped.stat().st_size
 
 
+def test_a_milestone_s_zip_written_again_has_its_record_written_again(tmp_path):
+    run, zipped = a_zipped_run(tmp_path, {"README.md": "clean\n"})
+    milestone = run / "artifacts" / "0" / "milestones" / "scaffold" / A.ZIP
+    milestone.parent.mkdir(parents=True)
+    with zipfile.ZipFile(milestone, "w") as zf:
+        zf.writestr("app/.env", f"KEY={ANTHROPIC}\n")
+    A.write_manifest(milestone)
+    results = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    results["repeats"][0]["phases"] = [{"name": "scaffold", "milestone": A.record(milestone, run)}]
+    (run / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    assert X.redact_folder(tmp_path / "runs", set()) == {milestone: 1}
+    # A later resume checks the milestone against this record, so it describes the zip that is published now.
+    kept = json.loads((run / "results.json").read_text(encoding="utf-8"))["repeats"][0]["phases"][0]["milestone"]
+    assert kept["sha256"] == A.digest(milestone) and kept["bytes"] == milestone.stat().st_size
+    assert (milestone.parent / A.MANIFEST).read_text(encoding="utf-8") == A.manifest_text(milestone)
+    assert json.loads((run / "results.json").read_text(encoding="utf-8"))["repeats"][0]["archive"]["sha256"] == A.digest(zipped)
+
+
 def test_a_zip_with_no_key_is_left_as_it_is(tmp_path):
     _, zipped = a_zipped_run(tmp_path, {"README.md": "clean\n"})
     before = zipped.read_bytes()
