@@ -13,7 +13,7 @@ and no subject runs and no judge is asked.
   phase its gate-rerun cap. A session with no spend bound fails.
 - `checkout`: the checkout holds no change a commit does not, in what
   decides a score: the `dirty` that `versions.checkout` records is
-  false.
+  false. A rehearsal skips it: it is never checked in.
 - `references`: every reference of agentic judges was staged, and
   every repository reference, fetched at its tag, pins this checkout's
   release.
@@ -183,6 +183,8 @@ class Context:
     stage_error: str | None = None
     run_dir: Path | None = None
     env: dict[str, str] = field(default_factory=lambda: dict(os.environ))
+    # A rehearsal's preflight: its run is never checked in, so a checkout with changes no commit holds may run it.
+    rehearsal: bool = False
 
 
 @dataclass(frozen=True)
@@ -350,6 +352,13 @@ def checkout(ctx: Context) -> Check:
     """The checkout holds no change a commit does not, in what decides a score, as `versions.checkout` records it."""
     dirty = ctx.checkout.get("dirty")
     facts = {"commit": ctx.checkout.get("commit"), "dirty": dirty}
+    if ctx.rehearsal:
+        return Check(
+            "checkout",
+            SKIP,
+            "a rehearsal is never checked in, so it may run on changes no commit holds; the run records them under versions",
+            facts=facts,
+        )
     if dirty is False:
         return Check(
             "checkout", PASS, f"what decides a score is as commit {str(ctx.checkout.get('commit'))[:12]} holds it", facts=facts

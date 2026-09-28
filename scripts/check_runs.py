@@ -23,6 +23,10 @@ and the run folders together:
   skills are staged from the working tree, so a run on uncommitted
   changes names a commit that does not hold what ran. A run recorded
   before the harness kept its versions has none to check;
+- no run folder is a rehearsal: its `results.json` or its `run.json`
+  is marked `rehearsal`. A rehearsal ran with every bound cut small, so
+  its scores mean nothing, and it may have run on changes no commit
+  holds;
 - every run that records its runtime ran on one its scenario lists. The
   scenario is the file under `benchmark/scenarios/` whose `name` is the
   one the run records, as the file is now: a run on a runtime the
@@ -176,6 +180,11 @@ def declared() -> dict[str, list[str] | str]:
     return out
 
 
+def rehearsed(name: str) -> bool:
+    """Whether a run folder is a rehearsal: its `results.json` or its `run.json` is marked `rehearsal`."""
+    return bool(record(name).get("rehearsal") or record(name, "run.json").get("rehearsal"))
+
+
 def unlisted(name: str, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
     """Why a run's runtime is not one its scenario lists, or None when it is or the run records no runtime or no scenario."""
     ran_on = runtime(name)
@@ -258,6 +267,10 @@ def check(errors: list[str]) -> int:
     for name in folders:
         if counts[name] == 0:
             errors.append(f"{index}: no row for the run folder {name}")
+        if rehearsed(name):
+            errors.append(
+                f"{RUNS.relative_to(ROOT)}/{name}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in"
+            )
         reason = unclean(name)
         if reason:
             errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}; a checked-in run names a commit that holds what ran")
@@ -309,7 +322,7 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists, "
-        "no key in a compressed file"
+        "no rehearsal, no key in a compressed file"
     )
     return 0
 

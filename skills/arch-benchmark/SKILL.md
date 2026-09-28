@@ -30,8 +30,8 @@ never run the harness from there.
 `$ARGUMENTS` is one of:
 
 - a scenario name, with or without flags ("explain-tenancy",
-  "review-om with all four judges"), or the path of a scenario file,
-  which `--scenario` takes as it is;
+  "review-om with all four judges", "rehearse create-full-system"), or
+  the path of a scenario file, which `--scenario` takes as it is;
 - a question about what there is ("which scenarios are there?");
 - empty, which means: list the scenarios and the provider
   availability, and stop.
@@ -122,7 +122,32 @@ never run the harness from there.
    builds nothing and asks no runtime anything, so it needs neither the
    engine nor the machine. Pass the flags a run would take anyway, so
    the command is the run's.
-5. Run the scenario, for example
+5. Before a run that spends, run its preflight: the run's own command,
+   every flag the same, with `--preflight` and
+   `--out /tmp/benchmark-preflight` added, since its run folder is never
+   checked in. It checks what the run needs where it runs, and calls no
+   paid endpoint (`benchmark/README.md`, "Preflight"). The run that
+   spends starts only when the preflight exits 0. Any other exit stops
+   there, with nothing spent, and is reported: exit 8, a failed check,
+   with what it found and the line the console prints after `fix:`; exit
+   2, a flag the harness refused or a config it could not read, with the
+   message it printed. When the prompt asks to stop before
+   anything is spent, stop after the preflight, whatever it answered,
+   and report it.
+
+   A rehearsal is the step before a scenario's first long run, such as
+   `create-full-system`'s. It is the run's own command with
+   `--rehearsal` and `--out /tmp/benchmark-rehearsals` added. It runs
+   every phase with its bounds cut small, commits, archives, fetches
+   the output back, runs the gates, and has the judges answer on a stub
+   budget, for at most $5 (`benchmark/README.md`, "Rehearsal"). It runs
+   its own preflight first, so it needs no separate one. It spends, so
+   run it only when the prompt asks for a rehearsal. A prompt that asks
+   for a rehearsal alone gets the rehearsal and no long run. A prompt
+   that asks for a rehearsal and then the run gets the rehearsal first,
+   and the long run only when the rehearsal ended `completed`.
+
+   Then run the scenario, for example
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges, how many repeats, or what the
@@ -187,6 +212,20 @@ When the prompt names a runtime the scenario does not list: that
 runtime, the runtimes the scenario lists, and the sentence that nothing
 was executed and no provider was called. Nothing ran, so there is no
 plan to report.
+
+After exit 8, a preflight that failed: the check that failed, what it
+found, and what the console prints after `fix:`, and the sentence that
+nothing was run and no paid endpoint was called. After a preflight the
+prompt stopped at, the same for a preflight that passed: each check and
+what it found.
+
+After a rehearsal, exit 0, 6, or 9: how it ended (`completed`,
+`failed`, `capped` by its spend cap, or `incomplete`, with each step it
+names under `missing`) and where its money went, as
+the report's Rehearsal section says; how each phase ended; the
+checkpoints, the zip and its manifest, and the gates; and which judges
+answered and which did not, each with its reason. Its scores mean
+nothing, so report none. It is never checked in.
 
 After exit 4, the image build that failed: the reason
 `streams/build.jsonl` in the run folder gives, and the sentence that no

@@ -143,6 +143,18 @@ def test_a_run_recorded_before_versions_has_none_to_check(repo, runs):
     assert runs.main() == 0
 
 
+@pytest.mark.parametrize(("file", "marker"), [("results.json", {"status": "completed"}), ("run.json", True)])
+def test_a_rehearsal_is_never_checked_in(repo, runs, capsys, file, marker):
+    name = "20260101-000000-one-aa"
+    a_versioned_run(repo, name, False)
+    path = repo.root / "benchmark" / "runs" / name / file
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    repo.write(f"benchmark/runs/{name}/{file}", json.dumps({**data, "rehearsal": marker}) + "\n")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/{name}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in" in out
+
+
 ONE_A = "20260101-000000-alpha-aa"
 TWO_A = "20260102-000000-alpha-bb"
 ONE_B = "20260101-000000-beta-cc"
