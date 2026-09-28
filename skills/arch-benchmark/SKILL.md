@@ -113,8 +113,9 @@ never run the harness from there.
    `uv run benchmark/run.py --scenario explain-tenancy --providers 7 --effort medium --repeat 1 --build`.
    A run takes minutes and costs money at every provider selected. When
    the prompt has not said which judges or how many repeats, use the
-   scenario's default judges and the default of 3 repeats, and say
-   which they were.
+   scenario's default judges and the default of 3 repeats, by leaving
+   out `--providers`, `--effort`, and `--repeat`, and say which they
+   were.
 6. When the prompt asks what a run would do rather than for a
    measurement, add `--dry-run`: it resolves everything, writes
    `run.json`, and calls nothing. For agentic judges, it also copies
@@ -134,13 +135,15 @@ never run the harness from there.
    folder), whether it keeps the handoff note (`hint`), its bounds
    (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
    backstop), what follows a bound (`on_cap`), and what its `argv` runs:
-   the prompt as the `argv` carries it, with the target's path and the
-   handoff sentence in it, and whether it gets `--add-dir` or `--resume`.
+   the prompt as the `argv` carries it, with the target's path in it when
+   the phase's prompt names `{target}` and the handoff sentence when it
+   is hinted, and whether it gets `--add-dir` or `--resume`.
    Report the subject's `output` folder and its `gates`, which the
    harness runs on the final tree. `benchmark/README.md`, "A subject in
    phases", says what each field means and what follows when a phase
    hits a bound or fails; answer from it when the prompt asks. When
-   `scenario.judges.mode` is `agentic`, report the judges' `budget` and
+   `scenario.judges.mode` is `agentic`, report every key of the judges'
+   `budget` as `run.json` resolves it, defaults included, and
    each reference with its weight, and what the run resolved for it
    under `versions.references`: the paths of the checkout, or the
    repository's URL, tag, commit, and the guideline release it pins
@@ -148,7 +151,7 @@ never run the harness from there.
    "Agentic judges", says what each field means. There is
    no score to report, and inventing one is the worst thing this skill
    could do.
-7. List the run folder the command printed with `ls`, then read
+7. After a measurement, list the run folder the command printed with `ls`, then read
    `report.md` in it. Read `results.json` when a number in the report
    needs its source. A run that exits 4 leaves no `report.md`; the
    Output section says what to report then.
