@@ -194,6 +194,11 @@ leave `maintenance` out of every command below.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
+   Poll `get-query-results` at most 10 times. When the status is still
+   `Scheduled` or `Running` after the tenth, stop polling: the report
+   reads the logs as "not read: the query did not finish in 10 polls",
+   with the query id, and the next step starts.
+
    Local: `docker compose -f deployment/local/docker-compose.yml -f
    deployment/local/docker-compose.full.yml logs --since <since> api
    maintenance` from the repository root when the processes
@@ -251,7 +256,9 @@ leave `maintenance` out of every command below.
 11. Write the report. Name the next skill: `ops-root-cause` with an
     org id when one tenant's rows explain it, `ops-watch` when the
     signal is still moving, `ops-infra-as-code` when the fix is a
-    resource.
+    resource. A session follows at most 2 hops of Next. The skill it
+    starts with is hop zero; the report of the second hop still names
+    its next skill, and the session stops there and reports.
 
 ## What it never does
 
@@ -266,6 +273,7 @@ leave `maintenance` out of every command below.
 - No `terraform apply`, no console clicks, no scaling by hand.
 - No re-reading a wider window than asked; a longer look is a second
   run with a longer `--since`.
+- No unbounded poll: never more than 10 polls of a query.
 
 ## Output
 
