@@ -1122,7 +1122,7 @@ will take, so it checks that run.
 | `subject_key` | `SUBJECT_ANTHROPIC_API_KEY` is set, is no judge's key, and Anthropic's model list takes it. For a `qa` subject, its provider's key |
 | `judge_keys` | every judge the run selects has a key, and its provider's model list takes it |
 | `runtime` | on `vm`, the machine answers through `exec_prefix`, and the config's `check` passes there. On `container`, the engine answers and the image is there; with `--build`, the preflight builds it first. On `host`, always |
-| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read |
+| `workspace` | on `vm`, `remote_workspace` there holds nothing: no lock, and nothing an earlier run left, which the next subject could read. And the machine's Docker holds no container and no volume, which the next subject would start beside. A failure names each one and the command that clears them |
 | `tools` | every tool the runtime config lists under `tools` answers where the subject runs, at its pinned version, and a skill's Claude Code answers. A container run whose config lists none asks the three its Dockerfile pins |
 | `resources` | the free disk and the available memory where the subject works are at least the scenario's `preflight.disk_gib` and `preflight.memory_gib` |
 | `network` | the model API, for a skill, and every URL under the scenario's `preflight.registries`, answer from where the subject runs, whatever the status |

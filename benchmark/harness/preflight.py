@@ -28,7 +28,9 @@ and no subject runs and no judge is asked.
   prefix and passes its check; the container engine answers, and has
   the image or builds it.
 - `workspace`: on the other machine, the folder runs work in holds
-  nothing: no run holds the machine, and none left anything there.
+  nothing: no run holds the machine, and none left anything there. And
+  the machine's Docker holds no container and no volume, which the next
+  subject would start beside.
 - `tools`: every tool the runtime pins answers where the subject runs,
   at its pinned version.
 - `resources`: the free disk and the available memory where the subject
@@ -115,6 +117,14 @@ VERSION = re.compile(r"\d+(?:\.\d+)*")
 #
 # The entries of the folder runs work in there, when it is there.
 LISTING = '[ -d "$1" ] || exit 0; ls -A -- "$1"'
+# What of Docker's there an earlier run leaves for the next subject to
+# start beside: a container, running or stopped, and a volume, which keeps
+# its data. A network alone holds neither a port nor data.
+LEFT_IN_DOCKER = ("container", "volume")
+# What clears the machine's Docker, as a failed `workspace` check names it:
+# every container with its anonymous volumes, then every volume, then every
+# network Docker did not make itself. Images stay.
+CLEAR_DOCKER = "docker ps -aq | xargs -r docker rm -f -v; docker volume prune --all --force; docker network prune --force"
 # The free disk, in KiB, of the folder the subject works in, or of the
 # nearest folder above it that is there; and the available memory, in
 # KiB, when the machine reports it.
@@ -609,7 +619,12 @@ def runtime(ctx: Context) -> Check:
 
 
 def workspace(ctx: Context) -> Check:
-    """On the other machine, the folder runs work in holds nothing: no lock, and nothing an earlier run left."""
+    """On the other machine, nothing an earlier run left: no lock, nothing in the folder runs work in, and nothing in Docker.
+
+    Docker there holds no container and no volume. A stack an earlier run
+    left holds its ports and keeps its databases, and the next subject
+    would start beside it, within reach.
+    """
     rt = ctx.runtime
     if ctx.scenario.kind == "qa":
         return Check("workspace", SKIP, "a qa subject runs no command and works in no folder")
@@ -633,15 +648,31 @@ def workspace(ctx: Context) -> Check:
             f"`{prefix} rm -rf -- {base}/.lock`",
             {"entries": entries},
         )
+    problems: list[str] = []
+    fixes: list[str] = []
+    facts: dict[str, Any] = {"entries": entries}
     if entries:
-        return Check(
-            "workspace",
-            FAIL,
-            f"{base} there holds what earlier runs left, and the next subject can read it: {', '.join(entries)}",
-            f"no run holds the machine, so remove it: `{prefix} sudo rm -rf -- {base}`",
-            {"entries": entries},
-        )
-    return Check("workspace", PASS, f"{base} there holds nothing")
+        problems.append(f"{base} there holds what earlier runs left, and the next subject can read it: {', '.join(entries)}")
+        fixes.append(f"no run holds the machine, so remove it: `{prefix} sudo rm -rf -- {base}`")
+    listed = ask(rt, ["sh", "-c", RT.DOCKER_LIST, "sh", RT.DOCKER], rt.vm.helper_timeout_s)
+    if not listed.ok:
+        problems.append(f"the machine's Docker did not answer ({listed.why()})")
+        fixes.append(f"start Docker there, or find why `{prefix} docker ps -a` fails")
+    else:
+        held = [item for item in RT.docker_items(listed.out) if item[0] in LEFT_IN_DOCKER]
+        facts["docker"] = {f"{kind}s": [name for k, _, name in held if k == kind] for kind in LEFT_IN_DOCKER}
+        if held:
+            problems.append(
+                f"the machine's Docker holds what earlier runs left, and the next subject would start beside it: "
+                f"{RT.described(held)}"
+            )
+            clear = shlex.join([*rt.vm.exec_prefix, "sh", "-c", CLEAR_DOCKER])
+            fixes.append(f"no run holds the machine, so clear its Docker: `{clear}`")
+    if problems:
+        return Check("workspace", FAIL, "; ".join(problems), "; ".join(fixes), facts)
+    return Check(
+        "workspace", PASS, f"{base} there holds nothing, and the machine's Docker holds no container and no volume", facts=facts
+    )
 
 
 def parse_tools(raw: Any) -> list[Tool]:
