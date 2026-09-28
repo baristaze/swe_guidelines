@@ -44,7 +44,10 @@ lands in a new run folder beside the source.
 `resume --source <run folder> [--after <phase>]` starts a new run from
 a phase's milestone: it restores what that phase left into a fresh
 workspace, runs the phases after it, then the gates, the archive, and
-the judges, and carries the earlier phases' records.
+the judges, and carries the earlier phases' records. A resume of a run
+whose phases all ran resumes its judges: it runs those `--judges` names,
+or by default those that did not answer, on the source's archived
+output, and carries the other judgements.
 """
 
 from __future__ import annotations
@@ -973,6 +976,21 @@ def describe_subject(scn: S.Scenario, argv: list[str]) -> str:
     return f"A model answered this prompt directly:\n\n{scn.subject.prompt}"
 
 
+def judge_task(
+    scn: S.Scenario, sandbox: Path, staged: RF.Staged, art_dir: Path, index: int, argv: list[str], notes: list[str]
+) -> tuple[str, dict[str, Path]]:
+    """What a repeat's agentic judges get: the task, and the roots they read, the output staged in the run's sandbox.
+
+    It reads the repeat's artifacts in `art_dir` and writes nothing there.
+    """
+    output = sandbox / "judged" / str(index) / S.OUTPUT_ROOT
+    holds, why = RF.stage_output(art_dir, output, archived=bool(scn.subject.output))
+    if why:
+        notes.append(f"repeat {index}: {why}")
+    prompt = RF.build_prompt(scn.rubric, describe_subject(scn, argv), holds, scn.judges.references, staged.versions)
+    return prompt, {S.OUTPUT_ROOT: output, **staged.roots}
+
+
 def judge_agentic(
     scn: S.Scenario,
     sandbox: Path,
@@ -992,14 +1010,8 @@ def judge_agentic(
     artifacts, and the task every judge gets is kept as the repeat's
     `judge-prompt.md`.
     """
-    output = sandbox / "judged" / str(index) / S.OUTPUT_ROOT
-    holds, why = RF.stage_output(art_dir, output, archived=bool(scn.subject.output))
-    if why:
-        notes.append(f"repeat {index}: {why}")
-    refs = scn.judges.references
-    prompt = RF.build_prompt(scn.rubric, describe_subject(scn, argv), holds, refs, staged.versions)
+    prompt, roots = judge_task(scn, sandbox, staged, art_dir, index, argv, notes)
     (art_dir / "judge-prompt.md").write_text(prompt, encoding="utf-8")
-    roots = {S.OUTPUT_ROOT: output, **staged.roots}
     return RF.judge_all(
         flags, prompt, roots, run_dir / "judgements", index, effort, scn.judges.weights, scn.judges.budget, matrix
     )
@@ -1017,7 +1029,8 @@ def keep_judgements(run_dir: Path, index: int, judgements: list[R.AnyJudgement])
         (run_dir / "judgements" / f"{index}-{j.provider}.json").write_text(
             json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {said(j)}")
+        carried = " (carried)" if isinstance(j, RF.Judged) and j.carried else ""
+        print(f"  repeat {index} {j.provider:10} {j.model:24} {j.status:8} score {said(j)}{carried}")
 
 
 def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[str]]:
@@ -1098,6 +1111,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="run an optional group of the scenario's phases as well; repeat it for more; a run takes none by default",
     )
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
+    parser.add_argument(
+        "--judges",
+        default=None,
+        metavar="PROVIDERS",
+        help="for resume of a run whose phases all ran: the judges to run again, as --providers names them; "
+        "the other judgements are carried from the source. Those that did not answer in it by default",
+    )
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
     parser.add_argument(
         "--repeat",
@@ -1212,6 +1232,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.after and args.command != "resume":
         print("--after is for resume, which starts a new run from a phase's milestone", file=sys.stderr)
+        return 2
+    if args.judges is not None and args.command != "resume":
+        print("--judges is for resume, which runs again the judges it names of a run whose phases all ran", file=sys.stderr)
         return 2
     if args.command == "judge":
         return command_judge(args)
@@ -1960,6 +1983,8 @@ def judge_again(
     flags: P.Provider,
     cap: float | None,
     runtime: str,
+    staged: RF.Staged | None = None,
+    carry: dict[int, Carry] | None = None,
 ) -> int:
     """Everything after the run folder of `judge` exists: the caller removes the sandbox whatever happens here.
 
@@ -1971,14 +1996,21 @@ def judge_again(
     each with how it ended and none of its spend, so a judge of this run
     tells its judges the same. No subject ran, so it records no subject
     spend.
+
+    `staged` is the references when the caller staged them. With `carry`, a
+    resume of the source's judges: each repeat runs only the judges its
+    entry names and carries the source's other judgements, which the caller
+    checked were given this run's task on this archive, so the repeat keeps
+    the source's judge prompt.
     """
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
-    try:
-        staged = RF.stage(scn.judges.references, ROOT, sandbox / "references", V.plugin_version(ROOT))
-    except RF.StageError as exc:
-        print(exc, file=sys.stderr)
-        return 2
+    if staged is None:
+        try:
+            staged = RF.stage(scn.judges.references, ROOT, sandbox / "references", V.plugin_version(ROOT))
+        except RF.StageError as exc:
+            print(exc, file=sys.stderr)
+            return 2
     # The repeats to judge; once the run ends, the repeats judged, and the rest under `capped`.
     origin: dict[str, Any] = {
         "run_id": str(ran.get("run_id") or source.name),
@@ -1992,6 +2024,17 @@ def judge_again(
         taken = S.taken_groups(scn)
         origin["rubric_groups"] = [
             {"repeat": r.index, "groups": S.ran_groups(scn, taken, r.ran)} for r in repeats if not r.refused
+        ]
+    if carry is not None:
+        # Which judges each repeat runs here, and whose judgements it carries from the source.
+        origin["judges"] = [
+            {
+                "repeat": r.index,
+                "run": [P.name(p) for p in P.members(carry[r.index].run)],
+                "carried": [j.provider for j in carry[r.index].carried],
+            }
+            for r in repeats
+            if not r.refused
         ]
     notes = list(staged.notes)
     resolved: dict[str, Any] = {
@@ -2047,10 +2090,11 @@ def judge_again(
     budget = Budget(cap)
     # A repeat's judges start only when what is left of the cap covers their budgets, so no judge is handed
     # dollars the cap does not hold. The judges of a repeat that started still judge it.
-    need = S.judges_budget(scn, len(P.members(flags)))
     to_judge = [r.index for r in repeats if not r.refused]
     for repeat in (r for r in repeats if not r.refused):
-        if not budget.covers(need):
+        runs = carry[repeat.index].run if carry is not None else flags
+        need = S.judges_budget(scn, len(P.members(runs)))
+        if need and not budget.covers(need):
             origin["capped"] = to_judge[to_judge.index(repeat.index) :]
             left = (budget.cap or 0.0) - budget.spent
             notes.append(
@@ -2062,11 +2106,26 @@ def judge_again(
         kept = source / "artifacts" / str(index)
         art_dir = run_dir / "artifacts" / str(index)
         shutil.copytree(kept, art_dir, symlinks=True)
-        (art_dir / "judge-prompt.md").unlink(missing_ok=True)  # the source's own; this run writes its own
-        paths = sorted(p.relative_to(run_dir).as_posix() for p in art_dir.rglob("*") if p.is_file())
+        prompt = art_dir / "judge-prompt.md"
+        if carry is None:
+            prompt.unlink(missing_ok=True)  # the source's own; this run writes its own
+        paths = sorted(p.relative_to(run_dir).as_posix() for p in art_dir.rglob("*") if p.is_file() and p != prompt)
         archive = {**A.record(art_dir / A.ZIP, run_dir), "commit": repeat.commit}
-        judgements = judge_agentic(per_repeat[index], sandbox, staged, art_dir, run_dir, index, [], flags, effort, matrix, notes)
+        judgements = (
+            judge_agentic(per_repeat[index], sandbox, staged, art_dir, run_dir, index, [], runs, effort, matrix, notes)
+            if runs
+            else []
+        )
         budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
+        carried = carry[index].carried if carry is not None else []
+        for j in carried:
+            # The transcript of a carried judgement comes along, so the record names a file of this run.
+            transcript = source / "judgements" / f"{index}-{j.provider}.jsonl"
+            if transcript.is_file():
+                (run_dir / "judgements").mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(transcript, run_dir / "judgements" / transcript.name)
+        order = [P.name(p) for p in P.Provider]
+        judgements = sorted([*judgements, *carried], key=lambda j: order.index(j.provider))
         keep_judgements(run_dir, index, [*judgements])
         # No subject ran, so the repeat carries no subject spend, and its exit status is 0. Its phases are its
         # source's, as they ran there, with no spend: a judge of this run tells its judges the same.
@@ -2081,8 +2140,9 @@ def judge_again(
             )
         )
     origin["repeats"] = [r.index for r in run.repeats]
-    if "rubric_groups" in origin:
-        origin["rubric_groups"] = [g for g in origin["rubric_groups"] if g["repeat"] in origin["repeats"]]
+    for key in ("rubric_groups", "judges"):
+        if key in origin:
+            origin[key] = [g for g in origin[key] if g["repeat"] in origin["repeats"]]
     run.notes = notes
     data, problems = write_record(run, run_dir)
     if problems:
@@ -2342,7 +2402,8 @@ def command_resume(args: argparse.Namespace) -> int:
     milestone after the phase, and one without a milestone that can be
     restored is refused with its reason. The run's spend cap is the caps of
     the phases it runs and the judges' budgets, over the repeats it resumes,
-    unless `--max-spend-usd` names one.
+    unless `--max-spend-usd` names one. A resume after the last phase
+    resumes the judges instead (`resume_judges`).
     """
     given = [flag for dest, flag in NOT_FOR_RESUME.items() if getattr(args, dest) not in (None, False)]
     if given:
@@ -2368,8 +2429,10 @@ def command_resume(args: argparse.Namespace) -> int:
             f"{source} is a rehearsal, whose every bound was cut small; run the scenario rather than resume it", file=sys.stderr
         )
         return 2
+    taken = [str(g) for g in groups] if isinstance(groups, list) else []
     try:
-        whole = S.select(S.load(S.find(name, SCENARIOS)), [str(g) for g in groups] if isinstance(groups, list) else [])
+        base = S.load(S.find(name, SCENARIOS))
+        whole = S.select(base, taken)
         flags = P.parse(args.providers if args.providers is not None else whole.judges.providers)
     except (S.ScenarioError, ValueError) as exc:
         print(exc, file=sys.stderr)
@@ -2392,9 +2455,12 @@ def command_resume(args: argparse.Namespace) -> int:
         return 2
     rest = whole.subject.phases[names.index(after) + 1 :]
     if not rest:
+        # Every phase ran: what is left to resume is the judges.
+        return resume_judges(args, source, ran, base, taken, after, str(ran_on))
+    if args.judges is not None:
         print(
-            f"{after} is the source run's last phase, so no phase is left to run; "
-            f"`run.py judge --source {args.source}` judges its output",
+            f"--judges names the judges to run again of a run whose phases all ran; a resume after {after} runs "
+            f"{', '.join(p.name for p in rest)}, and every judge judges what they build",
             file=sys.stderr,
         )
         return 2
@@ -2476,6 +2542,200 @@ def command_resume(args: argparse.Namespace) -> int:
         J.load_matrix(MODELS),
         resume,
     )
+
+
+# Resuming a run's judges ---------------------------------------------------
+
+# What a resume of the judges does not take besides what resume refuses: a runtime's flags, since no phase runs, and
+# --providers, since the run's judges are the source's and --judges names those that run again.
+NOT_FOR_RESUMED_JUDGES = {**NOT_FOR_JUDGE, "providers": "--providers"}
+
+
+@dataclasses.dataclass
+class Carry:
+    """One repeat of a resume of the judges: the judges it runs, and the source's judgements it carries."""
+
+    run: P.Provider
+    carried: list[RF.Judged]
+
+
+def carry_plan(
+    source: Path, results: dict[str, Any] | None, index: int, weights: dict[str, float], named: P.Provider | None
+) -> Carry | str:
+    """What a repeat runs and carries, or why it is refused: the judges `named`, or those that did not answer in it.
+
+    The repeat must hold the source's judgements, each an agentic one of
+    this scenario's references, and the SHA-256 of the archive they read.
+    A carried judgement names this run's copy of its transcript, and keeps
+    the answer its judge submitted.
+    """
+    listed = (results or {}).get("repeats")
+    record = next((r for r in listed if isinstance(r, dict) and r.get("index") == index), {}) if isinstance(listed, list) else {}
+    given = record.get("judgements")
+    if not isinstance(given, list) or not given:
+        return "the source judged no output of it, so it holds no judgement to carry"
+    archive = record.get("archive")
+    if not (isinstance(archive, dict) and archive.get("sha256")):
+        return "the source recorded no SHA-256 of the archive its judges read, so nothing says its judgements are of this output"
+    judged: list[RF.Judged] = []
+    for item in given:
+        j = RF.Judged.carried_from(item, weights) if isinstance(item, dict) else None
+        if j is None:
+            who = item.get("provider") if isinstance(item, dict) else None
+            return f"its judgement by {who or 'a judge it does not name'} is not an agentic one of this scenario's references"
+        judged.append(j)
+    run = named if named is not None else P.Provider(0)
+    if named is None:
+        for j in judged:
+            if R.score_of(j) is None:  # it did not answer: an error, a miss, or no key
+                run |= P.parse(j.provider)
+    carried = [j for j in judged if not P.parse(j.provider) & run]
+    for j in carried:
+        j.transcript = f"judgements/{index}-{j.provider}.jsonl"
+        j.answer = (read_record(source / "judgements" / f"{index}-{j.provider}.json") or {}).get("answer")
+    return Carry(run, carried)
+
+
+def first_difference(there: str, here: str) -> str:
+    """Where two judge prompts part: the first line that differs, as each one reads."""
+    a, b = there.splitlines(), here.splitlines()
+    at = next((n for n, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), min(len(a), len(b)))
+
+    def says(lines: list[str]) -> str:
+        if at >= len(lines):
+            return "nothing"
+        line = lines[at]
+        return repr(line if len(line) <= 160 else line[:157] + "...")
+
+    return f"line {at + 1} reads {says(a)} there, and {says(b)} here"
+
+
+def task_refusal(source: Path, index: int, scn: S.Scenario, sandbox: Path, staged: RF.Staged) -> str | None:
+    """Why a repeat's judgements are not carried into this run, or None when they are.
+
+    A carried judgement must have been given the task this run's judges
+    get: the judge prompt the source kept for the repeat is the one this
+    run builds for it. That prompt holds the rubric with the sentence of
+    each group it took, the phases the judges are told of, and the
+    references at their versions, so a judgement of another rubric is
+    never mixed into the mean.
+    """
+    kept = source / "artifacts" / str(index) / "judge-prompt.md"
+    if not kept.is_file():
+        return "the source kept no judge prompt of it, so nothing says what its judges were told"
+    prompt, _ = judge_task(scn, sandbox, staged, kept.parent, index, [], [])
+    there = kept.read_text(encoding="utf-8")
+    if there == prompt:
+        return None
+    return (
+        "its judges were given another task than this run's judges get, so a judgement it holds is of another rubric: "
+        f"its judge prompt and this run's first differ at {first_difference(there, prompt)}"
+    )
+
+
+def resume_judges(
+    args: argparse.Namespace, source: Path, ran: dict[str, Any], base: S.Scenario, taken: list[str], last: str, runtime: str
+) -> int:
+    """Resume a run whose phases all ran into its judges: run those `--judges` names, or those that did not answer.
+
+    The run's judges are the source's. Each repeat runs the judges named,
+    or, with no `--judges`, those whose judgement in the source did not
+    answer, on the source's archive, and carries the source's other
+    judgements, marked carried. A judgement is carried only when the source
+    judged the same archive, by the SHA-256 it recorded, with the task this
+    run's judges get; a repeat that fails either is refused with its reason.
+    A source with nothing left to run makes no run folder. The run's spend
+    cap is the budgets of the judges it runs, unless `--max-spend-usd`
+    names one.
+    """
+    given = [flag for dest, flag in NOT_FOR_RESUMED_JUDGES.items() if getattr(args, dest) not in (None, False)]
+    if given:
+        print(
+            f"{last} is the source run's last phase, so resume runs its judges and no phase: {', '.join(given)} is not "
+            "for it; --judges names the judges to run again",
+            file=sys.stderr,
+        )
+        return 2
+    scn = S.select(base, taken)
+    if not scn.judges.agentic:
+        print(
+            f"{last} is the source run's last phase, so no phase is left to run, and scenario {scn.name}'s judges are "
+            "one-shot: resume carries agentic judgements only",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        named = P.parse(args.judges) if args.judges is not None else None
+    except ValueError as exc:
+        print(f"--judges: {exc}", file=sys.stderr)
+        return 2
+    results = read_record(source / "results.json")
+    repeats = source_repeats(source, results)
+    plans: dict[int, Carry] = {}
+    for repeat in (r for r in repeats if not r.refused):
+        plan = carry_plan(source, results, repeat.index, scn.judges.weights, named)
+        if isinstance(plan, str):
+            repeat.refused = plan
+        else:
+            plans[repeat.index] = plan
+
+    def nothing_left() -> int | None:
+        """Exit 2, when no repeat has a judge left to run, with why; None when one has."""
+        if any(p.run for p in plans.values()):
+            return None
+        for repeat in (r for r in repeats if r.refused):
+            print(f"repeat {repeat.index} is not resumed: {repeat.refused}", file=sys.stderr)
+        why = (
+            "every judge answered in it, so no judge is left to run; --judges names judges to run again"
+            if plans
+            else "it holds no judged output whose judgements can be carried"
+        )
+        print(f"{source}: {why}. No run folder was made and no judge started", file=sys.stderr)
+        return 2
+
+    if (code := nothing_left()) is not None:
+        return code
+    # What each repeat's judges are told: the phases that ran in it, and the sentence of each group whose every phase did.
+    per_repeat = {r.index: S.as_ran(base, taken, r.ran) for r in repeats if not r.refused}
+    sandbox = RT.new_sandbox()
+    try:
+        try:
+            staged = RF.stage(scn.judges.references, ROOT, sandbox / "references", V.plugin_version(ROOT))
+        except RF.StageError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        for repeat in (r for r in repeats if not r.refused and plans[r.index].carried):
+            if why := task_refusal(source, repeat.index, per_repeat[repeat.index], sandbox, staged):
+                repeat.refused = why
+                del plans[repeat.index]
+        if (code := nothing_left()) is not None:
+            return code
+        for repeat in (r for r in repeats if r.refused):
+            print(f"repeat {repeat.index} is not resumed: {repeat.refused}", file=sys.stderr)
+        # The judges it runs, and no one else's budget: a carried judgement spends nothing here.
+        cap = args.max_spend_usd
+        if cap is None:
+            cap = round(sum(S.judges_budget(scn, len(P.members(p.run))) for p in plans.values()), 6)
+        flags = P.Provider(0)
+        for plan in plans.values():
+            flags |= plan.run
+        out = Path(args.out).resolve() if args.out else source.parent
+        run_id, run_dir = new_run_dir(out, scn.name)
+        each = "; ".join(
+            f"repeat {i} runs {', '.join(P.name(p) for p in P.members(c.run)) or 'no judge'} and carries "
+            f"{', '.join(j.provider for j in c.carried) or 'none'}"
+            for i, c in sorted(plans.items())
+        )
+        print(f"resume of the judges of {ran.get('run_id') or source.name}: {each}; spend cap ${cap:g}")
+        # A run that can spend holds this machine awake until it ends; a dry run does not.
+        with PF.held_awake(not args.dry_run) as note:
+            if note:
+                print(note, file=sys.stderr)
+            return judge_again(
+                args, scn, per_repeat, source, ran, repeats, run_id, run_dir, sandbox, flags, cap, runtime, staged, plans
+            )
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
 
 
 if __name__ == "__main__":

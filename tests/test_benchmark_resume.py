@@ -501,8 +501,14 @@ def test_resume_refuses_what_its_source_decides_and_a_source_it_cannot_continue(
     assert "--after is for resume" in capsys.readouterr().err
     assert bench.run("resume", "--source", str(src), "--after", "deploy") == (2, None)
     assert "--after names deploy, and the phases of the source run are scaffold, mvp, fix" in capsys.readouterr().err
-    assert bench.run("resume", "--source", str(src)) == (2, None)  # after fix, the last phase: nothing is left to run
-    assert "`run.py judge --source" in capsys.readouterr().err
+    assert bench.run("resume", "--source", str(src)) == (2, None)  # after fix, the last phase: only the judges are left
+    assert "judges are one-shot: resume carries agentic judgements only" in capsys.readouterr().err
+    assert bench.run("resume", "--source", str(src), "--providers", "openai", "--runtime-config", "vm.json") == (2, None)
+    assert "--runtime-config, --providers is not for it; --judges names the judges to run again" in capsys.readouterr().err
+    assert bench.run("resume", "--source", str(src), "--after", "scaffold", "--judges", "openai") == (2, None)
+    assert "a resume after scaffold runs mvp, fix, and every judge judges what they build" in capsys.readouterr().err
+    assert bench.run("--scenario", "system", "--judges", "openai") == (2, None)
+    assert "--judges is for resume" in capsys.readouterr().err
     assert bench.run("resume", "--source", str(src), "--after", "mvp") == (2, None)
     assert "phase fix continues the session of mvp, which only the source run held" in capsys.readouterr().err
     marked = resolved(src)
@@ -511,3 +517,203 @@ def test_resume_refuses_what_its_source_decides_and_a_source_it_cannot_continue(
     assert bench.run("resume", "--source", str(src), "--after", "scaffold") == (2, None)
     assert "is a rehearsal" in capsys.readouterr().err
     assert sorted(src.parent.parent.glob("*/*")) == before  # no run folder was made
+
+
+# Resuming the judges ------------------------------------------------------------------
+
+SCORES = {"anthropic": 80, "openai": 60, "gemini": 90, "xai": 70}
+ALL_FOUR = ["anthropic", "openai", "gemini", "xai"]
+
+
+def four_judges() -> dict:
+    """The grouped scenario, judged by all four providers, each within $5."""
+    data = grouped()
+    data["judges"]["providers"] = "15"
+    return data
+
+
+@pytest.fixture
+def panel(monkeypatch):
+    """Fake agentic judges in place of every provider's.
+
+    Each judgement scores its provider's SCORES and costs $1.50, unless
+    `answers` names another status for the provider, such as `error`. Each
+    call records the judges it ran, the task they were given, and the files
+    of the output they read.
+    """
+
+    class Panel:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+            self.answers: dict[str, str] = {}
+
+    fake = Panel()
+
+    def judge_all(flags, prompt, roots, folder, index, effort, weights, *args, **kwargs) -> list:
+        names = [run.P.name(p) for p in run.P.members(flags)]
+        tree = sorted(p.relative_to(roots["output"]).as_posix() for p in roots["output"].rglob("*") if p.is_file())
+        fake.calls.append({"names": names, "prompt": prompt, "tree": tree})
+        folder.mkdir(parents=True, exist_ok=True)
+        out = []
+        for name in names:
+            path = folder / f"{index}-{name}.jsonl"
+            path.write_text(json.dumps({"kind": "end", "judge": name}) + "\n", encoding="utf-8")
+            status = fake.answers.get(name, "ok")
+            answer = {
+                "references": {"guideline": {"score": SCORES[name], "gaps": [], "strengths": [f"{name} read a.txt"]}},
+                "rationale": f"what {name} weighed",
+            }
+            judgement = run.RF.A.AgenticJudgement(
+                name,
+                f"{name}-model",
+                effort,
+                status=status,
+                latency_s=1.0,
+                usage={"input_tokens": 1000, "output_tokens": 100},
+                error=None if status == "ok" else f"{name}: RateLimitError",
+                answer=answer if status == "ok" else None,
+                cost_usd=1.5,
+                tool_calls=3,
+                turns=2,
+            )
+            out.append(run.RF.Judged.of(judgement, weights, f"{folder.name}/{path.name}"))
+        return out
+
+    monkeypatch.setattr(run.RF, "judge_all", judge_all)
+    return fake
+
+
+def no_runtime(*args, **kwargs):
+    raise AssertionError("a resume of the judges made a runtime")
+
+
+@needs_jsonschema
+def test_a_resume_of_a_run_whose_phases_all_ran_runs_only_the_judges_named_and_carries_the_rest(bench, panel, monkeypatch):
+    bench.write(four_judges())
+    panel.answers["openai"] = "error"
+    src = bench.source("--with", "extras")
+    assert [c["names"] for c in panel.calls] == [ALL_FOUR]
+    panel.answers.clear()
+    monkeypatch.setattr(run.RT, "build", no_runtime)
+    code, run_dir = bench.run("resume", "--source", str(src), "--judges", "openai")
+    assert code == 0 and run_dir is not None and not (run_dir / "streams").exists()  # no phase, and no session
+    # Only openai judged, once, the tree the source archived, with the very task the source's judges were given.
+    first, again = panel.calls
+    assert again["names"] == ["openai"] and again["tree"] == first["tree"] == ["a.txt", "b.txt"]
+    assert again["prompt"] == first["prompt"] == (src / "artifacts/0/judge-prompt.md").read_text(encoding="utf-8")
+    record = results(run_dir)
+    (repeat,) = record["repeats"]
+    by = {j["provider"]: j for j in repeat["judgements"]}
+    assert list(by) == ALL_FOUR and [p for p, j in by.items() if j.get("carried")] == ["anthropic", "gemini", "xai"]
+    was = {j["provider"]: j for j in results(src)["repeats"][0]["judgements"]}
+    assert all(by[p] == {**was[p], "carried": True} for p in ("anthropic", "gemini", "xai"))
+    assert was["openai"]["status"] == "error" and by["openai"]["status"] == "ok" and by["openai"]["judged"]["score"] == 60
+    # The scores, the means, and the report hold all four, and the mean is over the four.
+    summary = record["summary"]
+    assert sorted(summary["per_provider"]) == sorted(ALL_FOUR) and summary["overall_mean"] == 75
+    assert summary["skipped"] == [] and summary["references"]["guideline"]["n"] == 4
+    # What it spent is openai's judgement alone: the source paid for the carried ones.
+    assert list(record["spend"]["judges"]) == ["openai"] and record["spend"]["total_usd"] == 1.5
+    assert record["source"]["judges"] == [{"repeat": 0, "run": ["openai"], "carried": ["anthropic", "gemini", "xai"]}]
+    assert record["source"]["run_id"] == src.name and "after" not in record["source"]
+    # Each carried judgement comes with its transcript and its answer, marked carried.
+    assert all((run_dir / "judgements" / f"0-{p}.jsonl").is_file() for p in ALL_FOUR)
+    kept = json.loads((run_dir / "judgements" / "0-gemini.json").read_text(encoding="utf-8"))
+    assert kept["carried"] is True and kept["answer"]["rationale"] == "what gemini weighed"
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert f"This run resumed the judges of the run `{src.name}`" in report
+    assert "Repeat 0: judged here by `openai`; carried: `anthropic`, `gemini`, `xai`." in report
+    assert "| 90 | 90.0 | 3 | 1.0 | ok (carried) |" in report and "| 60 | 60.0 | 3 | 1.0 | ok |" in report
+    assert "Overall mean, of the weighted scores: 75.0." in report and "### Not answered" not in report
+
+
+@needs_jsonschema
+def test_a_resume_of_the_judges_runs_by_default_those_that_did_not_answer_and_none_when_all_did(bench, panel, capsys):
+    bench.write(four_judges())
+    panel.answers.update(openai="error", xai="missed")
+    src = bench.source("--with", "extras")
+    panel.answers.clear()
+    code, run_dir = bench.run("resume", "--source", str(src))
+    assert code == 0 and run_dir is not None
+    assert [c["names"] for c in panel.calls] == [ALL_FOUR, ["openai", "xai"]]
+    record = results(run_dir)
+    assert record["source"]["judges"] == [{"repeat": 0, "run": ["openai", "xai"], "carried": ["anthropic", "gemini"]}]
+    assert [j["status"] for j in record["repeats"][0]["judgements"]] == ["ok"] * 4
+    assert record["summary"]["overall_mean"] == 75 and record["spend"]["total_usd"] == 3
+    # Every judge of the resumed run answered: nothing is left to resume, no judge starts, and no run folder is made.
+    runs = sorted(run_dir.parent.parent.glob("*/*"))
+    assert bench.run("resume", "--source", str(run_dir)) == (2, None)
+    err = capsys.readouterr().err
+    assert (
+        "every judge answered in it, so no judge is left to run" in err and "No run folder was made and no judge started" in err
+    )
+    assert len(panel.calls) == 2 and sorted(run_dir.parent.parent.glob("*/*")) == runs
+
+
+def test_a_judgement_is_carried_only_from_the_same_archive_judged_with_the_same_task(bench, panel, capsys):
+    bench.write(four_judges())
+    panel.answers["openai"] = "error"
+    src = bench.source("--with", "extras")
+    runs = sorted(src.parent.parent.glob("*/*"))
+    kept = (src / "results.json").read_text(encoding="utf-8")
+    prompt = src / "artifacts" / "0" / "judge-prompt.md"
+    told = prompt.read_text(encoding="utf-8")
+    another = "its judges were given another task than this run's judges get, so a judgement it holds is of another rubric"
+
+    def refused(why: str) -> str:
+        assert bench.run("resume", "--source", str(src), "--judges", "openai") == (2, None)
+        err = capsys.readouterr().err
+        assert f"repeat 0 is not resumed: {why}" in err and "No run folder was made and no judge started" in err
+        assert len(panel.calls) == 1 and sorted(src.parent.parent.glob("*/*")) == runs
+        return err
+
+    # The source's judges were told of no group, and this run's judges take the group the source ran whole.
+    prompt.write_text(told.replace(f"\n\n{SENTENCE}", ""), encoding="utf-8")
+    assert f"and {SENTENCE!r} here" in refused(another)
+    prompt.write_text(told, encoding="utf-8")
+    # This checkout says the group's sentence in other words: the rubric is another.
+    changed = four_judges()
+    changed["subject"]["groups"]["extras"]["rubric"] = "A review read the tree."
+    bench.write(changed)
+    assert f"reads {SENTENCE!r} there, and 'A review read the tree.' here" in refused(another)
+    bench.write(four_judges())
+    # Nothing says what the source's judges were told.
+    prompt.unlink()
+    refused("the source kept no judge prompt of it, so nothing says what its judges were told")
+    prompt.write_text(told, encoding="utf-8")
+    # Nothing says which archive the source's judges read.
+    record = json.loads(kept)
+    del record["repeats"][0]["archive"]["sha256"]
+    (src / "results.json").write_text(json.dumps(record), encoding="utf-8")
+    refused("the source recorded no SHA-256 of the archive its judges read")
+    (src / "results.json").write_text(kept, encoding="utf-8")
+    # The archive is not the one the source's judges read.
+    with zipfile.ZipFile(src / "artifacts" / "0" / "output.zip", "a") as zf:
+        zf.writestr("planted.txt", "not what the judges read\n")
+    refused("its archive's SHA-256 is ")
+
+
+@needs_jsonschema
+def test_a_resume_of_the_judges_caps_its_spend_at_the_budgets_of_the_judges_it_runs(bench, panel):
+    bench.write(four_judges())
+    panel.answers["openai"] = "error"
+    src = bench.source("--with", "extras")
+
+    def dry(*flags: str) -> dict:
+        code, made = bench.run("resume", "--source", str(src), "--dry-run", *flags)
+        assert code == 0 and made is not None and sorted(p.name for p in made.iterdir()) == ["run.json"]
+        return resolved(made)
+
+    # One judge at $5: not the four judges' $20, and no phase's cap. A dry run calls no judge.
+    named = dry("--judges", "openai")
+    assert named["max_spend_usd"] == 5 and named["providers"]["names"] == ["openai"]
+    assert named["source"]["judges"] == [{"repeat": 0, "run": ["openai"], "carried": ["anthropic", "gemini", "xai"]}]
+    assert dry()["max_spend_usd"] == 5 and dry("--judges", "openai,xai")["max_spend_usd"] == 10
+    assert dry("--judges", "openai", "--max-spend-usd", "7")["max_spend_usd"] == 7 and len(panel.calls) == 1
+    # $4 does not cover the one judge's $5: no judge starts, and the notes say why.
+    code, run_dir = bench.run("resume", "--source", str(src), "--judges", "openai", "--max-spend-usd", "4")
+    assert code == 0 and run_dir is not None and len(panel.calls) == 1
+    record = results(run_dir)
+    assert record["repeats"] == [] and record["source"]["capped"] == [0] and record["spend"]["total_usd"] == 0
+    why = "repeat 0 and after were not judged: $4.0000 of the run's $4 spend cap is left, and the judges of a repeat may spend $5"
+    assert why in record["notes"]
