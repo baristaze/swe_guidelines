@@ -7,6 +7,7 @@
     "run_id",
     "started_at",
     "finished_at",
+    "repository_head",
     "prompt",
     "contract",
     "sizes",
@@ -24,6 +25,10 @@
     "finished_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "repository_head": {
+      "type": "string",
+      "description": "the commit the prompt's repository pointed at when the run started, from git ls-remote, whatever each answer says it read; unknown when the command failed, and note gives the error"
     },
     "prompt": {
       "type": "string",
@@ -63,7 +68,7 @@
     },
     "note": {
       "type": "string",
-      "description": "remarks on the run as a whole, such as the labels step 1 resolved when nobody watched the run"
+      "description": "remarks on the run as a whole: the model and effort labels the two sizes resolved to, per site, before anything was sent, and any other"
     },
     "sessions": {
       "type": "array",
@@ -94,20 +99,20 @@
           },
           "url": {
             "type": "string",
-            "description": "the conversation's own URL, without its query string; the session id is in it"
+            "description": "the conversation's own URL, without its query string; the session id is in it. For not-signed-in and not-run, the address the tab showed, without its query string"
           },
           "model_label": {
             "type": "string",
-            "description": "the model picker's checked entry when the prompt was sent, as the list writes it (\"3.1 Pro\", not the chip's \"Pro\")"
+            "description": "the model picker's checked entry when the prompt was sent, as the list writes it (\"3.1 Pro\", not the chip's \"Pro\"); not set for not-signed-in and not-run"
           },
           "effort_label": {
             "type": "string",
-            "description": "the checked effort entry or slider stop label when the prompt was sent, as the picker writes it; none where the site has no effort control"
+            "description": "the checked effort entry or slider stop label when the prompt was sent, as the picker writes it; none where the site has no effort control; not set for not-signed-in and not-run"
           },
           "started_at": {
             "type": "string",
             "format": "date-time",
-            "description": "when the prompt was sent"
+            "description": "when the prompt was sent; the moment of recording for not-signed-in and not-run"
           },
           "finished_at": {
             "type": "string",
@@ -124,13 +129,13 @@
           },
           "read_version": {
             "type": "string",
-            "description": "the commit, tag, or branch and date the answer says it read, in its words; \"not stated\" when it names none"
+            "description": "the commit, tag, or branch and date the answer says it read, in its words; \"not stated\" when it names none or there is no answer"
           },
           "polls": {
             "type": "integer",
             "minimum": 0,
             "maximum": 30,
-            "description": "how many times the session was polled; thirty is the bound"
+            "description": "how many times the session was polled; thirty is the bound. A session retried after an error counts the second attempt's polls only, and note gives the first attempt's"
           },
           "response_path": {
             "type": "string",
@@ -147,7 +152,7 @@
               "not-run",
               "smaller-mode"
             ],
-            "description": "errored is the product's own error message in place of an answer; refused is a decline; not-run is a site the skill did not send to, for the reason in note; smaller-mode is a scored answer from a smaller model or mode than the size asked for, because that one is locked on the account: model_label is what ran, note names the locked one, and the session is left out of any like-for-like comparison"
+            "description": "errored is the product's own error message in place of an answer, on the one retry as on the first attempt; refused is a decline; not-run is a site the skill did not send to, for the reason in note; smaller-mode is a scored answer from a smaller model, mode, or effort than the size asked for, because that one is locked on the account: model_label and effort_label are what ran, note names the locked one, and the session is left out of any like-for-like comparison"
           },
           "note": {
             "type": "string",

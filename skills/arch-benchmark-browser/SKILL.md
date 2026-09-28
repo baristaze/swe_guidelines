@@ -1,7 +1,7 @@
 ---
 name: arch-benchmark-browser
 description: "Run the benchmark prompt in the chatgpt.com, claude.ai, gemini.google.com, and grok.com products, signed in, and save each answer with its conversation URL as proof."
-allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
+allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), Bash(git ls-remote:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
 disable-model-invocation: true
 ---
 
@@ -50,15 +50,15 @@ Facts that decide how the steps below go. Read them before the browser.
   notifications, is closed by its most privacy-preserving choice ("Not
   now", "No thanks"), never by accepting it. The session's `note` says
   so.
-- An account can lock a model or a mode: clicking it opens a plan page
-  or an upgrade prompt, or the entry does not stay checked. Never click
-  Upgrade, or anything that buys.
+- An account can lock a model, a mode, or an effort: clicking it opens
+  a plan page or an upgrade prompt, or the entry does not stay checked.
+  Never click Upgrade, or anything that buys.
 - chatgpt.com: the control at the right of the composer opens a
   "Thinking effort" popover with a five-stop slider. The label above
-  the slider names the stop the handle is on: Instant, Medium, High,
-  Extra High, and 6 Pro, left to right. A chevron beside that label
-  opens the model list ("Latest" and older models). After a pick, the
-  chip shows the stop's label, not the model.
+  the slider names the stop the handle is on; `sizes.yaml` lists the
+  five labels, left to right. A chevron beside that label opens the
+  model list ("Latest" and older models). After a pick, the chip shows
+  the stop's label, not the model.
 - claude.ai: one menu at the right of the composer holds the current
   models, then "Effort" with five levels, then "More models" with the
   older ones. Picking a model closes the menu and resets the effort to
@@ -88,49 +88,66 @@ Facts that decide how the steps below go. Read them before the browser.
 - grok.com announces nothing in text. It writes "Worked for" above its
   answer while the text is still revealing, so that line is not the
   signal. Its answer is done when the page text is the same on two
-  polls a minute apart. The button at the
-  right of the composer is a check, not the signal. Before sending,
-  with the composer empty, it is "Enter voice mode", drawn as a blue
-  waveform in a circle. A stop control in its place means the answer
-  is still coming.
+  polls in a row, which step 6 spaces at least a minute apart. The
+  button at the right of the composer is a check, not the signal.
+  Before sending, with the composer empty, it is "Enter voice mode",
+  drawn as a blue waveform in a circle. A stop control in its place
+  means the answer is still coming.
 - The page text before and after an answer is chrome: the time worked,
   the echoed prompt, the speaker label ("ChatGPT said:", "Claude
   responded:", "Gemini said"), a tool count, and after the answer the
-  chip's label ("Fast") or a hover line ("Add to chat"). The score is
-  the line that matches `Score: NN/100`, wherever it is.
-  gemini.google.com's page text also holds the sidebar's conversation
-  titles. They are the person's: never copy them.
+  chip's label ("Fast") or a hover line ("Add to chat"). The answer
+  starts after the speaker label and ends at its own last line.
+  grok.com writes no speaker label: its answer starts after the echoed
+  prompt, whose last line is the contract's last item, and after the
+  "Worked for" line where one shows. Step 6 and step 7 both mean the
+  answer so bounded. The score is the line that matches
+  `Score: NN/100`, wherever it is. gemini.google.com's page text also
+  holds the sidebar's conversation titles. They are the person's:
+  never copy them.
 
 ## Procedure
 
 1. Read `prompt.md`, which holds both the prompt and the contract, and
    `sizes.yaml`. The browser README is for people and is not an input.
    Resolve, per site, the model and effort labels the sizes ask for.
-   Say them before touching the browser; in a run nobody watches, they
-   go into the run's `note` in `results.json`.
+   Say them before touching the browser. They also go into the run's
+   `note` in `results.json`, whether or not anyone watches the run.
 2. Note the run's start with `date -u +%Y-%m-%dT%H:%M:%SZ`; make the
    run folder `~/Downloads/benchmark_browser/<YYYYMMDD-HHMMSS>/` from
-   the same moment, in UTC. Every file of the run goes there.
-3. Call `tabs_context_mcp` with `createIfEmpty`, then `tabs_create_mcp`
-   one tab per site, and navigate each to its new-chat URL:
+   the same moment, in UTC. Every file of the run goes there. Then read
+   the commit the repository's default branch points at, with
+   `git ls-remote <url> HEAD`, where `<url>` is the repository URL in
+   the prompt. The first field it prints is the run's
+   `repository_head`: what the repository was minutes before the first
+   send, whatever each answer says it read. When the command fails,
+   `repository_head` is `unknown` and the run's `note` gives the error.
+3. Call `tabs_context_mcp` with `createIfEmpty`. An empty tab it makes
+   holds the tab group open and is not one of the run's tabs: never use
+   it or close it. Then `tabs_create_mcp` one tab per site, and
+   navigate each to its new-chat URL:
    `https://chatgpt.com/`, `https://claude.ai/new`,
    `https://gemini.google.com/app`, `https://grok.com/`. Take a
    screenshot of each. A page that shows a sign-in button, a login
    form, or no composer is `not-signed-in`: record it, tell the person
    which site to sign in to, and go on with the sites that are. Never
    type an email or a password, ever.
-4. Per site, set the model and the effort, then verify with a
+4. Per site, first look, with `find` or a screenshot, for a line that
+   says the product can act on the person's machine: claude.ai writes
+   "Computer actions available", and a line on any site that says it
+   can run commands or control the computer counts the same. When one
+   shows, set nothing and send nothing: the session is `not-run`, and
+   its `note` asks the person to turn that setting off. Never change
+   it yourself.
+
+   Otherwise set the model and the effort, then verify with a
    screenshot of the chip. `model_label` is the model picker's checked
    entry as the list writes it; `effort_label` is the checked effort
    entry or the stop's label. The chip is the check.
    - chatgpt.com: open the popover, open the chevron, click the model
      the size names; then click the slider stop whose label the size
      names.
-   - claude.ai: first look for "Computer actions available" with `find`
-     or a screenshot. When it shows, set nothing and send nothing: the
-     session is `not-run`, and its `note` asks the person to turn
-     computer actions off. Never change that setting yourself.
-     Otherwise open the menu and click the model, under "More models"
+   - claude.ai: open the menu and click the model, under "More models"
      when it is not at the top; open the menu again, open "Effort",
      click the level. The chip must read `<model> <effort>`.
    - gemini.google.com: click the composer, open the chip, click the
@@ -144,11 +161,15 @@ Facts that decide how the steps below go. Read them before the browser.
    record the label the page shows and go on: the results carry what
    was actually used, never what was asked for.
 
-   A locked model or mode is the exception, on every site. Close what
-   opened and pick the next smaller entry that stays checked (Fast on
-   grok.com). Record that entry, name the locked one in `note`
-   ("Expert needs a SuperGrok plan"), and step 7 records the session
-   `smaller-mode`. A locked entry is not tried again.
+   A locked model, mode, or effort is the exception, on every site.
+   Close what opened. Then go down that site's entries in `sizes.yaml`,
+   in the same map (model or effort), one size at a time: skip an entry
+   already tried, and click the first one that stays checked (Fast on
+   grok.com, for Expert or Heavy). Record that entry, name the locked
+   one in `note` ("Expert needs a SuperGrok plan"), and step 7 records
+   the session `smaller-mode`. A locked entry is not tried again in the
+   run. When no smaller size's entry stays checked, send nothing: the
+   session is `not-run`, and `note` names the locked entries.
 5. Click the composer and type the prompt from `prompt.md`, a blank
    line, and the contract, line by line with `shift+Return` between
    lines. Type each of the contract's items without its leading dash:
@@ -209,44 +230,64 @@ Facts that decide how the steps below go. Read them before the browser.
    <the answer>
    ```
 
-   The answer starts after the speaker label and ends at its own last
-   line. The chrome on either side is left out; tool steps, citation
-   chips ("GitHub", "10 sources"), and image captions stay as the page
-   gave them. The statuses:
+   Where `score` is null, the header's line is `- Score: none`; where
+   there is no note, it is `- Note: none`. The answer is bounded as
+   "What the pages are like" says, and the chrome on either side is
+   left out; tool steps, citation chips ("GitHub", "10 sources"), and
+   image captions stay as the page gave them. The statuses:
    - `ok`: a score was found.
    - `smaller-mode`: in place of `ok`, when step 4 fell back from a
-     locked model or mode.
+     locked model, mode, or effort.
    - `no-score`: an answer and no score line; the number the answer
      gives elsewhere goes in `note`.
    - `refused`: the product declined.
    - `errored`: the product printed its own error in place of an answer
-     ("I seem to be encountering an error"). Start a new chat on that
-     site, do step 4 again without clicking a locked entry, and send
-     once more before recording it.
+     ("I seem to be encountering an error"). Try once more: navigate
+     the site's tab to its new-chat URL, do step 4 again without
+     clicking a locked entry, do step 5, and poll as step 6 says. The
+     session records the second attempt only: its `url`, its
+     `started_at` and `finished_at`, its status, and its `polls`,
+     counted from 0, with thirty polls and thirty minutes of its own.
+     `note` keeps the
+     first attempt: the error in the page's words, its URL, and its
+     poll count. When the second attempt errors too, the session is
+     `errored`, and there is no third.
    - `timed-out`: as in step 6.
    - `not-signed-in` and `not-run`: as in steps 3 and 4. There is no
-     answer: `score` is null, `polls` is 0, both times are the moment
-     of recording, and `<site>.md` holds the header only.
+     answer. `url` is the address the tab shows, without its query
+     string; `model_label` and `effort_label` are `not set`;
+     `read_version` is `not stated`; `score` is null; `polls` is 0;
+     both times are the moment of recording; and `<site>.md` holds the
+     header only.
 
    An answer cut short by a tool-use limit that still satisfies the
    contract is `ok` with a `note`; do not press Continue. `note` holds
    every remark on the session, in the order they arose, separated by
    "; ".
 8. Write `results.json` in the run folder in the schema, with `python3`:
-   `run_id` is the folder name, `started_at` from step 2 and
-   `finished_at` from the moment of writing, `prompt` and `contract`
-   the two texts as typed, `sizes` the two sizes, and one entry per
-   site. Read it back and check every required key of the schema is
-   there and no other.
-9. Per site, bring the score line into view: click an empty margin of
-   the page to clear a stray selection or menu, `find` the score line,
-   and `scroll_to` its reference. Take one `zoom` of the conversation
-   column, right of the sidebar, with `save_to_disk`: it shows the
-   score line and the chip, and no conversation title. Copy it into the
+   `run_id` is the folder name, `started_at` and `repository_head` from
+   step 2, `finished_at` from the moment of writing, `prompt` and
+   `contract` the two texts as typed, `sizes` the two sizes, `note`
+   with the labels step 1 resolved, and one entry per site. Read it
+   back with `python3` and hold it to the schema file, at the top and
+   in each session: every required key is there, no key is there that
+   the schema does not list, and each value is inside the `type`,
+   `enum`, `minimum`, and `maximum` the schema gives its key. A value
+   outside them is corrected from what the page showed, never bent to
+   fit.
+9. Per site that has an answer, bring its score line into view, or its
+   first line where it has none. Click an empty margin of the page to
+   clear a stray selection or menu, `find` the line, and `scroll_to`
+   its reference. Where `find` is refused, scroll the conversation with
+   the `computer` tool's `scroll` until a screenshot shows the line.
+   Take one `zoom` of the conversation column with `save_to_disk`. Its
+   region is right of the sidebar and below the page's header, where
+   claude.ai writes the conversation's own title: it shows that line
+   and the chip, and no conversation title. Copy it into the
    run folder as `<site>.jpg` with `python3` (`shutil.copyfile` from
    the path the tool reports); the tool saves JPEG. These are the
    evidence a pull request carries.
-10. Close the tabs you created, and no other.
+10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when `$ARGUMENTS` has `compare=`. List the earlier runs with
     `python3`:
     `sorted((Path.home() / "Downloads" / "benchmark_browser").glob("*/results.json"))`,
@@ -256,19 +297,22 @@ Facts that decide how the steps below go. Read them before the browser.
     `contract` are both the same text as this run's, and name each run
     left out and why. Runs with other `sizes` are kept apart, in a table
     of their own. The comparison is a table in the output: a row per
-    site, a column per run, and in each cell the score, the model and
-    effort labels, and `read_version`. Only `ok` sessions are compared;
-    any other shows its status.
+    site, a column per run headed by its `run_id` and
+    `repository_head`, and in each cell the score, the model and effort
+    labels, and `read_version`. Only `ok` sessions are compared; any
+    other shows its status. A key an earlier run does not have, such as
+    `read_version` or `repository_head`, shows as `not recorded`.
 
 ## Output
 
 In prose: the run folder path; what was measured, which is the
-repository, the version each site says it read, and the two sizes; per
-site, the model and effort labels, the score, `read_version`, and the
-conversation URL; any site that was not signed in, not run, refused,
-errored, or timed out, with the reason in the page's own words where it
-gave one; which sites were read from screenshots. When the sites read
-different versions, say so. A `smaller-mode` session is named with the
-mode its size asked for and the mode that ran, and it is left out of any
-comparison of like for like, across sites or across runs. The table
-step 11 makes follows, when it was asked for.
+repository, its `repository_head`, the version each site says it read,
+and the two sizes; per site, the model and effort labels, the score,
+`read_version`, and the conversation URL; any site that was not signed
+in, not run, refused, errored, or timed out, with the reason in the
+page's own words where it gave one; which sites were read from
+screenshots. When the sites read different versions, say so. A
+`smaller-mode` session is named with the entry its size asked for and
+the entry that ran, and it is left out of any comparison of like for
+like, across sites or across runs. The table step 11 makes follows,
+when it was asked for.
