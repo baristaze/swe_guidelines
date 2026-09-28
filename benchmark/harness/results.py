@@ -110,6 +110,9 @@ class RunResult:
     weights: dict[str, float] = field(default_factory=dict)
     # A rehearsal's outcome and where its money went; None for a run that is not one.
     rehearsal: dict[str, Any] | None = None
+    # The run whose archived output this run judged again, with no subject run: its folder, the repeats
+    # judged, and each repeat refused with why; None for a run that ran its subject.
+    source: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -130,6 +133,8 @@ class RunResult:
         }
         if self.rehearsal is not None:
             out["rehearsal"] = dict(self.rehearsal)
+        if self.source is not None:
+            out["source"] = dict(self.source)
         return out
 
 
@@ -631,6 +636,18 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
     return [*lines, ""]
 
 
+def source_lines(source: dict[str, Any]) -> list[str]:
+    """The opening lines of a run that judged another run's output again: where the output is, and what was refused."""
+    lines = [
+        f"This run judged again the archived output of the run `{source['run_id']}`, at `{source['path']}`. "
+        "No subject ran: the output, and how its subject ended, are that run's.",
+        "",
+    ]
+    for refused in source["refused"]:
+        lines += [f"Repeat {refused['repeat']} of it was not judged: {sentence(refused['reason'])}", ""]
+    return lines
+
+
 def report_text(run: RunResult) -> str:
     """The Markdown report as one string."""
     data = run.as_dict()
@@ -651,6 +668,8 @@ def report_text(run: RunResult) -> str:
         lines += [f"Optional groups taken: {taken}." if groups else "Optional groups taken: none.", ""]
     if run.rehearsal:
         lines += rehearsal_lines(run.rehearsal)
+    if run.source:
+        lines += source_lines(run.source)
     lines += ["## Scores", ""]
     if agentic:
         lines += agentic_score_lines(run)
