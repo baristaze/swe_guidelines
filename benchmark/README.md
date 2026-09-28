@@ -30,14 +30,14 @@ image first (see Where a scenario runs).
 | `--scenario` | a scenario from `scenarios/`, by the name `list` prints, else by its file's stem, or a path to a file |
 | `--providers` | the judges, as a bit flag (`3`, `7`, `15`), names (`anthropic,openai`), or `all` |
 | `--effort` | `low`, `medium`, or `high`; `models.yaml` maps it per provider |
-| `--repeat` | how many times the subject runs, 3 by default; every repeat is judged by every provider |
+| `--repeat` | how many times the subject runs: the scenario's `repeat`, else 3; every repeat is judged by every provider |
 | `--runtime` | `host`, `container`, or `vm`: one of the scenario's `runtimes`, its first by default |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
 | `--out` | where run folders go; `benchmark/runs/` by default |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
-| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes |
+| `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. The scenario's `max_spend_usd` when not given, else no cap |
 | `--dry-run` | resolve everything, write `run.json`, call no provider and run no subject |
 | `--strict` | a provider without a key fails the run instead of being skipped |
 | `--build` | build the container image before running; a `qa` subject runs no command, so it builds none |
@@ -63,10 +63,11 @@ phases fails when one of its phases does (see A subject in phases).
 Dropping the failures would let a subject that fails one time in three
 keep the score of the two times it did not.
 
-One run of a subject is an anecdote, so `--repeat` is 3 by default.
-The summary reports the spread: each provider's standard deviation,
-and each repeat's mean over its providers with their range and
-standard deviation. A Claude subject judged by a panel that includes
+One run of a subject is an anecdote, so a run repeats it 3 times,
+unless `--repeat` or the scenario's `repeat` says otherwise (see
+Scenarios). The summary reports the spread: each provider's standard
+deviation, and each repeat's mean over its providers with their range
+and standard deviation. A Claude subject judged by a panel that includes
 Claude is named in the summary under `self_judged`. A model may favor
 its own kind, so read the Anthropic score beside the others.
 
@@ -461,12 +462,13 @@ only. Its subject builds `free-journalism` from
 scaffold, the MVP, a standalone review, and the fixes to the review's
 high findings (see A subject in phases). Agentic judges score the tree
 against the guideline and against the guideline's reference
-implementation (see Agentic judges). It runs once, and its phases' spend
-caps sum to $190. No scenario key sets either, so a run of it passes
-both as flags:
+implementation (see Agentic judges). It runs once, and its run's spend
+cap is $190, the sum of its phases' caps. The scenario says both, with
+`repeat: 1` and `max_spend_usd: 190`, so a run of it passes neither
+flag:
 
 ```bash
-uv run benchmark/run.py --scenario create-full-system --repeat 1 --max-spend-usd 190 \
+uv run benchmark/run.py --scenario create-full-system \
   --runtime-config benchmark/runtime/lima/runtime-config.yaml
 ```
 
@@ -477,6 +479,8 @@ name: explain-tenancy
 kind: skill                 # skill | command | qa
 runtimes: [container]       # required: where it may run; a run takes the first
 requires: []                # what the runtime must provide: docker
+repeat: 3                   # optional; how many times a run repeats the subject, 3 by default
+max_spend_usd: null         # optional; the run's spend cap in US dollars, none by default
 subject:
   skill: arch-explain
   prompt: "How does the guideline hold the tenant fence, and what proves it?"
@@ -518,6 +522,15 @@ spend from the stream (see A subject in phases). Each repeat records its
 session under `phases`, with the bound that stopped it, if one did.
 `kind: command` runs `subject.argv`. `kind: qa` sends `subject.prompt` to
 `subject.model` of one provider, and the answer is the artifact.
+
+A scenario can say how many times a run repeats its subject, `repeat`,
+a whole number of at least 1. It can also say the run's spend cap,
+`max_spend_usd`, an amount in US dollars above 0 (see The run's spend).
+A run takes each when its flag, `--repeat` or `--max-spend-usd`, is not
+given, and a flag overrides it. A scenario that names neither runs 3
+repeats with no run cap. `run.py list` prints each one a scenario names.
+A value outside those bounds is refused when the scenario loads, so no
+run of it starts.
 
 An unknown key in a scenario file is refused rather than ignored: a
 misspelled key is a scenario that silently measures something else.
@@ -663,10 +676,11 @@ it passed under `gates`, beside the scores. The gates never cap a score
 and never fail the run. `streams/harness.jsonl` holds what the
 checkpoints, the archive, and the gates printed.
 
-**The run's spend.** `--max-spend-usd` bounds what one run spends on the
-subject and the judges together. The harness checks it before each
-repeat and before each phase, and starts nothing more once the run has
-spent that much. It stops nothing that is running: a phase that starts
+**The run's spend.** The run's spend cap, `--max-spend-usd` or else the
+scenario's `max_spend_usd`, bounds what one run spends on the subject
+and the judges together. The harness checks it before each repeat and
+before each phase, and starts nothing more once the run has spent that
+much. It stops nothing that is running: a phase that starts
 below it can spend up to its own `max_usd`, and the judges of a repeat
 still judge it. So a run can end above it, by about what one phase and
 one repeat's judges spend. The run's notes say where it stopped. A
@@ -957,7 +971,8 @@ names them in a notice. Its `repeat` input is 1 to 5, and each scenario
 runs with `--max-spend-usd` at its `max_spend_usd` input, a whole number
 of US dollars from 1 to 50, 10 by default. Together they bound what one
 dispatch spends on a scenario: past that amount, no further repeat of it
-starts.
+starts. Both reach `run.py` as flags, so they override a scenario's own
+`repeat` and `max_spend_usd`.
 
 Its job runs in a GitHub environment named `benchmark`, and the
 workflow does not create it. Create it under the repository's
