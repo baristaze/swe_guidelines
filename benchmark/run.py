@@ -1642,8 +1642,18 @@ class SourceRepeat:
     index: int
     commit: str | None = None
     refused: str | None = None
-    # The phases the source run's results.json lists as run in this repeat; None when it lists none.
-    ran: list[str] | None = None
+    # The phases the source run's results.json lists as run in this repeat, each with how it ended and no spend;
+    # None when it lists none.
+    phases: list[dict[str, Any]] | None = None
+
+    @property
+    def ran(self) -> list[str] | None:
+        """The names of the phases that ran in the repeat; None when the source's record lists none."""
+        return [p["name"] for p in self.phases] if self.phases else None
+
+
+# What a run that judges another run's output again keeps of each phase its source's repeat ran.
+PHASE_KEPT = ("name", "session", "status", "capped")
 
 
 def read_record(path: Path) -> dict[str, Any] | None:
@@ -1663,23 +1673,28 @@ def source_repeats(source: Path, results: dict[str, Any] | None) -> list[SourceR
     the one the source run recorded: that output is not the one the run
     made. A repeat that was never judged, because a phase failed, the run
     ended early, or a judge missed, is judged like any other. Each repeat
-    carries the phases the source run's record lists as run in it.
+    carries the phases the source run's record lists as run in it, each
+    with how it ended.
     """
     recorded: dict[int, dict[str, Any]] = {}
-    ran: dict[int, list[str]] = {}
+    ran: dict[int, list[dict[str, Any]]] = {}
     listed = (results or {}).get("repeats")
     for repeat in listed if isinstance(listed, list) else []:
         if isinstance(repeat, dict) and isinstance(repeat.get("index"), int):
             archive = repeat.get("archive")
             recorded[repeat["index"]] = archive if isinstance(archive, dict) else {}
             phases = repeat.get("phases")
-            names = (
-                [p["name"] for p in phases if isinstance(p, dict) and isinstance(p.get("name"), str)]
+            listed_phases = (
+                [
+                    {k: p[k] for k in PHASE_KEPT if k in p}
+                    for p in phases
+                    if isinstance(p, dict) and isinstance(p.get("name"), str)
+                ]
                 if isinstance(phases, list)
                 else []
             )
-            if names:
-                ran[repeat["index"]] = names
+            if listed_phases:
+                ran[repeat["index"]] = listed_phases
     folder = source / "artifacts"
     kept = {int(d.name) for d in folder.iterdir() if d.is_dir() and d.name.isdigit()} if folder.is_dir() else set()
     out: list[SourceRepeat] = []
@@ -1697,7 +1712,7 @@ def source_repeats(source: Path, results: dict[str, Any] | None) -> list[SourceR
             out.append(SourceRepeat(index, refused=why))
         else:
             commit = was.get("commit")
-            out.append(SourceRepeat(index, commit=commit if isinstance(commit, str) else None, ran=ran.get(index)))
+            out.append(SourceRepeat(index, commit=commit if isinstance(commit, str) else None, phases=ran.get(index)))
     return out
 
 
@@ -1707,7 +1722,7 @@ def command_judge(args: argparse.Namespace) -> int:
     The scenario is this checkout's, found by the name the source run
     records, with the groups the source run took. Each repeat's judges are
     told of the phases that ran in it, and its rubric takes the sentence of
-    a group only when one of the group's phases ran in it. Every repeat
+    a group only when every one of the group's phases ran in it. Every repeat
     whose archive can be judged is staged as a run stages it before its
     judges. The others are refused with their reason, and a source with
     nothing to judge makes no run folder. The run's spend cap is the
@@ -1765,7 +1780,7 @@ def command_judge(args: argparse.Namespace) -> int:
             return 2
         base = dataclasses.replace(base, judges=dataclasses.replace(base.judges, budget=RH.budget(base.judges.budget)))
         scn = S.select(base, taken)
-    # What each repeat's judges are told: the phases that ran in it, and the sentence of each group one of them is in.
+    # What each repeat's judges are told: the phases that ran in it, and the sentence of each group whose every phase did.
     per_repeat = {r.index: S.as_ran(base, taken, r.ran) for r in judged}
     cap = args.max_spend_usd if args.max_spend_usd is not None else S.judging_cap(scn, len(judged), len(P.members(flags)))
     if resolved.get("rehearsal") and cap is not None:
@@ -1804,8 +1819,11 @@ def judge_again(
     Each repeat judged gets the source's artifacts but its judge prompt: the
     archive, its manifest, the answer, and the collected files. The judges
     read the archive's tree, as a run's judges do, and their prompt is made
-    of `per_repeat`, the scenario as that repeat ran it. The repeat records the
-    archive and the judgements, and no session, since no subject ran.
+    of `per_repeat`, the scenario as that repeat ran it. The repeat records
+    the archive, the judgements, and the phases its source's repeat ran,
+    each with how it ended and none of its spend, so a judge of this run
+    tells its judges the same. No subject ran, so it records no subject
+    spend.
     """
     effort = args.effort or scn.judges.effort
     matrix = J.load_matrix(MODELS)
@@ -1823,8 +1841,11 @@ def judge_again(
         "capped": [],
     }
     if scn.subject.groups:
-        # The groups each repeat's rubric takes: those the source run took with a phase that ran in the repeat.
-        origin["rubric_groups"] = [{"repeat": i, "groups": S.taken_groups(per_repeat[i])} for i in origin["repeats"]]
+        # The groups each repeat's rubric takes: those the source run took whose every phase ran in the repeat.
+        taken = S.taken_groups(scn)
+        origin["rubric_groups"] = [
+            {"repeat": r.index, "groups": S.ran_groups(scn, taken, r.ran)} for r in repeats if not r.refused
+        ]
     notes = list(staged.notes)
     resolved: dict[str, Any] = {
         "run_id": run_id,
@@ -1900,9 +1921,17 @@ def judge_again(
         judgements = judge_agentic(per_repeat[index], sandbox, staged, art_dir, run_dir, index, [], flags, effort, matrix, notes)
         budget.spent += sum(j.cost_usd or 0.0 for j in judgements)
         keep_judgements(run_dir, index, [*judgements])
-        # No subject ran, so the repeat carries no session and no subject spend, and its exit status is 0.
+        # No subject ran, so the repeat carries no subject spend, and its exit status is 0. Its phases are its
+        # source's, as they ran there, with no spend: a judge of this run tells its judges the same.
         run.repeats.append(
-            R.RepeatResult(index=index, exit_status={"code": 0}, artifact_paths=paths, judgements=[*judgements], archive=archive)
+            R.RepeatResult(
+                index=index,
+                exit_status={"code": 0},
+                artifact_paths=paths,
+                judgements=[*judgements],
+                phases=repeat.phases,
+                archive=archive,
+            )
         )
     origin["repeats"] = [r.index for r in run.repeats]
     if "rubric_groups" in origin:

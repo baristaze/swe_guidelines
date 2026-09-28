@@ -147,7 +147,7 @@
           "items": { "type": "integer", "minimum": 0 }
         },
         "rubric_groups": {
-          "description": "For each repeat judged, the groups its rubric took: those the source run took with a phase that ran in that repeat. Only a scenario that declares groups has it.",
+          "description": "For each repeat judged, the groups its rubric took: those the source run took every one of whose phases ran in that repeat. Only a scenario that declares groups has it.",
           "type": "array",
           "items": {
             "type": "object",
@@ -258,7 +258,7 @@
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
           "phases": {
-            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran.",
+            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran. In a run that judges another run's output again, the phases the source's repeat ran, each with its name, session, status, and cap, and none of its spend.",
             "type": "array",
             "items": { "$ref": "#/$defs/phase" }
           },

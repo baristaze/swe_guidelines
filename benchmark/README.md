@@ -1238,11 +1238,12 @@ A source with no repeat to judge makes no run folder, and exits 2.
 **What the judges are told.** A repeat's judges are told of the phases
 that ran in it, the ones the source run's `results.json` lists for the
 repeat. Its rubric takes the sentence of a group the source run took
-only when one of the group's phases ran in it. So a repeat that ended
-early, or was cut short, before a group's phases ran is judged with no
-word of that group: its judges are not told of work that never
-happened. A repeat the source's `results.json` lists no phases for is
-judged as the source run took it, with every phase and every group.
+only when every one of the group's phases ran in it, since the sentence
+stands for them all. So a repeat that ended early, or was cut short,
+before every phase of a group ran is judged with no sentence of that
+group: its judges are not told of work that never happened. A repeat
+the source's `results.json` lists no phases for is judged as the source
+run took it, with every phase and every group.
 
 **Where it goes.** The judgement lands in a new run folder beside the
 source, or under `--out`. Each repeat judged gets the source's
@@ -1255,8 +1256,11 @@ repeats the run's spend cap kept from being judged, under `capped`. For
 a scenario that declares groups, it also names the groups each repeat's
 rubric took, under `rubric_groups`, and so does `run.json`. Each
 repeat records its archive, its SHA-256 included, and its judgements.
-No subject ran, so a repeat records no session and no subject spend,
-and its exit status is 0. How the subject ended is in the source run's
+No subject ran, so a repeat records no subject spend, and its exit
+status is 0. Its `phases` are the ones its source's repeat ran, each
+with its name, session, status, and cap, and none of its spend. So a
+folder `judge` wrote, judged again, tells its judges what its own
+source ran. The rest of how the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
 report opens with the source, the repeats refused, the repeats the cap
