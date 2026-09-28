@@ -5,6 +5,7 @@ named `acme-system`, over a `file://` URL. Every judge is a fake client
 from `test_benchmark_agentic.py`. Nothing here reaches a network or reads a key.
 """
 
+import _thread
 import importlib.util
 import json
 import subprocess
@@ -409,6 +410,46 @@ def test_the_judges_of_a_repeat_run_at_once_and_one_that_fails_stops_none_of_the
             json.loads(line) for line in (tmp_path / "judgements" / f"0-{name}.jsonl").read_text(encoding="utf-8").splitlines()
         ]
         assert records[0]["kind"] == "start" and records[-1]["kind"] == "end" and {r["provider"] for r in records} == {name}
+
+
+@needs_jsonschema
+def test_an_interrupt_stops_every_judge_before_its_next_call_and_waits_on_none(roots, tmp_path):
+    # Every judge makes its first call; one of them interrupts the run, as Ctrl-C would; each call returns only
+    # once the judges were told to stop, and one call is still in flight when the interrupt is raised.
+    stop = threading.Event()
+    together = threading.Barrier(len(PROVIDERS), timeout=5)
+    interrupted: list[float] = []
+
+    def on_call(name: str):
+        def wait(fake: Any) -> None:
+            if fake.requests[1:]:
+                return
+            together.wait()
+            if name == "anthropic":
+                interrupted.append(time.monotonic())
+                _thread.interrupt_main()
+            stop.wait(5)
+            if name == "xai":
+                time.sleep(1.5)  # a call in flight, which the caller does not wait on
+
+        return wait
+
+    read = step(("list_dir", {"root": "output"}))
+    clients = {name: FAKES[name]([read, step(("submit", ANSWER))], on_call=on_call(name)) for name in NAMES}
+    flags = P.Provider.ANTHROPIC | P.Provider.OPENAI | P.Provider.GEMINI | P.Provider.XAI
+    with pytest.raises(KeyboardInterrupt):
+        RF.judge_all(flags, "t", roots, tmp_path / "judgements", 0, "low", WEIGHTS, env=KEYS, clients=clients, stop=stop)
+    returned = time.monotonic()
+    assert stop.is_set() and returned - interrupted[0] < 1.0  # well before the call in flight returns
+    deadline = time.monotonic() + 10
+    while any(t.name.startswith("judge-") for t in threading.enumerate()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    # No judge made a second call, and each transcript ends with why.
+    assert {name: len(fake.requests) for name, fake in clients.items()} == dict.fromkeys(NAMES, 1)
+    for name in NAMES:
+        lines = (tmp_path / "judgements" / f"0-{name}.jsonl").read_text(encoding="utf-8").splitlines()
+        end = json.loads(lines[-1])
+        assert (end["kind"], end["status"], end["error"]) == ("end", "error", A.STOPPED)
 
 
 @needs_jsonschema

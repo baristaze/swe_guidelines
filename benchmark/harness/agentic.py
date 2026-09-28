@@ -90,6 +90,10 @@ judgement as `error`, because starting over would spend the budget twice.
 A transient error is asked again under `judge.with_retries`, the policy
 every judge uses, with the wait on the loop's clock.
 
+A `stop` event the caller sets ends the judgement before its next call,
+and before a retry, as `error`: the run was stopped. A call already in
+flight is not waited on by the caller.
+
 Every step is appended to a JSONL transcript as it happens, and flushed.
 Each record carries the time, the provider, the model, and its kind:
 `start`, `turn` (one model answer: its usage, its stop reason, its text,
@@ -111,6 +115,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
@@ -154,6 +159,8 @@ may submit {submits} times in all.
 
 REMINDER = "Call a tool: read on with list_dir, read_file, grep, or find, or call submit with your answer."
 NONE_LEFT = "No tool calls left: call submit with your answer now."
+# Why a judgement ended when the caller stopped it.
+STOPPED = "stopped before its next call: the run was stopped"
 LAST_TURN = "No budget left for reads ({over}). Your next turn is your last: call submit with your answer now."
 
 
@@ -1179,10 +1186,15 @@ class Loop:
         clock: Callable[[], float],
         sleep: Callable[[float], None],
         price: Callable[[str], dict[str, float]],
+        stop: threading.Event | None = None,
     ) -> None:
-        """`price` gives a model's list price in US dollars per million input and output tokens."""
+        """`price` gives a model's list price in US dollars per million input and output tokens.
+
+        `stop`, once set, ends the loop before its next call.
+        """
         self.tree, self.check, self.budget, self.log, self.clock, self.sleep = tree, check, budget, log, clock, sleep
         self.price = price
+        self.stop = stop or threading.Event()
         self.spent = Spent()
         self.started = clock()
 
@@ -1217,7 +1229,7 @@ class Loop:
             lambda: chat.send(timeout=max(self.left_s(), 0.001)),
             on_error=lambda exc: self.log.write("error", error=f"{type(exc).__name__}: {str(exc)[:400]}"),
             sleep=self.sleep,
-            may_wait=lambda: self.left_s() > J.RETRY_WAIT_S,
+            may_wait=lambda: self.left_s() > J.RETRY_WAIT_S and not self.stop.is_set(),
         )
 
     def converse(self, chat: Chat) -> Outcome:
@@ -1230,6 +1242,8 @@ class Loop:
         spent = self.spent
         last: str | None = None  # set once the next call is the last: the budget it passes
         while True:
+            if self.stop.is_set():
+                return Outcome("error", STOPPED)
             if self.left_s() <= 0:
                 return Outcome("missed", self.out_of_time())
             try:
@@ -1379,6 +1393,7 @@ def judge_agentic(
     client: Any = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    stop: threading.Event | None = None,
 ) -> AgenticJudgement:
     """One provider's agentic judgement, with every step in the transcript.
 
@@ -1386,6 +1401,7 @@ def judge_agentic(
     the folders the judge may read. `client` is the provider's SDK client;
     when None it is built from the key, as `judge.py` builds it. Either way
     its own retries are turned off. `clock` and `sleep` are the loop's time.
+    `stop`, once set, ends the judgement before its next call.
 
     Raises ValueError before any call on what the caller got wrong: a root
     that is not a folder, an answer schema that is not a JSON schema of an
@@ -1412,7 +1428,7 @@ def judge_agentic(
     )
     log = Transcript(transcript, name, tree.caps.transcript_chars)
     result = AgenticJudgement(provider=name, model=models[0] if models else "", effort=wanted)
-    loop = Loop(tree, check, budget, log, clock, sleep, partial(held_price, matrix, name))
+    loop = Loop(tree, check, budget, log, clock, sleep, partial(held_price, matrix, name), stop)
     log.model = result.model
     try:
         log.write("start", effort=wanted, models=models, roots=list(tree.roots), budget=budget.as_dict(), schema=answer_schema)
