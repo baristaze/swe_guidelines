@@ -303,8 +303,9 @@ def phase_argv(
     """The `claude -p` one session of a skill subject runs, with its bounds.
 
     The session writes every turn to stdout as a JSON line
-    (`--output-format stream-json --verbose`). Claude Code holds the turn
-    cap and the spend cap itself, and runs under `env` with `SUBJECT_ENV`.
+    (`--output-format stream-json --verbose`). Claude Code holds the spend
+    cap itself, and a turn cap only when the phase names one; it runs
+    under `env` with `SUBJECT_ENV`.
     A resumed session names the session it continues. A phase that starts
     in the output folder is started there by a shell, since the runtime
     starts every command in the workspace.
@@ -325,11 +326,12 @@ def phase_argv(
         "--output-format",
         "stream-json",
         "--verbose",
-        "--max-turns",
-        str(phase.max_turns),
         "--max-budget-usd",
         f"{phase.max_usd:g}",
     ]
+    # A turn count is no bound; a phase that names one passes it on.
+    if phase.max_turns is not None:
+        argv += ["--max-turns", str(phase.max_turns)]
     if model:
         argv += ["--model", model]
     if reads and target:
@@ -691,7 +693,8 @@ def run_skill(
         argv = phase_argv(scn, phase, plan.name, plan.plugin, plan.target, plan.claude, plan.model, resume)
         watch = PH.Watch(phase.max_usd, plan.prices, scn.subject.gates, phase.max_gate_reruns)
         mark = streams.count
-        streams.note(f"[phase {phase.name}] {phase.session}, at most {phase.max_turns} turns and ${phase.max_usd:g}")
+        turns = f"{phase.max_turns} turns, " if phase.max_turns is not None else ""
+        streams.note(f"[phase {phase.name}] {phase.session}, at most {turns}${phase.max_usd:g} and {phase.timeout_s} s")
         streams.listener = watch.feed
         try:
             status = rt.run(argv, rt.workspace, plan.env, streams, timeout_s=phase.timeout_s, stop=watch.stop)
@@ -704,8 +707,9 @@ def run_skill(
         spent_usage, spent = read_envelope_spend(text) if result is not None else ({}, None)
         if is_error:
             status = dataclasses.replace(status, is_error=True)
-        cap = watch.capped or PH.cap_of(result)
-        outcome = "capped" if cap and not status.timed_out else "ok" if status.ok else "failed"
+        # Money and time are the bounds: a session its timeout stopped ended at a bound, as one its spend cap did.
+        cap = watch.capped or PH.cap_of(result) or ("time" if status.timed_out else None)
+        outcome = "capped" if cap else "ok" if status.ok else "failed"
         if outcome == "ok" and watch.pending:
             # The session ended while a subagent it asked for had not answered: its work is not done.
             outcome = "incomplete"
@@ -1085,13 +1089,13 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        scn = RH.scenario(scn, matrix)
+        scn = RH.scenario(scn, matrix, len(P.members(flags)))
     # A flag that is not given takes the scenario's value. From here on,
     # args.repeat and args.max_spend_usd are what the run takes.
     if args.repeat is None:
         args.repeat = scn.repeat or REPEAT
     if args.max_spend_usd is None:
-        args.max_spend_usd = S.spend_cap(scn, args.repeat)
+        args.max_spend_usd = S.spend_cap(scn, args.repeat, len(P.members(flags)))
     # The scenario says where it runs. A runtime it does not list is refused
     # here, before a run folder is made.
     runtime = args.runtime or scn.runtimes[0]

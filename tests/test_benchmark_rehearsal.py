@@ -27,16 +27,21 @@ SHIPPED = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
 
 def test_a_rehearsal_of_the_shipped_system_keeps_its_prompts_adds_its_line_and_cuts_every_bound():
     scn = S.select(S.load(SHIPPED / "create-full-system.yaml"), [])
-    small = RH.scenario(scn, J.load_matrix(None))
+    small = RH.scenario(scn, J.load_matrix(None), 4)
     # Each phase's prompt as it is, and one line after it that only a rehearsal gets.
     assert [p.prompt for p in small.subject.phases] == [f"{p.prompt.rstrip()}\n\n{RH.LINE}" for p in scn.subject.phases]
     assert all(RH.LINE not in p.prompt for p in scn.subject.phases)
+    # Money and time, cut small; no turn cap, which the scenario names none of.
     for p in small.subject.phases:
-        assert (p.max_turns, p.max_usd, p.timeout_s, p.on_cap) == (RH.MAX_TURNS, RH.SESSION_USD, RH.TIMEOUT_S, "continue")
+        assert (p.max_turns, p.max_usd, p.timeout_s, p.on_cap) == (None, RH.SESSION_USD, RH.TIMEOUT_S, "continue")
     assert small.subject.model == "claude-sonnet-5"  # the cheapest Anthropic model the matrix prices
     assert small.subject.gate_timeout_s == RH.GATE_TIMEOUT_S and small.subject.gates == scn.subject.gates
     assert (small.repeat, small.max_spend_usd) == (1, RH.MAX_SPEND_USD)
-    assert small.judges.budget == RH.JUDGE_BUDGET
+    # The judges' dollars and wall time are the stub's; their counts stay the scenario's, which money and time reach first.
+    given, stub = scn.judges.budget, small.judges.budget
+    assert given is not None and stub is not None
+    assert (stub.max_usd, stub.wall_s, stub.submits, stub.max_output_tokens) == (0.5, 900.0, 2, 8_000)
+    assert (stub.tool_calls, stub.input_tokens) == (given.tool_calls, given.input_tokens)
     assert (small.judges.providers, small.judges.effort, small.judges.references) == (
         scn.judges.providers,
         scn.judges.effort,
@@ -63,12 +68,13 @@ def test_a_rehearsal_never_raises_a_bound_the_scenario_sets_lower():
             },
         )
     )
-    small = RH.scenario(scn, J.load_matrix(None))
+    small = RH.scenario(scn, J.load_matrix(None), 1)
     (only,) = small.subject.phases
+    # A turn cap the scenario names stays as it is: the rehearsal adds none and cuts none.
     assert (only.max_turns, only.max_usd, only.timeout_s, only.on_cap) == (2, 0.1, 60, "continue")
     assert small.subject.gate_timeout_s == 30 and small.max_spend_usd == 2
     assert small.judges.budget is not None and (small.judges.budget.tool_calls, small.judges.budget.max_usd) == (1, 0.2)
-    assert small.judges.budget.input_tokens == RH.JUDGE_BUDGET.input_tokens
+    assert small.judges.budget.input_tokens == A.Budget().input_tokens  # the scenario's, its default
 
 
 def test_a_one_session_skill_and_a_qa_subject_take_the_cheapest_model_of_their_provider():
@@ -76,16 +82,12 @@ def test_a_one_session_skill_and_a_qa_subject_take_the_cheapest_model_of_their_p
     skill = S.from_data(
         {**phased(phase("x")), "subject": {"skill": "arch-explain", "prompt": "Why?", "max_usd": 2, "max_turns": 14}}
     )
-    small = RH.scenario(skill, matrix)
-    assert (small.subject.max_turns, small.subject.max_usd, small.subject.model) == (
-        RH.MAX_TURNS,
-        RH.SESSION_USD,
-        "claude-sonnet-5",
-    )
+    small = RH.scenario(skill, matrix, 2)
+    assert (small.subject.max_turns, small.subject.max_usd, small.subject.model) == (14, RH.SESSION_USD, "claude-sonnet-5")
     qa = S.from_data(
         {"name": "q", "kind": "qa", "subject": {"prompt": "Why?", "provider": "gemini"}, "rubric": "r", "runtimes": ["host"]}
     )
-    assert RH.scenario(qa, matrix).subject.model == "gemini-3.8-flash"
+    assert RH.scenario(qa, matrix, 2).subject.model == "gemini-3.8-flash"
 
 
 def test_the_cheapest_model_is_the_lowest_input_price_then_output():
@@ -103,7 +105,7 @@ def test_the_cheapest_model_is_the_lowest_input_price_then_output():
 def test_the_stub_budget_is_small_enough_that_four_judges_leave_the_subject_its_share():
     # Four judges at their stub dollar bound, and one call past it each, still leave the phases room under the cap.
     assert 4 * RH.JUDGE_BUDGET.max_usd + 4 * RH.SESSION_USD <= RH.MAX_SPEND_USD
-    assert RH.JUDGE_BUDGET.tool_calls < A.Budget().tool_calls
+    assert RH.JUDGE_BUDGET.max_usd < A.Budget().max_usd and RH.JUDGE_BUDGET.wall_s <= A.Budget().wall_s
 
 
 # A rehearsal run -------------------------------------------------------------
@@ -153,8 +155,8 @@ def rehearse(tmp_path, monkeypatch):
 def test_a_rehearsal_runs_every_phase_small_after_its_preflight_and_says_where_the_money_went(rehearse, capsys):
     scenario = dict(
         phased(
-            phase("scaffold", {"write": {"site/README.md": "r"}}, max_turns=400, max_usd=60, timeout_s=14400),
-            phase("review", cwd="output", max_turns=150, max_usd=25, timeout_s=7200),
+            phase("scaffold", {"write": {"site/README.md": "r"}}, max_turns=None, max_usd=60, timeout_s=14400),
+            phase("review", cwd="output", max_turns=None, max_usd=25, timeout_s=7200),
             gates=["test -f README.md"],
         ),
         repeat=3,
@@ -165,7 +167,8 @@ def test_a_rehearsal_runs_every_phase_small_after_its_preflight_and_says_where_t
     for session in seen(run_dir):
         assert session is not None
         args = session["args"]
-        assert args[args.index("--max-turns") + 1] == "5" and args[args.index("--max-budget-usd") + 1] == "0.5"
+        # Money and time only: no turn cap, which the phases name none of.
+        assert "--max-turns" not in args and args[args.index("--max-budget-usd") + 1] == "0.5"
         assert args[args.index("--model") + 1] == "claude-sonnet-5"
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["rehearsal"] is True and (resolved["repeat"], resolved["max_spend_usd"]) == (1, 5.0)
@@ -324,12 +327,13 @@ def test_a_rehearsal_takes_the_subject_model_a_flag_names(rehearse):
 
 
 def test_a_dry_run_of_a_rehearsal_resolves_its_bounds_and_runs_nothing(rehearse):
-    code, run_dir, judged = rehearse(phased(phase("scaffold", max_turns=400, max_usd=60)), "--dry-run")
+    code, run_dir, judged = rehearse(phased(phase("scaffold", max_turns=None, max_usd=60)), "--dry-run")
     assert code == 0 and judged == []
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["rehearsal"] is True and "preflight" not in resolved
     (planned,) = resolved["phases"]
-    assert (planned["max_turns"], planned["max_usd"]) == (5, 0.5)
+    assert (planned["max_turns"], planned["max_usd"], planned["timeout_s"]) == (None, 0.5, 60)
+    assert "--max-turns" not in planned["argv"]
     assert planned["argv"][planned["argv"].index("--model") + 1] == "claude-sonnet-5"
     assert resolved["subject_model"] == "claude-sonnet-5" and resolved["scenario"]["repeat"] == 1
     assert sorted(p.name for p in run_dir.iterdir()) == ["run.json"]
@@ -364,7 +368,7 @@ def test_a_rehearsal_s_cap_is_its_path_s_own_for_one_repeat_when_that_is_lower_t
 def test_a_rehearsal_of_either_path_of_the_shipped_system_spends_at_most_5():
     scn = S.load(SHIPPED / "create-full-system.yaml")
     for taken in ([], ["extras"]):
-        small = RH.scenario(S.select(scn, taken), J.load_matrix(None))
+        small = RH.scenario(S.select(scn, taken), J.load_matrix(None), 4)
         assert small.max_spend_usd == RH.MAX_SPEND_USD
         assert all(p.prompt.endswith(RH.LINE) for p in small.subject.phases)
 

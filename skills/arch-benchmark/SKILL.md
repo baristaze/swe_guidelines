@@ -75,8 +75,9 @@ never run the harness from there.
    `--max-spend-usd N` is the run's spend cap in US dollars, over the
    subject and the judges together. Without it, a run that takes no
    group takes the scenario's `max_spend_usd`. Else a scenario in
-   phases is capped by the sum of the caps of the phases that run, over
-   every repeat: `create-full-system` by $135 for the build and $190
+   phases is capped by the sum of the caps of the phases that run and
+   of the agentic judges' dollar budgets, over every repeat:
+   `create-full-system` by $405 for the build and $487.50
    with extras. A run has no cap only when its subject runs in one
    session and its scenario names none. A flag overrides the
    scenario's value. The cap is not a hard ceiling: the
@@ -193,13 +194,15 @@ never run the harness from there.
    scenario. For a scenario in phases, `run.json` lists each phase the
    run takes under `phases`, with its `group`, and the
    phases' bounds are the ones in effect: the subject's `max_usd` is
-   null, and its `max_turns` and `timeout_s` are defaults nothing uses.
+   null, and its `max_turns` is null and its `timeout_s` a default
+   nothing uses.
    `subject_argv` is only the first phase's command. Report each phase
    with the fields it holds: its `session` (`fresh`, or `resume` of the
    phase before), where it starts (`cwd`: the workspace or the output
    folder), whether it keeps the handoff note (`hint`), its bounds
-   (`max_turns`, `max_usd`, `max_gate_reruns`, and `timeout_s`, the
-   backstop), what follows a bound (`on_cap`), and what its `argv` runs:
+   (`max_usd` and `timeout_s`, money and time, `max_gate_reruns`, and
+   `max_turns` only when it names one, since a turn count is no bound),
+   what follows a bound (`on_cap`), and what its `argv` runs:
    the prompt as the `argv` carries it, with the target's path in it when
    the phase's prompt names `{target}` and the handoff sentence when it
    is hinted, and whether it gets `--add-dir` or `--resume`.

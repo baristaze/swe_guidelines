@@ -140,6 +140,18 @@ def test_a_session_with_no_spend_bound_fails(tmp_path):
     assert check.detail == "session loose has no max_usd"
 
 
+def test_a_session_needs_money_and_time_and_no_turn_cap(tmp_path):
+    # A turn count is no bound: a session that names none passes, and one without a timeout does not.
+    free = S.Phase(name="free", prompt="p", max_usd=2.0, timeout_s=600)
+    check = PF.budgets(context(scenario(), host(tmp_path), sessions=[free]))
+    assert check.status == PF.PASS and "turn" not in check.detail
+    assert check.facts["sessions"] == [{"name": "free", "max_usd": 2.0, "timeout_s": 600}]
+    endless = S.Phase(name="endless", prompt="p", max_usd=2.0, timeout_s=0)
+    check = PF.budgets(context(scenario(), host(tmp_path), sessions=[endless]))
+    assert (check.status, check.detail) == (PF.FAIL, "session endless has no timeout_s")
+    assert check.fix is not None and "max_turns" not in check.fix
+
+
 # checkout -----------------------------------------------------------------
 
 

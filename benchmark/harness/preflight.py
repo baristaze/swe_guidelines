@@ -307,7 +307,11 @@ def prefix_of(rt: RT.BaseRuntime) -> str:
 
 
 def budgets(ctx: Context) -> Check:
-    """The run's spend cap, and every bound of every session a skill subject runs."""
+    """The run's spend cap, and every bound of every session a skill subject runs: money and time, and the gate reruns.
+
+    A turn count is no bound, so a session needs none; one the scenario
+    names is recorded beside the rest.
+    """
     scn = ctx.scenario
     problems: list[str] = []
     fixes: list[str] = []
@@ -318,7 +322,7 @@ def budgets(ctx: Context) -> Check:
     unbounded = False
     if scn.kind == "skill":
         for s in ctx.sessions:
-            bounds: dict[str, float | int | None] = {"max_turns": s.max_turns, "max_usd": s.max_usd, "timeout_s": s.timeout_s}
+            bounds: dict[str, float | int | None] = {"max_usd": s.max_usd, "timeout_s": s.timeout_s}
             if scn.subject.gates:
                 bounds["max_gate_reruns"] = s.max_gate_reruns
             # A rerun cap of 0 is a bound: no rerun. Every other bound is above 0.
@@ -326,9 +330,10 @@ def budgets(ctx: Context) -> Check:
             if missing:
                 unbounded = True
                 problems.append(f"session {s.name} has no {', '.join(missing)}")
-            sessions.append({"name": s.name, **bounds})
+            named = {"max_turns": s.max_turns} if s.max_turns is not None else {}
+            sessions.append({"name": s.name, **bounds, **named})
     if unbounded:
-        fixes.append("give every session its max_turns, max_usd, and timeout_s, and every phase its max_gate_reruns")
+        fixes.append("give every session its max_usd and timeout_s, and every phase its max_gate_reruns")
     facts: dict[str, Any] = {"max_spend_usd": ctx.max_spend_usd}
     if sessions:
         facts["sessions"] = sessions
@@ -341,9 +346,7 @@ def budgets(ctx: Context) -> Check:
     detail = f"the run starts nothing more past ${ctx.max_spend_usd:g}"
     if sessions:
         caps = sum(s["max_usd"] for s in sessions)
-        bounds_named = (
-            "turn cap, spend cap, timeout, and gate-rerun cap" if scn.subject.gates else "turn cap, spend cap, and timeout"
-        )
+        bounds_named = "spend cap, timeout, and gate-rerun cap" if scn.subject.gates else "spend cap and timeout"
         detail += f"; {len(sessions)} session(s), each with its {bounds_named}, their spend caps summing to ${caps:g}"
     return Check("budgets", PASS, detail, facts=facts)
 

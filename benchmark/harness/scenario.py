@@ -29,9 +29,10 @@ beyond what every run needs: `preflight.registries`, the URLs its
 subject reaches, and `preflight.disk_gib` and `preflight.memory_gib`,
 the free disk and the available memory it needs where it runs.
 
-A skill subject is bounded by count and by spend: a turn cap and a cap in
-US dollars, `max_usd`, which every skill subject names. A skill subject
-can also run in `phases`, each a session of its own with its own prompt
+A skill subject is bounded by money and time: a cap in US dollars,
+`max_usd`, which every skill subject names, and a timeout. A turn count
+is no bound: a scenario may name `max_turns`, and only then does Claude
+Code get one. A skill subject can also run in `phases`, each a session of its own with its own prompt
 and bounds, building one `output` folder the harness commits after every
 phase. A phase is `fresh`, a new session with a new HOME, unless it says
 `resume`, which continues the session of the phase before it in the same
@@ -46,7 +47,7 @@ the rubric, so the judges know what was built. `select` returns the
 scenario as a run with its groups runs it. The run's spend cap is the
 scenario's `max_spend_usd` on the path it names, a run that takes no
 group; else, for a subject in phases, the sum of the caps of the phases
-that run (`spend_cap`).
+that run and the budgets of the agentic judges (`spend_cap`).
 
 The judges are one-shot by default: one prompt, one verdict each. A
 scenario can ask for `agentic` judges instead, which read the subject's
@@ -112,9 +113,10 @@ class Phase:
 
     name: str
     prompt: str
-    max_turns: int
     max_usd: float
     timeout_s: int
+    # A turn cap, when the scenario names one; a turn count is no bound unless named.
+    max_turns: int | None = None
     session: str = "fresh"
     cwd: str = "workspace"
     hint: bool = False
@@ -157,7 +159,8 @@ class Subject:
     skill: str | None = None
     prompt: str = ""
     argv: list[str] = field(default_factory=list)
-    max_turns: int = 6
+    # A skill subject's turn cap, when the scenario names one.
+    max_turns: int | None = None
     allowed_tools: list[str] = field(default_factory=list)
     target: str | None = None
     model: str | None = None
@@ -383,7 +386,9 @@ def from_data(data: Any, path: Path | None = None) -> Scenario:
         skill=raw_subject.get("skill"),
         prompt=str(raw_subject.get("prompt") or ""),
         argv=_strings(raw_subject.get("argv"), f"scenario {name}: subject.argv"),
-        max_turns=_int(raw_subject.get("max_turns") or 6, f"scenario {name}: subject.max_turns"),
+        max_turns=None
+        if raw_subject.get("max_turns") is None
+        else _int(raw_subject["max_turns"], f"scenario {name}: subject.max_turns"),
         allowed_tools=_strings(raw_subject.get("allowed_tools"), f"scenario {name}: subject.allowed_tools"),
         target=raw_subject.get("target"),
         model=raw_subject.get("model"),
@@ -701,13 +706,13 @@ def _phases(raw: dict[str, Any], kind: str, runtimes: list[str], name: str, grou
         if not isinstance(item, dict):
             raise ScenarioError(f"{at}: a phase holds a mapping")
         _only(item, PHASE_KEYS, at)
-        missing = [k for k in ("name", "prompt", "max_turns", "max_usd", "timeout_s") if item.get(k) in (None, "")]
+        missing = [k for k in ("name", "prompt", "max_usd", "timeout_s") if item.get(k) in (None, "")]
         if missing:
             raise ScenarioError(f"{at}: every phase names its {', '.join(missing)}")
         phase = Phase(
             name=str(item["name"]),
             prompt=str(item["prompt"]),
-            max_turns=_whole(item["max_turns"], f"{at}.max_turns"),
+            max_turns=None if item.get("max_turns") is None else _whole(item["max_turns"], f"{at}.max_turns"),
             max_usd=_usd(item["max_usd"], f"{at}.max_usd") or 0.0,
             timeout_s=_whole(item["timeout_s"], f"{at}.timeout_s"),
             session=str(item.get("session", "fresh")),
@@ -786,17 +791,20 @@ def taken_groups(scn: Scenario) -> list[str]:
     return [g.name for g in scn.subject.groups if g.name in (p.group for p in scn.subject.phases)]
 
 
-def spend_cap(scn: Scenario, repeat: int) -> float | None:
-    """The run's spend cap when no flag names one: the scenario's, else the sum of the caps of the phases that run.
+def spend_cap(scn: Scenario, repeat: int, judges: int) -> float | None:
+    """The run's spend cap when no flag names one: the scenario's, else what the phases and the judges may spend.
 
-    The sum is over every repeat, for a subject in phases. A subject in one
-    session has no run cap unless the scenario names one.
+    That is, for a subject in phases, the sum of the caps of the phases
+    that run and the dollar budgets of its `judges` agentic judges, over
+    every repeat. One-shot judges have no budget, and add nothing. A
+    subject in one session has no run cap unless the scenario names one.
     """
     if scn.max_spend_usd is not None:
         return scn.max_spend_usd
     if not scn.subject.phases:
         return None
-    return round(sum(p.max_usd for p in scn.subject.phases) * repeat, 6)
+    judging = judges * scn.judges.budget.max_usd if scn.judges.agentic and scn.judges.budget else 0.0
+    return round((sum(p.max_usd for p in scn.subject.phases) + judging) * repeat, 6)
 
 
 def _bounded(subject: Subject, kind: str, name: str) -> None:

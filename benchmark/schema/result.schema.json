@@ -144,7 +144,10 @@
         "provider": { "type": ["string", "null"] },
         "target": { "type": ["string", "null"] },
         "plugin": { "type": ["string", "null"] },
-        "max_turns": { "type": "integer" },
+        "max_turns": {
+          "description": "A skill subject's turn cap when the scenario names one; null when it names none, as a turn count is no bound.",
+          "type": ["integer", "null"]
+        },
         "allowed_tools": { "type": "array", "items": { "type": "string" } },
         "max_usd": {
           "description": "A skill subject's spend cap in US dollars, passed to Claude Code as --max-budget-usd; null for a subject in phases, whose phases name their own.",
@@ -173,7 +176,7 @@
               "session": { "type": "string", "enum": ["fresh", "resume"] },
               "cwd": { "type": "string", "enum": ["workspace", "output"] },
               "hint": { "type": "boolean" },
-              "max_turns": { "type": "integer", "minimum": 1 },
+              "max_turns": { "description": "The phase's turn cap when it names one; null when it names none.", "type": ["integer", "null"], "minimum": 1 },
               "max_usd": { "type": "number", "exclusiveMinimum": 0 },
               "timeout_s": { "type": "integer", "minimum": 1 },
               "max_gate_reruns": { "type": "integer", "minimum": 0 },
@@ -539,7 +542,11 @@
           "type": "string",
           "enum": ["ok", "capped", "failed", "incomplete"]
         },
-        "capped": { "type": ["string", "null"], "enum": ["turns", "spend", "gate_reruns", null] },
+        "capped": {
+          "description": "The bound that ended the session: spend, time, gate_reruns, or turns when the phase names a turn cap; null when none did.",
+          "type": ["string", "null"],
+          "enum": ["spend", "time", "gate_reruns", "turns", null]
+        },
         "exit_status": { "type": "object" },
         "session_id": { "type": ["string", "null"] },
         "turns": { "type": ["integer", "null"], "minimum": 0 },

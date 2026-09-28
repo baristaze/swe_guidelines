@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from harness import agentic as A
+from harness import judge as J
 from harness import scenario as S
 
 MINIMAL = {
@@ -27,7 +28,7 @@ def write(folder: Path, name: str, data: dict) -> Path:
 def test_a_minimal_scenario_takes_the_defaults(tmp_path):
     scn = S.load(write(tmp_path, "one.json", MINIMAL))
     assert scn.kind == "skill"
-    assert scn.subject.max_turns == 6
+    assert scn.subject.max_turns is None  # a turn count is no bound unless the scenario names one
     assert scn.artifact.stdout is True
     assert scn.judges.providers == "3"
     assert scn.judges.effort == "medium"
@@ -265,11 +266,15 @@ def test_a_subject_in_phases_takes_the_defaults_of_each_phase():
     assert scn.subject.output == "site"
 
 
-def test_every_phase_names_its_prompt_and_its_bounds():
-    for key in ("name", "prompt", "max_turns", "max_usd", "timeout_s"):
+def test_every_phase_names_its_prompt_and_its_bounds_of_money_and_time():
+    for key in ("name", "prompt", "max_usd", "timeout_s"):
         broken = {k: v for k, v in phase("scaffold").items() if k != key}
         with pytest.raises(S.ScenarioError, match=f"every phase names its {key}"):
             S.from_data(phased(broken))
+    # A turn count is no bound: a phase may name one, and needs none.
+    no_turns = {k: v for k, v in phase("scaffold").items() if k != "max_turns"}
+    assert S.from_data(phased(no_turns)).subject.phases[0].max_turns is None
+    assert S.from_data(phased(phase("scaffold"))).subject.phases[0].max_turns == 10
     with pytest.raises(S.ScenarioError, match=r"max_turns: a whole number of at least 1, got 0"):
         S.from_data(phased(phase("scaffold", max_turns=0)))
     with pytest.raises(S.ScenarioError, match="unknown key"):
@@ -355,17 +360,29 @@ def test_a_run_that_takes_a_group_the_scenario_does_not_declare_is_refused():
 
 
 def test_the_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_that_run_unless_the_scenario_names_one_for_its_path():
-    scn = S.from_data(grouped())
-    assert S.spend_cap(S.select(scn, []), 1) == 135.0
-    assert S.spend_cap(S.select(scn, ["extras"]), 1) == 190.0
-    assert S.spend_cap(S.select(scn, ["extras", "polish"]), 2) == 390.0  # every phase of every repeat
+    scn = S.from_data(grouped())  # one-shot judges, which have no budget to add
+    assert S.spend_cap(S.select(scn, []), 1, 2) == 135.0
+    assert S.spend_cap(S.select(scn, ["extras"]), 1, 2) == 190.0
+    assert S.spend_cap(S.select(scn, ["extras", "polish"]), 2, 2) == 390.0  # every phase of every repeat
     # The scenario's own cap is the cap of the path that takes no group; a run that takes one sums its phases.
     named = S.from_data(dict(grouped(), max_spend_usd=100))
-    assert S.spend_cap(S.select(named, []), 3) == 100.0
-    assert S.spend_cap(S.select(named, ["extras"]), 1) == 190.0
+    assert S.spend_cap(S.select(named, []), 3, 2) == 100.0
+    assert S.spend_cap(S.select(named, ["extras"]), 1, 2) == 190.0
+    # Agentic judges add their dollar budgets, one per judge the run selects, to every repeat.
+    judged = S.from_data(
+        dict(
+            grouped(),
+            judges={
+                "mode": "agentic",
+                "budget": {"max_usd": 10},
+                "references": [{"name": "guideline", "weight": 1, "paths": ["lenses"]}],
+            },
+        )
+    )
+    assert S.spend_cap(S.select(judged, []), 1, 4) == 175.0 and S.spend_cap(S.select(judged, []), 2, 1) == 290.0
     # A subject in one session has no run cap unless the scenario names one.
-    assert S.spend_cap(S.from_data(MINIMAL), 3) is None
-    assert S.spend_cap(S.from_data(dict(MINIMAL, max_spend_usd=4)), 3) == 4.0
+    assert S.spend_cap(S.from_data(MINIMAL), 3, 2) is None
+    assert S.spend_cap(S.from_data(dict(MINIMAL, max_spend_usd=4)), 3, 2) == 4.0
 
 
 @pytest.mark.parametrize(
@@ -420,7 +437,7 @@ def test_the_shipped_skill_scenarios_name_their_spend_caps():
     # A subject in phases names a cap per phase, and none of its own.
     caps = {s.name: s.subject.max_usd or {p.name: p.max_usd for p in s.subject.phases} for s in skills}
     assert caps == {
-        "create-full-system": {"scaffold": 60.0, "mvp": 75.0, "review": 25.0, "close": 30.0},
+        "create-full-system": {"scaffold": 180.0, "mvp": 135.0, "review": 37.5, "close": 45.0},
         "explain-tenancy": 2.0,
         "review-om": 3.0,
     }
@@ -458,14 +475,28 @@ def test_the_full_system_scenario_runs_once_under_the_sum_of_the_caps_of_the_pha
     # The build by default, the scaffold and the MVP; the review and the close only with extras.
     assert [g.name for g in system.subject.groups] == ["extras"]
     build, extras = S.select(system, []), S.select(system, ["extras"])
-    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1) == 135.0
+    # The run's cap covers the phases and the four judges' budgets: $315 and $90 for the build, $397.50 and $90 with extras.
+    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1, 4) == 405.0
     assert [p.name for p in extras.subject.phases] == ["scaffold", "mvp", "review", "close"]
-    assert S.spend_cap(extras, 1) == 190.0 and S.taken_groups(extras) == ["extras"]
+    assert S.spend_cap(extras, 1, 4) == 487.5 and S.taken_groups(extras) == ["extras"]
+    # Money and time bound every phase and every judge; no step count does.
+    assert [(p.max_usd, p.timeout_s, p.max_turns) for p in extras.subject.phases] == [
+        (180.0, 16200, None),
+        (135.0, 16200, None),
+        (37.5, 5400, None),
+        (45.0, 8100, None),
+    ]
+    budget = system.judges.budget
+    assert budget is not None and (budget.max_usd, budget.wall_s) == (22.5, 5400.0)
+    # The counts the loop keeps are set past what money and time allow: the input tokens at the cheapest input price.
+    matrix = J.load_matrix(folder.parent / "models.yaml")
+    cheapest = min(p["input"] for spec in matrix.values() for p in spec.get("prices", {}).values())
+    assert budget.input_tokens * cheapest / 1e6 >= budget.max_usd and budget.tool_calls >= 10_000
     assert build.rubric == system.rubric and extras.rubric.startswith(system.rubric)
     assert extras.rubric.endswith("a last session closed the review's high findings.")
     # The others name neither, so a run of one takes 3 repeats and no run cap unless a flag says otherwise.
     assert {(s.repeat, s.max_spend_usd) for s in scenarios.values()} == {(None, None)}
-    assert {S.spend_cap(s, 3) for s in scenarios.values()} == {None}
+    assert {S.spend_cap(s, 3, 4) for s in scenarios.values()} == {None}
 
 
 def test_the_full_system_scenario_tells_each_phase_only_what_it_needs():

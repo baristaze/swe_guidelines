@@ -13,17 +13,19 @@ never raises a bound the scenario sets:
 - the subject runs on the cheapest model the matrix prices for its
   provider (`cheapest`);
 - every session of a skill subject, each phase or its one session, gets
-  at most `MAX_TURNS` turns, `SESSION_USD` US dollars, and a timeout of
-  `TIMEOUT_S`. A phase that hits a bound hands on to the next one, since
-  a rehearsal's phases all end at a bound and every phase must start;
+  at most `SESSION_USD` US dollars and a timeout of `TIMEOUT_S`: money
+  and time, as every bound. A phase that hits a bound hands on to the
+  next one, so every phase starts;
 - each phase keeps its prompt and gets one line after it, `LINE`: a
   tiny budget, build the smallest piece, and ask nothing. So the first
   phase leaves a tree, and the archive, the gates, and the judges see
   one. A run that is not a rehearsal never sees the line;
 - a command subject gets the same timeout, and each gate at most
   `GATE_TIMEOUT_S`;
-- agentic judges get the stub budget, `JUDGE_BUDGET`, each bound the
-  smaller of the scenario's and the stub's;
+- agentic judges get the stub budget, `JUDGE_BUDGET`: its dollars, wall
+  time, submissions, and output per call, each the smaller of the
+  scenario's and the stub's. The tool calls and the input tokens stay the
+  scenario's, which money and time reach first;
 - the run repeats once, and its spend cap, over the subject and the
   judges together, is `MAX_SPEND_USD`, or the run's own cap for one
   repeat when that is lower.
@@ -54,18 +56,20 @@ from .scenario import Scenario, spend_cap
 # The run's spend cap, over the subject and the judges together. A flag can
 # lower it and never raise it.
 MAX_SPEND_USD = 5.0
-# Each session's bounds: its turns, its spend in US dollars, and its timeout,
-# the backstop. Each gate's timeout on the final tree.
-MAX_TURNS = 5
+# Each session's bounds, money and time: its spend in US dollars and its
+# timeout. Each gate's timeout on the final tree.
 SESSION_USD = 0.5
 TIMEOUT_S = 1800
 GATE_TIMEOUT_S = 600
 # The stub budget of each agentic judgement: enough to read and to submit.
-JUDGE_BUDGET = A.Budget(tool_calls=3, input_tokens=60_000, wall_s=900.0, submits=2, max_usd=0.5, max_output_tokens=8_000)
+# Its tool calls and input tokens are no bound: the scenario's stay.
+JUDGE_BUDGET = A.Budget(wall_s=900.0, submits=2, max_usd=0.5, max_output_tokens=8_000)
+# The budget's counts, which money and time bind before, so the stub leaves them as the scenario sets them.
+COUNTS = ("tool_calls", "input_tokens")
 # The line each phase of a rehearsal gets after its prompt, and a real run never does.
 LINE = (
-    "This run is a rehearsal on a tiny budget of a few turns: build only the smallest piece of this task, "
-    "write its files in your first turns, and do not ask anything."
+    "This run is a rehearsal on a tiny budget: build only the smallest piece of this task, "
+    "write its files first, and do not ask anything."
 )
 
 
@@ -76,20 +80,31 @@ def cheapest(matrix: dict[str, dict[str, Any]], provider: str) -> str | None:
 
 
 def budget(given: A.Budget | None) -> A.Budget | None:
-    """The stub budget of an agentic judgement: each bound the smaller of the scenario's and the stub's."""
+    """The stub budget of an agentic judgement: each bound the smaller of the scenario's and the stub's.
+
+    The tool calls and the input tokens stay the scenario's: money and time bind first.
+    """
     if given is None:
         return None
-    return A.Budget(**{f.name: min(getattr(given, f.name), getattr(JUDGE_BUDGET, f.name)) for f in dataclasses.fields(A.Budget)})
+    return A.Budget(
+        **{
+            f.name: getattr(given, f.name) if f.name in COUNTS else min(getattr(given, f.name), getattr(JUDGE_BUDGET, f.name))
+            for f in dataclasses.fields(A.Budget)
+        }
+    )
 
 
-def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]]) -> Scenario:
-    """The scenario as a rehearsal runs it: each prompt with the rehearsal's line, every bound cut small."""
+def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]], judges: int) -> Scenario:
+    """The scenario as a rehearsal runs it: each prompt with the rehearsal's line, every bound cut small.
+
+    `judges` is how many judges the run selects, whose budgets the run's
+    own cap covers.
+    """
     subject = scn.subject
     phases = [
         dataclasses.replace(
             p,
             prompt=f"{p.prompt.rstrip()}\n\n{LINE}",
-            max_turns=min(p.max_turns, MAX_TURNS),
             max_usd=min(p.max_usd, SESSION_USD),
             timeout_s=min(p.timeout_s, TIMEOUT_S),
             on_cap="continue",
@@ -104,16 +119,15 @@ def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]]) -> Scenario:
     subject = dataclasses.replace(
         subject,
         model=model,
-        max_turns=min(subject.max_turns, MAX_TURNS),
         max_usd=None if subject.max_usd is None else min(subject.max_usd, SESSION_USD),
         timeout_s=min(subject.timeout_s, TIMEOUT_S),
         gate_timeout_s=min(subject.gate_timeout_s, GATE_TIMEOUT_S),
         phases=phases,
     )
-    judges = dataclasses.replace(scn.judges, budget=budget(scn.judges.budget))
-    own = spend_cap(scn, 1)
+    panel = dataclasses.replace(scn.judges, budget=budget(scn.judges.budget))
+    own = spend_cap(scn, 1, judges)
     cap = MAX_SPEND_USD if own is None else min(own, MAX_SPEND_USD)
-    return dataclasses.replace(scn, subject=subject, judges=judges, repeat=1, max_spend_usd=cap)
+    return dataclasses.replace(scn, subject=subject, judges=panel, repeat=1, max_spend_usd=cap)
 
 
 def missing(scn: Scenario, repeat: Any, archived: bool | None) -> list[str]:

@@ -898,3 +898,18 @@ def test_the_watch_names_the_agent_calls_with_no_result_when_the_result_came():
     late = {"type": "tool_result", "tool_use_id": "t2", "content": "done"}
     watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [late]}}))
     assert watch.pending == [{"id": "t2", "description": "Explore"}]  # a result after the session's is too late
+
+
+def test_a_phase_gets_a_turn_cap_only_when_it_names_one():
+    scn = S.from_data(phased(phase("scaffold", max_turns=None), phase("review", max_turns=7)))
+    free, capped = (run.phase_argv(scn, p, "swe-guidelines", "/plugin", None) for p in scn.subject.phases)
+    assert "--max-turns" not in free and free[free.index("--max-budget-usd") + 1] == "1"
+    assert capped[capped.index("--max-turns") + 1] == "7"
+
+
+def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "sleep": 30}, timeout_s=1), phase("mvp")))
+    assert code == 0  # time is a bound, as money is: the repeat goes on and is judged
+    first, second = results(run_dir)["repeats"][0]["phases"]
+    assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
+    assert second["status"] == "ok"

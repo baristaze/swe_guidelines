@@ -81,8 +81,9 @@ HINT = (
     "Keep a handoff note at {path} as you work: what is done, what you decided, "
     "and what is left. If it is there when you start, an earlier session wrote it; read it first."
 )
-# The bounds a phase can end at, besides finishing.
-CAPS = ("turns", "spend", "gate_reruns")
+# The bounds a phase can end at, besides finishing: money and time, the
+# gate reruns, and a turn cap when the phase names one.
+CAPS = ("spend", "time", "gate_reruns", "turns")
 # The tool a session starts a subagent with; older releases of Claude Code name it Task.
 AGENT_TOOLS = frozenset({"Agent", "Task"})
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
