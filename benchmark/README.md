@@ -934,8 +934,14 @@ tag, and records the commit and the release each pins in `run.json`.
 Fetching a public repository spends nothing. It calls no judge.
 
 An agentic judge takes no `evidence`: it reads its roots instead, and a
-scenario that names both does not load. The judges of a repeat run one
-after another.
+scenario that names both does not load.
+
+The judges of a repeat run in parallel, one thread each. Each keeps its
+own budget, its own transcript, and its own error handling, so a
+provider that fails ends its own judgement and no other. The results
+keep the order of the flag. Their spend counts toward the run's spend
+cap once the last of them has answered, as one repeat's judges always
+do (see The run's spend).
 
 ## Spend
 

@@ -39,6 +39,10 @@ never told the weights. The harness weighs the scores: the weighted
 score is the sum of each reference's score times its weight, to one
 decimal place, rounded half up.
 
+The judges of a repeat run in parallel, one thread each. Each keeps its
+own budget, transcript, and error handling, so a provider that fails
+ends its own judgement and no other.
+
 Like every harness module, this one imports the standard library only.
 """
 
@@ -49,6 +53,7 @@ import re
 import shutil
 import subprocess
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -424,16 +429,19 @@ def judge_all(
     env: dict[str, str] | None = None,
     clients: dict[str, Any] | None = None,
 ) -> list[Judged]:
-    """Every selected provider's agentic judgement of one repeat, in flag order.
+    """Every selected provider's agentic judgement of one repeat, run in parallel and returned in flag order.
 
     Each transcript is `<index>-<provider>.jsonl` in `folder`, the run's
     `judgements/`. `clients` maps a provider to its SDK client; a provider
-    it does not name gets the one `judge.py` builds from its key.
+    it does not name gets the one `judge.py` builds from its key. A
+    judgement never raises on what its provider does, so one provider's
+    failure is its own judgement and the others run on.
     """
     matrix = matrix or J.DEFAULT_MATRIX
     schema = answer_schema(list(weights))
-    out: list[Judged] = []
-    for provider in P.members(flags):
+    providers = P.members(flags)
+
+    def judge(provider: P.Provider) -> Judged:
         name = P.name(provider)
         path = folder / f"{index}-{name}.jsonl"
         judgement = A.judge_agentic(
@@ -448,5 +456,9 @@ def judge_all(
             env=env,
             client=(clients or {}).get(name),
         )
-        out.append(Judged.of(judgement, weights, f"{folder.name}/{path.name}"))
-    return out
+        return Judged.of(judgement, weights, f"{folder.name}/{path.name}")
+
+    if not providers:
+        return []
+    with ThreadPoolExecutor(max_workers=len(providers), thread_name_prefix="judge") as pool:
+        return list(pool.map(judge, providers))

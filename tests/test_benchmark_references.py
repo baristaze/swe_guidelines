@@ -8,6 +8,8 @@ from `test_benchmark_agentic.py`. Nothing here reaches a network or reads a key.
 import importlib.util
 import json
 import subprocess
+import threading
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -374,6 +376,39 @@ def test_every_provider_judges_every_reference_and_its_transcript_sits_under_jud
     assert records[0]["roots"] == ["output", "guideline", "reference"] and records[-1]["kind"] == "end"
     assert records[0]["schema"] == RF.answer_schema(["guideline", "reference"])
     assert judged.cost_usd == J.cost_usd(J.DEFAULT_MATRIX, name, judged.model, judged.usage)
+
+
+@needs_jsonschema
+def test_the_judges_of_a_repeat_run_at_once_and_one_that_fails_stops_none_of_the_others(roots, tmp_path):
+    # Every judge's first call waits until all four have made theirs: one after another, the first would wait alone.
+    together = threading.Barrier(len(PROVIDERS), timeout=5)
+    started: set[str] = set()
+
+    def on_call(name: str):
+        def wait(fake: Any) -> None:
+            if name not in started:
+                started.add(name)
+                together.wait()
+                if name == "anthropic":
+                    time.sleep(0.2)  # the first in flag order finishes last
+
+        return wait
+
+    clients: dict[str, Any] = {}
+    for name in NAMES:
+        script = [RuntimeError(f"{name} is down")] * 5 if name == "gemini" else [step(("submit", ANSWER))]
+        clients[name] = FAKES[name](script, on_call=on_call(name))
+    flags = P.Provider.ANTHROPIC | P.Provider.OPENAI | P.Provider.GEMINI | P.Provider.XAI
+    judged = RF.judge_all(flags, "t", roots, tmp_path / "judgements", 0, "low", WEIGHTS, env=KEYS, clients=clients)
+    assert [(j.provider, j.status) for j in judged] == [("anthropic", "ok"), ("openai", "ok"), ("gemini", "error"), ("xai", "ok")]
+    assert "gemini is down" in (judged[2].error or "")
+    assert not together.broken
+    # Each keeps its own transcript, whole.
+    for name in NAMES:
+        records = [
+            json.loads(line) for line in (tmp_path / "judgements" / f"0-{name}.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert records[0]["kind"] == "start" and records[-1]["kind"] == "end" and {r["provider"] for r in records} == {name}
 
 
 @needs_jsonschema
