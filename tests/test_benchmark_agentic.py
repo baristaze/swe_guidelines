@@ -22,7 +22,7 @@ import pytest
 from harness import agentic as A
 from harness import judge as J
 from harness import providers as P
-from test_benchmark_judge import token_limit
+from test_benchmark_judge import OPENAI_QUOTA, OPENAI_TPM, PER_MINUTE_LIMITS, RateLimited, token_limit
 
 needs_jsonschema = pytest.mark.skipif(importlib.util.find_spec("jsonschema") is None, reason="jsonschema is not installed")
 
@@ -1259,6 +1259,57 @@ def test_no_wait_is_taken_that_the_time_left_cannot_hold(roots, tmp_path):
     first, second = J.models_for(J.DEFAULT_MATRIX, "anthropic")[:2]
     assert waits == [] and judgement.status == "ok" and judgement.model == second
     assert judgement.fallback == {"from": first, "reason": f"{first}: RuntimeError: 503 unavailable"}
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("name", sorted(PER_MINUTE_LIMITS))
+def test_a_per_minute_rate_limit_is_waited_out_and_asked_again(name, roots, tmp_path):
+    raise_limit, wait = PER_MINUTE_LIMITS[name]
+    now = [0.0]
+    waits: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    listing = ("list_dir", {"root": "output"})
+    script = [step(listing), raise_limit(), step(("submit", ANSWER))]
+    judgement, fake, records = run(
+        P.parse(name), script, roots, tmp_path, budget=A.Budget(wall_s=100), clock=lambda: now[0], sleep=sleep
+    )
+    first = J.models_for(J.DEFAULT_MATRIX, name)[0]
+    assert judgement.status == "ok" and judgement.answer == ANSWER and judgement.model == first
+    assert judgement.fallback is None and waits == [wait]
+    assert [r["model"] for r in fake.requests] == [first] * 3
+    assert [sent_timeout(name, r) for r in fake.requests] == [100, 100, pytest.approx(100 - wait)]
+    assert [r["kind"] for r in records if r["kind"] in ("error", "end")] == ["error", "end"]
+
+
+@needs_jsonschema
+def test_a_judge_out_of_quota_is_not_asked_again_and_keeps_the_reason(roots, tmp_path):
+    waits: list[float] = []
+    script = [step(("list_dir", {"root": "output"})), RateLimited(OPENAI_QUOTA)]
+    judgement, fake, _ = run(P.Provider.OPENAI, script, roots, tmp_path, sleep=waits.append)
+    first = J.models_for(J.DEFAULT_MATRIX, "openai")[0]
+    assert judgement.status == "error" and judgement.answer is None and judgement.error is not None
+    assert judgement.error.startswith(f"{first}: RateLimited: ") and "insufficient_quota" in judgement.error
+    assert len(fake.requests) == 2 and waits == []
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("answered_first", [False, True], ids=["first call", "later call"])
+def test_a_rate_limit_wait_longer_than_the_time_left_is_missed_without_waiting(answered_first, roots, tmp_path):
+    waits: list[float] = []
+    limit = RateLimited(OPENAI_TPM.replace("135ms", "30s"))
+    script = [step(("list_dir", {"root": "output"})), limit] if answered_first else [limit, step(("submit", ANSWER))]
+    judgement, fake, _ = run(
+        P.Provider.OPENAI, script, roots, tmp_path, budget=A.Budget(wall_s=20), clock=lambda: 0.0, sleep=waits.append
+    )
+    first = J.models_for(J.DEFAULT_MATRIX, "openai")[0]
+    assert judgement.status == "missed" and judgement.model == first and judgement.fallback is None
+    assert judgement.error is not None
+    assert judgement.error.startswith("wall time: the rate limit asks for a wait of 30 s, and 20 s are left (")
+    assert waits == [] and len(fake.requests) == len(script) - (0 if answered_first else 1)
 
 
 @needs_jsonschema

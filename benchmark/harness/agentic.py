@@ -90,7 +90,10 @@ on its first call falls back to the next model in the matrix, as in
 `judge.py`. A model that fails after it has answered once ends the
 judgement as `error`, because starting over would spend the budget twice.
 A transient error is asked again under `judge.with_retries`, the policy
-every judge uses, with the wait on the loop's clock.
+every judge uses, with the wait on the loop's clock. A per-minute rate
+limit is waited out the same way, for the wait its error names. When
+that wait is longer than the time left, the judgement is `missed` at
+once, without waiting, since no call could follow it.
 
 A `stop` event the caller sets ends the judgement before its next call,
 and before a retry, as `error`: the run was stopped. A call already in
@@ -1219,7 +1222,7 @@ class Loop:
             lambda: chat.send(timeout=max(self.left_s(), 0.001)),
             on_error=lambda exc: self.log.write("error", error=f"{type(exc).__name__}: {str(exc)[:400]}"),
             sleep=self.sleep,
-            may_wait=lambda: self.left_s() > J.RETRY_WAIT_S and not self.stop.is_set(),
+            may_wait=lambda wait: self.left_s() > wait and not self.stop.is_set(),
         )
 
     def converse(self, chat: Chat) -> Outcome:
@@ -1240,8 +1243,13 @@ class Loop:
                 turn = self.send(chat)
             except Exception as exc:
                 error = f"{chat.model}: {type(exc).__name__}: {str(exc)[:400]}"
-                if self.left_s() <= 0:
+                left = self.left_s()
+                if left <= 0:
                     return Outcome("missed", f"{self.out_of_time()} ({error})")
+                wait = J.rate_limit_wait(exc)
+                if wait is not None and wait >= left:
+                    over = f"wall time: the rate limit asks for a wait of {wait:g} s, and {left:g} s are left"
+                    return Outcome("missed", f"{over} ({error})")
                 return Outcome("error", error, first_call_failed=not answered)
             answered = True
             spent.turns += 1

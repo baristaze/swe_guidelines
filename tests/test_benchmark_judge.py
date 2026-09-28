@@ -206,12 +206,117 @@ def test_the_retry_policy_asks_again_only_when_transient_and_allowed_to_wait():
     assert heard == ["503 unavailable"] * J.RETRIES and waits == [J.RETRY_WAIT_S] * (J.RETRIES - 1)
     heard.clear()
     waits.clear()
+    offered: list[float] = []
+
+    def turn_down(wait: float) -> bool:
+        offered.append(wait)
+        return False
+
     with pytest.raises(RuntimeError):
-        J.with_retries(
-            always("503 unavailable"), on_error=lambda e: heard.append(str(e)), sleep=waits.append, may_wait=lambda: False
-        )
-    assert len(heard) == 1 and waits == []
+        J.with_retries(always("503 unavailable"), on_error=lambda e: heard.append(str(e)), sleep=waits.append, may_wait=turn_down)
+    assert len(heard) == 1 and waits == [] and offered == [J.RETRY_WAIT_S]
     assert J.with_retries(lambda: 7) == 7
+
+
+class RateLimited(Exception):
+    """A 429 as the Anthropic and OpenAI SDKs raise one, and so xAI's client: `status_code`, the headers, the body as text."""
+
+    def __init__(self, text: str, headers: dict[str, str] | None = None) -> None:
+        super().__init__(text)
+        self.status_code = 429
+        self.response = NS(headers=headers or {})
+
+
+class GeminiRateLimited(Exception):
+    """A 429 as google-genai raises one: the status as `code`, and the body, quota ids and wait included, as text."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.code = 429
+
+
+# OpenAI's limit on tokens per minute, in the words a run recorded it, with the organization id taken out.
+OPENAI_TPM = (
+    "Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-6-sol in organization org-redacted on tokens "
+    "per min (TPM): Limit 500000, Used 351145, Requested 149984. Please try again in 135ms. Visit "
+    "https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, "
+    "'code': 'rate_limit_exceeded'}}"
+)
+ANTHROPIC_ITPM = (
+    "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'This request would exceed "
+    "the rate limit for your organization of 450,000 input tokens per minute. Please reduce the prompt length or the "
+    "maximum tokens requested, or try again later.'}}"
+)
+GEMINI_PER_MINUTE = (
+    "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your "
+    "plan and billing details. Please retry in 35.5s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': "
+    "'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaId': "
+    "'GenerateContentPaidTierInputTokensPerModelPerMinute'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', "
+    "'retryDelay': '35s'}]}}"
+)
+OPENAI_QUOTA = (
+    "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing "
+    "details.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}"
+)
+# Each provider's per-minute limit as its SDK raises it, and the wait it names: in words, or in `retry-after`.
+PER_MINUTE_LIMITS: dict[str, tuple[Callable[[], Exception], float]] = {
+    "anthropic": (lambda: RateLimited(ANTHROPIC_ITPM, {"retry-after": "2"}), 2.0),
+    "openai": (lambda: RateLimited(OPENAI_TPM), 0.135),
+    "gemini": (lambda: GeminiRateLimited(GEMINI_PER_MINUTE), 35.5),
+}
+
+
+@pytest.mark.parametrize(
+    "error, wait",
+    [
+        (RateLimited(OPENAI_TPM), 0.135),
+        (RateLimited(OPENAI_TPM.replace("tokens per min (TPM)", "requests per min (RPM)").replace("135ms", "20.5s")), 20.5),
+        (RateLimited(ANTHROPIC_ITPM, {"retry-after": "2"}), 2.0),
+        (GeminiRateLimited(GEMINI_PER_MINUTE), 35.5),
+        (RateLimited(OPENAI_QUOTA), None),  # exhausted quota: no wait brings it back
+        (RateLimited(ANTHROPIC_ITPM), None),  # names no wait
+        (RateLimited(ANTHROPIC_ITPM, {"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}), None),
+        (RateLimited(OPENAI_TPM.replace("135ms", "1m30s")), None),  # longer than a per-minute limit ever asks
+        (RateLimited(OPENAI_TPM.replace("tokens per min (TPM)", "tokens per day (TPD)")), None),
+        (RuntimeError(OPENAI_TPM), None),  # no 429 status
+        (RuntimeError("503 model overloaded"), None),
+    ],
+)
+def test_a_per_minute_rate_limit_names_its_wait_and_nothing_else_does(error, wait):
+    assert J.rate_limit_wait(error) == wait
+
+
+@pytest.mark.parametrize("name", sorted(PER_MINUTE_LIMITS))
+def test_a_one_shot_judge_waits_out_a_per_minute_rate_limit_and_asks_again(name, monkeypatch):
+    raise_limit, wait = PER_MINUTE_LIMITS[name]
+    waits: list[float] = []
+    monkeypatch.setattr(J.time, "sleep", waits.append)
+    asked: list[str] = []
+
+    def limited_once(model, effort, prompt, key):
+        asked.append(model)
+        if len(asked) == 1:
+            raise raise_limit()
+        return fake_call()
+
+    judgement = J.judge_one(P.parse(name), "p", "high", J.DEFAULT_MATRIX, env=KEYS, call=limited_once)
+    first = J.models_for(J.DEFAULT_MATRIX, name)[0]
+    assert judgement.status == "ok" and judgement.model == first and judgement.fallback is None
+    assert asked == [first, first] and waits == [wait]
+
+
+def test_a_one_shot_judge_out_of_quota_is_not_asked_again(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(J.time, "sleep", waits.append)
+    asked: list[str] = []
+
+    def out_of_quota(model, effort, prompt, key):
+        asked.append(model)
+        raise RateLimited(OPENAI_QUOTA)
+
+    judgement = J.judge_one(P.Provider.OPENAI, "p", "high", J.DEFAULT_MATRIX, env=KEYS, call=out_of_quota)
+    assert judgement.status == "error" and judgement.error is not None and "insufficient_quota" in judgement.error
+    assert asked == J.models_for(J.DEFAULT_MATRIX, "openai") and waits == []
 
 
 def test_every_model_failing_is_an_error_that_keeps_what_each_said():
@@ -534,3 +639,25 @@ def test_a_qa_answer_is_not_asked_again_once_its_timeout_leaves_no_time_to_wait(
     with pytest.raises(RuntimeError, match="503"):
         J.ask(P.Provider.OPENAI, "m", "p", "k", timeout_s=600)
     assert [request["timeout"] for _, request in sdks.requests] == [600]
+
+
+def test_a_qa_answer_waits_out_a_per_minute_rate_limit_only_while_its_timeout_holds_the_wait(monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(J.time, "sleep", waits.append)
+    monkeypatch.setattr(J.time, "monotonic", lambda: 0.0)
+    sent: list[float] = []
+
+    def limited_once(model, prompt, key, effort, timeout_s):
+        sent.append(timeout_s)
+        if len(sent) == 1:
+            raise RateLimited(OPENAI_TPM.replace("135ms", "20s"))
+        return "an answer", {}
+
+    monkeypatch.setitem(J.ASKS, "openai", limited_once)
+    assert J.ask(P.Provider.OPENAI, "m", "p", "k", timeout_s=600)[0] == "an answer"
+    assert waits == [20.0] and len(sent) == 2
+    sent.clear()
+    waits.clear()
+    with pytest.raises(RateLimited):
+        J.ask(P.Provider.OPENAI, "m", "p", "k", timeout_s=15)
+    assert waits == [] and sent == [15]
