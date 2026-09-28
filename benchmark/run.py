@@ -19,6 +19,8 @@
     uv run benchmark/run.py --scenario explain-tenancy --max-spend-usd 10 --build --preflight
     uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
       --rehearsal --out /tmp/rehearsals
+    uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
+      --with extras
     uv run benchmark/run.py list
 
 Everything a run produced lands in one folder under `--out`: the
@@ -29,7 +31,9 @@ file per judgement, and an agentic judge's transcript beside it,
 `--preflight` resolves the run as `--dry-run` does, then checks what it
 needs, where it runs, before it spends anything (`harness/preflight.py`).
 `--rehearsal` runs the scenario as it will really run, with every bound
-cut small, after its preflight (`harness/rehearsal.py`).
+cut small, after its preflight (`harness/rehearsal.py`). `--with <group>`
+takes an optional group of the scenario's phases, which a run takes none
+of by default.
 """
 
 from __future__ import annotations
@@ -554,8 +558,6 @@ class Plan:
     prices: dict[str, dict[str, float]]
     budget: Budget
     env: dict[str, str]
-    # A rehearsal makes the output folder when a phase left none.
-    rehearsal: bool = False
 
 
 @dataclasses.dataclass
@@ -575,6 +577,8 @@ class SkillRepeat:
     cut_short: list[str] | None = None
     # Whether the archive command succeeded where the subject ran; None when there was no checkpoint to archive.
     archived: bool | None = None
+    # The phase after which the output folder held no file, and the phases after it, which did not run.
+    no_tree: dict[str, Any] | None = None
 
 
 def harness_run(
@@ -593,20 +597,23 @@ def harness_run(
 
 def checkpoint(
     rt: RT.BaseRuntime, harness: CliStream, plan: Plan, folder: str, number: int, label: str
-) -> tuple[str | None, str | None]:
-    """Commit the output folder's tree as the `number`th checkpoint; the commit's id, or why there is none.
+) -> tuple[str | None, str | None, bool | None]:
+    """Commit the output folder's tree as the `number`th checkpoint.
 
-    The label goes to the harness's own stream only: the commit says
-    `checkpoint` and no more, so nothing in the repository names a phase.
+    Returns the commit's id, or why there is none, and whether the folder
+    holds a file the checkpoint commits: False when there is no folder or
+    its tree is empty, None when git failed and no one can say. The label
+    goes to the harness's own stream only: the commit says `checkpoint`
+    and no more, so nothing in the repository names a phase.
     """
     harness.note(f"[checkpoint {number}] {label}")
     status, out = harness_run(rt, harness, plan, ["sh", "-c", PH.CHECKPOINT, "sh", folder, str(number)])
     commit = next((line.strip() for line in reversed(out) if re.fullmatch(r"[0-9a-f]{40,64}", line.strip())), None)
     if status.ok and commit:
-        return commit, None
+        return commit, None, PH.EMPTY not in (line.strip() for line in out)
     if status.code == 3:
-        return None, f"there is no output folder {folder} to commit"
-    return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl"
+        return None, f"there is no output folder {folder} to commit", False
+    return None, f"the checkpoint commit failed (exit {status.code}); see streams/harness.jsonl", None
 
 
 def run_skill(
@@ -616,9 +623,11 @@ def run_skill(
 
     Each phase runs with its bounds, watched through the stream. After
     each, the output folder is committed. A phase that fails ends the
-    repeat; one that hits a bound ends it only when it says so. The
-    run's spend cap is checked before each phase. After the last phase,
-    the harness archives the last commit and runs the gates on the tree.
+    repeat; one that hits a bound ends it only when it says so. A phase
+    after which the output folder holds no file ends it too, and the
+    repeat fails. The run's spend cap is checked before each phase.
+    After the last phase, the harness archives the last commit and runs
+    the gates on the tree.
     """
     folder = scn.subject.output
     phased = bool(scn.subject.phases)
@@ -639,6 +648,7 @@ def run_skill(
     commit: str | None = None
     before: S.Phase | None = None
     cut_short: list[str] | None = None
+    no_tree: dict[str, Any] | None = None
     every = phases_of(scn)
     for number, phase in enumerate(every, start=1):
         if plan.budget.reached():
@@ -719,20 +729,15 @@ def run_skill(
             "models": sorted(found),
             "cost_usd": spent,
             "estimated_usd": estimated,
+            "wall_s": round(status.duration_s, 3),
         }
         if scn.subject.gates:
             record["gate_runs"] = watch.gate_runs()
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
+        holds: bool | None = None
         if folder and harness is not None:
-            if plan.rehearsal:
-                _, said = harness_run(rt, harness, plan, ["sh", "-c", RH.MAKE_OUTPUT, "sh", folder])
-                if "made" in said:
-                    notes.append(
-                        f"repeat {index}: phase {phase.name} left no {folder}, so the rehearsal made it, empty, "
-                        "for the checkpoints, the phases after it, the archive, and the gates"
-                    )
-            made, why = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
+            made, why, holds = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
             record["checkpoint"] = made
             commit = made or commit
             if why:
@@ -744,6 +749,12 @@ def run_skill(
             failed = status
             if phased:
                 notes.append(f"repeat {index}: phase {phase.name} failed; the phases after it did not run")
+            break
+        if holds is False:
+            # Nothing to build on, archive, gate, or judge: the phases after it would spend on an empty tree.
+            no_tree = {"phase": phase.name, "not_run": [p.name for p in every[number:]]}
+            left = f"; {', '.join(no_tree['not_run'])} did not run" if no_tree["not_run"] else ""
+            notes.append(f"repeat {index}: phase {phase.name} left no file in {folder}{left}, and the repeat is not judged")
             break
         if outcome == "capped" and phase.on_cap == "stop":
             notes.append(f"repeat {index}: phase {phase.name} ended at its {cap} cap, and it stops the repeat there")
@@ -786,6 +797,7 @@ def run_skill(
         notes=notes,
         cut_short=cut_short,
         archived=archived_ok,
+        no_tree=no_tree,
     )
 
 
@@ -819,6 +831,8 @@ def subject_bounds(scn: S.Scenario) -> dict[str, Any]:
     out: dict[str, Any] = {"max_usd": scn.subject.max_usd, "output": scn.subject.output, "gates": list(scn.subject.gates)}
     if scn.subject.phases:
         out["phases"] = [p.as_dict() for p in scn.subject.phases]
+    if scn.subject.groups:
+        out["groups"] = S.taken_groups(scn)
     return out
 
 
@@ -886,6 +900,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a scenario, list what there is, or redact every key from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
+    parser.add_argument(
+        "--with",
+        dest="groups",
+        action="append",
+        default=None,
+        metavar="GROUP",
+        help="run an optional group of the scenario's phases as well; repeat it for more; a run takes none by default",
+    )
     parser.add_argument("--providers", default=None, help="bit flag (3, 7, 15) or names (anthropic,openai)")
     parser.add_argument("--effort", default=None, choices=list(J.EFFORTS), help="judge effort")
     parser.add_argument(
@@ -945,8 +967,10 @@ def command_list(out: Path) -> int:
     for path in S.catalog(SCENARIOS):
         try:
             scn = S.load(path)
-            # What a scenario requires, how many repeats it runs, and its run's spend cap, each only when it names one.
+            # What a scenario requires, its optional groups, how many repeats it runs, and its run's spend cap,
+            # each only when it names one.
             named = f" requires={','.join(scn.requires)}" if scn.requires else ""
+            named += f" groups={','.join(g.name for g in scn.subject.groups)}" if scn.subject.groups else ""
             named += f" repeat={scn.repeat}" if scn.repeat else ""
             named += f" max_spend_usd={scn.max_spend_usd:g}" if scn.max_spend_usd else ""
             print(
@@ -1001,7 +1025,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        scn = S.load(S.find(args.scenario, SCENARIOS))
+        # The phases of no group, and those of each group --with takes.
+        scn = S.select(S.load(S.find(args.scenario, SCENARIOS)), args.groups or [])
         flags = P.parse(args.providers if args.providers is not None else scn.judges.providers)
         if scn.kind == "qa":
             context_text(scn)  # a missing context file stops the run before anything is spent
@@ -1027,7 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeat is None:
         args.repeat = scn.repeat or REPEAT
     if args.max_spend_usd is None:
-        args.max_spend_usd = scn.max_spend_usd
+        args.max_spend_usd = S.spend_cap(scn, args.repeat)
     # The scenario says where it runs. A runtime it does not list is refused
     # here, before a run folder is made.
     runtime = args.runtime or scn.runtimes[0]
@@ -1184,6 +1209,9 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         resolved["notes"] = list(staged.notes)
     if planned:
         resolved["phases"] = planned
+    if scn.subject.groups:
+        # The optional groups this run takes; none is the scenario's default.
+        resolved["groups"] = S.taken_groups(scn)
     if args.rehearsal:
         # Every bound above is the rehearsal's. A rehearsal is never checked in.
         resolved["rehearsal"] = True
@@ -1272,7 +1300,6 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         subject_prices(matrix),
         budget,
         env,
-        rehearsal=args.rehearsal,
     )
 
     streams = CliStream(run_dir / "streams" / "cli.jsonl")
@@ -1358,12 +1385,16 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 )
                 continue
 
-            if not status.ok:
-                # A subject that failed or ran out of time produced no answer
-                # worth a judge's money, and a score of it would be a score of
-                # the failure. The repeat is recorded with no judgement.
+            no_tree = done.no_tree if done is not None else None
+            if not status.ok or no_tree:
+                # A subject that failed, ran out of time, or left no tree
+                # produced nothing worth a judge's money, and a score of it
+                # would be a score of the failure. The repeat is recorded
+                # with no judgement.
                 failed_subjects.append(index)
                 reason = "timed out" if status.timed_out else "is_error" if status.is_error else f"exit {status.code}"
+                if no_tree and status.ok:
+                    reason = f"phase {no_tree['phase']} left no tree"
                 print(f"  repeat {index} subject failed ({reason}); not judged")
                 run.repeats.append(
                     R.RepeatResult(
@@ -1376,8 +1407,12 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                         phases=done.phases if done else None,
                         archive=archive,
                         gates=done.gates if done else None,
+                        no_tree=no_tree,
                     )
                 )
+                if no_tree and index + 1 < args.repeat:
+                    notes.append(f"repeat {index} left no tree, so the run ends: repeat {index + 1} and after did not run")
+                    break
                 continue
 
             expected = E.named(expected_data, blob)

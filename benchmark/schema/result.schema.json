@@ -177,9 +177,18 @@
               "max_usd": { "type": "number", "exclusiveMinimum": 0 },
               "timeout_s": { "type": "integer", "minimum": 1 },
               "max_gate_reruns": { "type": "integer", "minimum": 0 },
-              "on_cap": { "type": "string", "enum": ["continue", "stop"] }
+              "on_cap": { "type": "string", "enum": ["continue", "stop"] },
+              "group": {
+                "description": "The optional group the phase belongs to; null for a phase every run takes.",
+                "type": ["string", "null"]
+              }
             }
           }
+        },
+        "groups": {
+          "description": "The optional groups of phases the run took, by --with, in the scenario's order; present when the scenario declares any, and empty for a run that took none.",
+          "type": "array",
+          "items": { "type": "string" }
         }
       }
     },
@@ -213,6 +222,16 @@
             "description": "The phases the run's spend cap kept from running. Such a repeat is not judged and is in no mean.",
             "type": "array",
             "items": { "type": "string" }
+          },
+          "no_tree": {
+            "description": "The phase after which the output folder held no file, and the phases after it, which did not run. Such a repeat failed: it is not judged, it scores 0, and the run ends with it.",
+            "type": "object",
+            "required": ["phase", "not_run"],
+            "additionalProperties": false,
+            "properties": {
+              "phase": { "type": "string" },
+              "not_run": { "type": "array", "items": { "type": "string" } }
+            }
           },
           "archive": {
             "description": "The output's last commit as a zip: its path and its manifest's in the run folder, its SHA-256, its size, how many files it holds, and the commit.",
@@ -527,6 +546,11 @@
         },
         "estimated_usd": {
           "description": "What the harness priced the session's stream at, the figure it holds the spend cap by.",
+          "type": "number",
+          "minimum": 0
+        },
+        "wall_s": {
+          "description": "The session's wall time in seconds, from its start to its end; its checkpoint is not in it.",
           "type": "number",
           "minimum": 0
         },

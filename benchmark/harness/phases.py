@@ -51,7 +51,9 @@ message `checkpoint` and no parent, and keeps it under
 phases before it left it, its own history holds no commit of the
 harness's, and nothing in a commit names a phase or how it ended. The
 phase before the checkpoint has ended, its processes with it, so a lock
-git left in the repository is stale, and the checkpoint removes it.
+git left in the repository is stale, and the checkpoint removes it. A
+checkpoint whose tree holds no file says so, and the phase before it
+left no tree.
 """
 
 from __future__ import annotations
@@ -88,7 +90,8 @@ GATE = 'cd -- "$1" || exit 125; exec sh -c "$2"'
 # The checkpoint of the output folder, the `n`th of the repeat: its tree
 # committed under refs/checkpoints/<n>, with no identity of this
 # machine's. Arguments: the folder, then n. The commit's id goes to
-# stdout. Exit 3: no output folder; exit 4: git failed.
+# stdout, after the line `empty` when the tree holds no file. Exit 3: no
+# output folder; exit 4: git failed.
 CHECKPOINT = (
     'cd -- "$1" 2>/dev/null || exit 3; '
     "{ [ -e .git ] || git init -q; } || exit 4; "
@@ -100,8 +103,11 @@ CHECKPOINT = (
     'tree=$(GIT_INDEX_FILE="$index" git write-tree) || exit 4; rm -f -- "$index"; '
     "commit=$(git -c user.name=checkpoint -c user.email=checkpoint@localhost -c commit.gpgsign=false "
     'commit-tree "$tree" -m checkpoint) || exit 4; '
-    'git update-ref "refs/checkpoints/$2" "$commit" || exit 4; echo "$commit"'
+    'git update-ref "refs/checkpoints/$2" "$commit" || exit 4; '
+    '[ -n "$(git ls-tree "$tree")" ] || echo empty; echo "$commit"'
 )
+# What the checkpoint prints when the tree it committed holds no file.
+EMPTY = "empty"
 # The archive of a checkpoint, into a path of the workspace. Arguments:
 # the folder, the path, the checkpoint's commit.
 ARCHIVE_SCRIPT = 'out="$PWD/$2"; mkdir -p -- "${out%/*}" && git -C "$1" archive --format=zip -o "$out" "$3"'

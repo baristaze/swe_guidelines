@@ -67,6 +67,9 @@ class RepeatResult:
     gates: list[dict[str, Any]] | None = None
     # The phases the run's spend cap kept from running; such a repeat is not judged and scores nothing.
     cut_short: list[str] | None = None
+    # The phase after which the output folder held no file, and the phases after it, which did not run;
+    # such a repeat failed, and is not judged.
+    no_tree: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -80,7 +83,7 @@ class RepeatResult:
         }
         if self.expected is not None:
             out["expected"] = dict(self.expected)
-        for key in ("phases", "archive", "gates", "cut_short"):
+        for key in ("phases", "archive", "gates", "cut_short", "no_tree"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
         return out
@@ -131,8 +134,13 @@ class RunResult:
 
 
 def failed(exit_status: dict[str, Any]) -> bool:
-    """Whether a repeat's subject failed: a nonzero exit, a timeout, or `is_error` in its result."""
+    """Whether a subject's session failed: a nonzero exit, a timeout, or `is_error` in its result."""
     return exit_status.get("code", 0) != 0 or bool(exit_status.get("timed_out")) or bool(exit_status.get("is_error"))
+
+
+def failed_repeat(repeat: RepeatResult) -> bool:
+    """Whether a repeat failed: its subject failed, or a phase left no tree to judge."""
+    return failed(repeat.exit_status) or repeat.no_tree is not None
 
 
 def is_claude(subject: dict[str, Any]) -> bool:
@@ -198,7 +206,7 @@ def summarize(
                 scores.setdefault(j.provider, []).append(score)
             else:
                 misses.setdefault(j.provider, []).append(j.error or j.status)
-    failures = [r.index for r in repeats if failed(r.exit_status)]
+    failures = [r.index for r in repeats if failed_repeat(r)]
     for values in scores.values():
         values.extend([0.0] * len(failures))
     per_provider = {
@@ -218,7 +226,7 @@ def summarize(
         overall = 0.0 if failures else None
     repeat_means: list[float] = []
     for repeat in repeats:
-        if failed(repeat.exit_status):
+        if failed_repeat(repeat):
             repeat_means.append(0.0)
             continue
         answered = [score for j in repeat.judgements if (score := score_of(j)) is not None]
@@ -275,7 +283,7 @@ def reference_summary(repeats: list[RepeatResult], weights: dict[str, float]) ->
     severity. A failed repeat scores 0 against every reference, for every
     provider that scored the run, as it does in the weighted score.
     """
-    failures = sum(1 for r in repeats if failed(r.exit_status))
+    failures = sum(1 for r in repeats if failed_repeat(r))
     out: dict[str, Any] = {}
     for name, weight in weights.items():
         scores: dict[str, list[int]] = {}
@@ -445,14 +453,15 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
         lines += [
             "## Phases",
             "",
-            "Each session of the subject: how it ended, the bound that ended it, its turns, and what it spent.",
+            "Each session of the subject: how it ended, the bound that ended it, its turns, its wall time, and what it spent.",
             "",
-            _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Cost (USD)", "Checkpoint"]),
-            _row(["---"] * 8),
+            _row(["Repeat", "Phase", "Session", "Status", "Cap", "Turns", "Wall (s)", "Cost (USD)", "Checkpoint"]),
+            _row(["---"] * 9),
         ]
         for repeat in ran:
             for phase in repeat.phases or []:
                 turns = phase.get("turns")
+                wall = phase.get("wall_s")
                 commit = phase.get("checkpoint")
                 lines.append(
                     _row(
@@ -463,6 +472,7 @@ def phase_lines(repeats: list[RepeatResult]) -> list[str]:
                             phase["status"],
                             phase.get("capped") or "-",
                             str(turns) if turns is not None else "-",
+                            f"{wall:.1f}" if wall is not None else "-",
                             _cost(phase),
                             f"`{commit[:12]}`" if commit else "-",
                         ]
@@ -632,6 +642,10 @@ def report_text(run: RunResult) -> str:
         f"Started {run.started_at}, finished {data['finished_at']}.",
         "",
     ]
+    groups = run.subject.get("groups")
+    if groups is not None:
+        taken = ", ".join(f"`{g}`" for g in groups)
+        lines += [f"Optional groups taken: {taken}." if groups else "Optional groups taken: none.", ""]
     if run.rehearsal:
         lines += rehearsal_lines(run.rehearsal)
     lines += ["## Scores", ""]
@@ -677,6 +691,14 @@ def report_text(run: RunResult) -> str:
         failed_list = ", ".join(str(i) for i in summary["failed_repeats"])
         lines += [f"Failed repeat(s) {failed_list}: the subject failed, and each scores 0 in the means.", ""]
     for repeat in run.repeats:
+        if repeat.no_tree:
+            left = ", ".join(repeat.no_tree["not_run"])
+            after = f" {left} did not run." if left else ""
+            lines += [
+                f"Repeat {repeat.index} ended after phase {repeat.no_tree['phase']}, which left no file in the output "
+                f"folder.{after} It is not judged, and it scores 0 as a failed repeat.",
+                "",
+            ]
         if repeat.cut_short:
             left = ", ".join(repeat.cut_short)
             lines += [

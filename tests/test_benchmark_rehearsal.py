@@ -15,7 +15,7 @@ from harness import agentic as A
 from harness import judge as J
 from harness import rehearsal as RH
 from harness import scenario as S
-from test_benchmark_phases import do, phase, phased, results, seen
+from test_benchmark_phases import TREE, do, phase, phased, results, seen
 from test_benchmark_phases import fake_claude as phase_claude
 from test_benchmark_run import CLEAN, run
 
@@ -25,10 +25,12 @@ SHIPPED = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"
 # The rehearsal's scenario ---------------------------------------------------
 
 
-def test_a_rehearsal_of_the_shipped_system_keeps_its_prompts_and_cuts_every_bound():
-    scn = S.load(SHIPPED / "create-full-system.yaml")
+def test_a_rehearsal_of_the_shipped_system_keeps_its_prompts_adds_its_line_and_cuts_every_bound():
+    scn = S.select(S.load(SHIPPED / "create-full-system.yaml"), [])
     small = RH.scenario(scn, J.load_matrix(None))
-    assert [p.prompt for p in small.subject.phases] == [p.prompt for p in scn.subject.phases]
+    # Each phase's prompt as it is, and one line after it that only a rehearsal gets.
+    assert [p.prompt for p in small.subject.phases] == [f"{p.prompt.rstrip()}\n\n{RH.LINE}" for p in scn.subject.phases]
+    assert all(RH.LINE not in p.prompt for p in scn.subject.phases)
     for p in small.subject.phases:
         assert (p.max_turns, p.max_usd, p.timeout_s, p.on_cap) == (RH.MAX_TURNS, RH.SESSION_USD, RH.TIMEOUT_S, "continue")
     assert small.subject.model == "claude-sonnet-5"  # the cheapest Anthropic model the matrix prices
@@ -215,7 +217,7 @@ def test_a_rehearsal_skips_the_checkout_check_and_a_preflight_of_the_real_run_do
 
 
 def test_a_rehearsal_the_run_s_spend_cap_cuts_short_ends_capped_and_exits_9(rehearse, capsys):
-    code, run_dir, judged = rehearse(phased(phase("scaffold"), phase("mvp"), phase("review")), "--max-spend-usd", "0.3")
+    code, run_dir, judged = rehearse(phased(phase("scaffold", TREE), phase("mvp"), phase("review")), "--max-spend-usd", "0.3")
     assert code == run.REHEARSAL_UNPROVEN == 9 and judged == []
     data = results(run_dir)
     assert data["repeats"][0]["cut_short"] == ["review"]
@@ -232,7 +234,7 @@ def fail_checkpoints(monkeypatch, *numbers: int) -> None:
 
     def checkpoint(rt, harness, plan, folder, number, label):
         if number in numbers:
-            return None, "the checkpoint commit failed (exit 4); see streams/harness.jsonl"
+            return None, "the checkpoint commit failed (exit 4); see streams/harness.jsonl", None
         return real(rt, harness, plan, folder, number, label)
 
     monkeypatch.setattr(run, "checkpoint", checkpoint)
@@ -283,31 +285,21 @@ def test_a_rehearsal_whose_step_did_not_happen_ends_incomplete_and_names_it(rehe
     assert "the rehearsal did not prove the pipeline to its end: a step it exists to prove did not happen" in captured.err
 
 
-def test_a_rehearsal_makes_the_output_folder_a_phase_left_out_so_the_phases_after_it_run(rehearse):
+def test_a_rehearsal_whose_phase_leaves_no_tree_ends_failed_and_makes_no_folder_for_it(rehearse, capsys):
     scenario = phased(
-        phase("scaffold"),  # writes nothing: a session this small can end before it makes the folder
+        phase("scaffold"),  # writes nothing, as a session this small can
         phase("review", {"write": {"report.md": "r"}}, cwd="output"),
         gates=["test -f report.md"],
     )
     code, run_dir, judged = rehearse(scenario)
-    assert code == 0 and judged == ["judged"]
+    assert code == 6 and judged == []
     data = results(run_dir)
     (repeat,) = data["repeats"]
-    assert [p["status"] for p in repeat["phases"]] == ["ok", "ok"] and all(p["checkpoint"] for p in repeat["phases"])
-    assert repeat["archive"]["files"] == 1 and repeat["gates"][0]["passed"] is True
-    assert any("phase scaffold left no site, so the rehearsal made it, empty" in n for n in data["notes"])
-    assert not any("phase review left no site" in n for n in data["notes"])
-
-
-def test_a_run_that_is_not_a_rehearsal_makes_no_output_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
-    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [])
-    path = tmp_path / "scenario.json"
-    path.write_text(json.dumps(phased(phase("scaffold"), phase("review", cwd="output"))), encoding="utf-8")
-    argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--claude", phase_claude(tmp_path), "--repeat", "1"]
-    assert run.main(argv) == 6  # the second phase has no folder to start in
-    (run_dir,) = (tmp_path / "runs").iterdir()
-    assert "rehearsal" not in results(run_dir)
+    assert [p["name"] for p in repeat["phases"]] == ["scaffold"] and "gates" not in repeat
+    assert repeat["no_tree"] == {"phase": "scaffold", "not_run": ["review"]}
+    assert data["rehearsal"]["status"] == "failed" and data["summary"]["failed_repeats"] == [0]
+    assert not any("the rehearsal made it" in n for n in data["notes"])
+    assert "the rehearsal ended failed" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -342,8 +334,27 @@ def test_a_dry_run_of_a_rehearsal_resolves_its_bounds_and_runs_nothing(rehearse)
     assert sorted(p.name for p in run_dir.iterdir()) == ["run.json"]
 
 
-def test_the_phases_prompts_reach_the_subject_unchanged(rehearse):
+def test_each_phase_s_prompt_reaches_the_subject_with_the_rehearsal_s_line_after_it(rehearse):
     code, run_dir, _ = rehearse(phased(phase("scaffold", {"write": {"site/a": "a"}})))
     assert code == 0
     (session,) = seen(run_dir)
-    assert session is not None and session["args"][session["args"].index("-p") + 1] == do({"write": {"site/a": "a"}})
+    assert session is not None
+    assert session["args"][session["args"].index("-p") + 1] == f"{do({'write': {'site/a': 'a'}})}\n\n{RH.LINE}"
+    planned = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["phases"][0]
+    assert planned["prompt"].endswith(RH.LINE)
+
+
+def test_a_rehearsal_s_cap_is_its_path_s_own_for_one_repeat_when_that_is_lower_than_5(rehearse):
+    scenario = phased(
+        phase("scaffold", TREE, max_usd=1),
+        phase("review", cwd="output", group="extras", max_usd=2.5),
+        groups={"extras": None},
+    )
+    caps, prompts = [], []
+    for flags in ((), ("--with", "extras")):
+        code, run_dir, _ = rehearse(scenario, "--dry-run", *flags)
+        assert code == 0
+        resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        caps.append(resolved["max_spend_usd"])
+        prompts.append([p["prompt"].endswith(RH.LINE) for p in resolved["phases"]])
+    assert caps == [1.0, 3.5] and prompts == [[True], [True, True]]

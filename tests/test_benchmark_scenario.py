@@ -308,6 +308,111 @@ def test_a_subject_in_phases_builds_an_output_folder_of_the_workspace():
         S.from_data(dict(MINIMAL, kind="command", subject={"argv": ["true"], "phases": [phase("a")]}))
 
 
+# Optional groups of phases --------------------------------------------------
+
+EXTRAS = {"extras": {"rubric": "Then a review read the tree."}, "polish": None}
+
+
+def grouped(**subject) -> dict:
+    """A subject in phases whose build runs by default, with two optional groups after it."""
+    return phased(
+        phase("scaffold", max_usd=60),
+        phase("mvp", max_usd=75),
+        phase("review", group="extras", max_usd=25),
+        phase("close", group="extras", max_usd=30),
+        phase("tidy", group="polish", max_usd=5),
+        groups=EXTRAS,
+        **subject,
+    )
+
+
+def test_a_phase_in_a_group_runs_only_in_a_run_that_takes_the_group():
+    scn = S.from_data(grouped())
+    assert [(g.name, g.rubric) for g in scn.subject.groups] == [("extras", "Then a review read the tree."), ("polish", "")]
+    assert [p.name for p in S.select(scn, []).subject.phases] == ["scaffold", "mvp"]
+    assert [p.name for p in S.select(scn, ["extras"]).subject.phases] == ["scaffold", "mvp", "review", "close"]
+    # The scenario's order, whatever the order of the flags, and a group taken twice is taken once.
+    both = S.select(scn, ["polish", "extras", "polish"])
+    assert [p.name for p in both.subject.phases] == ["scaffold", "mvp", "review", "close", "tidy"]
+    assert S.taken_groups(both) == ["extras", "polish"] and S.taken_groups(S.select(scn, [])) == []
+    data = scn.as_dict()["subject"]
+    assert data["groups"] == [{"name": "extras", "rubric": "Then a review read the tree."}, {"name": "polish", "rubric": ""}]
+    assert [p["group"] for p in data["phases"]] == [None, None, "extras", "extras", "polish"]
+
+
+def test_a_group_adds_its_sentence_to_the_rubric_and_one_not_taken_adds_nothing():
+    scn = S.from_data(grouped())
+    assert S.select(scn, []).rubric == scn.rubric
+    assert S.select(scn, ["extras"]).rubric == f"{scn.rubric}\n\nThen a review read the tree."
+    assert S.select(scn, ["polish"]).rubric == scn.rubric  # a group with no sentence adds none
+
+
+def test_a_run_that_takes_a_group_the_scenario_does_not_declare_is_refused():
+    with pytest.raises(S.ScenarioError, match=r"scenario one declares no group mvp; its groups: extras, polish"):
+        S.select(S.from_data(grouped()), ["mvp"])
+    with pytest.raises(S.ScenarioError, match=r"declares no group extras; its groups: none"):
+        S.select(S.from_data(phased(phase("scaffold"))), ["extras"])
+
+
+def test_the_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_that_run_unless_the_scenario_names_one_for_its_path():
+    scn = S.from_data(grouped())
+    assert S.spend_cap(S.select(scn, []), 1) == 135.0
+    assert S.spend_cap(S.select(scn, ["extras"]), 1) == 190.0
+    assert S.spend_cap(S.select(scn, ["extras", "polish"]), 2) == 390.0  # every phase of every repeat
+    # The scenario's own cap is the cap of the path that takes no group; a run that takes one sums its phases.
+    named = S.from_data(dict(grouped(), max_spend_usd=100))
+    assert S.spend_cap(S.select(named, []), 3) == 100.0
+    assert S.spend_cap(S.select(named, ["extras"]), 1) == 190.0
+    # A subject in one session has no run cap unless the scenario names one.
+    assert S.spend_cap(S.from_data(MINIMAL), 3) is None
+    assert S.spend_cap(S.from_data(dict(MINIMAL, max_spend_usd=4)), 3) == 4.0
+
+
+@pytest.mark.parametrize(
+    ("subject", "said"),
+    [
+        ({"groups": {"extras": None}}, r"no phase is in the group extras"),
+        ({"groups": {}}, r"subject\.groups: a mapping of at least one group"),
+        ({"groups": ["extras"]}, r"subject\.groups: a mapping of at least one group"),
+        ({"groups": {"Extras": None}}, r"a group's name is a lowercase word, such as `extras`, got 'Extras'"),
+        ({"groups": {"extras": "a sentence"}}, r"subject\.groups\.extras holds a mapping"),
+        ({"groups": {"extras": {"rubric": 3}}}, r"subject\.groups\.extras\.rubric is a sentence the rubric takes"),
+        ({"groups": {"extras": {"cap": 3}}}, r"subject\.groups\.extras: unknown key\(s\) cap"),
+    ],
+)
+def test_a_group_the_harness_cannot_run_is_refused_when_the_scenario_loads(subject, said):
+    with pytest.raises(S.ScenarioError, match=said):
+        S.from_data(phased(phase("scaffold"), **subject))
+
+
+def test_a_phase_s_group_must_be_declared_and_a_run_that_takes_none_must_run_a_phase():
+    with pytest.raises(
+        S.ScenarioError, match=r"phases\[1\]\.group names a group subject\.groups declares \(none\), got 'extras'"
+    ):
+        S.from_data(phased(phase("scaffold"), phase("review", group="extras")))
+    with pytest.raises(S.ScenarioError, match=r"a run that takes no group runs the phases in none, and every phase is in one"):
+        S.from_data(phased(phase("review", group="extras"), groups={"extras": None}))
+    with pytest.raises(S.ScenarioError, match=r"subject\.groups: a group holds phases, and the subject runs in none"):
+        S.from_data(dict(MINIMAL, subject={"skill": "arch-explain", "max_usd": 1, "groups": {"extras": None}}))
+
+
+def test_a_resumed_phase_needs_the_phase_before_it_in_every_run_that_takes_it():
+    # A phase of a group can resume a phase every run takes, or one of its own group.
+    S.from_data(phased(phase("scaffold"), phase("mvp", session="resume", group="extras"), groups={"extras": None}))
+    one = {"extras": None}
+    S.from_data(
+        phased(phase("scaffold"), phase("review", group="extras"), phase("fix", session="resume", group="extras"), groups=one)
+    )
+    with pytest.raises(S.ScenarioError, match=r"phases\[2\]: a resumed session needs the phase before it .* group extras"):
+        S.from_data(phased(phase("scaffold"), phase("review", group="extras"), phase("fix", session="resume"), groups=one))
+    with pytest.raises(S.ScenarioError, match=r"the phase before it .* in the group extras"):
+        S.from_data(
+            phased(
+                phase("scaffold"), phase("review", group="extras"), phase("tidy", session="resume", group="polish"), groups=EXTRAS
+            )
+        )
+
+
 def test_the_shipped_skill_scenarios_name_their_spend_caps():
     pytest.importorskip("yaml")
     folder = Path(__file__).resolve().parent.parent / "benchmark" / "scenarios"

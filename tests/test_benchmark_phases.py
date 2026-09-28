@@ -29,6 +29,10 @@ def phase(name: str, action: dict | None = None, **extra) -> dict:
     return {"name": name, "prompt": do(action or {}), "max_turns": 5, "max_usd": 1, "timeout_s": 60, **extra}
 
 
+# What a first phase writes so the output folder holds a file; a phase after which it holds none ends the run.
+TREE = {"write": {"site/README.md": "r\n"}}
+
+
 def phased(*phases: dict, **subject) -> dict:
     return {
         "name": "system",
@@ -80,7 +84,7 @@ def seen(run_dir: Path) -> list[dict | None]:
 
 
 def test_each_fresh_phase_gets_a_new_home_and_a_resumed_one_continues_its_session(run_phases):
-    code, run_dir = run_phases(phased(phase("scaffold"), phase("mvp", session="resume"), phase("review")))
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("mvp", session="resume"), phase("review")))
     assert code == 0
     first, second, third = seen(run_dir)
     assert first and second and third
@@ -137,7 +141,7 @@ def test_a_failed_phase_ends_the_repeat_and_its_checkpoints_are_kept(run_phases)
 
 
 def test_a_phase_that_hits_a_bound_is_capped_and_the_next_one_runs_unless_it_says_stop(run_phases):
-    turns = {"subtype": "error_max_turns", "is_error": True, "exit": 1}
+    turns = {**TREE, "subtype": "error_max_turns", "is_error": True, "exit": 1}
     code, run_dir = run_phases(phased(phase("scaffold", turns), phase("mvp")))
     assert code == 0  # a bound is not a failure: the repeat goes on and is judged
     phases = results(run_dir)["repeats"][0]["phases"]
@@ -146,7 +150,7 @@ def test_a_phase_that_hits_a_bound_is_capped_and_the_next_one_runs_unless_it_say
 
 
 def test_a_phase_that_says_stop_ends_the_repeat_at_its_bound(run_phases):
-    budget = {"subtype": "error_max_budget_usd", "is_error": True, "exit": 1}
+    budget = {**TREE, "subtype": "error_max_budget_usd", "is_error": True, "exit": 1}
     code, run_dir = run_phases(phased(phase("scaffold", budget, on_cap="stop"), phase("mvp")))
     assert code == 0
     data = results(run_dir)
@@ -156,7 +160,7 @@ def test_a_phase_that_says_stop_ends_the_repeat_at_its_bound(run_phases):
 
 def test_the_harness_stops_a_phase_whose_stream_passes_its_spend_cap(run_phases):
     usage = {"input_tokens": 150_000, "output_tokens": 0}  # $0.60 at the matrix's price
-    act = {"messages": [["m1", "claude-opus-5-5", usage], ["m2", "claude-opus-5-5-20260901", usage]], "sleep": 30}
+    act = {**TREE, "messages": [["m1", "claude-opus-5-5", usage], ["m2", "claude-opus-5-5-20260901", usage]], "sleep": 30}
     code, run_dir = run_phases(phased(phase("scaffold", act), phase("mvp")))
     assert code == 0
     repeat = results(run_dir)["repeats"][0]
@@ -171,7 +175,7 @@ def test_the_harness_stops_a_phase_whose_stream_passes_its_spend_cap(run_phases)
 
 def test_a_gate_that_fails_past_its_reruns_stops_the_phase_and_is_recorded_failing(run_phases):
     failing = [["cd site && make check 2>&1", True]] * 4 + [["make checks", True]]
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": failing, "sleep": 30}), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": failing, "sleep": 30}), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
@@ -181,7 +185,7 @@ def test_a_gate_that_fails_past_its_reruns_stops_the_phase_and_is_recorded_faili
 def test_a_passing_gate_run_starts_the_count_again(run_phases):
     # A failed run and two reruns that fail would pass the bound; a pass between them ends the streak.
     runs = [["make check", True]] * 2 + [["make check", False]] + [["make check", True]] * 2
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": runs}, max_gate_reruns=2), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": runs}, max_gate_reruns=2), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("ok", None)
@@ -221,7 +225,7 @@ def test_the_gates_run_on_the_final_tree_and_are_recorded_beside_the_scores(run_
 
 
 def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_phases):
-    scenario = phased(phase("scaffold"), phase("mvp"), phase("review"))
+    scenario = phased(phase("scaffold", TREE), phase("mvp"), phase("review"))
     code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "0.3")
     assert code == 0
     data = results(run_dir)
@@ -232,7 +236,7 @@ def test_the_run_s_spend_cap_is_checked_before_each_phase_and_each_repeat(run_ph
 
 
 def test_a_run_takes_the_scenario_s_repeats_and_spend_cap_unless_a_flag_overrides_them(run_phases):
-    scenario = dict(phased(phase("scaffold"), phase("mvp"), phase("review")), repeat=2, max_spend_usd=0.3)
+    scenario = dict(phased(phase("scaffold", TREE), phase("mvp"), phase("review")), repeat=2, max_spend_usd=0.3)
     # No --repeat and no --max-spend-usd: the scenario's cap stops the run as the flag's would.
     code, run_dir = run_phases(scenario, "--runtime", "host")
     assert code == 0
@@ -413,7 +417,7 @@ def test_a_run_s_spend_cap_is_an_amount_above_zero(tmp_path, monkeypatch, capsys
 def test_a_resumed_phase_s_spend_is_what_it_adds_to_its_session_s_running_total(run_phases):
     # Claude Code's result for a resumed session carries the session's total so far.
     scenario = phased(
-        phase("scaffold", {"cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}),
+        phase("scaffold", {**TREE, "cost": 0.25, "usage": {"input_tokens": 100, "output_tokens": 10}}),
         phase("mvp", {"cost": 0.6, "usage": {"input_tokens": 250, "output_tokens": 30}}, session="resume"),
         phase("review", {"cost": 0.1}),
     )
@@ -460,13 +464,13 @@ def test_a_gate_run_is_the_gate_as_a_command_of_its_own_and_its_outcome_is_read_
 
 def test_a_run_whose_outcome_is_not_read_neither_fails_nor_passes(run_phases):
     piped = [["make check 2>&1 | tail -30", True]] * 6
-    code, run_dir = run_phases(phased(phase("scaffold", {"bash": piped}), gates=["make check"]))
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "bash": piped}), gates=["make check"]))
     assert code == 0
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["gate_runs"]["make check"]) == ("ok", {"runs": 6, "failed": 0, "unread": 6, "failing": False})
     # A call that only names the gate is no gate run, so it ends no streak.
     named = [["make check", True]] * 2 + [["echo make check", False], ['git commit -m "make check passes"', False]]
-    act = {"bash": [*named, ["make check", True]], "sleep": 30}
+    act = {**TREE, "bash": [*named, ["make check", True]], "sleep": 30}
     code, run_dir = run_phases(phased(phase("scaffold", act, max_gate_reruns=2), gates=["make check"]))
     first = results(run_dir)["repeats"][0]["phases"][0]
     assert (first["status"], first["capped"]) == ("capped", "gate_reruns")
@@ -543,7 +547,7 @@ def test_a_repeat_the_run_s_spend_cap_cuts_short_is_marked_and_not_judged(tmp_pa
 
     monkeypatch.setattr(run.J, "judge_all", judge_all)
     code, run_dir = run_phases(
-        phased(phase("scaffold"), phase("mvp"), phase("review")), "--repeat", "1", "--max-spend-usd", "0.3"
+        phased(phase("scaffold", TREE), phase("mvp"), phase("review")), "--repeat", "1", "--max-spend-usd", "0.3"
     )
     assert code == 0 and judged == []
     data = results(run_dir)
@@ -626,3 +630,139 @@ def test_an_agentic_judge_reads_the_archived_tree_as_the_output(run_phases, monk
     assert seen_roots == {"output": ["README.md", "app/main.py"], "guideline": ["lenses/README.md"]}
     prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
     assert "- `output`: the tree the subject built, its output folder as its last commit holds it." in prompt
+
+
+# Optional groups of phases --------------------------------------------------
+
+
+def grouped(**subject) -> dict:
+    """The build by default, and a review in the group `extras`, whose sentence the rubric takes when a run takes it."""
+    return phased(
+        phase("scaffold", TREE),
+        phase("review", {"write": {"notes.md": "n"}}, cwd="output", group="extras"),
+        groups={"extras": {"rubric": "Then a review read the tree."}},
+        **subject,
+    )
+
+
+def test_a_run_takes_a_group_only_with_the_flag_and_names_the_groups_it_took(run_phases):
+    code, run_dir = run_phases(grouped())
+    assert code == 0
+    assert [p["name"] for p in results(run_dir)["repeats"][0]["phases"]] == ["scaffold"]
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["groups"] == [] and [p["name"] for p in resolved["phases"]] == ["scaffold"]
+    assert results(run_dir)["subject"]["groups"] == []
+    assert "Optional groups taken: none." in (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Then a review read the tree." not in (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+
+    code, run_dir = run_phases(grouped(), "--repeat", "1", "--with", "extras")
+    assert code == 0
+    data = results(run_dir)
+    assert [p["name"] for p in data["repeats"][0]["phases"]] == ["scaffold", "review"]
+    assert data["subject"]["groups"] == ["extras"] and [p["group"] for p in data["subject"]["phases"]] == [None, "extras"]
+    resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert resolved["groups"] == ["extras"] and resolved["scenario"]["rubric"] == "r\n\nThen a review read the tree."
+    assert "Optional groups taken: `extras`." in (run_dir / "report.md").read_text(encoding="utf-8")
+    prompt = (run_dir / "artifacts" / "0" / "judge-prompt.md").read_text(encoding="utf-8")
+    assert "r\n\nThen a review read the tree." in prompt and "2. review (fresh session)" in prompt
+
+
+def test_a_scenario_with_no_groups_names_none_in_its_records(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", TREE)))
+    assert code == 0
+    assert "groups" not in json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert "groups" not in results(run_dir)["subject"]
+    assert "Optional groups" not in (run_dir / "report.md").read_text(encoding="utf-8")
+
+
+def test_a_group_the_scenario_does_not_declare_is_refused_before_a_run_folder_is_made(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(grouped()), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--with", "mvp", "--dry-run"]) == 2
+    assert "scenario system declares no group mvp; its groups: extras" in capsys.readouterr().err
+    assert not (tmp_path / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("flags", "cap"),
+    [
+        ((), 1.0),  # the scaffold's cap
+        (("--with", "extras"), 2.0),  # the scaffold's and the review's
+        (("--with", "extras", "--repeat", "2"), 4.0),  # every phase of every repeat
+        (("--with", "extras", "--max-spend-usd", "7"), 7.0),  # the flag names one for any path
+    ],
+)
+def test_a_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_it_runs_unless_a_flag_names_one(
+    tmp_path, monkeypatch, flags, cap
+):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(dict(grouped(), repeat=1)), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run", *flags]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == cap
+
+
+def test_the_scenario_s_own_spend_cap_holds_only_on_the_path_that_takes_no_group(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "scenario.json"
+    path.write_text(json.dumps(dict(grouped(), repeat=1, max_spend_usd=0.5)), encoding="utf-8")
+    caps: list[float] = []
+    for flags in ((), ("--with", "extras")):
+        out = tmp_path / "runs" / str(len(caps))
+        assert run.main(["--scenario", str(path), "--out", str(out), "--dry-run", *flags]) == 0
+        (run_dir,) = out.iterdir()
+        caps.append(json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"])
+    assert caps == [0.5, 2.0]
+
+
+# A phase that leaves no tree ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        {},  # no output folder at all
+        {"git": [["init", "-q", "site"]]},  # a folder that holds a repository and no file
+    ],
+    ids=["no-folder", "empty-folder"],
+)
+def test_a_phase_that_leaves_no_tree_ends_the_run_unjudged(run_phases, monkeypatch, first):
+    judged: list[str] = []
+
+    def judge_all(*args, **kwargs):
+        judged.append("called")
+        return []
+
+    monkeypatch.setattr(run.J, "judge_all", judge_all)
+    scenario = phased(phase("scaffold", first), phase("mvp", TREE), phase("review", cwd="output"))
+    code, run_dir = run_phases(scenario, "--repeat", "2")
+    assert code == 6 and judged == []  # the subject built nothing, so the repeat failed and no judge was asked
+    data = results(run_dir)
+    (repeat,) = data["repeats"]  # the run ends: the second repeat never starts
+    assert [p["name"] for p in repeat["phases"]] == ["scaffold"] and len(seen(run_dir)) == 1
+    assert repeat["no_tree"] == {"phase": "scaffold", "not_run": ["mvp", "review"]}
+    assert data["summary"]["failed_repeats"] == [0] and data["summary"]["cut_short"] == []
+    assert any(
+        "phase scaffold left no file in site; mvp, review did not run, and the repeat is not judged" in n for n in data["notes"]
+    )
+    assert any("repeat 0 left no tree, so the run ends: repeat 1 and after did not run" in n for n in data["notes"])
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Repeat 0 ended after phase scaffold, which left no file in the output folder. mvp, review did not run." in report
+
+
+def test_a_last_phase_that_leaves_no_tree_fails_its_repeat_too(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold")))
+    assert code == 6
+    assert results(run_dir)["repeats"][0]["no_tree"] == {"phase": "scaffold", "not_run": []}
+
+
+def test_a_phase_s_wall_time_is_in_its_record_and_the_report(run_phases):
+    code, run_dir = run_phases(phased(phase("scaffold", {**TREE, "sleep": 0.3})))
+    assert code == 0
+    (record,) = results(run_dir)["repeats"][0]["phases"]
+    assert record["wall_s"] >= 0.3 and record["wall_s"] == record["exit_status"]["duration_s"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "| Repeat | Phase | Session | Status | Cap | Turns | Wall (s) | Cost (USD) | Checkpoint |" in report
+    assert f"| 0 | scaffold | fresh | ok | - | 3 | {record['wall_s']:.1f} | $0.2500 |" in report

@@ -6,9 +6,9 @@ every bound cut small, so a few dollars prove that the run starts, moves
 from phase to phase, commits, archives, fetches the output back, runs the
 gates, and has the judges answer. The scores mean nothing.
 
-`scenario` returns the scenario a rehearsal runs. It keeps every prompt,
-the runtime, the gates, the judges and their models, and the references,
-and it never raises a bound the scenario sets:
+`scenario` returns the scenario a rehearsal runs. It keeps the runtime,
+the gates, the judges and their models, and the references, and it
+never raises a bound the scenario sets:
 
 - the subject runs on the cheapest model the matrix prices for its
   provider (`cheapest`);
@@ -16,24 +16,23 @@ and it never raises a bound the scenario sets:
   at most `MAX_TURNS` turns, `SESSION_USD` US dollars, and a timeout of
   `TIMEOUT_S`. A phase that hits a bound hands on to the next one, since
   a rehearsal's phases all end at a bound and every phase must start;
+- each phase keeps its prompt and gets one line after it, `LINE`: a
+  tiny budget, build the smallest piece, and ask nothing. So the first
+  phase leaves a tree, and the archive, the gates, and the judges see
+  one. A run that is not a rehearsal never sees the line;
 - a command subject gets the same timeout, and each gate at most
   `GATE_TIMEOUT_S`;
 - agentic judges get the stub budget, `JUDGE_BUDGET`, each bound the
   smaller of the scenario's and the stub's;
 - the run repeats once, and its spend cap, over the subject and the
-  judges together, is `MAX_SPEND_USD`.
+  judges together, is `MAX_SPEND_USD`, or the run's own cap for one
+  repeat when that is lower.
 
 A rehearsal runs the preflight first, with the `checkout` check as a
 skip: a rehearsal is never checked in, and a change to the harness is
 worth rehearsing before it is committed. Its `run.json` and its
 `results.json` are marked `rehearsal`, and `make runs` refuses a run
 folder so marked.
-
-A rehearsal checks its output folder after every phase. A phase this
-small can end before it makes the folder, and the phases after it that
-start in it, the checkpoints, the archive, and the gates would then have
-nothing to run in. So the rehearsal makes the folder, empty, and the run
-notes it (`MAKE_OUTPUT`).
 
 A rehearsal ends `completed` only when every step it exists to prove
 happened (`outcome`). One where a step did not ends `incomplete`, and
@@ -50,7 +49,7 @@ from typing import Any
 from . import agentic as A
 from . import judge as J
 from . import providers as P
-from .scenario import Scenario
+from .scenario import Scenario, spend_cap
 
 # The run's spend cap, over the subject and the judges together. A flag can
 # lower it and never raise it.
@@ -63,9 +62,11 @@ TIMEOUT_S = 1800
 GATE_TIMEOUT_S = 600
 # The stub budget of each agentic judgement: enough to read and to submit.
 JUDGE_BUDGET = A.Budget(tool_calls=3, input_tokens=60_000, wall_s=900.0, submits=2, max_usd=0.5, max_output_tokens=8_000)
-# Where the subject runs, in its workspace: make the output folder when a
-# phase left none, and say so. Argument: the folder.
-MAKE_OUTPUT = '[ -d "$1" ] && exit 0; mkdir -p -- "$1" && echo made'
+# The line each phase of a rehearsal gets after its prompt, and a real run never does.
+LINE = (
+    "This run is a rehearsal on a tiny budget of a few turns: build only the smallest piece of this task, "
+    "write its files in your first turns, and do not ask anything."
+)
 
 
 def cheapest(matrix: dict[str, dict[str, Any]], provider: str) -> str | None:
@@ -82,11 +83,12 @@ def budget(given: A.Budget | None) -> A.Budget | None:
 
 
 def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]]) -> Scenario:
-    """The scenario as a rehearsal runs it: the same prompts, runtime, gates, and judges, with every bound cut small."""
+    """The scenario as a rehearsal runs it: each prompt with the rehearsal's line, every bound cut small."""
     subject = scn.subject
     phases = [
         dataclasses.replace(
             p,
+            prompt=f"{p.prompt.rstrip()}\n\n{LINE}",
             max_turns=min(p.max_turns, MAX_TURNS),
             max_usd=min(p.max_usd, SESSION_USD),
             timeout_s=min(p.timeout_s, TIMEOUT_S),
@@ -109,7 +111,8 @@ def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]]) -> Scenario:
         phases=phases,
     )
     judges = dataclasses.replace(scn.judges, budget=budget(scn.judges.budget))
-    cap = MAX_SPEND_USD if scn.max_spend_usd is None else min(scn.max_spend_usd, MAX_SPEND_USD)
+    own = spend_cap(scn, 1)
+    cap = MAX_SPEND_USD if own is None else min(own, MAX_SPEND_USD)
     return dataclasses.replace(scn, subject=subject, judges=judges, repeat=1, max_spend_usd=cap)
 
 
@@ -139,7 +142,7 @@ def outcome(
     """How a rehearsal ended, the steps it did not prove, and where its money went, in the order it was spent.
 
     It ended `capped` when the run's spend cap kept a phase from running,
-    `failed` when the subject failed, `incomplete` when a step it exists to
+    `failed` when the subject failed or a phase left no tree, `incomplete` when a step it exists to
     prove did not happen, and `completed` otherwise. `archived` holds each
     repeat's archive command, by index, as `missing` reads it.
     """
