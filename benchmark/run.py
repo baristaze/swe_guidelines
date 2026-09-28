@@ -673,6 +673,7 @@ def keep_milestone(
             why = f"the archive failed (exit {archived.code})" if not archived.ok else "its zip did not come back"
             return None, f"its milestone was not kept: {why}"
         dest = rt.run_dir / "artifacts" / str(index) / MILESTONES / name
+        dest.mkdir(parents=True, exist_ok=True)
         collected = []
         for file in found:
             if file == zip_file:
@@ -681,9 +682,8 @@ def keep_milestone(
             (dest / "workspace" / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(file, dest / "workspace" / rel)
             collected.append(rel)
-        dest.mkdir(parents=True, exist_ok=True)
-        record, why = keep_archive(zip_file, dest, rt.run_dir, commit)
-        return ({**record, "collected": collected} if record else None), why
+        record, note = keep_archive(zip_file, dest, rt.run_dir, commit)
+        return ({**record, "collected": collected} if record else None), note
     finally:
         # Once it is back, or whatever went wrong, no later phase finds it in the workspace.
         harness_run(rt, harness, plan, ["sh", "-c", PH.DROP, "sh", posixpath.dirname(PH.MILESTONE)])
@@ -2082,7 +2082,8 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
                 )
         if records and not any("milestone" in r for r in records):
             last = records[-1]
-            archive = repeat.get("archive") if isinstance(repeat.get("archive"), dict) else {}
+            given = repeat.get("archive")
+            archive: dict[str, Any] = given if isinstance(given, dict) else {}
             if not last.get("checkpoint"):
                 refused[last["name"]] = f"its last phase, {last['name']}, left no checkpoint"
             elif archive.get("commit") != last["checkpoint"]:
@@ -2294,7 +2295,8 @@ def command_resume(args: argparse.Namespace) -> int:
         return 2
     names = [p.name for p in whole.subject.phases]
     kept = source_milestones(source, read_record(source / "results.json"))
-    after = args.after or next((n for n in reversed(names) if any(n in found for found, _ in kept.values())), None)
+    # By default, the last phase any repeat kept a milestone of, or one it refuses, which then says why.
+    after = args.after or next((n for n in reversed(names) if any(n in f or n in w for f, w in kept.values())), None)
     if after is None:
         print(f"{source} kept no milestone of a phase to resume from: no run folder was made", file=sys.stderr)
         return 2
@@ -2320,16 +2322,15 @@ def command_resume(args: argparse.Namespace) -> int:
     refused: list[dict[str, Any]] = []
     for index, (found, why) in sorted(kept.items()):
         milestone = found.get(after)
-        reason = (
-            milestone_refusal(milestone, source)
-            if milestone is not None
-            else why.get(after, f"the source run kept no milestone after {after}")
-        )
-        if reason:
-            refused.append({"repeat": index, "reason": reason})
-            print(f"repeat {index} is not resumed: {reason}", file=sys.stderr)
+        if milestone is None:
+            reason: str | None = why.get(after, f"the source run kept no milestone after {after}")
         else:
-            resumed[index] = milestone  # type: ignore[assignment]
+            reason = milestone_refusal(milestone, source)
+        if milestone is not None and reason is None:
+            resumed[index] = milestone
+            continue
+        refused.append({"repeat": index, "reason": reason})
+        print(f"repeat {index} is not resumed: {reason}", file=sys.stderr)
     if not resumed:
         print(
             f"{source} holds no milestone to resume after {after}: no run folder was made and no phase started", file=sys.stderr
