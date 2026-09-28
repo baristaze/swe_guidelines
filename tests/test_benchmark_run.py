@@ -1269,3 +1269,29 @@ def test_an_agentic_run_judges_the_output_against_each_reference_and_weighs_the_
     assert "| 0 | anthropic |" in report and "| 64 | 70 | 68.5 |" in report and "## Gaps" in report
     assert "The harness weighs each judgement's scores: 0.25 * `guideline` + 0.75 * `reference`." in report
     assert results["spend"]["judges"]["anthropic"]["cost_usd"] > 0
+
+
+@needs_jsonschema
+def test_a_judge_that_submits_on_its_last_turn_at_its_input_tokens_is_scored(tmp_path, monkeypatch, acme):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    # Each scripted turn carries 1000 input tokens, so after the second the next call would pass 2500.
+    fake = FAKES["anthropic"](
+        [
+            turn(("read_file", {"root": "output", "path": "answer.md"})),
+            turn(("read_file", {"root": "reference", "path": "src/app.py"})),
+            turn(("submit", JUDGED)),
+        ]
+    )
+    monkeypatch.setitem(run.J.CLIENTS, "anthropic", lambda key: fake)
+    path = tmp_path / "agentic.json"
+    path.write_text(json.dumps(agentic_scenario(["echo", "planned"], budget={"input_tokens": 2500})), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    [(_, told)] = sent_results("anthropic", fake.requests[2])
+    assert told.startswith("read_file was not run. No budget left for reads (input tokens: 2000 of 2500 spent")
+    results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
+    (judged,) = results["repeats"][0]["judgements"]
+    assert judged["status"] == "ok" and judged["judged"]["score"] == 68.5  # 0.25 * 64 + 0.75 * 70
+    assert judged["judged"]["tool_calls"] == 1 and judged["judged"]["turns"] == 3
+    assert results["summary"]["per_provider"]["anthropic"]["mean"] == 68.5
