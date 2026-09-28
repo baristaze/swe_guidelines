@@ -1099,9 +1099,10 @@ own budget, its own transcript, and its own error handling, so a
 provider that fails ends its own judgement and no other. The results
 keep the order of the flag. An interrupt, such as Ctrl-C, stops every
 judge before its next call, and the run ends at once: it waits on no
-call in flight. Their spend counts toward the run's spend
-cap once the last of them has answered, as one repeat's judges always
-do (see The run's spend).
+call in flight. A judge waiting to ask again, after a rate limit or a
+transient error, stops at once and does not ask. The judges' spend
+counts toward the run's spend cap once the last of them has answered,
+as one repeat's judges always do (see The run's spend).
 
 ## Spend
 

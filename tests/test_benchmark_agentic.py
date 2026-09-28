@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace as NS
 from typing import Any
@@ -1310,6 +1311,33 @@ def test_a_rate_limit_wait_longer_than_the_time_left_is_missed_without_waiting(a
     assert judgement.error is not None
     assert judgement.error.startswith("wall time: the rate limit asks for a wait of 30 s, and 20 s are left (")
     assert waits == [] and len(fake.requests) == len(script) - (0 if answered_first else 1)
+
+
+@needs_jsonschema
+@pytest.mark.parametrize("wait_on", ["the stop", "a given sleep"])
+def test_a_stop_during_a_rate_limit_wait_sends_no_retry_and_ends_the_judgement_as_stopped(wait_on, roots, tmp_path):
+    stop = threading.Event()
+    waits: list[float] = []
+
+    def stop_during_the_wait(seconds: float) -> None:
+        waits.append(seconds)
+        stop.set()
+
+    def stop_soon_after_the_429(fake: Fake) -> None:
+        if len(fake.requests) == 2:
+            threading.Timer(0.2, stop.set).start()
+
+    limit = RateLimited(OPENAI_TPM.replace("135ms", "20s"))
+    script = [step(("list_dir", {"root": "output"})), limit, step(("submit", ANSWER))]
+    given: dict[str, Any] = {"sleep": stop_during_the_wait, "clock": lambda: 0.0} if wait_on == "a given sleep" else {}
+    on_call = stop_soon_after_the_429 if wait_on == "the stop" else None
+    started = time.monotonic()
+    judgement, fake, records = run(P.Provider.OPENAI, script, roots, tmp_path, on_call=on_call, stop=stop, **given)
+    assert time.monotonic() - started < 5  # the loop's own wait wakes at the stop, not after 20 s
+    assert judgement.status == "error" and judgement.error == A.STOPPED and judgement.answer is None
+    assert len(fake.requests) == 2  # the read and the 429: no retry after the stop
+    assert [r["kind"] for r in records if r["kind"] in ("error", "end")] == ["error", "end"]
+    assert waits == ([20.0] if wait_on == "a given sleep" else [])
 
 
 @needs_jsonschema

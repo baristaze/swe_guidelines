@@ -298,7 +298,7 @@ def rate_limit_wait(exc: Exception) -> float | None:
 def with_retries(
     call: Callable[[], T],
     on_error: Callable[[Exception], None] | None = None,
-    sleep: Callable[[float], None] | None = None,
+    sleep: Callable[[float], object] | None = None,
     may_wait: Callable[[float], bool] | None = None,
 ) -> T:
     """One call, asked again when its error says to: the one retry policy of every judge.
