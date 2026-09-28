@@ -437,7 +437,7 @@ def test_the_shipped_skill_scenarios_name_their_spend_caps():
     # A subject in phases names a cap per phase, and none of its own.
     caps = {s.name: s.subject.max_usd or {p.name: p.max_usd for p in s.subject.phases} for s in skills}
     assert caps == {
-        "create-full-system": {"scaffold": 180.0, "mvp": 135.0, "review": 37.5, "close": 45.0},
+        "create-full-system": {"scaffold": 360.0, "mvp": 270.0, "review": 75.0, "close": 90.0},
         "explain-tenancy": 2.0,
         "review-om": 3.0,
     }
@@ -475,19 +475,19 @@ def test_the_full_system_scenario_runs_once_under_the_sum_of_the_caps_of_the_pha
     # The build by default, the scaffold and the MVP; the review and the close only with extras.
     assert [g.name for g in system.subject.groups] == ["extras"]
     build, extras = S.select(system, []), S.select(system, ["extras"])
-    # The run's cap covers the phases and the four judges' budgets: $315 and $90 for the build, $397.50 and $90 with extras.
-    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1, 4) == 405.0
+    # The run's cap covers the phases and the four judges' budgets: $630 and $180 for the build, $795 and $180 with extras.
+    assert [p.name for p in build.subject.phases] == ["scaffold", "mvp"] and S.spend_cap(build, 1, 4) == 810.0
     assert [p.name for p in extras.subject.phases] == ["scaffold", "mvp", "review", "close"]
-    assert S.spend_cap(extras, 1, 4) == 487.5 and S.taken_groups(extras) == ["extras"]
+    assert S.spend_cap(extras, 1, 4) == 975.0 and S.taken_groups(extras) == ["extras"]
     # Money and time bound every phase and every judge; no step count does.
     assert [(p.max_usd, p.timeout_s, p.max_turns) for p in extras.subject.phases] == [
-        (180.0, 16200, None),
-        (135.0, 16200, None),
-        (37.5, 5400, None),
-        (45.0, 8100, None),
+        (360.0, 16200, None),
+        (270.0, 16200, None),
+        (75.0, 5400, None),
+        (90.0, 8100, None),
     ]
     budget = system.judges.budget
-    assert budget is not None and (budget.max_usd, budget.wall_s) == (22.5, 5400.0)
+    assert budget is not None and (budget.max_usd, budget.wall_s) == (45.0, 5400.0)
     # The counts the loop keeps are set past what money and time allow: the input tokens at the cheapest input price.
     matrix = J.load_matrix(folder.parent / "models.yaml")
     cheapest = min(p["input"] for spec in matrix.values() for p in spec.get("prices", {}).values())

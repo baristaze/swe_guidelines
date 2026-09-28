@@ -77,7 +77,7 @@ never run the harness from there.
    group takes the scenario's `max_spend_usd`. Else a scenario in
    phases is capped by the sum of the caps of the phases that run and
    of the agentic judges' dollar budgets, over every repeat:
-   `create-full-system` by $405 for the build and $487.50
+   `create-full-system` by $810 for the build and $975
    with extras. A run has no cap only when its subject runs in one
    session and its scenario names none. A flag overrides the
    scenario's value. The cap is not a hard ceiling: the

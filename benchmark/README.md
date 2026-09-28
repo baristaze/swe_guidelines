@@ -477,7 +477,7 @@ and against the guideline's reference implementation (see Agentic
 judges). It runs once, as its `repeat: 1` says. Its bounds are money
 and time only, and its scenario file says how they were sized. Its
 run's spend cap is the sum of the caps of the phases that run and of
-the four judges' budgets: $405 for the build, and $487.50 with extras.
+the four judges' budgets: $810 for the build, and $975 with extras.
 So a run of it passes no cap. Run it with
 `--preflight` first. The preflight checks, among the rest, that the
 machine is up and carries its tools at their pins, that it reaches the
@@ -602,7 +602,7 @@ subject:
     - name: scaffold
       prompt: "/swe-guidelines:arch-scaffold-new acme ... The product is described in {target}/spec.md."
       hint: true              # the handoff note; a builder keeps it
-      max_usd: 180            # passed to Claude Code as --max-budget-usd
+      max_usd: 360            # passed to Claude Code as --max-budget-usd
       max_gate_reruns: 3      # after a failed gate run, at most this many more
       timeout_s: 16200        # the session ends here, capped by time
     - name: review
@@ -612,7 +612,7 @@ subject:
       session: fresh          # the default; resume continues the phase before
       on_cap: continue        # the default; stop ends the repeat at a bound
       max_turns: 150          # optional; a turn cap, passed on only when named
-      max_usd: 37.5
+      max_usd: 75
       timeout_s: 5400
 ```
 
