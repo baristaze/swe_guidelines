@@ -435,17 +435,34 @@ can change the machine itself. A changed pin takes a new machine:
 
 ## Scenarios
 
-A scenario is YAML or JSON. Three ship here:
+A scenario is YAML or JSON. Four ship here:
 
 | Scenario | Kind | Runtimes | What it measures |
 |----------|------|----------|------------------|
+| `create-full-system` | `skill` | `vm` | the scaffold skills building a whole system from a product spec, then a review and its fixes, judged against the guideline and its reference implementation |
 | `explain-tenancy` | `skill` | `container` | the `arch-explain` skill on one question about the tenant fence; the cheap one to run first |
 | `review-om` | `skill` | `container` | the `arch-review-om` skill over a checkout with eight planted defects |
 | `support-turn` | `qa` | `host`, `container` | a model answering an on-call question directly, with no skill |
 
-The two skills run in a container only. On the host their subject can
-read the checkout, the rubric and the planted findings in it. A `qa`
-subject runs no command, so the runtime holds nothing it reaches.
+`explain-tenancy` and `review-om` run in a container only. On the host
+their subject can read the checkout, the rubric and the planted
+findings in it. A `qa` subject runs no command, so the runtime holds
+nothing it reaches.
+
+`create-full-system` requires `docker`, so it runs on the vm runtime
+only. Its subject builds `free-journalism` from
+`fixtures/create-full-system/product-spec.md` in four fresh phases: the
+scaffold, the MVP, a standalone review, and the fixes to the review's
+high findings (see A subject in phases). Agentic judges score the tree
+against the guideline and against the guideline's reference
+implementation (see Agentic judges). It runs once, and its phases' spend
+caps sum to $190. No scenario key sets either, so a run of it passes
+both as flags:
+
+```bash
+uv run benchmark/run.py --scenario create-full-system --repeat 1 --max-spend-usd 190 \
+  --runtime-config benchmark/runtime/lima/runtime-config.yaml
+```
 
 The shape:
 
