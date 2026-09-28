@@ -129,6 +129,25 @@ def test_an_error_that_is_not_transient_goes_to_the_next_model_without_waiting(m
     assert judgement.status == "ok" and judgement.model == "claude-opus-5" and waits == []
 
 
+def test_a_fallback_names_the_error_after_which_the_first_model_was_given_up(monkeypatch):
+    monkeypatch.setattr(J.time, "sleep", lambda _seconds: None)
+    first_model_says = iter([RuntimeError("503 model overloaded"), RuntimeError("429 quota exceeded")])
+    asked: list[str] = []
+
+    def overloaded_then_out_of_quota(model, effort, prompt, key):
+        asked.append(model)
+        if model == "claude-opus-5-5":
+            raise next(first_model_says)
+        return fake_call()
+
+    judgement = J.judge_one(
+        P.Provider.ANTHROPIC, "p", "medium", J.DEFAULT_MATRIX, env={"ANTHROPIC_API_KEY": "k"}, call=overloaded_then_out_of_quota
+    )
+    assert asked == ["claude-opus-5-5", "claude-opus-5-5", "claude-opus-5"]
+    assert judgement.status == "ok" and judgement.model == "claude-opus-5"
+    assert judgement.fallback == {"from": "claude-opus-5-5", "reason": "claude-opus-5-5: RuntimeError: 429 quota exceeded"}
+
+
 def test_an_answer_of_the_wrong_shape_is_recorded_as_the_error_it_raised():
     def two_parts(*_args):
         return {"score": 1}, "raw"
