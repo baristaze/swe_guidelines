@@ -612,6 +612,9 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
     cap = f" of its {_usd(record['max_spend_usd'])} cap" if record.get("max_spend_usd") is not None else ""
     lines += [f"It ended `{record['status']}`, having spent {_usd(record['spent_usd'])}{cap}:", ""]
     lines += [f"- {s['what']}: {_usd(s['usd'])}" for s in record["spent"]] or ["- nothing"]
+    if record.get("missing"):
+        lines += ["", "It did not prove the pipeline to its end:", ""]
+        lines += [f"- {step}" for step in record["missing"]]
     return [*lines, ""]
 
 

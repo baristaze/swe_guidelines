@@ -35,6 +35,10 @@ start in it, the checkpoints, the archive, and the gates would then have
 nothing to run in. So the rehearsal makes the folder, empty, and the run
 notes it (`MAKE_OUTPUT`).
 
+A rehearsal ends `completed` only when every step it exists to prove
+happened (`outcome`). One where a step did not ends `incomplete`, and
+names each step under `missing`.
+
 Like every harness module, this one imports the standard library only.
 """
 
@@ -109,12 +113,38 @@ def scenario(scn: Scenario, matrix: dict[str, dict[str, Any]]) -> Scenario:
     return dataclasses.replace(scn, subject=subject, judges=judges, repeat=1, max_spend_usd=cap)
 
 
-def outcome(repeats: list[Any], failed: bool, cap: float | None) -> dict[str, Any]:
-    """How a rehearsal ended, and where its money went: each phase's spend and each judge's, in the order they spent it.
+def missing(scn: Scenario, repeat: Any, archived: bool | None) -> list[str]:
+    """The steps a repeat was to prove and did not: a checkpoint, the archive, its fetch, the gates, a judge's answer.
+
+    `archived` is whether the archive command succeeded where the subject
+    ran, or None when there was no checkpoint to archive.
+    """
+    out: list[str] = []
+    if scn.subject.output:
+        out += [f"phase {p['name']} left no checkpoint" for p in repeat.phases or [] if not p.get("checkpoint")]
+        if archived is False:
+            out.append("the archive of the output failed")
+        elif archived and repeat.archive is None:
+            out.append("no archive of the output came back from the runtime")
+        if scn.subject.gates and repeat.gates is None:
+            out.append("the gates did not run")
+    if not any(j.status == "ok" for j in repeat.judgements):
+        out.append("no judge answered")
+    return out
+
+
+def outcome(
+    scn: Scenario, repeats: list[Any], failed: bool, cap: float | None, archived: dict[int, bool | None]
+) -> dict[str, Any]:
+    """How a rehearsal ended, the steps it did not prove, and where its money went, in the order it was spent.
 
     It ended `capped` when the run's spend cap kept a phase from running,
-    `failed` when the subject failed, and `completed` otherwise.
+    `failed` when the subject failed, `incomplete` when a step it exists to
+    prove did not happen, and `completed` otherwise. `archived` holds each
+    repeat's archive command, by index, as `missing` reads it.
     """
+    status = "capped" if any(r.cut_short for r in repeats) else "failed" if failed else "completed"
+    steps = [f for r in repeats for f in missing(scn, r, archived.get(r.index))] if status == "completed" else []
     spent: list[dict[str, Any]] = []
     for repeat in repeats:
         for phase in repeat.phases or []:
@@ -124,9 +154,9 @@ def outcome(repeats: list[Any], failed: bool, cap: float | None) -> dict[str, An
             spent.append({"what": "subject", "usd": round(repeat.subject_cost_usd, 4)})
         # A judge that spent nothing, such as one with no key, is named in the summary, not here.
         spent += [{"what": f"judge {j.provider}", "usd": round(j.cost_usd or 0.0, 4)} for j in repeat.judgements if j.usage]
-    status = "capped" if any(r.cut_short for r in repeats) else "failed" if failed else "completed"
     return {
-        "status": status,
+        "status": "incomplete" if steps else status,
+        "missing": steps,
         "max_spend_usd": cap,
         "spent_usd": round(sum(s["usd"] for s in spent), 4),
         "spent": spent,
@@ -137,4 +167,5 @@ def says(record: dict[str, Any]) -> str:
     """A rehearsal's outcome as the console and the report say it."""
     where = ", ".join(f"{s['what']} ${s['usd']:.4f}" for s in record["spent"]) or "nothing"
     cap = f" of its ${record['max_spend_usd']:g} cap" if record.get("max_spend_usd") is not None else ""
-    return f"the rehearsal ended {record['status']}, having spent ${record['spent_usd']:.4f}{cap}: {where}"
+    said = f"the rehearsal ended {record['status']}, having spent ${record['spent_usd']:.4f}{cap}: {where}"
+    return said + (f"; it did not prove: {', '.join(record['missing'])}" if record.get("missing") else "")

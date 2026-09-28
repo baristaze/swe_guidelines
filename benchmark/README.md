@@ -1067,14 +1067,23 @@ each phase, a rehearsal makes the folder, empty, when the phase left
 none, and its notes say so.
 
 Its `run.json` holds `rehearsal: true`, and its `results.json` holds
-`rehearsal`: how it ended, its cap, what it spent, and where the money
-went, each phase and each judge in the order they spent it. It ends
-`completed`, `failed` when a phase failed, or `capped` when the run's
-spend cap kept a phase from running. A capped rehearsal did not prove
-the pipeline to its end, and it exits 9. The console and the report's
-Rehearsal section say the same. The cap is the run's spend cap, so a
-rehearsal can end above it by what one phase and its judges add (see The
-run's spend).
+`rehearsal`: how it ended, the steps it did not prove, its cap, what it
+spent, and where the money went, each phase and each judge in the order
+they spent it. It ends in one of four ways:
+
+- `failed`: a phase failed.
+- `capped`: the run's spend cap kept a phase from running.
+- `incomplete`: a step it exists to prove did not happen. A phase left
+  no checkpoint, the archive failed, no archive came back from the
+  runtime, the gates did not run, or no judge answered. `missing` names
+  each one.
+- `completed`: none of these; every step it exists to prove happened.
+
+Only a `completed` rehearsal proved the pipeline to its end. A capped
+or an incomplete one exits 9. The console and the report's Rehearsal
+section say how it ended, and name each step it did not prove. The cap
+is the run's spend cap, so a rehearsal can end above it by what one
+phase and its judges add (see The run's spend).
 
 `make runs` fails on a run folder marked `rehearsal`, so pass `--out`
 outside `benchmark/runs/`.

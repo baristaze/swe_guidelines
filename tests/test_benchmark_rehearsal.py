@@ -175,6 +175,7 @@ def test_a_rehearsal_runs_every_phase_small_after_its_preflight_and_says_where_t
     assert repeat["archive"]["files"] == 1 and repeat["gates"][0]["passed"] is True
     assert data["rehearsal"] == {
         "status": "completed",
+        "missing": [],
         "max_spend_usd": 5.0,
         "spent_usd": 0.506,
         "spent": [
@@ -215,14 +216,71 @@ def test_a_rehearsal_skips_the_checkout_check_and_a_preflight_of_the_real_run_do
 
 def test_a_rehearsal_the_run_s_spend_cap_cuts_short_ends_capped_and_exits_9(rehearse, capsys):
     code, run_dir, judged = rehearse(phased(phase("scaffold"), phase("mvp"), phase("review")), "--max-spend-usd", "0.3")
-    assert code == run.REHEARSAL_CAPPED == 9 and judged == []
+    assert code == run.REHEARSAL_UNPROVEN == 9 and judged == []
     data = results(run_dir)
     assert data["repeats"][0]["cut_short"] == ["review"]
     assert data["rehearsal"]["status"] == "capped" and data["rehearsal"]["max_spend_usd"] == 0.3
     assert [s["what"] for s in data["rehearsal"]["spent"]] == ["phase scaffold", "phase mvp"]
     captured = capsys.readouterr()
     assert "the rehearsal ended capped, having spent $0.5000 of its $0.3 cap" in captured.out
-    assert "did not prove the pipeline to its end" in captured.err
+    assert "the rehearsal did not prove the pipeline to its end: the run's spend cap cut it short" in captured.err
+
+
+def fail_checkpoints(monkeypatch, *numbers: int) -> None:
+    """The checkpoint after each phase of these numbers fails, as a git that fails there would."""
+    real = run.checkpoint
+
+    def checkpoint(rt, harness, plan, folder, number, label):
+        if number in numbers:
+            return None, "the checkpoint commit failed (exit 4); see streams/harness.jsonl"
+        return real(rt, harness, plan, folder, number, label)
+
+    monkeypatch.setattr(run, "checkpoint", checkpoint)
+
+
+def no_zip_back(monkeypatch) -> None:
+    """The runtime brings the workspace back without the output's zip, as a fetch that lost it would."""
+    real = run.RT.BaseRuntime.collect
+    monkeypatch.setattr(
+        run.RT.BaseRuntime, "collect", lambda self, globs: [f for f in real(self, globs) if f.name != "output.zip"]
+    )
+
+
+def no_judge_answers(monkeypatch) -> None:
+    """Every judge fails, and none answers."""
+    failed = J.Judgement(provider="anthropic", model="claude-opus-5-5", effort="medium", status="error", error="refused")
+    monkeypatch.setattr(run.J, "judge_all", lambda *args, **kwargs: [failed])
+
+
+@pytest.mark.parametrize(
+    ("break_it", "step"),
+    [
+        (lambda mp: fail_checkpoints(mp, 1), "phase scaffold left no checkpoint"),
+        (lambda mp: mp.setattr(run.PH, "ARCHIVE_SCRIPT", "exit 3"), "the archive of the output failed"),
+        (no_zip_back, "no archive of the output came back from the runtime"),
+        (lambda mp: fail_checkpoints(mp, 1, 2), "the gates did not run"),
+        (no_judge_answers, "no judge answered"),
+    ],
+    ids=["checkpoint", "archive", "fetch", "gates", "judges"],
+)
+def test_a_rehearsal_whose_step_did_not_happen_ends_incomplete_and_names_it(rehearse, monkeypatch, capsys, break_it, step):
+    break_it(monkeypatch)
+    scenario = phased(
+        phase("scaffold", {"write": {"site/README.md": "r"}}),
+        phase("review", {"write": {"notes.md": "n"}}, cwd="output"),
+        gates=["test -f README.md"],
+    )
+    code, run_dir, _ = rehearse(scenario)
+    assert code == run.REHEARSAL_UNPROVEN
+    record = results(run_dir)["rehearsal"]
+    assert record["status"] == "incomplete" and step in record["missing"]
+    assert f"It did not prove the pipeline to its end:\n\n- {record['missing'][0]}" in (run_dir / "report.md").read_text(
+        encoding="utf-8"
+    )
+    captured = capsys.readouterr()
+    assert "the rehearsal ended incomplete, having spent" in captured.out and "; it did not prove: " in captured.out
+    assert step in captured.out
+    assert "the rehearsal did not prove the pipeline to its end: a step it exists to prove did not happen" in captured.err
 
 
 def test_a_rehearsal_makes_the_output_folder_a_phase_left_out_so_the_phases_after_it_run(rehearse):

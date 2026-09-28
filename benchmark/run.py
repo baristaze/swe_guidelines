@@ -85,9 +85,9 @@ NOT_LISTED = 7
 # The exit status of a preflight that failed a check. Nothing was run and
 # no paid endpoint was called.
 PREFLIGHT_FAILED = 8
-# The exit status of a rehearsal the run's spend cap cut short: it did not
-# prove the pipeline to its end.
-REHEARSAL_CAPPED = 9
+# The exit status of a rehearsal that did not prove the pipeline to its end:
+# the run's spend cap cut it short, or a step it exists to prove did not happen.
+REHEARSAL_UNPROVEN = 9
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -573,6 +573,8 @@ class SkillRepeat:
     notes: list[str] = dataclasses.field(default_factory=list)
     # The phases the run's spend cap kept from running, when it cut the repeat short.
     cut_short: list[str] | None = None
+    # Whether the archive command succeeded where the subject ran; None when there was no checkpoint to archive.
+    archived: bool | None = None
 
 
 def harness_run(
@@ -748,11 +750,13 @@ def run_skill(
             break
         before = phase
     gates: list[dict[str, Any]] | None = None
+    archived_ok: bool | None = None
     if folder and harness is not None:
         if commit is None:
             notes.append(f"repeat {index}: no commit of {folder} to archive, and no tree to run the gates on")
         else:
             archived, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.ARCHIVE_SCRIPT, "sh", folder, PH.ARCHIVE, commit])
+            archived_ok = archived.ok
             if not archived.ok:
                 notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
             gates = []
@@ -781,6 +785,7 @@ def run_skill(
         gates=gates,
         notes=notes,
         cut_short=cut_short,
+        archived=archived_ok,
     )
 
 
@@ -1274,6 +1279,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     # What the harness runs where the subject runs: the checkpoints, the archive, the gates.
     harness = CliStream(run_dir / "streams" / "harness.jsonl") if scn.subject.output else None
     failed_subjects: list[int] = []
+    # Each repeat's archive command, for a rehearsal's outcome.
+    archived: dict[int, bool | None] = {}
     try:
         for index in range(args.repeat):
             if budget.reached():
@@ -1294,6 +1301,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
                 status, artifact, models = done.status, done.answer, done.models
                 subject_usage, subject_cost = done.usage, done.cost
                 notes.extend(done.notes)
+                archived[index] = done.archived
             else:
                 status = rt.run(argv_subject, rt.workspace, env, streams, timeout_s=scn.subject.timeout_s)
                 lines = [r["line"] for r in CliStream.read(run_dir / "streams" / "cli.jsonl")[mark:] if r.get("s") == "out"]
@@ -1427,7 +1435,7 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
         notes.extend(rt.release())
     run.notes = notes
     if args.rehearsal:
-        run.rehearsal = RH.outcome(run.repeats, bool(failed_subjects), budget.cap)
+        run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived)
     data = R.write_results(run, run_dir / "results.json")
     problems = R.validate(data, SCHEMA)
     if problems == [R.UNVALIDATED]:  # no validator here: say so, and claim nothing
@@ -1463,9 +1471,14 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     if failed_subjects:
         print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
         return 6
-    if run.rehearsal and run.rehearsal["status"] == "capped":
-        print("the run's spend cap cut the rehearsal short, so it did not prove the pipeline to its end", file=sys.stderr)
-        return REHEARSAL_CAPPED
+    if run.rehearsal and run.rehearsal["status"] in ("capped", "incomplete"):
+        why = (
+            "the run's spend cap cut it short"
+            if run.rehearsal["status"] == "capped"
+            else "a step it exists to prove did not happen"
+        )
+        print(f"the rehearsal did not prove the pipeline to its end: {why}", file=sys.stderr)
+        return REHEARSAL_UNPROVEN
     if args.strict and summary["skipped"]:
         return 3
     return 0
