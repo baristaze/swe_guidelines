@@ -1520,7 +1520,7 @@ def source_run(runs: Path, outputs: dict[int, dict[str, str] | None], results: b
             run.A.write_manifest(art / "output.zip")
             record["archive"] = {**run.A.record(art / "output.zip", src), "commit": "c" * 40}
         repeats.append(record)
-    resolved = {
+    resolved: dict = {
         "run_id": src.name,
         "scenario": {"name": "built"},
         "runtime": {"name": "vm"},
@@ -1555,7 +1555,7 @@ def test_judge_judges_a_run_s_archived_output_again_and_records_no_subject_sessi
     [(_, told)] = sent_results("anthropic", started[0].requests[1])
     assert "class Journalist" in told  # the judge read the tree the source run archived
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
-    assert results["source"] == {"run_id": src.name, "path": str(src.resolve()), "repeats": [0], "refused": []}
+    assert results["source"] == {"run_id": src.name, "path": str(src.resolve()), "repeats": [0], "refused": [], "capped": []}
     (repeat,) = results["repeats"]
     assert repeat["archive"]["sha256"] == run.A.digest(src / "artifacts" / "0" / "output.zip")
     assert repeat["archive"]["commit"] == "c" * 40
@@ -1643,15 +1643,36 @@ def test_judge_caps_its_spend_at_the_judges_budgets_over_the_repeats_it_judges(t
     # Two judges at $5 each over the two repeats it judges: no phase's cap ($150 a repeat), not the scenario's $999.
     assert cap_of() == 20
     assert cap_of("--max-spend-usd", "7") == 7
-    # The flag's cap stops the spending: once the first repeat's judge passes it, no judge starts on the second.
+
+
+def only_run(folder: Path) -> tuple[dict, dict, str]:
+    """The run.json, the results.json, and the report of the one run folder under `folder`."""
+    (made,) = folder.iterdir()
+    read = [json.loads((made / name).read_text(encoding="utf-8")) for name in ("run.json", "results.json")]
+    return read[0], read[1], (made / "report.md").read_text(encoding="utf-8")
+
+
+def test_judge_starts_no_judge_on_a_repeat_its_cap_does_not_cover(tmp_path, monkeypatch, built):
+    src = source_run(tmp_path / "runs", {0: TREE, 1: TREE})
+    out = tmp_path / "judged"
     started = judges(monkeypatch)
-    assert run.main(["judge", "--source", str(src), "--out", str(out), "--max-spend-usd", "0.0001"]) == 0
-    assert len(started) == 1
-    (made,) = [d for d in out.iterdir() if (d / "results.json").exists()]  # the dry runs wrote run.json alone
-    results = json.loads((made / "results.json").read_text(encoding="utf-8"))
-    assert [r["index"] for r in results["repeats"]] == [0]
-    stopped = "the run's spend cap of $0.0001 was reached"
-    assert any(stopped in n and "repeat 1 and after were not judged" in n for n in results["notes"])
+    # $4 does not cover one repeat's judge budget, $5: no judge starts, and the notes say why.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "below"), "--max-spend-usd", "4"]) == 0
+    _, results, report = only_run(out / "below")
+    assert started == [] and results["repeats"] == []
+    assert results["source"]["repeats"] == [] and results["source"]["capped"] == [0, 1]
+    why = "repeat 0 and after were not judged: $4.0000 of the run's $4 spend cap is left, and the judges of a repeat may spend $5"
+    assert why in results["notes"]
+    assert (
+        "Repeat(s) 0, 1 of it were not judged: what was left of the run's spend cap did not cover their judges' budgets."
+        in report
+    )
+    # $5.001 covers the first repeat's judge; what that judge spent leaves too little for the second's.
+    assert run.main(["judge", "--source", str(src), "--out", str(out / "one"), "--max-spend-usd", "5.001"]) == 0
+    _, results, _ = only_run(out / "one")
+    assert len(started) == 1 and [r["index"] for r in results["repeats"]] == [0]
+    assert results["source"]["repeats"] == [0] and results["source"]["capped"] == [1]
+    assert any(n.startswith("repeat 1 and after were not judged") for n in results["notes"])
 
 
 def test_judge_refuses_a_flag_of_the_subject_and_a_run_refuses_a_source(tmp_path, monkeypatch, built, capsys):

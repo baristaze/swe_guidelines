@@ -111,7 +111,8 @@ class RunResult:
     # A rehearsal's outcome and where its money went; None for a run that is not one.
     rehearsal: dict[str, Any] | None = None
     # The run whose archived output this run judged again, with no subject run: its folder, the repeats
-    # judged, and each repeat refused with why; None for a run that ran its subject.
+    # judged, each repeat refused with why, and the repeats its spend cap kept from being judged; None for
+    # a run that ran its subject.
     source: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -645,6 +646,12 @@ def source_lines(source: dict[str, Any]) -> list[str]:
     ]
     for refused in source["refused"]:
         lines += [f"Repeat {refused['repeat']} of it was not judged: {sentence(refused['reason'])}", ""]
+    if source["capped"]:
+        named = ", ".join(str(i) for i in source["capped"])
+        lines += [
+            f"Repeat(s) {named} of it were not judged: what was left of the run's spend cap did not cover their judges' budgets.",
+            "",
+        ]
     return lines
 
 

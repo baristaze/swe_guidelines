@@ -1778,11 +1778,13 @@ def judge_again(
     except RF.StageError as exc:
         print(exc, file=sys.stderr)
         return 2
-    origin = {
+    # The repeats to judge; once the run ends, the repeats judged, and the rest under `capped`.
+    origin: dict[str, Any] = {
         "run_id": str(ran.get("run_id") or source.name),
         "path": V.shown(source, ROOT),
         "repeats": [r.index for r in repeats if not r.refused],
         "refused": [{"repeat": r.index, "reason": r.refused} for r in repeats if r.refused],
+        "capped": [],
     }
     notes = list(staged.notes)
     resolved: dict[str, Any] = {
@@ -1836,9 +1838,18 @@ def judge_again(
         source=origin,
     )
     budget = Budget(cap)
+    # A repeat's judges start only when what is left of the cap covers their budgets, so no judge is handed
+    # dollars the cap does not hold. The judges of a repeat that started still judge it.
+    need = S.judges_budget(scn, len(P.members(flags)))
+    to_judge = [r.index for r in repeats if not r.refused]
     for repeat in (r for r in repeats if not r.refused):
-        if budget.reached():
-            notes.append(f"{budget.says()}; repeat {repeat.index} and after were not judged")
+        if not budget.covers(need):
+            origin["capped"] = to_judge[to_judge.index(repeat.index) :]
+            left = (budget.cap or 0.0) - budget.spent
+            notes.append(
+                f"repeat {repeat.index} and after were not judged: ${left:.4f} of the run's ${budget.cap:g} spend cap is left, "
+                f"and the judges of a repeat may spend ${need:g}"
+            )
             break
         index = repeat.index
         kept = source / "artifacts" / str(index)
@@ -1854,6 +1865,7 @@ def judge_again(
         run.repeats.append(
             R.RepeatResult(index=index, exit_status={"code": 0}, artifact_paths=paths, judgements=[*judgements], archive=archive)
         )
+    origin["repeats"] = [r.index for r in run.repeats]
     run.notes = notes
     data, problems = write_record(run, run_dir)
     if problems:

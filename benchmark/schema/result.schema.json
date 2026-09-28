@@ -121,9 +121,9 @@
       }
     },
     "source": {
-      "description": "The run whose archived output this run judged again, with no subject run: that run's folder by name and path, the repeats judged, and each repeat refused with why. Only a run that judges another run's output again has it.",
+      "description": "The run whose archived output this run judged again, with no subject run: that run's folder by name and path, the repeats judged, each repeat refused with why, and the repeats the run's spend cap kept from being judged. Only a run that judges another run's output again has it.",
       "type": "object",
-      "required": ["run_id", "path", "repeats", "refused"],
+      "required": ["run_id", "path", "repeats", "refused", "capped"],
       "additionalProperties": false,
       "properties": {
         "run_id": { "type": "string", "minLength": 1 },
@@ -140,6 +140,11 @@
               "reason": { "type": "string", "minLength": 1 }
             }
           }
+        },
+        "capped": {
+          "description": "The repeats with an archive that the run's spend cap kept from being judged: what was left of it did not cover their judges' budgets.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
         }
       }
     },
