@@ -249,7 +249,9 @@ Facts that decide how the steps below go. Read them before the browser.
      without clicking a locked entry, do step 5, and poll as step 6
      says. Every field of the session is the second attempt's, and its
      `polls` count from 0, with thirty polls and thirty minutes of its
-     own. `note` keeps the first attempt, as one remark: the error in
+     own. A fallback on the first attempt holds for the second: it is
+     `smaller-mode` in place of `ok`, and `note` still names the locked
+     entry. `note` keeps the first attempt, as one remark: the error in
      the page's words, its URL, and its poll count. When the second
      attempt errors too, the session is `errored`, and there is no
      third.
@@ -275,19 +277,20 @@ Facts that decide how the steps below go. Read them before the browser.
    required key is there, no key is there that the schema does not
    list, and each value is inside the `type`, `enum`, `minimum`,
    `maximum`, and `format` the schema gives its key. A value outside
-   them is corrected from what the page showed, never bent to fit.
-9. Per site that has an answer, bring its score line into view, or its
-   first line where it has none. Click an empty margin of the page to
-   clear a stray selection or menu, `find` the line, and `scroll_to`
-   its reference. Where `find` is refused, scroll the conversation with
-   the `computer` tool's `scroll` until a screenshot shows the line.
-   Take one `zoom` of the conversation column with `save_to_disk`. Its
-   region is right of the sidebar and below the page's header, where
-   claude.ai writes the conversation's own title: it shows that line
-   and the chip, and no conversation title. Copy it into the
-   run folder as `<site>.jpg` with `python3` (`shutil.copyfile` from
-   the path the tool reports); the tool saves JPEG. These are the
-   evidence a pull request carries.
+   them is corrected, never bent to fit.
+9. Per site that sent the prompt, bring its score line into view, or,
+   where there is none, the first line the page wrote back: an answer,
+   a `refused` decline, or an `errored` message. Click an empty margin
+   to clear a stray selection or menu, `find` the line, and
+   `scroll_to` its reference. Where `find` is refused, scroll the
+   conversation with the `computer` tool's `scroll` until a screenshot
+   shows the line. Take one `zoom` of the conversation column with
+   `save_to_disk`. Its region is right of the sidebar and below the
+   page's header, where claude.ai writes the conversation's own title:
+   it shows that line and the chip, and no conversation title. Copy it
+   into the run folder as `<site>.jpg` with `python3`
+   (`shutil.copyfile` from the path the tool reports); the tool saves
+   JPEG. These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
 11. Only when `$ARGUMENTS` has `compare=`. List the earlier runs with
     `python3`:
@@ -301,8 +304,8 @@ Facts that decide how the steps below go. Read them before the browser.
     site, a column per run headed by its `run_id` and
     `repository_head`, and in each cell the score, the model and effort
     labels, and `read_version`. Only `ok` sessions are compared; any
-    other shows its status. A key an earlier run does not have, such as
-    `read_version` or `repository_head`, shows as `not recorded`.
+    other shows its status. A key an earlier run lacks shows as
+    `not recorded`.
 
 ## Output
 

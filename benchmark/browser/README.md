@@ -36,7 +36,7 @@ chatgpt.com.md        the answer as the page showed it, under a header with the 
 claude.ai.md
 gemini.google.com.md
 grok.com.md
-chatgpt.com.jpg       a screenshot of the finished conversation, the score line and the chip in view; none for a site with no answer
+chatgpt.com.jpg       a screenshot of the finished conversation, the score line and the chip in view; none for a site not signed in or not run
 claude.ai.jpg
 gemini.google.com.jpg
 grok.com.jpg
