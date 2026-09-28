@@ -544,7 +544,7 @@ def test_agentic_judges_read_references_of_the_checkout_and_of_a_repository():
     assert (reference.repository, reference.tag, reference.paths) == ("https://github.com/acme/acme-system", "v0.7.0", [])
     # What the scenario sets replaces a default; the rest stay.
     assert judges.budget == A.Budget(tool_calls=60, wall_s=1800.0, max_usd=5.0)
-    assert judges.budget.max_output_tokens == 16_000 and judges.budget.submits == 3
+    assert judges.budget.submits == 3
     assert scn.as_dict()["judges"] == {
         "providers": "3",
         "effort": "medium",
@@ -606,7 +606,7 @@ def test_a_reference_is_checked_when_the_scenario_loads(refs, message):
     [
         ({"tool_calls": 0}, r"budget\.tool_calls: a whole number of at least 1, got 0"),
         ({"input_tokens": 1.5}, r"budget\.input_tokens: a whole number"),
-        ({"max_output_tokens": True}, r"budget\.max_output_tokens: a whole number"),
+        ({"max_output_tokens": 16000}, r"unknown key\(s\) max_output_tokens"),  # no token limit cuts an answer
         ({"max_usd": 0}, r"budget\.max_usd: an amount above 0, got 0"),
         ({"wall_s": float("inf")}, r"budget\.wall_s: an amount above 0"),
         ({"max_usd": "3"}, r"budget\.max_usd: an amount above 0"),

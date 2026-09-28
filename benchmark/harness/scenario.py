@@ -544,7 +544,7 @@ def _judges(raw: Any, name: str) -> JudgeSpec:
 
 
 # A budget's whole-number bounds; the rest, wall_s and max_usd, are amounts above 0.
-WHOLE_BOUNDS = ("tool_calls", "input_tokens", "submits", "max_output_tokens")
+WHOLE_BOUNDS = ("tool_calls", "input_tokens", "submits")
 
 
 def _budget(raw: Any, where: str) -> A.Budget:
