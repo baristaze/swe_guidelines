@@ -1242,22 +1242,28 @@ artifacts, all but its judge prompt: the archive, its manifest, the
 answer, and the collected files. The judges read the archive's tree, as
 a run's judges do, and the repeat's `judge-prompt.md` is this run's
 own. `results.json` names the source under `source`: its run folder,
-its path, the repeats judged, and each repeat refused with why. Each
+its path, the repeats judged, each repeat refused with why, and the
+repeats the run's spend cap kept from being judged, under `capped`. Each
 repeat records its archive, its SHA-256 included, and its judgements.
 No subject ran, so a repeat records no session and no subject spend,
 and its exit status is 0. How the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
-report opens with the source and the repeats refused.
+report opens with the source, the repeats refused, and the repeats the
+cap kept from being judged.
 
 **Its spend.** The run's spend cap is the sum of the selected judges'
 dollar budgets over the repeats it judges: four judges at $45 over one
 repeat is $180. No phase runs, so no phase's cap is in it, and neither
 is the scenario's `max_spend_usd`, which covers a subject too.
-`--max-spend-usd` overrides it. The cap is checked before each repeat,
-as a run checks it, and the judges of a repeat that started still judge
-it. `--dry-run` resolves the source, the repeats, the references, and
-the cap, writes `run.json`, and calls no judge. Like a dry run of a
+`--max-spend-usd` overrides it. A repeat's judges start only when what
+is left of the cap covers their dollar budgets, so no judge is handed
+dollars the cap does not hold. Otherwise that repeat, and every one
+after it, is not judged, and the notes say why. The judges of a repeat
+that started still judge it, and a judge can end above its budget by
+about one call (see Agentic judges). `--dry-run` resolves the source,
+the repeats, the references, and the cap, writes `run.json`, and calls
+no judge. Like a dry run of a
 scenario, it leaves a run folder that holds `run.json` alone, which
 `make runs` fails on under `benchmark/runs/`: remove it, or pass
 `--out` elsewhere. A `judge` that spends holds this machine awake until
@@ -1267,9 +1273,14 @@ it ends (see Preflight).
 `--with`, `--repeat`, `--runtime`, `--runtime-config`, `--target`,
 `--subject-model`, `--preflight`, `--rehearsal`, `--build`, and
 `--screencast-port` are refused with exit 2. A run of a scenario
-refuses `--source`, since it would run the subject. A source that is a
-rehearsal gives a run folder marked as one, and `make runs` refuses it
-too.
+refuses `--source`, since it would run the subject.
+
+A source that is a rehearsal is judged within a rehearsal's bounds.
+Each judge gets the stub budget a rehearsal's judges get (see
+Rehearsal), and the run's cap is the judges' stub budgets over the
+repeats, at most $5. `--max-spend-usd` can lower that cap, and a flag
+that would raise it is refused with exit 2. The run folder is marked a
+rehearsal, and `make runs` refuses it too.
 
 ## Streams
 
