@@ -20,19 +20,13 @@ records them beside the scores. They never cap a score.
 
 | Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Cost (USD) | Commit | Claude Code |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| [create-full-system-447562f8](20260928-104821-create-full-system-447562f8/report.md) | 2026-09-28 06:33 | `claude-opus-5-5` | high | 1 | 81.2 | 73.2 | 97.0 | 79.6 | **82.8** | $200.41 | `09aad2f` | — |
+| [create-full-system-447562f8](20260928-104821-create-full-system-447562f8/report.md) | 2026-09-28 06:33 | `claude-opus-5-5` | high | 1 | 81.2 | 73.2 | 97.0 | 79.6 | **82.8** | $200.41 | `3009fa9`, `7e03524`, `09aad2f` | 2.1.283 |
 
 ## create-full-system-447562f8
 
-A run with extras, in three folders. The first ran the scaffold, which
-ended with subagent calls that had no result, so the harness ended the
-repeat there and no judge scored it. The second resumed from the
-scaffold's milestone. It ran the MVP, the review, the close, and the
-four judges, and the openai judge hit its provider's rate limit and
-scored nothing. The third ran that judge again and carried the other
-three, so its scores are the run's. The subject ran on Claude Code
-2.1.283, from `3009fa9` for the scaffold and `7e03524` for the rest.
-The third folder ran no subject, so it records no Claude Code.
+A run with extras, in three folders: the scaffold, its resume after
+the scaffold, and a resume of its judges. Its scores are the newest
+folder's.
 
 | Repeat | Stage | Folder | Status | Cost (USD) | Time |
 | --- | --- | --- | --- | --- | --- |
