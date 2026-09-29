@@ -26,18 +26,19 @@ arguments or in the conversation.
 Example: `free_journalism --first journalists Journalist display_name:str`.
 
 - `<name>` is the project's code name, its Python package, and its
-  folder at once: one or two snake_case words of at most 17 characters,
-  never a standard-library module, a Python keyword, or `acme`. The
-  bound keeps `<name-kebab>-production-api`, the longest load balancer
-  target group name the copy's Terraform makes, within AWS's 32
-  characters, so the name survives the first cloud deploy. With no name
-  given, take it from the product's own name in the spec or the
+  folder at once: one or two snake_case words, never a standard-library
+  module, a Python keyword, or `acme`, and no longer than the bound
+  `new.py` holds it to, `MAX_NAME_LENGTH` (17 characters). The bound
+  keeps `<name-kebab>-production-api`, the API's target group, within
+  the 32 characters AWS allows, so the name survives the first cloud
+  deploy; `new.py` refuses a longer name and says the bound. With no
+  name given, take it from the product's own name in the spec or the
   description, in at most two words, leaving out a word any product
   could carry, such as platform, app, or system (`Free Journalism
-  Platform` gives `free_journalism`). When that name is longer than 17
-  characters, take a shorter one the product gives: its short name, one
-  of its two words, or an abbreviation of them. Ask only when the
-  product names nothing.
+  Platform` gives `free_journalism`). When that name passes the bound,
+  take a shorter one the product gives: its short name, one of its two
+  words, or an abbreviation of them. Ask only when the product names
+  nothing.
 - The folder is `<name>` in the current directory. It must not exist,
   or must be empty: an empty folder of that name is no collision, and
   the copy goes into it. Refuse when the current directory is inside a
