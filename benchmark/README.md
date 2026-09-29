@@ -168,18 +168,21 @@ earlier one wrote.
 
 A run folder under `benchmark/runs/` is checked in, and only after
 `uv run benchmark/run.py redact --out benchmark/runs` has scanned it
-for keys (see The workflow). `runs/README.md` is the index: one row per
-run, newest first, linking to its report. The pull request that adds a
-run adds its row by hand; nothing generates it. `make runs`, part of
+for keys, and for the account ids and limit figures that OpenAI's,
+Anthropic's, and xAI's errors name (see The workflow). `runs/README.md`
+is the index: one row per run, newest first, linking to its report.
+The pull request that adds a run adds its row by hand; nothing
+generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
 (see Versions), on a run whose runtime its scenario does not list
 (see Where a scenario runs), on a rehearsal (see Rehearsal), on a run
-with a marked repeat (see A subject in phases), and on a
-compressed file in a run folder that holds a string shaped like a key,
-or that the scan cannot read, on a `.zip` that does not open, and on a
-`.git` folder (see The workflow).
+with a marked repeat (see A subject in phases), on a file in a run
+folder, plain or compressed, that holds a string shaped like a key or
+an account id or a limit's figures that `run.py redact` replaces, on a
+compressed file the scan cannot read, on a `.zip` that does not open,
+and on a `.git` folder (see The workflow).
 
 ## Versions
 
@@ -1624,6 +1627,23 @@ writes the summary or uploads the run folders, it runs
 file of every run folder as bytes, frames included, and replaces two
 things with `[redacted]`: the value of every provider key the harness
 knows by name, and anything shaped like a provider, GitHub, or AWS key.
+Every failed judge call is recorded: in the judge's transcript, and in
+`results.json` and `report.md` when the judge gives up. Three providers'
+errors name the account behind the key, so the scan also replaces these
+with `[redacted]`:
+
+- OpenAI's organization id, `org-` and 20 or more letters and digits,
+  wherever it stands, and the figures of the limit its 429 hit, written
+  as `Limit [redacted], Used [redacted], Requested [redacted]`.
+- Anthropic's organization id and the figure of its per-minute limit,
+  as its 429 names them: `the rate limit for your organization (<uuid>)
+  of N ... per minute`. The figure goes where the 429 names no id too.
+- xAI's team id, as its out-of-credit 429 names it: `Your team <uuid>
+  has either used all available credits ...`.
+
+No placeholder holds a quote or a backslash, so a JSON file stays JSON,
+and a second pass changes nothing.
+
 A compressed file hides its text from a scan of its bytes, so the scan
 unpacks the forms the standard library reads: a zip, member by member,
 names and comment included; a tar, member by member; and a gzip, bzip2,

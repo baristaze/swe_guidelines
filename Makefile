@@ -47,7 +47,7 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
 
-runs:              ## the index of the benchmark runs has one row per run folder, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, and no compressed file holds a key
+runs:              ## the index of the benchmark runs has one row per run folder, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, and no file holds a key or a provider account's id
 	$(PYTHON_YAML) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings

@@ -1,10 +1,13 @@
 """scripts/check_runs.py: the index of the benchmark runs names every run folder once, in its scenario's section."""
 
+import gzip
 import io
 import json
 import zipfile
 
 import pytest
+
+from test_benchmark_redact import ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429
 
 HEAD = "| Run | Scenario |\n|---|---|\n"
 
@@ -453,7 +456,7 @@ def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
     a_zip(repo, ONE_A, {"README.md": "clean\n"})
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 0
-    assert "no key in a compressed file" in capsys.readouterr().out
+    assert "no key or account id in any file" in capsys.readouterr().out
 
 
 def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
@@ -469,8 +472,6 @@ def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
 
 
 def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_fails(repo, runs, capsys):
-    import gzip
-
     a_scenario(repo, "alpha", ["vm"])
     a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
     folder = repo.root / "benchmark" / "runs" / ONE_A / "artifacts" / "0" / "workspace"
@@ -478,7 +479,7 @@ def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_
     (folder / "site" / ".git" / "objects" / "ab").write_bytes(b"x")
     (folder / "env.json.gz").write_bytes(gzip.compress(b'{"key": "sk-ant-api03-' + b"a1B2" * 12 + b'"}'))
     (folder / "bundle.zst").write_bytes(b"\x28\xb5\x2f\xfd" + b"frame")
-    (folder / "notes.md").write_text("plain text is redact's to scan\n", encoding="utf-8")
+    (folder / "notes.md").write_text("plain text with nothing to redact passes\n", encoding="utf-8")
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     out = capsys.readouterr().out
@@ -487,3 +488,52 @@ def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_
     assert f"{workspace}/env.json.gz holds a string shaped like a key" in out
     assert f"{workspace}/bundle.zst: (not scanned: a compressed form the scan cannot read)" in out
     assert "3 run index mismatch(es)" in out
+
+
+ORGANIZATION = "org-" + "Qw3Er5Ty7Ui9" * 2
+
+
+def test_an_organization_id_in_any_file_plain_or_compressed_fails_until_it_is_redacted(repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    folder = repo.root / "benchmark" / "runs" / ONE_A
+    said = f"Rate limit reached for gpt-6-sol in organization {ORGANIZATION} on tokens per min (TPM)."
+    (folder / "judgements").mkdir()
+    (folder / "judgements" / "0-openai.jsonl").write_text(json.dumps({"error": said}) + "\n", encoding="utf-8")
+    (folder / "judgements" / "0-openai.jsonl.gz").write_bytes(gzip.compress(said.encode()))
+    a_zip(repo, ONE_A, {"logs/judge.log": said})
+    # A limit's figures alone fail too: they are the account's quota.
+    (folder / "report.md").write_text("# Benchmark run\n\nLimit 30000, Used 28172, Requested 4096.\n", encoding="utf-8")
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    shown = f"benchmark/runs/{ONE_A}"
+    places = ("judgements/0-openai.jsonl", "judgements/0-openai.jsonl.gz", "artifacts/0/output.zip: logs/judge.log", "report.md")
+    found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
+    for where in places:
+        assert f"{shown}/{where} holds {found}" in out
+    assert "4 run index mismatch(es)" in out
+    redacted = runs.X.redact_folder(folder, set())
+    assert sorted(redacted) == sorted(path for path in folder.rglob("*") if path.suffix in (".jsonl", ".gz", ".zip", ".md"))
+    assert runs.main() == 0
+    assert "no key or account id in any file" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("said", [ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429], ids=["anthropic", "anthropic-no-id", "xai"])
+def test_the_account_the_other_judges_errors_name_fails_in_any_file_until_it_is_redacted(said, repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    folder = repo.root / "benchmark" / "runs" / ONE_A
+    (folder / "judgements").mkdir()
+    (folder / "judgements" / "0-judge.jsonl").write_text(json.dumps({"error": said}) + "\n", encoding="utf-8")
+    (folder / "judgements" / "0-judge.jsonl.gz").write_bytes(gzip.compress(said.encode()))
+    a_zip(repo, ONE_A, {"logs/judge.log": said})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    shown = f"benchmark/runs/{ONE_A}"
+    for where in ("judgements/0-judge.jsonl", "judgements/0-judge.jsonl.gz", "artifacts/0/output.zip: logs/judge.log"):
+        assert f"{shown}/{where} holds a string shaped like a key, or an account id" in out
+    assert "3 run index mismatch(es)" in out
+    assert len(runs.X.redact_folder(folder, set())) == 3
+    assert runs.main() == 0

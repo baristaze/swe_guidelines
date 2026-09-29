@@ -1141,7 +1141,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="run",
         choices=["run", "judge", "resume", "list", "redact"],
         help="run a scenario, judge a run's archived output again, resume a run from a phase's milestone, "
-        "list what there is, or redact every key from the run folders under --out",
+        "list what there is, or redact every key and provider account id from the run folders under --out",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument(
@@ -1258,7 +1258,7 @@ def command_list(out: Path) -> int:
 
 
 def command_redact(out: Path) -> int:
-    """Redact every key value and every key-shaped string from the run folders, in place.
+    """Redact every key value, key-shaped string, organization id, and limit's figures from the run folders, in place.
 
     A file that cannot be read or written is named, the rest are redacted
     still, and the command exits 1, so nothing unredacted is shown or
@@ -1267,8 +1267,8 @@ def command_redact(out: Path) -> int:
     failed: dict[Path, str] = {}
     found = X.redact_folder(out, X.key_values(), failed)
     for path, count in found.items():
-        print(f"redacted {count} key(s) in {path.relative_to(out)}")
-    print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
+        print(f"redacted {count} string(s) in {path.relative_to(out)}")
+    print(f"redacted {sum(found.values())} string(s) in {len(found)} file(s) under {out}")
     for path, reason in failed.items():
         print(f"could not redact {path.relative_to(out)}: {reason}", file=sys.stderr)
     return 1 if failed else 0
