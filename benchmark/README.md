@@ -170,16 +170,18 @@ A run folder under `benchmark/runs/` is checked in, and only after
 `uv run benchmark/run.py redact --out benchmark/runs` has scanned it
 for keys, and for the account ids and limit figures that OpenAI's,
 Anthropic's, and xAI's errors name (see The workflow). `runs/README.md`
-is the index: one row per run, newest first, linking to its report. The pull request that adds a
-run adds its row by hand; nothing generates it. `make runs`, part of
+is the index: one row per run, newest first, linking to its report.
+The pull request that adds a run adds its row by hand; nothing
+generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
 (see Versions), on a run whose runtime its scenario does not list
-(see Where a scenario runs), on a rehearsal (see Rehearsal), on a file
-in a run folder, plain or compressed, that holds a string shaped like a
-key or an account id or a limit's figures that `run.py redact` replaces,
-on a compressed file the scan cannot read, on a `.zip` that does not open,
+(see Where a scenario runs), on a rehearsal (see Rehearsal), on a run
+with a marked repeat (see A subject in phases), on a file in a run
+folder, plain or compressed, that holds a string shaped like a key or
+an account id or a limit's figures that `run.py redact` replaces, on a
+compressed file the scan cannot read, on a `.zip` that does not open,
 and on a `.git` folder (see The workflow).
 
 ## Versions
@@ -580,14 +582,24 @@ result returns to the session that asked for it. In print mode, a task
 left in the background ends the main agent's turn, and the session
 never gives it back. The runtimes hand the subject its environment each
 their own way, and a word of its command reaches it the same way on all
-three. The session runs with `--output-format
-stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
-and the answer, the models, and the spend are read from its last line,
-the result. Each repeat records `subject_models`, the models the result
-reports under `modelUsage`, and a run notes a repeat whose result does
-not report the pinned model. A result with `is_error` set is a failed
-repeat, whatever the exit code. A skill subject is bounded by money and
-time: `max_usd`, which every skill subject names, goes to Claude Code
+three. The same `env` sets `ARCH_CHECK` to arch-check from the staged
+plugin's `checkers`:
+`uvx --python "$(shell cat .python-version)" --from <plugin>/checkers arch-check`.
+The scaffold's Makefile sets `ARCH_CHECK ?=` to a uvx command that
+fetches this repository whole, at the release the tree pins, into the
+subject's HOME, and a release can hold run folders: every finished tree
+of a scenario, the judges' gaps, and the review's report. `?=` lets the
+environment win, so `make arch-check` builds the checker from the staged
+copy, on the tree's Python, and no subject is handed a run folder. The
+gates on the final tree run with the same two variables. The session
+runs with `--output-format stream-json --verbose`, so every turn is a
+line of `streams/cli.jsonl`, and the answer, the models, and the spend
+are read from its last line, the result. Each repeat records
+`subject_models`, the models the result reports under `modelUsage`, and
+a run notes a repeat whose result does not report the pinned model. A
+result with `is_error` set is a failed repeat, whatever the exit code.
+A skill subject is bounded by money and time: `max_usd`, which every
+skill subject names, goes to Claude Code
 as `--max-budget-usd`, and `timeout_s` ends the session. A turn count is
 no bound. A scenario may name `max_turns`, and only then does Claude
 Code get `--max-turns`. The harness also holds the spend from the
@@ -792,6 +804,26 @@ did not run under `ended_early`, and no later repeat starts.
   under `pending_agents`. The phases after it would build on work the
   session never finished. A phase that hit a bound ends `capped`,
   pending calls or not.
+
+**A subject that names the run folders.** The run folders under
+`benchmark/runs/` hold every finished tree of a scenario, the judges'
+gaps, and the review's report. The subject keeps the public internet,
+so a subject that goes looking can find them. So after each phase the
+harness reads its stream for a tool call whose input names them: any
+string of the input, as the message shows it or as the call was sent,
+that holds `benchmark/runs` as whole path segments. A Read, Grep, or
+Glob path, a Bash command, a WebFetch URL, and a subagent's prompt all
+count, and a subagent's calls count as the main agent's do.
+`swe-benchmark/runs` and `benchmark/runs-old` do not. The phase's record
+names each such call under `read_runs`: its tool, its id, the key of
+its input, and the value, cut to 300 characters. Its repeat is marked:
+the repeat's `read_runs` lists every call of its phases, a carried
+phase's too, each with its phase. The report opens with them under
+`## Marked`, the notes name the first, and the run exits 10 once its
+record is written. Nothing else changes: the phases after it run, and
+the repeat is judged. `make runs` refuses a run folder with a marked
+repeat, so the scores of a subject that may have read an earlier run's
+answers are never checked in.
 
 **The output.** After the last phase that ran, the harness archives the
 last checkpoint with `git archive --format=zip` and brings it back as
@@ -1326,7 +1358,9 @@ No subject ran, so a repeat records no subject spend, and its exit
 status is 0. Its `phases` are the ones its source's repeat ran, each
 with its name, session, status, and cap, and none of its spend. So a
 folder `judge` wrote, judged again, tells its judges what its own
-source ran. The rest of how the subject ended is in the source run's
+source ran. A phase keeps its `read_runs` too, so a repeat whose source
+was marked stays marked, and the run exits 10 (see A subject in
+phases). The rest of how the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
 report opens with the source, the repeats refused, the repeats the cap

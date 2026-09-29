@@ -72,10 +72,11 @@ lenses (`skills/`), and the checkers that keep the three consistent
   Anthropic's, and xAI's errors name. The pull request that adds one
   adds its row to `benchmark/runs/README.md`, the index, by hand, and
   `scripts/check_runs.py` holds every run folder to one row, to a
-  runtime its scenario lists, to no rehearsal, to no key-shaped string,
-  account id, or limit figure that `run.py redact` replaces in any file
-  it holds, plain or compressed, and to no `.git`. It reads the scenarios and scans the files through
-  the harness, so `make runs` brings `pyyaml`.
+  runtime its scenario lists, to no rehearsal, to no marked repeat, to
+  no key-shaped string, account id, or limit figure that `run.py redact`
+  replaces in any file it holds, plain or compressed, and to no `.git`.
+  It reads the scenarios and scans the files through the harness, so
+  `make runs` brings `pyyaml`.
   `make benchmark` runs the smoke scenario in a container, its image
   built first, and is not part of `make check`, because a run calls
   paid APIs.
