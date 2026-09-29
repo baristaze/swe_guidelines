@@ -89,7 +89,22 @@ class RepeatResult:
         for key in ("phases", "archive", "gates", "cut_short", "ended_early"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
+        if read := self.read_runs():
+            out["read_runs"] = read
         return out
+
+    def read_runs(self) -> list[dict[str, Any]]:
+        """The repeat's mark: each tool call of its phases, a carried phase's too, that named the benchmark's run folders.
+
+        Each call carries its phase. A repeat with one had an earlier run's
+        answers in its subject's reach, and its run is never checked in.
+        """
+        return [
+            {"phase": str(phase.get("name")), **call}
+            for phase in self.phases or []
+            for call in phase.get("read_runs") or []
+            if isinstance(call, dict)
+        ]
 
 
 @dataclass
@@ -652,6 +667,24 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
     return [*lines, ""]
 
 
+def read_runs_lines(repeats: list[RepeatResult]) -> list[str]:
+    """The report's section on the marked repeats: each tool call whose input named the benchmark's run folders."""
+    calls = [(repeat.index, call) for repeat in repeats for call in repeat.read_runs()]
+    if not calls:
+        return []
+    lines = [
+        "## Marked",
+        "",
+        "A subject named the benchmark's run folders in a tool call, so an earlier run's answers were in its",
+        "reach. This run is never checked in, and it exits 10.",
+        "",
+    ]
+    for index, call in calls:
+        value = " ".join(str(call["value"]).split())
+        lines.append(f"- repeat {index}, phase `{call['phase']}`: `{call['tool']}` with `{call['key']}` `{value}`")
+    return [*lines, ""]
+
+
 def source_lines(source: dict[str, Any]) -> list[str]:
     """The opening lines of a run that started from another: that run, what this one took of it, and what was refused.
 
@@ -767,6 +800,7 @@ def report_text(run: RunResult) -> str:
         lines += [f"Optional groups taken: {taken}." if groups else "Optional groups taken: none.", ""]
     if run.rehearsal:
         lines += rehearsal_lines(run.rehearsal)
+    lines += read_runs_lines(run.repeats)
     if run.source:
         lines += source_lines(run.source)
     lines += ["## Scores", ""]

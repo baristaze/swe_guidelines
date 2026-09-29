@@ -43,6 +43,9 @@ it resumes onto it. This holds them together:
   is marked `rehearsal`. A rehearsal ran with every bound cut small, so
   its scores mean nothing, and it may have run on changes no commit
   holds;
+- no repeat of a run folder is marked: its `results.json` names, under
+  `read_runs`, a tool call whose input named the benchmark's run
+  folders. That subject had an earlier run's answers in its reach;
 - every run that records its runtime ran on one its scenario lists. The
   scenario is the file under `benchmark/scenarios/` whose `name` is the
   one the run records, as the file is now: a run on a runtime the
@@ -222,6 +225,23 @@ def rehearsed(folder: Path) -> bool:
     return bool(record(folder).get("rehearsal") or record(folder, "run.json").get("rehearsal"))
 
 
+def read_runs(folder: Path) -> list[str]:
+    """Each marked repeat of a run folder, with the first call that marks it: the repeat's `read_runs`, or a phase's."""
+    listed = record(folder).get("repeats")
+    out = []
+    for repeat in listed if isinstance(listed, list) else []:
+        if not isinstance(repeat, dict):
+            continue
+        calls = list(repeat.get("read_runs") or [])
+        phases = repeat.get("phases")
+        for phase in phases if isinstance(phases, list) else []:
+            calls += (phase.get("read_runs") or []) if isinstance(phase, dict) else []
+        first = next((c for c in calls if isinstance(c, dict)), None)
+        if first is not None:
+            out.append(f"repeat {repeat.get('index')}, {first.get('tool')} with {first.get('key')} {first.get('value')!r}")
+    return out
+
+
 def unlisted(folder: Path, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
     """Why a run's runtime is not one its scenario lists, or None when it is or the run records no runtime or no scenario."""
     ran_on = runtime(folder)
@@ -389,6 +409,11 @@ def check(errors: list[str]) -> int:
     for run in runs:
         if rehearsed(run):
             errors.append(f"{shown(run)}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in")
+        for marked in read_runs(run):
+            errors.append(
+                f"{shown(run)}: {marked} named the benchmark's run folders, so its subject had an "
+                "earlier run's answers in reach; a marked run is never checked in"
+            )
         reason = unclean(run)
         if reason:
             errors.append(f"{shown(run)}: {reason}; a checked-in run names a commit that holds what ran")
@@ -409,7 +434,7 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
-        "total, on a runtime its scenario lists, no rehearsal, no key in a compressed file"
+        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key in a compressed file"
     )
     return 0
 

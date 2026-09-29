@@ -337,7 +337,7 @@
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
           "phases": {
-            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran. In a run that judges another run's output again, the phases the source's repeat ran, each with its name, session, status, and cap, and none of its spend.",
+            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran. In a run that judges another run's output again, the phases the source's repeat ran, each with its name, session, status, cap, and read_runs, and none of its spend.",
             "type": "array",
             "items": { "$ref": "#/$defs/phase" }
           },
@@ -356,6 +356,11 @@
               "reason": { "type": "string", "enum": ["no_tree", "incomplete"] },
               "not_run": { "type": "array", "items": { "type": "string" } }
             }
+          },
+          "read_runs": {
+            "description": "The mark of a repeat whose subject named the benchmark's run folders: each tool call of its phases, a carried phase's too, whose input named them, with its phase. A run with a marked repeat exits 10 and is never checked in.",
+            "type": "array",
+            "items": { "$ref": "#/$defs/read_call" }
           },
           "archive": {
             "description": "The output's last commit as a zip: its path and its manifest's in the run folder, its SHA-256, its size, how many files it holds, and the commit.",
@@ -738,7 +743,25 @@
             "additionalProperties": false,
             "properties": { "id": { "type": "string" }, "description": { "type": "string" } }
           }
+        },
+        "read_runs": {
+          "description": "The tool calls of the session whose input named the benchmark's run folders.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/read_call" }
         }
+      }
+    },
+    "read_call": {
+      "description": "A tool call whose input named the benchmark's run folders: its tool, its id, the key of its input that named them, and that value, cut to 300 characters; in a repeat's mark, its phase too.",
+      "type": "object",
+      "required": ["tool", "id", "key", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "phase": { "type": "string" },
+        "tool": { "type": "string" },
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "value": { "type": "string" }
       }
     },
     "content": {

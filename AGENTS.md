@@ -77,9 +77,10 @@ lenses (`skills/`), and the checkers that keep the three consistent
   and `scripts/check_runs.py` holds every run folder to its scenario's
   folder and to one row, as its run or a part of its chain, each row to
   its chain's cost, and every run folder to a runtime its scenario
-  lists, to no rehearsal, to no key-shaped string inside a compressed
-  file it holds, and to no `.git`. It reads the scenarios, the chains,
-  and the compressed files through the harness, so `make runs` brings
+  lists, to no rehearsal, to no marked repeat, to no key-shaped string
+  inside a compressed file it holds, and to no `.git`. It reads the
+  scenarios, the chains, and the compressed files through the harness,
+  so `make runs` brings
   `pyyaml`.
   `make benchmark` runs the smoke scenario in a container, its image
   built first, and is not part of `make check`, because a run calls
