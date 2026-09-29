@@ -1,0 +1,4 @@
+# What a merge to main applies to a cloud, and what holds the credentials.
+/deployment/        @baristaze
+/.github/           @baristaze
+/scripts/cloud_*.sh @baristaze

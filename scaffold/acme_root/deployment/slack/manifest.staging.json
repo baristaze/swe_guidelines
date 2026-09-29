@@ -1,0 +1,66 @@
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "Acme (staging)",
+    "description": "Your team's to-do list, in Slack.",
+    "background_color": "#1f2937",
+    "long_description": "Acme keeps a team's to-do list, for the people and the agents that work alongside them. In Slack, `/acme` shows your newest open tasks, `/acme team` the team's, and `/acme add <title>` adds one, made by you. `/acme connect` picks the channel Acme posts reminders and task updates to. Each org installs the app from its settings in Acme, and Acme knows you by the email of your Slack profile. This is the staging app: it serves Acme's staging environment and its test data."
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": false,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "acme",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/acme",
+        "url": "https://api.staging.acme.example/webhooks/slack/commands",
+        "description": "Your open tasks; team, add, connect, or help",
+        "usage_hint": "[team | add <title> | connect | help]",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://api.staging.acme.example/webhooks/slack/oauth"
+    ],
+    "scopes": {
+      "bot": [
+        "commands",
+        "chat:write",
+        "app_mentions:read",
+        "users:read",
+        "users:read.email",
+        "channels:read",
+        "groups:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://api.staging.acme.example/webhooks/slack/events",
+      "bot_events": [
+        "app_home_opened",
+        "app_mention",
+        "app_uninstalled",
+        "tokens_revoked",
+        "member_joined_channel"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": false
+    },
+    "org_deploy_enabled": true,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": true
+  }
+}

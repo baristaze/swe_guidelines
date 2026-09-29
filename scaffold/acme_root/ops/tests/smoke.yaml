@@ -1,0 +1,10 @@
+# The scenario the ops tests parse: the shape ops/stress/<name>.yaml has.
+name: smoke
+profile: light
+duration_seconds: 30
+ramp_seconds: 5
+target:
+  p95_ms: 500
+  error_ratio: 0.01
+weights:
+  full: 1

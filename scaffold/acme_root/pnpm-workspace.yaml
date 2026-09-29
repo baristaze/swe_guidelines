@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+
+# Dependencies whose install scripts may run. esbuild downloads its binary.
+allowBuilds:
+  esbuild: true
+
+# openapi-typescript 7 declares typescript ^5 but generates an identical
+# schema under 6; TypeScript 7 stays out until typescript-eslint supports it.
+peerDependencyRules:
+  allowedVersions:
+    openapi-typescript>typescript: "6"

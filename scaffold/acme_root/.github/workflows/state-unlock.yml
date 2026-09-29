@@ -1,0 +1,83 @@
+# Break-glass for one thing: the state lock an apply left behind when it
+# was killed. No person or agent holds a credential that writes, so the lock
+# is removed here, under the environment's own deploy role and behind the
+# same gate its deploy has: staging on `main`, production on `release` with
+# the required reviewer. Dispatch it on that branch, with the lock's id from
+# the failed run's log, and only once the run that took it is certainly gone.
+#
+# The lock is the `.tflock` object beside the state (`use_lockfile`). The
+# job prints what the lock holds, refuses when the id differs, and deletes
+# it; it touches no state.
+name: state-unlock
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment whose lock to remove.
+        required: true
+        type: choice
+        options: [staging, production]
+      lock_id:
+        description: The lock's ID, from the failed run's "Error acquiring the state lock".
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: state-unlock
+  cancel-in-progress: false
+
+env:
+  # The region deployment/cloud/environments.json names.
+  AWS_REGION: us-west-2
+
+jobs:
+  unlock:
+    name: remove ${{ inputs.environment }}'s state lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: dispatched on the environment's branch
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          REF: ${{ github.ref }}
+        run: |
+          case "$ENVIRONMENT:$REF" in
+            staging:refs/heads/main|production:refs/heads/release) ;;
+            *) echo "::error::$ENVIRONMENT's lock is removed from its own branch only (staging: main, production: release), not $REF"; exit 1 ;;
+          esac
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: the lock, checked, then removed
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          LOCK_ID: ${{ inputs.lock_id }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          case "$ENVIRONMENT" in
+            staging) key="environments/staging/terraform.tfstate.tflock" ;;
+            production) key="environments/prod/terraform.tfstate.tflock" ;;
+          esac
+          if ! aws s3 cp "s3://$TF_STATE_BUCKET/$key" lock.json --quiet 2>/dev/null; then
+            echo "$ENVIRONMENT holds no state lock; nothing to remove." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## the lock on $ENVIRONMENT"
+            echo '```json'
+            cat lock.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          held="$(jq -r .ID lock.json)"
+          if [ "$held" != "$LOCK_ID" ]; then
+            echo "::error::the lock held is $held, not $LOCK_ID; nothing is removed."
+            exit 1
+          fi
+          aws s3 rm "s3://$TF_STATE_BUCKET/$key"
+          echo "Removed lock \`$LOCK_ID\`." >> "$GITHUB_STEP_SUMMARY"

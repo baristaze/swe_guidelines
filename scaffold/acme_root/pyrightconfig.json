@@ -1,0 +1,11 @@
+{
+  "include": ["om/src", "om/tests", "om/migrations", "infra/src", "infra/tests", "integrations/src", "integrations/tests", "services/api/src", "services/api/tests", "workers/maintenance/src", "workers/maintenance/tests", "clients/python/src", "clients/python/tests", "apps/cli/src", "apps/cli/tests", "ops/src", "ops/tests", "ops/audit", "scripts"],
+  "exclude": ["**/node_modules", "**/.venv", "**/__pycache__"],
+  "extraPaths": ["services/api/tests", "apps/cli/tests", "ops/tests", "ops/audit"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.14",
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
+}

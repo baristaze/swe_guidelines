@@ -1,0 +1,515 @@
+# Staging is `main`. Every green `ci` run on `main` deploys it, with no
+# approval: the images are built once and pushed tagged by the commit,
+# the portal and the company site are built once and kept by the commit, and
+# staging is planned and applied in one job. Inside the apply the migration runs as a one-off
+# task on the new API image before the services roll (the service module
+# orders it), when the release brings one (deployment/migration-inputs.json
+# names what counts), so a migration that fails ends the apply with the old
+# tasks still serving. A migration is compatible with the release before it
+# (expand and contract), so the old tasks serve the new schema meanwhile.
+#
+# Production (deploy-production.yml) never rebuilds: it resolves the digests
+# tagged here and the portal files kept here, by the commit `release` points
+# at, from the copies replicated into its own account. The portal build holds
+# no environment; each environment's /config.json, written by Terraform, does.
+# The company site calls nothing at runtime, so its links are in its HTML: one
+# build job makes it for every environment (apps/site/dist/staging and
+# apps/site/dist/production), staging publishes its own, and a release
+# publishes the production one this job built. The site is optional: until
+# SITE_DOMAIN_NAME is set and the site's certificate is issued (both the
+# create run's), everything else deploys as always, the site's build is not
+# kept, the plan leaves the site out, and the run's summary says so.
+#
+# Staging has an AWS account of its own (deployment/cloud/environments.json),
+# and two credentials in it, both through GitHub's OIDC provider and both
+# declared by deployment/terraform/bootstrap/staging. The jobs that build
+# declare `staging-build` and hold `acme-build-staging`, which pushes the
+# images and keeps the static builds and applies nothing: they install
+# third-party packages, and a build step must never hold the role that
+# applies. The job that applies declares `staging` and holds
+# `acme-deploy-staging`. Each role trusts one environment, `main`, and this
+# repository by its id. Production is another account, which is what lets a
+# merge deploy with no approval. A job without an environment presents its
+# branch instead and is refused by both roles' trust.
+#
+# After the apply, `smoke` mints the smoke identity's operator token through
+# the grant task and reads the operator plane with it through the edge
+# (scripts/cloud_smoke.sh); it is skipped, with a notice, until the
+# environment's SMOKE_EMAIL names the identity a grant made. A run whose
+# smoke failed is not a run release.yml takes.
+#
+# After the apply, `record` writes what staging deployed as commit statuses
+# (`deployed/<image>`, `deployed/portal`, and `deployed/site`, each a
+# digest; the site's covers both of its environments' builds), on the
+# repository host and outside either account. Production compares its
+# replicated copies with them before it plans.
+#
+# The variables are the environments' own. `staging-build` holds its role
+# (AWS_ROLE_ARN) and the artifacts bucket (ARTIFACTS_BUCKET). `staging` holds
+# its role (AWS_ROLE_ARN), the state bucket (TF_STATE_BUCKET), the artifacts
+# bucket (ARTIFACTS_BUCKET), the three public names (API_DOMAIN_NAME,
+# APP_DOMAIN_NAME, and SITE_DOMAIN_NAME, which alone may be empty), and the
+# address the alarm topic subscribes (ALARM_EMAIL).
+# scripts/cloud_create.sh sets them. Production's environments hold the same
+# names with production's values, and a job here never sees those.
+#
+# Until those variables are set there is no cloud to deploy to: the `cloud`
+# job says so in its summary and every job that touches the cloud is
+# skipped, so the run stays green and the portal and the site still build.
+name: deploy-staging
+# The run is named by the commit it deploys: release.yml reads the name to
+# find the last commit staging deployed, which is what a release may take.
+run-name: deploy-staging ${{ github.event.workflow_run.head_sha || github.sha }}
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+# One deploy at a time, and a running one is never cancelled. GitHub keeps
+# one pending run per group, so of three quick merges the middle one may
+# never deploy: the newest pending run replaces it. That is safe, because a
+# release takes only a commit staging deployed.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  # The region deployment/cloud/environments.json names; a test holds them
+  # equal.
+  AWS_REGION: us-west-2
+  TERRAFORM_VERSION: "1.16.3"
+
+jobs:
+  cloud:
+    name: is the cloud configured?
+    # `ci` runs on every pull request, and `branches:` above filters on the
+    # triggering run's head branch alone: a pull request opened from a fork's
+    # `main` matches it. A `workflow_run` always runs in the base repository,
+    # with its variables and its OIDC identity, so without the two checks
+    # below a fork's commit would be built and applied under staging's own
+    # credential. Only a push to this repository deploys.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    # The variables are the environment's, so this job declares it to read
+    # them. It assumes no role.
+    environment: staging
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+      site_domain_name: ${{ steps.check.outputs.site_domain_name }}
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      # The commit is the one `ci` ran, never the branch tip at the time this
+      # run starts; a dispatch deploys the ref it was dispatched on.
+      - name: resolve the commit
+        id: sha
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying \`$SHA\` to staging." >> "$GITHUB_STEP_SUMMARY"
+      - name: check the environment's variables
+        id: check
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+          APP_DOMAIN_NAME: ${{ vars.APP_DOMAIN_NAME }}
+          SITE_DOMAIN_NAME: ${{ vars.SITE_DOMAIN_NAME }}
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+        run: |
+          missing=""
+          # The site's name is optional: without it the site is left out
+          # and everything else deploys.
+          echo "site_domain_name=$SITE_DOMAIN_NAME" >> "$GITHUB_OUTPUT"
+          if [ -z "$SITE_DOMAIN_NAME" ]; then
+            echo "The company site is left out of this deploy: the \`staging\` environment's \`SITE_DOMAIN_NAME\` is empty (scripts/cloud_create.sh staging sets it). Everything else deploys." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          for name in AWS_ROLE_ARN TF_STATE_BUCKET ARTIFACTS_BUCKET API_DOMAIN_NAME APP_DOMAIN_NAME ALARM_EMAIL; do
+            [ -n "${!name}" ] || missing="${missing:+$missing, }$name"
+          done
+          if [ -z "$missing" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "The cloud deployment is configured: staging deploys under \`$AWS_ROLE_ARN\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "**The cloud deployment is not configured.** The \`staging\` environment's variables \`$missing\` are empty, so every job that touches the cloud is skipped; only the portal and the site build. scripts/cloud_create.sh staging sets them." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  images:
+    name: build and push the images by the commit
+    needs: cloud
+    if: needs.cloud.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    # The build installs third-party packages, so it holds the push-only
+    # build role of `staging-build`, never the role that applies.
+    environment: staging-build
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      maintenance_image: ${{ steps.images.outputs.maintenance_image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.cloud.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        id: ecr
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Every layer is pushed zstd-compressed, the base image's too
+      # (force-compression). Fargate keeps no image cache between tasks, so
+      # each task pulls and unpacks the whole image, and it unpacks on the
+      # task's own vCPU: a quarter of one for the API. zstd unpacks a layer
+      # three to four times faster than gzip there, and it is a little
+      # smaller. Fargate's containerd reads zstd with no setting of its own.
+      # The tag is the commit, and the repositories are immutable: a second
+      # push of a tag that exists is refused (the provenance attestation alone
+      # makes the manifest differ, so even an identical build is a new push).
+      # A rerun after the apply failed, or a dispatch on a commit staging
+      # already built, therefore resolves the digest that is there instead of
+      # building again, the way deploy-production always does.
+      - name: the digests already tagged with this commit, if any
+        id: existing
+        env:
+          SHA: ${{ needs.cloud.outputs.sha }}
+        run: |
+          for name in api maintenance; do
+            digest="$(aws ecr describe-images --repository-name "acme-$name" \
+              --image-ids "imageTag=$SHA" \
+              --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
+            if [ "$digest" = "None" ]; then digest=""; fi
+            echo "$name=$digest" >> "$GITHUB_OUTPUT"
+            if [ -n "$digest" ]; then
+              echo "\`acme-$name\` is already tagged \`$SHA\`; it is not built again." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: build and push the api image
+        id: api
+        if: steps.existing.outputs.api == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deployment/docker/api.Dockerfile
+          outputs: type=image,push=true,oci-mediatypes=true,compression=zstd,compression-level=3,force-compression=true
+          tags: ${{ steps.ecr.outputs.registry }}/acme-api:${{ needs.cloud.outputs.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: build and push the maintenance image
+        id: maintenance
+        if: steps.existing.outputs.maintenance == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deployment/docker/maintenance.Dockerfile
+          outputs: type=image,push=true,oci-mediatypes=true,compression=zstd,compression-level=3,force-compression=true
+          tags: ${{ steps.ecr.outputs.registry }}/acme-maintenance:${{ needs.cloud.outputs.sha }}
+          cache-from: type=gha,scope=maintenance
+          cache-to: type=gha,scope=maintenance,mode=max
+      - name: name the images by digest
+        id: images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          API_DIGEST: ${{ steps.api.outputs.digest || steps.existing.outputs.api }}
+          MAINTENANCE_DIGEST: ${{ steps.maintenance.outputs.digest || steps.existing.outputs.maintenance }}
+        run: |
+          echo "api_image=$REGISTRY/acme-api@$API_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "maintenance_image=$REGISTRY/acme-maintenance@$MAINTENANCE_DIGEST" >> "$GITHUB_OUTPUT"
+
+  portal:
+    name: build the portal once
+    needs: cloud
+    runs-on: ubuntu-latest
+    environment: staging-build
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.cloud.outputs.sha }}
+      # The pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @acme/portal build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: portal
+          path: apps/portal/dist
+          if-no-files-found: error
+          retention-days: 30
+      - name: the build's digest
+        id: digest
+        run: echo "digest=$(scripts/build_digest.sh apps/portal/dist)" >> "$GITHUB_OUTPUT"
+      # The build is kept by the commit in the artifacts bucket, which
+      # replicates it into production's: a workflow artifact expires and is one run's,
+      # the bucket outlives both and is reachable by the commit alone.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: needs.cloud.outputs.configured == 'true'
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: keep the build by the commit
+        if: needs.cloud.outputs.configured == 'true'
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SHA: ${{ needs.cloud.outputs.sha }}
+        run: aws s3 sync apps/portal/dist "s3://$ARTIFACTS_BUCKET/builds/portal/$SHA" --delete
+
+  # The company site, once, for both environments: its links are in its HTML,
+  # so the build that production releases is made here, beside staging's, and
+  # kept and recorded with it.
+  site:
+    name: build the company site once
+    needs: cloud
+    runs-on: ubuntu-latest
+    environment: staging-build
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.cloud.outputs.sha }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @acme/site build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site
+          path: apps/site/dist
+          if-no-files-found: error
+          retention-days: 30
+      - name: the build's digest
+        id: digest
+        run: echo "digest=$(scripts/build_digest.sh apps/site/dist)" >> "$GITHUB_OUTPUT"
+      # Kept only once the site has a name: the create run that sets it is
+      # the one that lets the build role write builds/site/.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: needs.cloud.outputs.configured == 'true' && needs.cloud.outputs.site_domain_name != ''
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: keep the build by the commit
+        if: needs.cloud.outputs.configured == 'true' && needs.cloud.outputs.site_domain_name != ''
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SHA: ${{ needs.cloud.outputs.sha }}
+        run: aws s3 sync apps/site/dist "s3://$ARTIFACTS_BUCKET/builds/site/$SHA" --delete
+
+  staging:
+    name: plan and apply staging, migrate, and publish
+    needs: [cloud, images, portal, site]
+    if: needs.cloud.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      site: ${{ steps.site.outputs.site_domain_name != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.cloud.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      # The site joins the plan once it has a name and its certificate is
+      # issued; until then the plan leaves it out and changes nothing else.
+      - name: is the company site ready?
+        id: site
+        env:
+          SITE_DOMAIN_NAME: ${{ needs.cloud.outputs.site_domain_name }}
+        run: |
+          name=""
+          if [ -n "$SITE_DOMAIN_NAME" ]; then
+            issued="$(aws acm list-certificates --region us-east-1 --certificate-statuses ISSUED \
+              --query "CertificateSummaryList[?DomainName=='$SITE_DOMAIN_NAME'].CertificateArn | [0]" --output text)"
+            if [ -n "$issued" ] && [ "$issued" != "None" ]; then
+              name="$SITE_DOMAIN_NAME"
+            else
+              echo "The company site is left out of this deploy: no issued certificate for \`$SITE_DOMAIN_NAME\` in us-east-1 yet (scripts/cloud_create.sh staging, step 3b). Everything else deploys." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "site_domain_name=$name" >> "$GITHUB_OUTPUT"
+      - name: plan staging
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+          APP_DOMAIN_NAME: ${{ vars.APP_DOMAIN_NAME }}
+          SITE_DOMAIN_NAME: ${{ steps.site.outputs.site_domain_name }}
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          # Empty (unset) leaves browser error reporting off, the root default.
+          PORTAL_SENTRY_DSN: ${{ vars.PORTAL_SENTRY_DSN }}
+          API_IMAGE: ${{ needs.images.outputs.api_image }}
+          MAINTENANCE_IMAGE: ${{ needs.images.outputs.maintenance_image }}
+        run: |
+          terraform -chdir=deployment/terraform/environments/staging init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/staging/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+          terraform -chdir=deployment/terraform/environments/staging plan -input=false -out=tfplan \
+            -var "api_image=$API_IMAGE" \
+            -var "maintenance_image=$MAINTENANCE_IMAGE" \
+            -var "alarm_email=$ALARM_EMAIL" \
+            -var "api_domain_name=$API_DOMAIN_NAME" \
+            -var "app_domain_name=$APP_DOMAIN_NAME" \
+            -var "site_domain_name=$SITE_DOMAIN_NAME" \
+            -var "portal_sentry_dsn=$PORTAL_SENTRY_DSN"
+          terraform -chdir=deployment/terraform/environments/staging show -no-color tfplan > plan.txt
+          {
+            echo "## staging plan"
+            echo ""
+            echo "Images: \`$API_IMAGE\`, \`$MAINTENANCE_IMAGE\`."
+            echo ""
+            grep -E '^(Plan:|No changes\.)' plan.txt || echo "See the plan below."
+            echo ""
+            echo "<details><summary>terraform show</summary>"
+            echo ""
+            echo '```'
+            head -c 900000 plan.txt
+            [ "$(wc -c < plan.txt)" -le 900000 ] || echo "... (truncated; the staging-plan artifact holds the whole text)"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-plan
+          path: plan.txt
+          if-no-files-found: error
+          retention-days: 30
+      # The migration runs inside this apply, on the new API task definition,
+      # before either service rolls, when the release brings one; the apply
+      # waits until the new tasks serve.
+      - name: apply staging (migrate, then roll)
+        run: terraform -chdir=deployment/terraform/environments/staging apply -input=false tfplan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: portal
+          path: portal-dist
+      - name: publish the portal to staging
+        run: scripts/deploy_static.sh portal deployment/terraform/environments/staging portal-dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: steps.site.outputs.site_domain_name != ''
+        with:
+          name: site
+          path: site-dist
+      - name: publish the company site to staging
+        if: steps.site.outputs.site_domain_name != ''
+        run: scripts/deploy_static.sh site deployment/terraform/environments/staging site-dist/staging
+      # After the rollout, readiness is asked once more, through the edge: the
+      # load balancer probes liveness only, so this is where a new release
+      # that cannot reach its storage fails the run. It never replaces a task.
+      - name: the new release is ready
+        env:
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+        run: |
+          for _ in $(seq 1 10); do
+            if curl -fsS --max-time 10 "https://$API_DOMAIN_NAME/readyz" >/dev/null; then
+              echo "\`https://$API_DOMAIN_NAME/readyz\` answers ready." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::https://$API_DOMAIN_NAME/readyz did not answer ready within the rollout's grace; the release is serving but not ready."
+          exit 1
+
+  # The smoke test of the release now serving: the smoke identity's operator
+  # token, minted by the grant task for this run, reads one route of the
+  # operator plane through the edge. It fails the run, so release.yml, which
+  # takes only a run that succeeded whole, never releases a commit whose smoke
+  # failed. While the environment's SMOKE_EMAIL is empty it is skipped with a
+  # notice, not failed: no grant has named the smoke identity yet.
+  smoke:
+    name: smoke test the release through the edge
+    needs: [cloud, staging]
+    if: needs.cloud.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.cloud.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: vars.SMOKE_EMAIL != ''
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: vars.SMOKE_EMAIL != ''
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: read the root's outputs
+        if: vars.SMOKE_EMAIL != ''
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          terraform -chdir=deployment/terraform/environments/staging init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/staging/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+      - name: the smoke identity reads the operator plane
+        env:
+          SMOKE_EMAIL: ${{ vars.SMOKE_EMAIL }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+        run: scripts/cloud_smoke.sh deployment/terraform/environments/staging staging "$API_DOMAIN_NAME"
+
+  record:
+    name: record what staging deployed, outside the cloud
+    needs: [cloud, images, portal, site, staging]
+    if: needs.cloud.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    # The one job that writes commit statuses, and it installs nothing. The
+    # statuses are the digests staging built and then deployed, written on
+    # the repository host rather than in either account: production compares
+    # its replicated copies with them before it plans, and a commit that has
+    # them is a commit staging deployed.
+    permissions:
+      statuses: write
+    steps:
+      - name: the digests, as commit statuses
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ needs.cloud.outputs.sha }}
+          API_IMAGE: ${{ needs.images.outputs.api_image }}
+          MAINTENANCE_IMAGE: ${{ needs.images.outputs.maintenance_image }}
+          PORTAL_DIGEST: ${{ needs.portal.outputs.digest }}
+          SITE_DIGEST: ${{ needs.site.outputs.digest }}
+          SITE: ${{ needs.staging.outputs.site }}
+        run: |
+          record() {
+            gh api -X POST "repos/$REPOSITORY/statuses/$SHA" \
+              -f state=success -f context="deployed/$1" -f description="$2" >/dev/null
+            echo "\`deployed/$1\`: \`$2\`" >> "$GITHUB_STEP_SUMMARY"
+          }
+          record acme-api "${API_IMAGE##*@}"
+          record acme-maintenance "${MAINTENANCE_IMAGE##*@}"
+          record portal "$PORTAL_DIGEST"
+          # Only a site staging published is one a release may publish.
+          if [ "$SITE" = "true" ]; then record site "$SITE_DIGEST"; fi

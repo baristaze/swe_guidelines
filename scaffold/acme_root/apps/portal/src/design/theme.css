@@ -1,0 +1,220 @@
+/* The theme: every token's light and dark value, and the page's base.
+   Dark follows the system unless the person picked one in the chrome, which
+   sets data-theme on the root. Every text colour meets WCAG AA (4.5:1) on the
+   surfaces it sits on, in both themes. */
+:root {
+  color-scheme: light;
+  --acme-bg: #f7f7f8;
+  --acme-surface: #ffffff;
+  --acme-surface-subtle: #f2f2f5;
+  --acme-text: #1a1a1f;
+  --acme-muted: #62626d;
+  --acme-border: #e4e4e9;
+  --acme-border-strong: #cfcfd7;
+  --acme-accent: #5250d6;
+  --acme-accent-hover: #4745c4;
+  --acme-accent-text: #ffffff;
+  --acme-accent-soft: #eeeefd;
+  --acme-link: #4a48c9;
+  --acme-danger: #c52f2a;
+  --acme-danger-hover: #ad2823;
+  --acme-danger-text: #b42820;
+  --acme-warning-bg: #fff6e5;
+  --acme-warning-text: #7d4a00;
+  --acme-warning-border: #f5dcae;
+  --acme-live: #1a8f4d;
+  --acme-pending: #c96a05;
+  --acme-tooltip-bg: #1a1a1f;
+  --acme-tooltip-text: #ffffff;
+  --acme-focus: #6d6bf0;
+  --acme-focus-ring: rgba(82, 80, 214, 0.28);
+  --acme-shadow-sm: 0 1px 2px rgba(16, 16, 24, 0.05);
+  --acme-shadow-md: 0 1px 2px rgba(16, 16, 24, 0.04), 0 4px 12px rgba(16, 16, 24, 0.06);
+  --acme-shadow-lg: 0 2px 4px rgba(16, 16, 24, 0.04), 0 12px 32px rgba(16, 16, 24, 0.12);
+  --acme-topbar: rgba(255, 255, 255, 0.82);
+}
+
+/* The dark values, twice: once for a system in dark mode (unless the person
+   chose light), once for a person who chose dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --acme-bg: #0e0e11;
+    --acme-surface: #17171b;
+    --acme-surface-subtle: #202026;
+    --acme-text: #ececf1;
+    --acme-muted: #a1a1ad;
+    --acme-border: #2a2a31;
+    --acme-border-strong: #3b3b44;
+    --acme-accent: #5d5be0;
+    --acme-accent-hover: #6c6aea;
+    --acme-accent-text: #ffffff;
+    --acme-accent-soft: #25244a;
+    --acme-link: #a9a8ff;
+    --acme-danger: #c9362f;
+    --acme-danger-hover: #d8443c;
+    --acme-danger-text: #ff8a80;
+    --acme-warning-bg: #2d2210;
+    --acme-warning-text: #f5c46b;
+    --acme-warning-border: #4a3817;
+    --acme-live: #34c77b;
+    --acme-pending: #f0a33a;
+    --acme-tooltip-bg: #ececf1;
+    --acme-tooltip-text: #17171b;
+    --acme-focus: #8d8bff;
+    --acme-focus-ring: rgba(141, 139, 255, 0.32);
+    --acme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --acme-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+    --acme-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
+    --acme-topbar: rgba(23, 23, 27, 0.82);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --acme-bg: #0e0e11;
+  --acme-surface: #17171b;
+  --acme-surface-subtle: #202026;
+  --acme-text: #ececf1;
+  --acme-muted: #a1a1ad;
+  --acme-border: #2a2a31;
+  --acme-border-strong: #3b3b44;
+  --acme-accent: #5d5be0;
+  --acme-accent-hover: #6c6aea;
+  --acme-accent-text: #ffffff;
+  --acme-accent-soft: #25244a;
+  --acme-link: #a9a8ff;
+  --acme-danger: #c9362f;
+  --acme-danger-hover: #d8443c;
+  --acme-danger-text: #ff8a80;
+  --acme-warning-bg: #2d2210;
+  --acme-warning-text: #f5c46b;
+  --acme-warning-border: #4a3817;
+  --acme-live: #34c77b;
+  --acme-pending: #f0a33a;
+  --acme-tooltip-bg: #ececf1;
+  --acme-tooltip-text: #17171b;
+  --acme-focus: #8d8bff;
+  --acme-focus-ring: rgba(141, 139, 255, 0.32);
+  --acme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --acme-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --acme-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
+  --acme-topbar: rgba(23, 23, 27, 0.82);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--acme-bg);
+  color: var(--acme-text);
+  font-family: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--acme-focus-ring);
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.011em;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--acme-surface-subtle);
+  border: 1px solid var(--acme-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-all;
+}
+
+/* One focus ring for everything a keyboard reaches; a pointer never shows it. */
+:focus-visible {
+  outline: 2px solid var(--acme-focus);
+  outline-offset: 2px;
+}
+
+/* Fields: the surface behind them and the ring on focus. A field's border
+   comes from its own style; focus deepens it. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  background-color: var(--acme-surface);
+  color: var(--acme-text);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--acme-muted);
+  opacity: 1;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):hover,
+textarea:hover,
+select:hover {
+  border-color: var(--acme-border-strong) !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--acme-accent) !important;
+  box-shadow: 0 0 0 3px var(--acme-focus-ring);
+}
+
+/* The task list's box: drawn here so it matches the theme in both modes. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+  vertical-align: middle;
+  border: 1.5px solid var(--acme-border-strong);
+  border-radius: 5px;
+  background: var(--acme-surface) no-repeat center / 12px 12px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+input[type="checkbox"]:not(:disabled):hover {
+  border-color: var(--acme-accent);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--acme-accent);
+  border-color: var(--acme-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

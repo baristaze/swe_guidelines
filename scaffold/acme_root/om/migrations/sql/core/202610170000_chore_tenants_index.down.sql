@@ -1,0 +1,1 @@
+DROP INDEX core.ix_tasks_updated_at_org_id_done_unarchived;

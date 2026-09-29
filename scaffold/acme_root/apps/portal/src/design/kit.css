@@ -1,0 +1,1022 @@
+/* The kit's look, and the states inline styles cannot say: hover, focus,
+   pressed, and the row being dragged. Values come from theme.css. */
+
+/* The page. */
+.acme-app {
+  min-height: 100vh;
+  background: var(--acme-bg);
+  color: var(--acme-text);
+  font-size: 14px;
+}
+
+.acme-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--acme-border);
+}
+
+/* The blur sits on a layer of its own: a backdrop-filter on the bar itself
+   would pin the live dot, a fixed child, to the bar instead of the window. */
+.acme-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--acme-topbar);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+}
+
+.acme-topbar-inner,
+.acme-column {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.acme-page {
+  padding: 32px clamp(16px, 4vw, 40px) 64px;
+}
+
+.acme-page[data-narrow] {
+  padding-top: 10vh;
+}
+
+.acme-page[data-narrow] .acme-column {
+  max-width: 400px;
+}
+
+.acme-page-notice:not(:empty) {
+  margin-bottom: 24px;
+}
+
+.acme-title {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 650;
+  margin: 0 0 24px;
+}
+
+/* The way back, above a page's title. */
+.acme-back {
+  margin: -12px 0 12px;
+}
+
+.acme-back a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--acme-muted);
+  text-decoration: none;
+  border-radius: 4px;
+}
+
+.acme-back a:hover {
+  color: var(--acme-text);
+}
+
+/* Said to a screen reader, not drawn. */
+.acme-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.acme-page[data-narrow] .acme-title {
+  text-align: center;
+  font-size: 22px;
+}
+
+.acme-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+/* A card. */
+.acme-card {
+  background: var(--acme-surface);
+  border: 1px solid var(--acme-border);
+  border-radius: 12px;
+  box-shadow: var(--acme-shadow-sm);
+  padding: clamp(16px, 4vw, 24px);
+}
+
+.acme-card-title {
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+/* A button. */
+.acme-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 80ms ease;
+}
+
+.acme-button[data-wide] {
+  width: 100%;
+}
+
+.acme-button[data-tone="accent"] {
+  background: var(--acme-accent);
+  color: var(--acme-accent-text);
+  box-shadow: var(--acme-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.acme-button[data-tone="accent"]:not(:disabled):hover {
+  background: var(--acme-accent-hover);
+}
+
+.acme-button[data-tone="danger"] {
+  background: var(--acme-danger);
+  color: #ffffff;
+  box-shadow: var(--acme-shadow-sm);
+}
+
+.acme-button[data-tone="danger"]:not(:disabled):hover {
+  background: var(--acme-danger-hover);
+}
+
+.acme-button[data-tone="plain"] {
+  background: var(--acme-surface);
+  color: var(--acme-text);
+  border-color: var(--acme-border-strong);
+  box-shadow: var(--acme-shadow-sm);
+}
+
+.acme-button[data-tone="plain"]:not(:disabled):hover {
+  background: var(--acme-surface-subtle);
+}
+
+.acme-button:not(:disabled):active {
+  transform: translateY(0.5px);
+}
+
+.acme-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* A text link that acts. */
+.acme-link {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--acme-link);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.acme-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A field and its label. */
+.acme-label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.acme-label > span {
+  color: var(--acme-text);
+  font-weight: 550;
+}
+
+.acme-field {
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--acme-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--acme-shadow-sm);
+  width: 100%;
+  min-width: 0;
+}
+
+textarea.acme-field {
+  resize: vertical;
+}
+
+select.acme-field {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238b8b96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  cursor: pointer;
+}
+
+/* A notice. */
+.acme-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--acme-warning-bg);
+  color: var(--acme-warning-text);
+  border: 1px solid var(--acme-warning-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.acme-banner-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.acme-banner-body {
+  min-width: 0;
+}
+
+.acme-banner .acme-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The notices a failed write leaves float over the page, newest last. */
+.acme-toasts {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: min(480px, calc(100vw - 32px));
+}
+
+.acme-toasts .acme-banner {
+  box-shadow: var(--acme-shadow-lg);
+  animation: acme-fade-in 200ms ease-out both;
+}
+
+.acme-error {
+  color: var(--acme-danger-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A table. */
+.acme-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.acme-table th {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--acme-border);
+  color: var(--acme-muted);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.acme-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--acme-border);
+  vertical-align: middle;
+}
+
+.acme-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.acme-table tbody tr:hover td {
+  background: var(--acme-surface-subtle);
+}
+
+/* A pill. */
+.acme-pill {
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid var(--acme-border);
+  background: var(--acme-surface-subtle);
+  color: var(--acme-muted);
+}
+
+.acme-pill[data-tone="accent"] {
+  background: var(--acme-accent-soft);
+  border-color: transparent;
+  color: var(--acme-link);
+}
+
+/* A due date that has passed, or whose reminder went out. */
+.acme-pill[data-tone="danger"] {
+  border-color: var(--acme-danger);
+  color: var(--acme-danger-text);
+}
+
+/* The segmented control: a track with the chosen segment raised. */
+.acme-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--acme-surface-subtle);
+  border: 1px solid var(--acme-border);
+  border-radius: 10px;
+}
+
+.acme-segment {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 20px;
+  padding: 4px 14px;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--acme-muted);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+/* The control that stands as a page's heading. */
+.acme-segmented[data-large] .acme-segment {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 24px;
+  padding: 4px 16px;
+}
+
+.acme-segment:hover {
+  color: var(--acme-text);
+}
+
+.acme-segment[aria-checked="true"] {
+  background: var(--acme-surface);
+  color: var(--acme-text);
+  box-shadow: var(--acme-shadow-md);
+}
+
+/* A square button with an icon, labelled for a screen reader. */
+.acme-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--acme-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.acme-icon-button:hover,
+.acme-icon-button[aria-current="page"] {
+  background: var(--acme-surface-subtle);
+  color: var(--acme-text);
+}
+
+/* The chrome: the org chip on the left, the settings gear and the account
+   menu on the right. */
+.acme-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.acme-nav-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* The chip is two controls in one frame: the org's name, which goes home,
+   and the caret, which opens the switcher. */
+.acme-org-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.acme-org-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--acme-text);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 4px 8px 4px 4px;
+  transition: background-color 120ms ease;
+}
+
+.acme-org-home:hover {
+  background: var(--acme-surface-subtle);
+}
+
+.acme-org-caret,
+.acme-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: inherit;
+  color: var(--acme-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.acme-org-caret {
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  padding: 0;
+}
+
+.acme-menu-trigger {
+  height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.acme-org-caret:not(:disabled):hover,
+.acme-org-caret[aria-expanded="true"],
+.acme-menu-trigger:not(:disabled):hover,
+.acme-menu-trigger[aria-expanded="true"] {
+  background: var(--acme-surface-subtle);
+  color: var(--acme-text);
+}
+
+.acme-org-caret:disabled,
+.acme-menu-trigger:disabled {
+  cursor: default;
+}
+
+/* The account's address in its button: cut short with an ellipsis when the
+   bar is tight, and only the part before the @ on a narrow window. */
+.acme-account-email {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acme-account-email[data-short] {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .acme-account-email {
+    max-width: 120px;
+  }
+
+  .acme-account-email[data-short] {
+    display: inline;
+  }
+
+  .acme-account-email:not([data-short]) {
+    display: none;
+  }
+}
+
+.acme-org-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--acme-accent);
+  color: var(--acme-accent-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.acme-menu {
+  background: var(--acme-surface);
+  border: 1px solid var(--acme-border);
+  border-radius: 10px;
+  box-shadow: var(--acme-shadow-lg);
+  padding: 4px;
+  animation: acme-pop-in 140ms ease-out both;
+}
+
+.acme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--acme-text);
+}
+
+.acme-menu-item:not(:disabled):hover,
+.acme-menu-item:focus-visible {
+  background: var(--acme-surface-subtle);
+}
+
+/* An item's words, and a note at the far end when it has one. */
+.acme-menu-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* An item's icon: a fixed slot before the words, in the muted color of the
+   menu's secondary text, and in the text's color under the pointer or the
+   keyboard. An item without one, in a menu where others have one, keeps
+   the same space, so the words line up. */
+.acme-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--acme-muted);
+}
+
+.acme-menu:has(.acme-menu-icon) .acme-menu-item:not(:has(> .acme-menu-icon))::before {
+  content: "";
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.acme-menu-item:not([data-tone="danger"], :disabled):hover .acme-menu-icon,
+.acme-menu-item:not([data-tone="danger"]):focus-visible .acme-menu-icon {
+  color: var(--acme-text);
+}
+
+/* A choice that changes many things at once: its icon is red with it. */
+.acme-menu-item[data-tone="danger"],
+.acme-menu-item[data-tone="danger"] .acme-menu-icon {
+  color: var(--acme-danger-text);
+}
+
+/* A choice being taken up: the others wait. */
+.acme-menu-item:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.acme-menu-text {
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--acme-muted);
+  overflow-wrap: anywhere;
+}
+
+.acme-menu-text[data-strong] {
+  padding-top: 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--acme-text);
+}
+
+.acme-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--acme-border);
+}
+
+/* The task rows. */
+.acme-handle {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+li:hover .acme-handle,
+.acme-handle:focus-visible {
+  opacity: 1;
+}
+
+.acme-handle:hover {
+  color: var(--acme-text);
+}
+
+.acme-dragging {
+  opacity: 0.4;
+}
+
+/* The live dot: a soft halo while it is live, a slow pulse while it waits. */
+.acme-dot {
+  box-shadow: 0 0 0 2px var(--acme-surface);
+  transition: background-color 200ms ease;
+}
+
+.acme-dot[data-tone="live"] {
+  box-shadow:
+    0 0 0 2px var(--acme-surface),
+    0 0 0 5px color-mix(in srgb, var(--acme-live) 22%, transparent);
+}
+
+.acme-dot[data-tone="pending"] {
+  animation: acme-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes acme-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes acme-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acme-dot[data-tone="pending"],
+  .acme-menu,
+  .acme-toasts .acme-banner {
+    animation: none;
+  }
+}
+
+/* A wide button's content spans it, so a row inside can push to both edges. */
+.acme-button[data-wide] > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A dialog over the page: a dimmed backdrop and a card of its own. */
+.acme-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.acme-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--acme-surface);
+  border: 1px solid var(--acme-border);
+  border-radius: 12px;
+  box-shadow: var(--acme-shadow-lg);
+  padding: clamp(16px, 4vw, 24px);
+  animation: acme-pop-in 140ms ease-out both;
+}
+
+/* The plans, one row each: the name, the price, the bounds, the choice. */
+.acme-plans {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.acme-plan {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--acme-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.acme-plan[data-suggested="true"] {
+  border-color: var(--acme-accent);
+  background: var(--acme-accent-soft);
+}
+
+.acme-plan-bounds {
+  color: var(--acme-muted);
+  font-size: 13px;
+}
+
+/* Label and value pairs on the billing page. */
+.acme-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.acme-facts dt {
+  color: var(--acme-muted);
+}
+
+.acme-facts dd {
+  margin: 0;
+}
+
+/* How far a background job is: a thin track, the accent filling it. */
+.acme-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--acme-surface-subtle);
+  border: 1px solid var(--acme-border);
+  overflow: hidden;
+}
+
+.acme-progress-bar {
+  height: 100%;
+  background: var(--acme-accent);
+  transition: width 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acme-progress-bar {
+    transition: none;
+  }
+}
+
+/* A card that folds: the title is the button, the caret turns with it. */
+.acme-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 8px;
+}
+
+.acme-card[data-folded] .acme-fold-head {
+  margin-bottom: -4px;
+}
+
+.acme-fold-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.acme-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 8px 4px 4px;
+  margin-left: -4px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.acme-fold-toggle:hover {
+  background: var(--acme-surface-subtle);
+}
+
+.acme-fold-caret {
+  display: inline-flex;
+  color: var(--acme-muted);
+  transition: transform 160ms ease;
+}
+
+.acme-fold-toggle[aria-expanded="false"] .acme-fold-caret {
+  transform: rotate(-90deg);
+}
+
+.acme-fold-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* The task rows as a list one can select in: a selected row carries the
+   accent's tint and a bar at its edge, never a second box. */
+.acme-task-row {
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+
+.acme-task-row[aria-selected="true"] {
+  background: var(--acme-accent-soft);
+  box-shadow: inset 3px 0 0 var(--acme-accent);
+}
+
+.acme-task-row:focus-visible {
+  outline: 2px solid var(--acme-focus);
+  outline-offset: -2px;
+}
+
+/* A list with a selection takes no text selection from a Shift-click. */
+.acme-selecting {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The bar for what is selected, at the foot of the window. */
+.acme-action-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  background: var(--acme-surface);
+  color: var(--acme-text);
+  border: 1px solid var(--acme-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--acme-shadow-lg);
+  animation: acme-rise-in 160ms ease-out both;
+}
+
+.acme-action-bar-count {
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+/* Room under the page for the bar, so it never covers the last row. */
+.acme-action-bar-room {
+  height: 64px;
+}
+
+/* A short word that a change was made: the tooltip's colours, so it reads
+   as neither a warning nor a card. */
+.acme-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--acme-tooltip-bg);
+  color: var(--acme-tooltip-text);
+  border-radius: 10px;
+  padding: 8px 8px 8px 14px;
+  font-size: 14px;
+  line-height: 20px;
+  box-shadow: var(--acme-shadow-lg);
+  animation: acme-fade-in 200ms ease-out both;
+}
+
+.acme-toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.acme-toast-action,
+.acme-toast-close {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.acme-toast-action {
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 4px 8px;
+}
+
+.acme-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  opacity: 0.8;
+}
+
+.acme-toast-action:hover,
+.acme-toast-close:hover {
+  background: color-mix(in srgb, var(--acme-tooltip-text) 14%, transparent);
+  opacity: 1;
+}
+
+.acme-toast-action:focus-visible,
+.acme-toast-close:focus-visible {
+  outline: 2px solid var(--acme-tooltip-text);
+  outline-offset: 1px;
+}
+
+/* A question before a change of many things. */
+.acme-confirm {
+  width: min(420px, 100%);
+}
+
+.acme-confirm-body {
+  color: var(--acme-muted);
+  margin-bottom: 16px;
+}
+
+.acme-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes acme-rise-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acme-action-bar,
+  .acme-toast {
+    animation: none;
+  }
+
+  .acme-fold-caret {
+    transition: none;
+  }
+}
+
+/* A value in a table that opens a menu to change it: the border says so. */
+.acme-role-trigger {
+  height: 28px;
+  color: var(--acme-text);
+  border-color: var(--acme-border);
+}

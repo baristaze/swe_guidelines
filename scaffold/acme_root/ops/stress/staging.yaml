@@ -1,0 +1,41 @@
+# The deployed scenario: three minutes at the regular profile against a
+# cloud environment. Smoke's numbers are a laptop's, and a deployed
+# environment does not make them: the edge is a load balancer, the
+# database is across a network, and a request costs more.
+#
+# These numbers are illustrative. The scenario exists to show the shape
+# of a stress test: a profile, a ramp, a soak, a target stated before the
+# run, and the signals read back after it. It does not state what good
+# performance is, here or anywhere.
+#
+# The target below is what this environment measured, with headroom. The
+# first run of this shape drove 814 requests through 47 sessions over
+# three minutes at eight concurrent and failed none: working requests
+# p50 493 ms, p95 2390 ms, p99 3010 ms, with create, move, and patch the
+# slowest, at 2474 to 2691 ms. What bound it was compute. The API task's
+# CPU peaked at 96.6% on a quarter of a vCPU with one task, while the
+# database sat at 7.4% with thirteen connections and read and write
+# latencies near zero, and the cache at 0.8%. So 3000 ms is a number
+# about this size, not about the platform: a bigger task would move it.
+#
+# A team adopting this sets its own target, from its own traffic and its
+# own size. The stricter target is the interesting run: dispatch
+# stress.yml with p95_ms as an input, or pass --p95-ms, and the run
+# judges that number and says it came from the run and not from here.
+name: staging
+profile: regular
+duration_seconds: 180
+ramp_seconds: 30
+target:
+  p95_ms: 3000
+  error_ratio: 0.01
+weights:
+  list_open_tasks: 5
+  list_done_tasks: 2
+  create_task: 3
+  update_task: 2
+  complete_task: 2
+  reopen_task: 1
+  move_task: 1
+  delete_task: 1
+  list_events: 2

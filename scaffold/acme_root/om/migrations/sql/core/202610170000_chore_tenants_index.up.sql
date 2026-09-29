@@ -1,0 +1,11 @@
+-- The sweep reads, once a pass and across tenants, which tenants have a
+-- chore due. One arm of that read is the done tasks not archived whose last
+-- change is older than the day's cleanup cut. This index holds that shelf
+-- alone, by its last change, so the cut is a range of it and only the
+-- archivable tasks are read; the tenant rides along for the answer. The
+-- read names the status as a literal, the one this predicate names, so a
+-- prepared statement's generic plan proves the predicate and reads the
+-- index. A write that leaves a task open, archived, or deleted writes it no
+-- entry. Plain CREATE INDEX: the runner applies a role's chain in one
+-- transaction, where CONCURRENTLY is refused.
+CREATE INDEX ix_tasks_updated_at_org_id_done_unarchived ON core.tasks (updated_at, org_id) WHERE status = 'done' AND archived_at IS NULL AND deleted_at IS NULL;

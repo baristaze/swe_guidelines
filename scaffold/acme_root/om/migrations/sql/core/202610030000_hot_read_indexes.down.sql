@@ -1,0 +1,11 @@
+CREATE UNIQUE INDEX uq_identities_email ON core.identities (email);
+CREATE INDEX ix_outbox_rows_org_id ON core.outbox_rows (org_id);
+CREATE INDEX ix_idempotency_records_org_id_target_id ON core.idempotency_records (org_id, target_id);
+CREATE INDEX ix_tasks_org_id_status_updated_at_id ON core.tasks (org_id, status, updated_at, id);
+DROP INDEX core.ix_slack_installations_org_id_deleted_at;
+DROP INDEX core.ix_invitations_org_id_expires_at;
+DROP INDEX core.ix_idempotency_records_org_id_attempt_id;
+DROP INDEX core.ix_tasks_org_id_status_updated_at_id_archived;
+DROP INDEX core.ix_tasks_org_id_status_updated_at_id_unarchived;
+DROP INDEX core.ix_tasks_org_id_created_by_status;
+DROP INDEX core.ix_tasks_org_id_assignee_id_status;

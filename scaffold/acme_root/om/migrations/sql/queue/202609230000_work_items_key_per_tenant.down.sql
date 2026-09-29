@@ -1,0 +1,2 @@
+DROP INDEX queue.ix_work_items_status_updated_at;
+DROP INDEX queue.uq_work_items_org_id_idempotency_key;

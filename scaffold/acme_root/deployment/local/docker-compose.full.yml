@@ -1,0 +1,102 @@
+# The local stack plus the application containers: the API on 8000, the
+# maintenance worker, and the portal on 55173. `make stack-up` runs:
+#   docker compose -f deployment/local/docker-compose.yml -f deployment/local/docker-compose.full.yml up
+name: acme
+
+x-app-env: &app-env
+  ACME_ENVIRONMENT: local
+  # The runtime login and the system login, as a deployed task holds them;
+  # neither the migration login nor the master is ever a container's.
+  ACME_DATABASE_URL: postgresql+asyncpg://acme_runtime:acme_runtime@postgres:5432/acme
+  ACME_DATABASE_SYSTEM_URL: postgresql+asyncpg://acme_system:acme_system@postgres:5432/acme
+  ACME_CACHE_BACKEND: valkey
+  ACME_TOPICS_BACKEND: valkey
+  ACME_VALKEY_URL: valkey://valkey:6379/0
+  ACME_BUCKETS_BACKEND: s3
+  ACME_S3_ENDPOINT_URL: http://minio:9000
+  # A presigned URL is followed by the browser, on the host, so it names the
+  # host port; the containers still talk to minio:9000.
+  ACME_S3_PRESIGN_ENDPOINT_URL: http://127.0.0.1:59000
+  ACME_S3_ACCESS_KEY: acme
+  ACME_S3_SECRET_KEY: acmeacme
+  ACME_QUEUES_BACKEND: sqs
+  ACME_SQS_ENDPOINT_URL: http://elasticmq:9324
+  ACME_SECRETS_BACKEND: local
+  ACME_SECRETS_FILE: /run/acme/secrets.env
+  ACME_AWS_REGION: us-east-1
+  ACME_LOG_JSON: "true"
+  # Traces to Jaeger and errors to GlitchTip, both in the devx profile; without
+  # it, export and report attempts fail quietly.
+  ACME_OTEL_ENDPOINT: http://jaeger:4318
+  ACME_SENTRY_DSN: http://0123456789abcdef0123456789abcdef@glitchtip:8000/1
+  ACME_CORS_ORIGINS: '["http://localhost:55173","http://127.0.0.1:55173"]'
+  # The payment processor: the sandbox account, and the runtime key and the
+  # signing secret from .env or the shell, empty by default, which leaves billing
+  # unconfigured (every org keeps its plan; a checkout answers 503).
+  ACME_BILLING_BACKEND: ${ACME_BILLING_BACKEND:-stripe}
+  ACME_STRIPE_ACCOUNT_ID: ${ACME_STRIPE_ACCOUNT_ID:-acct_1UIfVX45a2t9JoiY}
+  ACME_STRIPE_RUNTIME_KEY: ${ACME_STRIPE_RUNTIME_KEY:-}
+  ACME_STRIPE_WEBHOOK_SECRET: ${ACME_STRIPE_WEBHOOK_SECRET:-}
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/api.Dockerfile
+    environment:
+      <<: *app-env
+      ACME_HOST: 0.0.0.0
+      ACME_PORT: "8000"
+      # Sign-in through the Acme App, the WorkOS staging environment's
+      # application, whose redirects include this stack's portal. The key is
+      # that application's own, from the shell or .env, never written here.
+      # Without it, WorkOS answers 503 and the local sign-in by address
+      # still works; with a key of another application, the API refuses to
+      # start.
+      ACME_IDENTITY_PROVIDER: workos
+      ACME_WORKOS_CLIENT_ID: ${ACME_WORKOS_CLIENT_ID:-client_STAGING_PLACEHOLDER}
+      ACME_WORKOS_API_KEY: ${ACME_WORKOS_API_KEY:-}
+      ACME_DEV_SIGN_IN_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  maintenance:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/maintenance.Dockerfile
+    environment:
+      <<: *app-env
+      ACME_METRICS_HOST: 0.0.0.0
+      # The same Acme App as the API's: the worker deletes a deleted
+      # account's person there. Without the key, that step waits, and the
+      # account's personal org waits with it.
+      ACME_IDENTITY_PROVIDER: workos
+      ACME_WORKOS_CLIENT_ID: ${ACME_WORKOS_CLIENT_ID:-client_STAGING_PLACEHOLDER}
+      ACME_WORKOS_API_KEY: ${ACME_WORKOS_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  # The browser loads the portal from the host and calls the API on the
+  # portal's own origin: the container forwards /v1 to the api service. It
+  # reaches GlitchTip on a host port, so that build argument is a host
+  # address, not a service name.
+  portal:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/portal.Dockerfile
+      args:
+        VITE_API_URL: ""
+        VITE_SENTRY_DSN: http://0123456789abcdef0123456789abcdef@localhost:${ACME_GLITCHTIP_PORT:-58000}/1
+    ports:
+      - "127.0.0.1:55173:8080"
+    depends_on:
+      api:
+        condition: service_healthy

@@ -1,0 +1,115 @@
+"""Composes one service impl per hosted namespace over the managers and
+hands back the network-layer root the container holds."""
+
+from datetime import timedelta
+
+from acme.infra.root import InfraInterface
+from acme.integrations.root import IntegrationsInterface
+from acme.om.root import Managers
+from acme.services.api.services import (
+    AdminServiceInterface,
+    BillingServiceInterface,
+    EventsServiceInterface,
+    MediaServiceInterface,
+    RealtimeServiceInterface,
+    ServicesInterface,
+    SlackServiceInterface,
+    TasksServiceInterface,
+    TenancyServiceInterface,
+    WebhooksServiceInterface,
+)
+from acme.services.api.services.impl.admin import AdminServiceImpl
+from acme.services.api.services.impl.billing import BillingServiceImpl, WebhooksServiceImpl
+from acme.services.api.services.impl.events import EventsServiceImpl
+from acme.services.api.services.impl.media import MediaServiceImpl
+from acme.services.api.services.impl.realtime import RealtimeServiceImpl
+from acme.services.api.services.impl.slack import SlackServiceImpl
+from acme.services.api.services.impl.tasks import TasksServiceImpl
+from acme.services.api.services.impl.tenancy import TenancyServiceImpl
+
+
+class ServicesImpl(ServicesInterface):
+    def __init__(
+        self,
+        tasks: TasksServiceInterface,
+        tenancy: TenancyServiceInterface,
+        admin: AdminServiceInterface,
+        events: EventsServiceInterface,
+        media: MediaServiceInterface,
+        realtime: RealtimeServiceInterface,
+        billing: BillingServiceInterface,
+        webhooks: WebhooksServiceInterface,
+        slack: SlackServiceInterface,
+    ) -> None:
+        self._tasks = tasks
+        self._tenancy = tenancy
+        self._admin = admin
+        self._events = events
+        self._media = media
+        self._realtime = realtime
+        self._billing = billing
+        self._webhooks = webhooks
+        self._slack = slack
+
+    def get_tasks_service(self) -> TasksServiceInterface:
+        return self._tasks
+
+    def get_tenancy_service(self) -> TenancyServiceInterface:
+        return self._tenancy
+
+    def get_admin_service(self) -> AdminServiceInterface:
+        return self._admin
+
+    def get_events_service(self) -> EventsServiceInterface:
+        return self._events
+
+    def get_media_service(self) -> MediaServiceInterface:
+        return self._media
+
+    def get_realtime_service(self) -> RealtimeServiceInterface:
+        return self._realtime
+
+    def get_billing_service(self) -> BillingServiceInterface:
+        return self._billing
+
+    def get_slack_service(self) -> SlackServiceInterface:
+        return self._slack
+
+    def get_webhooks_service(self) -> WebhooksServiceInterface:
+        return self._webhooks
+
+
+def build_services(
+    managers: Managers,
+    infra: InfraInterface,
+    integrations: IntegrationsInterface,
+    portal_origins: list[str],
+    slack_redirect_uri: str,
+    portal_url: str,
+    head_max_age: timedelta,
+) -> ServicesInterface:
+    """In-process impls only: the remote impl of each interface is the typed
+    Python client, which arrives with the first Python consumer (ADR 0004)."""
+    return ServicesImpl(
+        tasks=TasksServiceImpl(managers.tasks),
+        tenancy=TenancyServiceImpl(managers.tenancy),
+        admin=AdminServiceImpl(
+            managers.tenancy_operator, managers.billing_operator, managers.work_operator
+        ),
+        events=EventsServiceImpl(managers.events),
+        media=MediaServiceImpl(managers.media),
+        realtime=RealtimeServiceImpl(
+            managers.tenancy, managers.events, infra.get_topics(), head_max_age
+        ),
+        billing=BillingServiceImpl(
+            managers.billing, managers.tenancy, managers.tasks, managers.media, portal_origins
+        ),
+        webhooks=WebhooksServiceImpl(integrations.get_payments(), infra.get_queues()),
+        slack=SlackServiceImpl(
+            managers.slack,
+            integrations.get_slack(),
+            infra.get_queues(),
+            slack_redirect_uri,
+            portal_url,
+        ),
+    )

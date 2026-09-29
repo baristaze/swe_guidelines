@@ -1,0 +1,15 @@
+line-length = 100
+target-version = "py314"
+src = ["om/src", "infra/src", "integrations/src", "services/api/src", "workers/maintenance/src", "clients/python/src", "apps/cli/src", "ops/src"]
+# Generated from the committed OpenAPI document by `make openapi`; never hand-edited.
+extend-exclude = ["clients/python/src/acme/client/schema.py"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "RUF", "N"]
+ignore = ["RUF012", "UP042", "N818"]
+
+[lint.isort]
+known-first-party = ["acme"]
+
+[format]
+quote-style = "double"

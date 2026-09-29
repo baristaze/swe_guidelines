@@ -1,0 +1,10 @@
+DROP TABLE core.sign_in_delays;
+ALTER TABLE core.sessions DROP COLUMN operator_role;
+ALTER TABLE core.sessions DROP COLUMN second_factor_at;
+ALTER TABLE core.sessions DROP COLUMN last_seen_at;
+ALTER TABLE core.identities ALTER COLUMN failed_sign_ins DROP DEFAULT;
+ALTER TABLE core.identities DROP COLUMN totp_last_step;
+ALTER TABLE core.identities DROP COLUMN totp_confirmed_at;
+ALTER TABLE core.identities DROP COLUMN totp_secret;
+DROP INDEX core.uq_identities_email_digest;
+ALTER TABLE core.identities DROP COLUMN email_digest;

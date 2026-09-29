@@ -1,0 +1,2 @@
+-- Nothing to undo: a personal org is a person's place and a tenant's rows,
+-- which a downgrade never takes. A rerun of the backfill finds everyone done.

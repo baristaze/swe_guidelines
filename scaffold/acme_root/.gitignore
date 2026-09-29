@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+apps/*/dist/
+
+# Local state
+.env
+.local/
+deployment/local/data/
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
