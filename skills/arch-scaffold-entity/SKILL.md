@@ -21,7 +21,8 @@ Conventions (Exceptions). A section is read with its own introduction.
 
 Example: `inventory Warehouse address:str timezone:str`. The role
 defaults to `core`, the scope to `org`. Ask in one message for the
-fields not given, and for:
+fields not given and their types, and for the list below; with no one
+to answer, decide them as the conventions' step 4 says:
 
 - the mixins: `Named`? `Trackable`? `SoftDeletable`? A mixin is
   composed only when an operation exercises it: `Trackable` needs an

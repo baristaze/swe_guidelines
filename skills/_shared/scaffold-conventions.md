@@ -34,6 +34,9 @@ copy.
    it. A migration stamp already used in its role's folder takes the
    next minute.
 4. Ask for everything the input lacks in one message, then proceed.
+   When no one answers, as in an unattended run, decide each from the
+   product's spec or description and the sibling files, name each
+   choice in the output after the files, and go on.
 
 ## Names
 
