@@ -291,9 +291,11 @@ every class on the chain; the rest is judged.
 
 **Principle.** Every id is a time-ordered `uuid_v7` produced by
 `new_id()` by whoever constructs the entity, always above the storage
-layer. A record an outside delivery creates takes `derived_id(key, at)`
-instead: a v7 whose time is the delivery's and whose random bits come
-from the delivery's key, so a copy handled again presents the same id.
+layer. A record a second run must find rather than make again takes
+`derived_id(key, at, part)` instead, from a key that names it: what an
+outside delivery creates, from the delivery's key, and what an
+orchestration step makes, from the record and the row. A second run
+presents the same id.
 
 **Source.** Naming Entities, Identifiers.
 
@@ -305,8 +307,10 @@ caller of `derived_id()` and the key it passes.
 **Violation.** `uuid4()` used for an entity id; an entity constructed
 without an id on the assumption that storage will assign one; an id
 minted inside a storage impl or assigned by the database; `derived_id()`
-for a record no outside delivery creates, or over a key other than the
-delivery's. The id a creating `POST` mints before its idempotency
+for a record neither a delivery nor an orchestration step makes, or
+over a key that does not name the record; `new_id()` for what a delivery
+creates or a step makes, so a second run duplicates it. The id a
+creating `POST` mints before its idempotency
 marker, ahead of the entity, is that protocol and not a breach (NET-24).
 (Ids read back out of the database are STO-06.)
 

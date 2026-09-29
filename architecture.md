@@ -390,12 +390,14 @@ lease needs no more than near the truth
 
 Whoever constructs the entity mints its id, above the storage layer,
 with `new_id()`. The database never assigns one, and nothing reads one
-back. A record an outside delivery creates is the one exception. Its id
-is `derived_id(key, at)`: a v7 whose time is the delivery's and whose
-random bits come from the delivery's key
-([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A copy the
-queue hands over again presents the same id, so its create meets the
-row already there and creates nothing.
+back. The one exception is a record a second run must find rather than
+make again: what an outside delivery creates, or what a step of an
+orchestration makes. Its id is `derived_id(key, at, part)`, a v7 whose
+time is `at` and whose random bits come from a key that names the
+record: the delivery's key, or the orchestration record with the row
+as `part` ([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A
+second run presents the same id, so its create meets the row already
+there and creates nothing.
 
 `EMPTY_UUID`, the zero UUID, means the platform: not a tenant and not a
 person. It is the `org_id` of cross-tenant reference data, and the value
@@ -404,9 +406,9 @@ item the platform claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
-> `new_id()`, or with `derived_id()` for a record an outside delivery
-> creates. The order is for the index; the time is a field, save for
-> the one lease that reads an attempt's id.
+> `new_id()`, or with `derived_id()` from a key that names the record,
+> so a second run makes the same id. The order is for the index; the
+> time is a field, save for the one lease that reads an attempt's id.
 
 ## Namespaces as Swimlanes
 
@@ -821,7 +823,8 @@ surprises.
   named atomic method.
 - Joins stay inside an impl. No trigger, no database function: what
   happens, happens in our code.
-- Ids are passed top-down, from `new_id()`, and never read back.
+- Ids are passed top-down, from `new_id()` or `derived_id()`, and never
+  read back.
 - Defaults live in the object model.
 - A new engine changes only `impl/`, and a swap is done when the
   contract suite passes, not when it compiles.

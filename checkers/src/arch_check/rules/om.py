@@ -623,9 +623,10 @@ def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
     or call of `uuid1`, `uuid3`, `uuid4`, or `uuid5`, no import of a
     third-party id package, and `uuid7` only in the base module, behind
     `new_id()`. `derived_id()`, in the base module too, builds its v7
-    from a delivery's key and calls no factory. An entity built without
-    an id, an id minted in a storage impl through `new_id()`, and a
-    caller of `derived_id()` that no outside delivery drives, are
+    from a key that names the record, a delivery's or an orchestration
+    step's, and calls no factory. An entity built without an id, an id
+    minted in a storage impl through `new_id()`, and a caller of
+    `derived_id()` that neither a delivery nor a step drives, are
     judged."""
     idx = index(project)
     for file, tree in project.trees(*above_storage(project)):

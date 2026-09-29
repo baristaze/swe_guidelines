@@ -619,10 +619,25 @@ def entry_id(delivery_key: UUID, delivered_at: datetime) -> UUID:
 """
 
 
-def test_an_id_derived_from_a_delivery_passes_every_om_rule(tmp_path):
-    # the one id not minted fresh: a v7 built in the base module from the delivery's key
+ORCHESTRATION_STEP = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import derived_id
+
+
+def row_id(record_id: UUID, started_at: datetime, row: int) -> UUID:
+    return derived_id(record_id, started_at, str(row))
+"""
+
+
+def test_an_id_derived_from_a_delivery_or_a_step_passes_every_om_rule(tmp_path):
+    # the ids not minted fresh: a v7 built in the base module from a key that names the record,
+    # a delivery's key, or an orchestration record and the row its step makes
     worker = "workers/maintenance/src/acme/workers/maintenance/deliveries.py"
-    project(tmp_path, {BASE: "import hashlib\n" + BASE_SOURCE + DERIVED_ID, worker: DELIVERY_HANDLER})
+    step = f"{OM}/tasks/impl/import_step.py"
+    base = "import hashlib\n" + BASE_SOURCE + DERIVED_ID
+    project(tmp_path, {BASE: base, worker: DELIVERY_HANDLER, step: ORCHESTRATION_STEP})
     code, out, err = check(tmp_path, "--group", "om")
     assert code == 0, out + err
 

@@ -148,8 +148,8 @@ judged.
 
 **Principle.** Every ID is passed top-down. We do not create an object
 in the DB and read its ID afterwards. IDs originate above storage, with
-`new_id()`, or with `derived_id()` for a record an outside delivery
-creates.
+`new_id()`, or with `derived_id()` from a key that names the record, for
+what an outside delivery creates or an orchestration step makes.
 
 **Source.** The Storage Layer, Storage Principles; Naming Entities,
 Identifiers.
