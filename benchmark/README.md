@@ -30,8 +30,10 @@ The judges read `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 without a key is skipped and named in the results. That is a choice: a
 run with three judges is worth more than no run. The subject gets a key
 of its own, `SUBJECT_ANTHROPIC_API_KEY`, as its `ANTHROPIC_API_KEY`. No
-judge's key ever reaches the subject, so give it a key you can cap and
-revoke on its own.
+judge's key is ever in the subject's environment, but on the host
+runtime the subject can still read the judges' keys (see
+[Runtimes](#runtimes)). Give the subject a key you can cap and revoke on
+its own.
 
 | Flag | What it does |
 |------|--------------|
@@ -228,7 +230,8 @@ subject:
 
 Every phase names its `name`, `prompt`, `max_usd`, and `timeout_s`. A
 phase learns of the target only where its prompt says `{target}`. A
-phase without `hint` never sees the handoff note. So a review reads the
+phase without `hint` is never shown the handoff note: the harness moves
+it out of the workspace while that phase runs. So a review is given the
 repository, and nothing that says how the tree was built. A phase in a
 `group` runs only when the run takes that group with `--with`, and the
 group's `rubric` sentence tells the judges what it did.
