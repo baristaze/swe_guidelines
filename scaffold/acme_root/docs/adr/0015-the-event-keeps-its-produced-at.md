@@ -1,6 +1,7 @@
 # ADR 0015: The event keeps `produced_at`, because its public record carries no id
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Naming Entities says an append-only record such as an audit entry is

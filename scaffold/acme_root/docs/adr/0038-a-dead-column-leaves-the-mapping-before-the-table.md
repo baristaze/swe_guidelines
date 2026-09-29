@@ -1,6 +1,7 @@
 # ADR 0038: A dead column leaves the mapping one release before it leaves the table
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A column moves by expand and contract. A migration runs before the

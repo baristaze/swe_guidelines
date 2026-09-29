@@ -1,6 +1,7 @@
 # ADR 0033: The WorkOS key is the application's, never the environment's
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A WorkOS environment holds several applications. WorkOS makes one when

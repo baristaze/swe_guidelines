@@ -1,6 +1,7 @@
 # ADR 0039: Long-running work is a record; a guard parks it, a bound fails it
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Some work takes minutes, not a request. The guideline's "Long-Running

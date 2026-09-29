@@ -1,6 +1,7 @@
 # ADR 0059: Authenticated routes have limits
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A session or an API key that calls as fast as it likes costs a lookup of

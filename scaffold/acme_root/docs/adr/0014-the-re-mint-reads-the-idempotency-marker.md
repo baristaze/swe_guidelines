@@ -1,6 +1,7 @@
 # ADR 0014: Tenancy's re-mint reads the idempotency marker in its own statement
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Shape of an Operation says the re-mint of a secret on a rerun is the

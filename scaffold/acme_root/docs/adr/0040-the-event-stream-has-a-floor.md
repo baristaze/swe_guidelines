@@ -1,6 +1,7 @@
 # ADR 0040: The event stream has a floor, and a read below it is gone
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 `activity.events` gains one row for every entity write. Without a trim,

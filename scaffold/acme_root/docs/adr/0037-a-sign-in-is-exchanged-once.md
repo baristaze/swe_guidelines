@@ -1,6 +1,7 @@
 # ADR 0037: A sign-in is exchanged once, and its retry signs in again
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A sign-in answers with a login credential (`lgn_`) and the person's

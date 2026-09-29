@@ -1,6 +1,7 @@
 # ADR 0013: Each environment has its own deploy credential, and production has two
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 DEL-38 and Cloud: AWS put the environment protection on the apply:

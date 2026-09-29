@@ -1,6 +1,7 @@
 # ADR 0074: The platform's size is a tally the sweep keeps
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 STO-21: "Analytics across tenants never runs in the request path of any

@@ -1,6 +1,7 @@
 # ADR 0021: Each environment has an AWS account of its own
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Staging and production are two environments. An account per

@@ -1,6 +1,7 @@
 # ADR 0005: Infra has its own exception root
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 DEL-18 (Cross-Cutting Conventions, Exceptions) roots every exception

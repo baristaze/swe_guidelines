@@ -1,6 +1,7 @@
 # ADR 0008: `main` is staging, `release` is production
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The guideline (Cloud: AWS) makes the smaller environment staging, and

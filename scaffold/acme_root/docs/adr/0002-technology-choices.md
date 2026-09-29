@@ -1,6 +1,7 @@
 # ADR 0002: Technology choices as adopted
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The guideline names technologies as defaults. It asks a project to

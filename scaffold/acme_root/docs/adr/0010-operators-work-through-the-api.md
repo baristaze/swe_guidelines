@@ -1,6 +1,7 @@
 # ADR 0010: Operators work through the API
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 DEL-16 (Client App Architecture, The Operator Console): "The operator

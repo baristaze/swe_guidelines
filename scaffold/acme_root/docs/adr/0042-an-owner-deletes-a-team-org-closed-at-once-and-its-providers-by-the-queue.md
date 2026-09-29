@@ -1,6 +1,7 @@
 # ADR 0042: An owner deletes a team org, closed at once, and its providers by the queue
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A person deletes their account only once they are not the last owner

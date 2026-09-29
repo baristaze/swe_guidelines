@@ -1,6 +1,7 @@
 # ADR 0071: A migration waits briefly for a lock
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The deploy migrates a live database. The migrate task runs inside the

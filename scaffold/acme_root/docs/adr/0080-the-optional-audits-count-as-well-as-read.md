@@ -1,6 +1,7 @@
 # ADR 0080: The optional audits count as well as read
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 OPS-11 (Operations, Operational Skills) makes two audits optional,

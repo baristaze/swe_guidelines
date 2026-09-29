@@ -1,6 +1,7 @@
 # ADR 0036: Sign-out ends the identity provider's session too
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A person signs in through WorkOS AuthKit's hosted page

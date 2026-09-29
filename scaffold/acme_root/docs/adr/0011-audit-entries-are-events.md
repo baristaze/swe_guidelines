@@ -1,6 +1,7 @@
 # ADR 0011: An audit entry is an event with an audit kind
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 OM-16 (Namespaces as Swimlanes): "Cross-cutting namespaces are

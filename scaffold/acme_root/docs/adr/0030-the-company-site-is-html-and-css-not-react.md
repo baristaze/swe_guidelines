@@ -1,6 +1,7 @@
 # ADR 0030: The company site is HTML and CSS, not React
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 DEL-12 (Client App Architecture, Stack): "**Principle:** One React +

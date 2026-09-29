@@ -1,6 +1,7 @@
 # ADR 0081: The desired count is the root's
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 OPS-17 (Operations, Scale-Out as a Lever): "The apply never sets the

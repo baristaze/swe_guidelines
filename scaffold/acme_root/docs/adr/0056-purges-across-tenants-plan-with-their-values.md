@@ -1,6 +1,7 @@
 # ADR 0056: Purges across tenants plan with their values
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Each namespace purges its rows past their retention once a pass, across

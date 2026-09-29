@@ -1,6 +1,7 @@
 # ADR 0016: Row-level security is the second fence, taken by default
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Tenancy is a data boundary and lives in storage, and the fence is the

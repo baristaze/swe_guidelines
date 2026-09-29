@@ -1,6 +1,7 @@
 # ADR 0061: A push names the version its change wrote
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The guideline says what a push carries (Realtime at the Edge):

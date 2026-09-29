@@ -1,6 +1,7 @@
 # ADR 0026: The work item's key is unique per tenant
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 ASY-16 (The Work Queue) asks for a unique index on

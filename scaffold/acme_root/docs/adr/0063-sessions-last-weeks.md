@@ -1,6 +1,7 @@
 # ADR 0063: Sessions last weeks
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A session ends at whichever comes first: its absolute lifetime, counted

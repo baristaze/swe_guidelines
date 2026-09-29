@@ -1,6 +1,7 @@
 # ADR 0053: The scope rides in the message that begins
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The guideline's funnel sets the scope of every transaction before its

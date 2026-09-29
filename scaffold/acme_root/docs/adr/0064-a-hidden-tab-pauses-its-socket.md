@@ -1,6 +1,7 @@
 # ADR 0064: A hidden tab pauses its socket
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 An open socket has a cost on the server whether or not anyone is

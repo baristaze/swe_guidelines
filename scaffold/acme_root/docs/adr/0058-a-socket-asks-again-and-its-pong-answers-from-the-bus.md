@@ -1,6 +1,7 @@
 # ADR 0058: A socket asks again, and its pong answers from the bus
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A socket checks its credential when its ticket is redeemed. After that

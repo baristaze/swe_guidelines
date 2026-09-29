@@ -1,6 +1,7 @@
 # ADR 0068: An operator credential ends by itself
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Two credentials reach the operator plane: a person's sign-in that

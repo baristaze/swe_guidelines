@@ -1,6 +1,7 @@
 # ADR 0024: What staging hands production is recorded outside the cloud and verified
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Staging is the less trusted account. Every merge deploys it with no

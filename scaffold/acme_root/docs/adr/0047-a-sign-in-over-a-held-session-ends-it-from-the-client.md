@@ -1,6 +1,7 @@
 # ADR 0047: A sign-in over a held session ends it from the client
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A switch presents the tab's session to `POST /v1/auth/sessions`, and

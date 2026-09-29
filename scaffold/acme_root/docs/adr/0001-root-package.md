@@ -1,6 +1,7 @@
 # ADR 0001: The root package is `acme`
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Every Python distribution in the monorepo shares one import root, so a

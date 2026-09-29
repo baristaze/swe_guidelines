@@ -1,6 +1,7 @@
 # ADR 0072: An address is one address in any case
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 An address reaches a person in many ways. A person's own sign-in

@@ -1,6 +1,7 @@
 # ADR 0027: What a delivery creates takes an id derived from it
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 OM-12 (Identifiers): "Every id is `uuid_v7`, minted above storage with

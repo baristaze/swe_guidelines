@@ -1,6 +1,7 @@
 # ADR 0045: Retention purges run once a pass across tenants
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The sweep visits every tenant in a ring, under one service context

@@ -1,6 +1,7 @@
 # ADR 0029: A local sign-in by address alone, refused in a deployed environment
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Sign-in is the identity provider's

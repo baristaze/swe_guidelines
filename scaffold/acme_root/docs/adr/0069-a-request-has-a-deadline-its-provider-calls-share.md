@@ -1,6 +1,7 @@
 # ADR 0069: A request has a deadline its provider calls share
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Every call to a provider carries a timeout, 10 seconds by default, and

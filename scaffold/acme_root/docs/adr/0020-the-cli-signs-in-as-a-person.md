@@ -1,6 +1,7 @@
 # ADR 0020: The CLI signs in as a person and holds one session
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 DEL-17 (Client App Architecture, The CLI Is Different): "The CLI talks

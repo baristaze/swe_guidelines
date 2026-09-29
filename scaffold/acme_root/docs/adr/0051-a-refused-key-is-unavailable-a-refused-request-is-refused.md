@@ -1,6 +1,7 @@
 # ADR 0051: A refused key is unavailable; a refused request is refused
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A provider refuses a call for one of two reasons. It refuses the

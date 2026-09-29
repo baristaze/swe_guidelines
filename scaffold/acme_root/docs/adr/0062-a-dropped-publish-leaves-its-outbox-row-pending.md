@@ -1,6 +1,7 @@
 # ADR 0062: A dropped publish leaves its outbox row pending
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The relay turns an entity change's outbox row into an event in the

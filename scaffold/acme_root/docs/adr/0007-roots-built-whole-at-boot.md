@@ -1,6 +1,7 @@
 # ADR 0007: Roots are built whole at boot, once per process
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 `build_managers` constructs every manager at boot. The storage and

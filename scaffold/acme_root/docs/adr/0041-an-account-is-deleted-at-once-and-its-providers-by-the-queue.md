@@ -1,6 +1,7 @@
 # ADR 0041: An account is deleted at once, and its providers by the queue
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 A person asks to delete their account. What that means is decided:

@@ -1,6 +1,7 @@
 # ADR 0028: Sign-in is the identity provider's, and the identity stays Acme's
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 Every hard part of a sign-in door is a product of its own: a password

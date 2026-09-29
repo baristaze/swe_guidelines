@@ -1,6 +1,7 @@
 # ADR 0019: An API key's hash stays unique after the key is revoked
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 STO-26: "A uniqueness constraint on a `SoftDeletable` table is a partial

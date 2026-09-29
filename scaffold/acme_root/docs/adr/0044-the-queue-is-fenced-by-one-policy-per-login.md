@@ -1,6 +1,7 @@
 # ADR 0044: The queue is fenced by one policy per login
 
 **Status**: accepted (2026-09-28)
+
 ## Context
 
 The guideline, The Storage Layer, The Second Fence: "Each table gets
