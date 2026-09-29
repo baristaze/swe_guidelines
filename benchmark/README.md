@@ -168,17 +168,18 @@ earlier one wrote.
 
 A run folder under `benchmark/runs/` is checked in, and only after
 `uv run benchmark/run.py redact --out benchmark/runs` has scanned it
-for keys (see The workflow). `runs/README.md` is the index: one row per
+for keys and provider account ids (see The workflow). `runs/README.md` is the index: one row per
 run, newest first, linking to its report. The pull request that adds a
 run adds its row by hand; nothing generates it. `make runs`, part of
 `make check`, fails when a run folder has no row, has two, or a row
 names a run that is not there, and when a row sits above a run that
 started after it. It also fails on a run whose checkout was not clean
 (see Versions), on a run whose runtime its scenario does not list
-(see Where a scenario runs), on a rehearsal (see Rehearsal), and on a
-compressed file in a run folder that holds a string shaped like a key,
-or that the scan cannot read, on a `.zip` that does not open, and on a
-`.git` folder (see The workflow).
+(see Where a scenario runs), on a rehearsal (see Rehearsal), on a file
+in a run folder, plain or compressed, that holds a string shaped like a
+key, a provider's organization id, or a rate limit's figures, on a
+compressed file the scan cannot read, on a `.zip` that does not open,
+and on a `.git` folder (see The workflow).
 
 ## Versions
 
@@ -1591,6 +1592,14 @@ writes the summary or uploads the run folders, it runs
 file of every run folder as bytes, frames included, and replaces two
 things with `[redacted]`: the value of every provider key the harness
 knows by name, and anything shaped like a provider, GitHub, or AWS key.
+It also replaces what a provider's error says about the account behind
+a key. OpenAI's 429 names the organization id and the figures of the
+limit it hit, and a judge that waits out a limit records that message.
+The scan replaces an OpenAI organization id (`org-` and 24 letters and
+digits) wherever it stands, and writes the figures as
+`Limit [redacted], Used [redacted], Requested [redacted]`. No
+placeholder holds a quote or a backslash, so a JSON file stays JSON,
+and a second pass changes nothing.
 A compressed file hides its text from a scan of its bytes, so the scan
 unpacks the forms the standard library reads: a zip, member by member,
 names and comment included; a tar, member by member; and a gzip, bzip2,
