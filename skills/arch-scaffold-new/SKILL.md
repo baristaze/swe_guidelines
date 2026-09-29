@@ -39,9 +39,10 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
   of its two words, or an abbreviation of them. Ask only when the
   product names nothing.
 - The folder is `<name>` in the current directory. It must not exist,
-  or must be empty. Refuse when the current directory is inside a git
-  repository (`git rev-parse --show-toplevel` answers there), since the
-  copy starts a repository of its own.
+  or must be empty: an empty folder of that name is no collision, and
+  the copy goes into it. Refuse when the current directory is inside a
+  git repository (`git rev-parse --show-toplevel` answers there), since
+  the copy starts a repository of its own.
 - A namespace always arrives with an entity, since
   `om/tests/unit/test_interfaces.py` refuses an interface that declares
   no method. With no `--first`, the first namespace is the noun the

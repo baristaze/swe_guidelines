@@ -28,9 +28,11 @@ copy.
    the output as "`<version>`, or a later snapshot of main".
 2. Read the sections of `architecture.md` the skill names, then the
    sibling files its steps name.
-3. Check every path the skill creates. One that exists is a collision:
-   stop and say so, and never overwrite. A migration stamp already used
-   in its role's folder takes the next minute.
+3. Check every path the skill creates. A file that exists, or a folder
+   that holds anything, is a collision: stop and say so, and never
+   overwrite. An empty folder is no collision; the skill writes into
+   it. A migration stamp already used in its role's folder takes the
+   next minute.
 4. Ask for everything the input lacks in one message, then proceed.
 
 ## Names
