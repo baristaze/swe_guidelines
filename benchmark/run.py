@@ -2216,7 +2216,9 @@ class Milestone:
     `zip` is the phase's checkpoint as a zip, and `files` the folder of the
     files the scenario collected after the phase. `sha256` and `commit` are
     what the source run recorded of the zip. `note` is the handoff note as
-    it stood after the phase, when a hinted phase had kept one.
+    it stood after the phase, when a hinted phase had kept one. `folder` is
+    the run folder that kept it: the source, or an earlier folder of its
+    chain.
     """
 
     phase: str
@@ -2226,6 +2228,7 @@ class Milestone:
     commit: str | None
     carried: list[dict[str, Any]]
     note: Path | None = None
+    folder: Path | None = None
 
 
 def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int, tuple[dict[str, Milestone], dict[str, str]]]:
@@ -2260,6 +2263,7 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
                     kept.get("commit"),
                     records[: at + 1],
                     source / kept["handoff"] if isinstance(kept.get("handoff"), str) else None,
+                    source,
                 )
         if records and not any("milestone" in r for r in records):
             last = records[-1]
@@ -2275,10 +2279,32 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
             else:
                 zip_file = source / "artifacts" / str(index) / A.ZIP
                 found[last["name"]] = Milestone(
-                    last["name"], zip_file, zip_file.parent / "workspace", archive.get("sha256"), archive["commit"], records
+                    last["name"],
+                    zip_file,
+                    zip_file.parent / "workspace",
+                    archive.get("sha256"),
+                    archive["commit"],
+                    records,
+                    folder=source,
                 )
         out[index] = (found, refused)
     return out
+
+
+def earlier_milestone(source: Path, index: int, phase: str) -> Milestone | None:
+    """The milestone of `phase` in repeat `index` that the nearest folder before `source` in its chain kept; None when none did.
+
+    A resume copies only the milestone it restored, and an earlier phase's
+    milestone stays in the folder that made it. The chain (`harness.chain`)
+    reaches that folder, so a resume of the chain's newest folder can
+    start after any phase before it.
+    """
+    folders, _ = CH.lineage(source)
+    for folder in reversed(folders[:-1]):
+        found, _ = source_milestones(folder, read_record(folder / "results.json")).get(index, ({}, {}))
+        if phase in found:
+            return found[phase]
+    return None
 
 
 def within(name: str) -> bool:
@@ -2444,7 +2470,9 @@ def command_resume(args: argparse.Namespace) -> int:
     `--runtime-config` names one, the target, and the subject's model are
     the source's. Every repeat the source recorded is resumed from its
     milestone after the phase, and one without a milestone that can be
-    restored is refused with its reason. The run's spend cap is the caps of
+    restored is refused with its reason. A phase's milestone is the one the
+    source kept, or, when it kept none, the one the nearest folder of its
+    chain kept (`earlier_milestone`). The run's spend cap is the caps of
     the phases it runs and the judges' budgets, over the repeats it resumes,
     unless `--max-spend-usd` names one. A resume after the last phase
     resumes the judges instead (`resume_judges`).
@@ -2521,10 +2549,13 @@ def command_resume(args: argparse.Namespace) -> int:
     refused: list[dict[str, Any]] = []
     for index, (found, why) in sorted(kept.items()):
         milestone = found.get(after)
+        if milestone is None and after not in why:
+            # The source kept none of that phase: the nearest folder of its chain that did.
+            milestone = earlier_milestone(source, index, after)
         if milestone is None:
             reason: str | None = why.get(after, f"the source run kept no milestone after {after}")
         else:
-            reason = milestone_refusal(milestone, source)
+            reason = milestone_refusal(milestone, milestone.folder or source)
         if milestone is not None and reason is None:
             resumed[index] = milestone
             continue
@@ -2563,7 +2594,13 @@ def command_resume(args: argparse.Namespace) -> int:
         "after": after,
         "checkout": checkout if isinstance(checkout, dict) else None,
         "milestones": [
-            {"repeat": i, "path": m.zip.relative_to(source).as_posix(), "sha256": m.sha256, "commit": m.commit}
+            {
+                "repeat": i,
+                "run_id": (m.folder or source).name,
+                "path": m.zip.relative_to(m.folder or source).as_posix(),
+                "sha256": m.sha256,
+                "commit": m.commit,
+            }
             for i, m in sorted(resumed.items())
         ],
         "repeats": sorted(resumed),

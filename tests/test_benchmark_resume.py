@@ -202,9 +202,8 @@ def test_resume_restores_a_milestone_runs_only_the_phases_after_it_and_carries_t
     source = record["source"]
     assert source["run_id"] == src.name and source["after"] == "mvp" and source["repeats"] == [0]
     assert source["refused"] == [] and source["capped"] == []
-    assert source["milestones"] == [
-        {"repeat": 0, "path": "artifacts/0/milestones/mvp/output.zip", "sha256": restored["sha256"], "commit": restored["commit"]}
-    ]
+    mvp = {"path": "artifacts/0/milestones/mvp/output.zip", "sha256": restored["sha256"], "commit": restored["commit"]}
+    assert source["milestones"] == [{"repeat": 0, "run_id": src.name, **mvp}]
     assert source["checkout"] == resolved(src)["versions"]["checkout"]
     assert record["versions"]["checkout"]["commit"] == source["checkout"]["commit"]  # one checkout here; both are named
     assert [p["name"] for p in resolved(run_dir)["phases"]] == ["review", "close"]
@@ -661,12 +660,54 @@ def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_re
         continued = resumed if argv[-1] == str(first) else judged
         assert (
             f"{Path(argv[-1]).name} is already the source of {continued.name}, beside it. A chain has one line, so a run "
-            f"resumes or is judged again from the chain's newest folder, {judged.name}, which carries every milestone "
+            f"resumes or is judged again from the chain's newest folder, {judged.name}, which reaches every milestone "
             "before it. No run folder was made, and nothing was spent"
         ) in err
     assert sorted(root.glob("*/*")) == made and len(panel.calls) == 2
     assert f"| 0 | judges (openai) | `{judged.name}` | ok | $1.5000 | 0:00:01 |" in report
     assert f"| 0 | judges (anthropic, openai, gemini, xai) | `{resumed.name}` | missed: openai | $6.0000 | 0:00:01 |" in report
+
+
+def test_the_newest_folder_reaches_an_earlier_phase_s_milestone_in_the_folder_of_its_chain_that_kept_it(bench, capsys):
+    bench.write(FOUR)
+    code, first = bench.here("--scenario", "system", "--repeat", "1")
+    assert code == 0 and first is not None
+    kept = {p["name"]: p["milestone"] for p in results(first)["repeats"][0]["phases"]}
+    assert {"scaffold", "mvp"} <= set(kept)  # the first run keeps the scaffold's and the mvp's milestones
+    code, resumed = bench.here("resume", "--source", str(first), "--after", "mvp")
+    assert code == 0 and resumed is not None
+    carried = {p["name"]: p.get("milestone") for p in results(resumed)["repeats"][0]["phases"] if p.get("carried")}
+    assert carried["scaffold"] is None and carried["mvp"] is not None  # a resume copies only the milestone it restored
+    # No folder of the chain kept a scaffold milestone: the message is the one a source with none gives.
+    record = (first / "results.json").read_text(encoding="utf-8")
+    edited = json.loads(record)
+    edited["repeats"][0]["phases"][0].pop("milestone")
+    (first / "results.json").write_text(json.dumps(edited), encoding="utf-8")
+    assert bench.here("resume", "--source", str(resumed), "--after", "scaffold") == (2, None)
+    assert "repeat 0 is not resumed: the source run kept no milestone after scaffold" in capsys.readouterr().err
+    (first / "results.json").write_text(record, encoding="utf-8")
+    # The first run kept it: a resume of the newest folder after the scaffold restores that milestone, from the first run.
+    code, again = bench.here("resume", "--source", str(resumed), "--after", "scaffold")
+    assert code == 0 and again is not None and again.parent == resumed.parent
+    assert len(seen(again)) == 3  # mvp, review, and close ran again
+    source = results(again)["source"]
+    assert source["run_id"] == resumed.name and source["after"] == "scaffold"  # the source is the folder named
+    (restored,) = source["milestones"]
+    assert restored == {
+        "repeat": 0,
+        "run_id": first.name,
+        "path": kept["scaffold"]["path"],
+        "sha256": kept["scaffold"]["sha256"],
+        "commit": kept["scaffold"]["commit"],
+    }
+    copy = results(again)["repeats"][0]["phases"][0]
+    assert copy["name"] == "scaffold" and copy["carried"] is True
+    assert copy["milestone"]["sha256"] == kept["scaffold"]["sha256"] == A.digest(again / copy["milestone"]["path"])
+    assert zipped(again / copy["milestone"]["path"]) == {"a.txt": "a"}  # the tree the scaffold left, not the mvp's
+    report = (again / "report.md").read_text(encoding="utf-8")
+    assert f"Repeat 0 started from the milestone that `{first.name}` kept, the nearest folder of that run's chain" in report
+    # The chain reads all three folders, and the fork refusal still points at the newest one.
+    assert [f["run_id"] for f in results(again)["chain"]["folders"]] == [first.name, resumed.name, again.name]
 
 
 def test_a_resume_with_out_lands_in_the_scenario_s_folder_under_that_root(bench, tmp_path):

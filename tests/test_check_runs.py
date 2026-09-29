@@ -316,7 +316,7 @@ def test_a_chain_that_forks_fails_with_one_line_to_resume_from(repo, runs, capsy
     out = capsys.readouterr().out
     assert (
         f"benchmark/runs/alpha/{RUN}: {RUN} is already the source of {RESUMED} and {AGAIN}, beside it. A chain has one "
-        "line, so a run resumes or is judged again from the chain's newest folder, which carries every milestone before it"
+        "line, so a run resumes or is judged again from the chain's newest folder, which reaches every milestone before it"
     ) in out
     assert "is named by" not in out and "no row names" not in out and "1 run index mismatch(es)" in out
 

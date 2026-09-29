@@ -25,7 +25,7 @@ it resumes onto it. This holds them together:
   fails, and so does a folder no row and no chain names;
 - no chain forks: no run folder is the source of two. A fork cannot be
   one row, so it is named once, and a run resumes or is judged again
-  from its chain's newest folder, which carries every milestone before
+  from its chain's newest folder, which reaches every milestone before
   it;
 - every row's Cost (USD) is its chain's total: what the chain's folders
   spent, each its `spend.total_usd`, to the cent. It reads "—" when no

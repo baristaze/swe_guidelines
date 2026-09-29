@@ -134,7 +134,7 @@
           "type": ["object", "null"]
         },
         "milestones": {
-          "description": "For a resumed run: each milestone it restored, by repeat, with its path in the source's folder, its SHA-256, and its commit.",
+          "description": "For a resumed run: each milestone it restored, by repeat, with the run folder that kept it (the source, or the nearest folder of its chain that kept that phase's), its path in that folder, its SHA-256, and its commit.",
           "type": "array",
           "items": {
             "type": "object",
@@ -142,6 +142,7 @@
             "additionalProperties": false,
             "properties": {
               "repeat": { "type": "integer", "minimum": 0 },
+              "run_id": { "type": "string", "minLength": 1 },
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
               "commit": { "type": ["string", "null"] }

@@ -668,6 +668,13 @@ def source_lines(source: dict[str, Any]) -> list[str]:
         commit = (source.get("checkout") or {}).get("commit")
         if commit:
             lines += [f"That run's checkout, `{commit}`, ran the carried phases; this run's checkout ran the rest.", ""]
+        for kept in source.get("milestones", []):
+            if kept.get("run_id") not in (None, source["run_id"]):
+                lines += [
+                    f"Repeat {kept['repeat']} started from the milestone that `{kept['run_id']}` kept, the nearest folder "
+                    f"of that run's chain that kept it: `{kept['path']}`, sha256 `{kept['sha256']}`.",
+                    "",
+                ]
         verb, covered = "resumed", "their phases' caps and their judges' budgets"
     elif "judges" in source:
         lines = [

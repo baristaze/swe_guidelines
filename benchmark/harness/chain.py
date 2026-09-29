@@ -100,7 +100,7 @@ def one_line(source: Path, after: list[Path], latest: Path | None = None) -> str
     at = f", {latest.name}," if latest is not None else ","
     return (
         f"{source.name} is already the source of {names}, beside it. A chain has one line, so a run resumes or is judged "
-        f"again from the chain's newest folder{at} which carries every milestone before it"
+        f"again from the chain's newest folder{at} which reaches every milestone before it"
     )
 
 

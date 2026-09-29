@@ -1422,6 +1422,17 @@ refused, with its reason and no phase started, when:
 
 A source with no repeat to resume makes no run folder, and exits 2.
 
+A source that resumed another holds only the milestone it restored and
+those its own phases left. An earlier phase's milestone stays in the
+folder that made it. So when the source kept no milestone after the
+phase `--after` names, each repeat takes the one the nearest folder of
+its chain kept, following `source.run_id` to the folder of that name
+beside it (see A run and its resumes). It is checked as a milestone of
+the source is, in the folder that kept it. The newest folder of a chain
+so reaches every milestone before it. When no folder of the chain kept
+one, the repeat is refused: the source run kept no milestone after that
+phase.
+
 A run recorded before phases kept milestones names none. Its archive is
 then the milestone of its last phase, when the archive's commit is that
 phase's checkpoint, and `artifacts/<repeat>/output.zip` is restored with
@@ -1429,15 +1440,18 @@ the collected files beside it. Such a run kept no handoff note, so none
 is restored. An archive of another commit is refused.
 
 **What it records.** The new run lands beside the source, or in the
-scenario's folder under the root `--out` names. Each repeat keeps the number it had in the source. Its phases
-start with the source's records of the phases up to the milestone, each
-marked `carried`, and then those it ran. The milestone it restored is
+scenario's folder under the root `--out` names. Each repeat keeps the
+number it had in the source. Its phases start with the records of the
+phases up to the milestone, each marked `carried`, and then those it
+ran. The milestone it restored is
 copied into its own `milestones/`, and the carried record of that phase
 names the copy; an earlier phase's milestone stays in the source's
 folder. `results.json` and `run.json` name the source under `source`:
 its run folder, its path, the phase it resumed after, the source's
 checkout, which ran the carried phases, and each milestone restored,
-with its SHA-256 and commit. `versions` names this checkout, which ran
+with the run folder that kept it, its SHA-256, and its commit. The
+source is the folder the command named, even when a milestone came from
+an earlier folder of its chain. `versions` names this checkout, which ran
 the rest. `run.json` lists the phases it runs. The report opens with
 the source and marks each carried phase.
 
@@ -1559,7 +1573,7 @@ recorded no spend, a model had no price, or the chain breaks: a source
 that is not beside its folder.
 
 A chain has one line: resume or judge again from its newest folder,
-which carries every milestone before it. Two runs from one folder
+which reaches every milestone before it. Two runs from one folder
 would fork the chain, and a fork cannot be one row. So `resume` and
 `judge` refuse a source that a run folder beside it already names as
 its `source`, with exit 2, before they make a run folder or spend

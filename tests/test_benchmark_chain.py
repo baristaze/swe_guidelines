@@ -142,7 +142,7 @@ def test_the_folders_that_ran_from_a_folder_are_those_whose_results_name_it_and_
     assert CH.fork(made[JUDGED]) is None
     assert CH.fork(made[FIRST]) == (
         f"{FIRST} is already the source of {RESUMED}, beside it. A chain has one line, so a run resumes or is judged "
-        f"again from the chain's newest folder, {JUDGED}, which carries every milestone before it"
+        f"again from the chain's newest folder, {JUDGED}, which reaches every milestone before it"
     )
 
 
