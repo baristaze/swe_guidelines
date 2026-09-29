@@ -384,18 +384,19 @@ envelope parsed into a typed error with the request id, sign-out on
 
 **Source.** Client App Architecture, API Access.
 
-**Look for.** `src/api/`: the generated file, the facade, the client;
-imports of the generated path from feature code; direct `fetch` calls.
+**Look for.** `clients/typescript/`: the generated file, the facade,
+the client; an app importing the generated path, or a client inside
+another app; direct `fetch` calls in an app.
 
 **Violation.** A feature module importing from the generated schema
-file; a second transport client inside the app (a second client for a
-service across the repository is NET-15); hand-maintained request or
-response types that duplicate generated ones; `fetch` outside the
-client.
+file; a second transport client inside an app, or an app taking the
+client from another app (a second client for a service across the
+repository is NET-15); hand-maintained request or response types that
+duplicate generated ones; `fetch` outside the client.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/apps/portal/src/api`
+**Shape.** `scaffold/acme_root/clients/typescript`
 
 ## DEL-16 The operator console shares the stack, never the security context
 
