@@ -5,91 +5,57 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.39.0 (2026-09-29)
+## 0.40.0 (2026-09-29)
 
-A new system starts as a copy of a core that runs, and the text tells
-the story. `scaffold/acme_root/` is a whole monorepo in the guideline's
-shape with no product domain, and `scaffold/new.py` copies it under a
-project's name in a second. The guideline is rewritten around it at a
-third of its length, with the code shapes linked to the scaffold's
-files and the detail held in the lenses and the skills. The skills
-follow the Agent Skills standard, so they run in any agent that reads
-it, not only in Claude Code. Minor: rules are added and sharpened, and
-the reversals are named below. One rename, `OpContext` to
-`TenantContext`, is one every adopter follows on upgrade.
+The scaffold departs from no `core` section, and every loop its ops
+skills run has a count again. Five choices the scaffold recorded as
+departures from `core` sections are now the rules they departed from,
+and How to Read This says how far a tag reaches. Minor: rules are
+sharpened, and two reversals are named below.
 
 ### Changed
 
-- `OpContext` is `TenantContext`, the stage module `om/opcontext.py`
-  is `om/context.py`, and the section `## OpContext` is
-  `## TenantContext`. `arch-check` reads the stages from
-  `<pkg>.om.context` and takes no alias: a tree on the old names
-  renames when it moves its pin. CTX-02 fails a tree that declares a
-  stage anywhere else under `om`, so a tree still on the old names
-  fails instead of passing every stage rule unjudged.
-- `architecture.md` tells the story for two readers, a person and an
-  agent, in 14,121 prose words from 44,960. How to Read This defines
-  four tags (`core`, `default`, `optional`, `style`) and the
-  agents-only block, and The Core lists 26 invariants. Every code shape
-  is the scaffold's own, beside a link to its file. Every `##` and
-  `###` title is kept.
-- Reversed: the feed and the identity-scoped table mixins are gone from
-  the guideline, the lenses, and `arch-check`. A table whose `org_id`
-  leads a compound index sets `__org_id_index__ = False`, and an
-  identity table's column is the one its scope map names.
-- Reversed: the edge marker is `IdempotencyRecord`, fenced by its
-  `attempt_id` (OM-03, NET-24).
-- Reversed: an append-only record's time is a field of its own, not
-  the time inside its id (OM-06), and a create's times are stamped by
-  the manager, not kept as the caller built them (CON-17).
-- Reversed: DEL-14 drops from medium to low.
-- "Monorepo Folder Structure": a new system starts as a copy of the
-  scaffold, `arch-scaffold-new <name>`. It no longer takes a target
-  folder, a root package, `--no-portal`, or `--no-worker`: the name is
-  the folder and the package. Each scaffold skill names the scaffold
-  files whose shape it follows.
-- "Clients Live in One Place": the TypeScript client lives in
-  `clients/typescript/`, beside the Python one, and every browser app
-  imports it. DEL-15 and NET-15 follow, and `arch-scaffold-app` has a
-  new app import the package, never the portal.
-- The scaffold's operational skills live in `.agents/skills/`, the
-  folder the agents that read the Agent Skills standard share, and
-  `.claude/skills` is a link to it. Every skill names its files by a
-  path from its own folder, resolved with `realpath` where it climbs
-  out, instead of `${CLAUDE_SKILL_DIR}`. `arch-review-full` runs its
-  groups as subagents where the agent has them, and one after another
-  where it has none. OPS-11 finds a built-in skill in either folder.
-- `benchmark/README.md` is one page a person reads, and the harness
-  detail lives with the code.
-
-### Added
-
-- `scaffold/acme_root/`, the domain-agnostic core: tenancy with the
-  operator plane, events and audit, the outbox, idempotency, the work
-  queue, orchestrations, and media on four database roles; the API and
-  its realtime socket, the maintenance worker, a portal shell, the CLI,
-  a landing site, both clients, the ops package and its skills, the
-  local stack, Terraform, CI and deploy workflows, and 48 ADRs. CI
-  copies it and runs the copy's own gates.
-- `scaffold/new.py <dir>/<name>` copies it under a name of one or two
-  snake_case words, at most 17 characters, in every form the name
-  takes, pins the guideline release, and links `.claude/skills` to
-  `.agents/skills` in the copy.
-- A lens may name the scaffold file that shows its rule, on a
-  `**Shape.**` line, and `make lenses` holds each path.
-- Two routes to install the skills: the Claude Code plugin, and for any
-  agent that reads the Agent Skills standard, a clone with each skill
-  linked into the project's `.agents/skills/`.
-- A skill a person starts by name carries Codex's switch,
-  `agents/openai.yaml` with `policy.allow_implicit_invocation: false`,
-  beside `disable-model-invocation`.
-- `make skills` holds every skill to the standard: its frontmatter
-  keys, its name, the two switches agreeing, and every path it names
-  resolving from its folder.
-- `make snippets` fails when a Python or YAML block in the Markdown
-  does not parse.
+- How to Read This: a tag covers the text under its heading up to the
+  next heading of any level, so a `##` tag never reaches the `###`
+  sections under it.
+- OM-12 and STO-06: a record whose id is derived from a key that names
+  it, an outside delivery's key or an orchestration step's record and
+  row, takes `derived_id()`, so a second run makes the same id. Every
+  other id is `new_id()`.
+- Reversed: OM-16 and OM-02 no longer ask for an `audit` namespace from
+  the start. An audit entry is an `Event` with an audit kind in the
+  org's stream until audit gains a reader of its own or must be kept
+  longer than the stream.
+- NET-22 and DEL-18: the event stream keeps a retention and a floor,
+  and a read below the floor is `410 stream_truncated`, naming the
+  floor and the head. An exception that no listed shape fits sets its
+  own status and code under the root.
+- STO-34: payloads and events, an audit entry among them, carry ids and
+  never a personal value, so an erasure has nothing to redact in the
+  stream, and the trim past the retention is no breach.
+- STO-32: a person's account may be deleted at once, in one write,
+  beside the soft delete purged after its retention.
+- Reversed: CTX-27's recheck setting is `realtime_recheck_seconds`, a
+  setting of the realtime service, not `session_recheck_interval`.
+- The scaffold's tables: the company site's HTML and CSS is a
+  substitution under Stack, a `default` section, named in ADR 0002. The
+  record of the event's `produced_at` leaves the deviations, since
+  OM-06 asks for it. The five folded records stay as decisions.
 
 ### Fixed
 
-- Two fields of the `SecurityContext` and `OutboxRow` snippets sat one
-  level too deep.
+- The scaffold's ops skills bound their loops again, as 0.38.0's
+  templates did before 0.39.0 replaced them. `ops-watch` runs at most
+  30 batches of 30 seconds to five minutes, with at most 20 tool calls
+  a batch. `ops-root-cause` follows at most 5 request ids, one pass
+  each, and reads the events feed from the window's first `seq`. A Logs
+  Insights query is polled at most 10 times. `audit-database-calls`
+  reruns a failed flow at most once. A session follows at most 2 hops
+  of Next, and two skills leave their Next to the person.
+- `ops-watch` reads each metric minute once: a batch rounds its bounds
+  down to whole minutes, with a 60-second period, where the templates
+  counted a minute in two batches.
+- `ops-root-cause` asks for the symptom when neither the prompt nor an
+  investigation's report names one and no request id is given.
+- `make skills` holds each count bound in the skill that states it,
+  beside the fix-and-rerun wording it held before.
