@@ -142,8 +142,10 @@ workspace. Nothing is reordered or removed.
    `make infra-up` and `make migrate` when a table was added,
    `make openapi` when a route was added, `make check`, and
    `make migrate-check` when a table was added. The database targets
-   run only against the local compose stack. A tool runs through the
-   workspace (`uv run`, `pnpm run`), never a global install.
+   run only against the local compose stack, and only when Docker runs
+   (`docker info` exits 0). When it does not, they are skipped, and the
+   output names each one skipped. A tool runs through the workspace
+   (`uv run`, `pnpm run`), never a global install.
 
    A gate that fails on what the scaffold wrote is fixed, and the
    commands of its step run again from the first: the first run plus at

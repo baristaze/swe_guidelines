@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-worker
 description: "Add a kind of background work: the kind, its payload and permission, its handler in the maintenance worker or in a worker of its own, and the tests, in the shape of the scaffold's work queue and worker. Python."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(docker info:*), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 
 # arch-scaffold-worker

@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-namespace
 description: "Create an object-model namespace (a swimlane) with its first entity: the manager interface and impl, storage in Postgres and memory, its README, and the wiring into both roots, in the shape of the scaffold's own namespaces. Python."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(docker info:*), Bash(uv run:*), Bash(git status:*)
 ---
 
 # arch-scaffold-namespace

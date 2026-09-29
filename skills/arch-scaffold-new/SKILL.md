@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Start a new system in the guideline's shape: pick its name, copy the scaffold's domain-agnostic core under it, run its gates, record the product's first decisions, then add the first namespace."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*), Bash(docker info:*)
 ---
 
 # arch-scaffold-new
@@ -77,7 +77,17 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    before this skill writes anything, so a gate that fails here is a
    defect of the scaffold: stop with the cause pre-existing, name the
    gate, and change nothing.
-3. Record the product's first decisions, one ADR each, in the shape of
+3. Tell whether Docker runs: `docker info` exits 0 when it does. When
+   it runs, settle the local stack's host ports before any stack
+   starts. They are knobs, `<NAME>_<SERVICE>_PORT`, and `.env.example`
+   lists them with the URL knobs that name them. Check each with
+   `lsof -i :<port>`. For each that is taken, set a free one in `.env`,
+   with every URL knob that names it, and never stop what holds it.
+   When Docker does not run, the database targets of this skill and of
+   the skills it follows (`make infra-up`, `make migrate`,
+   `make migrate-check`, `make test-integration`) are skipped, and the
+   output names each one skipped; every other gate runs.
+4. Record the product's first decisions, one ADR each, in the shape of
    the copy's own ADRs:
    - the product on the core: what an org, a member, and an operator
      are in the product, which of the core's pieces it uses (files,
@@ -94,19 +104,15 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    `@` (`acme` gives `@acme`, `acme/infra` gives `@acme/infra`) and
    separated by a space, take the place of the copy's placeholder team.
    The paths stay as they are.
-4. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
+5. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
    follow it with the first namespace, its entity, and the entity's
    fields.
-5. Run `make openapi` when a route was added, then `make check`. When
-   Docker runs, the integration suite follows, as CI runs it on a copy.
-   The local stack's host ports are knobs, `<NAME>_<SERVICE>_PORT`, and
-   `.env.example` lists them with the URL knobs that name them. Check
-   each with `lsof -i :<port>`. For each that is taken, set a free one
-   in `.env`, with every URL knob that names it, and never stop what
-   holds it. Then `make infra-up`, `make migrate`, `make migrate-check`,
-   and `make test-integration`.
+6. Run `make openapi`, since the entity added routes, then `make check`.
+   When Docker runs, the integration suite follows, as CI runs it on a
+   copy: `make infra-up`, `make migrate`, `make migrate-check`, and
+   `make test-integration`.
 
-A gate of steps 4 and 5 that fails on what this skill wrote is fixed,
+A gate of steps 5 and 6 that fails on what this skill wrote is fixed,
 and its step runs again from its first command, as After writing
 states: the first run plus at most 3 reruns.
 
