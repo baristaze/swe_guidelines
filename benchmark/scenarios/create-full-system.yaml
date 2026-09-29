@@ -57,7 +57,7 @@ subject:
   # The product spec is the target's one file. The two builder phases
   # name it in their prompts; the review and the close are not told of it.
   target: ../fixtures/create-full-system
-  output: free-journalism
+  output: free_journalism
   # In print mode, a tool call that needs a permission is refused unless
   # its tool is allowed here. Building a system writes files and runs
   # Docker, make, uv, pnpm, and git, so the subject's shell is not
@@ -91,17 +91,17 @@ subject:
   phases:
     - name: scaffold
       prompt: |-
-        /swe-guidelines:arch-scaffold-new free-journalism acme --codeowners acme --first journalists Journalist display_name:str
+        /swe-guidelines:arch-scaffold-new free_journalism --codeowners acme --first journalists Journalist display_name:str
 
         When a step of the skill says to fix the gates and run them again, run them once, then at most 3 more times. If they still fail, stop and say which gate fails and why.
 
-        The product is described in {target}/product-spec.md. Read it before you start. The folder free-journalism is the whole system. Work only inside it. No one answers questions in this run, so decide, and record each decision in the tree where the guideline says decisions go. Every external provider the spec names (WorkOS, Stripe, Postmark or Resend, Twilio, a malware scanner) is reached through the twin the guideline prescribes for an external service. There are no live accounts and no keys.
+        The product is described in {target}/product-spec.md. Read it before you start. The folder free_journalism is the whole system. Work only inside it. No one answers questions in this run, so decide, and record each decision in the tree where the guideline says decisions go. Every external provider the spec names (WorkOS, Stripe, Postmark or Resend, Twilio, a malware scanner) is reached through the twin the guideline prescribes for an external service. There are no live accounts and no keys.
       hint: true
       max_usd: 360
       timeout_s: 16200
     - name: mvp
       prompt: |-
-        Build the Initial MVP of {target}/product-spec.md in free-journalism, in the guideline's shape. Add each namespace and entity with /swe-guidelines:arch-scaffold-namespace and /swe-guidelines:arch-scaffold-entity, and each worker kind with /swe-guidelines:arch-scaffold-worker. The MVP is three loops:
+        Build the Initial MVP of {target}/product-spec.md in free_journalism, in the guideline's shape. Add each namespace and entity with /swe-guidelines:arch-scaffold-namespace and /swe-guidelines:arch-scaffold-entity, and each worker kind with /swe-guidelines:arch-scaffold-worker. The MVP is three loops:
 
         - following and supporting a journalist;
         - a source sending a tip, anonymous or not, encrypted on the sender's device for each recipient;
