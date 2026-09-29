@@ -49,9 +49,10 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
   first that loop names, with the fields the product gives it. With
   `--first` and no entity, the entity is that namespace's first in the
   product.
-- `--codeowners` names the owners `.github/CODEOWNERS` lists. Without
-  it, the file keeps the copy's placeholder team, and the output says
-  so.
+- `--codeowners` names the owners `.github/CODEOWNERS` lists, comma
+  separated, each an account or an `org/team`. Without it, the file
+  keeps the copy's placeholder team, and the output names the file as
+  one for the person to set.
 
 ## Created
 
@@ -66,7 +67,7 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 | File | Change |
 |------|--------|
 | `README.md`, `llms.txt` | the opening and the summary say what the product is, in place of the core's description |
-| `.github/CODEOWNERS` (with `--codeowners`) | the owners |
+| `.github/CODEOWNERS` (with `--codeowners`) | on every rule line, the owners in place of the placeholder team |
 
 ## Procedure
 
@@ -88,6 +89,11 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
      namespace that needs them.
 
    Then write the opening of `README.md` and the summary of `llms.txt`.
+   With `--codeowners`, write the owners into `.github/CODEOWNERS`: on
+   every line that is not a comment, the owners, each with a leading
+   `@` (`acme` gives `@acme`, `acme/infra` gives `@acme/infra`) and
+   separated by a space, take the place of the copy's placeholder team.
+   The paths stay as they are.
 4. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
    follow it with the first namespace, its entity, and the entity's
    fields.
