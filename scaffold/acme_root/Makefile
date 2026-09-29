@@ -56,9 +56,14 @@ ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://gi
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-setup: ## Install every Python and TypeScript dependency
+# A tree copied under a longer name has longer lines and its imports in
+# another order, so setup formats the Python once; on a formatted tree it
+# changes nothing.
+setup: ## Install every Python and TypeScript dependency, and format the Python
 	uv sync --all-packages
 	@if [ -f pnpm-workspace.yaml ] && [ -d apps ]; then pnpm install; fi
+	uv run ruff check --fix --quiet --select I .
+	uv run ruff format --quiet .
 
 # The one-command session. `up` starts the data services first, migrates and
 # seeds them, then starts the app containers and the dashboards; it is safe
@@ -177,7 +182,7 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 # The ORM-versus-schema check needs a migrated database, which the fast gate
 # cannot reach, so `check` does not run it; CI's integration job runs it
 # right after `make migrate`, and the downgrade-then-upgrade round trip stays
-# in the integration tests. The deviation is ADR 0003.
+# in the integration tests.
 migrate-check: ## Compare every role's ORM metadata with the migrated schema
 	uv run --package acme-om python -m acme.om.storage.migrate check --all --local
 

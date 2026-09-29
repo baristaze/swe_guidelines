@@ -8,6 +8,11 @@ extend-exclude = ["clients/python/src/acme/client/schema.py"]
 select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "RUF", "N"]
 ignore = ["RUF012", "UP042", "N818"]
 
+# The formatter holds code to 100 columns. A string or a comment runs longer
+# once a copy takes a longer name, so the line rule leaves it room.
+[lint.pycodestyle]
+max-line-length = 120
+
 [lint.isort]
 known-first-party = ["acme"]
 
