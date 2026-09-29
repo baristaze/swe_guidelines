@@ -13,14 +13,19 @@ A phase is bounded by count and by spend. Claude Code holds the turn cap
 reads the stream as it is written and holds two bounds of its own:
 
 - the spend, priced from the usage of every assistant message the stream
-  carries. The price is the model's in the matrix. A cache read is priced
-  at a tenth of the input price, a cache write at 1.25 times it, or twice
-  it for a write the usage names as a one-hour write. A model the matrix
-  has no price for is priced at the matrix's dearest Anthropic model, so
-  the estimate errs high. A message is counted once however many lines
-  carry it, and the total is kept as it goes. The stream shows what the
-  session shows it, so a subagent the stream does not carry is held by
-  Claude Code's own cap alone;
+  carries, the helpers' included. The price is the model's in the matrix.
+  A cache read is priced at the model's cache-hit price where the matrix
+  names one, `cache_read`, else at a tenth of the input price; a cache
+  write at 1.25 times the input price, or twice it for a write the usage
+  names as a one-hour write. A model the matrix has no price for is
+  priced at the matrix's dearest Anthropic model, so the estimate errs
+  high. A message is counted once however many lines carry it, and the
+  total is kept as it goes. Each line carries its message's usage from
+  the start of the message: the input in full, the output as it stood
+  then. No line carries a message's final output count, so the estimate
+  leaves out nearly all of the output, and reads low by about what it
+  cost. A subagent the stream does not carry is held by Claude Code's
+  own cap alone;
 - the gate reruns. A gate run is a Bash call one of whose commands is the
   gate itself: the command's first words, after any variable settings,
   are the gate's words. `echo make check` and a commit message that names
@@ -106,7 +111,8 @@ AGENT_TOOLS = frozenset({"Agent", "Task"})
 # How the result of an Agent call that started its subagent in the background opens: a notice, not the answer.
 LAUNCH_NOTICE = "Async agent launched"
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
-# The multiples of a model's input price a cache read and a cache write are billed at.
+# The multiples of a model's input price a cache read and a cache write are billed at; a
+# price that names its own `cache_read`, in US dollars per million tokens, is billed at that.
 CACHE_READ = 0.1
 CACHE_WRITE = 1.25
 CACHE_WRITE_1H = 2.0
@@ -472,9 +478,10 @@ class Watch:
         split = usage.get("cache_creation")
         hour = _count(split.get("ephemeral_1h_input_tokens")) if isinstance(split, dict) else 0
         written = _count(usage.get("cache_creation_input_tokens"))
+        hit = price.get("cache_read", price["input"] * CACHE_READ)
         return (
             _count(usage.get("input_tokens")) * price["input"]
-            + _count(usage.get("cache_read_input_tokens")) * price["input"] * CACHE_READ
+            + _count(usage.get("cache_read_input_tokens")) * hit
             + max(written - hour, 0) * price["input"] * CACHE_WRITE
             + hour * price["input"] * CACHE_WRITE_1H
             + _count(usage.get("output_tokens")) * price["output"]

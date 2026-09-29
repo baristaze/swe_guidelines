@@ -436,6 +436,14 @@ def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
 
 
 ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+# Each model's figures under a result's `modelUsage`, by the name its usage gives the same count.
+MODEL_TOKENS = {
+    "inputTokens": "input_tokens",
+    "cacheCreationInputTokens": "cache_creation_input_tokens",
+    "cacheReadInputTokens": "cache_read_input_tokens",
+    "outputTokens": "output_tokens",
+    "thinkingTokens": "thinking_tokens",
+}
 
 
 def token_count(value: Any) -> int | None:
@@ -461,23 +469,47 @@ def envelope_thinking(usage: Any, models: Any) -> int | None:
     return sum(found) if found else None
 
 
+def model_usage_tokens(models: Any) -> dict[str, int]:
+    """The tokens a result reports under `modelUsage`, summed over its models, by the names its usage gives them.
+
+    Each model's figures count every agent of the session that ran on
+    it, as its `costUSD` does. A count a model does not report is left
+    out, and a result whose models report none gives nothing.
+    """
+    sums: dict[str, int] = {}
+    for figures in (models if isinstance(models, dict) else {}).values():
+        for key, name in MODEL_TOKENS.items():
+            count = token_count(figures.get(key)) if isinstance(figures, dict) else None
+            if count is not None:
+                sums[name] = sums.get(name, 0) + count
+    return sums
+
+
 def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     """The tokens and the cost in US dollars of a `claude -p` session's result.
 
     Claude Code prices its own run, caching included, as `total_cost_usd`;
-    that figure is the subject's cost. `input_tokens` is every input token,
-    cached or not, with the cached ones also named on their own.
-    `output_tokens` already counts the thinking, and `reasoning_tokens`
-    names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
-    `thinkingTokens` over `modelUsage`, and no key when the result reports
-    neither. Output with no result spent nothing the run can see: no
-    tokens, cost None.
+    that figure is the subject's cost. The tokens are the ones it prices:
+    each model's under `modelUsage`, summed, which count the session's
+    helper agents as well as its main agent. The result's `usage` counts
+    the main agent alone, so it is read only when no model reports a
+    count. `input_tokens` is every input token, cached or not, with the
+    cached ones also named on their own. `output_tokens` already counts
+    the thinking, and `reasoning_tokens` names it, from the same figures:
+    the sum of `thinkingTokens`; or, when `usage` is read, its
+    `output_tokens_details.thinking_tokens`, else that sum. It has no key
+    when the result reports neither. Output with no result spent nothing
+    the run can see: no tokens, cost None.
     """
     data = envelope(stdout)
     if data is None:
         return {}, None
-    raw = data.get("usage")
-    counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+    counts = model_usage_tokens(data.get("modelUsage"))
+    thinking = counts.pop("thinking_tokens", None)
+    if not counts:
+        raw = data.get("usage")
+        counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if token_count(v) is not None}
+        thinking = envelope_thinking(raw, data.get("modelUsage"))
     usage: dict[str, int] = {}
     if counts:
         usage = {
@@ -486,7 +518,6 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
             "cache_read_input_tokens": counts.get("cache_read_input_tokens", 0),
             "cache_creation_input_tokens": counts.get("cache_creation_input_tokens", 0),
         }
-        thinking = envelope_thinking(raw, data.get("modelUsage"))
         if thinking is not None:
             usage["reasoning_tokens"] = thinking
     cost = data.get("total_cost_usd")
@@ -833,12 +864,16 @@ def run_skill(
                 {k: earlier_usage.get(k, 0) + own_usage.get(k, 0) for k in {*earlier_usage, *own_usage}},
             )
         phase_cost = spent if spent is not None else estimated
-        plan.budget.spent += phase_cost
+        # A session with no result spent at least its estimate, which counts each message's output as the message
+        # starts, and up to its phase's cap, as Claude Code's --max-budget-usd let it. The run's cap counts the most.
+        counted = phase_cost if spent is not None else max(phase.max_usd, estimated)
+        plan.budget.spent += counted
         cost += phase_cost
         priced = priced or spent is not None
-        if spent is None and estimated:
+        if spent is None:
             notes.append(
-                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}"
+                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}, "
+                f"a lower bound, and the run's spend cap counts it at ${counted:.4f}"
             )
         for name, value in (spent_usage or watch.usage()).items():
             usage[name] = usage.get(name, 0) + value
@@ -859,6 +894,9 @@ def run_skill(
             "estimated_usd": estimated,
             "wall_s": round(status.duration_s, 3),
         }
+        if spent is None:
+            # Its cost is the estimate, which reads low.
+            record["cost_lower_bound"] = True
         if by_model:
             # The models the session used and what each cost, so the run says what it measured.
             record["model_cost_usd"] = by_model
@@ -969,9 +1007,22 @@ def repeat_need(scn: S.Scenario) -> float | None:
 
 
 def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by."""
+    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by.
+
+    A model whose cache hits are not billed at a tenth of its input price
+    names its own, `cache_read`, and its price carries it.
+    """
     names = matrix.get("anthropic", {}).get("prices", {})
-    return {m: price for m in names if (price := J.price_for(matrix, "anthropic", m)) is not None}
+    out: dict[str, dict[str, float]] = {}
+    for model, spec in names.items():
+        price = J.price_for(matrix, "anthropic", model)
+        if price is None:
+            continue
+        hit = spec.get("cache_read")
+        if isinstance(hit, (int, float)) and not isinstance(hit, bool) and 0 <= hit < float("inf"):
+            price["cache_read"] = float(hit)
+        out[model] = price
+    return out
 
 
 def planned_phases(
@@ -1094,8 +1145,9 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
     if summary["self_judged"]:
         print(f"note: {summary['self_judged']}")
     spent = data["spend"]
-    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
-    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
+    why = [f"no price for {', '.join(spent['unpriced'])}"] if spent["unpriced"] else []
+    why += [f"{', '.join(spent['estimated'])} at the harness's estimate"] if spent.get("estimated") else []
+    print(f"spend      ${spent['total_usd']:.4f}" + (f" (at least; {'; '.join(why)})" if why else ""))
     for fallback in summary["fallbacks"]:
         print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
 
