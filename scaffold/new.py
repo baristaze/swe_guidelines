@@ -11,9 +11,11 @@ and the database logins take the snake form (`free_press`), the
 distributions, the domains, and the cloud resources the kebab form
 (`free-press`), the environment the UPPER prefix (`FREE_PRESS_`), and prose
 the Title (`Free Press`). Binary files are copied as they are, and a link
-stays a link: `.claude/skills` points at `.agents/skills` in the copy as it
-does here. The copy pins the guideline release this checkout carries, starts
-a git repository with nothing staged, and prints the next step.
+stays a link. The copy's skills sit in `.agents/skills/`, and its
+`.claude/skills` is a link to them, whatever the source holds there: the link,
+or a folder when the scaffold was copied without its links. The copy pins the
+guideline release this checkout carries, starts a git repository with nothing
+staged, and prints the next step.
 
 Standard library only, so it runs before anything is installed.
 """
@@ -64,6 +66,14 @@ SKIPPED = frozenset(
 )
 """What a copy never carries: what a tool installed, built, or cached in the
 scaffold, and local settings."""
+
+SKILLS = Path(".agents") / "skills"
+"""Where a copy keeps its skills: the folder every agent that reads the Agent
+Skills standard shares."""
+CLAUDE_SKILLS = Path(".claude") / "skills"
+"""The folder Claude Code reads, which a copy makes a link to SKILLS."""
+CLAUDE_SKILLS_TARGET = "../.agents/skills"
+"""The link's target, relative, so the copy can move."""
 
 PIN = re.compile(r"(swe_guidelines(?:@|/blob/|/tree/)v|pinned at release `v)\d+\.\d+\.\d+")
 """Where a copy names the guideline release it follows."""
@@ -170,6 +180,8 @@ def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
         rel = path.relative_to(source)
         if any(part in SKIPPED or part.endswith(".pyc") for part in rel.parts):
             continue
+        if rel.parts[: len(CLAUDE_SKILLS.parts)] == CLAUDE_SKILLS.parts:
+            continue  # made a link below, whatever the source holds
         out = dest.joinpath(*(rename(part, names) for part in rel.parts))
         if path.is_symlink():
             # a link is copied as a link, its target renamed like a path, so the copy wires what the scaffold wires
@@ -189,6 +201,11 @@ def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
         else:
             out.write_bytes(data)
         shutil.copymode(path, out)
+        count += 1
+    if (dest / SKILLS).is_dir():
+        link = dest / CLAUDE_SKILLS
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(CLAUDE_SKILLS_TARGET)
         count += 1
     return count
 

@@ -134,6 +134,20 @@ def test_a_link_stays_a_link_with_its_target_renamed(tmp_path):
     assert os.readlink(dest / "docs/pressroom.md") == "../.agents/skills/pressroom-watch/SKILL.md"
 
 
+def test_a_scaffold_whose_claude_skills_is_a_folder_still_gives_a_copy_the_link(tmp_path):
+    """A plugin staged without its links, as the benchmark stages one, holds
+    `.claude/skills` as a folder of copies; the copy still gets the link."""
+    source, plugin = fixture(tmp_path)
+    for folder in (".agents/skills/acme-watch", ".claude/skills/acme-watch"):
+        (source / folder).mkdir(parents=True)
+        (source / folder / "SKILL.md").write_text("# acme-watch\n", encoding="utf-8")
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    link = dest / ".claude/skills"
+    assert link.is_symlink() and os.readlink(link) == "../.agents/skills"
+    assert (link / "pressroom-watch" / "SKILL.md").read_text() == "# pressroom-watch\n"
+
+
 def test_a_copy_of_the_scaffold_reads_its_skills_from_agents_skills_and_links_claude_skills_to_it(tmp_path):
     dest = tmp_path / "pressroom"
     assert new.main([str(dest)]) == 0
