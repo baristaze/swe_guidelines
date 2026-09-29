@@ -655,6 +655,8 @@ def test_an_output_s_zip_of_source_and_what_a_repository_tracks_on_purpose_passe
     a_vm_run(repo, ONE_A)
     tracked = [
         ".env.example",
+        "apps/portal/.env.sample",
+        "services/api/.env.template",
         "src/distribution.py",
         "builder/steps.py",
         "om/src/acme/om/cache/memory.py",
