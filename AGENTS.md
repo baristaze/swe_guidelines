@@ -42,6 +42,13 @@ lenses (`skills/`), and the checkers that keep the three consistent
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,
   skills, and docs, and names the release level.
+- `scaffold/acme_root/` is the domain-agnostic core of a system in the
+  guideline's shape: a whole monorepo named `acme`, with its own gates.
+  `scaffold/new.py` copies it under a project's name, standard library
+  only, and `tests/test_scaffold_new.py` holds it. The repository's ruff
+  and mypy read `new.py` alone; markdownlint, the links, and the leaks
+  read the whole scaffold; CI's `scaffold` job runs a fresh copy's own
+  gates, with arch-check from `checkers/`.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
   to. Its procedure and report shape mirror the review template, and
   `scripts/check_agents.py` holds the two together: the four decision
@@ -113,7 +120,8 @@ lenses (`skills/`), and the checkers that keep the three consistent
 ## Invariants
 
 - No product or hardware vocabulary in the guideline, the lenses, the
-  skills, the docs, the agents, the `.github/` templates, or this file
+  skills, the docs, the agents, the scaffold, the `.github/` templates, or
+  this file
   (`scripts/check_leaks.py` lists the terms). The product list is a regression guard for the
   vocabulary of the one origin the guideline was extracted from, not a
   general check: it catches that vocabulary flowing back in, and a
