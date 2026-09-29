@@ -6,7 +6,7 @@
 // session. The signed-in shell is keyed by the org (routes.tsx), so the new
 // org mounts it afresh: every screen reads again under the new session, and
 // the realtime provider opens a new socket.
-import type { IssuedSessionView } from "../api";
+import type { IssuedSessionView } from "@acme/client";
 import { useSessionStore } from "../store/session";
 import { queryClient } from "./queryClient";
 

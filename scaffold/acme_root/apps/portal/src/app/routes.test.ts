@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { IssuedSessionView, MeView, MembershipChoiceView, OrgView, UserView } from "../api";
+import type { IssuedSessionView, MeView, MembershipChoiceView, OrgView, UserView } from "@acme/client";
 import { useSessionStore } from "../store/session";
 import { queryClient } from "./queryClient";
 import { routes } from "./routes";

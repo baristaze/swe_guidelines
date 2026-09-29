@@ -1,4 +1,4 @@
-import type { ApiKeyView, InvitationView, MeView } from "../../api";
+import type { ApiKeyView, InvitationView, MeView } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import {
   apiKeyRows,

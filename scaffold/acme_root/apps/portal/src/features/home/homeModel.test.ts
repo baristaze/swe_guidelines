@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MeView } from "../../api";
+import type { MeView } from "@acme/client";
 import { homeCard, membersLine } from "./homeModel";
 
 const me: MeView = {

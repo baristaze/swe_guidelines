@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, type IssuedSessionView } from "../../api";
+import { ApiError, type IssuedSessionView } from "@acme/client";
 import { deleteOrg, type DeleteOrgEffects } from "./deleteOrg";
 
 const HOME: IssuedSessionView = {

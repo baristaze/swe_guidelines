@@ -1457,10 +1457,11 @@ an API change shows in the document every client builds against.
 > **Principle:** One client per language per service. Every consumer
 > imports it. Nobody builds their own.
 
-A TypeScript app generates its types from the document into one file,
+The clients live under `clients/`, one folder per language. The
+TypeScript client generates its types from the document into one file,
 re-exports them through a facade, and sends through one transport client
-([`api/`](scaffold/acme_root/apps/portal/src/api/)). A Python consumer
-imports one typed client
+([`clients/typescript/`](scaffold/acme_root/clients/typescript/)).
+Every browser app imports it. A Python consumer imports one typed client
 ([`clients/python/`](scaffold/acme_root/clients/python/)). Every
 outbound call carries a timeout from settings, a request a deadline, and
 a work handler its lease. Nothing runs unbounded.
@@ -2128,7 +2129,7 @@ is the whole tree ([`scaffold/acme_root/`](scaffold/acme_root/)):
 ├── services/api/     # the API process: gateway, routers, services, types
 ├── workers/          # one folder per worker role
 ├── apps/             # portal, operator console, CLI
-├── clients/          # a typed client per service, per language
+├── clients/          # a typed client per service, per language: typescript/, python/
 ├── ops/              # acme-ops: traffic, stress, signal readers
 ├── deployment/       # terraform/, local/, docker/, cloud/
 ├── scripts/          # runnable entry points

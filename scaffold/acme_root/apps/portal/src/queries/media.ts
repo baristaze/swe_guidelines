@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { StorageUsageView } from "../api";
+import type { StorageUsageView } from "@acme/client";
 import { api } from "../app/api";
 import { keys } from "./keys";
 

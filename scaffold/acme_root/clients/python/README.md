@@ -3,7 +3,7 @@
 The one Python client of the Acme API. Every Python consumer goes through
 it, and nothing else in Python calls `/v1/*`.
 
-- `schema.py` is generated from `apps/portal/openapi.json` by
+- `schema.py` is generated from `clients/typescript/openapi.json` by
   `make openapi`. Never edit it by hand.
 - `types.py` is the facade consumers import: the views and enums by name.
 - `client.py` is the one transport. Every call carries the bearer, the app

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { IdentityView } from "../api";
+import type { IdentityView } from "@acme/client";
 import { useTimeZoneSync } from "./useTimeZoneSync";
 
 const net = vi.hoisted(() => ({

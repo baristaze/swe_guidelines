@@ -1,6 +1,6 @@
 // Pure: what the home card says. The org, the person, and their role come
 // from `me`; the count comes from the org's member list. No React, no fetch.
-import type { MeView, Role } from "../../api";
+import type { MeView, Role } from "@acme/client";
 
 export interface HomeCard {
   orgName: string;

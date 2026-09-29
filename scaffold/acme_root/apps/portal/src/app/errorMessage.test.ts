@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, RequestTimeout } from "../api";
+import { ApiError, RequestTimeout } from "@acme/client";
 import { asSentence, errorMessage } from "./errorMessage";
 
 describe("errorMessage", () => {

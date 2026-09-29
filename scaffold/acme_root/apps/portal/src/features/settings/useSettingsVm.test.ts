@@ -12,7 +12,7 @@ import {
   type MembershipPageView,
   type MeView,
   type UserPageView,
-} from "../../api";
+} from "@acme/client";
 import { useNoticesStore } from "../../store/notices";
 import { useSettingsVm, type SettingsVm } from "./useSettingsVm";
 

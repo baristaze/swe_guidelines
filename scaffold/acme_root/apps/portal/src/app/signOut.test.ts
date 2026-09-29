@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError } from "../api";
+import { ApiError } from "@acme/client";
 import { isAlreadyGone, signOut, type SignOutEffects } from "./signOut";
 
 function effects(revoke: SignOutEffects["revoke"]) {

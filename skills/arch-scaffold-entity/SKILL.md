@@ -81,7 +81,8 @@ table's sibling by scope, with its policy in its role's first migration:
 | `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
 | `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media` |
 | `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py`, `routers/__init__.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, its `<Ns>Service` alias, and its router in `HOSTED` |
-| `apps/portal/src/api/types.ts`, `queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | the facade type, a key whose first element is `<entity>`, the query hooks, the route, `<entity>` in `PUSHED_ENTITIES`, and its kinds in `SERVER_KINDS` |
+| `clients/typescript/src/types.ts` (with the portal screen) | the facade type |
+| `apps/portal/src/queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | a key whose first element is `<entity>`, the query hooks, the route, `<entity>` in `PUSHED_ENTITIES`, and its kinds in `SERVER_KINDS` |
 | `apps/portal/src/app/AppNav.tsx` or `features/home/HomePage.tsx` (with the portal screen) | a link to the new screen, where the portal links its screens |
 
 ## Procedure
@@ -137,8 +138,8 @@ table's sibling by scope, with its policy in its role's first migration:
    naming this tenant's row on every route that takes one, answered as
    an id that never existed. The row-level security test reads the scope
    map, so it holds the new table once its scope is declared.
-8. After the routes, `make openapi`, so the portal's types and the
-   Python client carry them, then the screen.
+8. After the routes, `make openapi`, so the TypeScript and the Python
+   clients carry them, then the screen.
 
 ## Output
 

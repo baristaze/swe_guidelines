@@ -9,7 +9,9 @@ RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json eslint.config.js ./
 COPY apps/portal/package.json apps/portal/
+COPY clients/typescript/package.json clients/typescript/
 RUN pnpm install --frozen-lockfile --filter @acme/portal...
+COPY clients/typescript clients/typescript
 COPY apps/portal apps/portal
 COPY deployment/realtime-timeouts.json deployment/
 ARG VITE_API_URL=

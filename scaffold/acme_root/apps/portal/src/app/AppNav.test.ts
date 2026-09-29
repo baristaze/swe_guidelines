@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { MeView, OrgView, UserView } from "../api";
+import type { MeView, OrgView, UserView } from "@acme/client";
 import { PREFERENCES_STORAGE_KEY, usePreferencesStore } from "../store/preferences";
 import { useSessionStore } from "../store/session";
 import { AppNav } from "./AppNav";
