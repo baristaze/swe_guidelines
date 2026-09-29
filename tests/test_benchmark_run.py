@@ -1679,6 +1679,23 @@ def test_judge_judges_a_run_s_archived_output_again_and_records_no_subject_sessi
 
 
 @needs_jsonschema
+def test_judge_keeps_the_mark_of_a_repeat_whose_subject_named_the_run_folders(tmp_path, monkeypatch, built, capsys):
+    src = source_run(tmp_path / "runs", {0: TREE})
+    results = json.loads((src / "results.json").read_text(encoding="utf-8"))
+    read = {"tool": "Read", "id": "toolu_1", "key": "file_path", "value": "/tmp/benchmark/runs/x/report.md"}
+    results["repeats"][0]["phases"][1]["read_runs"] = [read]
+    (src / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    judges(monkeypatch)
+    # The output a marked subject made stays marked, whoever judges it, and the run exits non-zero.
+    assert run.main(["judge", "--source", str(src)]) == run.READ_RUNS
+    (run_dir,) = [d for d in src.parent.iterdir() if d != src]
+    (repeat,) = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))["repeats"]
+    assert repeat["phases"][1]["read_runs"] == [read] and repeat["read_runs"] == [{"phase": "review", **read}]
+    assert "## Marked" in (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "repeat 0 is marked: phase review named the benchmark's run folders" in capsys.readouterr().err
+
+
+@needs_jsonschema
 def test_judge_judges_a_repeat_never_judged_and_refuses_one_with_no_output(tmp_path, monkeypatch, built, capsys):
     src = source_run(tmp_path / "runs", {0: TREE, 1: TREE, 2: TREE, 3: None, 4: {}})
     results = json.loads((src / "results.json").read_text(encoding="utf-8"))

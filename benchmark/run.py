@@ -58,6 +58,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -108,6 +109,10 @@ PREFLIGHT_FAILED = 8
 # The exit status of a rehearsal that did not prove the pipeline to its end:
 # the run's spend cap cut it short, or a step it exists to prove did not happen.
 REHEARSAL_UNPROVEN = 9
+# The exit status of a run a repeat of which is marked: its subject named
+# the benchmark's run folders in a tool call. The record is written, and a
+# marked run folder is never checked in.
+READ_RUNS = 10
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -128,6 +133,28 @@ REPEAT = 3
 # their own way, so these reach it through `env` in its command, which
 # every runtime runs as it is.
 SUBJECT_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+# What `make arch-check` runs in a tree a skill subject builds: arch-check
+# from the staged plugin's checkers. The scaffold's Makefile sets
+# `ARCH_CHECK ?=` to a uvx command that fetches this repository whole, at
+# the release the tree pins, into the subject's HOME. A release can hold
+# run folders: every finished tree of a scenario, the judges' gaps, and
+# the review's report. `?=` lets the environment win, so no subject is
+# handed them. The value is the scaffold's own line with its source
+# changed, so arch-check still runs on the tree's Python. `$(shell ...)`
+# is make's, and make is what reads the variable.
+ARCH_CHECK = 'uvx --python "$(shell cat .python-version)" --from {checkers} arch-check'
+
+
+def subject_vars(plugin: str | None) -> dict[str, str]:
+    """The variables a skill subject's sessions, and the gates on its tree, run with: `SUBJECT_ENV` and `ARCH_CHECK`.
+
+    `plugin` is the staged plugin as the subject sees it. With none, there
+    is no `ARCH_CHECK`.
+    """
+    if not plugin:
+        return dict(SUBJECT_ENV)
+    checkers = shlex.quote(posixpath.join(plugin, "checkers"))
+    return {**SUBJECT_ENV, "ARCH_CHECK": ARCH_CHECK.format(checkers=checkers)}
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -323,7 +350,7 @@ def phase_argv(
     The session writes every turn to stdout as a JSON line
     (`--output-format stream-json --verbose`). Claude Code holds the spend
     cap itself, and a turn cap only when the phase names one; it runs
-    under `env` with `SUBJECT_ENV`.
+    under `env` with `subject_vars`.
     A resumed session names the session it continues. A phase that starts
     in the output folder is started there by a shell, since the runtime
     starts every command in the workspace.
@@ -335,7 +362,7 @@ def phase_argv(
         prompt, reads = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip(), bool(target)
     argv = [
         "env",
-        *(f"{name}={value}" for name, value in SUBJECT_ENV.items()),
+        *(f"{name}={value}" for name, value in subject_vars(plugin).items()),
         claude,
         "-p",
         prompt,
@@ -879,6 +906,15 @@ def run_skill(
             record["pending_agents"] = list(watch.pending)
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
+        if read := PH.runs_named(lines):
+            # The subject named an earlier run's answers: the repeat is marked, and its run is never checked in.
+            record["read_runs"] = read
+            first = read[0]
+            notes.append(
+                f"repeat {index}: phase {phase.name} made {len(read)} tool call(s) naming the benchmark's run folders, "
+                f"the first {first['tool']} with {first['key']} {first['value']!r}; the repeat is marked, "
+                "and the run is never checked in"
+            )
         holds: bool | None = None
         if folder and harness is not None:
             made, why, holds = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
@@ -932,9 +968,12 @@ def run_skill(
             if not archived.ok:
                 notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
             gates = []
+            # The gates run with the variables the sessions ran with, so `make arch-check` runs the staged checker.
+            given = [f"{name}={value}" for name, value in subject_vars(plan.plugin).items()]
             for gate in scn.subject.gates:
                 harness.note(f"[gate] {gate}")
-                ran, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.GATE, "sh", folder, gate], scn.subject.gate_timeout_s)
+                command = ["env", *given, "sh", "-c", PH.GATE, "sh", folder, gate]
+                ran, _ = harness_run(rt, harness, plan, command, scn.subject.gate_timeout_s)
                 gates.append(
                     {
                         "command": gate,
@@ -1118,6 +1157,21 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
         print(RH.says(run.rehearsal))
     print(f"report: {run_dir / 'report.md'}")
     return data, problems
+
+
+def marked(run: R.RunResult) -> int | None:
+    """`READ_RUNS` when a repeat's subject named the benchmark's run folders, each such repeat said; None otherwise."""
+    found = [r for r in run.repeats if r.read_runs()]
+    if not found:
+        return None
+    for repeat in found:
+        first = repeat.read_runs()[0]
+        print(
+            f"repeat {repeat.index} is marked: phase {first['phase']} named the benchmark's run folders, "
+            f"{first['tool']} with {first['key']} {first['value']!r}; this run is never checked in",
+            file=sys.stderr,
+        )
+    return READ_RUNS
 
 
 def said(j: R.AnyJudgement) -> str:
@@ -1823,6 +1877,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     summary = data["summary"]
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if failed_subjects:
         print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
         return 6
@@ -1874,8 +1930,9 @@ class SourceRepeat:
         return [p["name"] for p in self.phases] if self.phases else None
 
 
-# What a run that judges another run's output again keeps of each phase its source's repeat ran.
-PHASE_KEPT = ("name", "session", "status", "capped")
+# What a run that judges another run's output again keeps of each phase its source's repeat ran. A phase's
+# tool calls that named the benchmark's run folders are kept, so the output a marked subject made stays marked.
+PHASE_KEPT = ("name", "session", "status", "capped", "read_runs")
 
 
 def read_record(path: Path) -> dict[str, Any] | None:
@@ -2199,6 +2256,8 @@ def judge_again(
     data, problems = write_record(run, run_dir)
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if args.strict and data["summary"]["skipped"]:
         return 3
     return 0
