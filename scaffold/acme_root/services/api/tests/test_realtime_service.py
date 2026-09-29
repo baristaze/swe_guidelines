@@ -1,10 +1,9 @@
 """The realtime service hears every change on the bus and ends the sockets a
 revocation names: the one the session or the api key opened, every one of a
 user whose membership ended or whose role changed, or every one of a deleted
-org, and no other. It re-checks a socket's credential when asked, the plan of
-an api key among it, and wakes that recheck when the org's account changes.
-It answers a ping with the head it heard, reading it only when that is
-unknown or old."""
+org, and no other. It re-checks a socket's credential when asked. It answers
+a ping with the head it heard, reading it only when that is unknown or
+old."""
 
 from collections.abc import Callable
 from datetime import timedelta
@@ -12,11 +11,10 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from api_support import OWNER, add_member, build_container, on_plan, seed_request
+from api_support import OWNER, add_member, build_container, seed_request
 
 from acme.infra.topics import EntityChangedPayload, Topics
 from acme.om.base import new_id, utcnow
-from acme.om.billing.types.plan import Plan
 from acme.om.events.types.event import Event
 from acme.om.opcontext import OpContext, Role
 from acme.om.tenancy.rules import hash_token
@@ -28,14 +26,13 @@ from acme.services.api.services.realtime import (
     MEMBERSHIP_ENDED,
     RIGHTS_CHANGED,
 )
-from acme.services.api.types.tasks import AddTaskRequest
+from acme.services.api.types.media import StartUploadRequest
 
 
 async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Path) -> None:
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    await on_plan(container, org.id, Plan.TEAM)
     bob = await add_member(container, org.id, "bob@example.test", Role.MEMBER)
 
     async def session_of(email: str) -> str:
@@ -89,7 +86,7 @@ async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Pat
 
     # Another tenant's frame with the same ids ends nothing; nor does a change of another kind.
     await announce("tenancy.session.revoked", ann_first.ctx.credential_id, org_id=new_id())
-    await announce("tasks.task.updated", ann_first.ctx.credential_id)
+    await announce("media.file.updated", ann_first.ctx.credential_id)
     # A membership's change names the membership, never the user.
     await announce("tenancy.membership.updated", bob.id)
     assert all(reasons == [] for reasons in ended.values())
@@ -140,7 +137,6 @@ async def test_a_change_of_role_ends_the_members_sockets_to_reconnect(tmp_path: 
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    await on_plan(container, org.id, Plan.TEAM)
     bob = await add_member(container, org.id, "bob@example.test", Role.ADMIN)
     owner = await tenancy.authenticate(
         seed_request(), await session_of(container, org.id, OWNER["email"])
@@ -170,7 +166,6 @@ async def test_the_recheck_answers_what_the_redemption_would(tmp_path: Path) -> 
     tenancy = container.managers.tenancy
     storage = container.storage.get_tenancy_storage()
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    await on_plan(container, org.id, Plan.TEAM)
     bob = await add_member(container, org.id, "bob@example.test", Role.ADMIN)
     realtime = container.services.get_realtime_service()
 
@@ -213,85 +208,6 @@ async def test_the_recheck_answers_what_the_redemption_would(tmp_path: Path) -> 
     assert await realtime.recheck(from_key) is None
     await tenancy.revoke_api_key(owner, key.api_key.id)
     assert await realtime.recheck(from_key) == "not_authenticated"
-
-
-async def put_on(container: AppContainer, org_id: UUID, plan: Plan | None) -> None:
-    """Changes the org's plan in storage alone, as a downgrade whose message
-    the bus lost: no row, so nothing is announced. None is no grant: Free."""
-    billing = container.storage.get_billing_storage()
-    account = await billing.read_account(org_id)
-    assert account is not None
-    await billing.write_account(org_id, account.model_copy(update={"comped_plan": plan}), ())
-
-
-async def test_the_recheck_refuses_a_key_its_plan_no_longer_allows(tmp_path: Path) -> None:
-    """A downgrade to a plan without api keys refuses the key's socket as it
-    refuses the key's every request, with the plan's refusal; the session's
-    socket in the same org holds. The key is kept, so it holds again on a
-    plan with keys."""
-    container = build_container(tmp_path)
-    tenancy = container.managers.tenancy
-    _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    await on_plan(container, org.id, Plan.TEAM)
-    token = await session_of(container, org.id, OWNER["email"])
-    key = await tenancy.create_api_key(
-        await tenancy.authenticate(seed_request(), token), "ci", Role.MEMBER
-    )
-    from_session = await principal_of(container, token)
-    from_key = await principal_of(container, key.key)
-    realtime = container.services.get_realtime_service()
-
-    await put_on(container, org.id, None)
-    assert await realtime.recheck(from_key) == "plan_limit_reached"
-    assert await realtime.recheck(from_session) is None
-
-    await put_on(container, org.id, Plan.PRO)
-    assert await realtime.recheck(from_key) is None
-
-
-async def test_a_change_of_the_account_wakes_the_recheck_of_key_sockets(tmp_path: Path) -> None:
-    """The account's change carries no plan, so it closes nothing itself: it
-    wakes the recheck of every socket an api key of the org opened, and of
-    no session's socket and no other org's."""
-    container = build_container(tmp_path)
-    tenancy = container.managers.tenancy
-    _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    await on_plan(container, org.id, Plan.TEAM)
-    token = await session_of(container, org.id, OWNER["email"])
-    owner = await tenancy.authenticate(seed_request(), token)
-    key = await tenancy.create_api_key(owner, "ci", Role.MEMBER)
-    realtime = container.services.get_realtime_service()
-    woken: dict[str, int] = {"session": 0, "key": 0}
-    ended: list[str] = []
-
-    def wake(name: str) -> Callable[[], None]:
-        def recheck_now() -> None:
-            woken[name] += 1
-
-        return recheck_now
-
-    realtime.attach(await principal_of(container, token), ended.append, wake("session"))
-    realtime.attach(await principal_of(container, key.key), ended.append, wake("key"))
-
-    async def announce(org_id: UUID) -> None:
-        await container.infra.get_topics().publish(
-            Topics.ENTITY_CHANGED,
-            EntityChangedPayload(
-                idempotency_key=new_id(),
-                produced_at=utcnow(),
-                org_id=org_id,
-                kind="billing.account.updated",
-                target_id=new_id(),
-                seq=1,
-                actor_id=owner.user_id,
-            ),
-        )
-
-    await announce(new_id())
-    assert woken == {"session": 0, "key": 0}
-    await announce(org.id)
-    assert woken == {"session": 0, "key": 1}
-    assert ended == []
 
 
 async def test_the_recheck_is_not_a_use_of_the_session(tmp_path: Path) -> None:
@@ -361,10 +277,11 @@ async def owner_socket(container: AppContainer) -> tuple[OpContext, SocketPrinci
     return owner, await principal_of(container, token)
 
 
-async def add_task(container: AppContainer, owner: OpContext, title: str) -> None:
+async def add_file(container: AppContainer, owner: OpContext, name: str) -> None:
     """A write the relay announces on the bus: its event gets the next seq."""
-    tasks = container.services.get_tasks_service()
-    await tasks.create_task(owner, AddTaskRequest(title=title), new_id())
+    media = container.services.get_media_service()
+    body = StartUploadRequest(name=f"{name}.pdf", content_type="application/pdf", size_bytes=5)
+    await media.start_upload(owner, body, new_id())
 
 
 async def append_unheard(container: AppContainer, owner: OpContext) -> None:
@@ -375,7 +292,7 @@ async def append_unheard(container: AppContainer, owner: OpContext) -> None:
         Event(
             id=new_id(),
             org_id=owner.org_id,
-            kind="tasks.task.updated",
+            kind="media.file.updated",
             target_id=new_id(),
             produced_at=utcnow(),
             actor_id=owner.user_id,
@@ -390,7 +307,7 @@ async def test_a_process_that_just_started_reads_the_head(tmp_path: Path) -> Non
     answers the next ping."""
     container = build_container(tmp_path)
     owner, principal = await owner_socket(container)
-    await add_task(container, owner, "before this process")
+    await add_file(container, owner, "before this process")
     heads = Heads(container, max_age=60)
     try:
         heads.service.attach(principal, lambda reason: None)
@@ -411,8 +328,8 @@ async def test_the_pong_answers_from_the_bus_without_a_read(tmp_path: Path) -> N
     try:
         heads.service.attach(principal, lambda reason: None)
         assert await heads.service.head(owner) == 0  # the hello's read
-        await add_task(container, owner, "one")
-        await add_task(container, owner, "two")
+        await add_file(container, owner, "one")
+        await add_file(container, owner, "two")
         heads.clock.now += 59
         assert await heads.service.pong_head(owner) == 2
         assert heads.reads == 1
@@ -430,7 +347,7 @@ async def test_a_hint_never_heard_is_hidden_no_longer_than_the_bound(tmp_path: P
     heads = Heads(container, max_age=60)
     try:
         heads.service.attach(principal, lambda reason: None)
-        await add_task(container, owner, "heard")
+        await add_file(container, owner, "heard")
         assert await heads.service.pong_head(owner) == 1
         assert heads.reads == 0  # heard on the bus
 
@@ -442,7 +359,7 @@ async def test_a_hint_never_heard_is_hidden_no_longer_than_the_bound(tmp_path: P
         assert heads.reads == 1
 
         await append_unheard(container, owner)
-        await add_task(container, owner, "heard after a loss")
+        await add_file(container, owner, "heard after a loss")
         assert await heads.service.pong_head(owner) == 4
         assert heads.reads == 1
     finally:
@@ -457,15 +374,15 @@ async def test_the_pong_never_answers_below_what_it_heard(tmp_path: Path) -> Non
     heads = Heads(container, max_age=60)
     try:
         heads.service.attach(principal, lambda reason: None)
-        await add_task(container, owner, "one")
-        await add_task(container, owner, "two")
+        await add_file(container, owner, "one")
+        await add_file(container, owner, "two")
         await container.infra.get_topics().publish(
             Topics.ENTITY_CHANGED,
             EntityChangedPayload(
                 idempotency_key=new_id(),
                 produced_at=utcnow(),
                 org_id=owner.org_id,
-                kind="tasks.task.updated",
+                kind="media.file.updated",
                 target_id=new_id(),
                 seq=1,
                 actor_id=owner.user_id,
@@ -483,7 +400,7 @@ async def test_a_bound_of_zero_reads_on_every_ping(tmp_path: Path) -> None:
     heads = Heads(container, max_age=0)
     try:
         heads.service.attach(principal, lambda reason: None)
-        await add_task(container, owner, "one")
+        await add_file(container, owner, "one")
         assert await heads.service.pong_head(owner) == 1
         assert await heads.service.pong_head(owner) == 1
         assert heads.reads == 2
@@ -499,17 +416,17 @@ async def test_the_head_is_kept_only_while_the_tenant_has_a_socket_here(tmp_path
     owner, principal = await owner_socket(container)
     heads = Heads(container, max_age=60)
     try:
-        await add_task(container, owner, "no socket here")
+        await add_file(container, owner, "no socket here")
         first = heads.service.attach(principal, lambda reason: None)
         second = heads.service.attach(principal, lambda reason: None)
         assert await heads.service.pong_head(owner) == 1
         assert heads.reads == 1
         first()
-        await add_task(container, owner, "one socket left")
+        await add_file(container, owner, "one socket left")
         assert await heads.service.pong_head(owner) == 2
         assert heads.reads == 1
         second()
-        await add_task(container, owner, "none left")
+        await add_file(container, owner, "none left")
         heads.service.attach(principal, lambda reason: None)
         assert await heads.service.pong_head(owner) == 3
         assert heads.reads == 2

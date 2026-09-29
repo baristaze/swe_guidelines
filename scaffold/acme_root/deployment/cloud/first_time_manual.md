@@ -48,20 +48,21 @@ The original account becomes the **management account**.
 3. Multi-account permissions should be enabled.
 4. Record the AWS Access Portal URL.
 
-For Acme, IAM Identity Center is in:
+Record the region Identity Center is in:
 
 ```text
-us-east-2
+<identity center region>
 ```
 
-This does not determine the region where application infrastructure runs.
+This does not determine the region where application infrastructure runs;
+`deployment/cloud/environments.json` names that one.
 
 ## 5. Create the normal human user
 
 Create an IAM Identity Center user such as:
 
 ```text
-first.last
+<your.name>
 ```
 
 This is separate from the AWS root user, even if both use the same email address.
@@ -81,7 +82,7 @@ OrgAdmins
 Add:
 
 ```text
-first.last
+<your.name>
 ```
 
 Create or use permission set:
@@ -151,9 +152,9 @@ A member account can make neither a budget nor an anomaly monitor until the mana
 It can take up to a day before a member account answers. Check each Acme account with its administrator profile:
 
 ```bash
-aws budgets describe-budgets --account-id 111111111111 --max-results 1 --profile acme-staging-admin
+aws budgets describe-budgets --account-id <staging account id> --max-results 1 --profile acme-staging-admin
 aws ce get-anomaly-monitors --region us-east-1 --max-results 1 --profile acme-staging-admin
-aws budgets describe-budgets --account-id 222222222222 --max-results 1 --profile acme-prod-admin
+aws budgets describe-budgets --account-id <production account id> --max-results 1 --profile acme-prod-admin
 aws ce get-anomaly-monitors --region us-east-1 --max-results 1 --profile acme-prod-admin
 ```
 
@@ -176,7 +177,7 @@ AcmeReaders
 AcmeBootstrapAdmins
 ```
 
-Add `first.last` to all three during initial setup.
+Add `<your.name>` to all three during initial setup.
 
 ## 10. Create permission sets
 
@@ -316,7 +317,7 @@ Use:
 ```text
 SSO session name: acme
 SSO start URL: <AWS Access Portal URL>
-SSO region: us-east-2
+SSO region: <identity center region>
 SSO registration scopes: sso:account:access
 Default client region: us-west-2
 ```
@@ -342,11 +343,11 @@ acme-prod-power
 acme-prod-admin
 ```
 
-Current Acme account IDs:
+The two account ids, which `deployment/cloud/environments.json` names:
 
 ```text
-acme-staging: 111111111111
-acme-prod:    222222222222
+acme-staging: <staging account id>
+acme-prod:    <production account id>
 ```
 
 Each profile's role, and what it is for:
@@ -382,8 +383,8 @@ aws sts get-caller-identity --profile acme-prod-admin
 Expected account IDs:
 
 ```text
-acme-staging*  -> 111111111111
-acme-prod*     -> 222222222222
+acme-staging*  -> <staging account id>
+acme-prod*     -> <production account id>
 ```
 
 Check that the read-only sign-in may chain to the investigate role. The role name in the output carries the permission set's name, `AWSReservedSSO_ReadOnlyAccess_<suffix>`:
@@ -470,7 +471,7 @@ If the shell profile exports either, remove the export. Terraform prefers export
 
 ## 18a. Cloudflare token for the delegation and the site's records
 
-`acme.example` is registered at Cloudflare, and its zone stays there. The create run writes into it with an API token: create one with **Zone / DNS / Edit** on the `acme.example` zone only, and pass it as an environment variable for the run:
+The domain `environments.json` names, `<domain>` below, is registered at Cloudflare, and its zone stays there. The create run writes into it with an API token: create one with **Zone / DNS / Edit** on the `<domain>` zone only, and pass it as an environment variable for the run:
 
 ```bash
 export CLOUDFLARE_API_TOKEN=<token>
@@ -479,7 +480,7 @@ export CLOUDFLARE_API_TOKEN=<token>
 Nothing else needs it; CI never does. Making the token and running the create run are the manual steps. Everything the run writes at Cloudflare, it writes itself, and every write is safe to repeat:
 
 - **The API and the portal** (`api.`, `app.`, each under `staging.` for staging) are delegated to Route 53: one NS record per name server of the zone the bootstrap root made, and any stale NS record at that name deleted.
-- **The company site** is `acme.example` in production and `staging.acme.example` in staging. Neither can be delegated. The apex is the Cloudflare zone's own apex, where an NS record cannot sit, and a delegation of `staging.acme.example` would hide the `app.staging` and `api.staging` delegations beneath it. So the site's names are records in the Cloudflare zone, **DNS only** (not proxied), so CloudFront serves TLS with its own certificate:
+- **The company site** is `<domain>` in production and `staging.<domain>` in staging. Neither can be delegated. The apex is the Cloudflare zone's own apex, where an NS record cannot sit, and a delegation of `staging.<domain>` would hide the `app.staging` and `api.staging` delegations beneath it. So the site's names are records in the Cloudflare zone, **DNS only** (not proxied), so CloudFront serves TLS with its own certificate:
   1. The bootstrap root requests the site's certificate in us-east-1. The run writes its validation record at Cloudflare as a CNAME, then waits until ACM has issued it (step 3b).
   2. A deploy makes the site's distribution, with the issued certificate. The environment root finds the certificate by the site's name.
   3. The next create run finds the distribution by its alias and writes the site's name as a CNAME to the distribution's domain (step 3c). At the apex Cloudflare flattens the CNAME into addresses. Until then the step says there is no distribution yet.
@@ -488,7 +489,7 @@ Nothing else needs it; CI never does. Making the token and running the create ru
 
 The site is optional, so none of this holds up a deploy. Until the environment's `SITE_DOMAIN_NAME` is set and the site's certificate is issued, a deploy (and a release, and the fast rollback) plans, applies, and publishes everything else exactly as always, leaves the site out, and says so in the run's summary.
 
-So the site takes two create runs, and a deploy between them. When the site comes to an environment that already runs, as it did to staging:
+So the site takes two create runs, and a deploy between them. When the site comes to an environment that already runs:
 
 1. The change that brings the site merges. Its deploy leaves the site out and says why.
 2. The create run (`scripts/cloud_create.sh staging` under `acme-staging-admin`): the certificate, its validation record, the wait until it is issued, the grants to keep and replicate the site's builds, and `SITE_DOMAIN_NAME` on the GitHub environments. It dispatches a deploy of `main`.
@@ -509,45 +510,36 @@ The bootstrap is the `ops-cloud-deployment-create` skill, which runs `scripts/cl
 
 The first release is a commit merged to `main` after step 3.
 
-After the deploy roles work, remove `first.last` from `AcmeBootstrapAdmins`, so no one holds `AcmeBootstrapAdmin` day to day. Add it back for a run that needs it, such as a destroy or a change to a bootstrap root, and remove it again after.
+After the deploy roles work, remove `<your.name>` from `AcmeBootstrapAdmins`, so no one holds `AcmeBootstrapAdmin` day to day. Add it back for a run that needs it, such as a destroy or a change to a bootstrap root, and remove it again after.
 
 A bootstrap root is applied by a person before the change that needs it merges. When a pull request changes `deployment/terraform/bootstrap/`, for example to let the deployer read a new secret, apply that root from the pull request's branch under `acme-<env>-admin` (for production, `acme-prod-admin`), then merge. A merge whose deploy needs a permission the bootstrap has not granted stops half applied.
 
-## 19a. The providers: Stripe, WorkOS, and Slack
+## 19a. The providers: WorkOS and the error tracker
 
-Three providers sit outside AWS: Stripe takes payment, WorkOS signs
-people in, and Slack carries the org's channel. Each is set up by hand
-once, in its own dashboard, and each has a page that walks through it
-for a person who has never opened that dashboard:
+Two providers sit outside AWS: WorkOS signs people in, and a
+Sentry-compatible error tracker receives the errors. Each is set up by
+hand once, in its own dashboard:
 
-- [Stripe](../../docs/runbooks/providers/stripe.md): the sandbox and
-  the live account, the two restricted keys (the runtime key the
-  processes hold, and the bootstrap key the person holds),
-  `acme-ops stripe-bootstrap`.
 - [WorkOS](../../docs/runbooks/providers/workos.md): the Staging and
   Production environments, the Acme App application, its own API key
-  (never the environment's) and its Redirects tab,
-  `acme-ops workos-bootstrap`.
-- [Slack](../../docs/runbooks/providers/slack.md): the environment's
-  own app, made from its manifest in `deployment/slack/`, its client
-  id, its client secret and signing secret, and public distribution,
-  so each org installs it into its own workspace.
+  (never the environment's), its Redirects tab, and the webhook endpoint
+  `https://<api domain name>/webhooks/identity`; then
+  `acme-ops workos-bootstrap`. The application's client id is
+  `workos_client_id` in the environment root's `variables.tf`.
+- The error tracker: one project for the product, whose DSN every
+  environment reports into; each event carries its environment.
 
 What they share is the order, because the secret that holds each value
 is made by the deploy:
 
-1. The environment's first deploy makes the five secrets, each holding
-   `off`: `acme/<env>/stripe_runtime_key`,
-   `acme/<env>/stripe_webhook_secret`, `acme/<env>/workos_api_key`,
-   `acme/<env>/slack_client_secret`, and
-   `acme/<env>/slack_signing_secret`.
-   With `off` the environment runs, and says in its logs what is off.
+1. The environment's first deploy makes the three secrets, each holding
+   `off`: `acme/<env>/workos_api_key`, `acme/<env>/workos_webhook_secret`,
+   and `acme/<env>/sentry_dsn`. With `off` the environment runs, and says
+   in its logs what is off.
 2. A person writes each value under their own sign-in, `acme-staging`
    for staging (in production `acme-prod-power`, when authorized),
    with `AWS_ACCESS_KEY_ID` and its siblings unset, as section 18
-   says. `stripe_webhook_secret` is the exception: the Stripe
-   bootstrap writes it. Slack's client id is no secret: it is
-   committed as `slack_client_id` in the environment root.
+   says.
 3. The next deploy, or a forced new deployment of the service, starts
    tasks that read the new values. A task reads its secrets only at
    start.

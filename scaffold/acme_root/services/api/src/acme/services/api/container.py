@@ -15,15 +15,8 @@ from acme.infra.observability import (
 )
 from acme.infra.root import InfraInterface
 from acme.infra.trust import install_trust_store
-from acme.integrations.impl.configured import (
-    IntegrationsConfiguredImpl,
-    absent_integrations,
-    payments_for,
-    slack_for,
-)
-from acme.integrations.payments import PaymentsInterface
+from acme.integrations.impl.configured import IntegrationsConfiguredImpl, absent_integrations
 from acme.integrations.root import IntegrationsInterface
-from acme.om.billing.impl.manager import BillingOptions
 from acme.om.root import Managers, TenancyOperatorOptions, TenancyOptions, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.impl.postgres import StoragePostgresImpl
@@ -151,10 +144,6 @@ class AppContainer:
         # failed authentications, until that window ends (ADR 0059).
         self.refused_addresses = RefusedAddresses()
 
-    @property
-    def payments(self) -> PaymentsInterface:
-        return self.integrations.get_payments()
-
     @classmethod
     def build(cls, settings: ApiSettings) -> AppContainer:
         return cls.over(
@@ -179,16 +168,10 @@ class AppContainer:
                 "_env_file": None,
                 "environment": "test",
                 "dev_sign_in_enabled": True,
-                "billing_backend": "twin",
-                "slack_backend": "twin",
             }
         )
-        # No identity provider unless the test hands one in, and the payment
-        # processor and the Slack app the settings name: the twins, in a test.
-        integrations = integrations or absent_integrations(
-            payments_for(settings, settings.environment),
-            slack_for(settings, settings.environment),
-        )
+        # No identity provider unless the test hands one in.
+        integrations = integrations or absent_integrations()
         return cls.over(settings, storage, infra, integrations)
 
     @classmethod
@@ -206,17 +189,11 @@ class AppContainer:
             tenancy_options(settings),
             operator_options(settings),
             integrations,
-            billing_options=BillingOptions(
-                account_ttl=timedelta(seconds=settings.billing_account_cache_seconds)
-            ),
         )
         services = build_services(
             managers,
             infra,
             integrations,
-            settings.cors_origins,
-            settings.slack_redirect_uri,
-            settings.portal_url,
             timedelta(seconds=settings.realtime_head_max_age_seconds),
         )
         return cls(

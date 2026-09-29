@@ -309,13 +309,11 @@ class TenancyManagerInterface(ABC):
     ) -> SocketPrincipal:
         """Platform-internal: re-checks the credential behind a redeemed socket
         ticket and yields the socket's context with the credential's expiry,
-        the bound on the socket's authority. An api key is refused with
-        PlanLimitReached when the org's plan has no keys, as its every
-        request is, from the account read with its principal. The redemption
-        calls it once, and an open socket calls it again on an interval. That
-        recheck passes `record_use=False`: it asks whether the credential
-        still holds, and a question is not a use, so an open socket never
-        keeps an idle session alive."""
+        the bound on the socket's authority. The redemption calls it once,
+        and an open socket calls it again on an interval. That recheck
+        passes `record_use=False`: it asks whether the credential still
+        holds, and a question is not a use, so an open socket never keeps an
+        idle session alive."""
         ...
 
     @abstractmethod
@@ -333,18 +331,6 @@ class TenancyManagerInterface(ABC):
         the org must be live, not their user or membership; a member who has
         left does not stop the work they asked for. A deleted org is refused
         with InvalidCredential."""
-        ...
-
-    @abstractmethod
-    async def member_context(
-        self, rctx: RequestContext, org_id: UUID, email: str
-    ) -> OpContext | None:
-        """Platform-internal: the context of the live member of `org_id` whose
-        identity holds `email`, with their own role and its permissions, for
-        work a person asks for from outside a session: a command typed in
-        Slack, whose profile the email is read from. The identity's address is
-        the one its sign-in proved. None when no identity holds the address,
-        or its person is not a live member of the org."""
         ...
 
     @abstractmethod
@@ -517,10 +503,8 @@ class TenancyManagerInterface(ABC):
         credential they hold, each live one announced as revoked, and the
         sign-in delay of their address. What they made in a team org stays
         the org's, under an id that no longer names anyone. The same commit
-        asks for the rest: in each org they leave, their open tasks go
-        unassigned (`UNASSIGN_TASKS`), and a per-seat plan follows the count;
-        in their personal org, the provider's side goes and then the org
-        itself (`DELETE_ACCOUNT`). The answer says where the browser goes to
+        asks for the rest: in their personal org, the provider's side goes
+        and then the org itself (`DELETE_ACCOUNT`). The answer says where the browser goes to
         end the provider's session, as `logout` does with `return_to`."""
         ...
 
@@ -547,9 +531,8 @@ class TenancyManagerInterface(ABC):
         revoked, each announced, so every socket closes, every pending
         invitation is revoked, and the org lets go of its organization at the
         identity provider. The same commit asks for the rest (`DELETE_ORG`):
-        the provider's organization, the subscription and the customer at
-        the processor, and the Slack app go, then the org is deleted, and
-        the sweep purges it after the retention. An operator's deletion
+        the provider's organization goes, then the org is deleted, and the
+        sweep purges it after the retention. An operator's deletion
         (`TenancyOperatorManagerInterface.delete_org`) takes the same path.
         The answer carries a session in the owner's personal org, which the
         tab takes up, as a switch does."""
@@ -567,7 +550,7 @@ class TenancyManagerInterface(ABC):
 
     @abstractmethod
     async def count_members(self, ctx: OpContext) -> int:
-        """How many live members the org has: the seats its plan counts."""
+        """How many live members the org has."""
         ...
 
     # Credentials.
@@ -646,17 +629,6 @@ class TenancyManagerInterface(ABC):
         stays as the record; returns how many rows went. Any other tenant
         returns 0 and reads nothing: its rows past the retention go across
         tenants."""
-        ...
-
-    @abstractmethod
-    async def sweep_context(self, rctx: RequestContext, org_id: UUID) -> OpContext | None:
-        """Platform-internal: the service context the sweep does a tenant's
-        tenant-shaped work under, when a purge across tenants found a row of
-        that tenant: the one `service_contexts` mints for it, deleted tenants
-        included, since their rows are the sweep's to settle. Under the
-        request stage of the pass that listed the tenants, it reads nothing.
-        None for a tenant marked purged, or one with no org row: the sweep no
-        longer visits it."""
         ...
 
     @abstractmethod

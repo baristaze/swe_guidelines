@@ -44,9 +44,7 @@ class StorageSettings(BaseSettings):
     # use, on a pool of their own. A role that moves to its own database names
     # its own URL below, and the system login follows it there.
     database_url: str = "postgresql+asyncpg://acme_runtime:acme_runtime@127.0.0.1:55432/acme"
-    database_system_url: str = (
-        "postgresql+asyncpg://acme_system:acme_system@127.0.0.1:55432/acme"
-    )
+    database_system_url: str = "postgresql+asyncpg://acme_system:acme_system@127.0.0.1:55432/acme"
     database_url_core: str | None = None
     database_url_activity: str | None = None
     database_url_queue: str | None = None

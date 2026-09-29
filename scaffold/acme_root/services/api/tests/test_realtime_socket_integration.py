@@ -16,12 +16,11 @@ import httpx
 import pytest
 import uvicorn
 import websockets
-from api_support import OWNER, build_container, on_plan, seed_request, sign_in_as
+from api_support import OWNER, build_container, seed_request, sign_in_as
 from websockets.exceptions import ConnectionClosed
 
 from acme.infra.topics import EntityChangedPayload, Topics
 from acme.om.base import new_id, utcnow
-from acme.om.billing.types.plan import Plan
 from acme.om.tenancy.types.org import Org
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
@@ -59,7 +58,6 @@ async def serving(container: AppContainer) -> AsyncIterator[Serving]:
     _, org = await container.managers.tenancy.bootstrap(
         seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
     )
-    await on_plan(container, org.id, Plan.TEAM)
     port = free_port()
     settings = ApiSettings.model_validate({"_env_file": None, "environment": "test"})
     config = uvicorn.Config(
@@ -153,7 +151,13 @@ async def test_a_flood_of_hints_drops_hints_and_not_the_pong(tmp_path: Path) -> 
                 targets: list[UUID] = []
                 for index in range(FLOOD):
                     created = await client.post(
-                        "/v1/tasks", headers=headers, json={"title": f"task {index}"}
+                        "/v1/media/files",
+                        headers=headers,
+                        json={
+                            "name": f"report-{index}.pdf",
+                            "content_type": "application/pdf",
+                            "size_bytes": 5,
+                        },
                     )
                     assert created.status_code == 201, created.text
                     targets.append(UUID(created.json()["id"]))
@@ -168,7 +172,7 @@ async def test_a_flood_of_hints_drops_hints_and_not_the_pong(tmp_path: Path) -> 
                             idempotency_key=new_id(),
                             produced_at=utcnow(),
                             org_id=served.org.id,
-                            kind="tasks.task.created",
+                            kind="media.file.created",
                             target_id=target,
                             seq=seq,
                         ),

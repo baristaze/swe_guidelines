@@ -3,15 +3,15 @@
     uv run python ops/audit/seed.py audit_<run> --scale 1
 
 Scale 1 is the shape the query audit measures against: 5,000 people, each
-with a personal org, and one heavy team org of 200 members holding 100,000
-tasks (40,000 open, 15,000 done, 40,000 archived, 5,000 deleted) and a
-million events; beside them work items, outbox rows, sessions, idempotency
-records, files, invitations, API keys, Slack installations, and cleanup
-records, each in the proportions a busy platform has. Every count scales
-linearly with `--scale`, with a floor of one, so `--scale 0.01` is a quick
-run with the same shape. The heavy org's id is fixed, so a statement file
-can name it (see `FIXED`). Its last member (`n` = the member count) is
-assigned no task and created none, so an audit always has an idle member.
+with a personal org, and one heavy team org of 200 members and 150 who left,
+holding a million events and 20,000 files; beside them work items, outbox
+rows, sessions, idempotency records, invitations, API keys, and settled
+orchestrations, each in the proportions a busy platform has. Every count
+scales linearly with `--scale`, with a floor of one, so `--scale 0.01` is a
+quick run with the same shape. The heavy org's id is fixed, so a statement
+file can name it (see `FIXED`). A member who left the heavy org holds no
+API key and no session there, so an audit always has a user with nothing
+live.
 
 It runs as the local superuser on a database `auditdb.py` made, since no
 login the application holds walks past the row-level security policies,
@@ -44,10 +44,6 @@ class Counts:
     people: int
     members: int
     left: int
-    open_tasks: int
-    done_tasks: int
-    archived_tasks: int
-    deleted_tasks: int
     events: int
     work_items: int
     outbox_rows: int
@@ -68,10 +64,6 @@ class Counts:
             people=people,
             members=members,
             left=min(n(150), people - members),
-            open_tasks=n(40000),
-            done_tasks=n(15000),
-            archived_tasks=n(40000),
-            deleted_tasks=n(5000),
             events=n(1000000),
             work_items=n(50000),
             outbox_rows=n(100000),
@@ -89,7 +81,6 @@ def statements(c: Counts) -> list[tuple[str, str]]:
     work_ready = work_future + c.work_items * 5 // 50
     outbox_done = c.outbox_rows * 95 // 100
     outbox_pending = outbox_done + c.outbox_rows * 3 // 100
-    deleted_young = c.deleted_tasks * 9 // 10
     return [
         ("settings", "SET synchronous_commit = off"),
         ("random seed", "SELECT setseed(0.42)"),
@@ -180,85 +171,9 @@ def statements(c: Counts) -> list[tuple[str, str]]:
             FROM people WHERE n > {c.members} AND n <= {c.members + c.left}""",
         ),
         (
-            "billing accounts",
-            """INSERT INTO core.billing_accounts (id, org_id, created_at, updated_at,
-                created_by, updated_by,
-                                              cancel_at_period_end, quantity, comped_plan)
-            SELECT gen_random_uuid(), id, now(), now(), created_by, created_by, false, 1,
-                   CASE WHEN slug = 'heavy' THEN 'max' END
-            FROM core.orgs""",
-        ),
-        (
             "member array",
             """CREATE TEMP TABLE bu AS
             SELECT array_agg(user_id ORDER BY n) AS u, count(*)::int AS k FROM members""",
-        ),
-        (
-            "open tasks",
-            f"""INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by, title,
-                notes, status, assignee_id,
-                                    rank, updated_by, version, due_on)
-            SELECT uuidv7(-(interval '700 days') + g * interval '10 minutes'), {big},
-                   now() - interval '700 days' + g * interval '10 minutes',
-                       now() - (random() * 300) * interval '1 day',
-                   bu.u[1 + (g * 7) % greatest(bu.k - 1, 1)], 'Open task ' || g, '', 'open',
-                   CASE WHEN random() < 0.7 THEN bu.u[1 + (g * 13) % greatest(bu.k - 1, 1)] END,
-                   g::numeric, bu.u[1], 1,
-                   CASE WHEN random() < 0.3 THEN current_date + (random() * 60)::int END
-            FROM generate_series(1, {c.open_tasks}) g, bu""",
-        ),
-        (
-            "done tasks",
-            f"""INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by, title,
-                notes, status, assignee_id,
-                                    rank, updated_by, version)
-            SELECT uuidv7(-(interval '700 days') + g * interval '9 minutes'), {big},
-                   now() - interval '700 days' + g * interval '9 minutes',
-                       now() - (random() * 89) * interval '1 day',
-                   bu.u[1 + (g * 7) % greatest(bu.k - 1, 1)], 'Done task ' || g, '', 'done',
-                   CASE WHEN random() < 0.7 THEN bu.u[1 + (g * 13) % greatest(bu.k - 1, 1)] END,
-                   g::numeric, bu.u[1], 2
-            FROM generate_series(1, {c.done_tasks}) g, bu""",
-        ),
-        (
-            "archived tasks",
-            f"""INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by, title,
-                notes, status, assignee_id,
-                                    rank, updated_by, version, archived_at)
-            SELECT uuidv7(-(interval '720 days') + g * interval '15 minutes'), {big},
-                   now() - interval '720 days' + g * interval '15 minutes', ts,
-                       bu.u[1 + (g * 7) % greatest(bu.k - 1, 1)],
-                   'Archived task ' || g, '', 'done',
-                   CASE WHEN random() < 0.7 THEN bu.u[1 + (g * 13) % greatest(bu.k - 1, 1)] END,
-                   g::numeric, bu.u[1], 3, ts
-            FROM (SELECT g, now() - (random() * 700) * interval '1 day' AS ts
-                  FROM generate_series(1, {c.archived_tasks}) g) s, bu""",
-        ),
-        (
-            "deleted tasks",
-            f"""INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by, title,
-                notes, status, assignee_id,
-                                    rank, updated_by, version, deleted_at, deleted_by)
-            SELECT uuidv7(-(interval '400 days') + g * interval '1 hour'), {big},
-                now() - interval '400 days', dt,
-                   bu.u[1], 'Deleted task ' || g, '',
-                       CASE WHEN g % 2 = 0 THEN 'open' ELSE 'done' END,
-                   NULL, g::numeric, bu.u[1], 2, dt, bu.u[1]
-            FROM (SELECT g,
-                CASE WHEN g <= {deleted_young} THEN now() - (random() * 29) * interval '1 day'
-                                 ELSE now() - (31 + random() * 5) * interval '1 day' END AS dt
-                  FROM generate_series(1, {c.deleted_tasks}) g) s, bu""",
-        ),
-        (
-            "personal tasks",
-            """INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by, title,
-                notes, status,
-                                   rank, updated_by, version)
-            SELECT uuidv7(-(interval '100 days') + (p.n * 5 + k) * interval '1 second'), p.org_id,
-                   now() - interval '100 days', now() - (k * interval '3 days'), p.user_id,
-                       'Task', '',
-                   CASE WHEN k <= 3 THEN 'open' ELSE 'done' END, k::numeric, p.user_id, 1
-            FROM people p CROSS JOIN generate_series(1, 5) k""",
         ),
         (
             "tenant sessions",
@@ -343,46 +258,32 @@ def statements(c: Counts) -> list[tuple[str, str]]:
                 updated_by, key, extension,
                                     content_type, size_bytes, purpose, subject_id, status,
                                         deleted_at)
-            SELECT uuidv7(-(interval '300 days') + g * interval '20 minutes'), {big}, 'f' || g,
-                   now() - interval '300 days', now(), bu.u[1], bu.u[1], 'k' || g, 'pdf',
-                       'application/pdf', 100000,
-                   'task_attachment', t.id,
+            SELECT uuidv7(-(interval '300 days') + g * interval '20 minutes'), {big},
+                   'f' || g || '.pdf', now() - interval '300 days', now(),
+                   bu.u[1 + g % bu.k], bu.u[1 + g % bu.k], 'k' || g, 'pdf',
+                       'application/pdf', 100000, 'upload', NULL,
                    CASE WHEN g % 50 = 0 THEN 'pending' ELSE 'stored' END,
                    CASE WHEN g % 40 = 0 THEN now() - interval '10 days' END
-            FROM generate_series(1, {c.files}) g, bu,
-                 LATERAL (SELECT id FROM core.tasks WHERE org_id = {big} AND status = 'open'
-                          ORDER BY id OFFSET (g % least(5000, {c.open_tasks})) LIMIT 1) t
+            FROM generate_series(1, {c.files}) g, bu
             UNION ALL
-            SELECT gen_random_uuid(), p.org_id, 'f', now() - interval '30 days', now(),
+            SELECT gen_random_uuid(), p.org_id, 'f.pdf', now() - interval '30 days', now(),
                 p.user_id, p.user_id, 'k', 'pdf',
-                   'application/pdf', 1000, 'task_attachment', gen_random_uuid(), 'stored', NULL
+                   'application/pdf', 1000, 'upload', NULL, 'stored', NULL
             FROM people p CROSS JOIN generate_series(1, 10) k""",
-        ),
-        (
-            "slack installations",
-            """INSERT INTO core.slack_installations (id, org_id, created_at, updated_at,
-                created_by, updated_by, team_id,
-                                                 team_name, app_id, bot_user_id, scopes,
-                                                     installed_by_slack_user,
-                                                 credential_ref, status)
-            SELECT gen_random_uuid(), org_id, now(), now(), identity_id, identity_id,
-                'T' || md5(org_id::text), 'team',
-                   'A1', 'U1', 'chat:write', 'U2', 'ref', 'ok'
-            FROM people""",
         ),
         (
             "events",
             f"""INSERT INTO activity.events (id, org_id, seq, kind, target_id, produced_at,
                 actor_id, request_id, app, payload)
             SELECT uuidv7(-(interval '100 days') + g * (interval '100 days' / {c.events})),
-                {big}, g, 'tasks.task.updated',
+                {big}, g, 'tenancy.user.updated',
                    gen_random_uuid(),
                        now() - interval '100 days' + g * (interval '100 days' / {c.events}),
                    gen_random_uuid(), gen_random_uuid(), 'portal', '{{}}'::jsonb
             FROM generate_series(1, {c.events}) g
             UNION ALL
             SELECT uuidv7(-(interval '10 days') + (p.n * 10 + k) * interval '1 second'),
-                p.org_id, k, 'tasks.task.created',
+                p.org_id, k, 'tenancy.api_key.created',
                    gen_random_uuid(), now() - interval '10 days', p.identity_id,
                        gen_random_uuid(), 'portal', '{{}}'
             FROM people p CROSS JOIN generate_series(1, 10) k""",
@@ -414,8 +315,8 @@ def statements(c: Counts) -> list[tuple[str, str]]:
               SELECT g,
                      CASE WHEN g <= {work_done} THEN 'done' WHEN g <= {work_failed} THEN 'failed'
                           WHEN g <= {work_ready} THEN 'queued' ELSE 'claimed' END AS status,
-                     CASE WHEN g > {work_failed} AND g <= {work_future} THEN 'TASK_REMINDER'
-                          WHEN g % 4 = 0 THEN 'SLACK_POST' ELSE 'NOOP' END AS kind,
+                     CASE WHEN g > {work_failed} AND g <= {work_future} THEN 'ORCHESTRATION'
+                          WHEN g % 4 = 0 THEN 'DELETE_ACCOUNT' ELSE 'NOOP' END AS kind,
                      CASE WHEN g > {work_failed} AND g <= {work_future} THEN now() + (random() *
                          60) * interval '1 day'
                           ELSE now() - (random() * 60) * interval '1 minute' END AS avail,
@@ -436,7 +337,7 @@ def statements(c: Counts) -> list[tuple[str, str]]:
                        '2 minutes'
                         ELSE now() - interval '8 days' + g * (interval '8 days' /
                             {c.outbox_rows}) END,
-                   'tasks.task.updated', gen_random_uuid(), '{{}}', gen_random_uuid(),
+                   'tenancy.user.updated', gen_random_uuid(), '{{}}', gen_random_uuid(),
                        gen_random_uuid(), 'portal',
                    CASE WHEN g <= {outbox_done} THEN now() - interval '8 days' + g * (interval
                        '8 days' / {c.outbox_rows}) END,
@@ -446,14 +347,14 @@ def statements(c: Counts) -> list[tuple[str, str]]:
             FROM generate_series(1, {c.outbox_rows}) g JOIN people p ON p.n = 1 + g % {c.people}""",
         ),
         (
-            "cleanup records",
+            "settled orchestrations",
             f"""INSERT INTO core.orchestrations (id, org_id, created_at, updated_at, created_by,
                 updated_by, kind, input,
                                              period, status, cursor, applied, skipped,
                                                  row_errors, version)
             SELECT gen_random_uuid(), {big}, now() - d * interval '1 day',
                 now() - d * interval '1 day', '{EMPTY}',
-                   '{EMPTY}', 'task_cleanup', '{{}}', to_char(current_date - d, 'YYYY-MM-DD'),
+                   '{EMPTY}', 'noop', '{{}}', to_char(current_date - d, 'YYYY-MM-DD'),
                        'succeeded', 0, 0, 0,
                    '[]', 3
             FROM generate_series(0, 20) d""",

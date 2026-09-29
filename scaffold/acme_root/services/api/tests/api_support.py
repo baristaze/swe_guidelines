@@ -11,13 +11,9 @@ from uuid import UUID
 
 import httpx
 
-from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.root import IntegrationsInterface
 from acme.om.base import new_id, utcnow
-from acme.om.billing.impl.cache import account_changed
-from acme.om.billing.types.account import BillingAccount
-from acme.om.billing.types.plan import Plan
 from acme.om.opcontext import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.root import StorageInterface
@@ -54,8 +50,6 @@ def build_container(
     settings = ApiSettings.model_validate(
         {
             "_env_file": None,
-            "billing_backend": "twin",
-            "slack_backend": "twin",
             "environment": "test",
             "totp_encryption_key": TOTP_KEY,
             "dev_sign_in_enabled": True,
@@ -92,44 +86,11 @@ async def sign_in_as(client: httpx.AsyncClient, email: str, org_id: UUID) -> dic
     }
 
 
-async def on_plan(container: AppContainer, org_id: UUID, plan: Plan) -> None:
-    """Puts an org on a plan straight into storage, as an operator's grant
-    would: most tests are about something else than a plan's bounds."""
-    now = utcnow()
-    await container.storage.get_billing_storage().create_account(
-        org_id,
-        BillingAccount(
-            id=new_id(),
-            created_at=now,
-            updated_at=now,
-            created_by=org_id,
-            updated_by=org_id,
-            comped_plan=plan,
-        ),
-        (),
-    )
-    await account_written(container, org_id)
-
-
-async def account_written(container: AppContainer, org_id: UUID) -> None:
-    """What the billing managers do after a write of the account commits: a
-    test that writes the account in storage bumps the org's generation too,
-    or a plan read cached before the write answers until its TTL."""
-    await account_changed(container.infra.get_cache(CacheScope.BILLING_ACCOUNT), org_id)
-
-
-async def sign_in(
-    client: httpx.AsyncClient, container: AppContainer, plan: Plan | None = Plan.TEAM
-) -> dict[str, str]:
-    """Bootstraps an org, signs its owner in, and returns the tenant headers.
-    The org is on Team, whose api keys and tasks no test meets a bound of,
-    unless the test names another plan, or None for the Free every org
-    starts on."""
+async def sign_in(client: httpx.AsyncClient, container: AppContainer) -> dict[str, str]:
+    """Bootstraps an org, signs its owner in, and returns the tenant headers."""
     _, org = await container.managers.tenancy.bootstrap(
         seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
     )
-    if plan is not None:
-        await on_plan(container, org.id, plan)
     return await sign_in_as(client, OWNER["email"], org.id)
 
 

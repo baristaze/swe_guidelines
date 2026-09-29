@@ -52,15 +52,15 @@ class FakeCloudWatch:
 
     def __init__(self) -> None:
         self.metrics = [
-            series(route="/v1/tasks", status="200"),
-            series(route="/v1/tasks", status="201"),
-            series(route="/v1/tasks", status="503"),
+            series(route="/v1/api-keys", status="200"),
+            series(route="/v1/api-keys", status="201"),
+            series(route="/v1/api-keys", status="503"),
             series(route="/v1/me", status="500"),
         ]
         self.values = {
-            ("/v1/tasks", "200"): [3.0, 4.0],
-            ("/v1/tasks", "201"): [2.0],
-            ("/v1/tasks", "503"): [1.0],
+            ("/v1/api-keys", "200"): [3.0, 4.0],
+            ("/v1/api-keys", "201"): [2.0],
+            ("/v1/api-keys", "503"): [1.0],
             ("/v1/me", "500"): [5.0],
         }
         self.listed: list[dict[str, Any]] = []
@@ -217,7 +217,7 @@ async def test_the_metric_delta_picks_series_by_exact_label_or_pattern() -> None
     server_errors = await impl.metric_delta("acme_http_requests_total", {"status": "~5.."}, NOW)
     assert server_errors == 6.0
     both = await impl.metric_delta(
-        "acme_http_requests_total", {"route": "/v1/tasks", "status": "~5.."}, NOW
+        "acme_http_requests_total", {"route": "/v1/api-keys", "status": "~5.."}, NOW
     )
     assert both == 1.0
 

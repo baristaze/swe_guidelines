@@ -87,7 +87,7 @@ async def test_an_unavailable_failure_is_a_warning_and_not_an_error(
 
 
 async def test_a_refusal_still_names_its_reason(client: httpx.AsyncClient) -> None:
-    refused = await client.get("/v1/tasks")
+    refused = await client.get("/v1/media/files")
     assert refused.status_code == 401
     assert refused.json()["error"]["message"] == "missing bearer credential"
 

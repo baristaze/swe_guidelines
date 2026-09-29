@@ -9,7 +9,6 @@ from uuid import UUID
 import pytest
 from contracts.factories import make_membership, make_user
 from contracts.outbox_storage import claim_all
-from contracts.plans import ON_TEAM, GrantedEverywhere
 from contracts.second_factor import (
     TOTP_KEY,
     SteppingClock,
@@ -24,7 +23,6 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.billing.types.billing import Entitlements
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     Conflict,
@@ -60,7 +58,6 @@ from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
 from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl, TenancyOperatorOptions
 from acme.om.tenancy.rules import (
@@ -178,7 +175,6 @@ def make_manager(
         options or TenancyOptions(dev_sign_in=True, totp_encryption_key=TOTP_KEY),
         clock or SteppingClock(),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
 
 
@@ -207,13 +203,7 @@ def operator(
     events = EventStorageMemoryImpl()
     relay = OutboxRelayImpl(outbox, events, infra.get_topics())
     return TenancyOperatorManagerImpl(
-        storage,
-        TasksStorageMemoryImpl(outbox),
-        events,
-        relay,
-        TenancyOperatorOptions(totp_encryption_key=TOTP_KEY),
-        clock,
-        billing=GrantedEverywhere(),
+        storage, events, relay, TenancyOperatorOptions(totp_encryption_key=TOTP_KEY), clock
     )
 
 
@@ -696,7 +686,6 @@ async def test_removing_a_member_revokes_their_credentials_and_announces_each(
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)
@@ -742,7 +731,6 @@ async def test_no_event_about_a_user_carries_who_they_are(
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     owner = await sign_in(manager, "ann@example.test", org.id)
@@ -955,7 +943,6 @@ async def test_revoking_a_session_announces_it_on_the_bus_without_its_token(
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
     published: list[TopicPayload] = []
 
@@ -1146,11 +1133,9 @@ async def test_a_process_without_the_totp_key_refuses_to_enrol(
     manager = make_manager(storage, infra, TenancyOptions(dev_sign_in=True), outbox=outbox)
     operator = TenancyOperatorManagerImpl(
         storage,
-        TasksStorageMemoryImpl(outbox),
         EventStorageMemoryImpl(),
         OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics()),
         TenancyOperatorOptions(),
-        billing=GrantedEverywhere(),
     )
     await seed_operator(manager, "root@example.test")
     with pytest.raises(Unavailable):
@@ -1289,9 +1274,7 @@ async def test_an_operator_lists_and_revokes_their_own_tokens_one_at_a_time(
         )
         for _ in range(2)
     ]
-    await manager.grant_operator(
-        request(), "provisioner@platform.acme.invalid", OperatorRole.WRITE
-    )
+    await manager.grant_operator(request(), "provisioner@platform.acme.invalid", OperatorRole.WRITE)
     machine = await manager.grant_operator_token(request(), "provisioner@platform.acme.invalid")
     every = await operator.get_operator_tokens(admin, None, limit=10)
     assert [t.id for t in every.items] == [minted[1].id, minted[0].id, admin.credential_id]
@@ -1419,10 +1402,9 @@ async def test_each_credential_is_checked_in_the_fewest_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A session reads its digest and its principal. An api key reads its
-    digest and its principal with the org's account beside it, and the plan
-    is decided from that account, not from a read of its own; so does the
-    recheck of the socket it opened. The operator
-    gate reads the credential with its identity, once, and nothing more."""
+    digest and its principal too, and so does the recheck of the socket it
+    opened. The operator gate reads the credential with its identity, once,
+    and nothing more."""
     org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     assert org is not None
     owner = await sign_in(manager, "ann@example.test", org[1].id)
@@ -1438,23 +1420,18 @@ async def test_each_credential_is_checked_in_the_fewest_reads(
     minting = await minting_operator(manager, clock, "root@example.test", secret)
     token = await operator.issue_operator_token(minting, OperatorRole.READ)
     login = await second_factor(manager, "root@example.test", clock.code(secret))
-
-    async def asked_twice(ctx: OpContext) -> Entitlements:
-        raise AssertionError("the key's plan is read with its principal")
-
-    monkeypatch.setattr(ON_TEAM, "get_entitlements", asked_twice)
     reads = counted_reads(storage, monkeypatch)
     await manager.authenticate(request(), session.token)
     assert reads == ["read_session_by_digest", "read_principal"]
     reads.clear()
     await manager.authenticate(request(), key.key)
-    assert reads == ["read_api_key_by_digest", "read_key_principal"]
-    # A key's socket asks again in as many reads, the plan among them.
+    assert reads == ["read_api_key_by_digest", "read_principal"]
+    # A key's socket asks again in as many reads.
     reads.clear()
     await manager.resume(
         request(), org[1].id, CredentialKind.API_KEY, key.api_key.id, record_use=False
     )
-    assert reads == ["read_api_key", "read_key_principal"]
+    assert reads == ["read_api_key", "read_principal"]
     for credential in (login.token, token.token):
         reads.clear()
         await manager.admit_operator(await manager.authenticate_login(request(), credential))
@@ -1471,7 +1448,6 @@ async def test_the_grant_job_puts_an_identity_on_the_allowlist_and_audits_it(
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
     with pytest.raises(NotFound):
         await manager.grant_operator(request(), "ann@example.test", OperatorRole.READ)
@@ -1675,40 +1651,6 @@ async def test_a_deleted_tenant_past_its_retention_is_marked_purged_and_left_out
     swept = [c.org_id for c in await manager.service_contexts(request())]
     assert gone.id not in swept and live.id in swept and swept[0] == EMPTY_UUID
     assert await manager.tenant_expired(contexts[gone.id]) is True, "read again outside a pass"
-
-
-async def test_the_sweep_context_is_the_passs_and_none_for_a_purged_tenant(
-    manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A purge across tenants that found a tenant's row asks for the context
-    the pass minted for that tenant, deleted tenants included: under the
-    pass's request stage it reads nothing. Outside a pass it reads the org
-    row, and a tenant marked purged, or one with no row, has none."""
-    _, live = await manager.bootstrap(request(), "Live", "live", "ann@example.test", "Ann")
-    _, gone = await manager.bootstrap(request(), "Gone", "gone", "bob@example.test", "Bob")
-    stored = await storage.read_org(gone.id)
-    assert stored is not None
-    await storage.write_org(gone.id, stored.model_copy(update={"deleted_at": utcnow()}))
-    rctx = request()
-    await manager.service_contexts(rctx)
-    reads: list[UUID] = []
-    read_org = storage.read_org
-
-    async def counted(org_id: UUID) -> Org | None:
-        reads.append(org_id)
-        return await read_org(org_id)
-
-    monkeypatch.setattr(storage, "read_org", counted)
-    for org_id in (live.id, gone.id):
-        ctx = await manager.sweep_context(rctx, org_id)
-        assert ctx is not None and ctx.org_id == org_id
-        assert ctx.role is Role.SERVICE and ctx.user_id == EMPTY_UUID
-        assert ctx.request_id == rctx.request_id
-    assert reads == [], "the pass's tenants are known"
-    assert await manager.sweep_context(request(), gone.id) is not None, "a deleted tenant"
-    assert await manager.sweep_context(request(), new_id()) is None, "no org row"
-    assert await storage.mark_org_purged(gone.id, utcnow())
-    assert await manager.sweep_context(request(), gone.id) is None, "marked purged"
 
 
 async def test_resume_and_service_contexts(manager: TenancyManagerImpl) -> None:
@@ -2179,8 +2121,8 @@ async def test_every_api_key_is_reachable_a_page_at_a_time(
 async def test_every_member_is_reachable_a_page_at_a_time(
     manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
 ) -> None:
-    """The member list pages the same way, so the people a task may be
-    assigned to are not whatever the first page happened to hold."""
+    """The member list pages the same way, so every member is reachable,
+    not only whoever the first page happened to hold."""
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     for index in range(4):
         await add_member(storage, org.id, f"member-{index}@example.test", Role.MEMBER)
@@ -2567,7 +2509,6 @@ async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     await manager.bootstrap(request(), "Beta", "beta", "bea@example.test", "Bea")
@@ -2689,8 +2630,8 @@ async def test_a_person_records_their_time_zone_and_the_org_reads_it(
     manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
 ) -> None:
     """The zone is the person's, on their identity: set by them, refused
-    when it is not an IANA name, and read by their org for a reminder's
-    hour. A user of another org, or none, reads as no zone."""
+    when it is not an IANA name, and read by their org. A user of another
+    org, or none, reads as no zone."""
     ann, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     bob = await add_member(storage, org.id, "bob@example.test", Role.MEMBER)
     assert await manager.get_time_zone(ann, ann.user_id) is None

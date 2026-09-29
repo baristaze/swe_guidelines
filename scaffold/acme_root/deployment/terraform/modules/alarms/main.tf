@@ -1,6 +1,6 @@
 # The default alarm set of one environment, and the one topic they all go
 # to: the edge (5xx ratio, unhealthy targets, p95 latency), one per read
-# that has a latency of its own to keep (GET /v1/billing), the database
+# that has a latency of its own to keep (GET /v1/me by default), the database
 # (CPU, free storage), the queues (a backlog and a dead letter, per
 # inbound queue), the worker's sweep (a pass longer than its interval), the
 # work queue and the outbox in Postgres (a backlog, a dead letter, the
@@ -142,7 +142,7 @@ resource "aws_cloudwatch_metric_alarm" "http_p95_latency" {
 # raw values, from which CloudWatch computes a true p95.
 
 locals {
-  # A route template as an alarm name can carry it: /v1/billing is v1-billing.
+  # A route template as an alarm name can carry it: /v1/me is v1-me.
   read_latency_slugs = {
     for route, seconds in var.read_latency_p95_seconds :
     route => trim(replace(route, "/[^a-zA-Z0-9]+/", "-"), "-")
@@ -222,8 +222,8 @@ resource "aws_cloudwatch_metric_alarm" "database_free_storage" {
   tags                = local.tags
 }
 
-# The queues: two alarms per inbound queue. Stripe's calls in and Slack's
-# are answered at the edge and handled by the worker from here, so a worker
+# The queues: two alarms per inbound queue. A provider's calls in are
+# answered at the edge and handled by the worker from here, so a worker
 # that stops draining one leaves the caller answered and nothing done.
 # A backlog is the oldest message waiting past a bound, which reads the same
 # at any volume; a dead letter is one message in the queue's `-dead` twin,

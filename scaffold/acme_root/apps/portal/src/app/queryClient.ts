@@ -1,9 +1,8 @@
 // The one query cache the whole app shares. It lives outside the component
 // tree so that forgetting a session can empty it from anywhere.
-import { MutationCache, QueryClient, type Query } from "@tanstack/react-query";
+import { QueryClient, type Query } from "@tanstack/react-query";
 import { isKeptFresh } from "../realtime/router";
 import { useConnectionStore } from "../store/connection";
-import { offerUpgrade } from "../store/upgrade";
 
 /** How long an answer is fresh when nothing pushes about it. */
 export const STALE_MS = 10_000;
@@ -28,18 +27,12 @@ export function keptFreshNow(query: Query): boolean {
 // failing API sees. Mutations are the same rule said twice, since a write
 // this layer repeated would not carry the key that makes it safe.
 //
-// Every write passes the mutation cache, so it is the one place a refusal for
-// a plan's bound is turned into the upgrade dialog: a view-model that says a
-// failure itself skips this one (`isPlanLimit`), and the person sees the
-// plans, not a notice.
-//
 // A query a push keeps fresh is not read again when the tab regains focus,
 // nor when it mounts within five minutes, while the socket is open: the push
 // already said whether it changed. Both are decided when they are asked, so
 // a socket that drops brings back the ten seconds and the focus refetch at
 // once.
 export const queryClient = new QueryClient({
-  mutationCache: new MutationCache({ onError: (error) => void offerUpgrade(error) }),
   defaultOptions: {
     queries: {
       staleTime: (query) => (keptFreshNow(query) ? PUSHED_STALE_MS : STALE_MS),

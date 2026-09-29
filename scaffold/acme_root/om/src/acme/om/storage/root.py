@@ -2,14 +2,11 @@
 
 from abc import ABC, abstractmethod
 
-from acme.om.billing.storage import BillingStorageInterface
 from acme.om.events.storage import EventStorageInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.media.storage import MediaStorageInterface
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.outbox.storage import OutboxStorageInterface
-from acme.om.slack.storage import SlackStorageInterface
-from acme.om.tasks.storage import TasksStorageInterface
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.work.storage import WorkStorageInterface
 
@@ -22,9 +19,6 @@ class StorageInterface(ABC):
     def get_work_storage(self) -> WorkStorageInterface: ...
 
     @abstractmethod
-    def get_tasks_storage(self) -> TasksStorageInterface: ...
-
-    @abstractmethod
     def get_media_storage(self) -> MediaStorageInterface: ...
 
     @abstractmethod
@@ -35,12 +29,6 @@ class StorageInterface(ABC):
 
     @abstractmethod
     def get_outbox_storage(self) -> OutboxStorageInterface: ...
-
-    @abstractmethod
-    def get_billing_storage(self) -> BillingStorageInterface: ...
-
-    @abstractmethod
-    def get_slack_storage(self) -> SlackStorageInterface: ...
 
     @abstractmethod
     def get_orchestrations_storage(self) -> OrchestrationsStorageInterface: ...

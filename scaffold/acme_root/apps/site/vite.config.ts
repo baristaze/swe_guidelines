@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5174,
-      // The page reads the portal's theme and the README's demo GIF.
+      // The page reads the portal's theme.
       fs: { allow: [repoRoot] },
     },
     test: {

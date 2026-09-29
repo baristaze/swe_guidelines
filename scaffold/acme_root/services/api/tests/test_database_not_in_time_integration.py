@@ -70,14 +70,14 @@ async def over_postgres(
 
 
 @asynccontextmanager
-async def tasks_locked(container: AppContainer) -> AsyncIterator[None]:
-    """Another transaction holds `core.tasks` in the one mode a read waits on,
+async def files_locked(container: AppContainer) -> AsyncIterator[None]:
+    """Another transaction holds `core.files` in the one mode a read waits on,
     the way a migration's `DROP INDEX` queued behind a long transaction does.
     It is its own connection, outside the API's pool."""
     engine = create_async_engine(container.settings.role_urls()[DatabaseRole.CORE])
     try:
         async with engine.begin() as connection:
-            await connection.execute(text("LOCK TABLE core.tasks IN ACCESS EXCLUSIVE MODE"))
+            await connection.execute(text("LOCK TABLE core.files IN ACCESS EXCLUSIVE MODE"))
             yield
     finally:
         await engine.dispose()
@@ -128,14 +128,14 @@ async def test_a_statement_past_its_deadline_answers_unavailable(
     before = counted("statement_timeout")
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.WARNING):
-        async with tasks_locked(container):
-            answer = await client.get("/v1/tasks", headers=owner)
+        async with files_locked(container):
+            answer = await client.get("/v1/media/files", headers=owner)
 
     assert_unavailable(answer)
     assert counted("statement_timeout") == before + 1
     lines = lines_of(caplog, answer)
     assert [r.levelno for r in lines] == [logging.WARNING]
-    assert "unavailable on GET /v1/tasks" in lines[0].getMessage()
+    assert "unavailable on GET /v1/media/files" in lines[0].getMessage()
     assert "a statement on the core role (runtime login) passed its deadline" in (
         lines[0].getMessage()
     )
@@ -153,15 +153,15 @@ async def test_a_checkout_past_its_bound_answers_unavailable(
     with caplog.at_level(logging.WARNING):
         async with runtime() as holder:
             await holder.connection()
-            answer = await client.get("/v1/tasks", headers=owner)
+            answer = await client.get("/v1/media/files", headers=owner)
 
     assert_unavailable(answer)
     assert counted("checkout_timeout") == before + 1
     lines = lines_of(caplog, answer)
     assert [r.levelno for r in lines] == [logging.WARNING]
-    assert "unavailable on GET /v1/tasks" in lines[0].getMessage()
+    assert "unavailable on GET /v1/media/files" in lines[0].getMessage()
     assert "no connection to the core role (runtime login) within the checkout bound" in (
         lines[0].getMessage()
     )
     # The pool serves again once the other checkout lets go.
-    assert (await client.get("/v1/tasks", headers=owner)).status_code == 200
+    assert (await client.get("/v1/media/files", headers=owner)).status_code == 200

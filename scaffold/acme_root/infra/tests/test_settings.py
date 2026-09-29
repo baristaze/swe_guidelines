@@ -4,7 +4,6 @@ written down fails the fast gate. The file is read as text, the way a
 developer reads it; a commented-out line documents a knob too."""
 
 import re
-import subprocess
 from pathlib import Path
 
 from acme.infra.impl.settings import SECRET_ENV_PREFIX, InfraSettings
@@ -17,14 +16,10 @@ NOT_A_KNOB = {
 
 
 def repository_root() -> Path:
-    top = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=Path(__file__).parent,
-    ).stdout.strip()
-    return Path(top)
+    """The checkout this test runs in: the nearest folder above it with an
+    `.env.example`, so a copy that is not yet a repository reads its own."""
+    here = Path(__file__).resolve().parent
+    return next(p for p in (here, *here.parents) if (p / ".env.example").is_file())
 
 
 def documented_knobs(env_example: str) -> set[str]:

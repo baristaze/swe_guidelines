@@ -10,9 +10,12 @@ from uuid import UUID
 
 from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
+from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
-from acme.om.base import new_id, utcnow
+from acme.om.base import Platform, new_id, utcnow
+from acme.om.media.types.file import File, FilePurpose
 from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
+from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationKind
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
 from acme.om.work.types.handler import WorkHandlerInterface
@@ -46,29 +49,87 @@ def request() -> RequestContext:
     )
 
 
-async def sign_in(container: WorkerContainer, slug: str = "ajax") -> OpContext:
-    """A session in a seeded org, `ajax` unless named, whose owner is
-    `ann@<slug>.test`. The worker signs nobody in, so the sign-in runs
-    through a manager over the same storage with the local sign-in on."""
-    tenancy = container.managers.tenancy
-    email = "ann@example.test" if slug == "ajax" else f"ann@{slug}.test"
-    _, org = await tenancy.bootstrap(request(), slug.title(), slug, email, "Ann")
-    signing = TenancyManagerImpl(
+def signing(
+    container: WorkerContainer, identity_provider: IdentityProviderInterface | None = None
+) -> TenancyManagerImpl:
+    """A tenancy manager over the worker's storage that signs people in: by
+    address, with the local sign-in on, or through `identity_provider` when
+    one is given. The worker signs nobody in itself."""
+    return TenancyManagerImpl(
         container.storage.get_tenancy_storage(),
         container.managers.outbox,
         container.infra.get_cache(CacheScope.REALTIME_TICKET),
-        TenancyOptions(dev_sign_in=True),
-        identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=container.managers.billing,
+        TenancyOptions(dev_sign_in=identity_provider is None),
+        identity_provider=identity_provider or IdentityProviderAbsentImpl(),
     )
-    login = await signing.dev_sign_in(request(), email)
+
+
+async def sign_in(container: WorkerContainer, slug: str = "ajax") -> OpContext:
+    """A session in a seeded org, `ajax` unless named, whose owner is
+    `ann@<slug>.test`, signed in by address."""
+    tenancy = container.managers.tenancy
+    email = "ann@example.test" if slug == "ajax" else f"ann@{slug}.test"
+    _, org = await tenancy.bootstrap(request(), slug.title(), slug, email, "Ann")
+    login = await signing(container).dev_sign_in(request(), email)
     identity = await tenancy.authenticate_login(request(), login.token)
     issued = await tenancy.exchange_login(identity, org.id)
     return await tenancy.authenticate(request(), issued.token)
 
 
+async def upload(
+    container: WorkerContainer, ctx: OpContext, name: str = "photo.png", *, confirm: bool = True
+) -> File:
+    """A file the person stored in the org: its row, and its object in the
+    store. Unconfirmed, the upload is started and never finished: a pending
+    row, and no object."""
+    data = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    now = utcnow()
+    media = container.managers.media
+    file = await media.create_file(
+        ctx,
+        File(
+            id=new_id(),
+            name=name,
+            created_at=now,
+            updated_at=now,
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+            content_type="image/png",
+            size_bytes=len(data),
+            purpose=FilePurpose.UPLOAD,
+        ),
+    )
+    if not confirm:
+        return file
+    await media.put_content(ctx, file.id, data)
+    return await media.confirm_file(ctx, file.id)
+
+
+async def start_noop(container: WorkerContainer, ctx: OpContext, steps: int) -> Orchestration:
+    """A `noop` record of `steps` steps, started by the person: it lands
+    running, with the work row of its first step."""
+    now = utcnow()
+    return await container.managers.orchestrations.start(
+        ctx,
+        Orchestration(
+            id=new_id(),
+            created_at=now,
+            updated_at=now,
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+            kind=OrchestrationKind.NOOP,
+            input={"steps": steps},
+        ),
+    )
+
+
 def make_item(
-    ctx: OpContext, *, target_id: UUID | None = None, traceparent: str | None = None
+    ctx: OpContext,
+    *,
+    kind: WorkKind = WorkKind.NOOP,
+    payload: Platform | None = None,
+    target_id: UUID | None = None,
+    traceparent: str | None = None,
 ) -> WorkItem:
     """The item a caller enqueues under its own context: the request that caused
     the work and its trace context are the caller's, and the enqueue leaves
@@ -80,11 +141,12 @@ def make_item(
         updated_at=now,
         created_by=ctx.user_id,
         updated_by=ctx.user_id,
-        kind=WorkKind.NOOP,
+        kind=kind,
         target_id=target_id or new_id(),
         idempotency_key=new_id(),
         request_id=ctx.request_id,
         traceparent=traceparent,
+        payload={} if payload is None else payload.model_dump(mode="json"),
         available_at=now,
     )
 

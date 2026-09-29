@@ -15,12 +15,13 @@ from acme.om.exceptions import (
 )
 from acme.om.opcontext import OpContext, Permission
 from acme.om.orchestrations.manager import OrchestrationsManagerInterface
-from acme.om.orchestrations.rules import failed, is_settled, outcome, resumed, stagger
+from acme.om.orchestrations.rules import advanced, failed, is_settled, outcome, resumed, stagger
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.types.orchestration import (
     ORCHESTRATION_INPUTS,
     FailReason,
+    NoopInput,
     Orchestration,
     OrchestrationKind,
     OrchestrationPage,
@@ -102,6 +103,16 @@ class OrchestrationsManagerImpl(OrchestrationsManagerInterface):
         if record is None:
             raise NotFound(f"orchestration {record_id} not found")
         return record
+
+    async def step_noop(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+        ctx.require(Permission.WRITE)
+        steps = NoopInput.model_validate(dict(record.input)).steps
+        cursor = record.cursor + 1
+        stepped = advanced(
+            record, self._clock(), ctx.user_id, cursor=cursor, total=steps, finished=cursor >= steps
+        )
+        await self._write(ctx, stepped, record.version)
+        return stepped
 
     async def get_recent(
         self, ctx: OpContext, kind: OrchestrationKind, limit: int

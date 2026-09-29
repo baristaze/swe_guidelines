@@ -1,8 +1,7 @@
 # Three kinds of secret live under one environment. The platform's own
 # credentials (the four database URLs, the TOTP encryption key, the edge
-# secret, the Sentry DSN, the Slack app's two secrets, the payment
-# processor's two, the WorkOS application key) are declared here and
-# injected into tasks by the execution role.
+# secret, the Sentry DSN, the WorkOS application key and webhook secret) are
+# declared here and injected into tasks by the execution role.
 # Application-managed secrets, the ones SecretsInterface reads at runtime,
 # live under "<prefix>app/", which is the value of ACME_SECRETS_NAME_PREFIX,
 # so a process can never reach its own bootstrap credentials through the
@@ -168,66 +167,6 @@ resource "aws_secretsmanager_secret_version" "sentry_dsn" {
   }
 }
 
-# The Slack app's two secrets: the client secret, which trades an install's
-# code for the workspace's token and renews tokens, and the signing secret,
-# which checks every call Slack makes in. Process credentials, injected at
-# start into the API and the worker, the way the payment processor's are.
-# Terraform creates each as "off", which leaves Slack unconfigured (Add to
-# Slack and every call from Slack answer 503), and never writes it again: set
-# the real values once from the app's Basic Information page with
-#   aws secretsmanager put-secret-value --secret-id <prefix>slack_client_secret --secret-string <secret>
-#   aws secretsmanager put-secret-value --secret-id <prefix>slack_signing_secret --secret-string <secret>
-# and roll the API and the worker (docs/runbooks/providers/slack.md). An
-# installed workspace's bot token is no process credential: it is the org's
-# own secret, under the application prefix (below).
-resource "aws_secretsmanager_secret" "slack_app" {
-  for_each = toset(["slack_client_secret", "slack_signing_secret"])
-
-  name                    = "${var.prefix}${each.key}"
-  recovery_window_in_days = local.recovery_window_in_days
-  tags                    = local.tags
-}
-
-resource "aws_secretsmanager_secret_version" "slack_app" {
-  for_each = aws_secretsmanager_secret.slack_app
-
-  secret_id     = each.value.id
-  secret_string = "off"
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
-}
-
-# The payment processor's runtime key and the signing secret of the endpoint
-# it delivers to: process credentials, injected at start into the API and
-# the worker, the way the error tracker's DSN is. Terraform creates each as
-# "off", which leaves billing unconfigured (every org keeps its plan and a
-# checkout answers 503), and never writes it again. The runtime key is a
-# restricted key of the environment's Stripe account, set once by hand:
-#   aws secretsmanager put-secret-value --secret-id <prefix>stripe_runtime_key --secret-string <key>
-# and the signing secret by `acme-ops stripe-bootstrap --env <env>`, which
-# learns it when it registers the endpoint (docs/runbooks/providers/stripe.md).
-# The bootstrap's own key is never here: the person who runs it holds it.
-resource "aws_secretsmanager_secret" "stripe" {
-  for_each = toset(["stripe_runtime_key", "stripe_webhook_secret"])
-
-  name                    = "${var.prefix}${each.key}"
-  recovery_window_in_days = local.recovery_window_in_days
-  tags                    = local.tags
-}
-
-resource "aws_secretsmanager_secret_version" "stripe" {
-  for_each = aws_secretsmanager_secret.stripe
-
-  secret_id     = each.value.id
-  secret_string = "off"
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
-}
-
 # The Acme App application's API key: the client secret the API exchanges
 # sign-in codes with, and the key it sends invitations with. A process
 # credential, injected into the API and the worker as ACME_WORKOS_API_KEY
@@ -257,6 +196,30 @@ resource "aws_secretsmanager_secret_version" "workos_api_key" {
   }
 }
 
+# The secret WorkOS signs each webhook delivery with, which the API checks
+# at /webhooks/identity before it queues the delivery for the worker. A
+# process credential of the API alone, injected as ACME_WORKOS_WEBHOOK_SECRET
+# and named outside the application prefix, like the API key. Terraform
+# creates it as "off", which leaves the route refusing every delivery until
+# the secret is set, and never writes it again: set the real
+# value once, from the endpoint's page in the WorkOS dashboard, with
+#   aws secretsmanager put-secret-value --secret-id <prefix>workos_webhook_secret --secret-string <secret>
+# and roll the API so its tasks start with it.
+resource "aws_secretsmanager_secret" "workos_webhook_secret" {
+  name                    = "${var.prefix}workos_webhook_secret"
+  recovery_window_in_days = local.recovery_window_in_days
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "workos_webhook_secret" {
+  secret_id     = aws_secretsmanager_secret.workos_webhook_secret.id
+  secret_string = "off"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 data "aws_iam_policy_document" "application" {
   statement {
     actions = [
@@ -267,8 +230,8 @@ data "aws_iam_policy_document" "application" {
   }
 
   # A tenant's own secrets, each under org/<org_id>/ in the prefix: the one
-  # write a serving process holds. An install puts the workspace's bot token
-  # there, a renewal replaces it, and an uninstall deletes it.
+  # write a serving process holds. A credential an org connects is created
+  # there, replaced when it renews, and deleted when the org disconnects it.
   statement {
     actions = [
       "secretsmanager:CreateSecret",

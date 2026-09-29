@@ -76,7 +76,7 @@ async def buckets(failure: BaseException | str) -> BucketsS3Impl:
         FakeSession(client_error(failure) if isinstance(failure, str) else failure),  # type: ignore[arg-type]
         endpoint_url=None,
         region="us-east-1",
-        bucket_prefix="acme",
+        bucket_prefix="acme-local",
         timeout=timedelta(seconds=1),
     )
     await impl.start()

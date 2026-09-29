@@ -28,7 +28,7 @@
 # before the apply and before the destroy. The bootstrap root stays: the
 # account keeps its roles, its registry, its zones, and its state. Nothing
 # at the providers is touched either; the list at the end names what stays
-# at Stripe, WorkOS, and Slack.
+# at WorkOS and in the error tracker.
 #
 # Inputs, as flags or as environment variables:
 #   --alarm-email    ALARM_EMAIL       the address the root's alarms go to
@@ -69,7 +69,7 @@ case "$environment" in
   *) refuse "the environment is staging or production, not '$environment'" ;;
 esac
 
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$(dirname "$0")/.."
 environments=deployment/cloud/environments.json
 
 config() {
@@ -257,16 +257,15 @@ if [ "$environment" = "staging" ]; then
   say "- production's copies of what staging built: its images and static builds, in production's account"
 fi
 say "- $HOME/.config/acme/ops/$environment.env, and the investigate profile in $HOME/.aws/config"
-say "- each installed org's Slack bot token, under acme/$environment/app/org/ in Secrets Manager: the application wrote them, so Terraform does not own them; list them with aws secretsmanager list-secrets --filters Key=name,Values=acme/$environment/app/org/ and delete them by hand if $environment is not coming back"
+say "- each org's own secrets, under acme/$environment/app/org/ in Secrets Manager: the application wrote them, so Terraform does not own them; list them with aws secretsmanager list-secrets --filters Key=name,Values=acme/$environment/app/org/ and delete them by hand if $environment is not coming back"
 
 # The providers: nothing here writes to them. What the environment leaves
 # there is listed so a person decides; a recreate reuses most of it.
 case "$environment" in
-  staging) stripe_account="the sandbox acct_1UIfVX45a2t9JoiY"; workos_environment="Staging" ;;
-  production) stripe_account="the live account acct_1UIfTS4Dj4HbbS1T"; workos_environment="Production" ;;
+  staging) workos_environment="Staging" ;;
+  production) workos_environment="Production" ;;
 esac
 say "== 6. What remains at the providers (docs/runbooks/providers/)"
-say "- Stripe, $stripe_account: the webhook endpoint https://$api_domain_name/webhooks/stripe, which now posts to a name that does not answer. Keep it if $environment comes back (the next stripe-bootstrap finds the new secret empty and rolls it); delete it under Developers > Webhooks if not. The customers and subscriptions its orgs made stay too, and so does the restricted key acme-$environment-runtime under Developers > API keys: delete it there if $environment is not coming back."
-say "- WorkOS $workos_environment: the organizations its team orgs made (external_id = the old org id) and the users who signed in. Harmless; a recreate makes new orgs. The Acme App application, its API keys, and its redirects for https://$app_domain_name stay, and the next $environment uses them."
-say "- Slack: the environment's app, whose request URLs fail until a new $environment answers them, and the workspaces that installed it, which keep it until someone removes it in Slack. The installations were rows of the database and went with it; each org installs again."
-say "- The values of acme/$environment/{stripe_runtime_key,workos_api_key,slack_client_secret,slack_signing_secret} went with the secrets: a recreate writes each again after its first deploy. Revoke a key at its provider if $environment is not coming back."
+say "- WorkOS $workos_environment: the organizations its team orgs made (external_id = the old org id) and the users who signed in. Harmless; a recreate makes new orgs. The Acme App application, its API keys, its redirects for https://$app_domain_name, and its webhook endpoint https://$api_domain_name/webhooks/identity stay, and the next $environment uses them."
+say "- The error tracker: the product's one project keeps the events $environment reported, tagged environment:$environment."
+say "- The values of acme/$environment/{workos_api_key,workos_webhook_secret,sentry_dsn} went with the secrets: a recreate writes each again after its first deploy. Revoke a key at its provider if $environment is not coming back."

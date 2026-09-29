@@ -1,6 +1,6 @@
 [project]
 name = "acme-infra"
-version = "0.7.0"
+version = "0.1.0"
 description = "Acme infrastructure capabilities: cache, buckets, topics, queues, secrets, observability."
 requires-python = ">=3.14"
 dependencies = [

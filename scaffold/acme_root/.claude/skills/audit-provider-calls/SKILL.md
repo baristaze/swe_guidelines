@@ -1,6 +1,6 @@
 ---
 name: audit-provider-calls
-description: "Audit every call to an external provider (WorkOS, Stripe, Slack, the AWS services, any HTTP to a third party), per flow: each route, inbound webhook, worker job, and boot. For each flow, the calls in order, whether they repeat or stand apart, whether they sit on the request path, how often the flow runs, whether the client is reused, the timeout times the retries, and whether the request has an overall deadline. Counts the calls through the provider twins where it can and reads the code where it cannot, then ranks fixes: remove a call, fold calls, move one off the request path, cache it, and run in parallel last. Never changes anything."
+description: "Audit every call to an external provider (WorkOS, the AWS services, any HTTP to a third party), per flow: each route, inbound webhook, worker job, and boot. For each flow, the calls in order, whether they repeat or stand apart, whether they sit on the request path, how often the flow runs, whether the client is reused, the timeout times the retries, and whether the request has an overall deadline. Counts the calls through the identity provider's twin where it can and reads the code where it cannot, then ranks fixes: remove a call, fold calls, move one off the request path, cache it, and run in parallel last. Never changes anything."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(uv run:*), Bash(git:*), Bash(mkdir:*)
 ---
 
@@ -25,9 +25,9 @@ to audit another commit, run it from a checkout of that commit that has
 
 None, local only. The counted run is on the local stack (`make
 infra-up`, with `make migrate` run once), in a database the run makes
-and drops, with the provider twins in place of every provider. It holds
-no cloud credential, reads no environment and no env file, and calls no
-real provider.
+and drops, with the identity provider's twin in place of the provider.
+It holds no cloud credential, reads no environment and no env file, and
+calls no real provider.
 
 ## Procedure
 
@@ -41,16 +41,15 @@ real provider.
    the same suffix. Make the folder
    (`mkdir -p`). Say which commit the run read (`git rev-parse HEAD`).
 2. List the provider clients and how each is built:
-   - WorkOS: `integrations/src/acme/integrations/identity/workos.py`;
-   - Stripe: `integrations/src/acme/integrations/payments/stripe.py`
-     and `catalog.py`;
-   - Slack: `integrations/src/acme/integrations/slack/web.py`;
+   - WorkOS, the identity provider:
+     `integrations/src/acme/integrations/identity/workos.py`, with its
+     webhook's check in `identity/deliveries.py` beside it;
    - AWS: `infra/src/acme/infra/aws_clients.py` and its callers
      (`buckets/s3.py`, `queues/sqs.py`, `secrets/aws.py`);
    - anything else that leaves the process for a third party: search
      `services/`, `workers/`, `infra/src`, `integrations/src`, and
-     `om/src` for `httpx`, `aiohttp`, `urllib`, `boto`, `stripe`,
-     `workos`, and `sentry_sdk`, and read the exporters in
+     `om/src` for `httpx`, `aiohttp`, `urllib`, `boto`, `workos`, and
+     `sentry_sdk`, and read the exporters in
      `infra/src/acme/infra/observability.py`. The cache and the
      database are the platform's own and not in scope.
    For each client: the timeout and where it is set
@@ -58,8 +57,8 @@ real provider.
    and the timeout the SDK actually sends, which it may override; the
    retries the SDK makes on its own and on what (a timeout, a 429, a
    5xx). Both are in the SDK's own source under
-   `.venv/lib/python*/site-packages/<sdk>/` (`workos`, `stripe`,
-   `slack_sdk`, `botocore`); botocore's retry mode is the default
+   `.venv/lib/python*/site-packages/<sdk>/` (`workos`, `botocore`);
+   botocore's retry mode is the default
    (legacy) unless `client_config` sets one. A timeout the settings name
    and the SDK overrides is a finding. The worst case of one call is
    timeout × (retries + 1), plus the backoff between tries; where the
@@ -67,9 +66,9 @@ real provider.
    process and reused, or one per call; and whether the process opens it
    at start (`start()`) or on first use.
 3. List the flows: every route (the routers under
-   `services/api/src/acme/services/api/routers/`), every inbound
-   webhook (Stripe's and Slack's, in `routers/webhooks.py` there), every
-   worker job
+   `services/api/src/acme/services/api/routers/`), the inbound webhook
+   (the identity provider's, `POST /webhooks/identity` in
+   `routers/webhooks.py` there, and its consumer), every worker job
    (`WorkKind` in `om/src/acme/om/work/types/work_item.py`, its handler
    in `workers/maintenance/src/acme/workers/maintenance/`, and the
    consumers of the queues there), the sweep's steps (`loop.py`,
@@ -94,16 +93,17 @@ real provider.
    ```
 
    Run the built-in flows first, as above without `--flows`, and read
-   `providers`. The counter wraps the identity, payments, and Slack
-   twins and counts one call per method of the provider's interface.
+   `providers`. The counter wraps the identity provider's twin and
+   counts one call per method of the provider's interface
+   (`identity.<method>`).
    The real client may send more than one request for one method (a
    lookup and a create, a list read page by page): read each method in
    the real client and say how many requests it sends. The counter does
    not count AWS: locally the infra reaches no provider, so those calls
    are read from the code and marked as read. A flow of step 3 that
-   calls a provider and that no built-in flow reaches (a checkout, a
-   Slack install, a webhook, a worker job that calls Stripe) then goes
-   in a flows file of the run's own, written as
+   calls a provider and that no built-in flow reaches (a device
+   sign-in, the SSO link, a delivery to the identity webhook and its
+   consumer) then goes in a flows file of the run's own, written as
    `.claude/skills/audit-database-calls/references/flows.md` shows
    (read it before writing one), run on the same database with `--only
    seed` into `calls_2.json`. A flow that fails is named, the rest run,
@@ -156,8 +156,8 @@ real provider.
 - Never modifies a tracked file, never commits, never opens a pull
   request: a run's own flows live in its evidence folder, and a fix is a
   proposal with its numbers.
-- Never calls a real provider: the twins stand in for every one, and no
-  key is read.
+- Never calls a real provider: the twin stands in for the identity
+  provider, and no key is read.
 - Never reports a call it read from the code as counted: each row says
   measured or read.
 
@@ -168,7 +168,7 @@ real provider.
 ```markdown
 # Acme: provider calls per flow
 
-<commit>, counted on <database> with the provider twins. How the count is taken, in two sentences.
+<commit>, counted on <database> with the identity provider's twin. How the count is taken, in two sentences.
 
 ## The answer
 
@@ -184,7 +184,7 @@ real provider.
 | Flow | Calls, in order | Repeats or independent | Request path | Runs | Worst case added | Overall deadline | Measured |
 |---|---|---|---|---|---|---|---|
 
-Measured: yes (the twins), read (code only), or partly (say which calls).
+Measured: yes (the twin), read (code only), or partly (say which calls).
 
 ## Findings, ranked
 

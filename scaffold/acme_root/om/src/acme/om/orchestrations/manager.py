@@ -4,9 +4,9 @@ cursor advanced one step at a time by whichever worker holds its work item.
 This namespace is the mechanism, the same for every kind: the record, its
 start, its failure, and the two ways a parked record wakes (the event that
 clears its reason, or a person). What one step of a kind does is the
-namespace whose rows it changes: the tasks namespace steps an import and a
-cleanup, and lands the record beside its own rows (`Step`), a park among
-them."""
+namespace whose rows it changes: that namespace lands the record beside its
+own rows (`Step`), a park among them. The one kind this namespace steps
+itself is `noop`, which changes nothing else."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -35,6 +35,14 @@ class OrchestrationsManagerInterface(ABC):
     async def get(self, ctx: OpContext, record_id: UUID) -> Orchestration: ...
 
     @abstractmethod
+    async def step_noop(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+        """One step of a `noop` record: the cursor moves by one, and the record
+        succeeds once it reaches its input's count. The record is written
+        alone, conditioned on the version of `record`, with the work row of
+        the next step while it runs."""
+        ...
+
+    @abstractmethod
     async def get_recent(
         self, ctx: OpContext, kind: OrchestrationKind, limit: int
     ) -> OrchestrationPage:
@@ -52,7 +60,7 @@ class OrchestrationsManagerInterface(ABC):
     async def wake(self, ctx: OpContext, reason: ParkReason) -> int:
         """The event's wake: every record of the org parked for `reason`
         resumes, staggered; returns how many. What cleared the reason asks
-        for it (a plan that rose clears `plan_limit`)."""
+        for it (a provider that answers again clears `provider_unavailable`)."""
         ...
 
     @abstractmethod

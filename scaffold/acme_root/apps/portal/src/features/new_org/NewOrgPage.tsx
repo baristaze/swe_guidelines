@@ -2,12 +2,11 @@ import { AppNav } from "../../app/AppNav";
 import { Button, Card, ErrorText, Muted, Page, TextField } from "../../design/kit";
 import { tokens } from "../../design/tokens";
 import { useNewOrgVm } from "./useNewOrgVm";
-import { PaymentNotice } from "../billing/PaymentNotice";
 
 export function NewOrgPage() {
   const vm = useNewOrgVm();
   return (
-    <Page title="New organization" nav={<AppNav />} notice={<PaymentNotice />}>
+    <Page title="New organization" nav={<AppNav />}>
       <Card>
         <form
           onSubmit={(event) => {

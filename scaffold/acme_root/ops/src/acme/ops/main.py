@@ -1,17 +1,15 @@
 """`acme-ops`: traffic, stress, signals check, size, token (and the list
-and the revoke of one's own), work requeue, and stripe-bootstrap, each
-against one named environment, and workos-bootstrap against one WorkOS
-environment. Exit 0 when the run did
-what was asked, 1 when a stress target was missed, a reader found nothing, a
-redirect needs the WorkOS dashboard, or the operator plane refused a
-requeue, 2 for a bad invocation, a credential the operator plane refused, or
-a WorkOS key that is not the application's."""
+and the revoke of one's own), and work requeue, each against one named
+environment, and workos-bootstrap against one WorkOS environment. Exit 0
+when the run did what was asked, 1 when a stress target was missed, a reader
+found nothing, a redirect needs the WorkOS dashboard, or the operator plane
+refused a requeue, 2 for a bad invocation, a credential the operator plane
+refused, or a WorkOS key that is not the application's."""
 
 import argparse
 import asyncio
 import getpass
 import json
-import os
 import subprocess
 import sys
 import time
@@ -28,7 +26,6 @@ import httpx
 from acme.client.client import ApiClient, ApiError
 from acme.client.schema import OrgPageView, UserPageView
 from acme.infra.aws_clients import client_config
-from acme.integrations.payments.catalog import CatalogStripeImpl
 from acme.ops.environments import (
     CLOUD_ENVIRONMENTS,
     LOCAL_OPERATORS,
@@ -52,16 +49,6 @@ from acme.ops.stress import (
     window_start,
     with_duration,
     with_target,
-)
-from acme.ops.stripe_bootstrap import (
-    ENVIRONMENTS,
-    KEY_VARIABLE,
-    SecretStoreAwsImpl,
-    SecretStoreInterface,
-    SecretStoreNoneImpl,
-    check_key,
-    load_desired,
-    reconcile,
 )
 from acme.ops.traffic import (
     NO_ONE_SIGNED_IN,
@@ -300,7 +287,7 @@ async def size_command(
     print(f"{'counted':<24} {age // 60} min {age % 60} s ago, by the maintenance worker's sweep")
     print(
         f"{'traffic run tenants':<24} {run_orgs} left out ({run_users} users); "
-        "their tasks and events stay in the day's counts"
+        "their events stay in the day's counts"
     )
     return OK
 
@@ -640,52 +627,6 @@ async def work_requeue_command(
     return OK
 
 
-async def stripe_bootstrap_command(args: argparse.Namespace) -> int:
-    """Makes the processor's account match the committed desired state. The
-    bootstrap key comes from the person's shell and is never printed; the
-    runtime key the processes hold is never read here. The account is the
-    one the definition names for the environment."""
-    root = repository_root()
-    if root is None:
-        raise ValueError("run this from the acme checkout; it reads deployment/stripe/")
-    key = os.environ.get(KEY_VARIABLE, "").strip()
-    if not key:
-        print(
-            f"set {KEY_VARIABLE} to the account's bootstrap key for --env {args.env} "
-            "(docs/runbooks/providers/stripe.md)",
-            file=sys.stderr,
-        )
-        return USAGE
-    check_key(args.env, key)
-    desired = load_desired(root)
-    store: SecretStoreInterface = SecretStoreNoneImpl()
-    if args.secret_store == "aws":
-        if args.env not in CLOUD_ENVIRONMENTS:
-            raise ValueError(f"--env {args.env} has no secret store; it has no webhook endpoint")
-        layout = json.loads((root / "deployment" / "cloud" / "environments.json").read_text())
-        profile = getattr(args, "profile", None) or sso_profile_of(args.env)
-        if profile.endswith("-investigate"):
-            raise ValueError(
-                f"{profile} is an agent's read-only profile and writes no secret; "
-                "run this under your own sign-in (--profile)"
-            )
-        store = SecretStoreAwsImpl(profile, str(layout["region"]), timedelta(seconds=10))
-    catalog = CatalogStripeImpl(
-        api_key=key, account_id=desired.accounts[args.env], timeout=timedelta(seconds=20)
-    )
-    await catalog.start()
-    try:
-        run = await reconcile(desired, args.env, catalog, store, dry_run=args.dry_run)
-    finally:
-        await catalog.close()
-    print(
-        f"{catalog.describe()}, secrets: {store.describe()}{' (dry run)' if args.dry_run else ''}"
-    )
-    for line in run.lines():
-        print(line)
-    return OK
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="acme-ops")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -789,27 +730,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply", action="store_true", help="make the changes; without it, only say them"
     )
 
-    p_stripe = sub.add_parser(
-        "stripe-bootstrap",
-        help="make the payment processor's account match deployment/stripe/desired-state.json",
-    )
-    p_stripe.add_argument("--env", required=True, choices=list(ENVIRONMENTS))
-    p_stripe.add_argument(
-        "--dry-run", action="store_true", help="say what would change; write nothing"
-    )
-    p_stripe.add_argument(
-        "--secret-store",
-        choices=["aws", "none"],
-        default="aws",
-        help="where the webhook endpoint's signing secret goes: the environment's Secrets "
-        "Manager under its sign-in profile, or nowhere",
-    )
-    p_stripe.add_argument(
-        "--profile",
-        default=None,
-        help="the AWS profile that writes the signing secret; the environment's sign-in "
-        "profile by default, which in production only reads, so there it is acme-prod-power",
-    )
     return parser
 
 
@@ -826,8 +746,6 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(token_command(args))
         if args.command == "work":
             return asyncio.run(work_requeue_command(args))
-        if args.command == "stripe-bootstrap":
-            return asyncio.run(stripe_bootstrap_command(args))
         if args.command == "workos-bootstrap":
             return asyncio.run(workos_bootstrap_command(args))
         return asyncio.run(size_command(args))

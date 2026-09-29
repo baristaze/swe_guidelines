@@ -54,10 +54,9 @@ from acme.services.api.types.tenancy import (
 
 def encode_cursor(listed: str, entity_id: UUID) -> str:
     """Opaque on the wire: the list a cursor belongs to and the id its page
-    ended on. The tenancy lists are ordered by one unique id - members and
-    orgs ascending, memberships by user id ascending, keys newest first - so
-    the id is the whole mark, as a task list encodes its (rank, id) or
-    (updated_at, id)."""
+    ended on. Each list that pages this way is ordered by one unique id -
+    members, orgs, and files ascending, memberships by user id ascending,
+    keys newest first - so the id is the whole mark."""
     return base64.urlsafe_b64encode(f"{listed}|{entity_id}".encode()).decode().rstrip("=")
 
 

@@ -166,31 +166,26 @@ the names of what was written and never a value.
      order above, because the first release waits for a replicated
      build.
    - The providers, printed for the person and never run by this
-     skill (step 7b). The first deploy makes five secrets holding
-     `off`: `acme/<env>/workos_api_key`, `stripe_runtime_key`,
-     `stripe_webhook_secret`, `slack_client_secret`, and
-     `slack_signing_secret`.
+     skill (step 7b). The first deploy makes three secrets holding
+     `off`: `acme/<env>/workos_api_key`, `workos_webhook_secret`, and
+     `sentry_dsn`.
      After it, the person makes each value in the provider's dashboard
      and writes it under their own sign-in (`acme-staging`; in
-     production `acme-prod-power`, when authorized); the Stripe
-     bootstrap writes `stripe_webhook_secret` itself, under a second
-     restricted key the person holds in their shell
-     (`ACME_STRIPE_BOOTSTRAP_KEY`) and never writes to the cloud.
+     production `acme-prod-power`, when authorized).
      `workos_api_key` is the Acme App application's own API key,
      never the WorkOS environment's; the API refuses to start on
      another. WorkOS comes first, since the grants below sign people
      up through it and every
-     sign-in answers `503` without its key. Each environment has a
-     Slack app of its own (`deployment/slack/manifest.<env>.json`):
-     its two secrets go into the two secrets above, and its client id
-     is committed as `slack_client_id` in the environment root. Once
-     the API holds the signing secret, the person pastes the manifest
-     into the app, turns on public distribution, and installs the app
-     from the portal's Settings. The values reach the tasks at their
-     next start. Point
-     the person to `docs/runbooks/providers/` for the steps; never ask
-     for a value in the conversation, and never run a
-     `put-secret-value` yourself.
+     sign-in answers `503` without its key. `acme-ops workos-bootstrap`
+     proves the key and reconciles the application's redirects.
+     `workos_webhook_secret` is the signing secret of the endpoint
+     `https://<api name>/webhooks/identity` in the WorkOS dashboard;
+     until it is set, the route refuses every delivery. `sentry_dsn`
+     is the DSN of the product's one project in the error tracker.
+     The values reach the API and the worker when their tasks next
+     start. Point the person to `docs/runbooks/providers/workos.md`
+     for the steps; never ask for a value in the conversation, and
+     never run a `put-secret-value` yourself.
    - The grants, printed for the person and never run by this skill:
      the first operator, the provisioner, and the smoke identity, each
      through `grant-operator.yml` on the environment's branch, which
@@ -272,7 +267,7 @@ dry run's smoke test is "not yet".
 - <the next run of Order, or nothing>
 - Dispatch `grant-operator.yml` for the first operator, who enrols the second factor at the console's first sign-in and runs `uv run acme-ops token --env <env> --identity operator` in their own terminal; grant the smoke identity and set `SMOKE_EMAIL`, so the next deploy runs the smoke test
 - Manual steps left: <the tracker's lines in the env file, or none>
-- The providers, after the first deploy: write workos_api_key, stripe_runtime_key, slack_client_secret, slack_signing_secret under <sso profile | acme-prod-power>, commit slack_client_id, run `acme-ops workos-bootstrap` and `acme-ops stripe-bootstrap` (ACME_STRIPE_BOOTSTRAP_KEY in the person's shell), then roll or wait for the next deploy; then paste the Slack manifest, turn on public distribution, and Add to Slack (docs/runbooks/providers/)
+- The providers, after the first deploy: write workos_api_key, workos_webhook_secret, and sentry_dsn under <sso profile | acme-prod-power>, run `acme-ops workos-bootstrap`, then roll or wait for the next deploy (docs/runbooks/providers/workos.md)
 - Hand the administrator permission set back; every later skill runs
   under acme-<env>-investigate.
 ```

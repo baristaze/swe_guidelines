@@ -1,6 +1,6 @@
-// Pure: which time zone the portal records for the person. A due date's
-// reminder goes out at nine in the morning in it, so the portal sends the
-// browser's own IANA name whenever it differs from the one the identity holds.
+// Pure: which time zone the portal records for the person. The identity
+// holds it for whatever the server does at the person's local hour, so the
+// portal sends the browser's own IANA name whenever it differs.
 
 /** The browser's IANA time zone ("Europe/Istanbul"), or null when it names none. */
 export function browserTimeZone(): string | null {

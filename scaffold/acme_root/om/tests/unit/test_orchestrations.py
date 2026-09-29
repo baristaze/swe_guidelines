@@ -1,5 +1,5 @@
-"""The orchestration mechanism on its own: its pure rules, the parse of an
-import file, and the manager's start, wake, resume, failure, and purge."""
+"""The orchestration mechanism on its own: its pure rules, and the manager's
+start, step, wake, resume, failure, and purge."""
 
 from datetime import timedelta
 from pathlib import Path
@@ -28,14 +28,6 @@ from acme.om.orchestrations.types.orchestration import (
 )
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
-from acme.om.tasks.rules import (
-    ImportFileRefused,
-    ImportRow,
-    import_refusal,
-    imported,
-    parse_import,
-    room_for,
-)
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
@@ -50,8 +42,8 @@ def a_record(**fields: object) -> Orchestration:
             "updated_at": now,
             "created_by": actor,
             "updated_by": actor,
-            "kind": OrchestrationKind.TASK_IMPORT,
-            "input": {"file_id": str(new_id())},
+            "kind": OrchestrationKind.NOOP,
+            "input": {"steps": 3},
             **fields,
         }
     )
@@ -61,11 +53,11 @@ def a_record(**fields: object) -> Orchestration:
 
 
 def test_a_step_moves_the_cursor_counts_its_skips_and_ends_the_record_when_last() -> None:
-    record = a_record(skipped=1, row_errors=[{"row": 1, "reason": "no title"}])
+    record = a_record(skipped=1, row_errors=[{"row": 1, "reason": "malformed"}])
     now = utcnow()
     after = advanced(
         record, now, record.created_by, cursor=5, total=5,
-        skipped=[RowError(row=4, reason="no title")], finished=True,
+        skipped=[RowError(row=4, reason="malformed")], finished=True,
     )  # fmt: skip
     assert (after.cursor, after.total, after.skipped) == (5, 5, 2)
     assert [e.row for e in after.row_errors] == [1, 4]
@@ -77,10 +69,15 @@ def test_a_step_moves_the_cursor_counts_its_skips_and_ends_the_record_when_last(
 def test_a_guard_parks_the_record_at_its_cursor_keeping_what_it_made() -> None:
     record = a_record(applied=10, cursor=10)
     after = advanced(
-        record, utcnow(), record.created_by, cursor=10, total=50, park=ParkReason.PLAN_LIMIT
+        record,
+        utcnow(),
+        record.created_by,
+        cursor=10,
+        total=50,
+        park=ParkReason.PROVIDER_UNAVAILABLE,
     )
     assert after.status is OrchestrationStatus.PARKED
-    assert after.park_reason is ParkReason.PLAN_LIMIT
+    assert after.park_reason is ParkReason.PROVIDER_UNAVAILABLE
     assert (after.cursor, after.applied, after.finished_at) == (10, 10, None)
     running = resumed(after, utcnow(), record.created_by)
     assert running.status is OrchestrationStatus.RUNNING and running.park_reason is None
@@ -90,9 +87,9 @@ def test_a_guard_parks_the_record_at_its_cursor_keeping_what_it_made() -> None:
 def test_a_bound_fails_the_record_and_names_why() -> None:
     record = a_record()
     now = utcnow()
-    ended = failed(record, now, record.created_by, FailReason.TOO_MANY_ROWS)
+    ended = failed(record, now, record.created_by, FailReason.DEFECT)
     assert ended.status is OrchestrationStatus.FAILED
-    assert ended.fail_reason is FailReason.TOO_MANY_ROWS and ended.finished_at == now
+    assert ended.fail_reason is FailReason.DEFECT and ended.finished_at == now
 
 
 def test_the_skipped_rows_named_are_bounded() -> None:
@@ -108,56 +105,6 @@ def test_the_resumes_of_one_wake_are_staggered() -> None:
         timedelta(seconds=2),
         timedelta(seconds=4),
     ]
-
-
-def test_room_is_what_the_plan_leaves_and_never_below_zero() -> None:
-    assert room_for(None, 500) is None
-    assert room_for(10, 7) == 3
-    assert room_for(10, 12) == 0
-
-
-def test_an_import_file_reads_its_known_columns_in_any_order() -> None:
-    data = b"\xef\xbb\xbfNotes, Title ,extra,Due_On\nn1,First,x,2026-01-02\n,,,\n,Second,,\n"
-    rows = parse_import(data, 1024)
-    assert rows == [
-        ImportRow(number=1, title="First", notes="n1", due_on="2026-01-02"),
-        ImportRow(number=2, title="Second"),
-    ]
-
-
-@pytest.mark.parametrize(
-    ("data", "bound", "rows", "reason"),
-    [
-        (b"title\n" + b"x\n" * 20, 10, 100, "file_too_large"),
-        (b"title\n" + b"x\n" * 4, 1024, 3, "too_many_rows"),
-        (b"title\x00\nx\n", 1024, 100, "not_csv"),
-        (b"\xc3\x28 title\n", 1024, 100, "not_csv"),
-        (b'title\n"unclosed\n', 1024, 100, "not_csv"),
-        (b"name,notes\na,b\n", 1024, 100, "no_title_column"),
-        (b"", 1024, 100, "no_title_column"),
-    ],
-)
-def test_an_import_file_past_a_bound_is_refused(
-    data: bytes, bound: int, rows: int, reason: str
-) -> None:
-    with pytest.raises(ImportFileRefused) as refused:
-        parse_import(data, bound, rows)
-    assert refused.value.reason == reason
-    assert FailReason(reason)  # every refusal is a reason a record fails with
-
-
-def test_a_row_is_refused_for_a_title_a_date_or_an_assignee() -> None:
-    ann = new_id()
-    members = {"ann@example.test": ann}
-    assert import_refusal(ImportRow(number=1), members) == "no title"
-    assert import_refusal(ImportRow(number=1, title="x" * 501), members) is not None
-    assert import_refusal(ImportRow(number=1, title="t", due_on="2026-02-30"), members)
-    assert import_refusal(ImportRow(number=1, title="t", due_on="26-02-01"), members)
-    assert import_refusal(ImportRow(number=1, title="t", assignee_email="bob@x.test"), members)
-    fine = ImportRow(number=3, title="t", due_on="2026-02-01", assignee_email="ANN@example.test")
-    assert import_refusal(fine, members) is None
-    made = imported(fine, members)
-    assert made.assignee_id == ann and str(made.due_on) == "2026-02-01"
 
 
 # The manager.
@@ -185,8 +132,9 @@ async def test_start_holds_the_input_to_its_kind_and_answers_a_retry_as_stored(
 ) -> None:
     ctx = await world.org()
     orchestrations = world.managers.orchestrations
-    with pytest.raises(ValidationFailed):
-        await orchestrations.start(ctx, a_record(input={"file": "nope"}))
+    for refused in ({"steps": 0}, {"steps": 101}, {"file": "nope"}):
+        with pytest.raises(ValidationFailed):
+            await orchestrations.start(ctx, a_record(input=refused))
     record = a_record(cursor=99, status=OrchestrationStatus.FAILED)
     started = await orchestrations.start(ctx, record)
     # The steps' fields are the manager's: a start is running at its first cursor.
@@ -198,21 +146,46 @@ async def test_start_holds_the_input_to_its_kind_and_answers_a_retry_as_stored(
     assert await orchestrations.start(ctx, record) == started
 
 
+async def test_a_noop_step_moves_the_cursor_by_one_and_succeeds_at_its_count(
+    world: World,
+) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    record = await orchestrations.start(ctx, a_record(input={"steps": 2}))
+    first = await orchestrations.step_noop(ctx, record)
+    assert (first.status, first.cursor, first.total) == (OrchestrationStatus.RUNNING, 1, 2)
+    assert first.version == record.version + 1 and first.finished_at is None
+    last = await orchestrations.step_noop(ctx, first)
+    assert (last.status, last.cursor) == (OrchestrationStatus.SUCCEEDED, 2)
+    assert last.finished_at is not None
+    assert await orchestrations.get(ctx, record.id) == last
+
+
+async def test_a_noop_step_is_conditioned_on_the_version_it_read(world: World) -> None:
+    ctx = await world.org()
+    orchestrations = world.managers.orchestrations
+    record = await orchestrations.start(ctx, a_record())
+    stepped = await orchestrations.step_noop(ctx, record)
+    with pytest.raises(PreconditionFailed):
+        await orchestrations.step_noop(ctx, record)
+    assert await orchestrations.get(ctx, record.id) == stepped
+
+
 async def test_wake_resumes_only_the_records_parked_for_the_reason(world: World) -> None:
     ctx = await world.org()
     orchestrations = world.managers.orchestrations
     storage = orchestrations._storage  # type: ignore[attr-defined]
     parked = await orchestrations.start(ctx, a_record())
     waiting = parked.model_copy(
-        update={"status": OrchestrationStatus.PARKED, "park_reason": ParkReason.PLAN_LIMIT,
-                "version": 2}
+        update={"status": OrchestrationStatus.PARKED,
+                "park_reason": ParkReason.PROVIDER_UNAVAILABLE, "version": 2}
     )  # fmt: skip
     await storage.write_orchestration(ctx.org_id, waiting, 1, ())
     running = await orchestrations.start(ctx, a_record())
-    assert await orchestrations.wake(ctx, ParkReason.PLAN_LIMIT) == 1
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 1
     assert (await orchestrations.get(ctx, parked.id)).status is OrchestrationStatus.RUNNING
     assert (await orchestrations.get(ctx, running.id)).version == running.version
-    assert await orchestrations.wake(ctx, ParkReason.PLAN_LIMIT) == 0
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0
 
 
 async def test_fail_is_conditioned_on_the_version_it_read(world: World) -> None:
@@ -230,8 +203,9 @@ async def test_a_record_of_another_org_is_not_found(world: World) -> None:
     record = await world.managers.orchestrations.start(ctx, a_record())
     with pytest.raises(NotFound):
         await world.managers.orchestrations.get(other, record.id)
-    with pytest.raises(NotFound):
-        await world.managers.tasks.get_import(other, record.id)
+    with pytest.raises(PreconditionFailed):
+        await world.managers.orchestrations.step_noop(other, record)
+    assert await world.managers.orchestrations.get(ctx, record.id) == record
 
 
 async def test_the_sweep_purges_settled_records_past_the_retention(world: World) -> None:

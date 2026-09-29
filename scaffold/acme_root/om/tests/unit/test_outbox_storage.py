@@ -3,8 +3,8 @@ from contracts.outbox_storage import OutboxStorageContract
 
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
-from acme.om.tasks.storage import TasksStorageInterface
-from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl
+from acme.om.tenancy.storage import TenancyStorageInterface
+from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 
 
 class TestOutboxStorageMemory(OutboxStorageContract):
@@ -13,5 +13,5 @@ class TestOutboxStorageMemory(OutboxStorageContract):
         return OutboxStorageMemoryImpl()
 
     @pytest.fixture
-    def tasks(self, outbox: OutboxStorageMemoryImpl) -> TasksStorageInterface:
-        return TasksStorageMemoryImpl(outbox)
+    def tenancy(self, outbox: OutboxStorageMemoryImpl) -> TenancyStorageInterface:
+        return TenancyStorageMemoryImpl(outbox)

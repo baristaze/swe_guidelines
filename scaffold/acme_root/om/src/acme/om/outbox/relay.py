@@ -34,8 +34,8 @@ class OutboxRelayInterface(ABC):
 
     @abstractmethod
     async def relay_all(self, org_id: UUID, rows: Sequence[OutboxRow]) -> bool:
-        """`relay` for the rows one write landed together, such as an import
-        step's hundred tasks: the entity changes among them are appended in
+        """`relay` for the rows one write landed together, such as a
+        member's removal and the revocations it makes: the entity changes among them are appended in
         one call, so they take one run of contiguous numbers under one hold of
         the tenant's cursor instead of one hold each, and are published in
         that order; the work rows are enqueued one by one. The rows delivered

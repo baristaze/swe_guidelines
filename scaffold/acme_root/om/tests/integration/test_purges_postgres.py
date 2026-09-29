@@ -32,9 +32,9 @@ from contracts.event_storage import drained as drained_events
 from contracts.factories import make_session, make_socket_ticket
 from contracts.idempotency_storage import drained as drained_records
 from contracts.idempotency_storage import make_record
-from contracts.slack_storage import drained as drained_slack
-from contracts.slack_storage import make_post, posted_at
-from contracts.task_storage import make_task, seed
+from contracts.orchestration_storage import drained as drained_orchestrations
+from contracts.orchestration_storage import make_record as make_orchestration
+from contracts.orchestration_storage import seed as seed_orchestration
 from contracts.tenancy_storage import before
 from contracts.tenancy_storage import drained as drained_tenancy
 from contracts.work_storage import make_item
@@ -42,19 +42,17 @@ from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.billing.storage.impl.postgres import BillingStoragePostgresImpl
 from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
 from acme.om.orchestrations.storage.impl.postgres import OrchestrationsStoragePostgresImpl
+from acme.om.orchestrations.types.orchestration import OrchestrationStatus
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
-from acme.om.slack.storage.impl.postgres import SlackStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions, set_scope
 from acme.om.storage.impl.postgres import login_sessions
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings
-from acme.om.tasks.storage.impl.postgres import TasksStoragePostgresImpl
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
 from acme.om.work.types.work_item import WorkKind, WorkStatus
@@ -190,10 +188,6 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     async def across(role: DatabaseRole, call: Callable[[], Awaitable[object]]) -> list[str]:
         return await plans(watched, role, system, call)
 
-    (tasks,) = await across(
-        DatabaseRole.CORE, lambda: TasksStoragePostgresImpl(sessions).read_deleted(cut, 1000)
-    )
-    assert served(tasks, "ix_tasks_deleted_at"), tasks
     (files,) = await across(
         DatabaseRole.CORE,
         lambda: MediaStoragePostgresImpl(sessions).read_purgeable(cut, cut, 1000),
@@ -222,18 +216,6 @@ async def test_every_purge_across_tenants_reads_an_index_led_by_its_retention(
     )
     assert served(trim, "ix_events_produced_at"), trim
     assert "uq_events_org_id_seq" in trim and "pk_event_cursors" in trim, trim
-    (deliveries,) = await across(
-        DatabaseRole.CORE,
-        lambda: BillingStoragePostgresImpl(sessions).purge_deliveries(cut, 1000),
-    )
-    assert served(deliveries, "ix_billing_deliveries_created_at"), deliveries
-    installations, states, posts = await across(
-        DatabaseRole.CORE, lambda: SlackStoragePostgresImpl(sessions).purge(cut, 1000)
-    )
-    assert served(installations, "ix_slack_installations_deleted_at"), installations
-    assert served(states, "ix_slack_install_states_expires_at"), states
-    assert "ix_slack_install_states_redeemed_at" in states, states
-    assert served(posts, "ix_slack_posts_created_at"), posts
     (settled,) = await across(
         DatabaseRole.CORE,
         lambda: OrchestrationsStoragePostgresImpl(sessions).purge_settled(cut, 1000),
@@ -258,29 +240,32 @@ async def test_the_queue_purge_reads_its_index(
     assert served(work, "ix_work_items_status_updated_at"), work
 
 
-async def test_a_purge_skips_a_task_another_transaction_holds(pg_sessions: LoginSessions) -> None:
+async def test_a_purge_skips_a_record_another_transaction_holds(
+    pg_sessions: LoginSessions,
+) -> None:
     """A row locked elsewhere is left for the next call, not waited on: the
-    purge takes the rest and returns at once."""
-    storage = TasksStoragePostgresImpl(pg_sessions)
+    purge takes the rest and returns at once, across tenants and for one."""
+    storage = OrchestrationsStoragePostgresImpl(pg_sessions)
+    back = await drained_orchestrations(storage)
     org = new_id()
-    cut = utcnow() - ANCIENT
-    held, free = make_task("held"), make_task("free")
-    for task in (held, free):
-        await seed(
-            storage,
-            org,
-            task.model_copy(update={"deleted_at": cut - timedelta(days=1), "deleted_by": org}),
-        )
+    old = back + timedelta(days=40)
+    held, free = (
+        make_orchestration(status=OrchestrationStatus.SUCCEEDED, updated_ago=old) for _ in range(2)
+    )
+    for record in (held, free):
+        await seed_orchestration(storage, org, record)
+    cut = utcnow() - back - timedelta(days=30)
     async with pg_sessions[DatabaseRole.CORE]() as holder:
         await set_scope(holder, org, None, None)
         await holder.execute(
-            text("SELECT id FROM core.tasks WHERE id = :id FOR UPDATE"), {"id": held.id}
+            text("SELECT id FROM core.orchestrations WHERE id = :id FOR UPDATE"),
+            {"id": held.id},
         )
-        assert await storage.purge_deleted(cut, [held.id, free.id]) == 1
+        assert await storage.purge_settled(cut, 10) == 1
         assert await storage.purge_tenant(org, 10) == 0, "the held one is still held"
         await holder.rollback()
-    assert await storage.purge_deleted(cut, [held.id, free.id]) == 1
-    assert await storage.read_task(org, held.id) is None
+    assert await storage.purge_settled(cut, 10) == 1
+    assert await storage.read_orchestration(org, held.id) is None
 
 
 async def test_the_trim_skips_a_stream_an_append_holds_and_trims_the_others(
@@ -403,7 +388,7 @@ async def test_a_session_purge_skips_a_row_another_transaction_holds(
     assert await storage.purge_deleted(cut, cut, 10) == 1
 
 
-async def test_records_and_posts_go_a_batch_at_a_time_over_postgres(
+async def test_records_go_a_batch_at_a_time_over_postgres(
     pg_sessions: LoginSessions,
 ) -> None:
     """The same batches as the contract suites, over the statements the
@@ -417,12 +402,6 @@ async def test_records_and_posts_go_a_batch_at_a_time_over_postgres(
     cut, attempts_before = now - timedelta(days=1), lease_bound(now - timedelta(minutes=20))
     assert await records.purge_records(cut, attempts_before, 2) == 2
     assert await records.purge_records(cut, attempts_before, 2) == 1
-    slack = SlackStoragePostgresImpl(pg_sessions)
-    then = await drained_slack(slack)
-    for _ in range(3):
-        await slack.create_post(org, posted_at(make_post(new_id()), then))
-    assert await slack.purge(then + timedelta(hours=1), 2) == 2
-    assert await slack.purge(then + timedelta(hours=1), 2) == 1
 
 
 BACKLOG_ROWS = 20000
@@ -496,30 +475,9 @@ BACKLOG: dict[DatabaseRole, dict[str, dict[str, str]]] = {
             "state": "CASE WHEN g % 2 = 0 THEN 'accepted' ELSE 'pending' END",
             "expires_at": AGE,
         },
-        "billing_deliveries": BORN | {"event_id": "'evt_' || g", "event_type": "'invoice.paid'"},
-        "slack_installations": TRACKED
-        | DELETED
-        | {
-            "team_id": "'T' || g",
-            "team_name": "'Team'",
-            "app_id": "'A1'",
-            "bot_user_id": "'B1'",
-            "scopes": "'chat:write'",
-            "installed_by_slack_user": "'U1'",
-            "credential_ref": "'ref'",
-            "status": "'active'",
-        },
-        "slack_install_states": BORN
-        | {
-            "user_id": "gen_random_uuid()",
-            "state_hash": "md5('st' || g)",
-            "expires_at": AGE,
-            "redeemed_at": f"CASE WHEN g % 2 = 0 THEN {AGE} END",
-        },
-        "slack_posts": BORN | {"key": "gen_random_uuid()", "channel_id": "'C1'", "ts": "g::text"},
         "orchestrations": TRACKED
         | {
-            "kind": "'task_import'",
+            "kind": "'noop'",
             "input": "'{}'",
             "status": "(ARRAY['succeeded', 'failed', 'running', 'parked'])[1 + g % 4]",
             "cursor": "0",
@@ -530,7 +488,7 @@ BACKLOG: dict[DatabaseRole, dict[str, dict[str, str]]] = {
         },
         "outbox_rows": BORN
         | {
-            "kind": "'task.updated'",
+            "kind": "'tenancy.user.updated'",
             "target_id": "gen_random_uuid()",
             "payload": "'{}'",
             "actor_id": ACTOR,
@@ -547,7 +505,7 @@ BACKLOG: dict[DatabaseRole, dict[str, dict[str, str]]] = {
             "extension": "'webm'",
             "content_type": "'audio/webm'",
             "size_bytes": "1024",
-            "purpose": "'voice_dictation'",
+            "purpose": "'upload'",
             "status": "CASE WHEN g % 20 = 0 THEN 'pending' ELSE 'stored' END",
             "deleted_at": f"CASE WHEN g % 20 = 1 THEN {AGE} END",
             "deleted_by": f"CASE WHEN g % 20 = 1 THEN {ACTOR} END",
@@ -699,19 +657,6 @@ async def test_an_idle_pass_after_a_backlog_still_reads_each_purge_index(
     )
     assert served(files, "ix_files_deleted_at"), files
     assert served(files, "ix_files_created_at_pending"), files
-    billing = BillingStoragePostgresImpl(sessions)
-    (deliveries,) = await settled_idle_plans(
-        watched, DatabaseRole.CORE, lambda ahead: billing.purge_deliveries(cut(ahead), BATCH)
-    )
-    assert served(deliveries, "ix_billing_deliveries_created_at"), deliveries
-    slack = SlackStoragePostgresImpl(sessions)
-    installations, states, posts = await settled_idle_plans(
-        watched, DatabaseRole.CORE, lambda ahead: slack.purge(cut(ahead), BATCH)
-    )
-    assert served(installations, "ix_slack_installations_deleted_at"), installations
-    assert served(states, "ix_slack_install_states_expires_at"), states
-    assert "ix_slack_install_states_redeemed_at" in states, states
-    assert served(posts, "ix_slack_posts_created_at"), posts
     orchestrations = OrchestrationsStoragePostgresImpl(sessions)
     (settled,) = await settled_idle_plans(
         watched, DatabaseRole.CORE, lambda ahead: orchestrations.purge_settled(cut(ahead), BATCH)

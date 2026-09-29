@@ -181,7 +181,7 @@ async def s3_buckets() -> AsyncIterator[BucketsS3Impl]:
     settings = InfraSettings()
     session = aioboto3.Session(
         aws_access_key_id=settings.s3_access_key or "acme",
-        aws_secret_access_key=settings.s3_secret_key or "acmeacme",
+        aws_secret_access_key=settings.s3_secret_key or "acme-minio-local",
         region_name=settings.aws_region,
     )
     endpoint = settings.s3_endpoint_url or "http://127.0.0.1:59000"

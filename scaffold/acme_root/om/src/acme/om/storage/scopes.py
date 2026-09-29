@@ -96,7 +96,6 @@ TABLE_SCOPES: dict[str, TableScope] = {
     # A tenant's own rows. An org's `org_id` is its own id.
     "orgs": TableScope(ScopeKind.ORG),
     "invitations": TableScope(ScopeKind.ORG),
-    "tasks": TableScope(ScopeKind.ORG),
     "files": TableScope(ScopeKind.ORG),
     "outbox_rows": TableScope(ScopeKind.ORG),
     # The claim reads every tenant's ready items in the system scope, and the
@@ -104,11 +103,6 @@ TABLE_SCOPES: dict[str, TableScope] = {
     "work_items": TableScope(ScopeKind.ORG, by_login=True),
     "events": TableScope(ScopeKind.ORG),
     "event_cursors": TableScope(ScopeKind.ORG),
-    "billing_accounts": TableScope(ScopeKind.ORG),
-    "billing_deliveries": TableScope(ScopeKind.ORG),
-    "slack_installations": TableScope(ScopeKind.ORG),
-    "slack_install_states": TableScope(ScopeKind.ORG),
-    "slack_posts": TableScope(ScopeKind.ORG),
     "orchestrations": TableScope(ScopeKind.ORG),
     # A tenant's rows that also belong to one person in it. A user's person
     # is the identity behind it, so it narrows on `app.identity_id`; every

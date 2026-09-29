@@ -293,10 +293,9 @@ def stores(env: Environment) -> None:
 @pytest.fixture(scope="module")
 def api(stores: None, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Served]:
     """The round trip's API: a real process on a free port, with the devx
-    collector aimed at that port while it runs. The port used to have to be
-    8000, the collector's one host target; now the target follows the
-    process, so the round trip runs beside whatever already holds 8000 and
-    puts the collector back when it is done."""
+    collector aimed at that port while it runs. The collector's target
+    follows the process, so the round trip runs beside whatever holds 8000
+    and puts the collector back when it is done."""
     knobs = compose_knobs()
     with serving(
         free_port(),
@@ -390,10 +389,10 @@ async def test_every_signal_reads_back_by_the_request_id_of_a_write(
     # The log line that names it.
     lines = await signals.log_lines(request_id)
     assert lines, f"no log line carries {request_id}"
-    assert any("POST /v1/tasks 201" in line for line in lines), lines
+    assert any("POST /v1/api-keys 201" in line for line in lines), lines
 
     # The counter that moved: the collector's scrape and its batch lag the run.
-    labels = {"route": "/v1/tasks", "method": "POST", "status": "201"}
+    labels = {"route": "/v1/api-keys", "method": "POST", "status": "201"}
 
     async def counted() -> float | None:
         delta = await signals.metric_delta(REQUESTS_COUNTER, labels, since)
@@ -406,14 +405,14 @@ async def test_every_signal_reads_back_by_the_request_id_of_a_write(
     # fixture set, and TRACE_WAIT_SECONDS is two of those and one export.
     trace = await poll(lambda: signals.trace(request_id), TRACE_WAIT_SECONDS)
     assert trace is not None, f"Jaeger holds no trace with acme.request_id={request_id}"
-    assert "POST /v1/tasks" in trace.span_names, trace
+    assert "POST /v1/api-keys" in trace.span_names, trace
 
 
 async def test_an_error_event_carries_the_request_id(env: Environment, broken_api: Served) -> None:
     request_id = str(uuid4())
     async with httpx.AsyncClient(base_url=broken_api.base_url, timeout=15.0) as http:
         response = await http.get(
-            "/v1/tasks",
+            "/v1/users",
             headers={
                 "x-request-id": request_id,
                 "Authorization": "Bearer ses_none",

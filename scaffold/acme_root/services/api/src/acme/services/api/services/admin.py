@@ -6,7 +6,6 @@ from uuid import UUID
 
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.opcontext import OperatorContext
-from acme.om.tasks.types.task import TaskStatus
 from acme.services.api.types.admin import (
     AddMemberRequest,
     ConfirmTotpRequest,
@@ -21,9 +20,7 @@ from acme.services.api.types.admin import (
     PlatformSizeView,
     TotpConfirmedView,
 )
-from acme.services.api.types.billing import CompPlanRequest, OperatorBillingView
 from acme.services.api.types.events import OperatorEventView
-from acme.services.api.types.tasks import TaskPageView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
@@ -82,32 +79,12 @@ class AdminServiceInterface(ABC):
     ) -> UserView: ...
 
     @abstractmethod
-    async def get_tasks(
-        self,
-        admin: OperatorContext,
-        org_id: UUID,
-        status: TaskStatus,
-        cursor: str | None,
-        limit: int,
-    ) -> TaskPageView: ...
-
-    @abstractmethod
     async def get_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
     ) -> list[OperatorEventView]: ...
 
     @abstractmethod
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView: ...
-
-    @abstractmethod
-    async def get_org_billing(
-        self, admin: OperatorContext, org_id: UUID
-    ) -> OperatorBillingView: ...
-
-    @abstractmethod
-    async def comp_plan(
-        self, admin: OperatorContext, org_id: UUID, body: CompPlanRequest
-    ) -> OperatorBillingView: ...
 
     @abstractmethod
     async def requeue_work(

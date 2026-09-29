@@ -53,14 +53,7 @@ locals {
     ACME_SECRETS_NAME_PREFIX = module.secrets.application_prefix
     ACME_AWS_REGION          = var.region
     ACME_LOG_JSON            = "true"
-    ACME_BILLING_BACKEND     = "stripe"
-    ACME_STRIPE_ACCOUNT_ID   = var.stripe_account_id
-    ACME_SLACK_BACKEND       = "slack"
-    ACME_SLACK_CLIENT_ID     = var.slack_client_id
-    # Where people open Acme: an install ends on its settings page, and a
-    # list answered in Slack links to it.
-    ACME_PORTAL_URL         = "https://${var.app_domain_name}"
-    ACME_DATABASE_POOL_SIZE = tostring(var.database_pool_size)
+    ACME_DATABASE_POOL_SIZE  = tostring(var.database_pool_size)
     # Read by no code. A rotation (database_password_version raised) changes
     # the task definition through this line, so every service rolls and its
     # new tasks start with the new URL; without it the old tasks would keep
@@ -88,16 +81,6 @@ locals {
     ACME_DATABASE_URL        = module.secrets.database_url_secret_arn
     ACME_DATABASE_SYSTEM_URL = module.secrets.database_system_url_secret_arn
     ACME_SENTRY_DSN          = module.secrets.sentry_dsn_secret_arn
-    # Both processes call the payment processor, and only the API receives
-    # its deliveries; the worker holds the signing secret too, one set of
-    # process secrets being simpler than a set per service.
-    ACME_STRIPE_RUNTIME_KEY    = module.secrets.stripe_runtime_key_secret_arn
-    ACME_STRIPE_WEBHOOK_SECRET = module.secrets.stripe_webhook_secret_arn
-    # The Slack app's two secrets, the same way: the API checks Slack's calls
-    # with the signing secret and finishes an install with the client secret;
-    # the worker renews an install's token with the client secret.
-    ACME_SLACK_CLIENT_SECRET  = module.secrets.slack_client_secret_arn
-    ACME_SLACK_SIGNING_SECRET = module.secrets.slack_signing_secret_arn
   }
 
   # A one-off task opens small pools: it runs one command, not requests.
@@ -171,7 +154,7 @@ module "queue" {
 
   environment = var.environment
   prefix      = "acme-${var.environment}-"
-  queues      = ["webhooks", "slack"] # acme.infra.queues.Queues
+  queues      = ["webhooks"] # acme.infra.queues.Queues
 }
 
 module "buckets" {
@@ -271,8 +254,8 @@ module "load_balancer" {
 #
 # The page calls the API same-origin (apiUrl empty means the page's origin),
 # so no request it makes is cross-origin and no browser sends a preflight.
-# The API's own domain name serves everything it served: the payment
-# processor's and Slack's deliveries, the command line, and the operators.
+# The API's own domain name serves the rest: the providers' deliveries, the
+# command line, and the operators.
 module "portal" {
   source = "../static_site"
 
@@ -387,6 +370,9 @@ module "api" {
   secrets = merge(local.process_secrets, {
     ACME_TOTP_ENCRYPTION_KEY = module.secrets.totp_encryption_key_secret_arn
     ACME_WORKOS_API_KEY      = module.secrets.workos_api_key_secret_arn
+    # The API alone receives the identity provider's deliveries and checks
+    # their signature; the worker handles them from the queue.
+    ACME_WORKOS_WEBHOOK_SECRET = module.secrets.workos_webhook_secret_arn
     # What the portal's distribution sends in X-Acme-Edge: beside it, the
     # address CloudFront appended to X-Forwarded-For names the client.
     ACME_EDGE_SECRET = module.secrets.edge_secret_arn
@@ -409,9 +395,6 @@ module "api" {
     # client, or, for a request through the portal's distribution, the edge;
     # the edge secret then names the client one hop further in.
     ACME_TRUSTED_PROXIES = jsonencode([var.vpc_cidr])
-    # Where Slack sends a browser back at the end of an install; the Slack
-    # app's manifest names the same URL (deployment/slack/).
-    ACME_SLACK_REDIRECT_URI = "https://${var.api_domain_name}/webhooks/slack/oauth"
   })
 
   health_check_command = [

@@ -35,9 +35,9 @@ async def test_managers_are_built_once_for_any_number_of_requests(
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             # Flows that touch different managers, or none: the health probe,
-            # readiness (storage), a sign-in attempt (tenancy), a task list
-            # (the gateway refuses before tasks), events.
-            for path in ("/healthz", "/readyz", "/v1/tasks", "/v1/events", "/metrics"):
+            # readiness (storage), a sign-in attempt (tenancy), a file list
+            # (the gateway refuses before media), events.
+            for path in ("/healthz", "/readyz", "/v1/media/files", "/v1/events", "/metrics"):
                 await client.get(path)
             await client.post("/v1/auth/dev-sign-in", json={"email": "nobody@example.test"})
     assert len(calls) == 1

@@ -2,25 +2,34 @@
 a pass across tenants and again while a batch comes back full, its budget and
 where the next pass resumes, a purge called again while its batch comes back
 full, each namespace's purge past its retention once a pass across tenants,
-a living tenant that costs the purges nothing, the chores run in the tenants
-one read across tenants finds with a chore due and in no other, a page of
-them a pass, a deleted tenant marked purged once nothing of it is left and
-left out after, the tenant's expiry read once per pass, the count of the
-platform's size once an interval, and the pass's duration and the four
-gauges of the queue and the outbox on its own line."""
+every row past its retention gone after one pass of the worker's own loop, a
+living tenant that costs the purges nothing, a deleted tenant's every row
+gone, the tenant marked purged once nothing of it is left and left out
+after, the tenant's expiry read once per pass, the count of the platform's
+size once an interval, and the pass's duration and the four gauges of the
+queue and the outbox on its own line."""
 
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import timedelta
-from decimal import Decimal
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
 from prometheus_client import REGISTRY
-from worker_support import build_container, fast_options, request, sign_in
+from worker_support import (
+    build_container,
+    fast_options,
+    make_item,
+    request,
+    sign_in,
+    start_noop,
+    upload,
+)
 
+from acme.infra.buckets import Buckets
 from acme.infra.cache import CacheScope
 from acme.infra.observability import (
     OUTBOX_FAILED_RECENTLY,
@@ -28,19 +37,19 @@ from acme.infra.observability import (
     JsonFormatter,
 )
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.events.manager import audit_event
+from acme.om.media.types.file import File
 from acme.om.opcontext import CredentialKind, OpContext, RequestContext, Role, build_context
-from acme.om.orchestrations.types.orchestration import OrchestrationKind
+from acme.om.orchestrations.types.orchestration import OrchestrationKind, OrchestrationStatus
 from acme.om.outbox import OutboxRelayInterface
-from acme.om.tasks.rules import RANK_SCALE_BOUND
-from acme.om.tasks.types.filter import TaskFilter
-from acme.om.tasks.types.task import Task, TaskScope, TaskStatus
-from acme.om.tenancy.rules import permissions_of
+from acme.om.tenancy.rules import hash_token, permissions_of
+from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.org import Org
 from acme.om.work import WorkManagerInterface
+from acme.om.work.types.work_item import WorkStatus
 from acme.workers.maintenance.container import WorkerContainer
 from acme.workers.maintenance.loop import (
     AcrossStep,
-    ChoreTenants,
     LoopOptions,
     PurgeStep,
     TallyStep,
@@ -91,10 +100,6 @@ class Tenants(WorkManagerInterface):
 
 
 Tenants.__abstractmethods__ = frozenset()
-
-
-def team_of(ctx: OpContext) -> TaskFilter:
-    return TaskFilter(scope=TaskScope.TEAM, user_id=ctx.user_id)
 
 
 def listed(contexts: Sequence[OpContext], requeued: Sequence[int] = (0,)) -> Tenants:
@@ -161,17 +166,13 @@ def sweeping(
     purges: dict[str, PurgeStep],
     options: LoopOptions,
     outbox: OutboxRelayInterface | None = None,
-    chores: dict[str, PurgeStep] | None = None,
     across: dict[str, AcrossStep] | None = None,
-    chore_tenants: ChoreTenants | None = None,
     tally: TallyStep | None = None,
 ) -> WorkerLoop:
     return WorkerLoop(
         work=work,
         outbox=outbox or quiet_outbox(),
         purges=purges,
-        chores=chores,
-        chore_tenants=chore_tenants,
         across=across,
         tally=tally,
         handlers={},
@@ -292,42 +293,72 @@ async def test_only_a_tenant_with_nothing_left_is_offered_to_be_marked_purged(
     assert work.marked == [idle.org_id]
 
 
-async def deleted_org(container: WorkerContainer, days_ago: int) -> UUID:
-    """A team org deleted `days_ago`, with one removed member's rows left."""
+async def deleted_org(container: WorkerContainer, days_ago: int) -> tuple[UUID, File]:
+    """A team org deleted `days_ago`, with rows of every namespace left: its
+    owner's user and membership, an api key, a stored file and its object, a
+    running record, and the stream of events they made."""
     tail = new_id().hex[-8:]
-    _, org = await container.managers.tenancy.bootstrap(
+    owner, org = await container.managers.tenancy.bootstrap(
         request(), "Gone", f"gone-{tail}", f"gone-{tail}@example.test", "Gone"
     )
+    file = await upload(container, owner)
+    await start_noop(container, owner, 3)
+    await container.managers.tenancy.create_api_key(owner, "ci", Role.MEMBER)
     storage = container.storage.get_tenancy_storage()
     stored = await storage.read_org(org.id)
     assert stored is not None
     when = utcnow() - timedelta(days=days_ago)
     await storage.write_org(org.id, stored.model_copy(update={"deleted_at": when}))
-    return org.id
+    return org.id, file
+
+
+async def rows_of(container: WorkerContainer, org_id: UUID) -> dict[str, int]:
+    """How many rows of the tenant each namespace holds."""
+    storage = container.storage
+    orchestrations = storage.get_orchestrations_storage()
+    return {
+        "users": len(await storage.get_tenancy_storage().read_users(org_id, None, limit=10)),
+        "files": len(await storage.get_media_storage().read_every_file(org_id, None, 10)),
+        "records": len(await orchestrations.read_recent(org_id, OrchestrationKind.NOOP, 10)),
+        "events": len(await storage.get_event_storage().read_after(org_id, 0, 100)),
+    }
 
 
 async def test_a_deleted_tenant_is_marked_purged_once_nothing_is_left_and_skipped_after(
     tmp_path: Path,
 ) -> None:
-    """The first pass takes the rows of a tenant past its retention, the next
-    finds nothing left and marks it, and from then on the sweep leaves it
-    out. A tenant within its retention is swept and never marked."""
+    """The first pass takes every row of a tenant past its retention, each
+    namespace through its purge of the tenant, and keeps the org row as the
+    record; the next finds nothing left and marks it, and from then on the
+    sweep leaves it out. A tenant within its retention is swept and never
+    marked, and keeps its rows."""
     container = build_container(tmp_path)
-    expired = await deleted_org(container, days_ago=40)
-    recent = await deleted_org(container, days_ago=1)
+    expired, file = await deleted_org(container, days_ago=40)
+    recent, _ = await deleted_org(container, days_ago=1)
     loop = build_loop(container)
     tenancy = container.storage.get_tenancy_storage()
+    buckets = container.infra.get_buckets()
+    assert all((await rows_of(container, expired)).values())
+    assert await buckets.exists(expired, Buckets.USER_FILE_UPLOADS, file.key)
 
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
     first = await tenancy.read_org(expired)
     assert first is not None and first.purged_at is None, "this pass took its rows"
-    assert await tenancy.read_users(expired, None, limit=10) == []
+    assert await rows_of(container, expired) == {
+        "users": 0,
+        "files": 0,
+        "records": 0,
+        "events": 0,
+    }
+    assert not await buckets.exists(expired, Buckets.USER_FILE_UPLOADS, file.key)
+    assert await container.storage.get_event_storage().read_head(expired) == 0
 
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
     marked = await tenancy.read_org(expired)
     assert marked is not None and marked.purged_at is not None, "nothing was left"
     kept = await tenancy.read_org(recent)
     assert kept is not None and kept.purged_at is None, "within its retention"
+    assert all((await rows_of(container, recent)).values())
 
     swept = {ctx.org_id for ctx in await container.managers.work.maintenance_contexts(request())}
     assert expired not in swept, "a purged tenant is left out"
@@ -509,171 +540,6 @@ async def test_the_worker_keeps_the_tally_the_operator_plane_reads(tmp_path: Pat
     assert await storage.read_platform_size() == tally
 
 
-class Due:
-    """The read of the tenants with a chore due: a fixed set, answered as the
-    storage answers it (in id order, after `after`, at most `limit`), with a
-    record of the `after` each pass asked from."""
-
-    def __init__(self, org_ids: Sequence[UUID]) -> None:
-        self.org_ids = sorted(org_ids)
-        self.asked: list[UUID | None] = []
-
-    async def __call__(self, after: UUID | None, limit: int) -> list[UUID]:
-        self.asked.append(after)
-        return [org_id for org_id in self.org_ids if after is None or org_id > after][:limit]
-
-
-async def test_the_chores_run_in_the_tenants_found_due_and_in_no_other(
-    tmp_path: Path,
-) -> None:
-    """One read a pass names the tenants with a chore due, and each of them
-    runs every chore once; every other tenant is purged in turn and runs
-    none. A chore that fails stops neither the other chores nor the other
-    tenants, and the purges run as ever."""
-    container = build_container(tmp_path)
-    contexts = service_contexts(4)
-    tenants = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
-    due = Due([tenants[1], tenants[3]])
-    calls: list[tuple[str, UUID]] = []
-
-    async def failing(ctx: OpContext) -> int:
-        calls.append(("failing", ctx.org_id))
-        raise RuntimeError("the database is down")
-
-    loop = sweeping(
-        container,
-        listed(contexts),
-        {"purge": recording(calls, "purge")},
-        fast_options(),
-        chores={"cleanup": failing, "respace": recording(calls, "respace")},
-        chore_tenants=due,
-    )
-    await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    chores = [(name, org_id) for name, org_id in calls if name != "purge"]
-    assert chores == [(name, org_id) for org_id in due.org_ids for name in ("failing", "respace")]
-    purged = sorted(org_id for name, org_id in calls if name == "purge")
-    assert purged == sorted(ctx.org_id for ctx in contexts), "every tenant is purged in turn"
-    assert due.asked == [None], "one read a pass"
-
-
-async def test_a_backlog_spends_no_budget_a_chore_needs(tmp_path: Path) -> None:
-    """With no budget left and a purge whose batch keeps coming back full,
-    every pass still runs the chores of one tenant with a chore due (the
-    day's cleanup opening among them), before the tenants' purges, and the
-    next pass reads on from it."""
-    container = build_container(tmp_path)
-    contexts = service_contexts(2)
-    first, second = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
-    calls: list[tuple[str, UUID]] = []
-    loop = sweeping(
-        container,
-        listed(contexts),
-        {"backlog": recording(calls, "backlog", (2,))},
-        fast_options(purge_batch=2, sweep_budget=timedelta(0)),
-        chores={"cleanup": recording(calls, "cleanup")},
-        chore_tenants=Due([first, second]),
-    )
-    for _ in range(2):
-        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls == [
-        ("cleanup", first),
-        ("backlog", EMPTY_UUID),
-        ("cleanup", second),
-        ("backlog", first),
-    ]
-
-
-async def test_the_tenants_with_a_chore_due_are_read_a_page_a_pass(tmp_path: Path) -> None:
-    """A page that comes back whole sends the next pass on from its last
-    tenant; one that comes back short and ran whole sends it back to the
-    first. So a backlog of tenants with a chore due is a page a pass, and
-    every one of them is reached in turn."""
-    container = build_container(tmp_path)
-    contexts = service_contexts(3)
-    tenants = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
-    due = Due(tenants)
-    calls: list[tuple[str, UUID]] = []
-    loop = sweeping(
-        container,
-        listed(contexts),
-        {},
-        fast_options(chore_batch=2),
-        chores={"cleanup": recording(calls, "cleanup")},
-        chore_tenants=due,
-    )
-    for _ in range(3):
-        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert due.asked == [None, tenants[1], None]
-    assert [org_id for _, org_id in calls] == [*tenants, *tenants[:2]]
-
-
-async def test_a_spent_budget_stops_the_chores_and_the_next_pass_reads_on(
-    tmp_path: Path,
-) -> None:
-    """Past the budget the chores take no new tenant, but always one, and
-    the next pass reads on from the last tenant this one ran, however short
-    the page came back. A tenant the read names with no context in the pass
-    (purged, or made since the list) is left for the next pass."""
-    container = build_container(tmp_path)
-    contexts = service_contexts(3)
-    tenants = sorted(ctx.org_id for ctx in contexts if ctx.org_id != EMPTY_UUID)
-    unlisted = new_id()
-    due = Due([*tenants, unlisted])
-    calls: list[tuple[str, UUID]] = []
-    loop = sweeping(
-        container,
-        listed(contexts),
-        {},
-        fast_options(sweep_budget=timedelta(0)),
-        chores={"cleanup": recording(calls, "cleanup")},
-        chore_tenants=due,
-    )
-    for _ in range(5):
-        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert due.asked == [None, *tenants, None]
-    assert [org_id for _, org_id in calls] == [*tenants, tenants[0]]
-
-
-async def test_a_failing_read_of_the_tenants_with_a_chore_due_stops_no_other_step(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    container = build_container(tmp_path)
-    contexts = service_contexts(2)
-    calls: list[tuple[str, UUID]] = []
-
-    async def failing(after: UUID | None, limit: int) -> list[UUID]:
-        raise RuntimeError("the database is down")
-
-    outbox = quiet_outbox()
-    loop = sweeping(
-        container,
-        listed(contexts),
-        {"purge": recording(calls, "purge")},
-        fast_options(),
-        outbox,
-        chores={"cleanup": recording(calls, "cleanup")},
-        chore_tenants=failing,
-    )
-    with caplog.at_level(logging.INFO, logger="acme.workers.maintenance.loop"):
-        await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert sorted(org_id for _, org_id in calls) == sorted(ctx.org_id for ctx in contexts)
-    assert all(name == "purge" for name, _ in calls)
-    assert outbox.purges == 1
-    assert pass_line(caplog)["chores"] == 0
-
-
-def test_chores_come_with_the_read_of_the_tenants_they_are_due_in(tmp_path: Path) -> None:
-    container = build_container(tmp_path)
-    with pytest.raises(ValueError, match="name the read"):
-        sweeping(
-            container,
-            listed(service_contexts(1)),
-            {},
-            fast_options(),
-            chores={"cleanup": recording([], "cleanup")},
-        )
-
-
 async def test_the_requeue_runs_once_a_pass_across_tenants_before_any_tenant(
     tmp_path: Path,
 ) -> None:
@@ -775,12 +641,12 @@ async def test_each_purge_across_tenants_runs_once_a_pass_after_the_tenants(
         work,
         {"tenant": tenant},
         fast_options(sweep_budget=timedelta(0)),
-        across={"tasks": across_recording(calls, "tasks"), "events": events},
+        across={"media": across_recording(calls, "media"), "events": events},
     )
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls == ["tenant", "tasks", "events"], "one tenant, then each purge once"
+    assert calls == ["tenant", "media", "events"], "one tenant, then each purge once"
     await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls[3:] == ["tenant", "tasks", "events"]
+    assert calls[3:] == ["tenant", "media", "events"]
 
 
 async def test_a_full_purge_across_tenants_runs_again_while_the_budget_lasts(
@@ -872,15 +738,12 @@ async def test_a_failing_purge_across_tenants_stops_no_other_step(tmp_path: Path
 
 
 PURGE_READS = (
-    "read_deleted",
     "purge_deleted",
     "read_purgeable",
     "purge_files_across_tenants",
     "purge_records",
     "purge_sign_in_delays",
     "trim",
-    "purge_deliveries",
-    "purge",
     "purge_settled",
 )
 """The storage methods of the purges past a retention, across tenants."""
@@ -901,13 +764,10 @@ async def test_a_living_tenant_costs_the_purges_nothing(
     storage = container.storage
     calls: list[str] = []
     for namespace in (
-        storage.get_tasks_storage(),
         storage.get_media_storage(),
         storage.get_tenancy_storage(),
         storage.get_idempotency_storage(),
         storage.get_event_storage(),
-        storage.get_billing_storage(),
-        storage.get_slack_storage(),
         storage.get_orchestrations_storage(),
     ):
         for name in (*PURGE_READS, "purge_tenant", "read_every_file"):
@@ -930,94 +790,146 @@ async def test_a_living_tenant_costs_the_purges_nothing(
     per_tenant = [c for c in calls if c.endswith((".purge_tenant", ".read_every_file"))]
     assert per_tenant == [], "no living tenant is purged in its own right"
     assert len(calls) == len(set(calls)), f"each purge once a pass: {calls}"
-    assert len(calls) == 11, calls
+    assert sorted(calls) == [
+        "EventStorageMemoryImpl.trim",
+        "IdempotencyStorageMemoryImpl.purge_records",
+        "MediaStorageMemoryImpl.purge_files_across_tenants",
+        "MediaStorageMemoryImpl.read_purgeable",
+        "OrchestrationsStorageMemoryImpl.purge_settled",
+        "TenancyStorageMemoryImpl.purge_deleted",
+        "TenancyStorageMemoryImpl.purge_sign_in_delays",
+    ], calls
 
 
-TASK_READS = ("read_archivable", "read_long_place", "read_tenants_with_chores")
-"""The reads of the two chores, per tenant, and the one read across tenants
-that says which tenants have one due."""
+LATER = timedelta(days=100)
+"""Past every retention the sweep keeps: the events' ninety days, and each
+shorter one."""
+
+CLOCKS = (
+    "acme.om.tenancy.impl.manager",
+    "acme.om.media.impl.manager",
+    "acme.om.idempotency.impl.manager",
+    "acme.om.events.impl.manager",
+    "acme.om.work.impl.manager",
+    "acme.om.outbox.impl.relay",
+)
+"""The modules whose clock a purge past a retention reads."""
 
 
-async def test_a_tenant_with_no_chore_due_costs_the_pass_no_read_of_its_tasks(
+def move_on(container: WorkerContainer, monkeypatch: pytest.MonkeyPatch, by: timedelta) -> None:
+    """Every clock the purges read, `by` ahead of the wall's."""
+
+    def later() -> datetime:
+        return utcnow() + by
+
+    for module in CLOCKS:
+        monkeypatch.setattr(f"{module}.utcnow", later)
+    monkeypatch.setattr(container.managers.orchestrations, "_clock", later)
+
+
+async def test_a_pass_purges_every_row_past_its_retention_and_keeps_what_lives(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With the worker's own wiring and three living tenants, each with an
-    open task and a done one from today, a pass reads the tenants with a
-    chore due once, across tenants, and no tenant's tasks. Once one tenant
-    has a done task untouched for a hundred days and another an open task
-    whose rank grew long, the next pass runs the chores in those two alone:
-    the first opens the day's cleanup, the second is respaced."""
+    """With the worker's own wiring, a pass a hundred days on takes, across
+    tenants, every row whose retention has passed: through the tenancy
+    purge, a removed member's user and membership, a revoked api key, an
+    expired session, a socket ticket, a closed invitation, and a run of
+    failed sign-ins; through the media purge, a deleted file with its object
+    and an upload never confirmed; a settled record; a finished idempotency
+    marker; a settled work item; every relayed outbox row; and the org's
+    events, the floor moving with them. What still lives stays: the owner's
+    user and membership, a live key, a stored file, a running record, and a
+    queued item."""
     container = build_container(tmp_path)
-    tasks = container.managers.tasks
-    storage = container.storage.get_tasks_storage()
-    owners: list[OpContext] = []
-    for slug in ("ajax", "beta", "gamma"):
-        ctx, _ = await container.managers.tenancy.bootstrap(
-            request(), slug.title(), slug, f"ann@{slug}.test", "Ann"
-        )
-        owners.append(ctx)
-        now = utcnow()
-        for title in ("open", "done"):
-            made = await tasks.create_task(
-                ctx,
-                Task(
-                    id=new_id(),
-                    created_at=now,
-                    updated_at=now,
-                    created_by=ctx.user_id,
-                    updated_by=ctx.user_id,
-                    title=title,
-                ),
-            )
-            if title == "done":
-                await tasks.update_task(
-                    ctx, made.model_copy(update={"status": TaskStatus.DONE}), made.version
-                )
-    calls: list[tuple[str, object]] = []
-    for name in TASK_READS:
-        method = getattr(storage, name)
+    ann = await sign_in(container)
+    org = ann.org_id
+    tenancy, media = container.managers.tenancy, container.managers.media
+    tenancy_rows = container.storage.get_tenancy_storage()
 
-        def counted(
-            method: Callable[..., Awaitable[object]] = method, name: str = name
-        ) -> Callable[..., Awaitable[object]]:
-            async def call(*args: object) -> object:
-                calls.append((name, args[0]))
-                return await method(*args)
+    await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
+    (bob,) = [u for u in await tenancy_rows.read_users(org, None, 10) if u.id != ann.user_id]
+    await tenancy.remove_member(ann, bob.id)
+    revoked = await tenancy.create_api_key(ann, "old", Role.MEMBER)
+    await tenancy.revoke_api_key(ann, revoked.api_key.id)
+    live = await tenancy.create_api_key(ann, "ci", Role.MEMBER)
+    invitation = await tenancy.invite_member(ann, "carol@example.test", Role.MEMBER)
+    await tenancy.revoke_invitation(ann, invitation.id)
+    ticket = await tenancy.issue_ticket(ann)
+    await tenancy_rows.record_failed_sign_in("a-digest", utcnow())
 
-            return call
+    deleted = await upload(container, ann, "old.png")
+    await media.delete_file(ann, deleted.id)
+    abandoned = await upload(container, ann, "never.png", confirm=False)
+    stored = await upload(container, ann, "kept.png")
 
-        monkeypatch.setattr(storage, name, counted())
-    loop = build_loop(container)
+    orchestrations = container.managers.orchestrations
+    settled = await orchestrations.step_noop(ann, await start_noop(container, ann, 1))
+    assert settled.status is OrchestrationStatus.SUCCEEDED
+    running = await start_noop(container, ann, 3)
 
-    await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert [name for name, _ in calls] == ["read_tenants_with_chores"]
+    begun = await container.managers.idempotency.begin(ann, "k", "d", new_id())
+    assert begun.attempt_id is not None
+    await container.managers.idempotency.finish(ann, "k", begun.attempt_id, 201, "{}")
 
-    archivable, long, _ = owners
-    (done,) = await storage.read_done_tasks(archivable.org_id, team_of(archivable), None, 10)
-    await storage.update_task(
-        archivable.org_id,
-        done.model_copy(
-            update={"updated_at": utcnow() - timedelta(days=100), "version": done.version + 1}
-        ),
-        done.version,
-        (),
-    )
-    (spaced,) = await storage.read_open_tasks(long.org_id, team_of(long), None, 10)
-    stretched = Decimal("0." + "0" * RANK_SCALE_BOUND + "1")
-    await storage.update_task(
-        long.org_id,
-        spaced.model_copy(update={"rank": stretched, "version": spaced.version + 1}),
-        spaced.version,
-        (),
-    )
-    calls.clear()
+    work = container.managers.work
+    done = await work.enqueue(ann, make_item(ann))
+    claimed = await work.claim(request(), "default", [done.kind], "test", timedelta(minutes=1))
+    assert claimed is not None and claimed[1].id == done.id
+    await work.complete(*claimed)
+    queued = await work.enqueue(ann, make_item(ann))
 
-    await loop._sweep_once()  # pyright: ignore[reportPrivateUsage]
-    assert calls[0][0] == "read_tenants_with_chores"
-    visited = {tenant for _, tenant in calls[1:]}
-    assert visited == {archivable.org_id, long.org_id}, "no read of the idle tenant's tasks"
-    opened = await container.managers.orchestrations.get_recent(
-        archivable, OrchestrationKind.TASK_CLEANUP, 10
-    )
-    assert len(opened.items) == 1, "the day's cleanup is open"
-    assert await storage.read_long_place(long.org_id) is None, "the long rank was respaced"
+    events = container.storage.get_event_storage()
+    await events.append_events(org, [audit_event(ann, new_id(), "tenancy.test.noted", org, {})])
+    head = await events.read_head(org)
+
+    storage = container.storage
+    media_rows, buckets = storage.get_media_storage(), container.infra.get_buckets()
+    records, items = storage.get_orchestrations_storage(), storage.get_work_storage()
+    idempotency = storage.get_idempotency_storage()
+    memory = cast(TenancyStorageMemoryImpl, tenancy_rows)
+    ticket_hash = hash_token(ticket.ticket)
+
+    async def past_their_retention() -> dict[str, object]:
+        """Each row the pass must take, as storage reads it: None once gone."""
+        # The memory storage's own tables, for the two rows no read names by
+        # id: an ended membership, and a ticket.
+        memberships = memory._memberships.values()  # pyright: ignore[reportPrivateUsage]
+        tickets = memory._socket_tickets.values()  # pyright: ignore[reportPrivateUsage]
+        found = {
+            "removed user": await tenancy_rows.read_user(org, bob.id),
+            "ended membership": next((m for _, m in memberships if m.user_id == bob.id), None),
+            "revoked key": await tenancy_rows.read_api_key(org, revoked.api_key.id),
+            "expired session": await tenancy_rows.read_session(org, ann.credential_id),
+            "ticket": next((t for _, t in tickets if t.ticket_hash == ticket_hash), None),
+            "closed invitation": await tenancy_rows.read_invitation(org, invitation.id),
+            "failed sign-ins": await tenancy_rows.read_sign_in_delay("a-digest"),
+            "deleted file": await media_rows.read_file(org, deleted.id),
+            "abandoned upload": await media_rows.read_file(org, abandoned.id),
+            "settled record": await records.read_orchestration(org, settled.id),
+            "finished marker": await idempotency.read_record(org, ann.user_id, "k"),
+            "settled item": await items.read_item(org, done.id),
+        }
+        return {name: row for name, row in found.items() if row is not None}
+
+    assert len(await past_their_retention()) == 12, "every row is there before the pass"
+    assert await buckets.exists(org, Buckets.USER_FILE_UPLOADS, deleted.key)
+
+    move_on(container, monkeypatch, LATER)
+    await build_loop(container)._sweep_once()  # pyright: ignore[reportPrivateUsage]
+
+    assert await past_their_retention() == {}
+    assert not await buckets.exists(org, Buckets.USER_FILE_UPLOADS, deleted.key)
+    outbox = storage.get_outbox_storage()
+    assert await outbox.purge_done(utcnow() + LATER, 1000) == 0, "no relayed row is left"
+    assert head > 0 and await events.read_floor(org) == await events.read_head(org) == head
+    assert await events.read_after(org, 0, 100) == []
+
+    # What still lives stays.
+    assert await tenancy_rows.read_user(org, ann.user_id) is not None
+    assert await tenancy_rows.read_membership_for_user(org, ann.user_id) is not None
+    assert await tenancy_rows.read_api_key(org, live.api_key.id) is not None
+    assert await media_rows.read_file(org, stored.id) is not None
+    assert await buckets.exists(org, Buckets.USER_FILE_UPLOADS, stored.key)
+    assert await records.read_orchestration(org, running.id) is not None
+    kept = await items.read_item(org, queued.id)
+    assert kept is not None and kept.status is WorkStatus.QUEUED

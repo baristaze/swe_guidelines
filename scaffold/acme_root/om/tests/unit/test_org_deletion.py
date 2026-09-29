@@ -9,7 +9,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.plans import ON_TEAM
 from contracts.second_factor import TOTP_KEY
 
 from acme.infra.cache import CacheScope
@@ -114,7 +113,6 @@ def manager(
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True, totp_encryption_key=TOTP_KEY),
         identity_provider=twin,
-        entitlements=ON_TEAM,
     )
 
 

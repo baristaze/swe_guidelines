@@ -17,24 +17,16 @@ module "environment" {
   app_domain_name   = var.app_domain_name
   site_domain_name  = var.site_domain_name
   cors_origins      = var.cors_origins
-  # The Acme App application of this environment's WorkOS environment. A
-  # client id is public; the application's own API key is its secret.
-  workos_client_id  = "client_STAGING_PLACEHOLDER"
+  # The Acme App application of this environment's WorkOS environment
+  # (variables.tf). A client id is public; the application's own API key is
+  # its secret.
+  workos_client_id  = var.workos_client_id
   portal_sentry_dsn = var.portal_sentry_dsn
-  # This environment's Slack app (deployment/slack/manifest.staging.json).
-  # A client id is public; the app's client secret and signing secret are its
-  # secrets. The staging app's id, from its Basic Information page
-  # (docs/runbooks/providers/slack.md).
-  slack_client_id = "000000000000.00000000000000"
 
-  # The payment processor's account, the Acme sandbox: test mode, no real money. The process refuses a key
-  # whose mode is not this environment's.
-  stripe_account_id = "acct_1UIfVX45a2t9JoiY"
-
-  # Scale: size XS, the demo posture (deployment/cloud/README.md prices
-  # every size). Everything below is what makes this environment the smaller
-  # one. The pool is sized to the instance at the autoscaling ceilings, so
-  # the flip below is safe: a db.t4g.micro takes about 80 connections, and
+  # Scale: size XS (deployment/cloud/README.md prices every size).
+  # Everything below is what makes this environment the smaller one. The
+  # pool is sized to the instance at the autoscaling ceilings, so the flip
+  # below is safe: a db.t4g.micro takes about 80 connections, and
   # (2 x 2 API + 1 worker) x 2 pools x 6 + 8 for the one-off tasks is 68.
   # The API task has half a vCPU, and the 1 GB Fargate requires at that
   # size: the collector sidecar shares its CPU, and a page load's reads

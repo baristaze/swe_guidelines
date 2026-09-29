@@ -1,43 +1,23 @@
-"""Pure: how a task is shown, how a change is told, which tasks are mine,
-how a short id names a task, and which org a slug names. Values in, values
-out; no client, no clock, no terminal, so every rule is unit tested without
-either."""
+"""Pure: how a change is told, how a size reads, and which org a slug names.
+Values in, values out; no client, no clock, no terminal, so every rule is
+unit tested without either."""
 
-import re
-from collections.abc import Callable, Sequence
-from datetime import date
+from collections.abc import Sequence
 from uuid import UUID
 
-from acme.client.types import FileView, MembershipChoiceView, OrgKind, TaskStatus, TaskView
-
-SHORT_ID = 8
-NameOf = Callable[[UUID | None], str]
+from acme.client.types import MembershipChoiceView, OrgKind
 
 
-def short_id(task_id: UUID) -> str:
-    """The tail of the id: ids are time-ordered, so their heads are alike for
-    everything made in the same minute and their tails are the random part."""
-    return str(task_id)[-SHORT_ID:]
-
-
-def is_mine(task: TaskView | None, me: UUID) -> bool:
-    """The API's `mine` scope: assigned to me, or unassigned and created by me."""
-    if task is None:
-        return False
-    if task.assignee_id is not None:
-        return task.assignee_id == me
-    return task.created_by == me
-
-
-def resolve(reference: str, tasks: Sequence[TaskView]) -> TaskView:
-    """A full id or a unique tail of one, over the tasks the caller can see."""
-    matches = [t for t in tasks if str(t.id).endswith(reference.lower())]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise LookupError(f"no task matches {reference!r}")
-    listed = ", ".join(short_id(t.id) for t in matches[:5])
-    raise LookupError(f"{reference!r} matches more than one task ({listed}); give more of the id")
+def describe(kind: str, target_id: UUID, actor: str) -> str:
+    """One line that says who did what to which record. The kind is
+    "<namespace>.<entity>.<action>", and the action is already in the past
+    tense, so the line reads "Ann created tenancy.invitation <id>" for any
+    namespace. A kind of another shape is told as it is."""
+    namespace, _, rest = kind.partition(".")
+    entity, _, action = rest.rpartition(".")
+    if not (namespace and entity and action):
+        return f"{actor}: {kind} {target_id}"
+    return f"{actor} {action} {namespace}.{entity} {target_id}"
 
 
 def human_size(size_bytes: int) -> str:
@@ -48,67 +28,6 @@ def human_size(size_bytes: int) -> str:
     if size_bytes < 1024 * 1024:
         return f"{size_bytes / 1024:.1f} KB"
     return f"{size_bytes / (1024 * 1024):.1f} MB"
-
-
-def attachment_table(files: Sequence[FileView]) -> str:
-    header = f"{'ID':<{SHORT_ID}}  {'SIZE':>9}  {'TYPE':<24}  NAME"
-    lines = [
-        f"{short_id(f.id)}  {human_size(f.size_bytes):>9}  {f.content_type[:24]:<24}  {f.name}"
-        for f in files
-    ]
-    return "\n".join([header, *lines])
-
-
-def resolve_file(reference: str, files: Sequence[FileView]) -> FileView:
-    """A full id or a unique tail of one, over a task's attachments."""
-    matches = [f for f in files if str(f.id).endswith(reference.lower())]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise LookupError(f"no attachment matches {reference!r}")
-    raise LookupError(f"{reference!r} matches more than one attachment; give more of the id")
-
-
-def task_line(task: TaskView, name_of: NameOf) -> str:
-    assignee = name_of(task.assignee_id) if task.assignee_id else "-"
-    return f"{short_id(task.id)}  {task.status.value:<6}  {assignee:<12}  {task.title}"
-
-
-def task_table(tasks: Sequence[TaskView], name_of: NameOf) -> str:
-    header = f"{'ID':<{SHORT_ID}}  {'STATUS':<6}  {'ASSIGNEE':<12}  TITLE"
-    return "\n".join([header, *(task_line(t, name_of) for t in tasks)])
-
-
-def describe(
-    action: str, before: TaskView | None, after: TaskView | None, actor: str, name_of: NameOf
-) -> str:
-    """One line that says what someone did to a task. An update names the
-    first difference that matters, in this order: status, title, assignee,
-    notes, order."""
-    known = after or before
-    title = known.title if known else "a task"
-    if action == "created":
-        return f"{actor} created a task: {title}"
-    if action == "deleted":
-        return f"{actor} deleted a task: {title}"
-    if action == "reminded":
-        return f"reminder: {title}"
-    if before is None or after is None:
-        return f"{actor} updated a task: {title}"
-    if before.status != after.status:
-        verb = "completed" if after.status == TaskStatus.done else "reopened"
-        return f"{actor} {verb} a task: {title}"
-    if before.title != after.title:
-        return f'{actor} renamed a task "{before.title}" to "{after.title}"'
-    if before.assignee_id != after.assignee_id:
-        if after.assignee_id is None:
-            return f"{actor} unassigned a task: {title}"
-        return f"{actor} assigned a task to {name_of(after.assignee_id)}: {title}"
-    if before.notes != after.notes:
-        return f"{actor} edited the notes of a task: {title}"
-    if before.rank != after.rank:
-        return f"{actor} moved a task: {title}"
-    return f"{actor} updated a task: {title}"
 
 
 def choose_org(
@@ -137,18 +56,3 @@ def org_lines(memberships: Sequence[MembershipChoiceView], current: str | None) 
         f"  {m.org.name} ({m.role.value}{', personal' if m.org.kind is OrgKind.personal else ''})"
         for m in ordered
     )
-
-
-DUE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def parse_due(text: str) -> date:
-    """A due date as a person types it: `2026-10-01`, a date and never a
-    time. A ValueError says what was wrong."""
-    text = text.strip()
-    try:
-        if not DUE_DATE.match(text):
-            raise ValueError
-        return date.fromisoformat(text)
-    except ValueError:
-        raise ValueError(f"{text!r} is not a due date; give one as 2026-10-01") from None

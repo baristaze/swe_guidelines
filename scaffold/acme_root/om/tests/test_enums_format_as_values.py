@@ -11,6 +11,7 @@ from acme.infra.buckets import Buckets
 from acme.infra.cache import CacheScope
 from acme.infra.queues import Queues
 from acme.infra.topics import Topics
+from acme.om.media.types.file import FilePurpose, FileStatus
 from acme.om.opcontext import (
     AppType,
     CredentialKind,
@@ -19,9 +20,9 @@ from acme.om.opcontext import (
     Permission,
     Role,
 )
+from acme.om.orchestrations.types.orchestration import OrchestrationKind, OrchestrationStatus
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.scopes import ScopeKind
-from acme.om.tasks.types.task import TaskScope, TaskStatus
 from acme.om.work.types.work_item import WorkKind, WorkStatus
 
 ENUMS = [
@@ -37,8 +38,10 @@ ENUMS = [
     Role,
     DatabaseRole,
     ScopeKind,
-    TaskScope,
-    TaskStatus,
+    FilePurpose,
+    FileStatus,
+    OrchestrationKind,
+    OrchestrationStatus,
     WorkKind,
     WorkStatus,
 ]

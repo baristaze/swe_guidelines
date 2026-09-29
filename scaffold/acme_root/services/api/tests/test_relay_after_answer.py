@@ -11,6 +11,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from api_support import add_member, sign_in_as
 from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -21,11 +22,14 @@ from acme.infra.observability import RequestIdFilter
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
 from acme.om.events.types.event import Event
 from acme.om.exceptions import Unavailable
+from acme.om.opcontext import Role
 from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.services.api.container import AppContainer
 from acme.services.api.gateway.relay import RELAY_SPAN
 
 Message = MutableMapping[str, Any]
+FILES = "/v1/media/files"
+UPLOAD = {"name": "report.pdf", "content_type": "application/pdf", "size_bytes": 5}
 
 
 def hints(container: AppContainer) -> list[EntityChangedPayload]:
@@ -80,39 +84,42 @@ async def test_the_hint_follows_the_answer_and_the_row_gets_done(
         at_answer["pending"] = await outbox.oldest_pending_at()
 
     async with answered_client(app, at_last_byte) as client:
-        response = await client.post("/v1/tasks", headers=owner, json={"title": "write"})
+        response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201, response.text
     assert at_answer == {"hints": 0, "pending": at_answer["pending"]}
     assert at_answer["pending"] is not None, "the row was committed, not yet relayed"
 
-    task_id = UUID(response.json()["id"])
-    assert [(h.kind, h.target_id) for h in heard] == [("tasks.task.created", task_id)]
+    file_id = UUID(response.json()["id"])
+    assert [(h.kind, h.target_id) for h in heard] == [("media.file.created", file_id)]
     assert await outbox.oldest_pending_at() is None, "the row is done"
 
 
 async def test_every_write_of_a_request_relays_after_it(
     app: FastAPI, container: AppContainer, owner: dict[str, str]
 ) -> None:
-    """A bulk change lands a row a task; all of them follow the answer."""
+    """Removing a member lands a row for the member and one for each of their
+    sessions; all of them follow the answer."""
     heard = hints(container)
     async with answered_client(app, _nothing) as client:
-        ids = [
-            (await client.post("/v1/tasks", headers=owner, json={"title": f"t{i}"})).json()["id"]
-            for i in range(3)
-        ]
+        org_id = UUID((await client.get("/v1/orgs/current", headers=owner)).json()["id"])
+        bob = await add_member(container, org_id, "bob@example.test", Role.MEMBER)
+        for _ in range(2):
+            await sign_in_as(client, "bob@example.test", org_id)
         heard.clear()
         at_answer: list[int] = []
 
         async def at_last_byte() -> None:
             at_answer.append(len(heard))
 
-        async with answered_client(app, at_last_byte) as bulk_client:
-            response = await bulk_client.post(
-                "/v1/tasks/bulk", headers=owner, json={"action": "complete", "ids": ids}
-            )
+        async with answered_client(app, at_last_byte) as removing:
+            response = await removing.delete(f"/v1/memberships/{bob.id}", headers=owner)
     assert response.status_code == 200, response.text
     assert at_answer == [0]
-    assert sorted(str(h.target_id) for h in heard) == sorted(ids)
+    assert sorted(h.kind for h in heard) == [
+        "tenancy.session.revoked",
+        "tenancy.session.revoked",
+        "tenancy.user.deleted",
+    ]
     assert await container.storage.get_outbox_storage().oldest_pending_at() is None
 
 
@@ -135,7 +142,7 @@ async def test_a_relay_that_fails_after_the_answer_is_logged_and_the_sweep_relay
     monkeypatch.setattr(events, "append_events", refused)
     caplog.handler.addFilter(RequestIdFilter())
     with caplog.at_level(logging.ERROR, logger="acme.om.outbox.impl.relay"):
-        response = await client.post("/v1/tasks", headers=owner, json={"title": "write"})
+        response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201, "the answer never waits on the relay"
     (failed,) = [r for r in caplog.records if r.name == "acme.om.outbox.impl.relay"]
     assert "failed; the sweep retries" in failed.getMessage()
@@ -167,7 +174,7 @@ async def test_a_relay_the_stream_did_not_answer_in_time_is_a_warning(
 
     monkeypatch.setattr(events, "append_events", not_in_time)
     with caplog.at_level(logging.WARNING, logger="acme.om.outbox.impl.relay"):
-        response = await client.post("/v1/tasks", headers=owner, json={"title": "write"})
+        response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201
     (failed,) = [r for r in caplog.records if r.name == "acme.om.outbox.impl.relay"]
     assert failed.levelno == logging.WARNING
@@ -186,13 +193,13 @@ async def test_the_relay_is_a_span_of_the_request(
     processor = SimpleSpanProcessor(exporter)
     provider.add_span_processor(processor)
     try:
-        response = await client.post("/v1/tasks", headers=owner, json={"title": "write"})
+        response = await client.post(FILES, headers=owner, json=UPLOAD)
         assert response.status_code == 201, response.text
         spans = exporter.get_finished_spans()
     finally:
         processor.shutdown()
     (relayed,) = [s for s in spans if s.name == RELAY_SPAN]
-    (server,) = [s for s in spans if s.name == "POST /v1/tasks"]
+    (server,) = [s for s in spans if s.name == "POST /v1/media/files"]
     assert relayed.parent is not None and server.context is not None
     assert relayed.parent.span_id == server.context.span_id
     assert relayed.attributes is not None and relayed.attributes["acme.outbox.rows"] == 1
@@ -216,7 +223,7 @@ async def test_the_access_line_times_the_answer_not_the_relay(
 
     monkeypatch.setattr(events, "append_events", slow)
     with caplog.at_level(logging.INFO, logger="acme.services.api.gateway.observability"):
-        response = await client.post("/v1/tasks", headers=owner, json={"title": "write"})
+        response = await client.post(FILES, headers=owner, json=UPLOAD)
     assert response.status_code == 201, response.text
     (access,) = [r for r in caplog.records if r.name == "acme.services.api.gateway.observability"]
     assert access.http["duration_ms"] < 300  # type: ignore[attr-defined]

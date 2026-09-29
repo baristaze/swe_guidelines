@@ -1,7 +1,7 @@
 [project]
 name = "acme-cli"
-version = "0.7.0"
-description = "The Acme command line: one command at a time, or a listener that prints what the team does as it happens."
+version = "0.1.0"
+description = "The Acme command line: sign-in, orgs, uploads, and a listener that prints every change in the org as it happens."
 requires-python = ">=3.14"
 dependencies = [
     "acme-client",

@@ -4,21 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <title>Acme: the to-do list your team shares, live</title>
-    <meta
-      name="description"
-      content="Acme is a to-do app for teams. Every change reaches every open tab the moment it happens, and everything the app does, the API does too."
-    />
+    <title>Acme</title>
+    <meta name="description" content="Acme is a multi-tenant system for teams." />
     <link rel="canonical" href="%SITE_URL%/" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Acme: the to-do list your team shares, live" />
-    <meta
-      property="og:description"
-      content="A to-do app for teams: realtime across every open tab, with reminders, Slack, attachments, and an API."
-    />
+    <meta property="og:title" content="Acme" />
+    <meta property="og:description" content="A multi-tenant system for teams." />
     <meta property="og:url" content="%SITE_URL%/" />
     <link rel="stylesheet" href="/src/site.css" />
   </head>
@@ -35,13 +29,11 @@
           <span>Acme</span>
         </a>
         <div class="bar-links">
-          <a href="#features">Features</a>
-          <a href="#pricing">Pricing</a>
           <a href="%GITHUB_URL%">GitHub</a>
         </div>
         <div class="bar-actions">
           <a class="button" data-tone="ghost" href="%APP_URL%/login">Sign in</a>
-          <a class="button" data-tone="accent" href="%APP_URL%/login?screen_hint=sign-up">Get started</a>
+          <a class="button" data-tone="accent" href="%APP_URL%/login?screen_hint=sign-up">Sign up</a>
         </div>
       </nav>
     </header>
@@ -49,213 +41,12 @@
     <main id="main">
       <section class="hero" id="top">
         <div class="column hero-inner">
-          <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Live in every open tab</p>
-          <h1>The to-do list your team shares, live.</h1>
-          <p class="lede">
-            Acme is a to-do app for teams. Add a task, check one off, or move it to the top, and everyone
-            on the team sees it the moment it happens. No refresh, no sync button. Everything the app does, the
-            API does too.
-          </p>
+          <h1>Acme</h1>
+          <p class="lede">A multi-tenant system for teams.</p>
           <div class="hero-actions">
-            <a class="button" data-tone="accent" data-size="lg" href="%APP_URL%/login?screen_hint=sign-up">Get started free</a>
+            <a class="button" data-tone="accent" data-size="lg" href="%APP_URL%/login?screen_hint=sign-up">Sign up</a>
             <a class="button" data-tone="plain" data-size="lg" href="%APP_URL%/login">Sign in</a>
           </div>
-          <p class="hero-note">Free for one person, for as long as you like.</p>
-        </div>
-
-        <figure class="column shot">
-          <div class="shot-frame">
-            <div class="shot-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-            <picture>
-              <source srcset="../../docs/media/realtime-demo-dark.gif" media="(prefers-color-scheme: dark)" />
-              <img
-                src="../../docs/media/realtime-demo.gif"
-                width="876"
-                height="864"
-                alt="Two Acme windows side by side, two people on the same team. One adds three tasks, gives one a due date, attaches an image to another and assigns it, and completes a third; each change appears in the other window at once, and the other person opens the image."
-              />
-            </picture>
-          </div>
-          <figcaption>Two people, two windows, one list. Every change on the left lands on the right as it happens.</figcaption>
-        </figure>
-      </section>
-
-      <section class="section" id="features" aria-labelledby="features-title">
-        <div class="column">
-          <p class="kicker">What it does today</p>
-          <h2 id="features-title">Small on purpose. Fast everywhere.</h2>
-          <p class="section-lede">
-            One list per team, one per person, and everything around it that a team actually uses.
-          </p>
-
-          <ul class="features">
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></svg>
-              <h3>A realtime task list</h3>
-              <p>
-                Adds, edits, check-offs, and reorders reach every open tab of the team at once. A dropped connection
-                catches up on its own, and nothing is lost. Select a few tasks, or all of them, and mark them done in
-                one go; Undo takes it back.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" />
-                <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c2.1.7 3.5 2.8 3.5 5.7" />
-              </svg>
-              <h3>Teams, and a list of your own</h3>
-              <p>
-                Everyone gets a personal org for their own tasks. Start a team org when you need one, invite people,
-                and switch between them in one click.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z" /><path d="M10 21h4" />
-              </svg>
-              <h3>Reminders</h3>
-              <p>
-                Give a task a due date and Acme reminds the team that morning: on every open screen, and in Slack
-                when a channel is connected.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 5h16v11H9l-5 4V5Z" /><path d="M9 9.5h6M9 12.5h4" />
-              </svg>
-              <h3>Slack, both ways</h3>
-              <p>
-                Add Acme to your Slack workspace and the team's changes are posted in the channel you pick. Type
-                <code>/acme</code> for your open tasks, <code>/acme team</code> for the team's, or
-                <code>/acme add</code> to add one without leaving the conversation.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m20 11.5-8.1 8.1a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4L15 7" />
-              </svg>
-              <h3>Files on tasks</h3>
-              <p>
-                Attach a file to a task: the spec, the photo, the receipt. Each one shows a preview right on the
-                task.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-              </svg>
-              <h3>Your list, in and out</h3>
-              <p>
-                Import the list you have from a CSV file. Done tasks nobody touched for ninety days move to an
-                archive, one click from coming back. Delete your account from Settings and it is gone.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" />
-              </svg>
-              <h3>An API, a Python client, a CLI</h3>
-              <p>
-                Make an API key and script the list, or let an agent work it. The Python client and the
-                <code>acme</code> command line use the same API, and <code>acme listen</code> streams every change.
-              </p>
-            </li>
-            <li class="feature">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>
-              <h3>Light and dark</h3>
-              <p>Acme follows your system's light or dark theme, or the one you pick in the app.</p>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="section" id="pricing" aria-labelledby="pricing-title">
-        <div class="column">
-          <p class="kicker">Pricing</p>
-          <h2 id="pricing-title">Simple plans, priced by the team.</h2>
-          <p class="section-lede">Start free. Move up when the list gets long or the team gets bigger.</p>
-
-          <div class="plans">
-            <article class="plan">
-              <h3>Free</h3>
-              <p class="price"><span class="amount">$0</span></p>
-              <p class="plan-for">To try it on your own.</p>
-              <ul class="plan-list">
-                <li>1 member</li>
-                <li>Up to 10 open tasks</li>
-                <li data-off>No API key</li>
-              </ul>
-              <a class="button" data-tone="plain" data-wide href="%APP_URL%/login?screen_hint=sign-up">Start free</a>
-            </article>
-
-            <article class="plan">
-              <h3>Pro</h3>
-              <p class="price"><span class="amount">$5</span><span class="per">/ month</span></p>
-              <p class="plan-for">For one person who lives in it.</p>
-              <ul class="plan-list">
-                <li>1 member</li>
-                <li>Unlimited tasks</li>
-                <li>API access and the CLI</li>
-                <li>Everything in Free</li>
-              </ul>
-              <a class="button" data-tone="plain" data-wide href="%APP_URL%/login?screen_hint=sign-up">Get Pro</a>
-            </article>
-
-            <article class="plan" data-featured>
-              <p class="plan-badge">For small teams</p>
-              <h3>Team</h3>
-              <p class="price"><span class="amount">$10</span><span class="per">/ month</span></p>
-              <p class="plan-for">One list for the whole team.</p>
-              <ul class="plan-list">
-                <li>Up to 5 members</li>
-                <li>Unlimited tasks</li>
-                <li>API access and the CLI</li>
-                <li>Everything in Pro</li>
-              </ul>
-              <a class="button" data-tone="accent" data-wide href="%APP_URL%/login?screen_hint=sign-up">Get Team</a>
-            </article>
-
-            <article class="plan">
-              <h3>Max</h3>
-              <p class="price"><span class="amount">$3</span><span class="per">/ member / month</span></p>
-              <p class="plan-for">For bigger teams. $30 a month minimum.</p>
-              <ul class="plan-list">
-                <li>Unlimited members</li>
-                <li>Unlimited tasks</li>
-                <li>API access and the CLI</li>
-                <li>Everything in Team</li>
-              </ul>
-              <a class="button" data-tone="plain" data-wide href="%APP_URL%/login?screen_hint=sign-up">Get Max</a>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section open" aria-labelledby="open-title">
-        <div class="column open-inner">
-          <div>
-            <h2 id="open-title">Built in the open.</h2>
-            <p>
-              Acme is open source. The whole product, from the API to this page, is also a reference for how a
-              system like it is built. Read it, run it, or borrow from it.
-            </p>
-          </div>
-          <a class="button" data-tone="plain" data-size="lg" href="%GITHUB_URL%">
-            <svg class="icon-inline" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.8V21c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"
-              />
-            </svg>
-            View on GitHub
-          </a>
-        </div>
-      </section>
-
-      <section class="section closing" aria-labelledby="closing-title">
-        <div class="column closing-inner">
-          <h2 id="closing-title">Put the team on one list.</h2>
-          <p>It takes a minute to sign up, and your personal list is ready when you are.</p>
-          <a class="button" data-tone="accent" data-size="lg" href="%APP_URL%/login?screen_hint=sign-up">Get started free</a>
         </div>
       </section>
     </main>
@@ -269,10 +60,8 @@
           </svg>
           <span>Acme</span>
         </a>
-        <p class="footer-line">A to-do app for teams, live in every open tab.</p>
+        <p class="footer-line">A multi-tenant system for teams.</p>
         <nav class="footer-links" aria-label="Footer">
-          <a href="#features">Features</a>
-          <a href="#pricing">Pricing</a>
           <a href="%APP_URL%/login">Sign in</a>
           <a href="%GITHUB_URL%">GitHub</a>
         </nav>

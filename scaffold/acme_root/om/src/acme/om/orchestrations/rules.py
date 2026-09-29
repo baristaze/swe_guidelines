@@ -107,5 +107,5 @@ def stagger(position: int, step: timedelta) -> timedelta:
 
 def outcome(record: Orchestration) -> str:
     """The label an operator reads a record's transition by: its kind and
-    where it stands now, `task_cleanup_succeeded`, `task_import_parked`."""
+    where it stands now, `noop_succeeded`, `noop_parked`."""
     return f"{record.kind.value}_{record.status.value}"

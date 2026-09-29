@@ -19,7 +19,7 @@ platform's own identities, which the grant job makes and no person signs in
 as."""
 
 import secrets
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -46,9 +46,6 @@ from acme.om.tenancy.types.issued import OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
 from acme.om.tenancy.types.user import User
-
-Admission = Callable[[], Awaitable[tuple[OutboxRow, ...]]]
-"""What an add asks before a new member lands; see `add_member_to`."""
 
 MAX_ORGS_PER_IDENTITY = 100
 """How many orgs one person may be a member of: the default of the managers'
@@ -282,7 +279,6 @@ async def add_member_to(
     request: RequestScope,
     max_orgs: int,
     invitation: Invitation | None = None,
-    admission: Admission | None = None,
 ) -> tuple[User, bool]:
     """A person in an org: the identity is created if the email is new, with
     its personal org, then the user and the membership land with the row that
@@ -295,10 +291,7 @@ async def add_member_to(
     user in the tenant, and the inviter on an accepted invitation. The service
     role is refused by name: it is the role a sweep's context carries, never a
     membership. A person already a member of `max_orgs` orgs is refused with
-    `MembershipLimitReached`. `admission`, when given, is asked before a new
-    member lands: it refuses one the org's plan has no seat for, and answers
-    the rows that ride the add in its commit (the seat count of a per-seat
-    plan)."""
+    `MembershipLimitReached`."""
     if role is Role.SERVICE:
         raise ValidationFailed("service is not a membership role")
     now = utcnow()
@@ -308,9 +301,6 @@ async def add_member_to(
         if member_org_id == org_id and existing.deleted_at is None:
             return existing, False
     refuse_one_more(identity.id, users, max_orgs)
-    # The org's plan is asked once the person is known to be new to it, so a
-    # repeated add of a member already there is never refused for a seat.
-    riders = await admission() if admission is not None else ()
     user = User(
         id=user_id,
         created_at=now,
@@ -345,7 +335,7 @@ async def add_member_to(
         traceparent=request.traceparent,
         app=request.app.type.value,
     )
-    rows = (row, *riders)
+    rows = (row,)
     await storage.create_member(
         org_id, user, membership, rows, to_write, personal, invitation=invitation
     )

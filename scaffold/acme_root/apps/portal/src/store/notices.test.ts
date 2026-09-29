@@ -36,13 +36,13 @@ describe("notices store", () => {
 
   it("says a problem unless told it is a change done", () => {
     notify("The key was not created.");
-    notify("3 tasks marked done", { tone: "done" });
+    notify("3 keys revoked", { tone: "done" });
     expect(useNoticesStore.getState().notices.map((n) => n.tone)).toEqual(["problem", "done"]);
   });
 
   it("runs its action once and lets the notice go, and stays as long as it is told", () => {
     const run = vi.fn();
-    const id = notify("3 tasks marked done", { tone: "done", action: { label: "Undo", run }, ttlMs: UNDO_TTL_MS });
+    const id = notify("3 keys revoked", { tone: "done", action: { label: "Undo", run }, ttlMs: UNDO_TTL_MS });
     vi.advanceTimersByTime(NOTICE_TTL_MS);
     expect(useNoticesStore.getState().notices).toHaveLength(1);
     useNoticesStore.getState().act(id);
@@ -53,7 +53,7 @@ describe("notices store", () => {
 
   it("lets an undo go on its own after its while, never having run it", () => {
     const run = vi.fn();
-    notify("3 tasks reopened", { tone: "done", action: { label: "Undo", run }, ttlMs: UNDO_TTL_MS });
+    notify("2 invitations resent", { tone: "done", action: { label: "Undo", run }, ttlMs: UNDO_TTL_MS });
     vi.advanceTimersByTime(UNDO_TTL_MS);
     expect(useNoticesStore.getState().notices).toHaveLength(0);
     expect(run).not.toHaveBeenCalled();

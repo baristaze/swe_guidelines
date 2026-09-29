@@ -28,7 +28,6 @@ vi.mock("./api", () => ({
     get: (path: string) => {
       if (path === "/v1/me") return Promise.resolve({ app: "portal", role: "owner", permissions: ["read"], user, org } as MeView);
       if (path.startsWith("/v1/auth/memberships")) return Promise.resolve({ items: [{ org, user, role: "owner" }], next_cursor: null });
-      if (path === "/v1/billing") return Promise.resolve({ plan: "team" });
       return Promise.reject(new Error(`no read for ${path}`));
     },
     post: (path: string, body: unknown) => {
@@ -69,7 +68,7 @@ beforeEach(async () => {
   useSessionStore.getState().setSession("ses_ajax", "ajax");
   router = createMemoryRouter(
     [
-      { path: "/", Component: page("tasks") },
+      { path: "/", Component: page("home") },
       { path: "/settings", Component: page("settings") },
     ],
     { initialEntries: ["/settings"] },
@@ -90,8 +89,7 @@ afterEach(async () => {
 it("has no tab menu and no theme button, only the chip, the gear, and the account", () => {
   const nav = q("nav")!;
   const links = [...nav.querySelectorAll("a")].map((a) => a.textContent?.trim() || a.getAttribute("aria-label"));
-  expect(links).toEqual(["AAjaxTeam", "Settings"]);
-  expect([...nav.querySelectorAll("a")].some((a) => a.textContent?.trim() === "Tasks")).toBe(false);
+  expect(links).toEqual(["AAjax", "Settings"]);
   expect(nav.querySelector("button[aria-label*='theme']")).toBeNull();
   expect(trigger().textContent).toContain("owner@example.test");
 });

@@ -1,17 +1,12 @@
 from datetime import timedelta
 from uuid import UUID
 
-from acme.om.billing import BillingOperatorManagerInterface
-from acme.om.billing.types.billing import Billing
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.opcontext import OperatorContext, OperatorPermission, OperatorRole
-from acme.om.tasks.types.task import TaskStatus
 from acme.om.tenancy import TenancyOperatorManagerInterface
 from acme.om.tenancy.types.session import Session
 from acme.om.work import WorkOperatorManagerInterface
 from acme.services.api.services.admin import AdminServiceInterface
-from acme.services.api.services.impl.tasks import decode_cursor as decode_task_cursor
-from acme.services.api.services.impl.tasks import encode_cursor as encode_task_cursor
 from acme.services.api.services.impl.tenancy import decode_cursor, encode_cursor
 from acme.services.api.types.admin import (
     AddMemberRequest,
@@ -27,26 +22,20 @@ from acme.services.api.types.admin import (
     PlatformSizeView,
     TotpConfirmedView,
 )
-from acme.services.api.types.billing import CompPlanRequest, OperatorBillingView
 from acme.services.api.types.common import clamp_limit
 from acme.services.api.types.events import OperatorEventView
-from acme.services.api.types.tasks import TaskPageView, TaskView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 
 class AdminServiceImpl(AdminServiceInterface):
     """The cursors an operator's read of a tenant hands out are the ones the
-    tenant's own lists mint, so a page of a tenant's members or tasks is read
-    the same way from either plane."""
+    tenant's own lists mint, so a page of a tenant's members is read the same
+    way from either plane."""
 
     def __init__(
-        self,
-        tenancy: TenancyOperatorManagerInterface,
-        billing: BillingOperatorManagerInterface,
-        work: WorkOperatorManagerInterface,
+        self, tenancy: TenancyOperatorManagerInterface, work: WorkOperatorManagerInterface
     ) -> None:
         self._tenancy = tenancy
-        self._billing = billing
         self._work = work
 
     async def get_orgs(self, admin: OperatorContext, cursor: str | None, limit: int) -> OrgPageView:
@@ -139,22 +128,6 @@ class AdminServiceImpl(AdminServiceInterface):
         )
         return UserView.model_validate(user)
 
-    async def get_tasks(
-        self,
-        admin: OperatorContext,
-        org_id: UUID,
-        status: TaskStatus,
-        cursor: str | None,
-        limit: int,
-    ) -> TaskPageView:
-        limit = clamp_limit(limit)
-        mark = decode_task_cursor(status, cursor) if cursor else None
-        page = await self._tenancy.get_tasks(admin, org_id, status, mark, limit)
-        return TaskPageView(
-            items=[TaskView.model_validate(t) for t in page.items],
-            next_cursor=encode_task_cursor(status, page.items[-1]) if page.has_more else None,
-        )
-
     async def get_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
     ) -> list[OperatorEventView]:
@@ -163,14 +136,6 @@ class AdminServiceImpl(AdminServiceInterface):
 
     async def delete_org(self, admin: OperatorContext, org_id: UUID) -> OrgView:
         return OrgView.model_validate(await self._tenancy.delete_org(admin, org_id))
-
-    async def get_org_billing(self, admin: OperatorContext, org_id: UUID) -> OperatorBillingView:
-        return operator_billing(await self._billing.get_billing(admin, org_id))
-
-    async def comp_plan(
-        self, admin: OperatorContext, org_id: UUID, body: CompPlanRequest
-    ) -> OperatorBillingView:
-        return operator_billing(await self._billing.comp_plan(admin, org_id, body.plan))
 
     async def requeue_work(
         self, admin: OperatorContext, org_id: UUID, item_id: UUID
@@ -188,14 +153,4 @@ def token_view(token: Session) -> OperatorTokenView:
         created_at=token.created_at,
         expires_at=token.expires_at,
         revoked_at=token.revoked_at,
-    )
-
-
-def operator_billing(billing: Billing) -> OperatorBillingView:
-    return OperatorBillingView(
-        plan=billing.plan,
-        paid_plan=billing.paid_plan,
-        comped_plan=billing.comped_plan,
-        status=billing.account.status if billing.account else None,
-        ends_at=billing.ends_at,
     )

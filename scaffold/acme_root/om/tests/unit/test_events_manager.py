@@ -62,10 +62,10 @@ async def test_append_sequences_per_tenant_and_reads_back_by_seq(
 ) -> None:
     ann, bob = context(), context()
     first = await manager.append_event(ann, make_event(ann.org_id))
-    second = await manager.append_event(ann, make_event(ann.org_id, "tasks.task.updated"))
+    second = await manager.append_event(ann, make_event(ann.org_id, "tenancy.user.updated"))
     elsewhere = await manager.append_event(bob, make_event(bob.org_id))
     assert (first.seq, second.seq, elsewhere.seq) == (1, 2, 1)
-    assert first.kind == "tasks.task.created" and first.payload == {"title": "t"}
+    assert first.kind == "tenancy.user.created" and first.payload == {"display_name": "t"}
     assert await manager.get_events(ann, after_seq=1, limit=10) == [second]
     assert await manager.get_events(bob, after_seq=0, limit=10) == [elsewhere]
 
@@ -144,7 +144,7 @@ async def test_the_sweep_drops_a_stream_only_once_its_tenant_has_expired(
 ) -> None:
     ann = context(Role.OWNER)
     await manager.append_event(ann, make_event(ann.org_id))
-    await manager.append_event(ann, make_event(ann.org_id, "tasks.task.updated"))
+    await manager.append_event(ann, make_event(ann.org_id, "tenancy.user.updated"))
     assert await manager.purge_tenant(ann) == 0
     assert len(await manager.get_events(ann, 0, 2)) == 2
     retention.expired = True

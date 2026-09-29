@@ -18,25 +18,18 @@ module "environment" {
   app_domain_name   = var.app_domain_name
   site_domain_name  = var.site_domain_name
   cors_origins      = var.cors_origins
-  # The Acme App application of this environment's WorkOS environment. A
-  # client id is public; the application's own API key is its secret.
-  workos_client_id  = "client_PRODUCTION_PLACEHOLDER"
+  # The Acme App application of this environment's WorkOS environment
+  # (variables.tf). A client id is public; the application's own API key is
+  # its secret.
+  workos_client_id  = var.workos_client_id
   portal_sentry_dsn = var.portal_sentry_dsn
-  # This environment's Slack app (deployment/slack/manifest.production.json),
-  # made when production opens. Empty until then: Slack is unconfigured here.
-  slack_client_id = ""
 
-  # The payment processor's account, the live account. The process refuses a key
-  # whose mode is not this environment's.
-  stripe_account_id = "acct_1UIfTS4Dj4HbbS1T"
-
-  # Scale: size S, the demo posture (deployment/cloud/README.md prices
-  # every size, and names what changes when real customers arrive: size L,
-  # with a second zone for the database and the cache). Everything below is
-  # what differs from staging: the graph does not. The pool is sized to the
-  # instance at the autoscaling ceilings, so the flip below is safe: a
-  # db.t4g.small takes about 180 connections, and (2 x 3 API + 1 worker) x
-  # 2 pools x 10 + 8 for the one-off tasks is 148. The API task has half a
+  # Scale: size S (deployment/cloud/README.md prices every size; M and
+  # above keep a second zone for the database and the cache). Everything
+  # below is what differs from staging: the graph does not. The pool is
+  # sized to the instance at the autoscaling ceilings, so the flip below is
+  # safe: a db.t4g.small takes about 180 connections, and
+  # (2 x 3 API + 1 worker) x 2 pools x 10 + 8 for the one-off tasks is 148. The API task has half a
   # vCPU, and the 1 GB Fargate requires at that size: the collector sidecar
   # shares its CPU, and a page load's reads arrive together.
   vpc_cidr                     = "10.20.0.0/16"

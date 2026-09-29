@@ -1,12 +1,9 @@
-"""The commands. Command mode does one thing and returns (`add`, `ls`, `edit`,
-`done`, `reopen`, `rm`, `mv`, a task's files: `attach`, `attachments`,
-`download`, `detach`, and `import`, which follows its import to the end);
-`listen` stays and prints the team's changes as they happen. Every command
-is a thin call into the client; the API decides, the CLI shows. A verb that
-changes a task reads it first and sends the version it read, so a change
-that raced another is refused (exit 1) and never overwrites it. Exit codes:
-0 done, 1 the API refused (an import that parked or failed among them), 2
-usage, 3 not signed in, 4 the API is unreachable."""
+"""The commands. Command mode does one thing and returns: sign in and out,
+the orgs, the switch between them, who the session is, and a file's upload.
+`listen` stays and prints every change in the org as it happens. Every
+command is a thin call into the client; the API decides, the CLI shows.
+Exit codes: 0 done, 1 the API refused, 2 usage, 3 not signed in, 4 the API
+is unreachable."""
 
 import asyncio
 import json
@@ -15,39 +12,19 @@ import sys
 import time
 import webbrowser
 from collections.abc import Callable, Coroutine
-from datetime import date
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
-from uuid import UUID
 
 import httpx
 import typer
 
 from acme.apps.cli import config
-from acme.apps.cli.imports import follow, outcome
 from acme.apps.cli.listen import listen as run_listener
-from acme.apps.cli.model import (
-    attachment_table,
-    choose_org,
-    human_size,
-    org_lines,
-    parse_due,
-    resolve,
-    resolve_file,
-    short_id,
-    task_table,
-)
-from acme.client.client import UNSET, ApiClient, ApiError, Unset
+from acme.apps.cli.model import choose_org, human_size, org_lines
+from acme.client.client import ApiClient, ApiError
 from acme.client.realtime import ChannelRefused
-from acme.client.types import (
-    IssuedLoginView,
-    IssuedSessionView,
-    TaskScope,
-    TaskStatus,
-    TaskView,
-    UserView,
-)
+from acme.client.types import IssuedLoginView, IssuedSessionView
 
 EXIT_REFUSED = 1
 EXIT_USAGE = 2
@@ -76,7 +53,7 @@ def build_client(api_url: str, token: str | None) -> ApiClient:
 
 
 app = typer.Typer(
-    help="Acme from the terminal: one command at a time, or `listen` for what the team does.",
+    help="Acme from the terminal: one command at a time, or `listen` for what the org does.",
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode=None,
@@ -85,7 +62,6 @@ app = typer.Typer(
 
 Api = Annotated[str | None, typer.Option("--api", help="The API, else ACME_API_URL, else local.")]
 Json = Annotated[bool, typer.Option("--json", help="Print the API's view as JSON.")]
-Ref = Annotated[str, typer.Argument(help="A task id, or the short id `ls` shows (its tail).")]
 
 
 def setting[T](read: Callable[[], T]) -> T:
@@ -125,18 +101,6 @@ def _run[T](coroutine: Coroutine[Any, Any, T], *, signed_in: bool = False) -> T:
             _fail(
                 f"the credential was refused ({error.code}); run `acme login`", EXIT_NOT_SIGNED_IN
             )
-        if error.status == 412:
-            # The task changed between the read this command made and its
-            # write; nothing was written, and the command reads afresh.
-            _fail("refused: the task changed while this ran; run it again", EXIT_REFUSED)
-        if error.code == "plan_limit_reached":
-            # A plan's bound: the org's owner or an admin lifts it, in the
-            # portal, and the same command then goes through.
-            _fail(
-                f"refused: {error.message}; an owner or an admin can change the plan "
-                "in the portal, under Settings, Billing",
-                EXIT_REFUSED,
-            )
         _fail(f"refused: {error}", EXIT_REFUSED)
     except ChannelRefused as error:
         _fail(f"the channel was refused ({error}); run `acme login`", EXIT_NOT_SIGNED_IN)
@@ -144,73 +108,11 @@ def _run[T](coroutine: Coroutine[Any, Any, T], *, signed_in: bool = False) -> T:
         # Any failure of the wire: refused, timed out, reset, or a proxy
         # that answered nothing. The API did not decide, so it is exit 4.
         _fail(f"cannot reach the API: {error}", EXIT_UNREACHABLE)
-    except LookupError as error:
-        _fail(str(error), EXIT_REFUSED)
 
 
 def _fail(message: str, code: int) -> NoReturn:
     typer.echo(message, err=True)
     raise typer.Exit(code)
-
-
-DUE_HELP = (
-    "The day it is due, as 2026-10-01. The reminder goes out at nine that morning,"
-    " in the time zone of the person the task is for."
-)
-
-
-def _due(text: str) -> date:
-    """The due date a person typed, or a usage error that says the form."""
-    try:
-        return parse_due(text)
-    except ValueError as error:
-        _fail(str(error), EXIT_USAGE)
-
-
-def _show(task: TaskView, verb: str, as_json: bool) -> None:
-    if as_json:
-        typer.echo(task.model_dump_json(indent=2))
-    else:
-        typer.echo(f"{verb} {short_id(task.id)}  {task.title}")
-
-
-async def _all(client: ApiClient, status: TaskStatus, scope: TaskScope) -> list[TaskView]:
-    """A whole list, page after page until the API says there is no next one."""
-    tasks: list[TaskView] = []
-    cursor: str | None = None
-    while True:
-        page = await client.tasks(status, scope, cursor=cursor, limit=200)
-        tasks += page.items
-        cursor = page.next_cursor
-        if cursor is None:
-            return tasks
-
-
-async def _visible(client: ApiClient) -> list[TaskView]:
-    """Open and done team tasks, the pool a short id is resolved over."""
-    return [
-        *await _all(client, TaskStatus.open, TaskScope.team),
-        *await _all(client, TaskStatus.done, TaskScope.team),
-    ]
-
-
-async def _task(client: ApiClient, reference: str) -> TaskView:
-    try:
-        return await client.task(UUID(reference))
-    except ValueError:
-        return resolve(reference, await _visible(client))
-
-
-async def _user(client: ApiClient, reference: str) -> UserView:
-    """`me`, an email, or a display name, over the org's members."""
-    if reference == "me":
-        return (await client.me()).user
-    users = await client.every_user()
-    wanted = reference.lower()
-    matches = [u for u in users if wanted in (u.email.lower(), u.display_name.lower())]
-    if len(matches) != 1:
-        raise LookupError(f"{reference!r} names {'no' if not matches else 'more than one'} member")
-    return matches[0]
 
 
 # Signing in
@@ -456,288 +358,45 @@ def whoami(api: Api = None) -> None:
     typer.echo(f"{me.user.display_name} <{me.user.email}> at {me.org.name} ({me.role.value})")
 
 
-# One command at a time
+# Files
 
 
 @app.command()
-def ls(
-    done: Annotated[
-        bool, typer.Option("--done", help="The done list instead of the open one.")
-    ] = False,
-    mine: Annotated[
-        bool, typer.Option("--mine", help="Only tasks assigned to me, or unassigned and mine.")
-    ] = False,
-    as_json: Json = False,
-    api: Api = None,
-) -> None:
-    """List tasks: open in their order, or done newest first."""
-
-    async def go(client: ApiClient) -> None:
-        status = TaskStatus.done if done else TaskStatus.open
-        scope = TaskScope.mine if mine else TaskScope.team
-        tasks = await _all(client, status, scope)
-        if as_json:
-            typer.echo(json.dumps([t.model_dump(mode="json") for t in tasks], indent=2))
-            return
-        names = {u.id: u.display_name for u in await client.every_user()}
-        typer.echo(task_table(tasks, lambda uid: names.get(uid, "someone") if uid else "-"))
-
-    run(go, api)
-
-
-@app.command()
-def add(
-    title: Annotated[str, typer.Argument(help="What to do.")],
-    notes: Annotated[str, typer.Option(help="Details, kept with the task.")] = "",
-    assignee: Annotated[str | None, typer.Option(help="`me`, an email, or a name.")] = None,
-    due: Annotated[str | None, typer.Option(help=DUE_HELP)] = None,
-    as_json: Json = False,
-    api: Api = None,
-) -> None:
-    """Create a task at the top of the open list."""
-    due_on = _due(due) if due else None
-
-    async def go(client: ApiClient) -> None:
-        assignee_id = (await _user(client, assignee)).id if assignee else None
-        created = await client.create_task(
-            title, notes=notes, assignee_id=assignee_id, due_on=due_on
-        )
-        _show(created, "added", as_json)
-
-    run(go, api)
-
-
-@app.command()
-def edit(
-    ref: Ref,
-    title: Annotated[str | None, typer.Option(help="A new title.")] = None,
-    notes: Annotated[str | None, typer.Option(help="New notes.")] = None,
-    assignee: Annotated[str | None, typer.Option(help="`me`, an email, or a name.")] = None,
-    unassign: Annotated[bool, typer.Option("--unassign", help="Clear the assignee.")] = False,
-    due: Annotated[str | None, typer.Option(help=DUE_HELP)] = None,
-    no_due: Annotated[bool, typer.Option("--no-due", help="Clear the due date.")] = False,
-    as_json: Json = False,
-    api: Api = None,
-) -> None:
-    """Change a task's title, notes, assignee, or due date."""
-    if assignee and unassign:
-        _fail("--assignee and --unassign exclude each other", EXIT_USAGE)
-    if due and no_due:
-        _fail("--due and --no-due exclude each other", EXIT_USAGE)
-    nothing = title is None and notes is None and assignee is None and due is None
-    if nothing and not (unassign or no_due):
-        _fail(
-            "nothing to change; give --title, --notes, --assignee, --unassign, --due, or --no-due",
-            EXIT_USAGE,
-        )
-    due_on: date | Unset | None = UNSET
-    if no_due:
-        due_on = None
-    elif due:
-        due_on = _due(due)
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        assignee_id: UUID | Unset | None = UNSET
-        if unassign:
-            assignee_id = None
-        elif assignee:
-            assignee_id = (await _user(client, assignee)).id
-        updated = await client.update_task(
-            task.id,
-            version=task.version,
-            title=title,
-            notes=notes,
-            assignee_id=assignee_id,
-            due_on=due_on,
-        )
-        _show(updated, "edited", as_json)
-
-    run(go, api)
-
-
-@app.command()
-def done(ref: Ref, as_json: Json = False, api: Api = None) -> None:
-    """Complete a task."""
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        done = await client.update_task(task.id, version=task.version, status=TaskStatus.done)
-        _show(done, "done", as_json)
-
-    run(go, api)
-
-
-@app.command()
-def reopen(ref: Ref, as_json: Json = False, api: Api = None) -> None:
-    """Bring a done task back to the top of the open list."""
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        reopened = await client.update_task(task.id, version=task.version, status=TaskStatus.open)
-        _show(reopened, "reopened", as_json)
-
-    run(go, api)
-
-
-@app.command()
-def rm(ref: Ref, as_json: Json = False, api: Api = None) -> None:
-    """Delete a task."""
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        _show(await client.delete_task(task.id, task.version), "deleted", as_json)
-
-    run(go, api)
-
-
-@app.command()
-def mv(
-    ref: Ref,
-    after: Annotated[str | None, typer.Option(help="Place it right after this task.")] = None,
-    top: Annotated[bool, typer.Option("--top", help="Place it at the top.")] = False,
-    as_json: Json = False,
-    api: Api = None,
-) -> None:
-    """Move an open task within the open list."""
-    if (after is None) == (not top):
-        _fail("give exactly one of --after and --top", EXIT_USAGE)
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        anchor = None if top else (await _task(client, after or "")).id
-        _show(await client.move_task(task.id, anchor, task.version), "moved", as_json)
-
-    run(go, api)
-
-
-# A task's files
-
-
-@app.command()
-def attach(
-    ref: Ref,
-    path: Annotated[Path, typer.Argument(help="The file to attach.", exists=True, dir_okay=False)],
+def upload(
+    path: Annotated[Path, typer.Argument(help="The file to upload.", exists=True, dir_okay=False)],
     content_type: Annotated[
         str | None, typer.Option("--type", help="Its type, else guessed from the name.")
     ] = None,
     as_json: Json = False,
     api: Api = None,
 ) -> None:
-    """Attach a file to a task. The bytes go straight to the store."""
+    """Upload a file the org keeps. The bytes go straight to the store, or
+    through the API where the store takes no form."""
     kind = content_type or mimetypes.guess_type(path.name)[0]
     if kind is None:
         _fail(f"cannot tell the type of {path.name}; give --type", EXIT_USAGE)
     data = path.read_bytes()
 
     async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        file = await client.attach(task.id, path.name, kind, data)
+        started = await client.start_upload(path.name, kind, len(data))
+        stored = await client.upload(started, data)
         if as_json:
-            typer.echo(file.model_dump_json(indent=2))
+            typer.echo(stored.model_dump_json(indent=2))
         else:
-            typer.echo(f"attached {short_id(file.id)}  {file.name} ({human_size(file.size_bytes)})")
+            typer.echo(f"uploaded {stored.name} ({human_size(stored.size_bytes)}) as {stored.id}")
 
     run(go, api)
-
-
-@app.command()
-def attachments(ref: Ref, as_json: Json = False, api: Api = None) -> None:
-    """List a task's files, oldest first."""
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        files = await client.every_attachment(task.id)
-        if as_json:
-            typer.echo(json.dumps([f.model_dump(mode="json") for f in files], indent=2))
-        else:
-            typer.echo(attachment_table(files))
-
-    run(go, api)
-
-
-FileRef = Annotated[str, typer.Argument(help="A file id, or the short id `attachments` shows.")]
-
-
-@app.command()
-def download(
-    ref: Ref,
-    file_ref: FileRef,
-    out: Annotated[
-        Path | None, typer.Option("--out", help="Where to write it, else its own name here.")
-    ] = None,
-    api: Api = None,
-) -> None:
-    """Download one of a task's files."""
-
-    async def go(client: ApiClient) -> Path:
-        task = await _task(client, ref)
-        file = resolve_file(file_ref, await client.every_attachment(task.id))
-        target = out or Path(file.name)
-        target.write_bytes(await client.download(file.id))
-        return target
-
-    typer.echo(f"saved {run(go, api)}")
-
-
-@app.command()
-def detach(ref: Ref, file_ref: FileRef, as_json: Json = False, api: Api = None) -> None:
-    """Remove a file from a task."""
-
-    async def go(client: ApiClient) -> None:
-        task = await _task(client, ref)
-        file = resolve_file(file_ref, await client.every_attachment(task.id))
-        removed = await client.remove_attachment(task.id, file.id)
-        if as_json:
-            typer.echo(removed.model_dump_json(indent=2))
-        else:
-            typer.echo(f"detached {short_id(removed.id)}  {removed.name}")
-
-    run(go, api)
-
-
-# Imports
-
-
-@app.command("import")
-def import_tasks(
-    path: Annotated[Path, typer.Argument(help="A CSV file of tasks.", exists=True, dir_okay=False)],
-    as_json: Json = False,
-    api: Api = None,
-) -> None:
-    """Import tasks from a CSV file and follow the import to its end. Columns:
-    title (needed), notes, due_on (2026-10-01), assignee_email (a member)."""
-    data = path.read_bytes()
-
-    async def go(client: ApiClient) -> str:
-        started = await client.import_tasks(path.name, data)
-        typer.echo(f"importing {path.name} as {short_id(started.id)}", err=True)
-        stopped = await follow(client, started.id)
-        if as_json:
-            typer.echo(stopped.model_dump_json(indent=2))
-        else:
-            typer.echo(outcome(stopped))
-        return stopped.status.value
-
-    status = run(go, api)
-    if status != "succeeded":
-        # Parked or failed: nothing more was created, and the line says why.
-        raise typer.Exit(EXIT_REFUSED)
 
 
 # Realtime
 
 
 @app.command()
-def listen(
-    mine: Annotated[
-        bool, typer.Option("--mine", help="Only tasks assigned to me, or unassigned and mine.")
-    ] = False,
-    api: Api = None,
-) -> None:
-    """Stay connected and print every task change as it happens. Ctrl-C stops."""
+def listen(api: Api = None) -> None:
+    """Stay connected and print every change in the org as it happens: who
+    did what to which record. Ctrl-C stops."""
     try:
-        run(lambda client: run_listener(client, mine=mine), api)
+        run(run_listener, api)
     except KeyboardInterrupt:
         typer.echo("stopped", err=True)
 

@@ -20,10 +20,11 @@ profiles, the account check, and the env file are there.
 
 `--env` is where the stores outside the database are read: `staging` by
 default, `local` to read none and say so. `--scale` is the seed's, `1`
-by default (5,000 people, a team org of 200 members and 100,000 tasks, a
-million events); `0.01` is a quick run with the same shape, whose plans
-prove the wiring: a sequential scan on a small table is the planner's
-choice, and a quick run's plan findings say "verify at scale 1". The
+by default (5,000 people with a personal org each, a team org of 200
+members, a million events); `0.01` is a quick run with the same shape,
+whose plans prove the wiring: a sequential scan on a small table is the
+planner's choice, and a quick run's plan findings say "verify at scale
+1". The
 audit reads and runs the checkout, tools and code alike; to audit
 another commit, run it from a checkout of that commit that has
 `ops/audit/`. Every command runs from the repository root.
@@ -65,7 +66,7 @@ holds. It reads no env file and no token: it calls no route.
    (`_sweep_once`, which also purges the outbox and the work items
    itself); `build_loop` in that folder's `main.py` wires the rest: the
    per-tenant `purges`, the `across` and `across_batches` purges across
-   tenants, and the `chores`. Each calls a manager
+   tenants, and any `chores` it names. Each calls a manager
    (`om/src/acme/om/<namespace>/impl/manager.py`; the outbox's is
    `outbox/impl/relay.py`), which calls its storage's delete. A
    retention is a field of `settings.py` in that folder (read as
@@ -75,9 +76,11 @@ holds. It reads no env file and no token: it calls no route.
    (`delete_batch`, `LIMIT`) or everything at once, and which index serves
    its `WHERE`. A table no purge reaches is a gap, unless the product keeps
    its rows as the record (the org row), as one row per tenant (the
-   billing account, the event cursor), or as a person's until they are
-   erased (the identity), or it is live data (a living org's tasks);
-   say which.
+   event cursor) or one for the platform (its size), or as a person's
+   until they are erased (the identity), or it is live data (a living
+   org's members and files); say which.
+   `${CLAUDE_SKILL_DIR}/references/purges.md` lists the purges the sweep
+   runs; a purge the code has and that list misses is read all the same.
 4. Measure the purges. Make and seed the run's database:
 
    ```bash

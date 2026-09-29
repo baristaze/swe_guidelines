@@ -1,12 +1,15 @@
 # Every technology piece Acme depends on, as a local container.
 # Application processes run on the host; see scripts/dev.sh.
-# Host ports sit in the 5xxxx range so the stack coexists with other
-# local stacks; inside the network the containers use their own ports.
+# Every host port is a knob, ACME_<SERVICE>_PORT, in the 5xxxx range by
+# default; inside the network the containers use their own ports. So two
+# stacks run side by side on one machine once each has its own ports in
+# .env. .env.example lists every knob with its default, which is also the
+# fallback below, and the Makefile passes .env.example and .env as env files
+# so the knobs reach the stack.
 # The `devx` profile adds developer dashboards over the same services:
 #   docker compose -f deployment/local/docker-compose.yml --profile devx up -d
-# Each dashboard's host port is a ACME_<DASHBOARD>_PORT knob (.env.example
-# lists the defaults, which are also the fallbacks below); the Makefile passes
-# .env.example and .env as env files so the knobs reach the stack.
+# The project is the product's name, which names every container and volume;
+# COMPOSE_PROJECT_NAME or -p sets another.
 name: acme
 
 services:
@@ -24,7 +27,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: acme
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${ACME_POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres:/var/lib/postgresql
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -37,7 +40,7 @@ services:
   valkey:
     image: valkey/valkey:9.1-alpine
     ports:
-      - "127.0.0.1:56379:6379"
+      - "127.0.0.1:${ACME_VALKEY_PORT:-56379}:6379"
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
@@ -47,7 +50,7 @@ services:
   elasticmq:
     image: softwaremill/elasticmq-native:1.7.1
     ports:
-      - "127.0.0.1:59324:9324"
+      - "127.0.0.1:${ACME_ELASTICMQ_PORT:-59324}:9324"
     volumes:
       # The queues and their dead-letter queues, as the cloud declares them.
       - ./elasticmq/elasticmq.conf:/opt/elasticmq.conf:ro
@@ -66,11 +69,12 @@ services:
     image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     command: server /data --console-address ":9001"
     environment:
+      # MinIO refuses a root password shorter than eight characters.
       MINIO_ROOT_USER: acme
-      MINIO_ROOT_PASSWORD: acmeacme
+      MINIO_ROOT_PASSWORD: acme-minio-local
     ports:
-      - "127.0.0.1:59000:9000"
-      - "127.0.0.1:59001:9001"
+      - "127.0.0.1:${ACME_MINIO_PORT:-59000}:9000"
+      - "127.0.0.1:${ACME_MINIO_CONSOLE_PORT:-59001}:9001"
     volumes:
       - minio:/data
     healthcheck:
@@ -127,7 +131,8 @@ services:
       elasticmq:
         condition: service_healthy
 
-  # Traces: set ACME_OTEL_ENDPOINT=http://127.0.0.1:54318 for host processes.
+  # Traces: set ACME_OTEL_ENDPOINT=http://127.0.0.1:<ACME_JAEGER_OTLP_PORT>
+  # for host processes.
   jaeger:
     image: jaegertracing/jaeger:2.21.0
     profiles: [devx]
@@ -196,7 +201,7 @@ services:
   # stack's Postgres and with Postgres for its queue (VALKEY_URL empty). The
   # two one-shot services create that database and seed an admin and a
   # project whose DSN key is fixed:
-  #   http://0123456789abcdef0123456789abcdef@localhost:58000/1
+  #   http://0123456789abcdef0123456789abcdef@localhost:<ACME_GLITCHTIP_PORT>/1
   # `up --wait` holds until a one-shot that another service depends on with
   # service_completed_successfully has exited 0, and counts any other
   # one-shot's exit as a failure, even a clean one. glitchtip-db is the first

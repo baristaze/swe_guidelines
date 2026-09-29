@@ -95,7 +95,7 @@ variable "read_latency_p95_seconds" {
   description = "One latency alarm per read named here: the GET route's template, and the p95 in seconds above which it fires."
   type        = map(number)
   default = {
-    "/v1/billing" = 1
+    "/v1/me" = 1
   }
 }
 

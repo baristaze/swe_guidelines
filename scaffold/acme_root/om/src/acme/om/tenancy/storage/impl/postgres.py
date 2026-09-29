@@ -9,8 +9,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from acme.om.base import EMPTY_UUID, Identifiable, new_id
-from acme.om.billing.storage.tables.billing_accounts import BillingAccounts
-from acme.om.billing.types.account import BillingAccount
 from acme.om.exceptions import Conflict, NotFound, UniqueKeyTaken
 from acme.om.idempotency.storage.tables.idempotency_records import IdempotencyRecords
 from acme.om.opcontext import CredentialKind, Role
@@ -765,39 +763,6 @@ class TenancyStoragePostgresImpl(PgStorageBase, TenancyStorageInterface):
                 to_model(org, Org),
                 None if user is None else to_model(user, User),
                 None if membership is None else to_model(membership, Membership),
-            )
-
-    async def read_key_principal(
-        self, org_id: UUID, user_id: UUID
-    ) -> tuple[Org | None, User | None, Membership | None, BillingAccount | None]:
-        # The principal's statement with the org's billing account joined on:
-        # a table of the same role and the same tenant fence, read under the
-        # same scope, so the join crosses neither.
-        stmt = (
-            select(Orgs, Users, Memberships, BillingAccounts)
-            .select_from(Orgs)
-            .outerjoin(Users, and_(Users.org_id == Orgs.org_id, Users.id == user_id))
-            .outerjoin(
-                Memberships,
-                and_(
-                    Memberships.org_id == Orgs.org_id,
-                    Memberships.user_id == user_id,
-                    Memberships.deleted_at.is_(None),
-                ),
-            )
-            .outerjoin(BillingAccounts, BillingAccounts.org_id == Orgs.org_id)
-            .where(Orgs.org_id == org_id, Orgs.id == org_id)
-        )
-        async with self._session_for(stmt, org_id=org_id, user_id=user_id) as session:
-            found = (await session.execute(stmt)).one_or_none()
-            if found is None:
-                return None, None, None, None
-            org, user, membership, account = found
-            return (
-                to_model(org, Org),
-                None if user is None else to_model(user, User),
-                None if membership is None else to_model(membership, Membership),
-                None if account is None else to_model(account, BillingAccount),
             )
 
     async def write_membership(

@@ -43,7 +43,7 @@ describe("adoptSession", () => {
     const { useSessionStore } = await import("../store/session");
     useSessionStore.getState().setSession("ses_old", "ajax");
     queryClient.setQueryData(["me"], { org: { slug: "ajax" } });
-    queryClient.setQueryData(["task", "open", "team"], { items: [{ title: "Ajax's task" }] });
+    queryClient.setQueryData(["user", "list", 200], { pages: [{ items: [{ display_name: "Ajax's member" }] }] });
 
     adoptSession({ token: "ses_new", org: org("beta") });
 

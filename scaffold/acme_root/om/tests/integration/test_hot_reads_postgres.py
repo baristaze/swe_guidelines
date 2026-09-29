@@ -1,8 +1,6 @@
-"""The hot reads, held by a live Postgres: the `mine` scope, the done list and
-the archive, the cleanup's read of the archivable tasks, the sweep's read of
-the tenants with a chore due, the re-mint's fence, the idempotency,
-invitations, and Slack purges, and the sweep's three gauges each read the
-index made for them.
+"""The hot reads, held by a live Postgres: the re-mint's fence, the
+idempotency and invitations purges, and the sweep's three gauges each read
+the index made for them.
 
 The plans are read off the statements the storage impls send, captured as
 they go to the driver, and explained under the scope the statement ran in, by
@@ -32,14 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.idempotency.storage.impl.postgres import IdempotencyStoragePostgresImpl
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
-from acme.om.slack.storage.impl.postgres import SlackStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions, set_scope
 from acme.om.storage.impl.postgres import login_sessions
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import MigrationSettings
-from acme.om.tasks.storage.impl.postgres import TasksStoragePostgresImpl
-from acme.om.tasks.types.filter import TaskCursor, TaskFilter
-from acme.om.tasks.types.task import TaskScope
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.work.storage.impl.postgres import WorkStoragePostgresImpl
 
@@ -49,7 +43,7 @@ Statement = tuple[str, Any]
 Watched = tuple[LoginSessions, list[AsyncEngine]]
 
 PEOPLE = 1000
-"""How many people the tenant's tasks spread over, so the generic plan's
+"""How many people a tenant's markers spread over, so the generic plan's
 estimate for one person (one in PEOPLE) is a small share, as in a large team."""
 
 TENANTS = 20
@@ -153,151 +147,6 @@ async def analyze(migrated: dict[DatabaseRole, str], *tables: str) -> None:
         await engine.dispose()
 
 
-async def seed_tasks(sessions: LoginSessions, org: UUID) -> list[UUID]:
-    """Open, done, and archived tasks across PEOPLE people: assigned to one
-    of them, or unassigned and made by one of them. Returns the people."""
-    people = [new_id() for _ in range(PEOPLE)]
-    async with sessions[DatabaseRole.CORE]() as session:
-        await set_scope(session, org, None, None)
-        for status, shelf, count in (
-            ("open", "NULL", 3000),
-            ("done", "NULL", 3000),
-            ("done", "now() - interval '200 days' - g * interval '1 hour'", 6000),
-        ):
-            await session.execute(
-                text(
-                    "INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by,"
-                    " updated_by, title, notes, status, assignee_id, rank, version,"
-                    " archived_at)"
-                    " SELECT uuidv7(), :org, now(), now() - g * interval '1 minute',"
-                    " p.a[1 + g % :n], p.a[1 + g % :n], 'Task', '', :status,"
-                    " CASE WHEN g % 3 > 0 THEN p.a[1 + (g * 7) % :n] END, g, 1,"
-                    f" {shelf} FROM generate_series(1, :count) g,"
-                    " (SELECT CAST(:people AS uuid[]) AS a) p"
-                ),
-                {"org": org, "people": people, "n": PEOPLE, "status": status, "count": count},
-            )
-        await session.commit()
-    return people
-
-
-async def test_the_mine_scope_reads_the_callers_tasks_alone(
-    watched: Watched, migrated: dict[DatabaseRole, str]
-) -> None:
-    """A member with no task reads two short index ranges, one per arm of the
-    OR, and not every open or done task of the tenant."""
-    sessions = watched[0]
-    org = new_id()
-    await seed_tasks(sessions, org)
-    await analyze(migrated, "core.tasks")
-    tasks = TasksStoragePostgresImpl(sessions)
-    mine = TaskFilter(scope=TaskScope.MINE, user_id=new_id())
-    both = ("ix_tasks_org_id_assignee_id_status", "ix_tasks_org_id_created_by_status")
-    for call in (
-        lambda: tasks.read_open_tasks(org, mine, None, 51),
-        lambda: tasks.count_open_tasks(org, mine),
-        lambda: tasks.read_recent_open_tasks(org, mine, 5),
-        lambda: tasks.read_done_tasks(org, mine, None, 51),
-    ):
-        custom, generic = await plans(watched, org, call, "core.tasks")
-        assert served(custom, *both), custom
-        assert served(generic, *both), generic
-
-
-async def test_each_shelf_of_done_tasks_pages_in_its_own_index(
-    watched: Watched, migrated: dict[DatabaseRole, str]
-) -> None:
-    """The done list and the archive each walk their own index in the order
-    they page in, the first page and a page after a cursor alike, so no page
-    sorts; and the cleanup's read of the archivable tasks never walks the
-    archive."""
-    sessions = watched[0]
-    org = new_id()
-    people = await seed_tasks(sessions, org)
-    await analyze(migrated, "core.tasks")
-    tasks = TasksStoragePostgresImpl(sessions)
-    team = TaskFilter(scope=TaskScope.TEAM, user_id=people[0])
-    cursor = TaskCursor(updated_at=utcnow() - timedelta(days=1), id=new_id())
-    for index, call in (
-        (
-            "ix_tasks_org_id_status_updated_at_id_unarchived",
-            lambda: tasks.read_done_tasks(org, team, None, 51),
-        ),
-        (
-            "ix_tasks_org_id_status_updated_at_id_unarchived",
-            lambda: tasks.read_done_tasks(org, team, cursor, 51),
-        ),
-        (
-            "ix_tasks_org_id_status_updated_at_id_archived",
-            lambda: tasks.read_archived_tasks(org, team, None, 51),
-        ),
-        (
-            "ix_tasks_org_id_status_updated_at_id_archived",
-            lambda: tasks.read_archived_tasks(org, team, cursor, 51),
-        ),
-    ):
-        custom, generic = await plans(watched, org, call, "core.tasks")
-        for found in (custom, generic):
-            assert served(found, index), found
-            assert "Sort" not in found, found
-    for limit in (1, 500):
-        custom, generic = await plans(
-            watched,
-            org,
-            lambda limit=limit: tasks.read_archivable(org, utcnow() - timedelta(days=90), limit),
-            "core.tasks",
-        )
-        assert served(custom, "ix_tasks_org_id_status_updated_at_id_unarchived"), custom
-        assert served(generic, "ix_tasks_org_id_status_updated_at_id_unarchived"), generic
-
-
-async def test_the_read_of_the_tenants_with_a_chore_due_walks_two_partial_indexes(
-    watched: Watched, migrated: dict[DatabaseRole, str]
-) -> None:
-    """The sweep's one read a pass across tenants reads the archivable tasks as
-    a range of the done shelf by its last change, and the long ranks from
-    their own index, and never the open or archived tasks of any tenant, as
-    the system login in the system scope, the first page and a page after a
-    tenant. It is planned with its values, as the purges across tenants are,
-    so the plan with its values is the one it runs."""
-    sessions = watched[0]
-    orgs = [new_id() for _ in range(TENANTS)]
-    await seed_tasks(sessions, orgs[0])
-    async with sessions.system[DatabaseRole.CORE]() as session:
-        await set_scope(session, EMPTY_UUID, None, None)
-        # Open and done tasks over every tenant: one done task in fifty is
-        # past the cut, and one open task in fifty has a long rank.
-        await session.execute(
-            text(
-                "INSERT INTO core.tasks (id, org_id, created_at, updated_at, created_by,"
-                " updated_by, title, notes, status, rank, version)"
-                " SELECT uuidv7(), t.a[1 + g % :n], now(),"
-                " CASE WHEN g % 100 = 0 THEN now() - interval '200 days'"
-                " ELSE now() - g * interval '1 minute' END,"
-                " gen_random_uuid(), gen_random_uuid(), 'Task', '',"
-                " CASE WHEN g % 2 = 0 THEN 'done' ELSE 'open' END,"
-                " CASE WHEN g % 100 = 1 THEN g + 0.0000000000000000000000001 ELSE g END, 1"
-                " FROM generate_series(1, 20000) g, (SELECT CAST(:orgs AS uuid[]) AS a) t"
-            ),
-            {"orgs": orgs, "n": TENANTS},
-        )
-        await session.commit()
-    await analyze(migrated, "core.tasks")
-    tasks = TasksStoragePostgresImpl(sessions)
-    cut = utcnow() - timedelta(days=90)
-    for after in (None, orgs[0]):
-
-        async def read(after: UUID | None = after) -> list[UUID]:
-            return await tasks.read_tenants_with_chores(cut, after, 100)
-
-        statements = [sql for sql, _ in await sent(watched[1], read)]
-        assert "SET LOCAL plan_cache_mode = force_custom_plan" in statements[0], statements
-        custom, _ = await plans(watched, EMPTY_UUID, read, "UNION")
-        assert served(
-            custom, "ix_tasks_updated_at_org_id_done_unarchived", "ix_tasks_org_id_rank_long"
-        ), custom
-
-
 async def test_the_pending_markers_serve_the_purge_and_the_re_mint_fence(
     watched: Watched, migrated: dict[DatabaseRole, str]
 ) -> None:
@@ -357,7 +206,7 @@ async def test_the_pending_markers_serve_the_purge_and_the_re_mint_fence(
     assert served(generic, "ix_idempotency_records_attempt_id"), generic
 
 
-async def test_the_invitations_and_slack_purges_read_their_indexes(watched: Watched) -> None:
+async def test_the_invitations_purges_read_their_indexes(watched: Watched) -> None:
     """The retention purges read across tenants through an index that leads
     with the retention column, and the purge of a tenant reads that tenant's
     rows through one that leads with org_id: neither reads the whole table."""
@@ -366,7 +215,6 @@ async def test_the_invitations_and_slack_purges_read_their_indexes(watched: Watc
     # A cut no row of this database is behind, so the capture deletes nothing.
     cut = utcnow() - timedelta(days=36500)
     tenancy = TenancyStoragePostgresImpl(sessions)
-    slack = SlackStoragePostgresImpl(sessions)
     for scope, call, naming, index in (
         (
             EMPTY_UUID,
@@ -379,18 +227,6 @@ async def test_the_invitations_and_slack_purges_read_their_indexes(watched: Watc
             lambda: tenancy.purge_tenant(org, 1000),
             "core.invitations",
             ("ix_invitations_org_id_expires_at",),
-        ),
-        (
-            EMPTY_UUID,
-            lambda: slack.purge(cut, 1000),
-            "core.slack_installations",
-            ("ix_slack_installations_deleted_at",),
-        ),
-        (
-            org,
-            lambda: slack.purge_tenant(org, 1000),
-            "core.slack_installations",
-            ("ix_slack_installations_org_id_deleted_at",),
         ),
     ):
         custom, generic = await plans(watched, scope, call, naming)
@@ -437,7 +273,7 @@ async def test_the_sweeps_gauges_read_one_index_entry_or_one_range(
                 "INSERT INTO core.outbox_rows (id, org_id, created_at, kind, target_id,"
                 " payload, actor_id, request_id, app, done_at, attempts, failed_at)"
                 " SELECT uuidv7(), t.a[1 + g % :n], now() - g * interval '1 second',"
-                " 'tasks.task.created', gen_random_uuid(), '{}', gen_random_uuid(),"
+                " 'tenancy.user.created', gen_random_uuid(), '{}', gen_random_uuid(),"
                 " gen_random_uuid(), 'portal',"
                 " CASE WHEN g % 100 > 1 THEN now() END, 0,"
                 " CASE WHEN g % 100 = 1 THEN now() END"

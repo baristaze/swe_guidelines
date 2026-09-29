@@ -103,8 +103,8 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     for router in all_routers(settings.namespaces):
         api.include_router(router)
     app.include_router(api)
-    # The processor's deliveries sit outside /v1: their shape is versioned by
-    # the processor, on the endpoint it delivers to.
+    # A provider's deliveries sit outside /v1: their shape is versioned by the
+    # provider, on the endpoint it delivers to.
     app.include_router(webhooks.router)
 
     @app.get("/healthz", include_in_schema=False)

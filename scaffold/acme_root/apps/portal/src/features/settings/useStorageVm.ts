@@ -1,5 +1,5 @@
-import { useStorageUsage } from "../../queries/attachments";
-import { usageLine } from "../attachments/attachmentsModel";
+import { useStorageUsage } from "../../queries/media";
+import { usageLine } from "./storageModel";
 
 /** What the org keeps in the store, as one line; read-only. */
 export function useStorageVm() {

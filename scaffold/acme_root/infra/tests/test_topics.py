@@ -66,7 +66,7 @@ async def test_payload_type_is_fixed_by_the_map() -> None:
         idempotency_key=new_id(),
         produced_at=utcnow(),
         org_id=new_id(),
-        kind="tasks.task.created",
+        kind="tenancy.user.created",
         target_id=new_id(),
         seq=1,
         actor_id=new_id(),

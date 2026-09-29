@@ -45,8 +45,8 @@ describe("eventEnvelope", () => {
   it("turns a replayed record into the envelope the socket would have carried", () => {
     const event: EventView = {
       seq: 4,
-      kind: "tasks.task.updated",
-      target_id: "t1",
+      kind: "tenancy.user.updated",
+      target_id: "u1",
       produced_at: "2026-09-16T12:00:00Z",
       actor_id: "u1",
     };
@@ -54,7 +54,7 @@ describe("eventEnvelope", () => {
       type: "event",
       topic: "entity_changed",
       sent_at: null,
-      payload: { kind: "tasks.task.updated", target_id: "t1", seq: 4, actor_id: "u1" },
+      payload: { kind: "tenancy.user.updated", target_id: "u1", seq: 4, actor_id: "u1" },
     });
   });
 
@@ -68,8 +68,8 @@ describe("eventEnvelope", () => {
 describe("the first catch-up's window", () => {
   const at = (seq: number, time: string): EventView => ({
     seq,
-    kind: "tasks.task.updated",
-    target_id: `t${seq}`,
+    kind: "tenancy.user.updated",
+    target_id: `u${seq}`,
     produced_at: `2026-09-16T${time}Z`,
     actor_id: "u1",
   });
@@ -94,7 +94,7 @@ describe("the first catch-up's window", () => {
 
 describe("truncatedHead", () => {
   it("names the head only for a refusal that says the stream is trimmed", () => {
-    const gone = new ApiError(410, "stream_truncated", "gone", null, undefined, null, { floor: 7, head: 9 });
+    const gone = new ApiError(410, "stream_truncated", "gone", null, undefined, { floor: 7, head: 9 });
     expect(truncatedHead(gone)).toBe(9);
     expect(truncatedHead(new ApiError(410, "stream_truncated", "gone", null))).toBeNull();
     expect(truncatedHead(new ApiError(503, "unavailable", "later", null))).toBeNull();

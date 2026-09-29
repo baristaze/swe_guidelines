@@ -104,8 +104,7 @@ def test_a_file_others_may_read_is_refused_before_it_is_read(tmp_path: Path, mod
 def test_a_token_is_written_in_place_and_the_file_stays_owner_only(tmp_path: Path) -> None:
     file = owner_only(
         tmp_path / "staging.env",
-        "ACME_API_URL=https://api\nACME_OPERATOR_TOKEN=\n"
-        "# the tracker\nACME_ERROR_TRACKER_URL=x\n",
+        "ACME_API_URL=https://api\nACME_OPERATOR_TOKEN=\n# the tracker\nACME_ERROR_TRACKER_URL=x\n",
     )
     write_value(file, "ACME_OPERATOR_TOKEN", "opt_new")
     write_value(file, "ACME_PROVISIONER_TOKEN", "opt_write")

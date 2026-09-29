@@ -1,5 +1,5 @@
-/* The two motions the task list uses: an item arriving and an item leaving.
-   Both last one second; people who ask for less motion get none. */
+/* The motion a banner and a toast arrive with. People who ask for less
+   motion get none: kit.css turns it off for them. */
 @keyframes acme-fade-in {
   from {
     opacity: 0;
@@ -8,29 +8,5 @@
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-@keyframes acme-fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-.acme-arriving {
-  animation: acme-fade-in 1s ease-out both;
-}
-
-.acme-leaving {
-  animation: acme-fade-out 1s ease-in both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .acme-arriving,
-  .acme-leaving {
-    animation: none;
   }
 }

@@ -1,6 +1,6 @@
 ---
 name: ops-investigate
-description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queues and their dead letters, the providers (sign-in, billing, Slack), the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
+description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
 allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*)
 ---
 
@@ -51,11 +51,11 @@ the token has expired: stop, and name the refresh the preamble gives.
 The processes are `api` and `maintenance`, as
 `deployment/README.md` lists them. Each is an ECS service of that
 name in the cluster `acme-<env>`, with the log group
-`/acme/<env>/<process>`. The queues are `acme-<env>-webhooks` (the
-payment processor's deliveries) and `acme-<env>-slack` (the calls
-from Slack the API checked and queued), each with a dead-letter queue
-named with `-dead` after it. Slack's calls in are in
-`/acme/<env>/api`, and their handling is in `/acme/<env>/maintenance`.
+`/acme/<env>/<process>`. The queue is `acme-<env>-webhooks` (the
+identity provider's deliveries, which the API checked at
+`/webhooks/identity` and queued), with a dead-letter queue named with
+`-dead` after it. The deliveries come in through `/acme/<env>/api`,
+and their handling is in `/acme/<env>/maintenance`.
 
 1. Verify the credential as Role and credential states. Compute the
    window: `--since` back from now, as epoch seconds
@@ -66,8 +66,8 @@ named with `-dead` after it. Slack's calls in are in
    uv run acme-ops size --env <env>
    ```
 
-   It prints tenants, users, and the entities written in the last day
-   (for a to-do product, the tasks and the events), through `GET /v1/admin/size`
+   It prints tenants, users, and the events produced in the last day,
+   through `GET /v1/admin/size`
    with the env file's operator token (`uv run acme-ops size --env <env>`,
    which leaves the traffic generator's own tenants out). The size is
    the maintenance worker's latest count, made every five minutes, and
@@ -135,8 +135,8 @@ named with `-dead` after it. Slack's calls in are in
 
 5. Workers, queue, pool, cache: one counter carries every outcome,
    `acme_outcomes_total{subsystem, outcome}` (subsystems `worker`,
-   `work`, `outbox`, `queue`, `cache`, `rate_limit`, `admission`,
-   `idempotency`, `orchestrations`), read as `sum by (subsystem, outcome)
+   `work`, `outbox`, `queue`, `deliveries`, `cache`, `rate_limit`,
+   `admission`, `idempotency`, `orchestrations`), read as `sum by (subsystem, outcome)
    (increase(acme_outcomes_total[<since>]))`. A work item that failed
    for good counts `work`/`dead_letter`: its attempts ran out
    (`worker`/`failed` beside it), or its handler was refused, a failure
@@ -145,20 +145,19 @@ named with `-dead` after it. Slack's calls in are in
    `work item <id> (<kind>) in org <org> failed for good: <reason>`,
    which step 7 finds; `work`/`requeued` counts the ones an operator
    sent back. The long-running records
-   are `orchestrations`, one outcome per kind and state: an import
-   (`task_import_running` when it starts, `task_import_parked` on the
-   plan's bound, `task_import_resumed`, `task_import_succeeded`,
-   `task_import_failed`) and the daily cleanup of old done tasks
-   (`task_cleanup_running` when the sweep opens an org's day,
-   `task_cleanup_succeeded`, `task_cleanup_failed`). A park on the plan
-   is a tenant's own limit, not a finding. A `_failed` is: a bound of
-   the file (a person's to fix; the worker log line says which), or
-   `defect`, a step that still failed on its item's last attempt, which
-   the maintenance log names at level `ERROR` with the record's id and
-   the org's (`<kind> <id> in org <org> failed: defect ...`), so step 7
-   finds it. A running cleanup whose `_succeeded` never follows in a day
-   is a step the queue keeps retrying: read the worker's `failed`
-   outcomes beside it. The work queue and the outbox are Postgres
+   are `orchestrations`, one outcome per kind and state,
+   `<kind>_<state>`: `_running` when a record starts, `_parked` when a
+   step waits on a provider that did not answer, `_resumed`,
+   `_succeeded`, and `_failed`. The mechanism's own kind is `noop`
+   (`noop_succeeded`); a product adds its kinds beside it. A parked
+   record is woken by the event that clears its reason (`WAKE_PARKED`)
+   or by a person; one that stays parked is read beside the provider's
+   lines of step 8. A `_failed` is `defect`, a step that still failed
+   on its item's last attempt, which the maintenance log names at level
+   `ERROR` with the record's id and the org's (`<kind> <id> in org
+   <org> failed: defect ...`), so step 7 finds it. A running record
+   whose `_succeeded` never follows is a step the queue keeps retrying:
+   read the worker's `failed` outcomes beside it. The work queue and the outbox are Postgres
    tables, and each sweep pass reads four numbers of them across every
    tenant: `acme_work_oldest_ready_seconds` (how long the item ready
    longest has waited), `acme_work_failed_recently` (items failed in the
@@ -185,13 +184,13 @@ named with `-dead` after it. Slack's calls in are in
    `outbox row <row id> (<kind>) failed for good after <n> attempts:
    <error>`, and the org's diary holds an `outbox.row.failed` event that
    names the row's kind and target.
-   A work item failed for good is step 7's line. The inbound queues'
+   A work item failed for good is step 7's line. The inbound queue's
    depth and oldest age, and pool checkouts, have no metric of the
    worker's; the cloud reads the pool from the database's connection
-   count, and each queue and its dead letter from SQS:
+   count, and the queue and its dead letter from SQS:
 
    ```bash
-   for q in webhooks webhooks-dead slack slack-dead; do
+   for q in webhooks webhooks-dead; do
      url="$(aws sqs get-queue-url --queue-name acme-<env>-$q \
        --query QueueUrl --output text --profile acme-<env>-investigate)"
      aws sqs get-queue-attributes --queue-url "$url" --profile acme-<env>-investigate \
@@ -200,7 +199,10 @@ named with `-dead` after it. Slack's calls in are in
    ```
 
    A message in a `-dead` queue is a delivery the worker could not
-   handle after its retries: a finding, with the queue's name. Cloud
+   handle after its retries: a finding, with the queue's name. The
+   worker counts each delivery it handles as `deliveries`/`<outcome>`
+   (`applied`, `duplicate`, `unowned`, `malformed`, `failed`); a
+   `failed` stays on the queue and comes back. Cloud
    also reads the running count against the desired count:
 
    ```bash
@@ -271,16 +273,16 @@ named with `-dead` after it. Slack's calls in are in
    in their own terminal: it signs them in with the second factor and
    mints a `write` token for that one call. This skill names the
    command in the report and never runs it.
-8. The providers. Each of the three says in its own log when it is
-   not configured, and the skill reads that, never a secret: the
-   secrets are denied to the role, and their names are enough. Cloud,
-   over the same window:
+8. The identity provider. It says in its own log when it is not
+   configured, and the skill reads that, never a secret: the secrets
+   are denied to the role, and their names are enough. Cloud, over the
+   same window:
 
    ```bash
    aws logs start-query --profile acme-<env>-investigate \
      --log-group-names /acme/<env>/api /acme/<env>/maintenance \
      --start-time <start> --end-time <end> \
-     --query-string 'fields @timestamp, @log, @message | filter @message like /identity provider|WorkOS application|WorkOS credential check|payments=stripe|billing_unavailable|payments_key_refused|refused the runtime key|slack=|webhooks\/slack\/[a-z]+ (401|503)|v1\/slack\/installation 503|no Slack app is configured|slack token of org|slack channel of org|slack install failed/ | sort @timestamp desc | limit 50'
+     --query-string 'fields @timestamp, @log, @message | filter @message like /identity provider|WorkOS application|WorkOS credential check|ACME_WORKOS_WEBHOOK_SECRET|webhooks\/identity (400|503)|identity delivery/ | sort @timestamp desc | limit 50'
    ```
 
    What each line means, and the secret it points to:
@@ -296,50 +298,29 @@ named with `-dead` after it. Slack's calls in are in
      on the Acme App's own API keys tab. `the WorkOS credential check
      did not finish` or `answered` is a warning only: WorkOS could not
      say, and the API started.
-   - `payments=stripe (not configured)`, or `billing_unavailable` on a
-     request: checkouts answer 503 and every org keeps its plan.
-     `acme/<env>/stripe_runtime_key` is `off`. `payments=stripe
-     (acct_..., <version>; the key lacks <resource>, ...)` names what
-     the runtime key could not read at start, and the log line `the
-     stripe runtime key lacks <resource> (group <group>)` says where
-     the dashboard's editor keeps it: the person adds it to the key,
-     which takes effect at once. `payments_key_refused` (503) on a
-     request, or `stripe refused the runtime key for <call>` in either
-     log group, is the same key refused on a call while the process
-     runs: revoked, or without that permission. Work that made the call
-     stays parked until the key is fixed. A `503` on
-     `/webhooks/stripe` is `acme/<env>/stripe_webhook_secret`; a
-     `400` there is a signing secret that does not match the
-     endpoint's, and the processor retries it.
-   - `slack=off` on a start line, a `503` (`slack_unavailable`) on
-     `/v1/slack/installation` or `/webhooks/slack/*` in the access
-     lines of `/acme/<env>/api`, or `slack post <id> dropped: no Slack app is
-     configured` in `/acme/<env>/maintenance`: Slack is unconfigured,
-     so "Add to Slack" and `/acme` answer nothing and posts go
-     nowhere. `acme/<env>/slack_client_secret` or
-     `acme/<env>/slack_signing_secret` is `off`, or `slack_client_id`
-     is empty in the environment root. `slack=web` is the healthy
-     start line.
-   - A `401` (`slack_signature_invalid`) on `/webhooks/slack/*` in the
-     access lines of `/acme/<env>/api`: the signing secret does not match the app's,
-     so every command and event is refused.
-   - `slack install failed at Slack: <code>` in `/acme/<env>/api`:
-     an install the app's client id or client secret could not
-     finish.
-   - `slack token of org <id> is revoked` or `slack channel of org
-     <id> is unusable` in `/acme/<env>/maintenance`: one org's
-     installation is broken, not the environment's. The org installs
-     again, or types `/acme connect` in a channel the app is in; not
-     a finding about a secret.
+   - `ACME_WORKOS_WEBHOOK_SECRET is not set` on `POST
+     /webhooks/identity`, a `503` there in the access lines of
+     `/acme/<env>/api`: `acme/<env>/workos_webhook_secret` is `off`, or
+     the API's tasks started before it was written. Every delivery is
+     refused, and WorkOS sends it again later.
+   - A `400` (`webhook_signature_invalid`) on `/webhooks/identity` in
+     the access lines of `/acme/<env>/api`: the secret does not match
+     the signing secret of the endpoint in the WorkOS dashboard, so
+     every delivery is refused.
+   - `identity delivery <id> names no org` or `names org <id>, which
+     is gone` in `/acme/<env>/maintenance`: one delivery about an org
+     this environment does not hold, dropped. Not a finding about a
+     secret.
 
    The start lines are written once, when a task starts, so a window
    after the last rollout holds none: report "not in the window",
    never "configured". A finding here names the secret and
-   `docs/runbooks/providers/<stripe|workos|slack>.md`; writing the
-   value is a person's step under their own sign-in, never this
-   skill's. Locally, `grep` the same lines in each process's own
-   output, as step 7 reads it; a laptop runs Slack's twin on purpose
-   (`slack=twin`), so that is not a finding.
+   `docs/runbooks/providers/workos.md`; writing the value is a
+   person's step under their own sign-in, never this skill's. Locally,
+   `grep` the same lines in each process's own output, as step 7 reads
+   it; a laptop that sets no `ACME_WORKOS_API_KEY` signs people in by
+   the local sign-in on purpose, so `identity provider: none` there is
+   not a finding.
 9. Traces. Cloud:
 
    ```bash
@@ -411,7 +392,7 @@ named with `-dead` after it. Slack's calls in are in
 # Investigation: <env>, last <since>
 
 **Credential.** <profile and the Arn it resolved to, or local>
-**Size.** <tenants> tenants, <users> users, <n> written in the last day, counted <age> ago
+**Size.** <tenants> tenants, <users> users, <n> events in the last day, counted <age> ago
 
 ## Alarms
 
@@ -422,9 +403,9 @@ named with `-dead` after it. Slack's calls in are in
 - Requests: <rate>, error ratio <ratio>, p95 <ms> by route
 - Workers: <outcomes per kind>, oldest ready item <age>, failed in the last fifteen minutes <n>, oldest pending outbox row <age>
 - Failed work items: <item id, kind, org id, reason; or none>
-- Orchestrations: imports <started, parked, succeeded, failed>, cleanups <opened, succeeded, failed>, defects <record and org ids, or none>
-- Queues: webhooks <n> (dead <n>), slack <n> (dead <n>); services api, maintenance <running>/<desired>
-- Providers: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, billing <configured | off: acme/<env>/stripe_runtime_key | lacks <resources>>, Slack <configured | off: acme/<env>/slack_client_secret, acme/<env>/slack_signing_secret, slack_client_id | signature refused: acme/<env>/slack_signing_secret | not in the window>, broken installations <org ids, or none>
+- Orchestrations: <kind> <started, parked, succeeded, failed> per kind, defects <record and org ids, or none>
+- Queue: webhooks <n> (dead <n>), deliveries <outcomes>; services api, maintenance <running>/<desired>
+- Identity provider: sign-in <configured | off: acme/<env>/workos_api_key | not in the window>, webhook <configured | off: acme/<env>/workos_webhook_secret | signature refused: acme/<env>/workos_webhook_secret | not in the window>
 - Pool and cache: <checkouts, timeouts, hits, misses>
 - Errors: <count>, top issue <title> (<request id, or none>), or "not
   read: the environment names no error tracker"

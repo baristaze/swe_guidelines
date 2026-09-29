@@ -183,7 +183,7 @@ select:focus {
   box-shadow: 0 0 0 3px var(--acme-focus-ring);
 }
 
-/* The task list's box: drawn here so it matches the theme in both modes. */
+/* A checkbox: drawn here so it matches the theme in both modes. */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;

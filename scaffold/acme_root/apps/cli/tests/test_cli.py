@@ -1,5 +1,5 @@
-"""Command mode against the whole API in-process: sign in, the task verbs,
-short ids, assignees by name, JSON output, and the exit codes."""
+"""Command mode against the whole API in-process: sign in and out, the orgs
+and the switch, a file's upload, JSON output, and the exit codes."""
 
 import asyncio
 import json
@@ -7,16 +7,13 @@ from pathlib import Path
 
 import httpx
 import pytest
-import typer
-from api_support import OWNER, account_written, run, seed_request
+from api_support import OWNER, run, seed_request
 from cli_support import BOB, Stack
 from typer.testing import CliRunner
 
 from acme.apps.cli import config, main
-from acme.client.client import ApiClient, ApiError
-from acme.om.base import new_id, utcnow
+from acme.client.client import ApiClient
 from acme.om.opcontext import Role
-from acme.om.tasks.types.task import Task
 
 
 def test_login_keeps_a_session_and_whoami_reads_it(
@@ -324,146 +321,16 @@ def test_the_local_sign_in_takes_an_address_alone(stack: Stack) -> None:
     assert signed.output.startswith("signed in as Bob at Ajax (member)\nsession kept in ")
 
 
-def test_a_task_that_changed_while_the_command_ran_is_refused_with_exit_1(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A verb reads the task, then writes naming the version it read; a write
-    that landed in between is refused with 412, and the command says so in
-    words a person acts on, not the code."""
-
-    async def stale() -> None:
-        raise ApiError(412, "precondition_failed", "task t is at version 3, not 2", "req_1")
-
-    with pytest.raises(typer.Exit) as exited:
-        main._run(stale(), signed_in=True)  # pyright: ignore[reportPrivateUsage]
-    assert exited.value.exit_code == 1
-    assert capsys.readouterr().err == "refused: the task changed while this ran; run it again\n"
-
-
-def test_a_task_past_the_plans_bound_is_refused_with_exit_1_and_says_who_lifts_it(
-    stack: Stack,
-) -> None:
-    billing = stack.container.storage.get_billing_storage()
-    account = run(billing.read_account(stack.org_id))
-    assert account is not None
-    run(billing.write_account(stack.org_id, account.model_copy(update={"comped_plan": None}), ()))
-    run(account_written(stack.container, stack.org_id))
-    for n in range(10):
-        assert stack.acme("add", f"task {n}").exit_code == 0
-    refused = stack.acme("add", "one too many")
-    assert refused.exit_code == 1
-    assert refused.output == (
-        "refused: the free plan allows 10 active tasks; an owner or an admin can change "
-        "the plan in the portal, under Settings, Billing\n"
-    )
-
-
 def test_not_signed_in_is_exit_3(stack: Stack) -> None:
-    result = stack.acme("ls", token=None)
+    result = stack.acme("whoami", token=None)
     assert result.exit_code == 3 and "run `acme login`" in result.output
-    bad = stack.acme("ls", token="ses_nope")
+    bad = stack.acme("whoami", token="ses_nope")
     assert bad.exit_code == 3 and "credential was refused" in bad.output
 
 
-def test_the_task_verbs_in_sequence(stack: Stack) -> None:
-    added = stack.acme("add", "Migrate DB", "--assignee", "bob")
-    assert added.exit_code == 0, added.output
-    verb, short, title = added.output.split(maxsplit=2)
-    assert (verb, title.strip()) == ("added", "Migrate DB") and len(short) == 8
-
-    second = stack.acme("add", "Review PR #42", "--notes", "the auth one", "--assignee", "me")
-    assert second.exit_code == 0, second.output
-
-    listed = stack.acme("ls")
-    assert listed.exit_code == 0, listed.output
-    lines = listed.output.splitlines()
-    assert lines[0].startswith("ID        STATUS  ASSIGNEE")
-    assert [line.split("  ")[-1].strip() for line in lines[1:]] == ["Review PR #42", "Migrate DB"]
-    assert "Bob" in lines[2] and "Ann" in lines[1]
-
-    edited = stack.acme("edit", short, "--title", "Migrate the DB", "--unassign")
-    assert edited.exit_code == 0 and edited.output == f"edited {short}  Migrate the DB\n"
-
-    done = stack.acme("done", short)
-    assert done.output == f"done {short}  Migrate the DB\n"
-    assert "Migrate the DB" not in stack.acme("ls").output
-    assert "Migrate the DB" in stack.acme("ls", "--done").output
-
-    reopened = stack.acme("reopen", short, "--json")
-    assert reopened.exit_code == 0
-    assert json.loads(reopened.output)["status"] == "open"
-    lines = stack.acme("ls").output.splitlines()
-    assert lines[1].endswith("Migrate the DB")  # back at the top
-
-    mine = stack.acme("ls", "--mine")  # assigned to me, or unassigned and created by me
-    assert "Review PR #42" in mine.output and "Migrate the DB" in mine.output
-    bobs = stack.acme("ls", "--mine", token=stack.session_token(BOB["email"]))
-    assert bobs.output.count("\n") == 1  # the header only
-
-    review_short = second.output.split()[1]
-    moved = stack.acme("mv", short, "--after", review_short)
-    assert moved.exit_code == 0 and moved.output.startswith("moved")
-    lines = stack.acme("ls").output.splitlines()
-    assert [line.split("  ")[-1].strip() for line in lines[1:]] == [
-        "Review PR #42",
-        "Migrate the DB",
-    ]
-
-    removed = stack.acme("rm", short)
-    assert removed.output == f"deleted {short}  Migrate the DB\n"
-    assert stack.acme("ls").output.count("\n") == 2
-
-
-def test_ls_lists_past_the_page_the_api_clamps_at(stack: Stack) -> None:
-    # 201 open tasks against the API's clamp of 200: `ls` follows the cursor
-    # and shows every one, and a short id resolves on the second page too.
-    token = stack.session_token(OWNER["email"])
-    ctx = run(stack.container.managers.tenancy.authenticate(seed_request(), token))
-    manager = stack.container.managers.tasks
-    now = utcnow()
-    for i in range(201):
-        run(
-            manager.create_task(
-                ctx,
-                Task(
-                    id=new_id(),
-                    created_at=now,
-                    updated_at=now,
-                    created_by=ctx.user_id,
-                    updated_by=ctx.user_id,
-                    title=f"t{i}",
-                ),
-            )
-        )
-    listed = stack.acme("ls")
-    assert listed.exit_code == 0, listed.output
-    lines = listed.output.splitlines()[1:]
-    assert len(lines) == 201 and lines[0].endswith("t200") and lines[-1].endswith("t0")
-    last_short = lines[-1].split("  ")[0]
-    done = stack.acme("done", last_short)
-    assert done.exit_code == 0 and done.output == f"done {last_short}  t0\n"
-
-
-def test_short_ids_and_members_that_do_not_resolve(stack: Stack) -> None:
-    stack.acme("add", "one")
-    stack.acme("add", "two")
-    ambiguous = stack.acme("done", "")  # every id ends with the empty string
-    assert ambiguous.exit_code == 1 and "more than one task" in ambiguous.output
-    missing = stack.acme("done", "ffffffff")
-    assert missing.exit_code == 1 and "no task matches" in missing.output
-    unknown = stack.acme("add", "three", "--assignee", "carol")
-    assert unknown.exit_code == 1 and "names no member" in unknown.output
-    nothing = stack.acme("edit", "")
-    assert nothing.exit_code == 2 and "nothing to change" in nothing.output
-    both = stack.acme("mv", "", "--top", "--after", "")
-    assert both.exit_code == 2 and "exactly one" in both.output
-
-
-def test_a_member_sees_the_owners_tasks_and_the_api_decides_what_is_allowed(stack: Stack) -> None:
-    stack.acme("add", "Owner's task")
+def test_whoami_names_the_person_the_org_and_the_role(stack: Stack) -> None:
+    assert stack.acme("whoami").output == "Ann <ann@example.test> at Ajax (owner)\n"
     bob = stack.session_token(BOB["email"])
-    listed = stack.acme("ls", token=bob)
-    assert "Owner's task" in listed.output
     assert stack.acme("whoami", token=bob).output == "Bob <bob@example.test> at Ajax (member)\n"
 
 
@@ -533,7 +400,7 @@ def test_an_api_that_cannot_be_reached_is_exit_4(
         ),
     )
     result = CliRunner().invoke(
-        main.app, ["ls"], env={"ACME_API_URL": "http://test", "ACME_TOKEN": "ses_1"}
+        main.app, ["whoami"], env={"ACME_API_URL": "http://test", "ACME_TOKEN": "ses_1"}
     )
     assert result.exit_code == 4, result.output
     assert result.output.startswith("cannot reach the API:")
@@ -557,7 +424,7 @@ def test_a_timeout_the_environment_got_wrong_is_a_usage_error(
         "ACME_HTTP_TIMEOUT_SECONDS": bad,
     }
     runner = CliRunner()
-    for command in (["ls"], ["listen"], ["login", "--dev-email", "a@b.test"]):
+    for command in (["whoami"], ["listen"], ["login", "--dev-email", "a@b.test"]):
         result = runner.invoke(main.app, command, env=environment, catch_exceptions=False)
         assert result.exit_code == 2, f"{command}: {result.output}"
         assert result.output.startswith("ACME_HTTP_TIMEOUT_SECONDS"), result.output
@@ -597,7 +464,7 @@ def test_a_token_the_environment_got_wrong_is_a_usage_error(
     smuggled = "ses_" + chr(0x2019) + "secret"  # the quote a document turned typographic
     result = CliRunner().invoke(
         main.app,
-        ["ls"],
+        ["whoami"],
         env={"ACME_API_URL": "http://127.0.0.1:1", "ACME_TOKEN": smuggled},
         catch_exceptions=False,
     )
@@ -707,65 +574,38 @@ def test_switch_needs_a_kept_session(stack: Stack) -> None:
     assert "no kept session to switch" in out.output
 
 
-def test_a_file_is_attached_listed_downloaded_and_detached(
-    stack: Stack, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The whole round over the in-process API, whose local store cannot sign a
-    form: the client moves the bytes through the API instead, held to the
-    same bounds."""
-    added = stack.acme("add", "Read the spec", "--json")
-    task_id = json.loads(added.output)["id"]
+def test_a_file_is_uploaded_and_kept_by_the_org(stack: Stack, tmp_path: Path) -> None:
+    """The whole upload over the in-process API, whose local store cannot sign
+    a form: the client moves the bytes through the API instead, held to the
+    same bounds, and the stored file is the org's."""
     spec = tmp_path / "spec.pdf"
     spec.write_bytes(b"%PDF-1.7 the spec")
-    attached = stack.acme("attach", task_id[-8:], str(spec))
-    assert attached.exit_code == 0, attached.output
-    assert attached.output.endswith("  spec.pdf (17 B)\n")
-    file_short = attached.output.split()[1]
+    uploaded = stack.acme("upload", str(spec))
+    assert uploaded.exit_code == 0, uploaded.output
+    assert uploaded.output.startswith("uploaded spec.pdf (17 B) as ")
+    file_id = uploaded.output.split()[-1]
 
-    listed = stack.acme("attachments", task_id[-8:])
-    assert listed.exit_code == 0, listed.output
-    header, line = listed.output.splitlines()
-    assert header.split() == ["ID", "SIZE", "TYPE", "NAME"]
-    assert line.split() == [file_short, "17", "B", "application/pdf", "spec.pdf"]
+    as_json = stack.acme("upload", str(spec), "--json")
+    assert as_json.exit_code == 0, as_json.output
+    again = json.loads(as_json.output)
+    assert again["status"] == "stored" and again["content_type"] == "application/pdf"
 
-    monkeypatch.chdir(tmp_path)
-    out = tmp_path / "copy.pdf"
-    fetched = stack.acme("download", task_id[-8:], file_short, "--out", str(out))
-    assert fetched.exit_code == 0, fetched.output
-    assert out.read_bytes() == b"%PDF-1.7 the spec"
+    async def read_back() -> tuple[list[str], bytes]:
+        async with stack.client(stack.session_token(BOB["email"])) as as_bob:
+            page = await as_bob.files()
+            return [str(f.id) for f in page.items], await as_bob.download(page.items[0].id)
 
-    detached = stack.acme("detach", task_id[-8:], file_short)
-    assert detached.exit_code == 0 and detached.output == f"detached {file_short}  spec.pdf\n"
-    assert stack.acme("attachments", task_id, "--json").output.strip() == "[]"
+    listed, data = asyncio.run(read_back())
+    assert listed == [file_id, again["id"]] and data == b"%PDF-1.7 the spec"
 
 
-def test_a_file_of_a_type_no_task_takes_is_refused(stack: Stack, tmp_path: Path) -> None:
-    task_id = json.loads(stack.acme("add", "Refuse it", "--json").output)["id"]
+def test_a_file_of_a_type_the_org_does_not_keep_is_refused(stack: Stack, tmp_path: Path) -> None:
     page = tmp_path / "page.html"
     page.write_text("<html></html>")
-    refused = stack.acme("attach", task_id, str(page))
+    refused = stack.acme("upload", str(page))
     assert refused.exit_code == 1, refused.output
     assert "cannot be of type text/html" in refused.output
     unknown = tmp_path / "blob.nokind"
     unknown.write_bytes(b"x")
-    assert stack.acme("attach", task_id, str(unknown)).exit_code == 2
-
-
-def test_a_due_date_is_set_moved_and_cleared_from_the_command_line(stack: Stack) -> None:
-    added = stack.acme("add", "Renew the passport", "--due", "2030-10-01", "--json")
-    assert added.exit_code == 0, added.output
-    task = json.loads(added.output)
-    assert task["due_on"] == "2030-10-01" and task["reminded_at"] is None
-    short = task["id"][-8:]
-
-    moved = stack.acme("edit", short, "--due", "2031-01-02", "--json")
-    assert moved.exit_code == 0, moved.output
-    assert json.loads(moved.output)["due_on"] == "2031-01-02"
-
-    cleared = stack.acme("edit", short, "--no-due", "--json")
-    assert cleared.exit_code == 0 and json.loads(cleared.output)["due_on"] is None
-
-    wrong = stack.acme("add", "When", "--due", "2030-10-01T09:00")
-    assert wrong.exit_code == 2 and "give one as 2026-10-01" in wrong.output
-    both = stack.acme("edit", short, "--due", "2030-10-01", "--no-due")
-    assert both.exit_code == 2
+    guessless = stack.acme("upload", str(unknown))
+    assert guessless.exit_code == 2 and "give --type" in guessless.output

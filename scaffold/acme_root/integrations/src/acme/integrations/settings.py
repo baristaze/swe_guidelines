@@ -30,37 +30,11 @@ class IntegrationsSettings(BaseSettings):
     workos_base_url: str = "https://api.workos.com"
     workos_timeout_seconds: float = Field(default=10.0, gt=0)
 
-    # The payment processor: Stripe, or its twin in memory (the tests, and
-    # one process on a laptop), which is refused outside local and test.
-    # Stripe with no key is unconfigured: every org keeps its plan.
-    billing_backend: Literal["twin", "stripe"] = "stripe"
-    # The account every call names in `Stripe-Context`. Not a secret: each
-    # environment commits its own.
-    stripe_account_id: str | None = None
-    # The runtime key, and the signing secret of the endpoint the processor
-    # delivers to. Both are process credentials, injected at start; empty or
-    # "off" leaves billing unconfigured, which answers 503 and keeps every org
-    # on its plan. The runtime key is a restricted key of the account that
-    # may touch only what the API and the worker call (RUNTIME_PERMISSIONS).
-    # The bootstrap's key is never a process's: `acme-ops stripe-bootstrap`
-    # reads it from the person's shell.
-    stripe_runtime_key: SecretStr | None = Field(default=None, repr=False)
-    stripe_webhook_secret: SecretStr | None = Field(default=None, repr=False)
-    stripe_timeout_seconds: float = Field(default=10.0, gt=0)
-
-    # Slack: the app's real client, or its twin in memory (the tests, and a
-    # laptop, where "Add to Slack" installs into the twin's own workspace),
-    # which is refused outside local and test. The client id is not a secret:
-    # every install page carries it, and each environment commits its own
-    # app's. The client secret trades an install's code for its token and
-    # renews tokens; the signing secret checks every call Slack makes in.
-    # Both are process credentials, injected at start; empty or "off" leaves
-    # Slack unconfigured, which answers 503 and posts nothing.
-    slack_backend: Literal["twin", "slack"] = "slack"
-    slack_client_id: str = ""
-    slack_client_secret: SecretStr | None = Field(default=None, repr=False)
-    slack_signing_secret: SecretStr | None = Field(default=None, repr=False)
-    slack_timeout_seconds: float = Field(default=10.0, gt=0)
+    # The signing secret of the endpoint the provider delivers its events
+    # to (`/webhooks/identity`). A process credential, injected at start;
+    # empty or "off" leaves the route refusing every delivery. The twin signs
+    # with its own and ignores this one.
+    workos_webhook_secret: SecretStr | None = Field(default=None, repr=False)
 
     @field_validator("workos_api_key")
     @classmethod
@@ -69,84 +43,10 @@ class IntegrationsSettings(BaseSettings):
             return None
         return value
 
-    @field_validator(
-        "stripe_runtime_key",
-        "stripe_webhook_secret",
-        "slack_client_secret",
-        "slack_signing_secret",
-        mode="before",
-    )
+    @field_validator("workos_webhook_secret", mode="before")
     @classmethod
     def _secret_off_is_none(cls, value: object) -> object:
         """The cloud secret starts as "off", as the error tracker's DSN does."""
         if isinstance(value, str) and value.strip().lower() in ("", "off"):
             return None
         return value
-
-    @field_validator("stripe_account_id", mode="before")
-    @classmethod
-    def _empty_account_is_none(cls, value: object) -> object:
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
-
-
-LIVE_PREFIXES = ("sk_live_", "rk_live_", "sk_org_live_", "rk_org_live_")
-TEST_PREFIXES = ("sk_test_", "rk_test_", "sk_org_test_", "rk_org_test_")
-
-
-def key_mode(key: str) -> Literal["live", "test"] | None:
-    """What a processor key's prefix says it moves: real money or none."""
-    if key.startswith(LIVE_PREFIXES):
-        return "live"
-    if key.startswith(TEST_PREFIXES):
-        return "test"
-    return None
-
-
-def mode_for(environment: str) -> Literal["live", "test"]:
-    """Production takes a live key and every other environment a test key, so
-    a laptop or staging never moves real money and production never answers
-    with a sandbox."""
-    return "live" if environment == "production" else "test"
-
-
-ORGANIZATION_PREFIXES = ("sk_org_", "rk_org_")
-
-
-def key_kind(key: str) -> Literal["restricted", "secret", "organization"] | None:
-    """What a processor key's prefix says it may reach: an organization key
-    every account of the organization, a secret key everything in one
-    account, a restricted key only what it was given in one account."""
-    if key.startswith(ORGANIZATION_PREFIXES):
-        return "organization"
-    if key.startswith("rk_"):
-        return "restricted"
-    if key.startswith("sk_"):
-        return "secret"
-    return None
-
-
-def key_refusal(variable: str, key: str, environment: str) -> str | None:
-    """Why a key is refused for the environment, or None when it is taken.
-    Only a restricted key is taken, and only in the environment's mode. The
-    message names the variable and never the key."""
-    kind = key_kind(key)
-    if kind == "organization":
-        return (
-            f"{variable} is an organization key, which reaches every account of the "
-            "organization; make a restricted key in the environment's account "
-            "(docs/runbooks/providers/stripe.md)"
-        )
-    if kind == "secret":
-        return (
-            f"{variable} is a secret key, which may do everything in the account; make a "
-            "restricted key with the permissions docs/runbooks/providers/stripe.md lists"
-        )
-    expected = mode_for(environment)
-    if kind is None:
-        return f"{variable} is not a restricted key; {environment} takes rk_{expected}_"
-    found = key_mode(key) or "unrecognised"
-    if found != expected:
-        return f"{variable} is a {found} key; {environment} takes a {expected} key"
-    return None

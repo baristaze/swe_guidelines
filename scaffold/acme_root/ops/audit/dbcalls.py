@@ -2,12 +2,12 @@
 the process.
 
     uv run python ops/audit/dbcalls.py run audit_<run> --out <results.json> \
-        [--flows <extra.py> ...] [--only tasks,sweep]
+        [--flows <extra.py> ...] [--only api_keys,sweep]
     uv run python ops/audit/dbcalls.py summary <results.json>
     uv run python ops/audit/dbcalls.py providers <results.json>
 
 `run` builds the real API and the real worker in this process over the
-audit database (Postgres storage, the provider twins, the local infra),
+audit database (Postgres storage, the identity provider's twin, the local infra),
 drives them through the flows of `dbcalls_flows.py` and of any `--flows`
 file, and counts at the asyncpg adapter: each `BEGIN`, each statement, each
 `COMMIT` or `ROLLBACK`, and each `PREPARE` a cold statement cache sends. It
@@ -22,8 +22,8 @@ round trips (every statement already prepared), the transactions, and the
 roles, each as a range when the call ran more than once.
 
 Each call also records, in order, the calls it made to a provider: every
-call out of the identity, payments, and Slack twins that stands where the
-real client would reach the network. `providers` prints them, one line per
+call out of the identity provider's twin that stands where the real client
+would reach the network. `providers` prints them, one line per
 call that made any. A call the infra makes (a bucket, a queue, a secret) is
 not counted: locally it reaches no provider.
 
@@ -228,7 +228,7 @@ def install() -> None:
     pg_base.PgStorageBase._session_for = labelled  # type: ignore[method-assign]
 
 
-PROVIDERS = {"identity": "get_identity_provider", "payments": "get_payments", "slack": "get_slack"}
+PROVIDERS = {"identity": "get_identity_provider"}
 IN_PROVIDER: contextvars.ContextVar[bool] = contextvars.ContextVar("audit_provider", default=False)
 
 
@@ -277,7 +277,7 @@ class Row:
 
 class World:
     """What a flow drives: the API in process (`client`, `http`), the worker
-    (`worker`, `loop`), their containers, the twins, and `sql` for the
+    (`worker`, `loop`), their containers, the twin, and `sql` for the
     setup a flow needs that no route makes (aging rows). Flows share it, in
     order, and may keep what they made on it (`world.state`)."""
 
@@ -368,7 +368,7 @@ async def world(name: str) -> AsyncIterator[World]:
 
     from acme.infra.impl.local import InfraLocalImpl
     from acme.integrations.identity.twin import IdentityProviderTwinImpl
-    from acme.integrations.impl.configured import IntegrationsOverImpl, payments_for, slack_for
+    from acme.integrations.impl.configured import IntegrationsOverImpl
     from acme.services.api.app import create_app
     from acme.services.api.container import AppContainer, postgres_storage
     from acme.services.api.settings import ApiSettings
@@ -380,8 +380,6 @@ async def world(name: str) -> AsyncIterator[World]:
     common = {
         "_env_file": None,
         "environment": "test",
-        "billing_backend": "twin",
-        "slack_backend": "twin",
         "database_url": values["ACME_DATABASE_URL"],
         "database_system_url": values["ACME_DATABASE_SYSTEM_URL"],
     }
@@ -397,11 +395,7 @@ async def world(name: str) -> AsyncIterator[World]:
     w = World(name)
     w.storage = postgres_storage(settings)
     w.idp = IdentityProviderTwinImpl()
-    w.integrations = IntegrationsOverImpl(
-        w.idp,
-        payments_for(settings, settings.environment),
-        slack_for(settings, settings.environment),
-    )
+    w.integrations = IntegrationsOverImpl(w.idp)
     for label, getter in PROVIDERS.items():
         count_provider_calls(label, getattr(w.integrations, getter)())
     w.infra = InfraLocalImpl(Path(tempfile.mkdtemp(prefix=f"{name}_")))

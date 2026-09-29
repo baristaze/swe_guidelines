@@ -34,7 +34,7 @@ case in this module that presents another tenant's."""
 
 
 def make_record(
-    kind: OrchestrationKind = OrchestrationKind.TASK_IMPORT,
+    kind: OrchestrationKind = OrchestrationKind.NOOP,
     *,
     period: str | None = None,
     status: OrchestrationStatus = OrchestrationStatus.RUNNING,
@@ -50,7 +50,7 @@ def make_record(
         created_by=actor,
         updated_by=actor,
         kind=kind,
-        input={"file_id": str(new_id())},
+        input={"steps": 3},
         period=period,
         status=status,
         park_reason=park_reason,
@@ -112,14 +112,14 @@ class OrchestrationStorageContract:
         self, storage: OrchestrationsStorageInterface
     ) -> None:
         org, other = new_id(), new_id()
-        first = make_record(OrchestrationKind.TASK_CLEANUP, period="2026-09-25")
+        first = make_record(period="2026-09-25")
         await seed(storage, org, first)
-        second = make_record(OrchestrationKind.TASK_CLEANUP, period="2026-09-25")
+        second = make_record(period="2026-09-25")
         assert await storage.create_orchestration(org, second, ()) is False
         assert await storage.read_orchestration(org, second.id) is None
         # Another day, and another org's same day, are records of their own.
-        await seed(storage, org, make_record(OrchestrationKind.TASK_CLEANUP, period="2026-09-26"))
-        await seed(storage, other, make_record(OrchestrationKind.TASK_CLEANUP, period="2026-09-25"))
+        await seed(storage, org, make_record(period="2026-09-26"))
+        await seed(storage, other, make_record(period="2026-09-25"))
 
     async def test_create_orchestration_under_another_tenant_is_not_read_here(
         self, storage: OrchestrationsStorageInterface
@@ -138,32 +138,35 @@ class OrchestrationStorageContract:
         older, newer = make_record(), make_record()
         await seed(storage, org, older)
         await seed(storage, org, newer)
-        await seed(storage, org, make_record(OrchestrationKind.TASK_CLEANUP, period="2026-09-25"))
         await seed(storage, other, make_record())
-        found = await storage.read_recent(org, OrchestrationKind.TASK_IMPORT, 10)
+        found = await storage.read_recent(org, OrchestrationKind.NOOP, 10)
         assert [r.id for r in found] == [newer.id, older.id]
-        assert [r.id for r in await storage.read_recent(org, OrchestrationKind.TASK_IMPORT, 1)] == [
+        assert [r.id for r in await storage.read_recent(org, OrchestrationKind.NOOP, 1)] == [
             newer.id
         ]
-        assert await storage.read_recent(new_id(), OrchestrationKind.TASK_IMPORT, 10) == []
+        assert await storage.read_recent(new_id(), OrchestrationKind.NOOP, 10) == []
 
     async def test_read_parked_names_the_reason_and_the_tenant(
         self, storage: OrchestrationsStorageInterface
     ) -> None:
         org, other = new_id(), new_id()
-        waiting = make_record(status=OrchestrationStatus.PARKED, park_reason=ParkReason.PLAN_LIMIT)
+        waiting = make_record(
+            status=OrchestrationStatus.PARKED, park_reason=ParkReason.PROVIDER_UNAVAILABLE
+        )
         await seed(storage, org, waiting)
         await seed(storage, org, make_record())
         await seed(
             storage,
             other,
-            make_record(status=OrchestrationStatus.PARKED, park_reason=ParkReason.PLAN_LIMIT),
+            make_record(
+                status=OrchestrationStatus.PARKED, park_reason=ParkReason.PROVIDER_UNAVAILABLE
+            ),
         )
-        found = await storage.read_parked(org, ParkReason.PLAN_LIMIT, 10)
+        found = await storage.read_parked(org, ParkReason.PROVIDER_UNAVAILABLE, 10)
         assert [r.id for r in found] == [waiting.id]
-        assert [r.id for r in await storage.read_parked(other, ParkReason.PLAN_LIMIT, 10)] != [
-            waiting.id
-        ]
+        assert [
+            r.id for r in await storage.read_parked(other, ParkReason.PROVIDER_UNAVAILABLE, 10)
+        ] != [waiting.id]
 
     async def test_write_is_a_compare_and_set_on_the_version(
         self, storage: OrchestrationsStorageInterface
@@ -201,7 +204,9 @@ class OrchestrationStorageContract:
         old_done = make_record(status=OrchestrationStatus.SUCCEEDED, updated_ago=old)
         old_failed = make_record(status=OrchestrationStatus.FAILED, updated_ago=old)
         old_parked = make_record(
-            status=OrchestrationStatus.PARKED, park_reason=ParkReason.PLAN_LIMIT, updated_ago=old
+            status=OrchestrationStatus.PARKED,
+            park_reason=ParkReason.PROVIDER_UNAVAILABLE,
+            updated_ago=old,
         )
         fresh = make_record(status=OrchestrationStatus.SUCCEEDED)
         theirs = make_record(status=OrchestrationStatus.SUCCEEDED, updated_ago=old)

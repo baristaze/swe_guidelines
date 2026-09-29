@@ -1,5 +1,5 @@
 // The bar above every signed-in page. On the left, the org chip: its name goes
-// home to the task list, its caret switches org. On the right, the gear goes
+// home, its caret switches org. On the right, the gear goes
 // to Settings and the account menu holds who is signed in, the theme, and
 // Sign out. The live channel's state is the dot in the bottom-right corner.
 import { Link, useLocation } from "react-router-dom";

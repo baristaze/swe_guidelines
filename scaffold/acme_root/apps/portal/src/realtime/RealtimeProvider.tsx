@@ -3,23 +3,17 @@
 // transport client, the connection store, and the page's visibility, and
 // shows the degraded banner. A paused socket shows none: it is not a failure.
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, type IssuedTicketView } from "../api";
 import { useEffect, type ReactNode } from "react";
+import type { IssuedTicketView } from "../api";
 import { api } from "../app/api";
 import { forgetSessionIfHeld } from "../app/forgetSession";
 import { Banner } from "../design/kit";
 import { EVENTS_PAGE, fetchEventsAfter } from "../queries/events";
-import { heldTask, placeTask, refreshTaskLists, removeTask, taskStamp } from "../queries/taskCache";
-import { fetchTask } from "../queries/tasks";
 import { useConnectionStore } from "../store/connection";
-import { notify } from "../store/notices";
 import { useSessionStore } from "../store/session";
 import { openChannel } from "./channel";
-import type { Envelope } from "./envelopes";
-import { announceMissedReminders, announceReminder } from "./reminder";
 import { watchPage } from "./pageVisibility";
-import { reminderOf, routeEnvelope } from "./router";
-import { createTaskHints, ReadAsList } from "./taskHints";
+import { routeEnvelope } from "./router";
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -28,50 +22,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
-    const hints = createTaskHints({
-      readTask: fetchTask,
-      held: (id, version) => heldTask(queryClient, id, version),
-      isGone: (cause) => cause instanceof ApiError && cause.status === 404,
-      stamp: () => taskStamp(queryClient),
-      place: (task, since) => placeTask(queryClient, task, { since }),
-      remove: (id, since) => removeTask(queryClient, id, { since }),
-      refreshLists: () => refreshTaskLists(queryClient),
-    });
-    // The reminder's title comes from the read the push already made; a
-    // burst read as lists reads the task on its own.
-    const readReminded = async (id: string) => {
-      let task: Awaited<ReturnType<typeof hints.hint>>;
-      try {
-        task = await hints.hint(id);
-      } catch (cause) {
-        if (cause instanceof ReadAsList) return fetchTask(id);
-        throw cause;
-      }
-      if (!task) throw new Error("the task is gone");
-      return task;
-    };
-    const announce = (envelope: Envelope) => {
-      const reminded = reminderOf(envelope);
-      if (reminded) void announceReminder(reminded, { readTask: readReminded, notify });
-    };
     const channel = openChannel({
       requestTicket: async () => (await api.post<IssuedTicketView>("/v1/realtime/tickets")).ticket,
       openSocket: (ticket) =>
         new WebSocket(api.websocketUrl(`/v1/realtime?ticket=${encodeURIComponent(ticket)}`)),
       fetchEventsAfter,
-      route: (envelope) => {
-        routeEnvelope(queryClient, envelope, hints);
-        announce(envelope);
-      },
-      routeReplayed: (envelope) => routeEnvelope(queryClient, envelope),
-      // A reminder read back from the stream (the replay after a reconnect,
-      // the first catch-up) is kept through the replay's collapse to one
-      // record per entity, and announced once the read-back ends.
-      isAnnounced: (envelope) => reminderOf(envelope) !== null,
-      announce: (envelopes) => {
-        const reminded = envelopes.map(reminderOf).filter((id): id is string => id !== null);
-        void announceMissedReminders(reminded, { readTask: fetchTask, notify });
-      },
+      route: (envelope) => void routeEnvelope(queryClient, envelope),
       refreshAll: () => queryClient.invalidateQueries(),
       connection: useConnectionStore,
       pageSize: EVENTS_PAGE,
@@ -86,7 +42,6 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     return () => {
       unwatch();
       channel.stop();
-      hints.stop();
     };
   }, [token, queryClient]);
 

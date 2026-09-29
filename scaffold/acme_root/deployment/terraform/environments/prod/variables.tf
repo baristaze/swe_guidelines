@@ -1,6 +1,7 @@
 # The root's own inputs: the region and the environment name the provider
-# tags with, and what the deploy workflow passes per run. Everything that
-# makes this environment itself is in the module call in main.tf.
+# tags with, the WorkOS client id, and what the deploy workflow passes per
+# run. Everything else that makes this environment itself is in the module
+# call in main.tf.
 
 variable "region" {
   description = "AWS region, the one deployment/cloud/environments.json names."
@@ -38,6 +39,12 @@ variable "site_domain_name" {
   description = "The company site's public name, from deployment/cloud/environments.json: a record at Cloudflare, with its certificate the bootstrap root's. Empty, the default, leaves the site out; the deploy workflows pass it once SITE_DOMAIN_NAME is set and the certificate is issued."
   type        = string
   default     = ""
+}
+
+variable "workos_client_id" {
+  description = "The client id of the Acme App, the WorkOS application people of production sign in through; deployment/workos/environments.yaml names the same id. Not a secret. The default is a placeholder: set the real id here before the first deploy, and scripts/cloud_create.sh refuses to run while it is one."
+  type        = string
+  default     = "client_PRODUCTION_PLACEHOLDER"
 }
 
 variable "cors_origins" {

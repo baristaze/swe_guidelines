@@ -43,7 +43,7 @@ class Stores:
                 if "environment:local" not in request.url.params["query"]:
                     return httpx.Response(200, json=[])
                 return httpx.Response(
-                    200, json=[{"id": 7, "title": "unhandled error on GET /v1/tasks"}]
+                    200, json=[{"id": 7, "title": "unhandled error on GET /v1/users"}]
                 )
             if path == "/api/0/issues/7/events/":
                 return httpx.Response(200, json=self.events)
@@ -66,7 +66,7 @@ EVENTS = [event("aaa", "other", "local"), event("bbb", RID, "local")]
 
 
 def span(trace_id: str, name: str, request_id: str | None) -> dict[str, object]:
-    attributes = [{"key": "url.path", "value": {"stringValue": "/v1/tasks"}}]
+    attributes = [{"key": "url.path", "value": {"stringValue": "/v1/users"}}]
     if request_id:
         attributes.append({"key": "acme.request_id", "value": {"stringValue": request_id}})
     return {"traceId": trace_id, "name": name, "attributes": attributes}
@@ -79,8 +79,8 @@ JAEGER_BODY = {
                 "scopeSpans": [
                     {
                         "spans": [
-                            span("t1", "GET /v1/tasks", "other"),
-                            span("t2", "POST /v1/tasks", RID),
+                            span("t1", "GET /v1/users", "other"),
+                            span("t2", "POST /v1/api-keys", RID),
                             span("t2", "storage.insert", None),
                         ]
                     }
@@ -105,14 +105,14 @@ def reader(stores: Stores, lines: list[str]) -> SignalsLocalImpl:
 
 def test_a_selector_matches_exactly_or_by_pattern() -> None:
     assert prometheus_selector("c", {}) == "c"
-    assert prometheus_selector("c", {"status": "~5..", "route": "/v1/tasks"}) == (
-        'c{route="/v1/tasks",status=~"5.."}'
+    assert prometheus_selector("c", {"status": "~5..", "route": "/v1/users"}) == (
+        'c{route="/v1/users",status=~"5.."}'
     )
 
 
 def test_a_line_carries_the_id_as_json_or_in_brackets() -> None:
     assert carries_request_id(json.dumps({"request_id": RID, "message": "x"}), RID)
-    assert carries_request_id(f"12:00 INFO  [{RID}] acme: GET /v1/tasks 200", RID)
+    assert carries_request_id(f"12:00 INFO  [{RID}] acme: GET /v1/users 200", RID)
     assert not carries_request_id(json.dumps({"request_id": "other"}), RID)
     assert not carries_request_id("{not json", RID)
 
@@ -129,11 +129,11 @@ async def test_log_lines_come_from_the_handed_stream() -> None:
 async def test_the_metric_delta_is_now_minus_then_over_the_summed_selector() -> None:
     stores = Stores()
     delta = await reader(stores, []).metric_delta(
-        "acme_http_requests_total", {"route": "/v1/tasks"}, NOW - timedelta(minutes=1)
+        "acme_http_requests_total", {"route": "/v1/users"}, NOW - timedelta(minutes=1)
     )
     assert delta == 12.0
     queries = [r.url.params["query"] for r in stores.requests]
-    assert queries == ['sum(acme_http_requests_total{route="/v1/tasks"})'] * 2
+    assert queries == ['sum(acme_http_requests_total{route="/v1/users"})'] * 2
     stores.counter_then = None  # no series at the start of the window: from zero
     assert await reader(stores, []).metric_delta("c", {}, NOW - timedelta(minutes=1)) == 42.0
     stores.counter_then, stores.counter_now = 50.0, 5.0  # a reset: from the reset
@@ -147,7 +147,7 @@ async def test_the_trace_is_matched_on_the_request_id_attribute() -> None:
     stores = Stores()
     found = await reader(stores, []).trace(RID)
     assert found is not None
-    assert found.trace_id == "t2" and found.span_names == ("POST /v1/tasks", "storage.insert")
+    assert found.trace_id == "t2" and found.span_names == ("POST /v1/api-keys", "storage.insert")
     sent = stores.requests[0].url.params
     assert sent["query.service_name"] == "api" and "query.start_time_min" in sent
     assert find_trace(JAEGER_BODY, "missing") is None
@@ -158,7 +158,7 @@ async def test_the_error_event_is_the_one_tagged_with_the_id_in_this_environment
     found = await reader(stores, []).error_event(RID)
     assert found is not None
     assert (found.event_id, found.issue_id) == ("bbb", "7")
-    assert found.title == "unhandled error on GET /v1/tasks"
+    assert found.title == "unhandled error on GET /v1/users"
     assert stores.requests[0].url.params["query"] == f"environment:local request_id:{RID}"
     assert await reader(stores, []).error_event("missing") is None
     assert "Prometheus http://prom" in reader(stores, []).describe()

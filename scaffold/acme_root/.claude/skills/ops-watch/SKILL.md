@@ -162,7 +162,7 @@ tracker is reported as "not read", never as "no errors".
 # Watch: <env>, <start> to <end>, every <interval>
 
 **Credential.** <profile and the Arn it resolved to, or local>
-**Size.** <tenants> tenants, <users> users, <n> written in the last day, counted <age> ago
+**Size.** <tenants> tenants, <users> users, <n> events in the last day, counted <age> ago
 **Ended.** <window passed | escalated on <alarm> at <time>>
 
 ## Alarms

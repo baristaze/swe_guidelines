@@ -32,7 +32,7 @@ this module that presents another tenant's."""
 def make_file(
     *,
     subject_id: UUID | None = None,
-    purpose: FilePurpose = FilePurpose.TASK_ATTACHMENT,
+    purpose: FilePurpose = FilePurpose.UPLOAD,
     status: FileStatus = FileStatus.STORED,
     size_bytes: int = 1000,
     created_ago: timedelta = timedelta(0),
@@ -52,7 +52,7 @@ def make_file(
         content_type="application/pdf",
         size_bytes=size_bytes,
         purpose=purpose,
-        subject_id=subject_id if purpose is FilePurpose.TASK_ATTACHMENT else None,
+        subject_id=subject_id,
         status=status,
     )
 
@@ -100,7 +100,7 @@ class MediaStorageContract:
 
     async def test_round_trip_and_update_by_copy(self, storage: MediaStorageInterface) -> None:
         org = new_id()
-        file = await seed(storage, org, make_file(subject_id=new_id(), status=FileStatus.PENDING))
+        file = await seed(storage, org, make_file(status=FileStatus.PENDING))
         assert await storage.read_file(org, file.id) == file
         stored = file.model_copy(update={"status": FileStatus.STORED, "updated_at": utcnow()})
         await storage.write_file(org, stored, (make_row(org, stored, "updated"),))
@@ -110,80 +110,67 @@ class MediaStorageContract:
         self, storage: MediaStorageInterface
     ) -> None:
         org = new_id()
-        file = await seed(storage, org, make_file(subject_id=new_id()))
+        file = await seed(storage, org, make_file())
         again = file.model_copy(update={"name": "other.pdf"})
         assert await storage.create_file(org, again, (make_row(org, again),)) is False
         assert await storage.read_file(org, file.id) == file
 
-    async def test_a_subjects_files_by_id_in_a_status_after_a_cursor(
-        self, storage: MediaStorageInterface
-    ) -> None:
-        org, task, other = new_id(), new_id(), new_id()
-        first = await seed(storage, org, make_file(subject_id=task))
-        second = await seed(storage, org, make_file(subject_id=task))
-        pending = await seed(storage, org, make_file(subject_id=task, status=FileStatus.PENDING))
-        await seed(storage, org, make_file(subject_id=other))
-        gone = await seed(storage, org, make_file(subject_id=task))
-        await storage.write_file(org, deleted(gone), ())
-        stored = await storage.read_files(
-            org, FilePurpose.TASK_ATTACHMENT, task, FileStatus.STORED, None, 10
-        )
-        assert [f.id for f in stored] == [first.id, second.id]
-        page = await storage.read_files(
-            org, FilePurpose.TASK_ATTACHMENT, task, FileStatus.STORED, first.id, 10
-        )
-        assert [f.id for f in page] == [second.id]
-        assert [
-            f.id
-            for f in await storage.read_files(org, FilePurpose.TASK_ATTACHMENT, task, None, None, 2)
-        ] == [first.id, second.id]
-        every = await storage.read_files(org, FilePurpose.TASK_ATTACHMENT, task, None, None, 10)
-        assert [f.id for f in every] == [first.id, second.id, pending.id]
-
-    async def test_a_purpose_with_no_subject_lists_its_own(
+    async def test_a_purposes_files_by_id_in_a_status_after_a_cursor(
         self, storage: MediaStorageInterface
     ) -> None:
         org = new_id()
-        voice = await seed(storage, org, make_file(purpose=FilePurpose.VOICE_DICTATION))
-        await seed(storage, org, make_file(subject_id=new_id()))
-        listed = await storage.read_files(
-            org, FilePurpose.VOICE_DICTATION, None, FileStatus.STORED, None, 10
+        first = await seed(storage, org, make_file())
+        second = await seed(storage, org, make_file())
+        pending = await seed(storage, org, make_file(status=FileStatus.PENDING))
+        gone = await seed(storage, org, make_file())
+        await storage.write_file(org, deleted(gone), ())
+        stored = await storage.read_files(
+            org, FilePurpose.UPLOAD, None, FileStatus.STORED, None, 10
         )
-        assert [f.id for f in listed] == [voice.id]
+        assert [f.id for f in stored] == [first.id, second.id]
+        page = await storage.read_files(
+            org, FilePurpose.UPLOAD, None, FileStatus.STORED, first.id, 10
+        )
+        assert [f.id for f in page] == [second.id]
+        assert [
+            f.id for f in await storage.read_files(org, FilePurpose.UPLOAD, None, None, None, 2)
+        ] == [first.id, second.id]
+        every = await storage.read_files(org, FilePurpose.UPLOAD, None, None, None, 10)
+        assert [f.id for f in every] == [first.id, second.id, pending.id]
+
+    async def test_a_subject_lists_its_own_files_and_no_subject_lists_the_rest(
+        self, storage: MediaStorageInterface
+    ) -> None:
+        """The subject is part of the key the list reads by: a purpose whose
+        files belong to a record of another namespace lists that record's,
+        and a purpose with none lists the files that name no subject."""
+        org, subject, other = new_id(), new_id(), new_id()
+        loose = await seed(storage, org, make_file())
+        first = await seed(storage, org, make_file(subject_id=subject))
+        second = await seed(storage, org, make_file(subject_id=subject))
+        await seed(storage, org, make_file(subject_id=other))
+        listed = await storage.read_files(org, FilePurpose.UPLOAD, subject, None, None, 10)
+        assert [f.id for f in listed] == [first.id, second.id]
+        listed = await storage.read_files(org, FilePurpose.UPLOAD, None, None, None, 10)
+        assert [f.id for f in listed] == [loose.id]
 
     async def test_usage_sums_the_live_rows_per_purpose_and_status(
         self, storage: MediaStorageInterface
     ) -> None:
         org = new_id()
-        task = new_id()
-        await seed(storage, org, make_file(subject_id=task, size_bytes=100))
-        await seed(storage, org, make_file(subject_id=task, size_bytes=250))
-        await seed(
-            storage, org, make_file(subject_id=task, size_bytes=40, status=FileStatus.PENDING)
-        )
-        await seed(
-            storage,
-            org,
-            make_file(purpose=FilePurpose.VOICE_DICTATION, size_bytes=3_000_000_000),
-        )
-        gone = await seed(storage, org, make_file(subject_id=task, size_bytes=9999))
+        await seed(storage, org, make_file(size_bytes=100))
+        await seed(storage, org, make_file(size_bytes=250))
+        await seed(storage, org, make_file(size_bytes=40, status=FileStatus.PENDING))
+        await seed(storage, org, make_file(size_bytes=3_000_000_000))
+        gone = await seed(storage, org, make_file(size_bytes=9999))
         await storage.write_file(org, deleted(gone), ())
         usage = await storage.read_usage(org)
         by = {p.purpose: p for p in usage.purposes}
         assert [p.purpose for p in usage.purposes] == list(FilePurpose)
-        assert (
-            by[FilePurpose.TASK_ATTACHMENT].count,
-            by[FilePurpose.TASK_ATTACHMENT].size_bytes,
-        ) == (
-            2,
-            350,
-        )
-        assert (
-            by[FilePurpose.TASK_ATTACHMENT].pending_count,
-            by[FilePurpose.TASK_ATTACHMENT].pending_size_bytes,
-        ) == (1, 40)
+        upload = by[FilePurpose.UPLOAD]
         # A sum past what 32 bits hold, which is why the column is a bigint.
-        assert by[FilePurpose.VOICE_DICTATION].size_bytes == 3_000_000_000
+        assert (upload.count, upload.size_bytes) == (3, 3_000_000_350)
+        assert (upload.pending_count, upload.pending_size_bytes) == (1, 40)
         assert usage.total_count == 3
         assert usage.total_size_bytes == 3_000_000_350
 
@@ -201,24 +188,18 @@ class MediaStorageContract:
         past their cut, each with its tenant, and none other."""
         org, other = new_id(), new_id()
         back = await drained(storage)
-        old_delete = await seed(storage, org, make_file(subject_id=new_id()))
+        old_delete = await seed(storage, org, make_file())
         await storage.write_file(org, deleted(old_delete, back + timedelta(days=2)), ())
-        fresh_delete = await seed(storage, org, make_file(subject_id=new_id()))
+        fresh_delete = await seed(storage, org, make_file())
         await storage.write_file(org, deleted(fresh_delete), ())
         abandoned = await seed(
             storage,
             org,
-            make_file(
-                subject_id=new_id(),
-                status=FileStatus.PENDING,
-                created_ago=back + timedelta(days=2),
-            ),
+            make_file(status=FileStatus.PENDING, created_ago=back + timedelta(days=2)),
         )
-        await seed(storage, org, make_file(subject_id=new_id(), status=FileStatus.PENDING))
-        await seed(
-            storage, org, make_file(subject_id=new_id(), created_ago=back + timedelta(days=2))
-        )
-        theirs = await seed(storage, other, make_file(subject_id=new_id()))
+        await seed(storage, org, make_file(status=FileStatus.PENDING))
+        await seed(storage, org, make_file(created_ago=back + timedelta(days=2)))
+        theirs = await seed(storage, other, make_file())
         await storage.write_file(other, deleted(theirs, back + timedelta(days=2)), ())
         cut = utcnow() - back - timedelta(days=1)
         purgeable = await storage.read_purgeable(cut, cut, 10)
@@ -235,8 +216,8 @@ class MediaStorageContract:
 
     async def test_every_file_of_a_tenant_pages_by_id(self, storage: MediaStorageInterface) -> None:
         org = new_id()
-        first = await seed(storage, org, make_file(subject_id=new_id()))
-        second = await seed(storage, org, make_file(subject_id=new_id()))
+        first = await seed(storage, org, make_file())
+        second = await seed(storage, org, make_file())
         await storage.write_file(org, deleted(second), ())
         assert [f.id for f in await storage.read_every_file(org, None, 10)] == [first.id, second.id]
         assert [f.id for f in await storage.read_every_file(org, first.id, 10)] == [second.id]
@@ -246,7 +227,7 @@ class MediaStorageContract:
         self, storage: MediaStorageInterface
     ) -> None:
         org = new_id()
-        file = await seed(storage, org, make_file(subject_id=new_id()))
+        file = await seed(storage, org, make_file())
         await storage.write_file(org, deleted(file), ())
         with pytest.raises(RowDeleted):
             await storage.write_file(org, file, ())
@@ -254,12 +235,10 @@ class MediaStorageContract:
     # The tenant fence, one case per method.
 
     async def test_reads_are_tenant_scoped(self, storage: MediaStorageInterface) -> None:
-        org_a, org_b, task = new_id(), new_id(), new_id()
-        file = await seed(storage, org_a, make_file(subject_id=task))
+        org_a, org_b = new_id(), new_id()
+        file = await seed(storage, org_a, make_file())
         assert await storage.read_file(org_b, file.id) is None
-        assert (
-            await storage.read_files(org_b, FilePurpose.TASK_ATTACHMENT, task, None, None, 10) == []
-        )
+        assert await storage.read_files(org_b, FilePurpose.UPLOAD, None, None, None, 10) == []
         assert await storage.read_every_file(org_b, None, 10) == []
         assert (await storage.read_usage(org_b)).total_count == 0
 
@@ -267,14 +246,14 @@ class MediaStorageContract:
         self, storage: MediaStorageInterface
     ) -> None:
         org_a, org_b = new_id(), new_id()
-        file = await seed(storage, org_a, make_file(subject_id=new_id()))
+        file = await seed(storage, org_a, make_file())
         await storage.write_file(org_a, deleted(file, timedelta(days=2)), ())
         assert await storage.purge_files(org_b, [file.id]) == 0
         assert await storage.read_file(org_a, file.id) is not None
 
     async def test_write_refuses_another_tenant(self, storage: MediaStorageInterface) -> None:
         org_a, org_b = new_id(), new_id()
-        file = await seed(storage, org_a, make_file(subject_id=new_id(), status=FileStatus.PENDING))
+        file = await seed(storage, org_a, make_file(status=FileStatus.PENDING))
         stolen = file.model_copy(update={"status": FileStatus.STORED, "name": "stolen.pdf"})
         with pytest.raises(TenantMismatch):
             await storage.write_file(org_b, stolen, (make_row(org_b, stolen, "updated"),))
@@ -284,7 +263,7 @@ class MediaStorageContract:
         self, storage: MediaStorageInterface
     ) -> None:
         org_a, org_b = new_id(), new_id()
-        file = await seed(storage, org_a, make_file(subject_id=new_id()))
+        file = await seed(storage, org_a, make_file())
         stolen = file.model_copy(update={"name": "stolen.pdf"})
         assert await storage.create_file(org_b, stolen, (make_row(org_b, stolen),)) is False
         assert await storage.read_file(org_b, file.id) is None

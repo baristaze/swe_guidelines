@@ -90,11 +90,13 @@ from acme.integrations.identity import (
     IdentityProviderInterface,
     InvitationState,
     PortalIntent,
+    ProvidedDelivery,
     ProvidedInvitation,
     ProvidedOrganization,
     ProvidedSignIn,
     ProvidedUser,
 )
+from acme.integrations.identity.deliveries import verified
 
 log = logging.getLogger(__name__)
 
@@ -257,6 +259,7 @@ class IdentityProviderWorkOSImpl(IdentityProviderInterface):
         base_url: str = WORKOS_API,
         max_retries: int = 3,
         transport: httpx.AsyncBaseTransport | None = None,
+        webhook_secret: str | None = None,
     ) -> None:
         if not client_id or not api_key:
             # The SDK falls back to the process environment for a missing
@@ -264,6 +267,7 @@ class IdentityProviderWorkOSImpl(IdentityProviderInterface):
             raise ValueError("WorkOS needs its client id and its API key")
         self._client_id = client_id
         self._api_key = api_key
+        self._webhook_secret = webhook_secret
         self._base_url = base_url.rstrip("/")
         self._seconds = whole_seconds(timeout)
         self._max_retries = max_retries
@@ -556,6 +560,11 @@ class IdentityProviderWorkOSImpl(IdentityProviderInterface):
             ) from None
         except (WorkOSError, httpx.HTTPError) as error:
             _translate(error, "deleting the organization")
+
+    def verify_delivery(self, payload: bytes, signature: str | None) -> ProvidedDelivery:
+        if self._webhook_secret is None:
+            raise ProviderUnavailable("ACME_WORKOS_WEBHOOK_SECRET is not set")
+        return verified(payload, signature, self._webhook_secret)
 
     def describe(self) -> str:
         return f"identity provider: WorkOS ({self._base_url}, client {self._client_id})"

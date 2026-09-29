@@ -10,7 +10,6 @@ from acme.infra.base import SYSTEM_SCOPE
 
 
 class CacheScope(StrEnum):
-    BILLING_ACCOUNT = "billing_account"
     NETWORK_RESPONSE = "network_response"
     RATE_LIMIT = "rate_limit"
     REALTIME_TICKET = "realtime_ticket"

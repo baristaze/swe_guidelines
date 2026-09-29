@@ -1,28 +1,96 @@
-"""The consumer of the payment processor's deliveries: the other side of
-the webhook route. It receives from the inbound queue, finds the org a
-delivery names, and applies it under that org's service context. Every
-delivery is applied once: its mark lands in the same commit as the account
-it changes, so a copy the queue hands over again changes nothing. A message
-is deleted once it is applied, or once it can never be (no org, or an org
-that is gone); any other failure leaves it to come back after its
-visibility, and the queue dead-letters it past its receives."""
+"""The consumer of what providers deliver: the other side of the webhook
+routes. The API verifies each delivery at the edge and queues it on
+`Queues.WEBHOOKS` as `{"idempotency_key", "provider", "delivery"}`. The
+consumer receives it, hands the delivery to the provider it names, finds
+the org the delivery names, and applies it under that org's service
+context.
+
+Every delivery is applied once: what it writes takes an id derived from the
+delivery's key, so a copy the queue hands over again changes nothing. A
+message is deleted once it is applied, or once it can never be (malformed,
+no org, or an org that is gone). Any other failure leaves it to come back
+after its visibility, and the queue dead-letters it past its receives. So
+does a provider this worker does not know, since a newer one may."""
 
 import asyncio
 import contextlib
 import json
 import logging
+from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from datetime import timedelta
+from typing import Any
+from uuid import UUID
 
 from acme.infra.observability import OUTCOMES, current_traceparent, request_id_var
 from acme.infra.queues import QueueMessage, Queues, QueuesInterface
-from acme.integrations.payments import ProviderDelivery
-from acme.om.base import EMPTY_UUID, Platform, new_id
-from acme.om.billing import BillingManagerInterface
+from acme.integrations.identity import ProvidedDelivery
+from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id
+from acme.om.events import EventsManagerInterface
+from acme.om.events.manager import audit_event
 from acme.om.exceptions import InvalidCredential
-from acme.om.opcontext import AppContext, AppType, RequestContext
+from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
 from acme.om.tenancy import TenancyManagerInterface
 
 log = logging.getLogger(__name__)
+
+KEPT = frozenset({"failed", "unknown_provider"})
+"""The outcomes that leave the message on the queue to come back."""
+
+
+class DeliveryProviderInterface[D](ABC):
+    """One provider's deliveries, under the name the API queues them with."""
+
+    @abstractmethod
+    def read(self, delivery: object) -> D:
+        """The delivery the message carries; ValueError when it is not one."""
+        ...
+
+    @abstractmethod
+    async def org_of(self, rctx: RequestContext, delivery: D) -> UUID | None:
+        """The Acme org the delivery is about; None when it names none."""
+        ...
+
+    @abstractmethod
+    async def apply(self, ctx: OpContext, delivery: D) -> bool:
+        """Applies the delivery in its org. True when this call applied it,
+        False when a copy was applied before."""
+        ...
+
+
+class IdentityDeliveriesImpl(DeliveryProviderInterface[ProvidedDelivery]):
+    """The identity provider's events: each is an audit entry in the org's
+    stream, under an id derived from the delivery's key and the time the
+    provider made it."""
+
+    KIND = "identity.event.received"
+
+    def __init__(self, events: EventsManagerInterface) -> None:
+        self._events = events
+
+    def read(self, delivery: object) -> ProvidedDelivery:
+        return ProvidedDelivery.model_validate(delivery)
+
+    async def org_of(self, rctx: RequestContext, delivery: ProvidedDelivery) -> UUID | None:
+        # The provider's organization carries the Acme org's id as its
+        # external id; an organization Acme did not make carries another.
+        try:
+            return UUID(delivery.organization_external_id or "")
+        except ValueError:
+            return None
+
+    async def apply(self, ctx: OpContext, delivery: ProvidedDelivery) -> bool:
+        event = audit_event(
+            ctx,
+            derived_id(delivery.key, delivery.created),
+            self.KIND,
+            ctx.org_id,
+            {"event_id": delivery.event_id, "event_type": delivery.event_type},
+        )
+        stored = await self._events.append_event(ctx, event)
+        # A copy meets the event a first handling stored, which names the
+        # request of that handling and not this one.
+        return stored.request_id == ctx.request_id
 
 
 class DeliveryOptions(Platform):
@@ -32,7 +100,7 @@ class DeliveryOptions(Platform):
     """The long poll: an empty queue answers after this, never at once."""
     visibility: timedelta = timedelta(seconds=60)
     """How long a received delivery is hidden from another receive: longer
-    than an apply takes, which is two reads of the processor and one commit."""
+    than an apply takes, which is a read of the org and one commit."""
     backoff: timedelta = timedelta(seconds=5)
     """The pause after a receive that failed, so a queue that is down is not
     asked in a tight loop."""
@@ -43,13 +111,13 @@ class DeliveryConsumer:
         self,
         *,
         queues: QueuesInterface,
-        billing: BillingManagerInterface,
         tenancy: TenancyManagerInterface,
+        providers: Mapping[str, DeliveryProviderInterface[Any]],
         options: DeliveryOptions,
     ) -> None:
         self._queues = queues
-        self._billing = billing
         self._tenancy = tenancy
+        self._providers = providers
         self._options = options
         self._app = AppContext(type=AppType.WORKER, version=f"worker@{options.worker_id}")
         self._stopping = asyncio.Event()
@@ -88,11 +156,13 @@ class DeliveryConsumer:
         token = request_id_var.set(str(rctx.request_id))
         try:
             outcome = await self._apply(rctx, message)
+            if outcome not in KEPT:
+                await self._queues.delete(Queues.WEBHOOKS, message.receipt)
         except Exception:
+            # A delete that failed is a failure too: the copy that comes
+            # back is a duplicate.
             log.exception("delivery %s failed on receive %d", message.id, message.attempts)
             outcome = "failed"
-        else:
-            await self._queues.delete(Queues.WEBHOOKS, message.receipt)
         finally:
             request_id_var.reset(token)
         OUTCOMES.labels(subsystem="deliveries", outcome=outcome).inc()
@@ -100,18 +170,29 @@ class DeliveryConsumer:
 
     async def _apply(self, rctx: RequestContext, message: QueueMessage) -> str:
         try:
-            delivery = ProviderDelivery.model_validate(json.loads(message.body)["delivery"])
+            body = json.loads(message.body)
+            name = body["provider"]
+            raw = body["delivery"]
         except ValueError, KeyError, TypeError:
             log.error("message %s is not a delivery; dropped", message.id)
             return "malformed"
-        org_id = await self._billing.org_of_delivery(rctx, delivery)
+        provider = self._providers.get(name) if isinstance(name, str) else None
+        if provider is None:
+            log.error("message %s names provider %r, which this worker lacks", message.id, name)
+            return "unknown_provider"
+        try:
+            delivery = provider.read(raw)
+        except ValueError:
+            log.error("message %s is not a %s delivery; dropped", message.id, name)
+            return "malformed"
+        org_id = await provider.org_of(rctx, delivery)
         if org_id is None:
-            log.warning("delivery %s names no org; dropped", delivery.event_id)
+            log.warning("%s delivery %s names no org; dropped", name, message.id)
             return "unowned"
         try:
             ctx = await self._tenancy.service_context(rctx, org_id, EMPTY_UUID)
         except InvalidCredential:
-            log.warning("delivery %s names org %s, which is gone", delivery.event_id, org_id)
+            log.warning("%s delivery %s names org %s, which is gone", name, message.id, org_id)
             return "unowned"
-        applied = await self._billing.apply_delivery(ctx, delivery)
+        applied = await provider.apply(ctx, delivery)
         return "applied" if applied else "duplicate"

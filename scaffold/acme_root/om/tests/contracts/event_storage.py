@@ -8,11 +8,11 @@ from uuid import UUID
 
 import pytest
 
-from contracts.racing import race
 from acme.om.base import new_id, utcnow
 from acme.om.events.storage import EventStorageInterface
 from acme.om.events.types.event import Event
 from acme.om.exceptions import TenantMismatch
+from contracts.racing import race
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {"append_events", "purge_tenant", "read_after", "read_floor", "read_head", "read_page"}
@@ -36,14 +36,14 @@ async def drained(storage: EventStorageInterface) -> datetime:
 
 
 def make_event(
-    org_id: UUID, kind: str = "tasks.task.created", produced_at: datetime | None = None
+    org_id: UUID, kind: str = "tenancy.user.created", produced_at: datetime | None = None
 ) -> Event:
     return Event(
         id=new_id(),
         org_id=org_id,
         kind=kind,
         target_id=new_id(),
-        payload={"title": "t"},
+        payload={"display_name": "t"},
         produced_at=produced_at or utcnow(),
         actor_id=new_id(),
         request_id=new_id(),
@@ -84,7 +84,7 @@ class EventStorageContract:
                 "request_id": first.request_id,
             }
         )
-        assert first.payload == {"title": "t"}
+        assert first.payload == {"display_name": "t"}
         assert await storage.read_after(org_a, 0, 10) == appended
         assert await storage.read_after(org_a, 2, 10) == appended[2:]
         assert await storage.read_after(org_a, 3, 10) == []
@@ -213,8 +213,9 @@ class EventStorageContract:
     async def test_a_batch_takes_contiguous_numbers_in_its_order(
         self, storage: EventStorageInterface
     ) -> None:
-        """An import step's relay appends its hundred events in one call: they
-        take the next run of numbers, in the order given, and come back in it."""
+        """The relay of one write's rows appends their events in one call:
+        they take the next run of numbers, in the order given, and come back
+        in it."""
         org = new_id()
         first = await append_one(storage, org, make_event(org))
         batch = [make_event(org) for _ in range(5)]

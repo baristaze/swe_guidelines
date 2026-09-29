@@ -4,15 +4,17 @@ redeemed. An admitted socket lives as long as the credential behind its
 ticket and no longer."""
 
 import asyncio
+import itertools
 import logging
 import time
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
 import httpx
 import pytest
-from api_support import OWNER, add_member, build_container, on_plan, run, seed_request, sign_in_as
+from api_support import OWNER, add_member, build_container, run, seed_request, sign_in_as
 from httpx import ASGITransport
 from starlette.testclient import TestClient, WebSocketTestSession
 from starlette.types import Message, Scope
@@ -22,7 +24,6 @@ from uvicorn.protocols.utils import ClientDisconnected
 from acme.infra.exceptions import BackendFailed
 from acme.infra.topics import Topics
 from acme.om.base import utcnow
-from acme.om.billing.types.plan import Plan
 from acme.om.exceptions import Unavailable
 from acme.om.opcontext import OpContext, Role
 from acme.om.tenancy.rules import hash_token
@@ -37,7 +38,31 @@ from acme.services.api.services.realtime import (
     CREDENTIAL_REVOKED,
     MEMBERSHIP_ENDED,
     RIGHTS_CHANGED,
+    RealtimeServiceInterface,
 )
+
+
+def registrations(
+    service: RealtimeServiceInterface, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, int]:
+    """How many sockets the handler registered with the realtime service, and
+    how many it unregistered: a socket that ended and stayed registered is
+    one the bus still ends, and a tenant whose head the process still keeps."""
+    counts = {"attached": 0, "detached": 0}
+    attach = service.attach
+
+    def counted(principal: SocketPrincipal, end: Callable[[str], None]) -> Callable[[], None]:
+        counts["attached"] += 1
+        detach = attach(principal, end)
+
+        def counted_detach() -> None:
+            counts["detached"] += 1
+            detach()
+
+        return counted_detach
+
+    monkeypatch.setattr(service, "attach", counted)
+    return counts
 
 
 def test_a_refused_ticket_closes_the_accepted_socket_with_4401(tmp_path: Path) -> None:
@@ -281,7 +306,6 @@ def test_revoking_an_api_key_closes_the_socket_it_opened(tmp_path: Path) -> None
             seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
         )
     )
-    run(on_plan(container, org.id, Plan.TEAM))
     with TestClient(create_app(container)) as tc:
         owner = sign_in(tc, OWNER["email"], org.id)
         issued = tc.post("/v1/api-keys", headers=owner, json={"name": "ci", "role": "member"})
@@ -302,7 +326,8 @@ def test_a_hello_that_cannot_read_the_head_leaves_no_task_behind(
     """The head read is the socket's first I/O and it can fail: a database out
     of reach is exactly when every client reconnects at once. The drainer must
     not exist yet when it does, or each of those reconnects leaves a task
-    waiting on its buffer for the life of the process."""
+    waiting on its buffer for the life of the process; and the socket,
+    registered before the read, is unregistered as it closes."""
     container = build_container(tmp_path)
     _, org = run(
         container.managers.tenancy.bootstrap(
@@ -314,6 +339,7 @@ def test_a_hello_that_cannot_read_the_head_leaves_no_task_behind(
         raise BackendFailed("postgres", "read_head", "connection refused")
 
     monkeypatch.setattr(type(container.services.get_realtime_service()), "head", unreachable)
+    registered = registrations(container.services.get_realtime_service(), monkeypatch)
 
     drains: list[str] = []
     real_drain = SendBuffer.drain
@@ -333,6 +359,7 @@ def test_a_hello_that_cannot_read_the_head_leaves_no_task_behind(
     # frame and not an HTTP response the server would refuse as a protocol error.
     assert closed.value.code == 1011
     assert closed.value.reason == "internal_error"
+    assert registered == {"attached": 1, "detached": 1}
 
 
 def test_a_revocation_during_the_hello_still_closes_the_socket(
@@ -583,42 +610,10 @@ def test_a_change_of_role_the_bus_lost_closes_the_socket_within_the_recheck(
     assert closed.value.reason == RIGHTS_CHANGED
 
 
-def test_a_downgrade_the_bus_lost_closes_the_keys_socket_within_the_recheck(
-    tmp_path: Path,
-) -> None:
-    """The org drops to a plan without api keys, in storage alone: the key's
-    socket is refused at its recheck with 4401, as a revoked key's is, and
-    the session's socket in the same org stays open."""
-    container = build_container(tmp_path, realtime_recheck_seconds=RECHECK)
-    _, org = run(
-        container.managers.tenancy.bootstrap(
-            seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
-        )
-    )
-    run(on_plan(container, org.id, Plan.TEAM))
-    billing = container.storage.get_billing_storage()
-    with TestClient(create_app(container)) as tc:
-        owner = sign_in(tc, OWNER["email"], org.id)
-        issued = tc.post("/v1/api-keys", headers=owner, json={"name": "ci", "role": "member"})
-        key = {"Authorization": f"Bearer {issued.json()['key']}"}
-        with open_socket(tc, owner) as from_session, open_socket(tc, key) as from_key:
-            assert from_session.receive_json()["type"] == "hello"
-            assert from_key.receive_json()["type"] == "hello"
-            account = run(billing.read_account(org.id))
-            assert account is not None
-            run(billing.write_account(org.id, account.model_copy(update={"comped_plan": None}), ()))
-            with pytest.raises(WebSocketDisconnect) as closed:
-                from_key.receive_json()
-            time.sleep(RECHECK)  # the session's socket rechecks meanwhile, and holds
-            from_session.send_json({"op": "ping"})
-            assert from_session.receive_json()["type"] == "pong"
-    assert closed.value.code == CLOSE_UNAUTHENTICATED
-    assert closed.value.reason == "plan_limit_reached"
-
-
-async def test_a_nudge_runs_the_recheck_at_once(tmp_path: Path) -> None:
-    """A recheck a nudge wakes runs at once, not at the end of the interval,
-    and the interval starts again after it."""
+async def test_the_recheck_runs_every_interval_until_it_is_refused(tmp_path: Path) -> None:
+    """The first check waits its phase, every later one the interval; a check
+    that holds keeps the loop going, and the first refusal ends the socket
+    with its reason and ends the loop."""
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
@@ -631,38 +626,33 @@ async def test_a_nudge_runs_the_recheck_at_once(tmp_path: Path) -> None:
         seed_request(), (await tenancy.issue_ticket(ctx)).ticket
     )
     service = container.services.get_realtime_service()
-    answers = iter([None, "plan_limit_reached"])
-    asked: list[SocketPrincipal] = []
-    first_asked = asyncio.Event()
+    answers = iter([None, None, "not_authenticated"])
+    asked: list[float] = []
 
     async def recheck(asked_about: SocketPrincipal) -> str | None:
-        asked.append(asked_about)
-        first_asked.set()
+        assert asked_about == principal
+        asked.append(time.monotonic())
         return next(answers)
 
     service.recheck = recheck  # type: ignore[method-assign]
-    nudged = asyncio.Event()
     ended: list[str] = []
-    checking = asyncio.create_task(
-        recheck_until_refused(
-            service, principal, ended.append, 300.0, phase=lambda interval: 0.0, nudged=nudged
-        )
+    began = time.monotonic()
+    await asyncio.wait_for(
+        recheck_until_refused(service, principal, ended.append, 0.05, phase=lambda _: 0.0),
+        timeout=2.0,
     )
-    await asyncio.wait_for(first_asked.wait(), timeout=1.0)
-    await asyncio.sleep(0)  # the loop is past the first answer, waiting out the interval
-    assert ended == []  # the first check held; the next is five minutes away
-    nudged.set()
-    await asyncio.wait_for(checking, timeout=1.0)
-    assert len(asked) == 2
-    assert ended == ["plan_limit_reached"]
+    assert ended == ["not_authenticated"]
+    assert len(asked) == 3
+    assert asked[0] - began < 0.05, "the first check waits its phase, here none"
+    assert all(later - earlier >= 0.04 for earlier, later in itertools.pairwise(asked))
 
 
 def test_a_recheck_that_cannot_be_made_closes_the_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A database out of reach is no proof the credential holds: the socket
-    closes with 1011, as on any failure of its handler, and the client
-    reconnects once a ticket can be minted again."""
+    closes with 1011, as on any failure of its handler, is unregistered, and
+    the client reconnects once a ticket can be minted again."""
     container = build_container(tmp_path, realtime_recheck_seconds=RECHECK)
     service = container.services.get_realtime_service()
 
@@ -670,6 +660,7 @@ def test_a_recheck_that_cannot_be_made_closes_the_socket(
         raise BackendFailed("postgres", "read_session", "connection refused")
 
     monkeypatch.setattr(service, "recheck", unreachable)
+    registered = registrations(service, monkeypatch)
     token = session_token(container)
     with TestClient(create_app(container)) as tc:
         with open_socket(tc, {"Authorization": f"Bearer {token}"}) as ws:
@@ -678,3 +669,4 @@ def test_a_recheck_that_cannot_be_made_closes_the_socket(
                 ws.receive_json()
     assert closed.value.code == 1011
     assert closed.value.reason == "internal_error"
+    assert registered == {"attached": 1, "detached": 1}

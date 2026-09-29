@@ -9,7 +9,7 @@ export function DeleteAccountCard({ vm }: { vm: DeleteAccountVm }) {
     <Card title="Delete my account">
       <div style={{ display: "grid", gap: tokens.space.md }} data-delete-account>
         <Muted>
-          Your account, your personal org with its tasks and files, and your place in every team org are deleted.{" "}
+          Your account, your personal org with its files, and your place in every team org are deleted.{" "}
           {GONE_LINE} There is no undo. What you made in a team org stays with that team, shown as a former member&apos;s.
         </Muted>
         {vm.open ? (

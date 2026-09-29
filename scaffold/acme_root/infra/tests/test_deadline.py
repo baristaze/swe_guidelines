@@ -144,9 +144,9 @@ ORG = uuid4()
 
 CALLS: dict[str, Callable[[Any, datetime], Awaitable[Any]]] = {
     "sqs send": lambda q, d: q.send(Queues.WEBHOOKS, b"{}", deadline=d),
-    "secretsmanager get": lambda s, d: s.get(ORG, "slack", deadline=d),
-    "secretsmanager put": lambda s, d: s.put(ORG, "slack", "{}", deadline=d),
-    "secretsmanager delete": lambda s, d: s.delete(ORG, "slack", deadline=d),
+    "secretsmanager get": lambda s, d: s.get(ORG, "provider", deadline=d),
+    "secretsmanager put": lambda s, d: s.put(ORG, "provider", "{}", deadline=d),
+    "secretsmanager delete": lambda s, d: s.delete(ORG, "provider", deadline=d),
     "s3 put": lambda b, d: b.put(
         ORG, Buckets.USER_FILE_UPLOADS, "k", b"x", "text/plain", deadline=d
     ),

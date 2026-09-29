@@ -35,7 +35,7 @@ describe("the shared query cache", () => {
 
   it("keeps a query a push reaches fresh for minutes, and off the focus refetch, while the socket is open", () => {
     withSocket("open");
-    for (const key of [keys.tasks.open("team"), keys.me, keys.billing, keys.users.list(200), keys.myMemberships.list(50)]) {
+    for (const key of [keys.me, keys.users.list(200), keys.memberships.list(200), keys.myMemberships.list(50), keys.files.usage]) {
       expect(decided(key), JSON.stringify(key)).toEqual({ staleTime: PUSHED_STALE_MS, onFocus: false });
     }
   });
@@ -48,7 +48,7 @@ describe("the shared query cache", () => {
   it("reads every query as before while the socket is not open", () => {
     for (const status of ["connecting", "degraded", "paused", "closed"] as const) {
       withSocket(status);
-      expect(decided(keys.tasks.open("team")), status).toEqual({ staleTime: STALE_MS, onFocus: true });
+      expect(decided(keys.users.list(200)), status).toEqual({ staleTime: STALE_MS, onFocus: true });
       expect(decided(keys.me), status).toEqual({ staleTime: STALE_MS, onFocus: true });
     }
   });

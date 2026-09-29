@@ -11,9 +11,8 @@ export function DeleteOrgCard({ vm }: { vm: DeleteOrgVm }) {
     <Card title="Delete this organization" id="delete-organization">
       <div style={{ display: "grid", gap: tokens.space.md }} data-delete-org>
         <Muted>
-          Everyone in {vm.name} loses it now: its tasks and files, its members and their keys, its plan, whose
-          subscription ends at once, and its Slack app. {ORG_GONE_LINE} There is no undo. You land in your personal
-          org.
+          Everyone in {vm.name} loses it now: its files, its members, and their keys. {ORG_GONE_LINE} There is no
+          undo. You land in your personal org.
         </Muted>
         {vm.open ? (
           <form

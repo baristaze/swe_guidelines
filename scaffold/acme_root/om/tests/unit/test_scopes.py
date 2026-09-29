@@ -77,7 +77,7 @@ def test_a_person_is_narrowed_on_the_setting_that_names_it() -> None:
     matches and a narrowed read comes back empty."""
     assert scope_for("users").narrowing == ("identity_id", "app.identity_id")
     assert scope_for("memberships").narrowing == ("user_id", "app.user_id")
-    assert scope_for("tasks").narrowing is None
+    assert scope_for("files").narrowing is None
 
 
 def test_a_global_table_is_the_system_scope_and_nothing_else_is() -> None:

@@ -52,10 +52,8 @@ class RealtimeServiceInterface(ABC):
         check the redemption made, without counting the question as a use of
         a session. Returns None when it holds as it did, `RIGHTS_CHANGED`
         when the credential holds and the role or the teams it grants
-        changed, and the refusal's code when the credential no longer holds,
-        or when it is an api key and the org's plan no longer has keys
-        (`plan_limit_reached`). A failure to ask (the database out of reach)
-        raises."""
+        changed, and the refusal's code when the credential no longer holds.
+        A failure to ask (the database out of reach) raises."""
         ...
 
     @abstractmethod
@@ -70,19 +68,11 @@ class RealtimeServiceInterface(ABC):
         ...
 
     @abstractmethod
-    def attach(
-        self,
-        principal: SocketPrincipal,
-        end: Callable[[str], None],
-        recheck_now: Callable[[], None] = lambda: None,
-    ) -> Callable[[], None]:
+    def attach(self, principal: SocketPrincipal, end: Callable[[str], None]) -> Callable[[], None]:
         """Registers an open socket under the principal its ticket produced.
         `end` is called, on the event loop, with the close reason when the
         session or the api key behind the socket is revoked, the user's
         membership ends, or the membership's role changes, in whichever
         process the change happened: the service hears every change on the
-        bus. `recheck_now` is called when the org's billing account changed
-        and an api key opened the socket: the plan may have dropped keys,
-        and the socket's recheck, run at once, asks it. Returns the detach
-        callable."""
+        bus. Returns the detach callable."""
         ...

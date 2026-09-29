@@ -127,10 +127,10 @@ def test_no_source_spells_a_spread_inside_model_copy() -> None:
 def test_the_scan_sees_every_source_tree() -> None:
     seen = {str(path.relative_to(REPO)) for path in source_files()}
     assert {
-        "om/src/acme/om/tasks/impl/manager.py",
+        "om/src/acme/om/media/impl/manager.py",
         "om/src/acme/om/tenancy/impl/manager.py",
         "infra/src/acme/infra/base.py",
-        "services/api/src/acme/services/api/services/impl/tasks.py",
+        "services/api/src/acme/services/api/services/impl/media.py",
         "workers/maintenance/src/acme/workers/maintenance/loop.py",
         "apps/cli/src/acme/apps/cli/config.py",
         "clients/python/src/acme/client/client.py",

@@ -46,7 +46,7 @@ async def hanging_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
 async def test_healthz_answers_with_the_version(client: httpx.AsyncClient) -> None:
     response = await client.get("/healthz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "0.7.0"}
+    assert response.json() == {"status": "ok", "version": "0.1.0"}
     assert "x-request-id" in response.headers
 
 

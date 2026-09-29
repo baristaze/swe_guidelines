@@ -1,6 +1,6 @@
 [project]
 name = "acme-om"
-version = "0.7.0"
+version = "0.1.0"
 description = "The Acme object model: entities, managers, storage, migrations."
 requires-python = ">=3.14"
 dependencies = [

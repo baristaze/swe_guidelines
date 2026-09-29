@@ -91,7 +91,7 @@ def list_reads(interface: type) -> list[str]:
 def test_the_scan_finds_the_list_reads() -> None:
     found = {(cls.__name__, name) for cls in BOUNDED for name in list_reads(cls)}
     assert {
-        ("TasksStorageInterface", "read_open_places"),
+        ("MediaStorageInterface", "read_files"),
         ("TenancyStorageInterface", "read_users_by_identity"),
         ("WorkStorageInterface", "requeue_stale"),
         ("BucketsInterface", "list"),

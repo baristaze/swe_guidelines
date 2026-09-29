@@ -9,8 +9,6 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from acme.om.billing.storage import BillingStorageInterface
-from acme.om.billing.storage.impl.postgres import BillingStoragePostgresImpl
 from acme.om.events.storage import EventStorageInterface
 from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.idempotency.storage import IdempotencyStorageInterface
@@ -21,14 +19,10 @@ from acme.om.orchestrations.storage import OrchestrationsStorageInterface
 from acme.om.orchestrations.storage.impl.postgres import OrchestrationsStoragePostgresImpl
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
-from acme.om.slack.storage import SlackStorageInterface
-from acme.om.slack.storage.impl.postgres import SlackStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions, ScopedConnection, SessionFactory
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.root import StorageInterface
 from acme.om.storage.settings import RolePool
-from acme.om.tasks.storage import TasksStorageInterface
-from acme.om.tasks.storage.impl.postgres import TasksStoragePostgresImpl
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 from acme.om.work.storage import WorkStorageInterface
@@ -133,13 +127,10 @@ class StoragePostgresImpl(StorageInterface):
         self._sessions = sessions
         self._tenancy = TenancyStoragePostgresImpl(sessions)
         self._work = WorkStoragePostgresImpl(sessions)
-        self._tasks = TasksStoragePostgresImpl(sessions)
         self._media = MediaStoragePostgresImpl(sessions)
         self._idempotency = IdempotencyStoragePostgresImpl(sessions)
         self._events = EventStoragePostgresImpl(sessions)
         self._outbox = OutboxStoragePostgresImpl(sessions)
-        self._billing = BillingStoragePostgresImpl(sessions)
-        self._slack = SlackStoragePostgresImpl(sessions)
         self._orchestrations = OrchestrationsStoragePostgresImpl(sessions)
 
     def get_tenancy_storage(self) -> TenancyStorageInterface:
@@ -147,9 +138,6 @@ class StoragePostgresImpl(StorageInterface):
 
     def get_work_storage(self) -> WorkStorageInterface:
         return self._work
-
-    def get_tasks_storage(self) -> TasksStorageInterface:
-        return self._tasks
 
     def get_media_storage(self) -> MediaStorageInterface:
         return self._media
@@ -162,12 +150,6 @@ class StoragePostgresImpl(StorageInterface):
 
     def get_outbox_storage(self) -> OutboxStorageInterface:
         return self._outbox
-
-    def get_billing_storage(self) -> BillingStorageInterface:
-        return self._billing
-
-    def get_slack_storage(self) -> SlackStorageInterface:
-        return self._slack
 
     def get_orchestrations_storage(self) -> OrchestrationsStorageInterface:
         return self._orchestrations

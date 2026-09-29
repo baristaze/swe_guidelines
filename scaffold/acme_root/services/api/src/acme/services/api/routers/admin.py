@@ -18,7 +18,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Response
 
-from acme.om.tasks.types.task import TaskStatus
 from acme.services.api.gateway.admin import (
     EnrollingOperatorCtx,
     MintingOperatorCtx,
@@ -40,10 +39,8 @@ from acme.services.api.types.admin import (
     PlatformSizeView,
     TotpConfirmedView,
 )
-from acme.services.api.types.billing import CompPlanRequest, OperatorBillingView
 from acme.services.api.types.common import LIMIT_DEFAULT
 from acme.services.api.types.events import OperatorEventView
-from acme.services.api.types.tasks import TaskPageView
 from acme.services.api.types.tenancy import OrgPageView, OrgView, UserPageView, UserView
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -170,18 +167,6 @@ async def add_member(
     return await idem.run(201, lambda attempt: service.add_member(admin, org_id, body, attempt))
 
 
-@router.get("/orgs/{org_id}/tasks", response_model=TaskPageView)
-async def list_tasks(
-    admin: OperatorCtx,
-    service: AdminService,
-    org_id: UUID,
-    status: TaskStatus = TaskStatus.OPEN,
-    cursor: str | None = None,
-    limit: int = LIMIT_DEFAULT,
-) -> TaskPageView:
-    return await service.get_tasks(admin, org_id, status, cursor, limit)
-
-
 @router.get("/orgs/{org_id}/events", response_model=list[OperatorEventView])
 async def list_events(
     admin: OperatorCtx,
@@ -191,22 +176,6 @@ async def list_events(
     limit: int = LIMIT_DEFAULT,
 ) -> list[OperatorEventView]:
     return await service.get_events(admin, org_id, after_seq, limit)
-
-
-@router.get("/orgs/{org_id}/billing", response_model=OperatorBillingView)
-async def get_org_billing(
-    admin: OperatorCtx, service: AdminService, org_id: UUID
-) -> OperatorBillingView:
-    return await service.get_org_billing(admin, org_id)
-
-
-@router.put("/orgs/{org_id}/plan", response_model=OperatorBillingView)
-async def comp_plan(
-    admin: OperatorCtx, service: AdminService, org_id: UUID, body: CompPlanRequest
-) -> OperatorBillingView:
-    """Grants the org a plan with no payment, or takes the grant back. A put:
-    the same body twice leaves the same grant."""
-    return await service.comp_plan(admin, org_id, body)
 
 
 @router.post("/orgs/{org_id}/work/{item_id}/requeue", response_model=OperatorWorkItemView)

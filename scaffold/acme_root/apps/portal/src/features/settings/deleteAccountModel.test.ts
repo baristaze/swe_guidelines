@@ -6,7 +6,7 @@ const ajax = { id: "o1", name: "Ajax", slug: "ajax" };
 const globex = { id: "o2", name: "Globex", slug: "globex" };
 
 function lastOwner(...orgs: (typeof ajax)[]) {
-  return new ApiError(409, "last_owner", "you are the last owner", "req_1", undefined, null, null, orgs);
+  return new ApiError(409, "last_owner", "you are the last owner", "req_1", undefined, null, orgs);
 }
 
 describe("delete account model", () => {

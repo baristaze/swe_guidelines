@@ -71,7 +71,7 @@ async def test_a_counter_reads_back_as_its_count(infra: InfraConfiguredImpl) -> 
     """The contract a generation stands on, the same in memory: `get` of a
     counted key answers the count in decimal ASCII, and a count dropped by
     `invalidate` starts again at one."""
-    cache = infra.get_cache(CacheScope.BILLING_ACCOUNT)
+    cache = infra.get_cache(CacheScope.NETWORK_RESPONSE)
     org = new_id()
     assert await cache.get(org, "generation") is None
     await cache.increment(org, "generation", timedelta(days=1))

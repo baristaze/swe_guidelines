@@ -99,7 +99,7 @@ async def test_a_credential_past_its_budget_is_answered_429_with_retry_after(
     tmp_path: Path,
 ) -> None:
     async with over_the_stack(tmp_path) as (_, client, owner):
-        answers = [(await client.get("/v1/tasks", headers=owner)) for _ in range(BUDGET + 1)]
+        answers = [(await client.get("/v1/media/files", headers=owner)) for _ in range(BUDGET + 1)]
     assert [a.status_code for a in answers] == [200] * BUDGET + [429]
     refused = answers[-1]
     assert refused.json()["error"]["code"] == "rate_limited"
@@ -112,7 +112,9 @@ async def test_a_dead_token_flood_stops_reaching_the_database(
     async with over_the_stack(tmp_path) as (container, client, owner):
         dead = await signed_out(client, owner)
         seen = lookups_counted(container, monkeypatch)
-        answers = [(await client.get("/v1/tasks", headers=dead)).status_code for _ in range(FLOOD)]
+        answers = [
+            (await client.get("/v1/media/files", headers=dead)).status_code for _ in range(FLOOD)
+        ]
     assert answers == [401] * BUDGET + [429] * (FLOOD - BUDGET)
     assert len(seen) == BUDGET
 
@@ -125,10 +127,14 @@ async def test_with_valkey_unreachable_both_limits_allow(
     async with over_the_stack(
         tmp_path, valkey_url="valkey://127.0.0.1:1/0", valkey_timeout_seconds=0.2
     ) as (container, client, owner):
-        served = [(await client.get("/v1/tasks", headers=owner)).status_code for _ in range(20)]
+        served = [
+            (await client.get("/v1/media/files", headers=owner)).status_code for _ in range(20)
+        ]
         dead = await signed_out(client, owner)
         seen = lookups_counted(container, monkeypatch)
-        refused = [(await client.get("/v1/tasks", headers=dead)).status_code for _ in range(20)]
+        refused = [
+            (await client.get("/v1/media/files", headers=dead)).status_code for _ in range(20)
+        ]
     assert served == [200] * 20
     assert refused == [401] * 20
     assert len(seen) == 20

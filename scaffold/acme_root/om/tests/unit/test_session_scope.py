@@ -23,14 +23,11 @@ OM_ROOT = Path(acme.om.__path__[0])
 
 IMPL_INTERFACES: dict[str, str] = {
     "TenancyStoragePostgresImpl": "TenancyStorageInterface",
-    "TasksStoragePostgresImpl": "TasksStorageInterface",
     "WorkStoragePostgresImpl": "WorkStorageInterface",
     "EventStoragePostgresImpl": "EventStorageInterface",
     "OutboxStoragePostgresImpl": "OutboxStorageInterface",
     "IdempotencyStoragePostgresImpl": "IdempotencyStorageInterface",
-    "SlackStoragePostgresImpl": "SlackStorageInterface",
     "MediaStoragePostgresImpl": "MediaStorageInterface",
-    "BillingStoragePostgresImpl": "BillingStorageInterface",
     "OrchestrationsStoragePostgresImpl": "OrchestrationsStorageInterface",
 }
 """Which interface each Postgres impl answers, so a method found in the source
@@ -41,16 +38,10 @@ SYSTEM_SCOPE_HELPERS: frozenset[tuple[str, str]] = frozenset(
         # The global-table primitive. A `system`-scoped table carries no
         # policy and no tenant; every caller of it is in the exceptions list.
         ("PgStorageBase", "_upsert_global"),
-        # The diagnosis behind the bulk update's refusal. It asks where a row
-        # this tenant could not write is, which is a cross-tenant question:
-        # narrowed to the tenant, the policy answers "another tenant holds it"
-        # and "nobody does" with the same empty result, and the two are a
-        # different refusal to the caller. It reads two columns of one id.
-        ("TasksStoragePostgresImpl", "_why_not"),
     }
 )
-"""The two functions that pass the system scope and are not interface methods,
-each with its reason above. Nothing else may, and a new entry is a decision."""
+"""The function that passes the system scope and is no interface method,
+with its reason above. Nothing else may, and a new entry is a decision."""
 
 SYSTEM_SCOPE_WRITES: frozenset[tuple[str, str]] = frozenset(
     {

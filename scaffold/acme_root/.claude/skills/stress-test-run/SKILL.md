@@ -96,14 +96,16 @@ refused or expired, stop, and name the refresh the preamble gives.
    The generator ramps, soaks, and prints the table: requests by
    route and status, p50, p95, p99, and the error ratio, then two
    totals and the notes. The totals are the two groups the target
-   reads: the working requests, the task routes, the event stream,
-   and the socket's ticket, whose p95 the target judges, and the
+   reads: the working requests, the person, member, and API key
+   routes, the event stream, and the socket's ticket, whose p95 the
+   target judges, and the
    sign-in and sign-out beside them, one of each per person for the
    whole run, reported with their own p95 and judged by nothing. The
    notes say how many people signed in, the profile's concurrency and
    think time, and one sample request id of the run, which step 4
-   follows. A 4xx the session shape explains (a conflict on a retried
-   create) is counted by status and not as an error; a session that
+   follows. A 4xx the session shape explains (a `409` on an API key
+   create the client sent again while the first was still running) is
+   counted by status and not as an error; a session that
    fails is counted under sessions, and a person the API refused at
    sign-in is a note.
 4. Read the signals back for the run's window, through the same

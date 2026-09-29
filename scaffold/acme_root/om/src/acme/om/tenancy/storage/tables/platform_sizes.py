@@ -16,7 +16,6 @@ class PlatformSizes(GlobalIdentifiableMixin, Base):
     __tablename__ = "platform_sizes"
     tenants: Mapped[int] = mapped_column(BigInteger)
     users: Mapped[int] = mapped_column(BigInteger)
-    tasks_last_24h: Mapped[int] = mapped_column(BigInteger)
     events_last_24h: Mapped[int] = mapped_column(BigInteger)
     since: Mapped[datetime]
     counted_at: Mapped[datetime]

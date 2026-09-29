@@ -5,7 +5,6 @@ names a timeout (or the AWS configuration that carries one) at the call
 site. The cases below then build each client and read the timeout back."""
 
 import ast
-import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -38,10 +37,6 @@ CLIENT_CONSTRUCTORS = {
     "connect",  # websockets
     "OTLPSpanExporter",
     "GlideClientConfiguration",
-    "HTTPXClient",  # stripe's transport, which carries the timeout
-    "StripeClient",
-    "AsyncWebClient",  # slack_sdk
-    "AsyncWebhookClient",  # slack_sdk
     "AsyncWorkOSClient",  # names a timeout on every request, over its HTTP client's
 }
 """A call by one of these names is a client being built; `session.client(...)`
@@ -49,14 +44,10 @@ CLIENT_CONSTRUCTORS = {
 
 
 def repository_root() -> Path:
-    top = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=Path(__file__).parent,
-    ).stdout.strip()
-    return Path(top)
+    """The checkout this test runs in: the nearest folder above it with an
+    `.env.example`, so a copy that is not yet a repository reads its own."""
+    here = Path(__file__).resolve().parent
+    return next(p for p in (here, *here.parents) if (p / ".env.example").is_file())
 
 
 def _is_client_construction(call: ast.Call) -> bool:
@@ -75,12 +66,8 @@ def _is_client_construction(call: ast.Call) -> bool:
 
 
 def _carries_a_timeout(call: ast.Call) -> bool:
-    """A timeout by name, the AWS configuration that carries one, or, for a
-    Stripe client, the transport it is handed, which the scan holds to a
-    timeout of its own."""
+    """A timeout by name, or the AWS configuration that carries one."""
     keywords = {keyword.arg for keyword in call.keywords if keyword.arg}
-    if _name_of(call) == "StripeClient":
-        return "http_client" in keywords
     return "config" in keywords or any("timeout" in name for name in keywords)
 
 
@@ -135,9 +122,6 @@ def test_every_client_construction_names_a_timeout() -> None:
         "infra/src/acme/infra/secrets/aws.py",
         "infra/src/acme/infra/impl/valkey.py",
         "infra/src/acme/infra/observability.py",
-        "integrations/src/acme/integrations/payments/stripe.py",
-        "integrations/src/acme/integrations/payments/catalog.py",
-        "integrations/src/acme/integrations/slack/web.py",
         "integrations/src/acme/integrations/identity/workos.py",
     }, "the scan no longer sees a client it used to; widen it before trusting it"
     unbounded = [site for site, bounded in found if not bounded]

@@ -5,32 +5,24 @@ translates the request, calls one manager, and projects the result."""
 from abc import ABC, abstractmethod
 
 from acme.services.api.services.admin import AdminServiceInterface
-from acme.services.api.services.billing import BillingServiceInterface, WebhooksServiceInterface
 from acme.services.api.services.events import EventsServiceInterface
 from acme.services.api.services.media import MediaServiceInterface
 from acme.services.api.services.realtime import RealtimeServiceInterface
-from acme.services.api.services.slack import SlackServiceInterface
-from acme.services.api.services.tasks import TasksServiceInterface
 from acme.services.api.services.tenancy import TenancyServiceInterface
+from acme.services.api.services.webhooks import WebhooksServiceInterface
 
 __all__ = [
     "AdminServiceInterface",
-    "BillingServiceInterface",
     "EventsServiceInterface",
     "MediaServiceInterface",
     "RealtimeServiceInterface",
     "ServicesInterface",
-    "SlackServiceInterface",
-    "TasksServiceInterface",
     "TenancyServiceInterface",
     "WebhooksServiceInterface",
 ]
 
 
 class ServicesInterface(ABC):
-    @abstractmethod
-    def get_tasks_service(self) -> TasksServiceInterface: ...
-
     @abstractmethod
     def get_tenancy_service(self) -> TenancyServiceInterface: ...
 
@@ -47,10 +39,4 @@ class ServicesInterface(ABC):
     def get_realtime_service(self) -> RealtimeServiceInterface: ...
 
     @abstractmethod
-    def get_billing_service(self) -> BillingServiceInterface: ...
-
-    @abstractmethod
     def get_webhooks_service(self) -> WebhooksServiceInterface: ...
-
-    @abstractmethod
-    def get_slack_service(self) -> SlackServiceInterface: ...

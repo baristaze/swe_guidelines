@@ -11,8 +11,6 @@ import {
   type ApiKeyView,
   type MembershipPageView,
   type MeView,
-  type SlackInstallationView,
-  type SlackStatusView,
   type UserPageView,
 } from "../../api";
 import { useNoticesStore } from "../../store/notices";
@@ -107,7 +105,6 @@ beforeEach(() => {
     items: [keyOf("k1", "first"), keyOf("k2", "second")],
     next_cursor: null,
   } satisfies ApiKeyPageView);
-  net.reads.set("/v1/slack/installation", { installation: null } satisfies SlackStatusView);
   useNoticesStore.setState({ notices: [] });
 });
 
@@ -139,69 +136,6 @@ it("says a created key whose secret was lost, instead of showing nothing", async
   expect(useNoticesStore.getState().notices.map((n) => n.message)).toEqual([
     'The key "ci" was created, but its secret was lost on the way back; revoke it and create another.',
   ]);
-});
-
-const installed: SlackInstallationView = {
-  id: "i1",
-  team_id: "T1",
-  team_name: "Ajax",
-  channel_id: "C0123",
-  status: "ok",
-  broken_reason: null,
-  created_by: "u1",
-  created_at: "2026-09-22T10:00:00Z",
-  updated_at: "2026-09-22T10:00:00Z",
-};
-
-it("shows a member the Slack state and nothing to act on", async () => {
-  net.reads.set("/v1/me", { ...me, role: "member", permissions: ["read", "write"] });
-  net.reads.set("/v1/slack/installation", { installation: installed } satisfies SlackStatusView);
-  await mount();
-  for (let turn = 0; turn < 20 && vm().slack.loading; turn += 1) await tick();
-  expect(vm().slack.summary.line).toBe("Installed in Ajax, posting to channel C0123.");
-  expect(vm().slack.canManage).toBe(false);
-});
-
-it("starts an install for an owner and says a refusal or a lost link", async () => {
-  net.reads.set("/v1/me", { ...me, permissions: [...me.permissions, "manage_members"] });
-  await mount();
-  for (let turn = 0; turn < 20 && vm().slack.loading; turn += 1) await tick();
-  expect(vm().slack.canManage).toBe(true);
-  expect(vm().slack.summary.installLabel).toBe("Add to Slack");
-  await act(async () => void vm().slack.install());
-  expect(net.writes.map((w) => w.path)).toEqual(["/v1/slack/installation"]);
-  await act(async () => net.writes[0]!.resolve({ url: null, expires_at: "2026-09-22T10:10:00Z" }));
-  await act(async () => void vm().slack.install());
-  await act(async () =>
-    net.writes[1]!.reject(new ApiError(503, "slack_unavailable", "the Slack app's credentials are not configured", "req-2")),
-  );
-  expect(useNoticesStore.getState().notices.map((n) => n.message)).toEqual([
-    "The install link was lost on the way back; click Add to Slack again.",
-    "The Slack app's credentials are not configured. Reference: req-2",
-  ]);
-});
-
-it("says how the install went when Slack sends the browser back, once", async () => {
-  window.history.replaceState(null, "", "/settings?slack=installed");
-  await mount();
-  expect(useNoticesStore.getState().notices.map((n) => n.message)).toEqual([
-    "Acme is in Slack. Type /acme connect in the channel it should post to.",
-  ]);
-  expect(window.location.search).toBe("");
-});
-
-it("removes Acme from Slack and says it is gone", async () => {
-  net.reads.set("/v1/me", { ...me, permissions: [...me.permissions, "manage_members"] });
-  net.reads.set("/v1/slack/installation", { installation: installed } satisfies SlackStatusView);
-  await mount();
-  for (let turn = 0; turn < 20 && vm().slack.loading; turn += 1) await tick();
-  expect(vm().slack.installed).toBe(true);
-  await act(async () => void vm().slack.uninstall());
-  expect(net.writes.map((w) => w.path)).toEqual(["/v1/slack/installation"]);
-  await act(async () => net.writes[0]!.resolve({ installation: null }));
-  await tick();
-  expect(vm().slack.installed).toBe(false);
-  expect(vm().slack.summary.line).toBe("Not installed.");
 });
 
 it("shows each member's role, lets an owner give Bob another, and says a refusal", async () => {

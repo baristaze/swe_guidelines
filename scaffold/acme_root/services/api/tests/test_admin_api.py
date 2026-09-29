@@ -41,18 +41,24 @@ async def reader(client: httpx.AsyncClient, container: AppContainer) -> dict[str
 
 @pytest.fixture
 async def org_id(client: httpx.AsyncClient, owner: dict[str, str]) -> str:
-    """The seeded tenant, with two open tasks and one done, over its owner."""
+    """The seeded tenant, with three uploads started and the third one stored,
+    over its owner: four records on its stream."""
     current = await client.get("/v1/orgs/current", headers=owner)
-    for title in ("first", "second", "third"):
-        created = await client.post("/v1/tasks", headers=owner, json={"title": title})
+    for name in ("first.pdf", "second.pdf", "third.pdf"):
+        created = await client.post(
+            "/v1/media/files",
+            headers=owner,
+            json={"name": name, "content_type": "application/pdf", "size_bytes": 5},
+        )
         assert created.status_code == 201, created.text
-        if title == "third":
-            done = await client.patch(
-                f"/v1/tasks/{created.json()['id']}",
-                headers={**owner, "If-Match": '"1"'},
-                json={"status": "done"},
+        if name == "third.pdf":
+            file_id = created.json()["id"]
+            put = await client.put(
+                f"/v1/media/files/{file_id}/content", headers=owner, content=b"%PDF-"
             )
-            assert done.status_code == 200, done.text
+            assert put.status_code == 200, put.text
+            stored = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
+            assert stored.status_code == 200, stored.text
     return current.json()["id"]
 
 
@@ -67,7 +73,6 @@ def routes(org_id: str) -> list[tuple[str, str, str, dict[str, Any]]]:
         ("read", "GET", "/v1/admin/orgs", {}),
         ("read", "GET", f"/v1/admin/orgs/{org_id}", {}),
         ("read", "GET", f"/v1/admin/orgs/{org_id}/members", {}),
-        ("read", "GET", f"/v1/admin/orgs/{org_id}/tasks", {}),
         ("read", "GET", f"/v1/admin/orgs/{org_id}/events", {}),
         (
             "write",
@@ -151,29 +156,6 @@ async def test_an_operator_reads_one_tenant_and_leaves_a_trail(
         assert [m["email"] for m in members.json()["items"]] == [OWNER["email"]]
         assert members.json()["next_cursor"] is None
 
-        opened = await client.get(
-            f"/v1/admin/orgs/{org_id}/tasks", headers=reader, params={"limit": 1}
-        )
-        assert opened.status_code == 200, opened.text
-        assert [t["title"] for t in opened.json()["items"]] == ["second"]  # the top of the list
-        cursor = opened.json()["next_cursor"]
-        assert cursor is not None
-        rest = await client.get(
-            f"/v1/admin/orgs/{org_id}/tasks", headers=reader, params={"cursor": cursor}
-        )
-        assert [t["title"] for t in rest.json()["items"]] == ["first"]
-        assert rest.json()["next_cursor"] is None
-        done = await client.get(
-            f"/v1/admin/orgs/{org_id}/tasks", headers=reader, params={"status": "done"}
-        )
-        assert [t["title"] for t in done.json()["items"]] == ["third"]
-        crossed = await client.get(
-            f"/v1/admin/orgs/{org_id}/tasks",
-            headers=reader,
-            params={"status": "done", "cursor": cursor},
-        )
-        assert crossed.status_code == 422, crossed.text
-
         events = await client.get(f"/v1/admin/orgs/{org_id}/events", headers=reader)
         assert events.status_code == 200, events.text
         assert [e["seq"] for e in events.json()] == [1, 2, 3, 4]
@@ -181,8 +163,8 @@ async def test_an_operator_reads_one_tenant_and_leaves_a_trail(
         # that produced each record and the app it came from.
         assert all(UUID(e["request_id"]) and e["app"] == "portal" for e in events.json())
         assert {e["kind"] for e in events.json()} == {
-            "tasks.task.created",
-            "tasks.task.updated",
+            "media.file.created",
+            "media.file.updated",
         }
         later = await client.get(
             f"/v1/admin/orgs/{org_id}/events", headers=reader, params={"after_seq": 3}
@@ -190,8 +172,8 @@ async def test_an_operator_reads_one_tenant_and_leaves_a_trail(
         assert [e["seq"] for e in later.json()] == [4]
 
     trail = [r.getMessage() for r in caplog.records if r.name == OPERATOR_LOG]
-    # Seven reads landed; the cursor of the other list was refused before any.
-    assert len(trail) == 7 and all(org_id in line for line in trail)
+    # Four reads landed; the unknown org was refused before any.
+    assert len(trail) == 4 and all(org_id in line for line in trail)
     assert not any("example.test" in line or "first" in line for line in trail)
 
 
@@ -247,7 +229,7 @@ async def test_the_size_is_what_the_first_responder_reads(
     # The seeded tenant and the operator's own, and each owner's personal
     # org; the two owners, once in each.
     assert (body["tenants"], body["users"]) == (4, 4)
-    assert (body["tasks_last_24h"], body["events_last_24h"]) == (3, 4)
+    assert body["events_last_24h"] == 4
     for moment in (body["since"], body["counted_at"]):
         assert moment.endswith("Z") or "+" in moment
 
@@ -279,11 +261,6 @@ async def test_the_creates_run_under_the_operators_idempotency_record(
     assert taken.status_code == 409, taken.text
     assert taken.json()["error"]["code"] == "conflict"
     org_id = UUID(first.json()["id"])
-    # A new org is on Free, one seat; the operator grants it Team first.
-    granted = await client.put(
-        f"/v1/admin/orgs/{org_id}/plan", headers=writer, json={"plan": "team"}
-    )
-    assert granted.status_code == 200 and granted.json()["plan"] == "team", granted.text
 
     member = {
         "email": "bob@example.test",

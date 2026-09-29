@@ -135,7 +135,7 @@ def _raised(sqlstate: str) -> DBAPIError:
     over the driver's, which carries the SQLSTATE."""
     adapted = Exception("adapted")
     adapted.__cause__ = _Driver(sqlstate)
-    return DBAPIError("ALTER TABLE core.tasks ...", None, adapted)
+    return DBAPIError("ALTER TABLE core.users ...", None, adapted)
 
 
 def test_only_a_lock_wait_past_its_bound_asks_to_run_again() -> None:

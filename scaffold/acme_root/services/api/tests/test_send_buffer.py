@@ -27,7 +27,7 @@ def event(seq: int) -> EventEnvelope:
     return EventEnvelope(
         topic=Topics.ENTITY_CHANGED.value,
         payload=EntityChangedView(
-            kind="tasks.task.created", target_id=new_id(), seq=seq, actor_id=ACTOR
+            kind="media.file.created", target_id=new_id(), seq=seq, actor_id=ACTOR
         ),
     )
 

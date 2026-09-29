@@ -4,9 +4,8 @@ the error envelope, and a person who is gone the moment the answer comes."""
 from uuid import UUID
 
 import httpx
-from api_support import OWNER, add_member, dev_login, on_plan, seed_request, sign_in_as
+from api_support import OWNER, add_member, dev_login, seed_request, sign_in_as
 
-from acme.om.billing.types.plan import Plan
 from acme.om.opcontext import OperatorRole, Role
 from acme.services.api.container import AppContainer
 
@@ -68,7 +67,6 @@ async def test_a_deleted_account_is_signed_out_everywhere_and_can_start_again(
         headers={"Authorization": f"Bearer {await dev_login(client, 'bob@example.test')}"},
     )
     home = next(p["org"]["id"] for p in places.json()["items"] if p["org"]["kind"] == "personal")
-    await on_plan(container, UUID(home), Plan.TEAM)
     at_home = await sign_in_as(client, "bob@example.test", UUID(home))
     key = await client.post("/v1/api-keys", headers=at_home, json={"name": "ci", "role": "member"})
     assert key.status_code == 201, key.text

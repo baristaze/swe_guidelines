@@ -1,6 +1,6 @@
 [project]
 name = "acme-client"
-version = "0.7.0"
+version = "0.1.0"
 description = "The one Python client of the Acme API: generated types, one transport client, the realtime channel."
 requires-python = ">=3.14"
 dependencies = [

@@ -27,8 +27,9 @@ root.
 
 None, local only. The counts run on the local stack (`make
 infra-up`, with `make migrate` run once), in a database the run makes
-and drops, with the provider twins in place of the providers. It holds
-no cloud credential, reads no environment, and reads no env file.
+and drops, with the identity provider's twin in place of the provider.
+It holds no cloud credential, reads no environment, and reads no env
+file.
 
 ## Procedure
 
@@ -49,14 +50,12 @@ no cloud credential, reads no environment, and reads no env file.
    (`services/api/src/acme/services/api/settings.py`) as the container
    passes them in (`services/api/src/acme/services/api/container.py`),
    not the options' own defaults, which can differ. Add every other
-   proof the code trusts: an inbound provider delivery's signature
+   proof the code trusts: the identity provider's webhook signature
    (read at `services/api/src/acme/services/api/gateway/webhooks.py`,
-   checked in `integrations/src/acme/integrations/payments/deliveries.py`
-   and `integrations/src/acme/integrations/slack/requests.py`), a
-   provider's token the platform holds (Slack's, in
-   `om/src/acme/om/slack/`), and the identity provider's own session
-   behind a sign-in (ended at sign-out, `_provider_logout` in the tenancy
-   manager). Each goes in the row of the channel that uses it. A kind the
+   checked in `integrations/src/acme/integrations/identity/deliveries.py`),
+   and the identity provider's own session behind a sign-in (ended at
+   sign-out, `_provider_logout` in the tenancy manager). Each goes in the
+   row of the channel that uses it. A kind the
    code has and this list misses is a finding of its own.
 3. List the channels, and which kinds reach each:
    - HTTP request: the gateway's dependencies in
@@ -80,11 +79,12 @@ no cloud credential, reads no environment, and reads no env file.
      is reconnecting.
    - Worker: a work item runs under a context the claim mints
      (`claim` in `om/src/acme/om/work/impl/manager.py`, through the
-     tenancy manager's `service_context`), and a handler may mint another
-     (`member_context`, as `workers/maintenance/src/acme/workers/maintenance/slack_inbound.py`
-     does); read whether a handler checks the actor's credential,
-     membership, or role again when it runs, or acts on what the request
-     knew when it enqueued.
+     tenancy manager's `service_context`), and a delivery from the
+     identity provider is applied under its org's service context
+     (`workers/maintenance/src/acme/workers/maintenance/deliveries.py`);
+     read whether a handler (the deletions in `accounts.py` beside it)
+     checks the actor's credential, membership, or role again when it
+     runs, or acts on what the request knew when it enqueued.
    A kind that never travels a channel is `n/a` in that cell, with the
    reason in a word (a socket ticket on a worker).
 4. Fill each cell from the code, each fact with its file:line:
@@ -99,8 +99,8 @@ no cloud credential, reads no environment, and reads no env file.
      path that depends on a message the bus may drop takes the next
      bound that does not;
    - how a change of role, the member's teams, the membership's end, or
-     the org's plan (a plan without API keys) reaches it: read again on
-     the next check, pushed and closed, or never until expiry;
+     the org's deletion reaches it: read again on the next check, pushed
+     and closed, or never until expiry;
    - its rate limit or budget
      (`services/api/src/acme/services/api/gateway/ratelimit.py`, the
      settings), or none;
@@ -113,13 +113,13 @@ no cloud credential, reads no environment, and reads no env file.
 
    ```bash
    uv run python ops/audit/auditdb.py create audit_credential_lifetimes_<yyyymmdd>
-   uv run python ops/audit/dbcalls.py run audit_credential_lifetimes_<yyyymmdd> --only auth,events \
+   uv run python ops/audit/dbcalls.py run audit_credential_lifetimes_<yyyymmdd> --only sign_in,events \
      --out ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/calls.json \
      [--flows ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/more_flows.py]
    uv run python ops/audit/dbcalls.py summary ~/Downloads/acme_credential_lifetimes_<yyyy-mm-dd>/calls.json
    ```
 
-   The built-in `auth` flow measures the session and the API key on
+   The built-in `sign_in` flow measures the session and the API key on
    `GET /v1/me` (area `baseline`) and the sign-in credential on
    `GET /v1/auth/memberships` (area `auth`); `events` measures the
    ticket's redemption and the socket's recheck (area `realtime`). The
@@ -178,7 +178,7 @@ no cloud credential, reads no environment, and reads no env file.
 ```markdown
 # Acme: how long a credential keeps working
 
-<commit>, counted on <database>, with the provider twins. Bound: <duration> (<source>).
+<commit>, counted on <database>, with the identity provider's twin. Bound: <duration> (<source>).
 
 ## The answer
 

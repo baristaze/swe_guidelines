@@ -10,13 +10,10 @@ from starlette.requests import HTTPConnection
 
 from acme.services.api.services import (
     AdminServiceInterface,
-    BillingServiceInterface,
     EventsServiceInterface,
     MediaServiceInterface,
     RealtimeServiceInterface,
     ServicesInterface,
-    SlackServiceInterface,
-    TasksServiceInterface,
     TenancyServiceInterface,
     WebhooksServiceInterface,
 )
@@ -33,10 +30,6 @@ def services_of(connection: HTTPConnection) -> ServicesInterface:
     return container_of(connection).services
 
 
-def tasks_service(connection: HTTPConnection) -> TasksServiceInterface:
-    return services_of(connection).get_tasks_service()
-
-
 def tenancy_service(connection: HTTPConnection) -> TenancyServiceInterface:
     return services_of(connection).get_tenancy_service()
 
@@ -47,10 +40,6 @@ def admin_service(connection: HTTPConnection) -> AdminServiceInterface:
 
 def events_service(connection: HTTPConnection) -> EventsServiceInterface:
     return services_of(connection).get_events_service()
-
-
-def billing_service(connection: HTTPConnection) -> BillingServiceInterface:
-    return services_of(connection).get_billing_service()
 
 
 def webhooks_service(connection: HTTPConnection) -> WebhooksServiceInterface:
@@ -65,16 +54,9 @@ def realtime_service(connection: HTTPConnection) -> RealtimeServiceInterface:
     return services_of(connection).get_realtime_service()
 
 
-def slack_service(connection: HTTPConnection) -> SlackServiceInterface:
-    return services_of(connection).get_slack_service()
-
-
-TasksService = Annotated[TasksServiceInterface, Depends(tasks_service)]
 TenancyService = Annotated[TenancyServiceInterface, Depends(tenancy_service)]
 AdminService = Annotated[AdminServiceInterface, Depends(admin_service)]
 EventsService = Annotated[EventsServiceInterface, Depends(events_service)]
 MediaService = Annotated[MediaServiceInterface, Depends(media_service)]
 RealtimeService = Annotated[RealtimeServiceInterface, Depends(realtime_service)]
-BillingService = Annotated[BillingServiceInterface, Depends(billing_service)]
 WebhooksService = Annotated[WebhooksServiceInterface, Depends(webhooks_service)]
-SlackService = Annotated[SlackServiceInterface, Depends(slack_service)]

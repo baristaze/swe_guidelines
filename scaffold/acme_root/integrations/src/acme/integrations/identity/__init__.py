@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -93,6 +94,21 @@ class ProvidedInvitation(_Frozen):
 PortalIntent = Literal["sso", "domain_verification"]
 """What an admin portal link opens on: the single sign-on connection, or the
 verification of the organization's domains."""
+
+
+class ProvidedDelivery(_Frozen):
+    """One event the provider delivered to the webhook route, once its
+    signature checked out. `key` is the delivery's key, the same for every
+    copy of the event; `organization_id` is the provider's organization the
+    event is about, and `organization_external_id` the Acme org it names,
+    when the event carries the organization itself."""
+
+    key: UUID
+    event_id: str
+    event_type: str
+    created: datetime
+    organization_id: str | None = None
+    organization_external_id: str | None = None
 
 
 class IdentityProviderInterface(ABC):
@@ -259,6 +275,14 @@ class IdentityProviderInterface(ABC):
         one deletion. It fails as `delete_user` does: ProviderUnavailable for
         a provider out of reach or a refused key, ProviderRefused for the
         call itself."""
+        ...
+
+    @abstractmethod
+    def verify_delivery(self, payload: bytes, signature: str | None) -> ProvidedDelivery:
+        """The event a webhook delivery carries, once the signature over its
+        body and its timestamp checks out under the endpoint's secret;
+        `DeliveryRefused` otherwise, and `ProviderUnavailable` when this
+        process holds no secret. It makes no call."""
         ...
 
     @abstractmethod

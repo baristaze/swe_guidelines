@@ -51,9 +51,9 @@ describe("transport client deadline", () => {
   it("rejects a call whose response never arrives once the timeout passes", async () => {
     const api = client({ fetchImpl: hangingFetch() });
     const started = Date.now();
-    const failure = await api.get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await api.get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(RequestTimeout);
-    expect(failure).toMatchObject({ method: "GET", path: "/v1/tasks", timeoutMs: 20 });
+    expect(failure).toMatchObject({ method: "GET", path: "/v1/api-keys", timeoutMs: 20 });
     expect(Date.now() - started).toBeGreaterThanOrEqual(15);
   });
 
@@ -68,15 +68,15 @@ describe("transport client deadline", () => {
             init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
           }),
       } as unknown as Response);
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(RequestTimeout);
   });
 
   it("hands every call a signal, and drops the timer once the call is done", async () => {
     vi.useFakeTimers();
-    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(200, { id: "t1" })));
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(200, { id: "k1" })));
     const api = client({ fetchImpl, timeoutMs: 30_000 });
-    await expect(api.get("/v1/tasks/t1")).resolves.toEqual({ id: "t1" });
+    await expect(api.get("/v1/api-keys/k1")).resolves.toEqual({ id: "k1" });
     const init = fetchImpl.mock.calls[0]?.[1];
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(init?.signal?.aborted).toBe(false);
@@ -86,7 +86,7 @@ describe("transport client deadline", () => {
   it("keeps the caller's own abort, which is not a timeout", async () => {
     const api = client({ fetchImpl: hangingFetch(), timeoutMs: 30_000 });
     const controller = new AbortController();
-    const pending = api.get("/v1/tasks", { signal: controller.signal }).catch((error: unknown) => error);
+    const pending = api.get("/v1/api-keys", { signal: controller.signal }).catch((error: unknown) => error);
     controller.abort(new Error("navigated away"));
     const failure = await pending;
     expect(failure).toBeInstanceOf(Error);
@@ -99,7 +99,7 @@ describe("transport client deadline", () => {
     const controller = new AbortController();
     controller.abort(new Error("already gone"));
     const failure = await client({ fetchImpl })
-      .get("/v1/tasks", { signal: controller.signal })
+      .get("/v1/api-keys", { signal: controller.signal })
       .catch((error: unknown) => error);
     expect((failure as Error).message).toBe("already gone");
   });
@@ -107,30 +107,12 @@ describe("transport client deadline", () => {
   it("still parses the error envelope into a typed error", async () => {
     const fetchImpl: typeof fetch = () =>
       Promise.resolve(
-        jsonResponse(404, { error: { code: "not_found", message: "no such task", request_id: "req_1" } }),
+        jsonResponse(404, { error: { code: "not_found", message: "no such key", request_id: "req_1" } }),
       );
-    const failure = await client({ fetchImpl }).get("/v1/tasks/x").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys/x").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 404, code: "not_found", requestId: "req_1" });
-    expect((failure as ApiError).planLimit).toBeNull();
-  });
-
-  it("carries the bound a plan's refusal met, and nothing else changes", async () => {
-    const planLimit = { lever: "active_tasks", plan: "free", limit: 10, suggested_plan: "pro" };
-    const fetchImpl: typeof fetch = () =>
-      Promise.resolve(
-        jsonResponse(402, {
-          error: {
-            code: "plan_limit_reached",
-            message: "the free plan allows 10 active tasks",
-            request_id: "req_2",
-            plan_limit: planLimit,
-          },
-        }),
-      );
-    const failure = await client({ fetchImpl }).post("/v1/tasks", { title: "x" }).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ApiError);
-    expect(failure).toMatchObject({ status: 402, code: "plan_limit_reached", requestId: "req_2", planLimit });
+    expect((failure as ApiError).stream).toBeNull();
   });
 
   it("carries where a trimmed stream goes on from", async () => {
@@ -143,14 +125,14 @@ describe("transport client deadline", () => {
       );
     const failure = await client({ fetchImpl }).get("/v1/events?after_seq=5").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
-    expect(failure).toMatchObject({ status: 410, code: "stream_truncated", stream, planLimit: null });
+    expect(failure).toMatchObject({ status: 410, code: "stream_truncated", stream, lastOwnerOf: [] });
   });
 });
 
 describe("transport client response handling", () => {
   it("turns a proxy's HTML 502 into a typed error carrying the status", async () => {
     const fetchImpl: typeof fetch = () => Promise.resolve(textResponse(502, "<html>Bad Gateway</html>"));
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 502, code: "unknown_error", requestId: "req_9" });
     expect((failure as ApiError).message).toBe("Bad Gateway");
@@ -159,7 +141,7 @@ describe("transport client response handling", () => {
   it("names the status when a 504 comes with no status text", async () => {
     const fetchImpl: typeof fetch = () =>
       Promise.resolve(new Response("timeout", { status: 504, headers: { "content-type": "text/plain" } }));
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toMatchObject({ status: 504, code: "unknown_error", message: "HTTP 504" });
   });
 
@@ -197,7 +179,7 @@ describe("transport client response handling", () => {
 
   it("refuses a success whose body is not JSON with a typed error, never a SyntaxError", async () => {
     const fetchImpl: typeof fetch = () => Promise.resolve(textResponse(200, "<html>captive portal</html>"));
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 200, code: "not_json", requestId: "req_9" });
   });
@@ -205,14 +187,14 @@ describe("transport client response handling", () => {
   it("treats a JSON error body that does not parse as an error with the status", async () => {
     const fetchImpl: typeof fetch = () =>
       Promise.resolve(new Response("{not json", { status: 500, headers: { "content-type": "application/json" } }));
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 500, code: "unknown_error" });
   });
 
   it("returns nothing for an empty success", async () => {
     const fetchImpl: typeof fetch = () => Promise.resolve(new Response(null, { status: 204 }));
-    await expect(client({ fetchImpl }).del("/v1/tasks/t1")).resolves.toBeUndefined();
+    await expect(client({ fetchImpl }).del("/v1/api-keys/k1")).resolves.toBeUndefined();
   });
 });
 
@@ -253,7 +235,7 @@ describe("the transport client's one retry", () => {
     const fetchImpl = vi.fn<typeof fetch>(() =>
       Promise.resolve(jsonResponse(503, { error: { code: "unavailable", message: "no", request_id: "r" } })),
     );
-    const failure = await retrying(fetchImpl).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await retrying(fetchImpl).get("/v1/api-keys").catch((error: unknown) => error);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(failure).toBeInstanceOf(ApiError);
     expect(failure).toMatchObject({ status: 503, code: "unavailable" });
@@ -268,27 +250,27 @@ describe("the transport client's one retry", () => {
         }),
       ),
     );
-    const failure = await client({ fetchImpl }).get("/v1/tasks").catch((error: unknown) => error);
+    const failure = await client({ fetchImpl }).get("/v1/api-keys").catch((error: unknown) => error);
     expect(failure).toMatchObject({ status: 503, retryAfterMs: 1000 });
   });
 
   it("stops as soon as an attempt answers", async () => {
-    const answers = [jsonResponse(503, {}), jsonResponse(200, { id: "t1" })];
+    const answers = [jsonResponse(503, {}), jsonResponse(200, { id: "k1" })];
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(answers.shift()!));
-    await expect(retrying(fetchImpl).get("/v1/tasks/t1")).resolves.toEqual({ id: "t1" });
+    await expect(retrying(fetchImpl).get("/v1/api-keys/k1")).resolves.toEqual({ id: "k1" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("retries a deadline and a connection that failed before an answer", async () => {
     const timingOut = vi.fn<typeof fetch>(hangingFetch());
     const timedOut = await retrying(timingOut, { timeoutMs: 5 })
-      .get("/v1/tasks")
+      .get("/v1/api-keys")
       .catch((error: unknown) => error);
     expect(timedOut).toBeInstanceOf(RequestTimeout);
     expect(timingOut).toHaveBeenCalledTimes(3);
 
     const refused = vi.fn<typeof fetch>(() => Promise.reject(new TypeError("Failed to fetch")));
-    await expect(retrying(refused).get("/v1/tasks")).rejects.toThrow("Failed to fetch");
+    await expect(retrying(refused).get("/v1/api-keys")).rejects.toThrow("Failed to fetch");
     expect(refused).toHaveBeenCalledTimes(3);
   });
 
@@ -297,17 +279,17 @@ describe("the transport client's one retry", () => {
       const fetchImpl = vi.fn<typeof fetch>(() =>
         Promise.resolve(jsonResponse(status, { error: { code: "no", message: "no", request_id: "r" } })),
       );
-      await expect(retrying(fetchImpl).get("/v1/tasks")).rejects.toBeInstanceOf(ApiError);
+      await expect(retrying(fetchImpl).get("/v1/api-keys")).rejects.toBeInstanceOf(ApiError);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     }
   });
 
   it("sends a creating POST again under the key the first attempt carried", async () => {
-    const answers = [jsonResponse(503, {}), jsonResponse(201, { id: "t1" })];
+    const answers = [jsonResponse(503, {}), jsonResponse(201, { id: "k1" })];
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(answers.shift()!));
     await expect(
-      retrying(fetchImpl).post("/v1/tasks", { title: "one" }, { idempotencyKey: "key_1" }),
-    ).resolves.toEqual({ id: "t1" });
+      retrying(fetchImpl).post("/v1/api-keys", { name: "one" }, { idempotencyKey: "key_1" }),
+    ).resolves.toEqual({ id: "k1" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     for (const [, init] of fetchImpl.mock.calls) {
       expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key_1");
@@ -315,11 +297,11 @@ describe("the transport client's one retry", () => {
   });
 
   it("names the version a write read as the entity tag If-Match carries", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(200, { id: "t1" })));
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(200, { id: "k1" })));
     const api = retrying(fetchImpl);
-    await api.patch("/v1/tasks/t1", { title: "t" }, { ifMatch: 3 });
-    await api.del("/v1/tasks/t1", { ifMatch: 4 });
-    await api.get("/v1/tasks/t1");
+    await api.patch("/v1/api-keys/k1", { name: "k" }, { ifMatch: 3 });
+    await api.del("/v1/api-keys/k1", { ifMatch: 4 });
+    await api.get("/v1/api-keys/k1");
     const sent = fetchImpl.mock.calls.map(([, init]) => new Headers(init?.headers).get("If-Match"));
     expect(sent).toEqual(['"3"', '"4"', null]);
   });
@@ -330,8 +312,8 @@ describe("the transport client's one retry", () => {
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(503, {})));
     const api = retrying(fetchImpl);
     await expect(api.post("/v1/auth/logout")).rejects.toBeInstanceOf(ApiError);
-    await expect(api.patch("/v1/tasks/t1", { title: "t" }, { ifMatch: 1 })).rejects.toBeInstanceOf(ApiError);
-    await expect(api.del("/v1/tasks/t1")).rejects.toBeInstanceOf(ApiError);
+    await expect(api.patch("/v1/api-keys/k1", { name: "k" }, { ifMatch: 1 })).rejects.toBeInstanceOf(ApiError);
+    await expect(api.del("/v1/api-keys/k1")).rejects.toBeInstanceOf(ApiError);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
@@ -342,7 +324,7 @@ describe("the transport client's one retry", () => {
       return Promise.reject(init?.signal?.reason ?? new TypeError("Failed to fetch"));
     });
     const failure = await retrying(fetchImpl)
-      .get("/v1/tasks", { signal: controller.signal })
+      .get("/v1/api-keys", { signal: controller.signal })
       .catch((error: unknown) => error);
     expect((failure as Error).message).toBe("navigated away");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -350,7 +332,7 @@ describe("the transport client's one retry", () => {
 
   it("sends every call exactly once when the settings turn the retry off", async () => {
     const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse(503, {})));
-    await expect(client({ fetchImpl }).get("/v1/tasks")).rejects.toBeInstanceOf(ApiError);
+    await expect(client({ fetchImpl }).get("/v1/api-keys")).rejects.toBeInstanceOf(ApiError);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

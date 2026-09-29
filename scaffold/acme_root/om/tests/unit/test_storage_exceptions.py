@@ -21,14 +21,11 @@ import inspect
 import pkgutil
 
 from contracts import (
-    billing_storage,
     event_storage,
     idempotency_storage,
     media_storage,
     orchestration_storage,
     outbox_storage,
-    slack_storage,
-    task_storage,
     tenancy_storage,
     work_storage,
 )
@@ -56,11 +53,10 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("TenancyStorageInterface", "read_org_by_slug"),
         ("TenancyStorageInterface", "read_orgs"),
         ("TenancyStorageInterface", "count_orgs"),
-        # The sweep's tally of the platform's size: three counts across every
+        # The sweep's tally of the platform's size: counts across every
         # tenant, and the one global row they are kept in, which the operator
         # plane reads instead of counting in a request.
         ("TenancyStorageInterface", "count_orgs_and_users"),
-        ("TasksStorageInterface", "count_created_since"),
         ("EventStorageInterface", "count_since"),
         ("TenancyStorageInterface", "write_platform_size"),
         ("TenancyStorageInterface", "read_platform_size"),
@@ -82,23 +78,14 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("WorkStorageInterface", "purge_items"),
         # The sweep's purges of rows past their retention: one named statement
         # a namespace a pass in the system scope, like the queue's purge, so a
-        # tenant with nothing to purge costs a pass nothing. The tasks' read
-        # comes first so a task's attachments go before it; the media's read
+        # tenant with nothing to purge costs a pass nothing. The media's read
         # names each object's tenant, whose key the store holds it under; the
         # trim moves each tenant's floor with its events, in its statement.
-        ("TasksStorageInterface", "read_deleted"),
-        ("TasksStorageInterface", "purge_deleted"),
         ("TenancyStorageInterface", "purge_deleted"),
-        # The sweep's read of the tenants with a chore due: one statement a
-        # pass in the system scope, so a tenant with no chore due costs a pass
-        # nothing, where a read of each tenant cost every tenant two.
-        ("TasksStorageInterface", "read_tenants_with_chores"),
         ("IdempotencyStorageInterface", "purge_records"),
         ("MediaStorageInterface", "read_purgeable"),
         ("MediaStorageInterface", "purge_files_across_tenants"),
         ("EventStorageInterface", "trim"),
-        ("BillingStorageInterface", "purge_deliveries"),
-        ("SlackStorageInterface", "purge"),
         ("OrchestrationsStorageInterface", "purge_settled"),
         # The sweep's gauges: one read each across every tenant's rows.
         ("WorkStorageInterface", "oldest_ready_at"),
@@ -108,20 +95,15 @@ STORAGE_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("OutboxStorageInterface", "oldest_pending_at"),
         # The outbox's dead-letter gauge, read across tenants like the lag's.
         ("OutboxStorageInterface", "count_failed_since"),
-        ("SlackStorageInterface", "read_installation_by_team"),
-        ("SlackStorageInterface", "redeem_install_state"),
     }
 )
 
 CROSS_TENANT_CASES: dict[str, frozenset[str]] = {
-    "BillingStorageInterface": billing_storage.CROSS_TENANT_CASES,
     "EventStorageInterface": event_storage.CROSS_TENANT_CASES,
     "IdempotencyStorageInterface": idempotency_storage.CROSS_TENANT_CASES,
     "MediaStorageInterface": media_storage.CROSS_TENANT_CASES,
     "OrchestrationsStorageInterface": orchestration_storage.CROSS_TENANT_CASES,
     "OutboxStorageInterface": outbox_storage.CROSS_TENANT_CASES,
-    "SlackStorageInterface": slack_storage.CROSS_TENANT_CASES,
-    "TasksStorageInterface": task_storage.CROSS_TENANT_CASES,
     "TenancyStorageInterface": tenancy_storage.CROSS_TENANT_CASES,
     "WorkStorageInterface": work_storage.CROSS_TENANT_CASES,
 }
@@ -153,12 +135,7 @@ MANAGER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("TenancyManagerInterface", "purge_across_tenants"),
         ("IdempotencyManagerInterface", "purge_across_tenants"),
         ("EventsManagerInterface", "purge_across_tenants"),
-        ("BillingManagerInterface", "purge_across_tenants"),
-        ("SlackManagerInterface", "purge_across_tenants"),
         ("OrchestrationsManagerInterface", "purge_across_tenants"),
-        # And the sweep's read of the tenants whose tasks have a chore due,
-        # across tenants like the purges: it reads for no tenant.
-        ("TasksManagerInterface", "tenants_with_chores"),
         # The sweep's gauges of the queue, read across tenants like the purge.
         ("WorkManagerInterface", "oldest_ready_age"),
         ("WorkManagerInterface", "failed_within"),
@@ -186,9 +163,6 @@ REQUEST_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
         ("TenancyManagerInterface", "redeem_ticket"),
         ("TenancyManagerInterface", "service_context"),
         ("TenancyManagerInterface", "service_contexts"),
-        # The member a Slack command was typed by, found by the address their
-        # Slack profile holds.
-        ("TenancyManagerInterface", "member_context"),
         ("TenancyManagerInterface", "grant_operator"),
         ("TenancyManagerInterface", "disable_operator"),
         ("TenancyManagerInterface", "grant_operator_token"),
@@ -198,19 +172,8 @@ REQUEST_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
         # as the claim mints one.
         ("WorkManagerInterface", "requeue_stale"),
         ("WorkManagerInterface", "maintenance_contexts"),
-        # The tasks' purge across tenants: a deleted task's attachments are
-        # detached under its tenant's service context, which `sweep_context`
-        # mints from this stage, as the requeue's dead letter does.
-        ("TasksManagerInterface", "purge_across_tenants"),
-        ("TenancyManagerInterface", "sweep_context"),
-        # The org a verified delivery from the payment processor names, before
-        # any stage exists for it: the webhook consumer's lookup.
-        ("BillingManagerInterface", "org_of_delivery"),
-        # A call from Slack arrives with a workspace or an install state and no
-        # tenant; each finds the tenant from what Slack sent, as a webhook's
-        # lookup does.
-        ("SlackManagerInterface", "finish_install"),
-        ("SlackManagerInterface", "installation_for_team"),
+        # The service context a purge across tenants works a tenant's rows
+        # under, minted from this stage, as the requeue's dead letter is.
     }
 )
 

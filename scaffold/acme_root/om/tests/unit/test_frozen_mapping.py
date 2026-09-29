@@ -107,7 +107,7 @@ def test_an_entity_payload_is_frozen_all_the_way_down() -> None:
         {
             "id": "00000000-0000-7000-8000-000000000001",
             "org_id": "00000000-0000-7000-8000-000000000005",
-            "kind": "tasks.task.created",
+            "kind": "tenancy.user.created",
             "target_id": "00000000-0000-7000-8000-000000000002",
             "produced_at": "2026-01-01T00:00:00Z",
             "actor_id": "00000000-0000-7000-8000-000000000003",

@@ -10,24 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from contracts.billing_storage import make_account
-from contracts.factories import (
-    make_api_key,
-    make_identity,
-    make_invitation,
-    make_membership,
-    make_operator_token,
-    make_org,
-    make_personal_org,
-    make_session,
-    make_sign_in,
-    make_socket_ticket,
-    make_user,
-)
-from contracts.outbox_storage import claim_all
-from contracts.racing import race
 from acme.om.base import EMPTY_UUID, new_id, utcnow
-from acme.om.billing.storage import BillingStorageInterface
 from acme.om.exceptions import Conflict, NotFound, RowDeleted, TenantMismatch, UniqueKeyTaken
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.types.attempt import lease_bound
@@ -43,6 +26,21 @@ from acme.om.tenancy.types.invitation import InvitationState
 from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.size import PlatformSize
 from acme.om.tenancy.types.user import User
+from contracts.factories import (
+    make_api_key,
+    make_identity,
+    make_invitation,
+    make_membership,
+    make_operator_token,
+    make_org,
+    make_personal_org,
+    make_session,
+    make_sign_in,
+    make_socket_ticket,
+    make_user,
+)
+from contracts.outbox_storage import claim_all
+from contracts.racing import race
 
 
 async def drained(storage: TenancyStorageInterface) -> datetime:
@@ -83,7 +81,6 @@ CROSS_TENANT_CASES: frozenset[str] = frozenset(
         "read_membership_for_user",
         "read_memberships",
         "read_org",
-        "read_key_principal",
         "read_principal",
         "read_session",
         "read_sessions",
@@ -202,13 +199,6 @@ class TenancyStorageContract:
         ones. The concrete test class wires it."""
         raise NotImplementedError("the concrete test class provides the markers")
 
-    @pytest.fixture
-    def accounts(self) -> BillingStorageInterface:
-        """The billing accounts an api key's principal is read with: the table
-        the Postgres impl joins, the store the root handed the memory impl.
-        The concrete test class wires it."""
-        raise NotImplementedError("the concrete test class provides the accounts")
-
     async def test_org_round_trip(self, storage: TenancyStorageInterface) -> None:
         org = make_org()
         await storage.write_org(org.id, org)
@@ -256,7 +246,6 @@ class TenancyStorageContract:
         first = PlatformSize(
             tenants=3,
             users=5,
-            tasks_last_24h=7,
             events_last_24h=11,
             since=at - timedelta(hours=24),
             counted_at=at,
@@ -441,36 +430,11 @@ class TenancyStorageContract:
         await storage.write_membership(org.id, ended)
         assert await storage.read_principal(org.id, user.id) == (org, user, None)
 
-    async def test_a_keys_principal_is_read_with_its_orgs_account_and_only_under_its_tenant(
-        self, storage: TenancyStorageInterface, accounts: BillingStorageInterface
-    ) -> None:
-        """What `read_principal` answers, and beside it the org's own billing
-        account: none while the org has none, never another tenant's, and
-        nothing at all for an org that is not there."""
-        org, other = make_org("A"), make_org("B")
-        user = make_user(make_identity().id)
-        membership = make_membership(user.id)
-        await storage.create_org_with_owner(org.id, org, user, membership)
-        await storage.write_org(other.id, other)
-        assert await storage.read_key_principal(org.id, user.id) == (org, user, membership, None)
-        account = make_account(f"cus_{uuid4().hex}")
-        others = make_account(f"cus_{uuid4().hex}")
-        assert await accounts.create_account(org.id, account, ())
-        assert await accounts.create_account(other.id, others, ())
-        assert await storage.read_key_principal(org.id, user.id) == (
-            org,
-            user,
-            membership,
-            account,
-        )
-        assert await storage.read_key_principal(other.id, user.id) == (other, None, None, others)
-        assert await storage.read_key_principal(new_id(), user.id) == (None, None, None, None)
-
     async def test_the_member_count_is_the_tenants_live_memberships(
         self, storage: TenancyStorageInterface
     ) -> None:
-        """The seats a plan counts: live memberships of this tenant, an ended
-        one not among them, another tenant's never."""
+        """Live memberships of this tenant, an ended one not among them,
+        another tenant's never."""
         org_a, org_b = make_org("A"), make_org("B")
         kept, ended = make_membership(new_id()), make_membership(new_id())
         await storage.write_membership(org_a.id, kept)

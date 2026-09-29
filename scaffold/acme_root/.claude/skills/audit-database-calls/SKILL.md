@@ -19,16 +19,17 @@ the code does, not what it looks like it does.
 The audit counts the checkout, tools and code alike; to count another
 commit, run it from a checkout of that commit that has `ops/audit/`.
 Every command runs from the repository root. `--only` runs some of the
-built-in flows (`auth`, `tenancy`, `tasks`, `attachments`, `events`, `billing`,
-`worker`, `sweep`, `health`); `seed` always runs first, and a flows
-file of the run's own always runs in full.
+built-in flows (`sign_in`, `members`, `invitations`, `api_keys`,
+`switch`, `files`, `events`, `org_deleted`, `account_deleted`, `sweep`,
+`health`), such as `--only api_keys,sweep`; `seed` always runs first,
+and a flows file of the run's own always runs in full.
 
 ## Role and credential
 
 None, local only. The skill runs on the local stack (`make
 infra-up`, with `make migrate` run once), in a database it makes and
-drops, with the provider twins (identity, payments, Slack) in place of
-the providers. It holds no cloud credential and reads no environment.
+drops, with the identity provider's twin in place of the provider. It
+holds no cloud credential and reads no environment.
 
 ## Procedure
 
@@ -110,8 +111,8 @@ the providers. It holds no cloud credential and reads no environment.
      in a flows file when no built-in flow makes that call. Say the reads
      caused by one change as reads per hint × members × open tabs, minus
      the tabs that skip, at an org of 2 and of 200 members with 2 tabs
-     each. A bulk write publishes many hints at once; say what a tab does
-     with a burst;
+     each. Writes in quick succession publish hints in a burst; say what
+     a tab does with one;
 5. Drop the run's database, whatever happened before, and check it is
    gone:
 
@@ -144,7 +145,8 @@ the providers. It holds no cloud credential and reads no environment.
 - Never modifies a tracked file, never commits, never opens a pull
   request: a run's own flows live in its evidence folder, and a fix is a
   proposal with its numbers.
-- Never calls a real provider: the twins stand in for every one.
+- Never calls a real provider: the twin stands in for the identity
+  provider.
 - Never gives a maximum it did not measure as measured: a formula from the
   code is marked as one, with the sizes that agree with it.
 
@@ -155,7 +157,7 @@ the providers. It holds no cloud credential and reads no environment.
 ```markdown
 # Acme: database calls per endpoint and flow
 
-<commit>, counted on <database>, with the provider twins. How the count is taken, in two sentences.
+<commit>, counted on <database>, with the identity provider's twin. How the count is taken, in two sentences.
 
 ## How to read the numbers
 

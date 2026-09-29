@@ -43,20 +43,14 @@ test("the sign-in and sign-up links go to the app of the build's environment", (
   expect(html).toContain('href="%APP_URL%/login"');
   expect(html).toContain('href="%APP_URL%/login?screen_hint=sign-up"');
   expect(html).toContain('href="%GITHUB_URL%"');
-  expect(html).not.toMatch(/acme\.fyi/);
 });
 
-test("the plans carry their prices", () => {
-  const text = page("index.html").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  expect(text).toMatch(/Free \$0/);
-  expect(text).toMatch(/Up to 10 open tasks/);
-  expect(text).toMatch(/No API key/);
-  expect(text).toMatch(/Pro \$5 \/ month/);
-  expect(text).toMatch(/Team \$10 \/ month/);
-  expect(text).toMatch(/Up to 5 members/);
-  expect(text).toMatch(/Max \$3 \/ member \/ month/);
-  expect(text).toMatch(/\$30 a month minimum/);
-  expect(text).not.toMatch(/illustrative/i);
+test("the page names the product and says what it is, with no picture", () => {
+  const html = page("index.html");
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  expect(text).toMatch(/Acme/);
+  expect(text).toMatch(/A multi-tenant system for teams\./);
+  expect(html).not.toMatch(/<(?:img|picture|video)\b/i);
 });
 
 // The tab shows the mark: the SVG, a 32-pixel PNG for a browser that takes no

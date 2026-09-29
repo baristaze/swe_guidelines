@@ -8,7 +8,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from contracts.plans import ON_TEAM
 from contracts.second_factor import TOTP_KEY, SteppingClock
 
 from acme.infra.cache import CacheScope
@@ -103,7 +102,6 @@ def build(
         ),
         SteppingClock(),
         identity_provider=twin or IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
 
 

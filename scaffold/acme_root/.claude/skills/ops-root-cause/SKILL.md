@@ -69,8 +69,8 @@ lists them.
    With `--user`, keep that member alone. A route that answers 403 or
    404 ends the run: the token is not allowed, or the tenant does
    not exist, and neither is guessed around.
-3. Read the tenant's activity of the window: the events feed and the
-   entity rows the product exposes on the plane:
+3. Read the tenant's activity of the window, the operator's events
+   feed:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
@@ -80,9 +80,9 @@ lists them.
    The operator's feed carries `request_id` and `app` beside the
    actor, which the tenant's own feed leaves out, so it is the map from
    what the tenant did to the requests that did it. The rows themselves
-   are `/v1/admin/orgs/<org_id>/tasks?status=open|done` and
-   `.../members`. Without `--request-id`, pick the request ids of the
-   window's failed or missing writes here and in step 4.
+   are the org and its members of step 2. Without `--request-id`, pick
+   the request ids of the window's failed or missing writes here and in
+   step 4.
 4. The error tracker, by request id or by tenant window. One project
    holds the product's errors for every environment, so the read names
    it and asks for this environment:

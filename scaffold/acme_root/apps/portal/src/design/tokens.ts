@@ -1,4 +1,4 @@
-// Design tokens: the operator console imports these from the portal.
+// Design tokens: the one set of colours, spaces, radii, and type sizes.
 // A colour or a shadow is a CSS custom property, so one inline style follows
 // the theme: `theme.css` gives each property its light and its dark value.
 const v = (name: string) => `var(--acme-${name})`;
@@ -16,13 +16,13 @@ export const tokens = {
     border: v("border"),
     /** The edge of a field and of a checkbox: a step stronger than a card's. */
     borderStrong: v("border-strong"),
-    /** The fill of a primary button, a checked box, the drop line. */
+    /** The fill of a primary button and of a checked box. */
     accent: v("accent"),
     /** Text on the accent fill. */
     accentText: v("accent-text"),
     /** A tint of the accent, behind accent text. */
     accentSoft: v("accent-soft"),
-    /** The accent as text on a surface: a link, an assignee. */
+    /** The accent as text on a surface: a link. */
     link: v("link"),
     /** The fill of a destructive button. */
     danger: v("danger"),

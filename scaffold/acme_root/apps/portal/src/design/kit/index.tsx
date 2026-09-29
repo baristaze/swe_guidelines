@@ -57,7 +57,7 @@ export function Page({
   back?: ReactNode;
   nav?: ReactNode;
   /** What the page says above its title before anything else: a banner the
-   * whole app shows, such as a payment that failed. */
+   * whole app shows. */
   notice?: ReactNode;
   narrow?: boolean;
   children: ReactNode;

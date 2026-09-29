@@ -9,7 +9,7 @@ export interface Environments {
 }
 
 export interface Links {
-  /** The portal; "Sign in" and "Get started" go there. */
+  /** The portal; "Sign in" and "Sign up" go there. */
   app: string;
   /** Where this page is served, for its canonical address. */
   site: string;

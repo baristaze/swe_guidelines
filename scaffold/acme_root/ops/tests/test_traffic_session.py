@@ -1,11 +1,10 @@
 """One session over the fake edge: the steps in order, an idempotency key
-on every creating call, the socket seeing its own change, the stream read
+on the creating call, the socket seeing its own change, the stream read
 from where it stood, and the report at the end. A session runs under the
 token its seat holds and never signs in for itself; the run does that once
 per person. Think time is zero and the clock is the test's."""
 
 import asyncio
-import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,7 +28,6 @@ from acme.ops.traffic import (
     RecordingTransport,
     Seat,
     Session,
-    SessionOutcome,
     route_template,
     run_traffic,
     seat_order,
@@ -73,10 +71,9 @@ def local_env() -> Environment:
 
 def test_ids_in_a_path_read_as_a_template() -> None:
     assert (
-        route_template("/v1/tasks/0199a4c0-0000-7000-8000-000000000001/move")
-        == "/v1/tasks/{id}/move"
+        route_template("/v1/api-keys/0199a4c0-0000-7000-8000-000000000001") == "/v1/api-keys/{id}"
     )
-    assert route_template("/v1/tasks") == "/v1/tasks"
+    assert route_template("/v1/api-keys") == "/v1/api-keys"
 
 
 def test_the_people_to_sign_in_are_taken_one_org_at_a_time() -> None:
@@ -95,69 +92,72 @@ async def test_a_session_walks_every_step_in_order() -> None:
     samples: list[Sample] = []
     client, recording = client_over(api, samples)
     async with client:
-        session = Session(
-            client,
-            SEAT,
-            quick_clock(),
-            recording=recording,
-            connect=connect_to(api),
-            task_count=lambda: 5,
-        )
+        session = Session(client, SEAT, quick_clock(), recording=recording, connect=connect_to(api))
         outcome = await session.run()
     assert outcome.failure is None, outcome.failure
     assert outcome.completed and outcome.saw_own_change and not outcome.cut
     steps = [f"{r.method} {route_template(r.url.path)}" for r in api.requests]
     assert steps == [
         "POST /v1/realtime/tickets",
-        "GET /v1/tasks",
-        *["POST /v1/tasks"] * 5,
-        "PATCH /v1/tasks/{id}",  # edit one
-        "PATCH /v1/tasks/{id}",  # complete two
-        "PATCH /v1/tasks/{id}",
-        "PATCH /v1/tasks/{id}",  # reopen one
-        "POST /v1/tasks/{id}/move",
-        "GET /v1/tasks",  # the done list
-        "DELETE /v1/tasks/{id}",
+        "GET /v1/me",
+        "GET /v1/users",
+        "PATCH /v1/me",
+        "POST /v1/api-keys",
+        "DELETE /v1/api-keys/{id}",
         "GET /v1/events",
     ]
     assert not any(r.url.path in AUTH_ROUTES for r in api.requests)
-    creates = [r for r in api.requests if r.method == "POST" and r.url.path == "/v1/tasks"]
-    keys = {r.headers["idempotency-key"] for r in creates}
-    assert len(keys) == 5
+    create = next(r for r in api.requests if r.method == "POST" and r.url.path == "/v1/api-keys")
+    assert create.headers["idempotency-key"]
     assert all(r.headers["x-app"] == "portal" for r in api.requests)
     assert all(r.headers["authorization"] == "Bearer ses_1" for r in api.requests)
-    lists = [r for r in api.requests if r.url.path == "/v1/tasks" and r.method == "GET"]
-    assert [r.url.params["status"] for r in lists] == ["open", "done"]
     events = next(r for r in api.requests if r.url.path == "/v1/events")
     assert events.url.params["after_seq"] == "10"  # where the stream stood at the hello
-    assert len(outcome.write_request_ids) == 5
+    assert len(outcome.write_request_ids) == 1
     assert len(samples) == len(api.requests)
     assert {s.status for s in samples} == {200, 201}
+
+
+async def test_a_session_leaves_the_person_and_the_keys_as_it_found_them() -> None:
+    """The display name is written as it stands, and the key the session
+    made is revoked before it ends: a run over the seeded org changes
+    nobody's name and leaves no live key behind."""
+    api = FakeApi()
+    samples: list[Sample] = []
+    client, recording = client_over(api, samples)
+    async with client:
+        outcome = await Session(
+            client, SEAT, quick_clock(), recording=recording, connect=connect_to(api)
+        ).run()
+    assert outcome.completed, outcome.failure
+    assert api.user["display_name"] == "Owner"
+    assert len(api.keys) == 1 and all(key["deleted_at"] for key in api.keys.values())
+    kinds = [event["kind"] for event in api.events]
+    assert kinds == [
+        "tenancy.user.updated",
+        "tenancy.api_key.created",
+        "tenancy.api_key.deleted",
+    ]
 
 
 async def test_a_retried_refusal_is_two_samples_and_a_completed_session() -> None:
     """A keyed creating call the API refused with a 503 is sent again by the
     client; both attempts are requests the report counts."""
-    api = FakeApi(fail_on="POST /v1/tasks")
+    api = FakeApi(fail_on="POST /v1/api-keys")
     samples: list[Sample] = []
     client, recording = client_over(api, samples)
     async with client:
         outcome = await Session(
-            client,
-            SEAT,
-            quick_clock(),
-            recording=recording,
-            connect=connect_to(api),
-            task_count=lambda: 5,
+            client, SEAT, quick_clock(), recording=recording, connect=connect_to(api)
         ).run()
     assert outcome.completed and outcome.failure is None
-    creates = [s.status for s in samples if s.route == "/v1/tasks" and s.method == "POST"]
-    assert creates == [503, 201, 201, 201, 201, 201]
-    assert len(outcome.write_request_ids) == 5
+    creates = [s.status for s in samples if s.route == "/v1/api-keys" and s.method == "POST"]
+    assert creates == [503, 201]
+    assert len(outcome.write_request_ids) == 1
 
 
 async def test_a_refusal_the_client_does_not_retry_fails_the_session() -> None:
-    api = FakeApi(fail_on="DELETE /v1/tasks/{id}")
+    api = FakeApi(fail_on="DELETE /v1/api-keys/{id}")
     samples: list[Sample] = []
     client, recording = client_over(api, samples)
     async with client:
@@ -350,8 +350,9 @@ async def test_a_run_over_the_seeded_org_bounds_sessions_and_reports() -> None:
     assert report.profile == "light" and report.environment == "local"
     assert report.errors == 0 and report.requests == len(api.requests)
     assert any(
-        r.route == "/v1/tasks" and r.method == "POST" and r.status == 201 for r in report.routes
+        r.route == "/v1/api-keys" and r.method == "POST" and r.status == 201 for r in report.routes
     )
+    assert any(r.route == "/v1/api-keys/{id}" and r.method == "DELETE" for r in report.routes)
     assert report.notes[0] == "orgs 0: the seeded org 'ajax' and its two people"
     # The run says what the profile did and hands out one request id to read
     # the signals back by; the fake transport answers no x-request-id, so it
@@ -412,142 +413,3 @@ async def test_a_run_needs_seeded_people_or_a_provisioner() -> None:
         await run_traffic(
             env, LIGHT, duration_seconds=1, orgs=1, transport=httpx.MockTransport(FakeApi())
         )
-
-
-# Shared tasks: the 412 and the 404 a session meets when another session
-# wrote first. The fake's `interfere` is that other session.
-
-
-async def session_over(api: FakeApi) -> tuple[SessionOutcome, list[str]]:
-    samples: list[Sample] = []
-    client, recording = client_over(api, samples)
-    async with client:
-        outcome = await Session(
-            client,
-            SEAT,
-            quick_clock(),
-            recording=recording,
-            connect=connect_to(api),
-            task_count=lambda: 5,
-        ).run()
-    steps = [f"{r.method} {route_template(r.url.path)}" for r in api.requests]
-    return outcome, steps
-
-
-async def test_a_412_on_a_move_reads_the_task_afresh_and_moves_it_on_the_fresh_version() -> None:
-    """Another writer changed the task, so the version this session holds is
-    stale: the API says 412, and the session reads the task and moves it once
-    more. A conflict, counted, and not a failure."""
-    api = FakeApi(interfere={"POST /v1/tasks/{id}/move": ["bump"]})
-    outcome, steps = await session_over(api)
-    assert outcome.completed and outcome.failure is None, outcome.failure
-    assert (outcome.conflicts, outcome.gone) == (1, 0)
-    at = steps.index("POST /v1/tasks/{id}/move")
-    assert steps[at : at + 3] == [
-        "POST /v1/tasks/{id}/move",  # 412: the task moved on
-        "GET /v1/tasks/{id}",  # the fresh read
-        "POST /v1/tasks/{id}/move",  # on the fresh version, and it lands
-    ]
-    moves = [r for r in api.requests if r.url.path.endswith("/move")]
-    sent = [json.loads(r.content)["expected_version"] for r in moves]
-    assert sent[1] == sent[0] + 1
-
-
-async def test_a_second_412_leaves_the_step_undone_and_the_session_goes_on() -> None:
-    """One retry, as a client makes: a task that keeps moving under the
-    session is left as it is, and the session goes on to its next step."""
-    api = FakeApi(interfere={"PATCH /v1/tasks/{id}": ["bump", "bump"]})
-    outcome, steps = await session_over(api)
-    assert outcome.completed and outcome.failure is None, outcome.failure
-    assert (outcome.conflicts, outcome.gone) == (2, 0)
-    assert steps[7:10] == ["PATCH /v1/tasks/{id}", "GET /v1/tasks/{id}", "PATCH /v1/tasks/{id}"]
-    first = next(t for t in api.tasks.values() if t["title"].endswith("task 1"))
-    assert not first["title"].endswith("(edited)")
-
-
-async def test_a_task_deleted_under_the_session_is_dropped_and_its_later_steps_left_out() -> None:
-    """Another session deleted a task this one was about to complete: the
-    write answers 404, the fresh read says it is gone, and the reopen that
-    would have followed is left out."""
-    api = FakeApi(interfere={"PATCH /v1/tasks/{id}": ["pass", "delete"]})
-    outcome, steps = await session_over(api)
-    assert outcome.completed and outcome.failure is None, outcome.failure
-    assert (outcome.conflicts, outcome.gone) == (0, 1)
-    assert steps[7:] == [
-        "PATCH /v1/tasks/{id}",  # edit one
-        "PATCH /v1/tasks/{id}",  # complete it: 404, gone
-        "GET /v1/tasks/{id}",  # 404: gone indeed
-        "PATCH /v1/tasks/{id}",  # complete the other; no reopen of the gone one
-        "POST /v1/tasks/{id}/move",
-        "GET /v1/tasks",
-        "DELETE /v1/tasks/{id}",
-        "GET /v1/events",
-    ]
-
-
-async def test_a_412_on_a_delete_then_a_404_on_its_retry_is_a_conflict_and_a_task_gone() -> None:
-    """The ticket's race: one session deletes a task while another moves
-    it. The delete meets 412, the fresh read finds the task, and by the
-    retry the other session has deleted it: 404, and the session is done."""
-    api = FakeApi(interfere={"DELETE /v1/tasks/{id}": ["bump", "delete"]})
-    outcome, steps = await session_over(api)
-    assert outcome.completed and outcome.failure is None, outcome.failure
-    assert (outcome.conflicts, outcome.gone) == (1, 1)
-    at = steps.index("DELETE /v1/tasks/{id}")
-    assert steps[at:] == [
-        "DELETE /v1/tasks/{id}",  # 412
-        "GET /v1/tasks/{id}",  # still there, at a later version
-        "DELETE /v1/tasks/{id}",  # 404: deleted by the other session meanwhile
-        "GET /v1/tasks/{id}",  # 404: gone
-        "GET /v1/events",
-    ]
-
-
-class NotFoundOnDelete(FakeApi):
-    """Answers a delete with 404 while the task is still there to read."""
-
-    def answer(self, request: httpx.Request) -> httpx.Response:
-        if request.method == "DELETE":
-            return httpx.Response(404, json={"error": {"code": "not_found", "message": "no"}})
-        return super().answer(request)
-
-
-async def test_a_404_on_a_task_that_is_still_there_fails_the_session() -> None:
-    """A 404 is taken as a task gone only when the fresh read agrees; when
-    the task is there, something else was not found, and that is a failure."""
-    outcome, steps = await session_over(NotFoundOnDelete())
-    assert outcome.failure == "404 not_found on the API"
-    assert (outcome.conflicts, outcome.gone) == (0, 0)
-    assert steps[-2:] == ["DELETE /v1/tasks/{id}", "GET /v1/tasks/{id}"]
-
-
-async def test_a_run_counts_conflicts_apart_from_errors_and_failures() -> None:
-    """A run whose sessions met conflicts completes them, exits 0, and says
-    how many it met: a line in the table and two numbers in the JSON."""
-    api = FakeApi(
-        interfere={
-            "POST /v1/tasks/{id}/move": ["bump"],
-            "DELETE /v1/tasks/{id}": ["delete"],
-        }
-    )
-    result = await run_traffic(
-        local_env(),
-        Profile("light", 1, 2, 2, (0.0, 0.0), 60),
-        duration_seconds=20,
-        orgs=0,
-        max_sessions=2,
-        transport=httpx.MockTransport(api),
-        connect=connect_to(api),
-    )
-    report = result.report
-    s = report.sessions
-    assert (s.completed, s.failed, s.conflicts, s.gone) == (2, 0, 1, 1)
-    assert report.errors == 0
-    assert any(r.status == 412 for r in report.routes)
-    assert "conflicts: 1 re-read, 1 gone" in report.table()
-    assert json.loads(report.to_json())["sessions"]["conflicts"] == 1
-    assert traffic_exit_code(report) == OK
-    # The stress run drives the same sessions and says the same, beside its verdict.
-    scenario = load_scenario(HERE / "smoke.yaml")
-    text = verdict(scenario, report, Readback(100, 0)).text(scenario, report, Readback(100, 0))
-    assert "conflicts: 1 answered by a fresh read, 1 on a task found gone" in text

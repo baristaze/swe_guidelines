@@ -11,10 +11,10 @@ Each statement runs in its own transaction, which is rolled back, so a DELETE
 or an UPDATE is measured and never kept. The file names each statement with
 header lines:
 
-    -- name: open list, mine scope, idle member
+    -- name: the org's files, first page
     -- scope: 01900000-0000-7000-8000-00000000b16b    (or: system)
     -- user: <uuid>                                   (optional)
-    -- params: 'open', 51                             (optional: the generic plan)
+    -- params: 'upload', 51                           (optional: the generic plan)
     SELECT ... ;
 
 `-- params` asks for the plan a prepared statement settles on after five
@@ -32,7 +32,7 @@ counters were last zeroed, so an index nothing read is visible after a run.
 is measured on the same data before it is proposed:
 
     uv run python ops/audit/explain.py index audit_<run> \
-        "CREATE INDEX ix_try ON core.tasks (org_id, assignee_id)"
+        "CREATE INDEX ix_try ON core.api_keys (org_id, user_id)"
 
 It takes a `CREATE INDEX` or a `DROP INDEX` and nothing else; the index
 lives on the audit database only, which the run drops.

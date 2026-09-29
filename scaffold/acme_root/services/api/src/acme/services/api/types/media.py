@@ -28,14 +28,14 @@ class FileView(View):
 
 
 class FilePageView(View):
-    """One page of files, oldest first. `next_cursor` fetches the next page and
-    is null on the last one."""
+    """One page of the org's stored files, oldest first. `next_cursor` fetches
+    the next page and is null on the last one."""
 
     items: list[FileView]
     next_cursor: str | None
 
 
-class AddFileRequest(RequestBody):
+class StartUploadRequest(RequestBody):
     """An upload to start: the file's name as the uploader had it, its type,
     and its size in bytes. The type must be one the purpose accepts and match
     the name's extension; the size is the most the store will take."""

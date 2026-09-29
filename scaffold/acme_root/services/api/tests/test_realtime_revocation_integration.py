@@ -2,9 +2,7 @@
 stack's Postgres and Valkey, one serving a socket, the other revoking the
 session behind it; the socket closes with 4401 on the wire. When the bus
 never carries the message, the serving process's own recheck closes it
-within its interval. A downgrade to a plan without api keys closes a key's
-socket, at once when the bus carries the account's change and within the
-recheck when it does not. A change of role closes the socket with 1012. The pong
+within its interval. A change of role closes the socket with 1012. The pong
 carries the head heard on the bus, and reads it once that is too old."""
 
 import asyncio
@@ -20,13 +18,11 @@ import httpx
 import pytest
 import uvicorn
 import websockets
-from api_support import OWNER, add_member, on_plan, seed_request, sign_in_as
+from api_support import OWNER, add_member, seed_request, sign_in_as
 from websockets.exceptions import ConnectionClosed
 
 from acme.om.base import new_id
-from acme.om.billing.types.plan import Plan
 from acme.om.opcontext import IdentityContext, OpContext, Role
-from acme.om.outbox.types.row import outbox_row
 from acme.om.tenancy.types.org import Org
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
@@ -35,7 +31,7 @@ from acme.services.api.main import server_options
 from acme.services.api.realtime.socket import CLOSE_RECONNECT
 from acme.services.api.services.realtime import CREDENTIAL_REVOKED, RIGHTS_CHANGED
 from acme.services.api.settings import ApiSettings
-from acme.services.api.types.tasks import AddTaskRequest
+from acme.services.api.types.media import StartUploadRequest
 
 pytestmark = pytest.mark.integration
 
@@ -229,73 +225,9 @@ async def test_a_change_of_role_in_one_process_closes_the_socket_in_another(
             assert '"type":"hello"' in str(await ws.recv())
 
 
-async def key_socket_on_team(processes: TwoProcesses) -> tuple[str, str]:
-    """The org on Team, an api key of its owner, and a ticket minted on it:
-    the key's headers' value and the ticket."""
-    await on_plan(processes.revoker, processes.org.id, Plan.TEAM)
-    owner = await headers_of(processes.address, processes.email, processes.org)
-    async with httpx.AsyncClient(base_url=f"http://{processes.address}") as client:
-        issued = await client.post(
-            "/v1/api-keys", headers=owner, json={"name": "ci", "role": "member"}
-        )
-    key = issued.json()["key"]
-    return key, await ticket_for(processes.address, {"Authorization": f"Bearer {key}"})
-
-
-async def downgrade(processes: TwoProcesses, announced: bool) -> None:
-    """Process A takes the org off every plan with keys. Announced, the
-    write carries the account's change row and A's relay publishes it, as
-    the billing manager's writes do; not announced, the bus never hears."""
-    billing = processes.revoker.storage.get_billing_storage()
-    account = await billing.read_account(processes.org.id)
-    assert account is not None
-    downgraded = account.model_copy(update={"comped_plan": None})
-    if not announced:
-        await billing.write_account(processes.org.id, downgraded, ())
-        return
-    owner = await headers_of(processes.address, processes.email, processes.org)
-    ctx = await context_of(processes.revoker, owner)
-    rows = (outbox_row(ctx, "billing.account.updated", account.id, {}),)
-    await billing.write_account(processes.org.id, downgraded, rows)
-    await processes.revoker.managers.outbox.relay_all(processes.org.id, rows)
-
-
-async def test_a_downgrade_closes_the_keys_socket_within_the_recheck(tmp_path: Path) -> None:
-    """The org drops to a plan without api keys and the bus never hears: B's
-    recheck refuses the key as its every request is refused, and closes its
-    socket with 4401 within one interval."""
-    async with serving(
-        tmp_path, revoker_bus="memory", realtime_recheck_seconds=RECHECK_SECONDS
-    ) as processes:
-        _, ticket = await key_socket_on_team(processes)
-        async with websockets.connect(
-            f"ws://{processes.address}/v1/realtime?ticket={ticket}"
-        ) as ws:
-            assert '"type":"hello"' in str(await ws.recv())
-            await downgrade(processes, announced=False)
-            started = time.monotonic()
-            closed = await closed_within(ws, RECHECK_SECONDS + 5)
-            waited = time.monotonic() - started
-    assert closed.rcvd is not None
-    assert closed.rcvd.code == CLOSE_UNAUTHENTICATED
-    assert closed.rcvd.reason == "plan_limit_reached"
-    assert waited <= RECHECK_SECONDS + 1.0, f"closed after {waited:.2f}s"
-
-
-async def test_a_downgrade_on_the_bus_closes_the_keys_socket_at_once(tmp_path: Path) -> None:
-    """The account's change reaches B on the bus and wakes the key socket's
-    recheck: the socket closes long before its five-minute interval."""
-    async with serving(tmp_path) as processes:
-        _, ticket = await key_socket_on_team(processes)
-        async with websockets.connect(
-            f"ws://{processes.address}/v1/realtime?ticket={ticket}"
-        ) as ws:
-            assert '"type":"hello"' in str(await ws.recv())
-            await downgrade(processes, announced=True)
-            closed = await closed_within(ws, 10)
-    assert closed.rcvd is not None
-    assert closed.rcvd.code == CLOSE_UNAUTHENTICATED
-    assert closed.rcvd.reason == "plan_limit_reached"
+def upload(name: str) -> StartUploadRequest:
+    """A write the relay announces on the bus: its event gets the next seq."""
+    return StartUploadRequest(name=f"{name}.pdf", content_type="application/pdf", size_bytes=5)
 
 
 async def next_of(ws: websockets.ClientConnection, kind: str) -> dict[str, object]:
@@ -307,7 +239,7 @@ async def next_of(ws: websockets.ClientConnection, kind: str) -> dict[str, objec
 
 
 async def test_the_pong_carries_the_head_heard_on_the_bus(tmp_path: Path) -> None:
-    """A writes a task; B hears its hint and answers the next ping with its
+    """A starts an upload; B hears its hint and answers the next ping with its
     seq, and reads nothing for it: the hello's read is the only one."""
     async with serving(tmp_path) as processes:
         address, writer, server, org = (
@@ -331,9 +263,8 @@ async def test_the_pong_carries_the_head_heard_on_the_bus(tmp_path: Path) -> Non
             hello = await next_of(ws, "hello")
             await ws.send(json.dumps({"op": "subscribe", "topic": "entity_changed"}))
             await next_of(ws, "subscribed")
-            tasks = writer.services.get_tasks_service()
-            await tasks.create_task(
-                await context_of(writer, headers), AddTaskRequest(title="heard"), new_id()
+            await writer.services.get_media_service().start_upload(
+                await context_of(writer, headers), upload("heard"), new_id()
             )
             hint = await next_of(ws, "event")
             await ws.send(json.dumps({"op": "ping"}))
@@ -357,9 +288,8 @@ async def test_a_hint_b_never_heard_shows_once_the_head_is_too_old(tmp_path: Pat
         ticket = await ticket_for(address, headers)
         async with websockets.connect(f"ws://{address}/v1/realtime?ticket={ticket}") as ws:
             hello = await next_of(ws, "hello")
-            tasks = writer.services.get_tasks_service()
-            await tasks.create_task(
-                await context_of(writer, headers), AddTaskRequest(title="unheard"), new_id()
+            await writer.services.get_media_service().start_upload(
+                await context_of(writer, headers), upload("unheard"), new_id()
             )
             await ws.send(json.dumps({"op": "ping"}))
             within = await next_of(ws, "pong")

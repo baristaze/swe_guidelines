@@ -8,8 +8,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 from uuid import UUID
 
-from contracts.outbox_storage import claim_all, make_row
-from contracts.task_storage import make_task
+from contracts.outbox_storage import a_user, claim_all, make_row
 
 from acme.infra.breaker import Breaker
 from acme.infra.observability import OUTCOMES
@@ -26,7 +25,7 @@ from acme.om.outbox.impl.relay import (
 )
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl
+from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=3)
 
@@ -71,12 +70,12 @@ def dead_letters() -> float:
 
 
 async def landed(outbox: OutboxStorageMemoryImpl, org: UUID, count: int) -> list[OutboxRow]:
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     rows: list[OutboxRow] = []
     for _ in range(count):
-        task = make_task()
-        rows.append(make_row(org, task.id))
-        await tasks.create_task(org, task, (rows[-1],))
+        user = a_user()
+        rows.append(make_row(org, user.id))
+        await tenancy.write_user(org, user, (rows[-1],))
     return rows
 
 
@@ -158,7 +157,7 @@ async def test_a_publish_dropped_on_every_attempt_is_a_dead_letter() -> None:
     assert failed.failed_at is not None and failed.last_error == UNPUBLISHED
     assert dead_letters() == counted + 1
     kinds = [e.kind for e in await events.read_after(org, 0, 10)]
-    assert kinds == ["tasks.task.created", DEAD_LETTER_KIND], "one event, appended once"
+    assert kinds == ["tenancy.user.created", DEAD_LETTER_KIND], "one event, appended once"
 
 
 async def test_an_open_breaker_is_a_dropped_publish_and_not_a_delivered_one() -> None:

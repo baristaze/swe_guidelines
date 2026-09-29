@@ -159,7 +159,6 @@ async def recheck_until_refused(
     end: Callable[[str], None],
     interval: float,
     phase: Callable[[float], float] = lambda interval: random.uniform(0.0, interval),
-    nudged: asyncio.Event | None = None,
 ) -> None:
     """Asks the realtime service, every `interval` seconds, whether the
     socket's authority still holds, and ends the socket with the reason when
@@ -167,17 +166,12 @@ async def recheck_until_refused(
     interval: sockets opened together (a deploy's reconnects) would
     otherwise check together forever. No two checks are further apart than
     the interval, so a revocation the bus lost holds a socket open for one
-    interval at most. `nudged`, once set, cuts the wait short: the check
-    runs at once, and the interval starts again after it. A check that
-    cannot be made raises, and the socket closes as on any failure of its
-    handler: a database out of reach is no proof that the credential still
-    holds."""
-    nudged = nudged or asyncio.Event()
+    interval at most. A check that cannot be made raises, and the socket
+    closes as on any failure of its handler: a database out of reach is no
+    proof that the credential still holds."""
     wait = phase(interval)
     while True:
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(nudged.wait(), timeout=wait)
-        nudged.clear()
+        await asyncio.sleep(wait)
         reason = await realtime.recheck(principal)
         if reason is not None:
             log.info("socket of user %s closed on its recheck: %s", principal.ctx.user_id, reason)
@@ -206,10 +200,7 @@ async def channel(
         if not ended.done():
             ended.set_result(reason)
 
-    # A change of the org's billing account wakes the recheck of a socket an
-    # api key opened: the plan may no longer have keys.
-    nudged = asyncio.Event()
-    detach = realtime.attach(principal, end, nudged.set)
+    detach = realtime.attach(principal, end)
     # The head is read before the drainer exists: a task created first and a
     # read that raises after it leave the drainer waiting on the buffer for
     # the life of the process, one more on every reconnect through an outage.
@@ -241,7 +232,6 @@ async def channel(
             principal,
             end,
             container_of(websocket).settings.realtime_recheck_seconds,
-            nudged=nudged,
         ),
         name=f"recheck-{ctx.user_id}",
     )

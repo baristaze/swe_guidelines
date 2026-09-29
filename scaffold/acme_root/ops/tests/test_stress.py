@@ -154,7 +154,7 @@ def test_the_command_takes_the_target_as_flags_and_the_scenario_when_it_does_not
 
 
 def report_with(p95: float, errors: int, total: int = 100) -> Report:
-    samples = [Sample("/v1/tasks", "GET", 503 if i < errors else 200, p95) for i in range(total)]
+    samples = [Sample("/v1/users", "GET", 503 if i < errors else 200, p95) for i in range(total)]
     return Report.of(
         samples,
         environment="local",
@@ -169,7 +169,7 @@ def test_the_target_judges_the_working_requests_and_not_the_sign_ins() -> None:
     """A run signs each person in once; the run reports the sign-ins beside
     the verdict instead of mixing them into the number the target holds."""
     scenario = load_scenario(HERE / "smoke.yaml")  # target: p95 500 ms
-    samples = [Sample("/v1/tasks", "GET", 200, 10.0) for _ in range(100)]
+    samples = [Sample("/v1/users", "GET", 200, 10.0) for _ in range(100)]
     samples += [Sample("/v1/auth/dev-sign-in", "POST", 200, 2500.0) for _ in range(4)]
     report = Report.of(
         samples,

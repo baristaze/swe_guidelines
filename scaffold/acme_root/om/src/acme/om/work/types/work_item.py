@@ -16,13 +16,9 @@ from acme.om.orchestrations.types.orchestration import ParkReason
 
 class WorkKind(StrEnum):
     NOOP = "NOOP"  # the maintenance worker's kind: no work beyond the sweep
-    SYNC_SEATS = "SYNC_SEATS"  # a per-seat plan's quantity follows the member count
-    TASK_REMINDER = "TASK_REMINDER"  # a task's due date came: remind the team
-    SLACK_POST = "SLACK_POST"  # a message to the Slack channel the org bound
     ORCHESTRATION = "ORCHESTRATION"  # one step of a long-running record
     WAKE_PARKED = "WAKE_PARKED"  # the reason an org's records parked for is gone
     DELETE_ACCOUNT = "DELETE_ACCOUNT"  # a deleted account's providers, then its personal org
-    UNASSIGN_TASKS = "UNASSIGN_TASKS"  # a person who left: their open tasks go unassigned
     DELETE_ORG = "DELETE_ORG"  # a closed team org: its providers, then the org
 
 
@@ -89,41 +85,12 @@ class NoopPayload(Platform):
     """The NOOP kind carries nothing."""
 
 
-class SyncSeatsPayload(Platform):
-    """The item's target is the org; the count is read when the item runs,
-    never when it was asked for, so items that run late or twice converge
-    on the members the org has then."""
-
-
 class ScheduledPayload(Platform):
     """A payload that says when its work may run. The relayed enqueue makes
     the item available at `not_before`, or at once when that has passed, so
     work that waits for a time waits in the queue and no timer holds it."""
 
     not_before: datetime
-
-
-class TaskReminderPayload(ScheduledPayload):
-    """The first moment any person's reminder of the task's due date can go
-    out, as `not_before` (`tasks.rules.earliest_reminder_time`). The payload
-    carries no date: the handler reads the task's date and the person's time
-    zone when it runs, waits for their morning, and fires only while the task
-    is still due on that date. An edit that moved or cleared the date leaves
-    an item that completes without a word."""
-
-
-class SlackPostEvent(StrEnum):
-    CREATED = "created"
-    COMPLETED = "completed"
-    REMINDED = "reminded"
-
-
-class SlackPostPayload(Platform):
-    """What happened to the task the item targets. The message is composed
-    when the item runs, from the task as it is then; the payload carries no
-    field of it."""
-
-    event: SlackPostEvent
 
 
 class OrchestrationPayload(ScheduledPayload):
@@ -135,9 +102,9 @@ class OrchestrationPayload(ScheduledPayload):
 
 
 class WakeParkedPayload(Platform):
-    """The reason the org's parked records waited for is gone (a plan that
-    rose clears `plan_limit`); the item's target is the org. Every record
-    parked for it is resumed when the item runs."""
+    """The reason the org's parked records waited for is gone (a provider
+    that answers again clears `provider_unavailable`); the item's target is
+    the org. Every record parked for it is resumed when the item runs."""
 
     reason: ParkReason
 
@@ -146,9 +113,8 @@ class DeleteAccountPayload(Platform):
     """What is left of an account once its own rows are gone: the person's
     name at the identity provider, when they signed in through it, since the
     identity that held it is gone. It is an id, never a personal field. The
-    item's target is the person's personal org, which it runs in: the
-    processor's customer and the Slack app are read from the org when the
-    item runs, and the org is deleted last."""
+    item's target is the person's personal org, which it runs in, and the org
+    is deleted last."""
 
     provider_user_id: str | None = None
 
@@ -156,44 +122,30 @@ class DeleteAccountPayload(Platform):
 class DeleteOrgPayload(Platform):
     """What is left of a team org its owner or an operator deleted: its
     organization at the identity provider, when it had one, since the org row
-    no longer names it (so no sign-in through it finds the org). It is an id. The item's target
-    is the org, which it runs in: the processor's customer and the Slack app
-    are read from the org when the item runs, and the org is deleted last."""
+    no longer names it (so no sign-in through it finds the org). It is an id.
+    The item's target is the org, which it runs in, and the org is deleted
+    last."""
 
     provider_org_id: str | None = None
 
 
-class UnassignTasksPayload(Platform):
-    """The item's target is the user who left the org, and it runs under
-    their name on the service role: their open tasks there are unassigned,
-    whatever role they held (ADR 0041)."""
-
-
 WORK_PAYLOADS: dict[WorkKind, type[Platform]] = {
     WorkKind.NOOP: NoopPayload,
-    WorkKind.SYNC_SEATS: SyncSeatsPayload,
-    WorkKind.TASK_REMINDER: TaskReminderPayload,
-    WorkKind.SLACK_POST: SlackPostPayload,
     WorkKind.ORCHESTRATION: OrchestrationPayload,
     WorkKind.WAKE_PARKED: WakeParkedPayload,
     WorkKind.DELETE_ACCOUNT: DeleteAccountPayload,
-    WorkKind.UNASSIGN_TASKS: UnassignTasksPayload,
     WorkKind.DELETE_ORG: DeleteOrgPayload,
 }
 """The payload shape of every kind; enqueue validates the item's payload against it."""
 
 WORK_ENQUEUE_PERMISSIONS: dict[WorkKind, Permission] = {
     WorkKind.NOOP: Permission.WRITE,
-    WorkKind.SYNC_SEATS: Permission.MANAGE_MEMBERS,
-    WorkKind.TASK_REMINDER: Permission.WRITE,
-    WorkKind.SLACK_POST: Permission.WRITE,
     WorkKind.ORCHESTRATION: Permission.WRITE,
     WorkKind.WAKE_PARKED: Permission.WRITE,
-    # Only an account's deletion asks for these two, relayed from its own
+    # Only an account's deletion asks for this one, relayed from its own
     # commit: leaving is every person's right whatever their role, so no
-    # route enqueues either, and the permission is the width of the handler.
+    # route enqueues it, and the permission is the width of the handler.
     WorkKind.DELETE_ACCOUNT: Permission.MANAGE_MEMBERS,
-    WorkKind.UNASSIGN_TASKS: Permission.WRITE,
     # Only the deletion of a team org, an owner's or an operator's, asks for
     # this one, relayed from its own commit; no route enqueues it.
     WorkKind.DELETE_ORG: Permission.MANAGE_MEMBERS,

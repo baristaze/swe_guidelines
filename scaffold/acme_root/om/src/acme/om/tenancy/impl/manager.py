@@ -25,11 +25,6 @@ from acme.integrations.identity import (
     ProvidedSignIn,
 )
 from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
-from acme.om.billing.manager import EntitlementsInterface
-from acme.om.billing.rules import refuse_past, seats_metered
-from acme.om.billing.types.account import BillingAccount
-from acme.om.billing.types.billing import Entitlements
-from acme.om.billing.types.plan import Lever
 from acme.om.exceptions import (
     Conflict,
     CredentialExpired,
@@ -43,7 +38,6 @@ from acme.om.exceptions import (
     NotFound,
     OperatorRoleHeld,
     PersonalOrgFixed,
-    PlanLimitReached,
     PlatformException,
     SecondFactorRequired,
     SignInDelayed,
@@ -71,7 +65,6 @@ from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy.impl.creates import (
     MAX_ORGS_PER_IDENTITY,
-    Admission,
     add_member_to,
     create_org_with_owner,
     create_person,
@@ -309,16 +302,12 @@ class TenancyManagerImpl(TenancyManagerInterface):
         clock: Callable[[], datetime] = utcnow,
         *,
         identity_provider: IdentityProviderInterface,
-        entitlements: EntitlementsInterface,
     ) -> None:
-        """`entitlements` is what the plan levers ask: an api key and a
-        per-seat plan's seat count read the org's plan from it."""
         self._storage = storage
         self._relay = relay
         self._cache = cache
         self._options = options
         self._provider = identity_provider
-        self._entitlements = entitlements
         self._totp = TotpSealer(options.totp_encryption_key)
         # The TOTP time step is read from this clock, so a test can step it.
         self._clock = clock
@@ -673,10 +662,9 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 if sso_joins(identity.email, provided.verified_domains):
                     await self._join(rctx, org, identity, signed_in, Role.MEMBER, org.created_by)
                     return True
-        except (MembershipLimitReached, PlanLimitReached) as error:
-            # A person over their own bound of orgs, or an org whose plan has
-            # no seat left: the invitation stays pending, and the sign-in
-            # goes on into the places the person has.
+        except MembershipLimitReached as error:
+            # A person over their own bound of orgs: the invitation stays
+            # pending, and the sign-in goes on into the places the person has.
             log.warning("sign-in into org %s joined nothing: %s", org.id, error.message)
         return False
 
@@ -752,7 +740,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             request=rctx,
             max_orgs=self._options.max_orgs_per_identity,
             invitation=invitation,
-            admission=self._admission(rctx, org.id),
         )
 
     async def _with_personal(
@@ -969,13 +956,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 raise InvalidCredential("unknown api key")
             org_id, api_key = found
             self._check_api_key(api_key)
-            (
-                found_org,
-                found_user,
-                found_membership,
-                account,
-            ) = await self._storage.read_key_principal(org_id, api_key.user_id)
-            org, user, membership = self._live_principal(found_org, found_user, found_membership)
+            org, user, membership = await self._principal(org_id, api_key.user_id)
             ctx = build_context(
                 rctx,
                 user_id=user.id,
@@ -986,7 +967,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 teams=membership.teams,
                 credential_id=api_key.id,
             )
-            self._refuse_keyless(self._entitlements.entitlements_of(ctx, account))
             return ctx
         raise InvalidCredential("this route accepts a session token or an api key")
 
@@ -1128,7 +1108,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
         *,
         record_use: bool = True,
     ) -> SocketPrincipal:
-        account: BillingAccount | None = None
         if credential_kind is CredentialKind.SESSION_TOKEN:
             session = await self._storage.read_session(org_id, credential_id)
             if session is None:
@@ -1144,13 +1123,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             if api_key is None:
                 raise InvalidCredential("the api key behind the ticket is gone")
             self._check_api_key(api_key)
-            (
-                found_org,
-                found_user,
-                found_membership,
-                account,
-            ) = await self._storage.read_key_principal(org_id, api_key.user_id)
-            org, user, membership = self._live_principal(found_org, found_user, found_membership)
+            org, user, membership = await self._principal(org_id, api_key.user_id)
             role = capped_role(api_key.role, membership.role)
             expires_at = api_key.expires_at
         else:
@@ -1165,11 +1138,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             teams=membership.teams,
             credential_id=credential_id,
         )
-        if credential_kind is CredentialKind.API_KEY:
-            # The socket asks the plan what the key's every request asks it,
-            # from the account read with the principal: a key the plan no
-            # longer allows closes its socket at the next recheck.
-            self._refuse_keyless(self._entitlements.entitlements_of(ctx, account))
         return SocketPrincipal(
             ctx=ctx,
             expires_at=expires_at,
@@ -1209,28 +1177,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             role=Role.SERVICE,
             permissions=permissions_of(Role.SERVICE),
             credential_kind=CredentialKind.INTERNAL,
-        )
-
-    async def member_context(
-        self, rctx: RequestContext, org_id: UUID, email: str
-    ) -> OpContext | None:
-        # Slack's profile may spell the address with capitals; the digest is
-        # of the folded address, so any spelling finds the person.
-        identity = await self._storage.read_identity_by_email_digest(email_digest(email.strip()))
-        if identity is None:
-            return None
-        try:
-            org, user, membership = await self._principal_in(org_id, identity.id)
-        except NotAuthorized:
-            return None
-        return build_context(
-            rctx,
-            user_id=user.id,
-            org_id=org.id,
-            role=membership.role,
-            permissions=permissions_of(membership.role),
-            credential_kind=CredentialKind.INTERNAL,
-            teams=membership.teams,
         )
 
     async def _every_org(self) -> list[Org]:
@@ -1380,10 +1326,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
         pending = await self._storage.read_pending_invitation(ctx.org_id, email)
         if pending is not None and pending.open_at(now):
             raise Conflict("an invitation for this address is pending; send it again instead")
-        # The plan's seats are checked here, before anything is sent: this is
-        # the one door a person of a deployed environment comes in by. The
-        # acceptance asks again, since the org may have filled up meanwhile.
-        await self._refuse_past_seats(ctx)
         org = await self._provider_org(ctx)
         assert org.provider_org_id is not None
         if pending is not None:
@@ -1644,7 +1586,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             }
         )
         row = outbox_row(ctx, "tenancy.user.deleted", removed.id, user_payload(removed))
-        rows = (row, *await self._seat_rows(ctx))
+        rows = (row,)
 
         def revocation(kind: str, credential_id: UUID) -> OutboxRow:
             return outbox_row(ctx, kind, credential_id, {"user_id": str(user_id)})
@@ -1706,10 +1648,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             rows.append(
                 outbox_row(where, "tenancy.user.deleted", place.user.id, user_payload(place.user))
             )
-            rows.append(
-                outbox_row(where, work_row_kind(WorkKind.UNASSIGN_TASKS), place.user.id, {})
-            )
-            rows.extend(await self._seat_rows(where))
 
         users = {place.org.id: place.user.id for place in places}
 
@@ -1924,43 +1862,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
         ctx.require(Permission.READ)
         return await self._storage.count_members(ctx.org_id)
 
-    async def _seat_rows(self, ctx: OpContext) -> tuple[OutboxRow, ...]:
-        """The row that asks for a per-seat subscription's quantity to follow a
-        change of members, when the org's plan is per seat; none otherwise.
-        It rides the change's own commit, as work that follows a write does."""
-        entitlements = await self._entitlements.get_entitlements(ctx)
-        if not seats_metered(entitlements.plan):
-            return ()
-        return (outbox_row(ctx, work_row_kind(WorkKind.SYNC_SEATS), ctx.org_id, {}),)
-
-    async def _refuse_past_seats(self, ctx: OpContext) -> None:
-        """The plan's bound on members, for one more."""
-        entitlements = await self._entitlements.get_entitlements(ctx)
-        refuse_past(entitlements.plan, Lever.MEMBERS, await self._storage.count_members(ctx.org_id))
-
-    def _admission(self, rctx: RequestContext, org_id: UUID) -> Admission:
-        """What a person joining the org by invitation or by its single sign-on
-        is asked: a seat, under the org's service context, since no member of
-        the org is acting; and on a per-seat plan, the row that asks for the
-        seat count."""
-
-        async def admit() -> tuple[OutboxRow, ...]:
-            ctx = await self.service_context(rctx, org_id, EMPTY_UUID)
-            await self._refuse_past_seats(ctx)
-            return await self._seat_rows(ctx)
-
-        return admit
-
-    async def _refuse_without_keys(self, ctx: OpContext) -> None:
-        self._refuse_keyless(await self._entitlements.get_entitlements(ctx))
-
-    @staticmethod
-    def _refuse_keyless(entitlements: Entitlements) -> None:
-        """PlanLimitReached when the org's plan has no api keys. A key of such
-        an org is kept and refused, never revoked: the refusal says why, and
-        the key works again the day the org is on a plan with keys."""
-        refuse_past(entitlements.plan, Lever.API_KEYS, 0)
-
     # Credentials.
 
     async def get_sessions(self, ctx: OpContext, limit: int) -> list[Session]:
@@ -2082,7 +1983,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise ValidationFailed(
                 f"an api key lives between one second and {self._options.api_key_ttl.days} days"
             )
-        await self._refuse_without_keys(ctx)
         now = utcnow()
         key = mint_token(CredentialKind.API_KEY)
         api_key = ApiKey(
@@ -2148,21 +2048,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             return 0
         # The tenant itself is past the retention: every row of it goes.
         return await self._storage.purge_tenant(ctx.org_id, self._options.purge_batch)
-
-    async def sweep_context(self, rctx: RequestContext, org_id: UUID) -> OpContext | None:
-        swept = self._pass
-        if swept is None or rctx.request_id != swept[0] or org_id not in swept[1]:
-            org = await self._storage.read_org(org_id)
-            if org is None or org.purged_at is not None:
-                return None
-        return build_context(
-            rctx,
-            user_id=EMPTY_UUID,
-            org_id=org_id,
-            role=Role.SERVICE,
-            permissions=permissions_of(Role.SERVICE),
-            credential_kind=CredentialKind.INTERNAL,
-        )
 
     async def tenant_expired(self, ctx: OpContext) -> bool:
         ctx.require(Permission.READ)

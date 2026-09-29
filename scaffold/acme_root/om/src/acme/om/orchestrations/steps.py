@@ -27,9 +27,9 @@ def step_rows(
     `not_before`, which is how a wake staggers the steps it resumes.
 
     The work row asks as the person who started the record, whoever wrote
-    this step: a step woken by a plan's change (the platform, an operator)
-    still runs as the person who asked for the work, so what it makes is
-    theirs, and their principal is the one the claim rebuilds."""
+    this step: a step woken by the platform or an operator still runs as the
+    person who asked for the work, so what it makes is theirs, and their
+    principal is the one the claim rebuilds."""
     hint = outbox_row(ctx, CREATED if created else UPDATED, record.id, {})
     if record.status is not OrchestrationStatus.RUNNING:
         return (hint,)

@@ -49,14 +49,14 @@ async def test_the_request_context_carries_the_trace_id_and_its_traceparent(
 async def test_the_request_id_is_echoed_and_the_route_is_counted(
     client: httpx.AsyncClient,
 ) -> None:
-    response = await client.get("/v1/tasks", headers={"x-request-id": "not-a-uuid"})
+    response = await client.get("/v1/media/files", headers={"x-request-id": "not-a-uuid"})
     assert response.status_code == 401
     assert response.headers["x-request-id"] != "not-a-uuid"
     metrics = await client.get("/metrics")
     counted = [
         line for line in metrics.text.splitlines() if line.startswith("acme_http_requests_total")
     ]
-    assert any('route="/v1/tasks"' in line and 'status="401"' in line for line in counted)
+    assert any('route="/v1/media/files"' in line and 'status="401"' in line for line in counted)
 
 
 async def test_an_invented_verb_opens_no_new_metric_series(client: httpx.AsyncClient) -> None:

@@ -1,6 +1,6 @@
 [project]
 name = "acme-ops"
-version = "0.7.0"
+version = "0.1.0"
 description = "The Acme operations package: the traffic generator, the stress test, and the signal readers."
 requires-python = ">=3.14"
 dependencies = [

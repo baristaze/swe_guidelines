@@ -1,7 +1,6 @@
 """Wire types of the operator plane. The views a tenant's rows are read into
-are the tenant's own (`OrgView`, `UserPageView`, `TaskPageView`,
-`EventView`): an operator sees what the tenant sees, under the tenant named
-in the path."""
+are the tenant's own (`OrgView`, `UserPageView`, `EventView`): an operator
+sees what the tenant sees, under the tenant named in the path."""
 
 from datetime import datetime
 from uuid import UUID
@@ -47,14 +46,13 @@ class OperatorView(View):
 
 class PlatformSizeView(View):
     """How big the platform is, what the first responder to an alarm reads
-    before it escalates: live tenants and users, and the tasks created and
-    events produced in the twenty-four hours from `since` to `counted_at`.
-    The maintenance worker counts it every few minutes, and this is its
-    latest count: `counted_at` says how old the answer is."""
+    before it escalates: live tenants and users, and the events produced in
+    the twenty-four hours from `since` to `counted_at`. The maintenance
+    worker counts it every few minutes, and this is its latest count:
+    `counted_at` says how old the answer is."""
 
     tenants: int
     users: int
-    tasks_last_24h: int
     events_last_24h: int
     since: datetime
     counted_at: datetime

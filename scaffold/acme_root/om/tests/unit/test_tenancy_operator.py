@@ -6,13 +6,12 @@ their implementation with the seeding commands."""
 import logging
 from collections.abc import Sequence
 from datetime import timedelta
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import pytest
-from contracts.plans import ON_TEAM, GrantedEverywhere
+from contracts.event_storage import make_event
 from contracts.second_factor import TOTP_KEY, SteppingClock, enrolled_operator
 
 from acme.infra.cache import CacheScope
@@ -20,7 +19,6 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
-from acme.om.events.types.event import Event
 from acme.om.exceptions import (
     Conflict,
     NotAuthenticated,
@@ -43,9 +41,6 @@ from acme.om.opcontext import (
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl
-from acme.om.tasks.types.filter import OpenTaskCursor, TaskCursor
-from acme.om.tasks.types.task import Task, TaskStatus
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
 from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl, TenancyOperatorOptions
 from acme.om.tenancy.rules import email_digest
@@ -87,7 +82,6 @@ class Plane:
         self.outbox = OutboxStorageMemoryImpl()
         self.events = EventStorageMemoryImpl()
         self.storage = TenancyStorageMemoryImpl(self.outbox, IdempotencyStorageMemoryImpl())
-        self.tasks = TasksStorageMemoryImpl(self.outbox)
         relay = RecordingRelay(self.outbox, self.events, infra.get_topics())
         self.relay = relay
         self.clock = SteppingClock()
@@ -97,17 +91,14 @@ class Plane:
             infra.get_cache(CacheScope.REALTIME_TICKET),
             TenancyOptions(dev_sign_in=True, totp_encryption_key=TOTP_KEY),
             self.clock,
-            entitlements=ON_TEAM,
             identity_provider=IdentityProviderAbsentImpl(),
         )
         self.operator = TenancyOperatorManagerImpl(
             self.storage,
-            self.tasks,
             self.events,
             relay,
             TenancyOperatorOptions(max_limit=3, totp_encryption_key=TOTP_KEY),
             self.clock,
-            billing=GrantedEverywhere(),
         )
 
     async def worker_deletes(self, org_id: UUID, admin: OperatorContext) -> Org:
@@ -366,53 +357,11 @@ async def test_a_rerun_of_a_create_returns_the_row_as_stored(
     assert len(await plane.storage.read_users(org.id, None, 10)) == 2
 
 
-def make_task(org_id: UUID, title: str, status: TaskStatus, rank: int) -> Task:
-    now = utcnow()
-    return Task(
-        id=new_id(),
-        created_at=now,
-        updated_at=now,
-        created_by=org_id,
-        updated_by=org_id,
-        title=title,
-        status=status,
-        rank=Decimal(rank),
-    )
-
-
-async def seed_tasks(plane: Plane, org_id: UUID, count: int, status: TaskStatus) -> list[Task]:
-    tasks = [make_task(org_id, f"{status.value} {i}", status, i) for i in range(count)]
-    for task in tasks:
-        row = OutboxRow(
-            id=new_id(),
-            created_at=task.created_at,
-            org_id=org_id,
-            kind="tasks.task.created",
-            target_id=task.id,
-            payload={"title": task.title},
-            actor_id=task.created_by,
-            request_id=new_id(),
-            app="api",
-        )
-        assert await plane.tasks.create_task(org_id, task, (row,))
-        await plane.events.append_events(org_id, [row_event(org_id, row)])
-    return tasks
-
-
-def row_event(org_id: UUID, row: OutboxRow) -> Event:
-    """The event the relay would append for the row; the tasks are seeded
-    into storage directly, so the stream is fed the same way."""
-    return Event(
-        id=row.id,
-        org_id=org_id,
-        kind=row.kind,
-        target_id=row.target_id,
-        payload=row.payload,
-        produced_at=row.created_at,
-        actor_id=row.actor_id,
-        request_id=row.request_id,
-        app=row.app,
-    )
+async def seed_events(plane: Plane, org_id: UUID, count: int) -> None:
+    """Events in the tenant's stream, appended to the storage the relay
+    appends to, one at a time."""
+    for _ in range(count):
+        await plane.events.append_events(org_id, [make_event(org_id)])
 
 
 async def test_the_reads_of_one_tenant_page_the_tenants_rows_and_leave_a_trail(
@@ -428,9 +377,8 @@ async def test_the_reads_of_one_tenant_page_the_tenants_rows_and_leave_a_trail(
     )
     for email in ("bob@example.test", "cat@example.test", "dan@example.test"):
         await plane.manager.add_member(request(), "ajax", email, "M", Role.MEMBER)
-    open_tasks = await seed_tasks(plane, org.id, 4, TaskStatus.OPEN)
-    done_tasks = await seed_tasks(plane, org.id, 2, TaskStatus.DONE)
-    await seed_tasks(plane, other.id, 2, TaskStatus.OPEN)
+    await seed_events(plane, org.id, 6)
+    await seed_events(plane, other.id, 2)
 
     with caplog.at_level(logging.INFO, logger=OPERATOR_LOG):
         assert (await plane.operator.get_org(reader, org.id)) == org
@@ -447,20 +395,6 @@ async def test_the_reads_of_one_tenant_page_the_tenants_rows_and_leave_a_trail(
             "cat@example.test",
             "dan@example.test",
         }
-
-        opened = await plane.operator.get_tasks(reader, org.id, TaskStatus.OPEN, None, limit=3)
-        assert [t.id for t in opened.items] == [t.id for t in open_tasks[:3]] and opened.has_more
-        last = opened.items[-1]
-        after = OpenTaskCursor(rank=last.rank, id=last.id)
-        more = await plane.operator.get_tasks(reader, org.id, TaskStatus.OPEN, after, limit=3)
-        assert [t.id for t in more.items] == [open_tasks[3].id] and not more.has_more
-        finished = await plane.operator.get_tasks(reader, org.id, TaskStatus.DONE, None, limit=3)
-        assert {t.id for t in finished.items} == {t.id for t in done_tasks}
-        with pytest.raises(ValidationFailed):
-            await plane.operator.get_tasks(reader, org.id, TaskStatus.DONE, after, limit=3)
-        with pytest.raises(ValidationFailed):
-            before = TaskCursor(updated_at=utcnow(), id=last.id)
-            await plane.operator.get_tasks(reader, org.id, TaskStatus.OPEN, before, limit=3)
 
         events = await plane.operator.get_events(reader, org.id, 0, limit=100)
         assert [e.seq for e in events] == [1, 2, 3]  # the clamp, as the tenant's own read
@@ -479,15 +413,12 @@ async def test_the_reads_of_one_tenant_page_the_tenants_rows_and_leave_a_trail(
             "org",
             "members",
             "members",
-            "tasks",
-            "tasks",
-            "tasks",
             "events",
             "events",
             "events",
         )
     ]
-    assert not any("example.test" in line or "open " in line for line in trail)
+    assert not any("example.test" in line for line in trail)
 
 
 async def test_the_sweeps_tally_counts_the_living_and_the_last_day(
@@ -495,13 +426,13 @@ async def test_the_sweeps_tally_counts_the_living_and_the_last_day(
 ) -> None:
     _, org = await plane.manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     await plane.manager.add_member(request(), "ajax", "bob@example.test", "B", Role.MEMBER)
-    await seed_tasks(plane, org.id, 2, TaskStatus.OPEN)
+    await seed_events(plane, org.id, 2)
     before = utcnow()
     tally = await plane.operator.tally_size()
     # The two operators' own orgs count, as does each operator's user in them,
     # and every person's personal org and their user there.
     assert (tally.tenants, tally.users) == (7, 8)
-    assert (tally.tasks_last_24h, tally.events_last_24h) == (2, 3)
+    assert tally.events_last_24h == 3
     assert before <= tally.counted_at <= utcnow()
     assert tally.counted_at - tally.since == timedelta(hours=24)  # the window ends at the count
     assert await plane.operator.size(reader) == tally

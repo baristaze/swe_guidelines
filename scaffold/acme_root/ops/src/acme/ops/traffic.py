@@ -17,27 +17,18 @@ people in through the identity provider, in a browser, and answers the
 local sign-in with 404. So a run against a deployed environment is refused
 before it provisions anything.
 
-A session: open the socket, list the open tasks, add five or six with an
-idempotency key each, edit one, complete two, reopen one, move one, list the
-done ones, delete one, read the stream after where it stood at the start,
-see one of its own changes arrive on the socket. A person thinks between
-steps.
+A session: open the socket, read the person (`GET /v1/me`), list the
+members, write the person's display name (`PATCH /v1/me`), create an API key
+under an idempotency key and revoke it, read the stream after where it stood
+at the start, and see one of its own changes arrive on the socket. A person
+thinks between steps. The display name is written as it stands, so the
+write and its event are real and the person is left as they were. The key
+lives a day at most, so one a cut session leaves behind ends on its own.
+Any refusal fails the session: none of these writes races another person's.
 
-The people of an org share its open list, and the sessions of a run add,
-move, and finish tasks in it at once. A move writes the moved task alone,
-so a session's write meets a task that moved on since it read it only when
-something else wrote that task: a reminder that went out, or the sweep
-giving a run of long ranks short ones. The API answers that with 412, the
-optimistic-concurrency refusal, and a session does what a client does: it
-reads the task afresh and makes the write once more on the fresh version. A task that is gone,
-404 on the write or on the read, is dropped and the session goes on
-without it. Both are counted on their own, as conflicts and as tasks gone,
-and neither is an error or a failure: they are the API working as it
-should under shared work. Every other refusal still fails the session.
-
-The tenants a run needs come from the operator plane (`POST /v1/admin/orgs`,
-a grant of Max, and its members) under the provisioner's operator token, a
-`write` entry and never a sign-in. They are named for the run, `ops-<run id>-<n>`, so no real
+The tenants a run needs come from the operator plane (`POST /v1/admin/orgs`
+and its members) under the provisioner's operator token, a `write` entry and
+never a sign-in. They are named for the run, `ops-<run id>-<n>`, so no real
 tenant is touched and anything that counts tenants can leave them out, and
 the run removes them (`DELETE /v1/admin/orgs/{org_id}`, which closes each at
 once and leaves the rest to the worker) when it ends, a failure included; the
@@ -50,7 +41,7 @@ import logging
 import random
 import re
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
@@ -63,7 +54,7 @@ import httpx
 from acme.client.client import REQUEST_ID_HEADER, ApiClient, ApiError, trust_store
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import Channel, Connect, State
-from acme.client.types import TaskStatus, TaskView
+from acme.client.types import ApiKeyView, IssuedApiKeyView, UserView
 from acme.ops.environments import Environment
 from acme.ops.profiles import Profile
 from acme.ops.report import Report, Sample, Sessions
@@ -76,6 +67,12 @@ app the wire accepts (`AppType`), and the operator plane is driven as `admin`.""
 OPERATOR_APP = "admin"
 OWN_CHANGE_TIMEOUT_SECONDS = 10.0
 """How long a session waits for the socket to show it one of its own writes."""
+KEY_ROLE = "member"
+"""The role of the key a session creates: at most any role a run signs in
+with, and one that may create keys."""
+KEY_TTL_DAYS = 1
+"""The shortest life a key can have: a key a cut session did not revoke ends
+within a day."""
 CUT_GRACE_SECONDS = 5.0
 """Past the duration, how long a request already in flight may take to end
 before the run stops waiting for it."""
@@ -113,8 +110,8 @@ def app_version() -> str:
 
 
 def route_template(path: str) -> str:
-    """`/v1/tasks/<uuid>/move` reads `/v1/tasks/{id}/move`: the report groups
-    by route, and an id per line would be a line per request."""
+    """`/v1/api-keys/<uuid>` reads `/v1/api-keys/{id}`: the report groups by
+    route, and an id per line would be a line per request."""
     return _UUID.sub("{id}", path)
 
 
@@ -202,13 +199,8 @@ class SessionOutcome:
     failure: str | None = None
     saw_own_change: bool = False
     write_request_ids: list[str] = field(default_factory=list)
-    """The request ids of the creating calls, first to last, for a caller
-    that reads the signals back by one of them."""
-    conflicts: int = 0
-    """The 412s the session met on a write and answered by reading the task
-    afresh."""
-    gone: int = 0
-    """The tasks the session found gone when it went to write them."""
+    """The request ids of the creating calls (the API key's), first to last,
+    for a caller that reads the signals back by one of them."""
 
 
 class Clock:
@@ -260,7 +252,6 @@ class Session:
         *,
         recording: RecordingTransport | None = None,
         connect: Connect | None = None,
-        task_count: Callable[[], int] = lambda: random.randint(5, 6),
     ) -> None:
         self.client = client
         self.seat = seat
@@ -268,7 +259,6 @@ class Session:
         self.clock = clock
         self.samples: list[Sample] = recording.samples if recording is not None else []
         self.connect = connect
-        self.task_count = task_count
         self.outcome = SessionOutcome(seat.person)
         self._changes: list[EntityChanged] = []
         self._own_change = asyncio.Event()
@@ -332,56 +322,24 @@ class Session:
     async def _work(self) -> None:
         client = self.client
         await self.clock.think()
-        await client.tasks(TaskStatus.open)
+        me = await client.me()
 
-        created: list[TaskView] = []
-        stamp = uuid4().hex[:8]
-        for n in range(self.task_count()):
-            await self.clock.think()
-            key = str(uuid4())
-            created.append(
-                await client.create_task(f"ops {stamp} task {n + 1}", idempotency_key=key)
-            )
+        await self.clock.think()
+        await client.users()
+
+        await self.clock.think()
+        await self._rename(me.user.display_name or me.user.email.partition("@")[0])
+
+        await self.clock.think()
+        issued = await self._create_key(f"ops {uuid4().hex[:8]}")
         self.outcome.write_request_ids = [
             s.request_id
             for s in self.samples
-            if s.method == "POST" and s.route == "/v1/tasks" and s.status == 201 and s.request_id
+            if s.method == "POST" and s.route == "/v1/api-keys" and s.status == 201 and s.request_id
         ]
 
-        # A task the session found gone is None from then on, and every
-        # later step on it is left out.
-        tasks: list[TaskView | None] = list(created)
-
         await self.clock.think()
-        first = created[0]
-        tasks[0] = await self._land(
-            first,
-            lambda version: client.update_task(
-                first.id, version=version, title=f"{first.title} (edited)"
-            ),
-        )
-
-        for n in (1, 2):
-            await self.clock.think()
-            tasks[n] = await self._mark(tasks[n], TaskStatus.done)
-
-        await self.clock.think()
-        tasks[1] = await self._mark(tasks[1], TaskStatus.open)
-
-        await self.clock.think()
-        moved, anchor = tasks[3], tasks[0]
-        if moved is not None and anchor is not None:
-            tasks[3] = await self._land(
-                moved, lambda version: client.move_task(moved.id, anchor.id, version)
-            )
-
-        await self.clock.think()
-        await client.tasks(TaskStatus.done)
-
-        await self.clock.think()
-        deleted = tasks[4]
-        if deleted is not None:
-            await self._land(deleted, lambda version: client.delete_task(deleted.id, version))
+        await self._revoke_key(issued.api_key.id)
 
         await self.clock.think()
         assert self._start_seq is not None
@@ -400,60 +358,26 @@ class Session:
             raise SessionFailed("the socket showed none of the session's own changes") from None
         self.outcome.saw_own_change = True
 
-    async def _land(
-        self, task: TaskView, write: Callable[[int], Awaitable[TaskView]]
-    ) -> TaskView | None:
-        """One write on a task, made the way a client of shared tasks makes
-        it: `write` takes the version the write is conditioned on. A 412
-        says the task moved on since the session read it, so the session
-        reads it afresh and writes once more on the fresh version. A second
-        412 leaves the step undone and the session goes on with the task as
-        it read it. A task that is gone, on the write or on the read, answers
-        None. Any other refusal is raised and fails the session, and so is a
-        404 on a task that is still there, since what was not found is then
-        something else. Answers the task as the API last showed it."""
-        try:
-            return await write(task.version)
-        except ApiError as error:
-            if error.status not in (404, 412):
-                raise
-            refused = error
-        if refused.status == 412:
-            self.outcome.conflicts += 1
-        fresh = await self._reread(task.id)
-        if fresh is None:
-            self.outcome.gone += 1
-            return None
-        if refused.status == 404:
-            raise refused
-        try:
-            return await write(fresh.version)
-        except ApiError as error:
-            if error.status == 412:
-                self.outcome.conflicts += 1
-                return fresh
-            if error.status == 404 and await self._reread(task.id) is None:
-                self.outcome.gone += 1
-                return None
-            raise
+    async def _rename(self, display_name: str) -> UserView:
+        """The person's display name, written: an update whose event every
+        socket of the org hears."""
+        body = await self.client.request("PATCH", "/v1/me", json={"display_name": display_name})
+        return UserView.model_validate(body)
 
-    async def _mark(self, task: TaskView | None, status: TaskStatus) -> TaskView | None:
-        """Completes or reopens a task, unless it is gone already."""
-        if task is None:
-            return None
-        return await self._land(
-            task,
-            lambda version: self.client.update_task(task.id, version=version, status=status),
+    async def _create_key(self, name: str) -> IssuedApiKeyView:
+        """A key for a script, under an idempotency key as every creating
+        call is, so a retry the client makes lands one key."""
+        body = await self.client.request(
+            "POST",
+            "/v1/api-keys",
+            json={"name": name, "role": KEY_ROLE, "ttl_days": KEY_TTL_DAYS},
+            idempotency_key=str(uuid4()),
         )
+        return IssuedApiKeyView.model_validate(body)
 
-    async def _reread(self, task_id: UUID) -> TaskView | None:
-        """The task as it stands now, or None when it is gone."""
-        try:
-            return await self.client.task(task_id)
-        except ApiError as error:
-            if error.status == 404:
-                return None
-            raise
+    async def _revoke_key(self, key_id: UUID) -> ApiKeyView:
+        body = await self.client.request("DELETE", f"/v1/api-keys/{key_id}")
+        return ApiKeyView.model_validate(body)
 
 
 # The sign-in and the sign-out of a run
@@ -656,10 +580,6 @@ def provisioner_client(
     )
 
 
-RUN_PLAN = "max"
-"""The plan a run's tenants are granted: no bound on members or tasks."""
-
-
 async def provision(
     env: Environment,
     profile: Profile,
@@ -686,12 +606,6 @@ async def provision(
                     owner_name="Ops Owner",
                 )
                 org_ids.append(org.id)
-                # Every org starts on Free: one member and ten active tasks.
-                # A run's tenants are the platform's own load, so they are
-                # granted Max, whose levers are open, before anyone joins.
-                await client.request(
-                    "PUT", f"/v1/admin/orgs/{org.id}/plan", json={"plan": RUN_PLAN}
-                )
                 people.append(Person(owner, slug))
                 for m in range(max(profile.members_per_org - 1, 0)):
                     email = f"member{m + 1}@{slug}.example.test"
@@ -908,7 +822,7 @@ async def run_traffic(
     )
     sample = next((i for o in outcomes for i in o.write_request_ids), None)
     notes.append(
-        f"sample request id: {sample} (a POST /v1/tasks of the run; read the signals back by it)"
+        f"sample request id: {sample} (a POST /v1/api-keys of the run; read the signals back by it)"
         if sample
         else "sample request id: none (no creating call of the run answered 201)"
     )
@@ -916,8 +830,6 @@ async def run_traffic(
         completed=sum(o.completed for o in outcomes),
         failed=sum(1 for o in outcomes if o.failure),
         cut=sum(o.cut for o in outcomes),
-        conflicts=sum(o.conflicts for o in outcomes),
-        gone=sum(o.gone for o in outcomes),
     )
     report = Report.of(
         samples,

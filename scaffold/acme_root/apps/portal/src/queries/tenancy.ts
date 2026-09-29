@@ -59,11 +59,10 @@ export function useIdentity() {
   });
 }
 
-/** Every member of the org, page after page. The list is not a screen of its
- * own: it names the people on tasks and fills the assignee picker, and a
- * member missing from it reads as a former member and cannot be assigned, so this
- * follows the cursor to the end rather than stopping at one page. The pages
- * loaded so far are returned as they arrive. */
+/** Every member of the org, page after page: the member list in Settings and
+ * the count on the home page. A member missing from it would read as a former
+ * member, so this follows the cursor to the end rather than stopping at one
+ * page. The pages loaded so far are returned as they arrive. */
 export function useUsers() {
   const query = useInfiniteQuery({
     queryKey: keys.users.list(USERS_PAGE_SIZE),

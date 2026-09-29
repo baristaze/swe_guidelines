@@ -130,17 +130,17 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    the destroy could not remove is listed with the reason the script
    printed.
 6. Report what stays at the providers, from the script's last step.
-   Nothing there is touched, by the script or by the skill: Stripe's
-   webhook endpoint for the environment's API name (kept for a
-   recreate, which rolls it; deleted by the person if the environment
-   is not coming back), the customers its orgs made, WorkOS's
-   organizations and users, and the environment's Slack app and the
-   workspaces that installed it. Each org's Slack bot token, under
-   `acme/<env>/app/org/`, stays in Secrets Manager, since the
-   application wrote it and Terraform does not own it. The
+   Nothing there is touched, by the script or by the skill: WorkOS's
+   organizations and users, and the Acme App application with its API
+   keys, its redirects, and its webhook endpoint for the environment's
+   API name (kept for a recreate; removed by the person if the
+   environment is not coming back); and the events the error tracker
+   holds for the environment. Each org's own secrets, under
+   `acme/<env>/app/org/`, stay in Secrets Manager, since the
+   application wrote them and Terraform does not own them. The
    provider keys' values went with the secrets, so a recreate writes
    them again after its first deploy
-   (`docs/runbooks/providers/`).
+   (`docs/runbooks/providers/workos.md`).
 
 ## What it never does
 
@@ -157,8 +157,8 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - No secret value printed.
 - No console clicks: a resource the CLI cannot remove is reported,
   not clicked away.
-- No write at Stripe, WorkOS, or Slack: what stays there is listed,
-  and removing it is the person's call.
+- No write at WorkOS or in the error tracker: what stays there is
+  listed, and removing it is the person's call.
 
 ## Output
 
@@ -183,13 +183,12 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - Production only: the final snapshot acme-production-final and the automated backups
 - Staging only: production's copies of what staging built, in production's account
 - GitHub environment and variables; ~/.config/acme/ops/<env>.env; the acme-<env>-investigate profile
-- The orgs' Slack bot tokens under acme/<env>/app/org/: <count>, for the person to delete if the environment is not coming back
+- The orgs' own secrets under acme/<env>/app/org/: <count>, for the person to delete if the environment is not coming back
 - <resource the destroy could not remove>: <reason>
 
 ## At the providers, untouched
 
-- Stripe (<sandbox | live>): the webhook endpoint https://<api name>/webhooks/stripe, <kept for a recreate | for the person to delete>; the customers its orgs made; the restricted key acme-<env>-runtime, <kept for a recreate | for the person to delete>
-- WorkOS (<Staging | Production>): the organizations and users its orgs made; the application's redirects
-- Slack: the environment's app, whose request URLs fail until a new environment answers; the workspaces keep it installed until someone removes it in Slack; each org installs again
-- Provider keys to write again on a recreate: stripe_runtime_key, workos_api_key, slack_client_secret, slack_signing_secret
+- WorkOS (<Staging | Production>): the organizations and users its orgs made; the application's API keys, its redirects, and its webhook endpoint https://<api name>/webhooks/identity, <kept for a recreate | for the person to remove>
+- The error tracker: the events the environment reported, tagged environment:<env>
+- Provider keys to write again on a recreate: workos_api_key, workos_webhook_secret, sentry_dsn
 ```

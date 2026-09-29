@@ -5,19 +5,11 @@ holds connections."""
 from abc import ABC, abstractmethod
 
 from acme.integrations.identity import IdentityProviderInterface
-from acme.integrations.payments import PaymentsInterface
-from acme.integrations.slack import SlackInterface
 
 
 class IntegrationsInterface(ABC):
     @abstractmethod
     def get_identity_provider(self) -> IdentityProviderInterface: ...
-
-    @abstractmethod
-    def get_payments(self) -> PaymentsInterface: ...
-
-    @abstractmethod
-    def get_slack(self) -> SlackInterface: ...
 
     @abstractmethod
     def describe(self) -> list[str]:

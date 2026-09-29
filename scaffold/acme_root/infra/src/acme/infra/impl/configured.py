@@ -56,8 +56,7 @@ def refuse_unsafe(settings: InfraSettings) -> None:
     for field, unsafe_value, env_name in UNSAFE_IN_CLOUD:
         if getattr(settings, field) == unsafe_value:
             raise UnsafeConfiguration(
-                f"{env_name}={unsafe_value} is refused "
-                f"when ACME_ENVIRONMENT={settings.environment}"
+                f"{env_name}={unsafe_value} is refused when ACME_ENVIRONMENT={settings.environment}"
             )
 
 

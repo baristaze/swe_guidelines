@@ -1,28 +1,35 @@
-"""The two long-running records over Postgres: every manager over the
-relational root, the file in the local store. An import on Free parks at
-the plan's bound in the step's own commit, a plan that rises queues its wake
-in the account's commit, and the woken import finishes; the day's cleanup
-opens once, archives the old done task, and leaves the one reopened. A
-candidate reopened between a step's read and its write is the storage
-contract's case."""
+"""The long-running record over Postgres: every manager over the relational
+root. A `noop` record steps through its count, each running write asking
+for the next step as a work item in the same commit, and succeeds; a record
+parked for a provider is woken by the event that clears its reason, and
+runs again from its cursor. A step that read a version another writer moved
+is the storage contract's case."""
 
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
+from uuid import UUID
 
 import pytest
-from unit.test_task_cleanup import World as CleanupWorld
-from unit.test_task_import import World as ImportWorld
-from unit.test_task_import import titled
 
-from acme.om.billing.types.plan import Plan
-from acme.om.orchestrations.types.orchestration import OrchestrationStatus, ParkReason
+from acme.infra.impl.local import InfraLocalImpl
+from acme.om.base import new_id, utcnow
+from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
+from acme.om.orchestrations.types.orchestration import (
+    Orchestration,
+    OrchestrationKind,
+    OrchestrationStatus,
+    ParkReason,
+)
+from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.settings import MigrationSettings
-from acme.om.tasks.types.task import TaskStatus
 from acme.om.work.types.work_item import WorkKind
 
 pytestmark = pytest.mark.integration
+
+APP = AppContext(type=AppType.PORTAL, version="portal@test")
+LEASE = timedelta(seconds=30)
 
 
 @pytest.fixture
@@ -38,45 +45,91 @@ async def storage(
     await root.close()
 
 
-async def test_an_import_parks_on_the_plan_and_the_rising_plan_wakes_it(
-    storage: StoragePostgresImpl, tmp_path: Path
-) -> None:
-    world = ImportWorld(tmp_path, storage)
-    ctx = await world.org(Plan.FREE)
-    started = await world.start(ctx, titled(25))
-    parked = await world.run(ctx, started.id)
-    assert (parked.status, parked.park_reason) == (
-        OrchestrationStatus.PARKED,
-        ParkReason.PLAN_LIMIT,
+@pytest.fixture
+def managers(storage: StoragePostgresImpl, tmp_path: Path) -> Managers:
+    return build_managers(storage, InfraLocalImpl(tmp_path))
+
+
+async def an_org(managers: Managers) -> OpContext:
+    slug = f"ajax-{new_id().hex[-8:]}"
+    owner, _ = await managers.tenancy.bootstrap(
+        RequestContext(request_id=new_id(), app=APP),
+        "Ajax",
+        slug,
+        f"ann-{slug}@example.test",
+        "Ann",
     )
-    assert (parked.cursor, parked.applied) == (10, 10)
-    await world.managers.billing.grant_seeded_plan(ctx, Plan.PRO)
+    return owner
+
+
+def a_record(steps: int) -> Orchestration:
+    now = utcnow()
+    actor = new_id()
+    return Orchestration(
+        id=new_id(),
+        created_at=now,
+        updated_at=now,
+        created_by=actor,
+        updated_by=actor,
+        kind=OrchestrationKind.NOOP,
+        input={"steps": steps},
+    )
+
+
+async def next_step(storage: StoragePostgresImpl) -> tuple[UUID, UUID] | None:
+    """The tenant and the record of the step a worker would claim next."""
     claimed = await storage.get_work_storage().claim_next(
-        "default", [WorkKind.WAKE_PARKED], "it", timedelta(seconds=30)
+        "default", [WorkKind.ORCHESTRATION], "it", LEASE
     )
-    assert claimed is not None and claimed[0] == ctx.org_id
-    assert await world.managers.orchestrations.wake(ctx, ParkReason.PLAN_LIMIT) == 1
-    done = await world.run(ctx, started.id)
-    assert (done.status, done.applied, done.cursor) == (OrchestrationStatus.SUCCEEDED, 25, 25)
-    assert len(await world.open_titles(ctx)) == 25
+    return None if claimed is None else (claimed[0], claimed[1].target_id)
 
 
-async def test_the_days_cleanup_archives_the_old_done_task_and_leaves_the_rest(
-    storage: StoragePostgresImpl, tmp_path: Path
+async def test_a_noop_record_steps_through_its_count_one_work_item_a_step(
+    storage: StoragePostgresImpl, managers: Managers
 ) -> None:
-    world = CleanupWorld(tmp_path, storage)
-    ctx = await world.org()
-    await world.done(ctx, "old", 120)
-    reopened = await world.done(ctx, "reopened", 120)
-    await world.done(ctx, "recent", 89)
-    record = await world.managers.tasks.open_cleanup(ctx)
-    again = await world.managers.tasks.open_cleanup(ctx)
-    assert record is not None and again is not None and again.id == record.id
-    current = await world.managers.tasks.get_task(ctx, reopened.id)
-    await world.managers.tasks.update_task(
-        ctx, current.model_copy(update={"status": TaskStatus.OPEN}), current.version
+    ctx = await an_org(managers)
+    orchestrations = managers.orchestrations
+    record = await orchestrations.start(ctx, a_record(steps=3))
+    steps = 0
+    while record.status is OrchestrationStatus.RUNNING:
+        assert await next_step(storage) == (ctx.org_id, record.id)
+        record = await orchestrations.step_noop(ctx, await orchestrations.get(ctx, record.id))
+        steps += 1
+    assert steps == 3
+    assert (record.status, record.cursor, record.total) == (OrchestrationStatus.SUCCEEDED, 3, 3)
+    assert await orchestrations.get(ctx, record.id) == record
+    assert await next_step(storage) is None, "a settled record asks for no step"
+
+
+async def test_a_parked_record_is_woken_by_its_reason_and_runs_on_from_its_cursor(
+    storage: StoragePostgresImpl, managers: Managers
+) -> None:
+    ctx = await an_org(managers)
+    orchestrations = managers.orchestrations
+    started = await orchestrations.start(ctx, a_record(steps=2))
+    assert await next_step(storage) == (ctx.org_id, started.id)
+    first = await orchestrations.step_noop(ctx, started)
+    assert await next_step(storage) == (ctx.org_id, started.id)
+    # A step that found its provider away parks the record at its cursor.
+    parked = first.model_copy(
+        update={
+            "status": OrchestrationStatus.PARKED,
+            "park_reason": ParkReason.PROVIDER_UNAVAILABLE,
+            "version": first.version + 1,
+        }
     )
-    finished = await world.run(ctx, record)
-    assert (finished.status, finished.applied) == (OrchestrationStatus.SUCCEEDED, 1)
-    assert await world.archived_titles(ctx) == ["old"]
-    assert await world.done_titles(ctx) == ["recent"]
+    await storage.get_orchestrations_storage().write_orchestration(
+        ctx.org_id, parked, first.version, ()
+    )
+    assert await next_step(storage) is None, "a parked record asks for no step"
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 1
+    assert await next_step(storage) == (ctx.org_id, started.id)
+    woken = await orchestrations.get(ctx, started.id)
+    assert (woken.status, woken.park_reason, woken.cursor) == (
+        OrchestrationStatus.RUNNING,
+        None,
+        1,
+    )
+    done = await orchestrations.step_noop(ctx, woken)
+    assert (done.status, done.cursor) == (OrchestrationStatus.SUCCEEDED, 2)
+    assert await orchestrations.wake(ctx, ParkReason.PROVIDER_UNAVAILABLE) == 0

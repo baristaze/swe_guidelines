@@ -6,7 +6,6 @@ read as text, the way a reviewer reads them. A field the cloud leaves at its
 default is listed here with the reason, so a new field needs a decision."""
 
 import re
-import subprocess
 from datetime import timedelta
 from pathlib import Path
 
@@ -79,26 +78,19 @@ LOCAL_DEFAULT_SERVES_THE_CLOUD = {
     "realtime_control_buffer_size": "the local size is the size",
     "realtime_recheck_seconds": "the local interval is the interval",
     "realtime_head_max_age_seconds": "the local bound is the bound",
-    "billing_account_cache_seconds": "the local bound is the bound",
     "readiness_timeout_seconds": "shorter than every probe interval the deployment sets",
     "admission_limit_reads": "the local bound is the bound until a replica is measured",
     "admission_limit_writes": "the local bound is the bound until a replica is measured",
     "admission_retry_after_seconds": "the local wait is the wait",
     "request_deadline_seconds": "the local deadline is the deadline, under the clients' 30 s",
-    "stripe_timeout_seconds": "the local default is the tuning",
-    "slack_timeout_seconds": "the local default is the tuning",
 }
 
 
 def repository_root() -> Path:
-    top = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=Path(__file__).parent,
-    ).stdout.strip()
-    return Path(top)
+    """The checkout this test runs in: the nearest folder above it with an
+    `.env.example`, so a copy that is not yet a repository reads its own."""
+    here = Path(__file__).resolve().parent
+    return next(p for p in (here, *here.parents) if (p / ".env.example").is_file())
 
 
 def documented_knobs(env_example: str) -> set[str]:

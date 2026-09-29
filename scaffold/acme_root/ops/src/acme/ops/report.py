@@ -19,7 +19,8 @@ from typing import Any
 
 AUTH_ROUTES = frozenset({"/v1/auth/dev-sign-in", "/v1/auth/sessions", "/v1/auth/logout"})
 """Sign-in and sign-out. Every other route a run calls is a working request:
-the task routes, the event stream, and the socket's ticket."""
+the person, the members, the API keys, the event stream, and the socket's
+ticket."""
 
 
 @dataclass(frozen=True)
@@ -112,13 +113,6 @@ class Sessions:
     failed: int = 0
     cut: int = 0
     """Ended by the duration bound mid-session; neither a success nor a failure."""
-    conflicts: int = 0
-    """The 412s the sessions met on a write, each answered by reading the task
-    afresh: the API's optimistic concurrency at work under shared tasks,
-    counted on its own and never as an error or a failure."""
-    gone: int = 0
-    """The tasks the sessions found gone when they went to write them, left
-    out of the rest of the session. Also neither an error nor a failure."""
 
     @property
     def started(self) -> int:
@@ -137,8 +131,8 @@ class Report:
     errors: int
     error_ratio: float
     working: Group
-    """The task routes, the event stream, and the socket's ticket: the
-    requests a target's p95 judges."""
+    """Every request but the sign-ins and sign-outs: the requests a target's
+    p95 judges."""
     auth: Group
     """The sign-ins and sign-outs, one of each per person for the whole run,
     reported beside the working requests and never mixed into them."""
@@ -210,8 +204,7 @@ class Report:
         lines = [
             f"acme-ops traffic  env={self.environment}  profile={self.profile}  "
             f"duration={self.duration_seconds:.1f}s  "
-            f"sessions: {s.completed} completed, {s.failed} failed, {s.cut} cut; "
-            f"conflicts: {s.conflicts} re-read, {s.gone} gone",
+            f"sessions: {s.completed} completed, {s.failed} failed, {s.cut} cut",
             header,
             "-" * len(header),
         ]

@@ -26,11 +26,17 @@
 # writes the operator's env file with its two token lines empty; starts the
 # first deploy through the pipeline, which is how every later commit reaches
 # the cloud; prints the provider steps a person takes after that deploy (the
-# Stripe, WorkOS, and Slack values written into the secrets it made); and
+# WorkOS and error tracker values written into the secrets it made); and
 # prints the grants that come after them, the first operator's among them,
 # which the grant-operator workflow runs. It checks the
 # account again before every apply. It prints every command before it runs
 # it, and `--dry-run` prints them without running anything.
+#
+# environments.json and the environment root's WorkOS client id ship as
+# placeholders: twelve equal digits for an account, a name under the
+# reserved `.example` domain, 0 for a GitHub id, a `_PLACEHOLDER` client id.
+# A dry run prints with them. A real run refuses while one is left, and
+# names each, before it runs anything.
 #
 # Staging runs first, then production, then staging again: staging's images
 # and portal builds replicate into production's account, and the replication
@@ -81,7 +87,7 @@ case "$environment" in
   *) refuse "the environment is staging or production, not '$environment'" ;;
 esac
 
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$(dirname "$0")/.."
 environments=deployment/cloud/environments.json
 
 config() {
@@ -113,6 +119,26 @@ missing=""
 [ -n "$alarm_email" ] || missing="$missing ALARM_EMAIL"
 if ! $dry_run && [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then missing="$missing CLOUDFLARE_API_TOKEN"; fi
 [ -z "$missing" ] || refuse "missing:$missing (as flags or environment variables)"
+
+# Every account, name, and id in environments.json, since the bootstrap roots
+# read both environments' accounts; and the client id this environment's
+# root signs people in with.
+placeholders="$(jq -r '
+  def example: test("(^|\\.)example$");
+  [
+    (.environments | to_entries[] | .key as $env | .value
+      | (select(.account_id | split("") | unique | length == 1) | "environments.\($env).account_id"),
+        (to_entries[] | select((.key | endswith("_domain_name")) and (.value | example)) | "environments.\($env).\(.key)")),
+    (select(.domain | example) | "domain"),
+    (select(.github_repository_id == "0") | "github_repository_id"),
+    (select(.github_repository_owner_id == "0") | "github_repository_owner_id")
+  ] | join(", ")' "$environments")"
+if grep -q '_PLACEHOLDER"' "$environment_root/variables.tf"; then
+  placeholders="${placeholders:+$placeholders, }workos_client_id in $environment_root/variables.tf"
+fi
+if [ -n "$placeholders" ] && ! $dry_run; then
+  refuse "placeholders left: $placeholders. Set the deployment's own values in $environments and $environment_root/variables.tf first (deployment/cloud/README.md)."
+fi
 
 # Keys exported in the shell outrank a profile for Terraform, and a region
 # exported there outranks the one the environment names. Neither is allowed
@@ -558,7 +584,7 @@ esac
 
 say "== 7b. The providers, by hand, once that deploy has made their secrets (each holds \"off\" until then)"
 # Printed, never run: each value is a person's to make in the provider's
-# dashboard and to write under their own sign-in. The deploy made the five
+# dashboard and to write under their own sign-in. The deploy made the
 # secrets; a value written before it would be a secret Terraform does not own.
 case "$environment" in
   staging) writer_profile="$sso_profile" ;;
@@ -566,10 +592,7 @@ case "$environment" in
 esac
 cluster="acme-$environment"
 say "Written under $writer_profile, with AWS_ACCESS_KEY_ID and its siblings unset, one value at a time, read with read -rs so none is shown:"
-# Each environment has a Slack app of its own, since an app has one set of
-# request URLs, so each writes both of its app's secrets.
-secrets="workos_api_key stripe_runtime_key slack_client_secret slack_signing_secret"
-for secret in $secrets; do
+for secret in workos_api_key workos_webhook_secret sentry_dsn; do
   say "  aws secretsmanager put-secret-value --profile $writer_profile --region $region --secret-id acme/$environment/$secret --secret-string \"\$VALUE\""
 done
 say "  WorkOS first: the grants below sign people up through it. workos_api_key is the Acme App application's API key (Applications, Acme App, API keys), never the environment's; the API refuses to start on another. The bootstrap proves the key, adds https://$app_domain_name/auth/callback to the application's redirects, and names the Redirects tab's checks (the default redirect, https://$app_domain_name/login as the initiate login URI):"
@@ -577,15 +600,13 @@ case "$environment" in
   staging) say "    uv run acme-ops workos-bootstrap --environment staging --apply   (WORKOS_API_KEY exported, read with read -rs)" ;;
   production) say "    uv run acme-ops workos-bootstrap --environment production --apply   (WORKOS_PRODUCTION_API_KEY exported, read with read -rs)" ;;
 esac
-say "  Stripe: stripe_runtime_key takes the environment's runtime key. The bootstrap runs under a second restricted key, held by you and never written to the cloud. With ACME_STRIPE_BOOTSTRAP_KEY exported, it makes the catalog and the endpoint, and writes acme/$environment/stripe_webhook_secret itself:"
-say "    uv run acme-ops stripe-bootstrap --env $environment --profile $writer_profile --dry-run, then without --dry-run, then again for \"no changes\""
-say "  Slack: the environment's own app, from deployment/slack/manifest.$environment.json (production's app is made when production opens). From its Basic Information page, the signing secret and the client secret are slack_signing_secret and slack_client_secret above; its client id is committed as slack_client_id in $environment_root/main.tf, and that commit deploys."
+say "  workos_webhook_secret is the signing secret of the endpoint https://$api_domain_name/webhooks/identity, from its page under Webhooks in the WorkOS dashboard."
+say "  sentry_dsn is the DSN of the product's one project in the error tracker, the same value in every environment."
 say "  Then the tasks read the values at their next start: the next deploy, or now:"
 for service in api maintenance; do
   say "    aws ecs update-service --profile $writer_profile --region $region --cluster $cluster --service $service --force-new-deployment"
 done
-say "  Slack, once the API holds its signing secret: paste deployment/slack/manifest.$environment.json into the app's App Manifest page and save, and Slack checks https://$api_domain_name/webhooks/slack/events until it says verified. Turn on public distribution under Manage Distribution. Then, at https://$app_domain_name, Settings, Slack, Add to Slack; /invite @acme and /acme connect in a channel; try /acme, /acme team, and /acme add."
-say "  The steps, the key permissions, and the checks: docs/runbooks/providers/{workos,stripe,slack}.md."
+say "  The steps, the key permissions, and the checks: docs/runbooks/providers/workos.md."
 
 case "$environment" in
   staging) grant_branch=main ;;

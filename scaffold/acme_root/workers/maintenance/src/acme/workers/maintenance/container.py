@@ -1,6 +1,5 @@
 """The worker boots the same way a service does: settings, storage, infra,
-the integrations (the identity provider, the payment processor, and the
-Slack app), and managers.
+the integrations (the identity provider), and managers.
 The loop holds the container directly."""
 
 import logging
@@ -10,25 +9,15 @@ from acme.infra.impl.configured import InfraConfiguredImpl
 from acme.infra.root import InfraInterface
 from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
-from acme.integrations.impl.configured import (
-    IntegrationsConfiguredImpl,
-    IntegrationsOverImpl,
-    payments_for,
-    slack_for,
-)
-from acme.integrations.payments import PaymentsInterface
+from acme.integrations.impl.configured import IntegrationsConfiguredImpl, IntegrationsOverImpl
 from acme.integrations.root import IntegrationsInterface
-from acme.integrations.slack import SlackInterface
-from acme.om.billing.impl.manager import BillingOptions
 from acme.om.events.impl.manager import EventsOptions
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.media.impl.manager import MediaOptions
 from acme.om.orchestrations.impl.manager import OrchestrationsOptions
 from acme.om.root import Managers, build_managers
-from acme.om.slack.impl.manager import SlackOptions
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.root import StorageInterface
-from acme.om.tasks.impl.manager import TasksOptions
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.work.impl.manager import WorkOptions
 from acme.workers.maintenance.settings import MaintenanceSettings
@@ -69,11 +58,6 @@ def worker_managers(
             purge_batch=batch,
         ),
         integrations=integrations,
-        tasks_options=TasksOptions(
-            retention=timedelta(days=settings.tasks_retention_days),
-            purge_batch=batch,
-            archive_after=timedelta(days=settings.tasks_archive_after_days),
-        ),
         media_options=MediaOptions(
             retention=timedelta(days=settings.media_retention_days),
             pending_expiry=timedelta(hours=settings.media_pending_expiry_hours),
@@ -83,14 +67,6 @@ def worker_managers(
             retention=timedelta(hours=settings.idempotency_retention_hours), purge_batch=batch
         ),
         events_options=events_options(settings),
-        billing_options=BillingOptions(
-            retention=timedelta(days=settings.billing_delivery_retention_days),
-            purge_batch=batch,
-            account_ttl=timedelta(seconds=settings.billing_account_cache_seconds),
-        ),
-        slack_options=SlackOptions(
-            retention=timedelta(days=settings.slack_retention_days), purge_batch=batch
-        ),
         work_options=WorkOptions(
             retention=timedelta(days=settings.work_retention_days), purge_batch=batch
         ),
@@ -114,14 +90,6 @@ class WorkerContainer:
         self.integrations = integrations
 
     @property
-    def payments(self) -> PaymentsInterface:
-        return self.integrations.get_payments()
-
-    @property
-    def slack(self) -> SlackInterface:
-        return self.integrations.get_slack()
-
-    @property
     def identity_provider(self) -> IdentityProviderInterface:
         return self.integrations.get_identity_provider()
 
@@ -133,9 +101,9 @@ class WorkerContainer:
             system_urls=settings.system_role_urls(),
         )
         infra = InfraConfiguredImpl(settings)
-        # The worker signs nobody in. It reads the payment processor, posts
-        # through the Slack app, and deletes a deleted account's person at the
-        # identity provider, so it holds all three, refused as the API's are.
+        # The worker signs nobody in. It deletes a deleted account's person,
+        # and a deleted org's organization, at the identity provider, so it
+        # holds it, refused as the API's is.
         integrations = IntegrationsConfiguredImpl(
             settings, settings.environment, settings.is_cloud_environment
         )
@@ -153,23 +121,12 @@ class WorkerContainer:
         storage: StorageInterface,
         infra: InfraInterface,
         settings: MaintenanceSettings | None = None,
-        slack: SlackInterface | None = None,
         integrations: IntegrationsInterface | None = None,
     ) -> WorkerContainer:
         settings = settings or MaintenanceSettings.model_validate(
-            {
-                "_env_file": None,
-                "environment": "test",
-                "worker_id": "maintenance-test",
-                "billing_backend": "twin",
-                "slack_backend": "twin",
-            }
+            {"_env_file": None, "environment": "test", "worker_id": "maintenance-test"}
         )
-        integrations = integrations or IntegrationsOverImpl(
-            IdentityProviderTwinImpl(),
-            payments_for(settings, settings.environment),
-            slack or slack_for(settings, settings.environment),
-        )
+        integrations = integrations or IntegrationsOverImpl(IdentityProviderTwinImpl())
         return cls(
             settings,
             storage,

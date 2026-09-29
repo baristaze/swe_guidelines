@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { errorMessage } from "../../app/errorMessage";
-import { useSlackStatus, useStartSlackInstall, useUninstallSlack } from "../../queries/slack";
 import type { Role } from "../../api";
 import {
   useApiKeys,
@@ -12,20 +11,7 @@ import {
   useUsers,
 } from "../../queries/tenancy";
 import { useNoticesStore } from "../../store/notices";
-import { isPlanLimit } from "../../store/upgrade";
 import { apiKeyRows, canManageKeys, memberRows } from "./settingsModel";
-import { canManageSlack, installOutcomeText, slackSummary } from "./slackModel";
-
-/** The `?slack=` outcome Slack's install sends the browser back with, read
- * once and taken off the address, so a reload does not say it again. */
-function takeInstallOutcome(): string | null {
-  const url = new URL(window.location.href);
-  const outcome = url.searchParams.get("slack");
-  if (outcome === null) return null;
-  url.searchParams.delete("slack");
-  window.history.replaceState(window.history.state, "", url);
-  return outcome;
-}
 
 export function useSettingsVm() {
   const me = useMe();
@@ -39,15 +25,6 @@ export function useSettingsVm() {
   const notify = useNoticesStore((s) => s.notify);
   const [newKeyName, setNewKeyName] = useState("");
   const [issuedKey, setIssuedKey] = useState<string | null>(null);
-  const slack = useSlackStatus();
-  const startInstall = useStartSlackInstall();
-  const uninstall = useUninstallSlack();
-  const mayManageSlack = canManageSlack(me.data);
-
-  useEffect(() => {
-    const said = installOutcomeText(takeInstallOutcome());
-    if (said) notify(said);
-  }, [notify]);
 
   const members = useMemo(
     () => memberRows(users.data ?? [], memberships.data ?? [], me.data),
@@ -72,8 +49,7 @@ export function useSettingsVm() {
       }
       setNewKeyName("");
     } catch (caught) {
-      // A plan without keys is answered by the upgrade dialog.
-      if (!isPlanLimit(caught)) notify(errorMessage(caught, "The key was not created."));
+      notify(errorMessage(caught, "The key was not created."));
     }
   };
 
@@ -94,25 +70,6 @@ export function useSettingsVm() {
       await changeRole.mutateAsync({ userId, body: { role } });
     } catch (caught) {
       notify(errorMessage(caught, "The role was not changed."));
-    }
-  };
-
-  // Off to Slack's page; Slack sends the browser back here, and the outcome
-  // is said then. A refusal (not configured, not allowed) is said now.
-  const installSlack = async () => {
-    try {
-      const start = await startInstall.mutateAsync();
-      if (!start.url) notify("The install link was lost on the way back; click Add to Slack again.");
-    } catch (caught) {
-      notify(errorMessage(caught, "Slack's install page could not be opened."));
-    }
-  };
-
-  const uninstallSlack = async () => {
-    try {
-      await uninstall.mutateAsync();
-    } catch (caught) {
-      notify(errorMessage(caught, "Acme was not removed from Slack."));
     }
   };
 
@@ -137,17 +94,6 @@ export function useSettingsVm() {
     createApiKey,
     creating: createKey.isPending,
     revokeApiKey,
-    slack: {
-      loading: slack.isPending,
-      error: slack.error,
-      summary: slackSummary(slack.data),
-      installed: Boolean(slack.data?.installation),
-      canManage: mayManageSlack,
-      install: installSlack,
-      installing: startInstall.isPending,
-      uninstall: uninstallSlack,
-      uninstalling: uninstall.isPending,
-    },
   };
 }
 

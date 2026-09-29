@@ -6,7 +6,6 @@ import ast
 from pathlib import Path
 
 import pytest
-from contracts.plans import ON_TEAM
 from pydantic import ValidationError
 
 import acme.om
@@ -63,7 +62,6 @@ def manager(tmp_path: Path) -> TenancyManagerImpl:
         infra.get_cache(CacheScope.REALTIME_TICKET),
         TenancyOptions(dev_sign_in=True),
         identity_provider=IdentityProviderAbsentImpl(),
-        entitlements=ON_TEAM,
     )
 
 

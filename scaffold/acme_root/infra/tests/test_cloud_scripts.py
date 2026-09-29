@@ -135,6 +135,30 @@ def test_create_refuses_to_run_for_real_without_the_cloudflare_token(tmp_path: P
     assert result.stdout == ""
 
 
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_create_refuses_to_run_for_real_on_placeholders(environment: str, tmp_path: Path) -> None:
+    """environments.json and each root's WorkOS client id ship as
+    placeholders, and a real run on them would act on accounts, names, and a
+    repository nobody owns. It refuses before any command, and names each;
+    the dry runs above print with them."""
+    result = _run(CREATE, environment, home=tmp_path, CLOUDFLARE_API_TOKEN="token")
+    assert result.returncode == 2
+    assert result.stdout == ""
+    refusal = result.stderr
+    assert "refused: placeholders left: " in refusal
+    for name in (
+        "environments.staging.account_id",
+        "environments.production.account_id",
+        f"environments.{environment}.api_domain_name",
+        "domain",
+        "github_repository_id",
+        "github_repository_owner_id",
+    ):
+        assert name in refusal
+    root = ENVIRONMENTS["environments"][environment]["environment_root"]
+    assert f"workos_client_id in deployment/terraform/{root}/variables.tf" in refusal
+
+
 @pytest.mark.parametrize("script", [CREATE, NUKE], ids=["create", "nuke"])
 def test_refuses_any_profile_but_the_environments_administrator(
     script: Path, tmp_path: Path

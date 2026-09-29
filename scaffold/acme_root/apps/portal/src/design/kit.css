@@ -1,5 +1,5 @@
 /* The kit's look, and the states inline styles cannot say: hover, focus,
-   pressed, and the row being dragged. Values come from theme.css. */
+   and pressed. Values come from theme.css. */
 
 /* The page. */
 .acme-app {
@@ -349,7 +349,7 @@ select.acme-field {
   color: var(--acme-link);
 }
 
-/* A due date that has passed, or whose reminder went out. */
+/* A pill that warns: something is late or needs a look. */
 .acme-pill[data-tone="danger"] {
   border-color: var(--acme-danger);
   color: var(--acme-danger-text);
@@ -649,25 +649,6 @@ select.acme-field {
   background: var(--acme-border);
 }
 
-/* The task rows. */
-.acme-handle {
-  opacity: 0.55;
-  transition: opacity 120ms ease;
-}
-
-li:hover .acme-handle,
-.acme-handle:focus-visible {
-  opacity: 1;
-}
-
-.acme-handle:hover {
-  color: var(--acme-text);
-}
-
-.acme-dragging {
-  opacity: 0.4;
-}
-
 /* The live dot: a soft halo while it is live, a slow pulse while it waits. */
 .acme-dot {
   box-shadow: 0 0 0 2px var(--acme-surface);
@@ -743,70 +724,6 @@ li:hover .acme-handle,
   animation: acme-pop-in 140ms ease-out both;
 }
 
-/* The plans, one row each: the name, the price, the bounds, the choice. */
-.acme-plans {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
-}
-
-.acme-plan {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--acme-border);
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.acme-plan[data-suggested="true"] {
-  border-color: var(--acme-accent);
-  background: var(--acme-accent-soft);
-}
-
-.acme-plan-bounds {
-  color: var(--acme-muted);
-  font-size: 13px;
-}
-
-/* Label and value pairs on the billing page. */
-.acme-facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 0;
-}
-
-.acme-facts dt {
-  color: var(--acme-muted);
-}
-
-.acme-facts dd {
-  margin: 0;
-}
-
-/* How far a background job is: a thin track, the accent filling it. */
-.acme-progress {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--acme-surface-subtle);
-  border: 1px solid var(--acme-border);
-  overflow: hidden;
-}
-
-.acme-progress-bar {
-  height: 100%;
-  background: var(--acme-accent);
-  transition: width 240ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .acme-progress-bar {
-    transition: none;
-  }
-}
-
 /* A card that folds: the title is the button, the caret turns with it. */
 .acme-fold-head {
   display: flex;
@@ -861,29 +778,6 @@ li:hover .acme-handle,
   flex-shrink: 0;
 }
 
-/* The task rows as a list one can select in: a selected row carries the
-   accent's tint and a bar at its edge, never a second box. */
-.acme-task-row {
-  border-radius: 6px;
-  transition: background-color 120ms ease;
-}
-
-.acme-task-row[aria-selected="true"] {
-  background: var(--acme-accent-soft);
-  box-shadow: inset 3px 0 0 var(--acme-accent);
-}
-
-.acme-task-row:focus-visible {
-  outline: 2px solid var(--acme-focus);
-  outline-offset: -2px;
-}
-
-/* A list with a selection takes no text selection from a Shift-click. */
-.acme-selecting {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
 /* The bar for what is selected, at the foot of the window. */
 .acme-action-bar {
   position: fixed;
@@ -903,12 +797,6 @@ li:hover .acme-handle,
   border-radius: 12px;
   box-shadow: var(--acme-shadow-lg);
   animation: acme-rise-in 160ms ease-out both;
-}
-
-.acme-action-bar-count {
-  font-weight: 600;
-  white-space: nowrap;
-  margin-right: 8px;
 }
 
 /* Room under the page for the bar, so it never covers the last row. */

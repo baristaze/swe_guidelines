@@ -8,11 +8,11 @@ from uuid import UUID
 
 import pytest
 
-from contracts.racing import race
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.exceptions import TenantMismatch
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
+from contracts.racing import race
 
 LEASE = timedelta(seconds=30)
 
@@ -117,7 +117,7 @@ class WorkStorageContract:
         self, storage: WorkStorageInterface, lane: str
     ) -> None:
         """The order is readiness, then id: an item made later that became
-        ready earlier, a requeued one or a reminder whose time came, goes
+        ready earlier, a requeued one or a step whose wait is over, goes
         first; items ready at the same moment go by id."""
         org = new_id()
         later = make_item(lane=lane, available_in=timedelta(hours=1))

@@ -105,7 +105,7 @@ async def test_the_runtime_and_the_system_logins_own_nothing(pg_sessions: Sessio
         ).all()
         assert {row.owner for row in schemas} == {MIGRATION_LOGIN}, schemas
         with pytest.raises(DBAPIError) as refused:
-            await session.execute(text("ALTER TABLE core.tasks NO FORCE ROW LEVEL SECURITY"))
+            await session.execute(text("ALTER TABLE core.files NO FORCE ROW LEVEL SECURITY"))
         assert "must be owner" in str(refused.value)
 
 

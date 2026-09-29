@@ -1,7 +1,6 @@
 """The media swimlane: files a tenant keeps in the object store, as references.
-It is horizontal: another namespace composes it for its own files (a task's
-attachments), naming the purpose and the subject, and it knows nothing of
-what the subject is."""
+It is horizontal: another namespace composes it for its own files, naming
+the purpose and the subject, and it knows nothing of what the subject is."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -94,8 +93,8 @@ class MediaManagerInterface(ABC):
 
     @abstractmethod
     async def get_usage(self, ctx: OpContext) -> StorageUsage:
-        """What the tenant keeps, counted from the rows, per purpose. This is
-        the number a plan's storage limit is held against."""
+        """What the tenant keeps, counted from the rows, per purpose: the
+        number a limit on storage is held against."""
         ...
 
     @abstractmethod

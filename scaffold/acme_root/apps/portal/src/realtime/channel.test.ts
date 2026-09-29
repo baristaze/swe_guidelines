@@ -40,34 +40,23 @@ class FakeSocket implements SocketLike {
 }
 
 function event(seq: number): EventView {
-  return { seq, kind: "tasks.task.updated", target_id: `t${seq}`, produced_at: "2026-09-16T12:00:00Z", actor_id: "u1" };
+  return { seq, kind: "tenancy.user.updated", target_id: `u${seq}`, produced_at: "2026-09-16T12:00:00Z", actor_id: "u1" };
 }
 
 function push(seq: number): Envelope {
-  return { type: "event", topic: "entity_changed", sent_at: null, payload: { kind: "tasks.task.updated", target_id: `t${seq}`, seq, actor_id: "u1" } };
+  return { type: "event", topic: "entity_changed", sent_at: null, payload: { kind: "tenancy.user.updated", target_id: `u${seq}`, seq, actor_id: "u1" } };
 }
 
 const seqOf = (e: Envelope) => (e as { payload: { seq: number } }).payload.seq;
-
-const REMINDED = "tasks.task.reminded";
-
-/** A reminder of task `target` in the stream. */
-function reminded(seq: number, target: string): EventView {
-  return { ...event(seq), kind: REMINDED, target_id: target };
-}
-
-const isReminder = (e: Envelope) => e.type === "event" && e.payload.kind === REMINDED;
 
 const hello = (seq: number) => ({ type: "hello", sent_at: null, org_id: "o1", user_id: "u1", seq, ping_interval_seconds: 25 });
 
 /** The stream in storage, as pages after a seq. */
 type Pages = (after: number) => EventView[];
 
-function harness(pages: Pages = () => [], pageSize = 200, clock?: () => number, split = false) {
+function harness(pages: Pages = () => [], pageSize = 200, clock?: () => number) {
   const sockets: FakeSocket[] = [];
   const routed: Envelope[] = [];
-  const replayed: Envelope[] = [];
-  const announced: number[][] = [];
   const fetches: number[] = [];
   const requestTicket = vi.fn(() => Promise.resolve("tkt"));
   const onUnauthenticated = vi.fn();
@@ -88,14 +77,11 @@ function harness(pages: Pages = () => [], pageSize = 200, clock?: () => number, 
     route: (envelope) => {
       routed.push(envelope);
     },
-    routeReplayed: split ? (envelope) => void replayed.push(envelope) : undefined,
-    isAnnounced: isReminder,
-    announce: (envelopes) => void announced.push(envelopes.map(seqOf)),
     refreshAll,
     connection: useConnectionStore,
     pageSize,
   });
-  return { channel, sockets, routed, replayed, announced, fetches, requestTicket, onUnauthenticated, refreshAll };
+  return { channel, sockets, routed, fetches, requestTicket, onUnauthenticated, refreshAll };
 }
 
 // Lets the ticket request and the inbox settle without moving the clock.
@@ -322,34 +308,13 @@ describe("stream cursor", () => {
     expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([7, 8]);
   });
 
-  it("routes a live push as live, and a record read back from the stream as replayed", async () => {
-    // A live task push reads that one task; a replay routes only the last
-    // record of each entity, so the lists it touches are read whole.
-    const stream = [event(6), event(7), event(8)];
-    const h = harness((after) => stream.filter((e) => e.seq > after), 200, undefined, true);
-    channel = h.channel;
-    await flush();
-    h.sockets[0]!.accept();
-    await flush();
-    h.sockets[0]!.receive(hello(5));
-    await flush();
-    h.sockets[0]!.receive(push(6));
-    await flush();
-    h.sockets[0]!.receive(push(8));
-    await flush();
-    // Push 8 found 7 missing: the replay of 7 and 8 routed the last of them.
-    expect(h.routed.filter((e) => e.type === "event").map(seqOf)).toEqual([6]);
-    expect(h.replayed.map(seqOf)).toEqual([8]);
-    expect(channel.cursor()).toBe(8);
-  });
-
   it("routes a replay page once per entity, however many records it carries", async () => {
     // A tab that wakes far behind replays a full page at a time. Each record
-    // routed cancels and restarts the refetch of every task list, so a page of
-    // task records used to cost one list request per record.
+    // routed cancels and restarts the refetch of every query its entity is
+    // read from, so one route per record would read the same list per record.
     const stream: EventView[] = [];
     for (let seq = 6; seq <= 25; seq += 1) {
-      stream.push({ ...event(seq), kind: seq % 2 === 0 ? "tasks.task.updated" : "tenancy.user.deleted" });
+      stream.push({ ...event(seq), kind: seq % 2 === 0 ? "media.file.updated" : "tenancy.user.deleted" });
     }
     const h = harness((after) => stream.filter((e) => e.seq > after).slice(0, 20), 20);
     channel = h.channel;
@@ -364,7 +329,7 @@ describe("stream cursor", () => {
     const kinds = h.routed
       .filter((e) => e.type === "event")
       .map((e) => (e as { payload: { kind: string } }).payload.kind);
-    expect(kinds).toEqual(["tasks.task.updated", "tenancy.user.deleted"]);
+    expect(kinds).toEqual(["media.file.updated", "tenancy.user.deleted"]);
   });
 
   it("stops paging when a page moves the cursor nowhere", async () => {
@@ -412,127 +377,13 @@ describe("stream cursor", () => {
   });
 });
 
-describe("a reminder read back from the stream", () => {
-  /** A channel with its cursor at 5, then dropped and reconnected: the open
-   * replays from the cursor. */
-  async function reconnected(stream: EventView[], pageSize = 200) {
-    const h = harness((after) => stream.filter((e) => e.seq > after).slice(0, pageSize), pageSize, undefined, true);
-    channel = h.channel;
-    await flush();
-    h.sockets[0]!.accept();
-    await flush();
-    h.sockets[0]!.receive(hello(5));
-    await flush();
-    h.sockets[0]!.drop();
-    await vi.advanceTimersByTimeAsync(1_000);
-    h.sockets[1]!.accept();
-    await flush();
-    return h;
-  }
-
-  it("is kept through the collapse: a later update of the same task does not hide it", async () => {
-    const h = await reconnected([reminded(6, "t1"), { ...event(7), target_id: "t1" }, event(8)]);
-    expect(channel!.cursor()).toBe(8);
-    // The lists are read once, from the last task record; the reminder is announced.
-    expect(h.replayed.map(seqOf)).toEqual([8]);
-    expect(h.announced).toEqual([[6]]);
-  });
-
-  it("hands over every reminder of a replay at once, across its pages, in stream order", async () => {
-    const stream = [reminded(6, "t1"), event(7), reminded(8, "t2"), reminded(9, "t3"), event(10)];
-    const h = await reconnected(stream, 2);
-    expect(h.fetches).toEqual([5, 7, 9]);
-    expect(channel!.cursor()).toBe(10);
-    expect(h.announced).toEqual([[6, 8, 9]]);
-  });
-
-  it("announces nothing for a replay with no reminder", async () => {
-    const h = await reconnected([event(6), event(7)]);
-    expect(channel!.cursor()).toBe(7);
-    expect(h.announced).toEqual([]);
-  });
-
-  it("is handed over when a later page fails, since the cursor has moved past it", async () => {
-    let calls = 0;
-    const stream = [reminded(6, "t1"), event(7), event(8), event(9)];
-    const h = harness(
-      (after) => {
-        calls += 1;
-        if (calls > 1) throw new Error("the network went away");
-        return stream.filter((e) => e.seq > after).slice(0, 2);
-      },
-      2,
-      undefined,
-      true,
-    );
-    channel = h.channel;
-    await flush();
-    h.sockets[0]!.accept();
-    await flush();
-    h.sockets[0]!.receive(hello(5));
-    await flush();
-    h.sockets[0]!.drop();
-    await vi.advanceTimersByTimeAsync(1_000);
-    h.sockets[1]!.accept();
-    await flush();
-    expect(channel.cursor()).toBe(7);
-    expect(h.announced).toEqual([[6]]);
-  });
-
-  it("is kept by the first catch-up too", async () => {
-    let clock = 0;
-    const stream = [
-      { ...reminded(4, "t1"), produced_at: "2026-09-16T12:00:01Z" },
-      { ...event(5), target_id: "t1", produced_at: "2026-09-16T12:00:02Z" },
-    ];
-    const h = harness((after) => stream.filter((e) => e.seq > after), 200, () => clock, true);
-    channel = h.channel;
-    await flush();
-    h.sockets[0]!.accept();
-    await flush();
-    clock += 3000;
-    h.sockets[0]!.receive({ ...hello(5), sent_at: "2026-09-16T12:00:03Z" });
-    await flush();
-    expect(h.replayed.map(seqOf)).toEqual([5]);
-    expect(h.announced).toEqual([[4]]);
-  });
-
-  it("is not handed over by a replay that finishes after stop", async () => {
-    let resolvePage!: (page: EventView[]) => void;
-    const socket = new FakeSocket();
-    const announce = vi.fn();
-    channel = openChannel({
-      requestTicket: async () => "tkt",
-      openSocket: () => socket,
-      fetchEventsAfter: vi.fn(() => new Promise<EventView[]>((resolve) => { resolvePage = resolve; })),
-      route: vi.fn(),
-      isAnnounced: isReminder,
-      announce,
-      refreshAll: async () => undefined,
-      connection: useConnectionStore,
-      pageSize: 200,
-    });
-    await flush();
-    socket.accept();
-    await flush();
-    socket.receive(hello(0));
-    await flush();
-    socket.receive(push(2));
-    await flush();
-    channel.stop();
-    resolvePage([reminded(1, "t1"), event(2)]);
-    await flush();
-    expect(announce).not.toHaveBeenCalled();
-  });
-});
-
 describe("a stream trimmed past the cursor", () => {
   // The trim took everything up to 7; the stream holds 8 and 9. A read after
   // a seq below 7 is refused as the API refuses it, naming the head.
   const trimmed = (stream: EventView[], floor = 7) => (after: number) => {
     if (after < floor) {
       const head = stream[stream.length - 1]!.seq;
-      throw new ApiError(410, "stream_truncated", "gone", null, undefined, null, { floor, head });
+      throw new ApiError(410, "stream_truncated", "gone", null, undefined, { floor, head });
     }
     return stream.filter((e) => e.seq > after);
   };
@@ -630,7 +481,7 @@ describe("the first catch-up", () => {
   // The page began reading at 12:00:00 on the server's clock: the hello was
   // sent at 12:00:03, three seconds after the channel opened.
   const helloAt = (seq: number) => ({ ...hello(seq), sent_at: "2026-09-16T12:00:03Z" });
-  const at = (seq: number, time: string, kind = "tasks.task.updated"): EventView => ({
+  const at = (seq: number, time: string, kind = "tenancy.user.updated"): EventView => ({
     ...event(seq),
     kind,
     produced_at: `2026-09-16T${time}Z`,
@@ -646,9 +497,9 @@ describe("the first catch-up", () => {
     // 11:59:30 is past the margin before the reads; 11:59:50 is inside it,
     // and 12:00:01 came while the page read. One route per entity.
     const stream = [
-      at(3, "11:59:30", "billing.account.updated"),
-      at(4, "11:59:50", "tasks.task.created"),
-      at(5, "12:00:01", "tasks.task.updated"),
+      at(3, "11:59:30", "tenancy.api_key.created"),
+      at(4, "11:59:50", "tenancy.user.created"),
+      at(5, "12:00:01", "tenancy.user.updated"),
     ];
     const { h, wait } = opened((after) => stream.filter((e) => e.seq > after));
     channel = h.channel;
@@ -997,7 +848,7 @@ describe("a hidden tab", () => {
 
   it("re-reads everything on return when the stream was trimmed past the cursor", async () => {
     const trimmed = (after: number) => {
-      if (after < 7) throw new ApiError(410, "stream_truncated", "gone", null, undefined, null, { floor: 7, head: 9 });
+      if (after < 7) throw new ApiError(410, "stream_truncated", "gone", null, undefined, { floor: 7, head: 9 });
       return [];
     };
     const { h, page } = await watched(trimmed);
@@ -1022,7 +873,7 @@ describe("a hidden tab", () => {
     const signOut = vi.fn(() => channel!.stop());
     h.requestTicket.mockImplementationOnce(() => {
       signOut();
-      return Promise.reject(new ApiError(401, "unauthenticated", "expired", null, undefined, null, null));
+      return Promise.reject(new ApiError(401, "unauthenticated", "expired", null, undefined, null));
     });
     page.show();
     await flush();

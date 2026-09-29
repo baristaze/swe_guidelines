@@ -61,43 +61,6 @@ class DeviceExpired(ProviderRefused):
     code = "expired_token"
 
 
-class PaymentsUnconfigured(ProviderUnavailable):
-    """This environment holds no credential for the payment processor. The
-    plans still apply; nobody can buy one here."""
-
-    code = "billing_unavailable"
-
-
-class PaymentsKeyRefused(ProviderUnavailable):
-    """The processor refused the process's own key: revoked (401), or
-    without the permission the call needs (403). Nothing is wrong with the
-    call; it goes through once a person fixes the key, so it is unavailable
-    until then, not refused. The message names the operation and the
-    processor's error code, never the key."""
-
-    code = "payments_key_refused"
-
-    def __init__(self, operation: str, reason: str) -> None:
-        super().__init__(
-            f"the payment processor refused the runtime key for {operation} ({reason}): "
-            "give the key the permission, or replace it"
-        )
-
-
-class PaymentsRefused(InfraException):
-    """The processor answered, and refused the request itself (a 4xx about
-    what it was handed): a price it does not know, a card it declined, a
-    request it calls invalid. The same request gets the same answer. The
-    message names the operation and the processor's error code, never a
-    payload or a key."""
-
-    http_status = 502
-    code = "payments_refused"
-
-    def __init__(self, operation: str, reason: str) -> None:
-        super().__init__(f"the payment processor refused {operation}: {reason}")
-
-
 class DeliveryRefused(InfraException):
     """An inbound delivery whose signature, timestamp, or body did not check
     out. Nothing is queued for it."""

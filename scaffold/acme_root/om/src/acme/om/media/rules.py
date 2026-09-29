@@ -60,22 +60,17 @@ _VIDEO = {
 BOUNDS: Mapping[FilePurpose, UploadBounds] = {
     # No type a browser renders as a page (HTML, SVG): a file is data, and the
     # store's origin is not the portal's, but nothing needs one either.
-    FilePurpose.TASK_ATTACHMENT: UploadBounds(
+    FilePurpose.UPLOAD: UploadBounds(
         max_bytes=100 * 1024 * 1024, types={**_IMAGES, **_DOCUMENTS, **_AUDIO, **_VIDEO}
-    ),
-    FilePurpose.VOICE_DICTATION: UploadBounds(max_bytes=10 * 1024 * 1024, types=_AUDIO),
-    # Five thousand rows of a title, a note, a date, and an address fit in
-    # well under a megabyte.
-    FilePurpose.TASK_IMPORT: UploadBounds(
-        max_bytes=1024 * 1024, types={"text/csv": frozenset({"csv"})}
     ),
 }
 """The bounds of every purpose. The numbers are illustrative; the shape is
 that each purpose names its own ceiling and its own types, and a type
 outside the list is refused before any form is signed."""
 
-SUBJECT_REQUIRED: frozenset[FilePurpose] = frozenset({FilePurpose.TASK_ATTACHMENT})
-"""The purposes whose file belongs to a subject (a task attachment's task)."""
+SUBJECT_REQUIRED: frozenset[FilePurpose] = frozenset()
+"""The purposes whose file belongs to a subject, the record of another
+namespace the file is attached to, which `subject_id` names."""
 
 
 def extension_of(name: str) -> str:

@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
-from api_support import OWNER, add_member, build_container, on_plan, run, seed_request
+from api_support import OWNER, add_member, build_container, run, seed_request
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
@@ -18,7 +18,6 @@ from acme.apps.cli import main
 from acme.client.client import ApiClient
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
-from acme.om.billing.types.plan import Plan
 from acme.om.opcontext import Role
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
@@ -123,9 +122,7 @@ def stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Stack]:
             seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
         )
     )
-    # Team: two people and more tasks than Free allows, the case most commands
-    # are about; the plan's own refusal has a test of its own.
-    run(on_plan(container, org.id, Plan.TEAM))
+    # Two people: the owner, and Bob as a member.
     run(add_member(container, org.id, BOB["email"], Role.MEMBER))
     monkeypatch.setenv("ACME_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("ACME_TOKEN", raising=False)

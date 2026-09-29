@@ -10,6 +10,7 @@ from acme.integrations.identity import (
     DeviceAuthorization,
     IdentityProviderInterface,
     PortalIntent,
+    ProvidedDelivery,
     ProvidedInvitation,
     ProvidedOrganization,
     ProvidedSignIn,
@@ -122,6 +123,9 @@ class IdentityProviderAbsentImpl(IdentityProviderInterface):
         return_url: str,
         deadline: datetime | None = None,
     ) -> str:
+        self._refuse()
+
+    def verify_delivery(self, payload: bytes, signature: str | None) -> ProvidedDelivery:
         self._refuse()
 
     def describe(self) -> str:

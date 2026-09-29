@@ -2,25 +2,24 @@ from pathlib import Path
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.impl.configured import absent_integrations
-from acme.integrations.payments.twin import PaymentsTwinImpl
-from acme.om.billing import BillingManagerInterface, BillingOperatorManagerInterface
-from acme.om.billing.storage import BillingStorageInterface
 from acme.om.events import EventsManagerInterface
 from acme.om.events.storage import EventStorageInterface
 from acme.om.idempotency import IdempotencyManagerInterface
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.media import MediaManagerInterface
 from acme.om.media.storage import MediaStorageInterface
+from acme.om.orchestrations import OrchestrationsManagerInterface
+from acme.om.orchestrations.storage import OrchestrationsStorageInterface
+from acme.om.outbox import OutboxRelayInterface
+from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.root import build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import StorageSettings
-from acme.om.tasks import TasksManagerInterface
-from acme.om.tasks.storage import TasksStorageInterface
 from acme.om.tenancy import TenancyManagerInterface, TenancyOperatorManagerInterface
 from acme.om.tenancy.storage import TenancyStorageInterface
-from acme.om.work import WorkManagerInterface
+from acme.om.work import WorkManagerInterface, WorkOperatorManagerInterface
 from acme.om.work.storage import WorkStorageInterface
 
 
@@ -28,11 +27,11 @@ async def test_memory_root_serves_every_storage() -> None:
     root = StorageMemoryImpl()
     assert isinstance(root.get_tenancy_storage(), TenancyStorageInterface)
     assert isinstance(root.get_work_storage(), WorkStorageInterface)
-    assert isinstance(root.get_tasks_storage(), TasksStorageInterface)
     assert isinstance(root.get_media_storage(), MediaStorageInterface)
     assert isinstance(root.get_idempotency_storage(), IdempotencyStorageInterface)
     assert isinstance(root.get_event_storage(), EventStorageInterface)
-    assert isinstance(root.get_billing_storage(), BillingStorageInterface)
+    assert isinstance(root.get_outbox_storage(), OutboxStorageInterface)
+    assert isinstance(root.get_orchestrations_storage(), OrchestrationsStorageInterface)
     assert await root.healthcheck() is True
     await root.close()
 
@@ -85,17 +84,17 @@ def test_business_root_has_a_field_per_manager(tmp_path: Path) -> None:
     managers = build_managers(
         StorageMemoryImpl(),
         InfraLocalImpl(tmp_path),
-        integrations=absent_integrations(PaymentsTwinImpl(environment="test")),
+        integrations=absent_integrations(),
     )
     assert isinstance(managers.tenancy, TenancyManagerInterface)
     assert isinstance(managers.tenancy_operator, TenancyOperatorManagerInterface)
     assert isinstance(managers.work, WorkManagerInterface)
+    assert isinstance(managers.work_operator, WorkOperatorManagerInterface)
     assert isinstance(managers.media, MediaManagerInterface)
-    assert isinstance(managers.tasks, TasksManagerInterface)
     assert isinstance(managers.idempotency, IdempotencyManagerInterface)
     assert isinstance(managers.events, EventsManagerInterface)
-    assert isinstance(managers.billing, BillingManagerInterface)
-    assert isinstance(managers.billing_operator, BillingOperatorManagerInterface)
+    assert isinstance(managers.outbox, OutboxRelayInterface)
+    assert isinstance(managers.orchestrations, OrchestrationsManagerInterface)
 
 
 def test_the_system_scope_is_the_same_value_on_both_sides() -> None:

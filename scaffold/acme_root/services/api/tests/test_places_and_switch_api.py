@@ -6,9 +6,8 @@ from uuid import UUID
 
 import httpx
 import pytest
-from api_support import OWNER, enrolled_sign_in, on_plan, seed_request, sign_in_as
+from api_support import OWNER, enrolled_sign_in, seed_request, sign_in_as
 
-from acme.om.billing.types.plan import Plan
 from acme.om.opcontext import OperatorRole, Role
 from acme.services.api.container import AppContainer
 
@@ -34,8 +33,6 @@ async def two_orgs(client: httpx.AsyncClient, container: AppContainer) -> tuple[
     await tenancy.add_member(seed_request(), "beta", OWNER["email"], OWNER["name"], Role.MEMBER)
     beta = await container.storage.get_tenancy_storage().read_org_by_slug("beta")
     assert beta is not None
-    for org_id in (ajax.id, beta.id):
-        await on_plan(container, org_id, Plan.TEAM)
     return str(ajax.id), str(beta.id)
 
 
@@ -212,13 +209,8 @@ async def test_a_malformed_org_is_refused(client: httpx.AsyncClient, body: dict[
     assert refused.status_code == 422, refused.text
 
 
-async def test_an_api_key_creates_no_org(
-    client: httpx.AsyncClient, container: AppContainer
-) -> None:
+async def test_an_api_key_creates_no_org(client: httpx.AsyncClient) -> None:
     home = await signed_up_session(client)
-    # A personal org starts on Free, which holds no api keys; Team does.
-    org_id = UUID((await client.get("/v1/orgs/current", headers=home)).json()["id"])
-    await on_plan(container, org_id, Plan.TEAM)
     key = await client.post(
         "/v1/api-keys",
         headers=home | {"Idempotency-Key": "k1"},

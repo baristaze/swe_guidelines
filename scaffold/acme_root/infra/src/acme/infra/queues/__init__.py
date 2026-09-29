@@ -9,8 +9,7 @@ from acme.infra.base import InfraModel
 
 
 class Queues(StrEnum):
-    WEBHOOKS = "webhooks"
-    SLACK = "slack"  # what Slack sends the API, acknowledged there, handled by maintenance
+    WEBHOOKS = "webhooks"  # what a provider sends the API, verified there, handled by maintenance
 
 
 class QueueMessage(InfraModel):

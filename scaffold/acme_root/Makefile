@@ -5,7 +5,7 @@ SHELL := /bin/bash
 # The knobs live in one place: .env.example carries every default and .env
 # (which `make up` copies from it) the developer's overrides. Make reads both
 # so `make seed` and `make urls` say what the compose stack does, and compose
-# reads the same two files for the dashboard ports.
+# reads the same two files for the host ports.
 #
 # Both files are defaults. A variable exported in the shell wins over them,
 # as it does for the settings, for compose, and for scripts/dev.sh, so the
@@ -45,9 +45,9 @@ SCRAPE_PORT ?= $(ACME_COLLECTOR_SCRAPE_PORT)
 # follows, on the project's Python: the checker refuses a Python older than
 # .python-version. Offline, point it at a checkout:
 # `make arch-check ARCH_CHECK="python3 ../swe_guidelines/checkers/arch_check.py"`.
-ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.37.0\#subdirectory=checkers" arch-check
+ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.38.0\#subdirectory=checkers" arch-check
 
-.PHONY: help setup up down reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed demo-gif demo-gif-dark demo-cli-gif migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
+.PHONY: help setup up down reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
 
 # This Makefile alone, never $(MAKEFILE_LIST): the includes above put
 # .env.example and .env in that list, and grep prefixes every match with the
@@ -84,9 +84,9 @@ reset: ## Wipe every container and all local data, then `make up`
 
 urls: ## Print the local URLs and the seeded sign-ins
 	@echo ""
-	@echo "  Portal         http://localhost:55173   /login through WorkOS; /login/dev as $(SEED_EMAIL) or $(SEED_MEMBER_EMAIL)"
+	@echo "  Portal         http://localhost:$(ACME_PORTAL_PORT)   /login through WorkOS; /login/dev as $(SEED_EMAIL) or $(SEED_MEMBER_EMAIL)"
 	@echo "                 two orgs: $(SEED_ADMIN_EMAIL) at /login/dev   owner of $(SEED_SECOND_ORG), admin of $(SEED_ORG)"
-	@echo "  API docs       http://127.0.0.1:8000/docs"
+	@echo "  API docs       http://127.0.0.1:$(ACME_PORT)/docs"
 	@echo "  pgweb          http://localhost:$(ACME_PGWEB_PORT)"
 	@echo "  Valkey Admin   http://localhost:$(ACME_VALKEY_ADMIN_PORT)"
 	@echo "  ElasticMQ UI   http://localhost:$(ACME_ELASTICMQ_UI_PORT)"
@@ -94,7 +94,7 @@ urls: ## Print the local URLs and the seeded sign-ins
 	@echo "  Prometheus     http://localhost:$(ACME_PROMETHEUS_PORT)"
 	@echo "  Jaeger         http://localhost:$(ACME_JAEGER_PORT)"
 	@echo "  GlitchTip      http://localhost:$(ACME_GLITCHTIP_PORT)   admin@example.test / acme-local"
-	@echo "  MinIO console  http://localhost:59001   acme / acmeacme"
+	@echo "  MinIO console  http://localhost:$(ACME_MINIO_CONSOLE_PORT)   acme / acme-minio-local"
 	@echo ""
 
 .env:
@@ -107,7 +107,7 @@ infra-up: ## Start Postgres, the cache, the queue, and the object store
 # One bucket per member of acme.infra.buckets.Buckets, named <prefix>-<bucket>
 # as the S3 impl names them; the cloud's are Terraform's. MinIO ships `mc`.
 buckets: ## Create the object store's buckets in MinIO, if they are missing
-	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acmeacme >/dev/null && mc mb --ignore-existing local/acme-user-file-uploads local/acme-exports'
+	$(COMPOSE) exec -T minio sh -c 'mc alias set local http://127.0.0.1:9000 acme acme-minio-local >/dev/null && mc mb --ignore-existing local/acme-local-user-file-uploads local/acme-local-exports'
 
 devx-up: ## The local stack plus developer dashboards (pgweb, Valkey Admin, ElasticMQ UI, Prometheus and its collector, Grafana, Jaeger, GlitchTip)
 	$(COMPOSE) --profile devx up -d --wait
@@ -145,8 +145,7 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # The SEED_* values come from .env (or .env.example); override any of them
 # there or on the command line, e.g. `make seed SEED_EMAIL=me@example.test`.
 # The admin owns the second org and joins the first as an admin: one person
-# with two memberships, each under a different role. The first org is a
-# team of three, so the seed grants it Team; the second stays on Free.
+# with two memberships, each under a different role.
 # Then the two local operators, the platform's own identities of
 # acme.ops.environments.LOCAL_OPERATORS: a read operator and the
 # provisioner, which writes. Their tokens go into the owner-only
@@ -154,7 +153,7 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # file is absent; `uv run acme-ops token --env local --identity
 # operator|provisioner` mints a fresh one into it, since each lasts an hour.
 seed: ## Create two local orgs with an owner, a member, and an admin of both to sign in as, and the two local operators; a no-op once they exist
-	uv run --package acme-api acme-api bootstrap --if-absent --plan team \
+	uv run --package acme-api acme-api bootstrap --if-absent \
 		--org "$(SEED_ORG)" --slug "$(SEED_SLUG)" --name "$(SEED_NAME)" \
 		--email "$(SEED_EMAIL)"
 	uv run --package acme-api acme-api add-member --slug "$(SEED_SLUG)" \
@@ -174,21 +173,6 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 		uv run --package acme-ops acme-ops token --env local --identity operator && \
 		uv run --package acme-ops acme-ops token --env local --identity provisioner; \
 	fi
-
-# Needs `make up` (the seeded owner and member, the API on 8000, the portal on
-# 55173). Empties the task list, then records docs/media/realtime-demo.gif:
-# Bob's window on the left, the owner's on the right.
-demo-gif: ## Record the README's realtime demo GIF against the running stack
-	uv run python scripts/record_demo.py docs/media/realtime-demo.gif
-
-# The same story in the dark theme, for the company site on a dark system.
-demo-gif-dark: ## Record the dark variant of the realtime demo GIF the company site shows
-	uv run python scripts/record_demo.py docs/media/realtime-demo-dark.gif --theme dark
-
-# Needs `make up` too. Bob in command mode on the left, the owner on
-# `acme listen` on the right; records docs/media/cli-demo.gif.
-demo-cli-gif: ## Record the README's CLI demo GIF (command mode beside listen) against the running stack
-	uv run python scripts/record_cli_demo.py docs/media/cli-demo.gif
 
 # The ORM-versus-schema check needs a migrated database, which the fast gate
 # cannot reach, so `check` does not run it; CI's integration job runs it
@@ -232,7 +216,7 @@ test-telemetry: ## The telemetry round trip over the devx profile
 	uv run pytest -q -m telemetry
 
 # The gate's sanity run: the light profile for thirty seconds over the seeded
-# org, against the API on 8000. Proves the wiring, says nothing about capacity.
+# org, against the API on ACME_PORT. Proves the wiring, says nothing about capacity.
 traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 	uv run acme-ops traffic --env local --profile $(PROFILE) --duration $(DURATION) --orgs 0
 

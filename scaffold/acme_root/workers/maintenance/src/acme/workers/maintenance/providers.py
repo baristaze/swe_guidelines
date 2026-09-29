@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from acme.infra.exceptions import InfraException
-from acme.integrations.exceptions import PaymentsRefused, ProviderRefused
+from acme.integrations.exceptions import ProviderRefused
 from acme.om.exceptions import PlatformException
 from acme.om.work.types.handler import WorkParked, WorkRefused
 
@@ -34,6 +34,6 @@ async def provider_calls() -> AsyncIterator[None]:
     except (InfraException, PlatformException) as error:
         if error.http_status == UNAVAILABLE:
             raise WorkParked(f"a provider is out of reach: {error}", PROVIDER_WAIT) from None
-        if isinstance(error, ProviderRefused | PaymentsRefused):
+        if isinstance(error, ProviderRefused):
             raise WorkRefused(f"a provider refused the call: {error}") from None
         raise

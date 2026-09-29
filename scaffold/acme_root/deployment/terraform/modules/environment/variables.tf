@@ -42,11 +42,6 @@ variable "workos_client_id" {
   type        = string
 }
 
-variable "slack_client_id" {
-  description = "The client id of this environment's Slack app (its Basic Information page, App Credentials): staging's app in staging, production's in production. Not a secret; the client secret and the signing secret are (ACME_SLACK_CLIENT_SECRET, ACME_SLACK_SIGNING_SECRET, from the secrets module). Empty leaves Slack unconfigured: Add to Slack and every call from Slack answer 503."
-  type        = string
-}
-
 variable "site_domain_name" {
   description = "The company site's public name: acme.example, or staging.acme.example for staging. A record in the Cloudflare zone, not a hosted zone here; an issued certificate for it must exist in us-east-1 (the bootstrap root's). Empty leaves the site out and changes nothing else."
   type        = string
@@ -57,11 +52,6 @@ variable "cors_origins" {
   description = "Browser origins the API accepts besides the portal's, which is always allowed."
   type        = list(string)
   default     = []
-}
-
-variable "stripe_account_id" {
-  description = "The payment processor's account every call names in Stripe-Context: the sandbox outside production, the live account in it. Not a secret."
-  type        = string
 }
 
 variable "portal_sentry_dsn" {

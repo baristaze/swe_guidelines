@@ -1,7 +1,7 @@
 [project]
 name = "acme-workspace"
-version = "0.7.0"
-description = "Acme: a multi-tenant to-do application for teams of people and the programs that work alongside them."
+version = "0.1.0"
+description = "Acme: a multi-tenant system for teams of people and the agents that work alongside them."
 requires-python = ">=3.14"
 
 [tool.uv]
@@ -40,9 +40,6 @@ dev = [
     # Pinned exactly: `make openapi` regenerates clients/python/src/acme/client/schema.py
     # with it and CI checks the committed file is current.
     "datamodel-code-generator==0.82.0",
-    # The demo recorders under scripts/ draw their frames with it, and the
-    # type check reads them with the rest.
-    "pillow>=12",
 ]
 
 [tool.pytest.ini_options]
@@ -95,24 +92,6 @@ path = "om/src/acme/om/work/storage/tables/work_items.py"
 adr = "docs/adr/0026-what-0-31-0-leaves-as-a-choice.md"
 reason = "the unique index is (org_id, idempotency_key), led by the tenant as the lens asks"
 
-# A build before the rank writes a task's position and cannot write its rank;
-# a trigger gives such a row the rank its position names, until the column
-# goes.
-[[tool.arch-check.exception]]
-rule = "STO-05"
-path = "om/migrations/sql/core/202610120000_task_rank.up.sql"
-adr = "docs/adr/0050-a-move-writes-one-row.md"
-reason = "expand scaffolding for the release before, which cannot write the rank; it goes with the position in the contract release"
-
-# This release names no position; the release before reads it as a number. A
-# trigger gives every row this release writes its rank's float, until the
-# column goes.
-[[tool.arch-check.exception]]
-rule = "STO-05"
-path = "om/migrations/sql/core/202610200000_task_position_unmapped.up.sql"
-adr = "docs/adr/0050-a-move-writes-one-row.md"
-reason = "contract scaffolding for the release before, which reads the position this release no longer writes; it goes with the column"
-
 # The company site is a page, not an app: HTML and CSS on Vite, no script,
 # so no React.
 [[tool.arch-check.exception]]
@@ -125,7 +104,6 @@ reason = "a static page with no script and no state; the portal and every app th
 # om/tests/unit/test_storage_exceptions.py holds.
 [tool.arch-check.options.CTX-12]
 tenantless = [
-    "BillingStorageInterface.purge_deliveries",
     "EventStorageInterface.count_since",
     "EventStorageInterface.trim",
     "IdempotencyStorageInterface.purge_records",
@@ -136,13 +114,6 @@ tenantless = [
     "OutboxStorageInterface.count_failed_since",
     "OutboxStorageInterface.oldest_pending_at",
     "OutboxStorageInterface.purge_done",
-    "SlackStorageInterface.purge",
-    "SlackStorageInterface.read_installation_by_team",
-    "SlackStorageInterface.redeem_install_state",
-    "TasksStorageInterface.count_created_since",
-    "TasksStorageInterface.purge_deleted",
-    "TasksStorageInterface.read_deleted",
-    "TasksStorageInterface.read_tenants_with_chores",
     "TenancyStorageInterface.clear_failed_sign_ins",
     "TenancyStorageInterface.confirm_totp",
     "TenancyStorageInterface.count_orgs",
@@ -193,7 +164,5 @@ sites = [
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.resume",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.service_context",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.service_contexts",
-    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.sweep_context",
-    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.member_context",
 ]
 builders = ["build_context"]

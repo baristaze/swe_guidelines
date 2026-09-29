@@ -40,9 +40,9 @@ async def test_a_run_makes_seeds_reads_and_drops_its_own_database(
     await seed(database, 0.002)
     statements = tmp_path / "statements.sql"
     statements.write_text(
-        f"-- name: open list, team\n-- scope: {HEAVY}\n"
-        f"SELECT id FROM core.tasks WHERE org_id = '{HEAVY}' AND status = 'open' "
-        "AND deleted_at IS NULL ORDER BY rank, id LIMIT 51;\n"
+        f"-- name: the members, first page\n-- scope: {HEAVY}\n"
+        f"SELECT id FROM core.users WHERE org_id = '{HEAVY}' "
+        "AND deleted_at IS NULL ORDER BY id LIMIT 51;\n"
         "-- name: generic, first\n-- scope: system\n-- params: 1\nSELECT $1::int;\n"
         "-- name: generic, second\n-- scope: system\n-- params: 2\nSELECT $1::int + 1;\n"
         "-- name: the tenant fence holds\n-- scope: system\n"
@@ -52,10 +52,10 @@ async def test_a_run_makes_seeds_reads_and_drops_its_own_database(
     await inventory(database)
     await rows(database, f"SELECT slug FROM core.orgs WHERE id = '{HEAVY}'")
     printed = capsys.readouterr().out
-    assert "#### open list, team (runtime" in printed
+    assert "#### the members, first page (runtime" in printed
     assert "#### the tenant fence holds (system" in printed
     assert printed.count(", generic plan)") == 2  # a prepared statement never outlives its plan
-    assert "| core.tasks |" in printed and "| activity.events |" in printed
+    assert "| core.users |" in printed and "| activity.events |" in printed
     assert printed.rstrip().endswith("heavy")
 
     results = tmp_path / "calls.json"

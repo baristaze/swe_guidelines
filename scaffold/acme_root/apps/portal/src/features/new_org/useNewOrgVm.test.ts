@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The create-team entry over a fake transport: the org is created under an
 // idempotency key, then the session this tab holds is exchanged for one in
-// the new org, and the tab lands on its task list. A refusal is said and
+// the new org, and the tab lands on its home page. A refusal is said and
 // nothing is switched.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, useEffect } from "react";
@@ -73,7 +73,7 @@ afterEach(async () => {
   await act(async () => root.render(null));
 });
 
-it("creates the org under a key, switches into it, and lands on its tasks", async () => {
+it("creates the org under a key, switches into it, and lands on its home page", async () => {
   net.answers.set("/v1/orgs", () => Promise.resolve(place));
   net.answers.set("/v1/auth/sessions", () => Promise.resolve(session));
   await mount();

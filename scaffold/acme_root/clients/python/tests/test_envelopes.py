@@ -22,7 +22,7 @@ def test_a_push_parses_with_its_payload_and_tolerates_extra_fields() -> None:
             "sent_at": None,
             "topic": "entity_changed",
             "payload": {
-                "kind": "tasks.task.created",
+                "kind": "tenancy.invitation.created",
                 "target_id": str(target),
                 "seq": 3,
                 "actor_id": str(actor),
@@ -34,7 +34,7 @@ def test_a_push_parses_with_its_payload_and_tolerates_extra_fields() -> None:
     envelope = parse_envelope(raw)
     assert isinstance(envelope, EventEnvelope)
     assert envelope.payload.seq == 3 and envelope.payload.actor_id == actor
-    assert envelope.payload.entity == "task" and envelope.payload.action == "created"
+    assert envelope.payload.entity == "invitation" and envelope.payload.action == "created"
 
 
 def test_hello_and_malformed_frames() -> None:
@@ -61,7 +61,7 @@ def test_a_replayed_record_becomes_the_push_it_would_have_been() -> None:
     event = EventView.model_validate(
         {
             "seq": 4,
-            "kind": "tasks.task.updated",
+            "kind": "tenancy.invitation.updated",
             "target_id": str(uuid4()),
             "produced_at": "2026-09-18T12:00:00Z",
             "actor_id": str(uuid4()),

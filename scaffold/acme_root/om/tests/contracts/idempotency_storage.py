@@ -8,12 +8,12 @@ from uuid import UUID
 
 import pytest
 
-from contracts.racing import race
 from acme.om.base import new_id, utcnow
 from acme.om.exceptions import DuplicateIdempotencyKey, TenantMismatch
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
+from contracts.racing import race
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {

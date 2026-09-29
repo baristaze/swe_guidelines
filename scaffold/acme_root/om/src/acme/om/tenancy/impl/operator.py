@@ -7,9 +7,6 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
-from acme.om.billing.rules import effective_plan, refuse_past, seats_metered
-from acme.om.billing.storage import BillingStorageInterface
-from acme.om.billing.types.plan import Lever
 from acme.om.events.storage import EventStorageInterface
 from acme.om.events.types.event import Event
 from acme.om.exceptions import (
@@ -30,10 +27,6 @@ from acme.om.opcontext import (
 )
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow
-from acme.om.tasks.storage import TasksStorageInterface
-from acme.om.tasks.types.filter import OpenTaskCursor, TaskCursor, TaskFilter
-from acme.om.tasks.types.page import TaskPage
-from acme.om.tasks.types.task import TaskScope, TaskStatus
 from acme.om.tenancy.impl.creates import (
     MAX_ORGS_PER_IDENTITY,
     add_member_to,
@@ -89,20 +82,13 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
     def __init__(
         self,
         storage: TenancyStorageInterface,
-        tasks: TasksStorageInterface,
         events: EventStorageInterface,
         relay: OutboxRelayInterface,
         options: TenancyOperatorOptions,
         clock: Callable[[], datetime] = utcnow,
-        *,
-        billing: BillingStorageInterface,
     ) -> None:
-        """`billing` is read for the plan of the org an operator adds a member
-        to: the plane is bound by the org's seats like any other door."""
         self._storage = storage
-        self._tasks = tasks
         self._events = events
-        self._billing = billing
         self._relay = relay
         self._options = options
         self._totp = TotpSealer(options.totp_encryption_key)
@@ -240,7 +226,6 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
         size = PlatformSize(
             tenants=tenants,
             users=users,
-            tasks_last_24h=await self._tasks.count_created_since(since),
             events_last_24h=await self._events.count_since(since),
             since=since,
             counted_at=counted_at,
@@ -326,36 +311,10 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             actor_id=admin.identity_id,
             request=admin,
             max_orgs=self._options.max_orgs_per_identity,
-            admission=lambda: self._seat_for_one_more(admin, org_id),
         )
         if created:
             log.info("operator %s added user %s to org %s", admin.identity_id, user.id, org_id)
         return user
-
-    async def get_tasks(
-        self,
-        admin: OperatorContext,
-        org_id: UUID,
-        status: TaskStatus,
-        cursor: OpenTaskCursor | TaskCursor | None,
-        limit: int,
-    ) -> TaskPage:
-        admin.require(OperatorPermission.READ)
-        await self._org(org_id)
-        limit = self._clamp(limit)
-        # Every task of the team: the filter's user is nobody, since `mine` is
-        # about a member and an operator is not one.
-        criterion = TaskFilter(scope=TaskScope.TEAM, user_id=EMPTY_UUID)
-        if status is TaskStatus.OPEN:
-            if cursor is not None and not isinstance(cursor, OpenTaskCursor):
-                raise ValidationFailed("the cursor is not one the open list issued")
-            rows = await self._tasks.read_open_tasks(org_id, criterion, cursor, limit + 1)
-        else:
-            if cursor is not None and not isinstance(cursor, TaskCursor):
-                raise ValidationFailed("the cursor is not one the done list issued")
-            rows = await self._tasks.read_done_tasks(org_id, criterion, cursor, limit + 1)
-        self._trail(admin, org_id, "tasks")
-        return TaskPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
     async def get_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
@@ -433,17 +392,6 @@ class TenancyOperatorManagerImpl(TenancyOperatorManagerInterface):
             app=admin.app.type.value,
             traceparent=admin.traceparent,
         )
-
-    async def _seat_for_one_more(
-        self, admin: OperatorContext, org_id: UUID
-    ) -> tuple[OutboxRow, ...]:
-        """Refuses a member the org's plan has no seat for, and on a per-seat
-        plan answers the row that asks for the quantity to follow."""
-        plan = effective_plan(await self._billing.read_account(org_id), utcnow())
-        refuse_past(plan, Lever.MEMBERS, await self._storage.count_members(org_id))
-        if not seats_metered(plan):
-            return ()
-        return (self._row(admin, org_id, work_row_kind(WorkKind.SYNC_SEATS), org_id, {}),)
 
     async def _org(self, org_id: UUID) -> Org:
         """The org named, deleted or not: an operator reads a deleted tenant's

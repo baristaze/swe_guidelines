@@ -10,8 +10,7 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from contracts.outbox_storage import claim_all, make_row
-from contracts.task_storage import make_task
+from contracts.outbox_storage import a_user, claim_all, make_row
 
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.impl.valkey import ValkeyConnection
@@ -30,7 +29,7 @@ from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.pg_base import LoginSessions
-from acme.om.tasks.storage.impl.postgres import TasksStoragePostgresImpl
+from acme.om.tenancy.storage.impl.postgres import TenancyStoragePostgresImpl
 
 pytestmark = pytest.mark.integration
 
@@ -111,19 +110,19 @@ def a_change(target: UUID) -> EntityChangedPayload:
         idempotency_key=new_id(),
         produced_at=utcnow(),
         org_id=new_id(),
-        kind="tasks.task.created",
+        kind="tenancy.user.created",
         target_id=target,
         seq=1,
     )
 
 
 async def landed(sessions: LoginSessions, org: UUID, count: int) -> list[OutboxRow]:
-    tasks = TasksStoragePostgresImpl(sessions)
+    tenancy = TenancyStoragePostgresImpl(sessions)
     rows: list[OutboxRow] = []
     for _ in range(count):
-        task = make_task()
-        rows.append(make_row(org, task.id))
-        assert await tasks.create_task(org, task, (rows[-1],))
+        user = a_user()
+        rows.append(make_row(org, user.id))
+        await tenancy.write_user(org, user, (rows[-1],))
     return rows
 
 

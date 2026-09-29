@@ -6,7 +6,7 @@ const owner: MeView = {
   user: { id: "u1", email: "ann@example.test", display_name: "Ann", created_at: "2026-09-01T00:00:00Z" },
   org: { id: "o1", name: "Ajax", slug: "ajax", kind: "team", created_at: "2026-09-01T00:00:00Z" },
   role: "owner",
-  permissions: ["read", "write", "manage_members", "manage_keys", "manage_billing"],
+  permissions: ["read", "write", "manage_members", "manage_keys"],
   app: "portal",
 };
 

@@ -16,7 +16,6 @@ from api_support import (
     code_at,
     dev_login,
     enrol_operator,
-    on_plan,
     run,
     seed_request,
     sign_in_as,
@@ -24,7 +23,6 @@ from api_support import (
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from acme.om.billing.types.plan import Plan
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.opcontext import OperatorRole, Role
 from acme.om.work.types.work_item import WorkKind
@@ -99,7 +97,7 @@ async def test_sign_in_is_rate_limited_per_client(tmp_path: Path) -> None:
 
 
 def test_the_sign_in_budget_is_generous() -> None:
-    """Far above a demo, the traffic run, or a person clicking fast."""
+    """Far above the traffic run, or a person clicking fast."""
     assert ApiSettings.model_validate({"_env_file": None}).login_rate_limit >= 1000
 
 
@@ -471,7 +469,6 @@ def test_realtime_channel_delivers_tenant_events(tmp_path: Path) -> None:
             seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"]
         )
     )
-    run(on_plan(container, org.id, Plan.TEAM))
     app = create_app(container)
     with TestClient(app) as tc:
         login = tc.post("/v1/auth/dev-sign-in", json={"email": OWNER["email"]})

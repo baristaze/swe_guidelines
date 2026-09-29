@@ -177,9 +177,7 @@ def environment_of(name: str, values: Mapping[str, str]) -> Environment:
         api_url=api_url.rstrip("/"),
         operator_token=get("ACME_OPERATOR_TOKEN"),
         provisioner_token=get("ACME_PROVISIONER_TOKEN"),
-        error_tracker_url=get(
-            "ACME_ERROR_TRACKER_URL", LOCAL_ERROR_TRACKER_URL if local else None
-        ),
+        error_tracker_url=get("ACME_ERROR_TRACKER_URL", LOCAL_ERROR_TRACKER_URL if local else None),
         error_tracker_token=get(
             "ACME_ERROR_TRACKER_TOKEN", LOCAL_ERROR_TRACKER_TOKEN if local else None
         ),

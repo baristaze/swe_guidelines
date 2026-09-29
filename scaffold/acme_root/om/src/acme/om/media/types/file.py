@@ -6,12 +6,11 @@ from acme.om.base import Identifiable, Named, SoftDeletable, Trackable
 
 
 class FilePurpose(StrEnum):
-    """Which domain context a file came from. The purpose decides the bounds an
-    upload is held to and what `subject_id` names."""
+    """Which context a file came from. The purpose decides the bounds an
+    upload is held to and what `subject_id` names. A product adds a purpose
+    per kind of file it keeps, with its bounds (`media.rules.BOUNDS`)."""
 
-    TASK_ATTACHMENT = "task_attachment"  # subject_id is the task
-    VOICE_DICTATION = "voice_dictation"  # no subject
-    TASK_IMPORT = "task_import"  # a CSV of tasks to import; no subject
+    UPLOAD = "upload"  # a file a member keeps in the org; no subject
 
 
 class FileStatus(StrEnum):

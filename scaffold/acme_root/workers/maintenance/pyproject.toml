@@ -1,7 +1,7 @@
 [project]
 name = "acme-maintenance"
-version = "0.7.0"
-description = "The Acme maintenance worker: the claim loop, the sweep, and what Slack sends."
+version = "0.1.0"
+description = "The Acme maintenance worker: the claim loop, the sweep, and the providers' deliveries."
 requires-python = ">=3.14"
 dependencies = [
     "acme-om",

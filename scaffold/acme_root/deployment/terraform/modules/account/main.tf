@@ -289,7 +289,7 @@ data "aws_iam_policy_document" "task_boundary" {
   }
 
   # A tenant's own secrets, which the application writes through its secrets
-  # capability: a Slack install's bot token, put, renewed, and deleted. The
+  # capability: a credential an org connects, put, renewed, and deleted. The
   # graph gives the writes to the serving tasks on this part of the prefix
   # alone; this is the ceiling that lets it.
   statement {

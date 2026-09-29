@@ -66,16 +66,10 @@ output "workos_api_key_secret_arn" {
   depends_on  = [aws_secretsmanager_secret_version.workos_api_key]
 }
 
-output "slack_client_secret_arn" {
-  description = "Injected into the API and the worker as ACME_SLACK_CLIENT_SECRET; \"off\" until set, which leaves Slack unconfigured."
-  value       = aws_secretsmanager_secret.slack_app["slack_client_secret"].arn
-  depends_on  = [aws_secretsmanager_secret_version.slack_app]
-}
-
-output "slack_signing_secret_arn" {
-  description = "Injected into the API and the worker as ACME_SLACK_SIGNING_SECRET; \"off\" until set, which refuses every call from Slack with 503."
-  value       = aws_secretsmanager_secret.slack_app["slack_signing_secret"].arn
-  depends_on  = [aws_secretsmanager_secret_version.slack_app]
+output "workos_webhook_secret_arn" {
+  description = "The secret WorkOS signs its webhook deliveries with, injected into the API as ACME_WORKOS_WEBHOOK_SECRET; \"off\" until set, which refuses every delivery."
+  value       = aws_secretsmanager_secret.workos_webhook_secret.arn
+  depends_on  = [aws_secretsmanager_secret_version.workos_webhook_secret]
 }
 
 output "operator_token_secret_names" {
@@ -86,16 +80,4 @@ output "operator_token_secret_names" {
 output "operator_tokens_policy_arn" {
   description = "PutSecretValue on the two token secrets and nothing else; the grant task's role alone carries it."
   value       = aws_iam_policy.operator_tokens.arn
-}
-
-output "stripe_runtime_key_secret_arn" {
-  description = "Injected into the API and the worker as ACME_STRIPE_RUNTIME_KEY; \"off\" until set, which leaves billing unconfigured."
-  value       = aws_secretsmanager_secret.stripe["stripe_runtime_key"].arn
-  depends_on  = [aws_secretsmanager_secret_version.stripe]
-}
-
-output "stripe_webhook_secret_arn" {
-  description = "Injected into the API as ACME_STRIPE_WEBHOOK_SECRET; written by the Stripe bootstrap when it registers the endpoint."
-  value       = aws_secretsmanager_secret.stripe["stripe_webhook_secret"].arn
-  depends_on  = [aws_secretsmanager_secret_version.stripe]
 }

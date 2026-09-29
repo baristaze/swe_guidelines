@@ -47,7 +47,7 @@ async def test_a_counter_reads_back_as_its_count() -> None:
     """The contract a generation stands on, the same in Valkey: `get` of a
     counted key answers the count in decimal ASCII, and a count dropped by
     `invalidate` starts again at one."""
-    cache = CacheMemoryImpl(CacheScope.BILLING_ACCOUNT)
+    cache = CacheMemoryImpl(CacheScope.NETWORK_RESPONSE)
     org = new_id()
     assert await cache.get(org, "generation") is None
     await cache.increment(org, "generation", timedelta(days=1))
@@ -60,7 +60,7 @@ async def test_a_counter_reads_back_as_its_count() -> None:
 
 
 async def test_a_counter_past_its_window_reads_as_a_miss() -> None:
-    cache = CacheMemoryImpl(CacheScope.BILLING_ACCOUNT)
+    cache = CacheMemoryImpl(CacheScope.NETWORK_RESPONSE)
     org = new_id()
     await cache.increment(org, "generation", timedelta(seconds=-1))
     assert await cache.get(org, "generation") is None

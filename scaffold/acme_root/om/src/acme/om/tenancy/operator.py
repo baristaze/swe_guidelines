@@ -18,9 +18,6 @@ from uuid import UUID
 
 from acme.om.events.types.event import Event
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.tasks.types.filter import OpenTaskCursor, TaskCursor
-from acme.om.tasks.types.page import TaskPage
-from acme.om.tasks.types.task import TaskStatus
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTotpSecret
 from acme.om.tenancy.types.org import Org
@@ -103,8 +100,8 @@ class TenancyOperatorManagerInterface(ABC):
 
     @abstractmethod
     async def size(self, admin: OperatorContext) -> PlatformSize:
-        """How big the platform is: live tenants and users, and the tasks and
-        events of the twenty-four hours before `counted_at`, as the sweep last
+        """How big the platform is: live tenants and users, and the events of
+        the twenty-four hours before `counted_at`, as the sweep last
         counted them (`tally_size`). It reads the one tally row and counts
         nothing. NotFound until the first count."""
         ...
@@ -112,8 +109,8 @@ class TenancyOperatorManagerInterface(ABC):
     @abstractmethod
     async def tally_size(self) -> PlatformSize:
         """Platform-internal: the sweep's count of the platform's size across
-        every tenant, the live orgs and users and the tasks and events of the
-        day before now, written as the one tally row `size` reads. A count
+        every tenant, the live orgs and users and the events of the day before
+        now, written as the one tally row `size` reads. A count
         older than the row's is not written. Takes no context: it counts for
         no tenant and no principal."""
         ...
@@ -173,21 +170,6 @@ class TenancyOperatorManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_tasks(
-        self,
-        admin: OperatorContext,
-        org_id: UUID,
-        status: TaskStatus,
-        cursor: OpenTaskCursor | TaskCursor | None,
-        limit: int,
-    ) -> TaskPage:
-        """One page of the tenant's tasks in `status`, every task of the team,
-        in the order the tenant's own list reads: the open list by rank
-        after an `OpenTaskCursor`, the done list newest first before a
-        `TaskCursor`. A cursor of the other list is `ValidationFailed`."""
-        ...
-
-    @abstractmethod
     async def get_events(
         self, admin: OperatorContext, org_id: UUID, after_seq: int, limit: int
     ) -> list[Event]:
@@ -204,8 +186,8 @@ class TenancyOperatorManagerInterface(ABC):
         so every socket of the tenant closes, every pending invitation is
         revoked, and the org lets go of its organization at the identity
         provider. The same commit asks for `DELETE_ORG`, which ends the
-        providers (the identity provider's organization, the processor's
-        subscription and customer, the Slack app) and then deletes the org;
+        providers (the identity provider's organization) and then deletes the
+        org;
         the sweep purges it once the retention has passed.
 
         Answers the closed org, still live (`deleted_at` unset) until the

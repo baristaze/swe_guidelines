@@ -21,12 +21,12 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
 
     service_name: str = "api"
     # The namespaces whose routers this process mounts; empty mounts every one
-    # the image hosts (tenancy, tasks, events, media). Naming a subset is how
+    # the image hosts (tenancy, events, media). Naming a subset is how
     # one namespace becomes a service of its own: the same image, another
     # value, and no code change. A name the image does not host refuses the
     # boot.
     namespaces: list[str] = []
-    version: str = "0.7.0"
+    version: str = "0.1.0"
     host: str = "127.0.0.1"
     port: int = 8000
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -124,23 +124,9 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
         "http://localhost:5173/signed-out",
     ]
     # The sign-in by address alone, with no browser round trip, for the
-    # seed, the demo recorders, the traffic generator, and the tests. Off
-    # unless set, and refused at boot outside a local or test environment.
+    # seed, the traffic generator, and the tests. Off unless set, and
+    # refused at boot outside a local or test environment.
     dev_sign_in_enabled: bool = False
-    # Where Slack sends a person's browser back at the end of an install: this
-    # API's own `/webhooks/slack/oauth`, named in the Slack app's manifest as
-    # its redirect URL. Slack refuses an install that comes back anywhere else.
-    slack_redirect_uri: str = "http://127.0.0.1:8000/webhooks/slack/oauth"
-    # Where people open Acme in this environment: an install ends on the
-    # portal's settings page, which says how it went. The local stack's
-    # portal by default; a deployed environment names its own.
-    portal_url: str = "http://localhost:55173"
-    # How long an org's billing account is read from the cache before storage
-    # is asked again, in seconds. Every write of the account orphans the
-    # cached one at once, so this is the backstop: the longest a plan read can
-    # be stale when that fails (ADR 0066). The API and the worker read the
-    # same cache, so both take it.
-    billing_account_cache_seconds: int = Field(default=60, gt=0, le=3600)
     # How long an invitation's link works, from its send or resend.
     invitation_lifetime_days: int = Field(default=7, ge=1, le=30)
     # The interactive API docs and the OpenAPI document, served locally for
@@ -202,8 +188,7 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
         https address and nowhere else. Each refusal names the setting."""
         if self.dev_sign_in_enabled and self.environment not in DEV_SIGN_IN_ENVIRONMENTS:
             raise ValueError(
-                "ACME_DEV_SIGN_IN_ENABLED=true is refused "
-                f"when ACME_ENVIRONMENT={self.environment}"
+                f"ACME_DEV_SIGN_IN_ENABLED=true is refused when ACME_ENVIRONMENT={self.environment}"
             )
         if self.environment in CLOUD_ENVIRONMENTS:
             for setting, uris, what in (

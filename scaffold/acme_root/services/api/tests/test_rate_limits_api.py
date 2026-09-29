@@ -22,6 +22,8 @@ from acme.services.api.settings import ApiSettings
 
 PEER = "203.0.113.20"
 NEIGHBOUR = "203.0.113.21"
+FILES = "/v1/media/files"
+UPLOAD = {"name": "report.pdf", "content_type": "application/pdf", "size_bytes": 5}
 
 
 @asynccontextmanager
@@ -95,10 +97,10 @@ async def test_a_credential_past_its_read_budget_is_refused_with_retry_after(
         client = clients[PEER]
         owner = await sign_in(client, container)
         for _ in range(SMALL_BUDGET):
-            assert (await client.get("/v1/tasks", headers=owner)).status_code == 200
-        refused = await client.get("/v1/tasks", headers=owner)
+            assert (await client.get(FILES, headers=owner)).status_code == 200
+        refused = await client.get(FILES, headers=owner)
         # Writes have a budget of their own, which the reads did not spend.
-        written = await client.post("/v1/tasks", json={"title": "still"}, headers=owner)
+        written = await client.post(FILES, json=UPLOAD, headers=owner)
     assert refused.status_code == 429
     assert refused.json()["error"]["code"] == "rate_limited"
     assert refused.json()["error"]["request_id"]
@@ -113,10 +115,10 @@ async def test_the_budget_is_the_credential_s_not_the_address_s(tmp_path: Path) 
         client = clients[PEER]
         first = await sign_in(client, container)
         for _ in range(SMALL_BUDGET):
-            await client.get("/v1/tasks", headers=first)
-        assert (await client.get("/v1/tasks", headers=first)).status_code == 429
+            await client.get(FILES, headers=first)
+        assert (await client.get(FILES, headers=first)).status_code == 429
         second = await another_session(client, container, first)
-        assert (await client.get("/v1/tasks", headers=second)).status_code == 200
+        assert (await client.get(FILES, headers=second)).status_code == 200
 
 
 async def test_a_credential_past_its_write_budget_is_refused(tmp_path: Path) -> None:
@@ -124,11 +126,11 @@ async def test_a_credential_past_its_write_budget_is_refused(tmp_path: Path) -> 
     async with clients_of(container) as clients:
         client = clients[PEER]
         owner = await sign_in(client, container)
-        for index in range(SMALL_BUDGET):
-            created = await client.post("/v1/tasks", json={"title": f"t{index}"}, headers=owner)
+        for _ in range(SMALL_BUDGET):
+            created = await client.post(FILES, json=UPLOAD, headers=owner)
             assert created.status_code == 201
-        refused = await client.post("/v1/tasks", json={"title": "one too many"}, headers=owner)
-        read = await client.get("/v1/tasks", headers=owner)
+        refused = await client.post(FILES, json=UPLOAD, headers=owner)
+        read = await client.get(FILES, headers=owner)
     assert refused.status_code == 429
     assert "Retry-After" in refused.headers
     assert read.status_code == 200
@@ -146,9 +148,9 @@ async def test_a_bad_token_flood_stops_reaching_the_lookup(
         live = await sign_in(clients[NEIGHBOUR], container)
         dead = await revoked_session(client, container, live)
         seen = lookups_counted(container, monkeypatch)
-        answers = [(await client.get("/v1/tasks", headers=dead)).status_code for _ in range(100)]
-        from_the_same_address = await client.get("/v1/tasks", headers=live)
-        from_another = await clients[NEIGHBOUR].get("/v1/tasks", headers=live)
+        answers = [(await client.get(FILES, headers=dead)).status_code for _ in range(100)]
+        from_the_same_address = await client.get(FILES, headers=live)
+        from_another = await clients[NEIGHBOUR].get(FILES, headers=live)
     assert answers[:SMALL_BUDGET] == [401] * SMALL_BUDGET
     assert answers[SMALL_BUDGET:] == [429] * (100 - SMALL_BUDGET)
     assert len(seen) == SMALL_BUDGET + 1  # the failures, and the neighbour's request
@@ -181,7 +183,7 @@ async def test_a_missing_bearer_is_not_a_failed_lookup(tmp_path: Path) -> None:
     spends nothing."""
     container = build_container(tmp_path, failed_authentication_limit=SMALL_BUDGET)
     async with clients_of(container) as clients:
-        answers = [(await clients[PEER].get("/v1/tasks")).status_code for _ in range(20)]
+        answers = [(await clients[PEER].get(FILES)).status_code for _ in range(20)]
     assert answers == [401] * 20
 
 
@@ -199,8 +201,8 @@ async def test_with_the_cache_down_both_limits_allow(
         dead = await revoked_session(client, container, owner)
         cache_down(container, monkeypatch)
         seen = lookups_counted(container, monkeypatch)
-        served = [(await client.get("/v1/tasks", headers=owner)).status_code for _ in range(20)]
-        refused = [(await client.get("/v1/tasks", headers=dead)).status_code for _ in range(20)]
+        served = [(await client.get(FILES, headers=owner)).status_code for _ in range(20)]
+        refused = [(await client.get(FILES, headers=dead)).status_code for _ in range(20)]
     assert served == [200] * 20
     assert refused == [401] * 20
     assert len(seen) == 40
@@ -216,9 +218,9 @@ async def test_an_address_refused_before_the_outage_stays_refused_to_its_window(
         client = clients[PEER]
         dead = await revoked_session(client, container, await sign_in(client, container))
         for _ in range(SMALL_BUDGET):
-            await client.get("/v1/tasks", headers=dead)
+            await client.get(FILES, headers=dead)
         cache_down(container, monkeypatch)
-        assert (await client.get("/v1/tasks", headers=dead)).status_code == 429
+        assert (await client.get(FILES, headers=dead)).status_code == 429
 
 
 def test_a_refusal_is_remembered_until_its_window_ends() -> None:

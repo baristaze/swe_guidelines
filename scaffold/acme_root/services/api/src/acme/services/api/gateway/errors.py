@@ -14,22 +14,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from acme.infra.exceptions import InfraException
 from acme.infra.observability import failure_level
-from acme.om.exceptions import (
-    LastOwner,
-    PlanLimitReached,
-    PlatformException,
-    SignInDelayed,
-    StreamTruncated,
-)
+from acme.om.exceptions import LastOwner, PlatformException, SignInDelayed, StreamTruncated
 from acme.services.api.gateway.envelope import INTERNAL_ERROR, error_response
 from acme.services.api.gateway.observability import request_id_of
 from acme.services.api.gateway.ratelimit import RateLimited
-from acme.services.api.types.common import (
-    LastOwnerDetail,
-    OwnedOrgRef,
-    PlanLimitDetail,
-    StreamTruncatedDetail,
-)
+from acme.services.api.types.common import LastOwnerDetail, OwnedOrgRef, StreamTruncatedDetail
 
 log = logging.getLogger(__name__)
 
@@ -44,12 +33,11 @@ def envelope(
     code: str,
     message: str,
     headers: dict[str, str] | None = None,
-    plan_limit: PlanLimitDetail | None = None,
     stream: StreamTruncatedDetail | None = None,
     last_owner: LastOwnerDetail | None = None,
 ) -> JSONResponse:
     return error_response(
-        request_id_of(request.scope), status, code, message, headers, plan_limit, stream, last_owner
+        request_id_of(request.scope), status, code, message, headers, stream, last_owner
     )
 
 
@@ -80,12 +68,6 @@ def presented(
             exc_info=exc,
         )
         return envelope(request, exc.http_status, exc.code, INTERNAL_ERROR[1], headers)
-    detail = None
-    if isinstance(exc, PlanLimitReached):
-        # The refusal is a lever: it names what would lift it.
-        detail = PlanLimitDetail(
-            lever=exc.lever, plan=exc.plan, limit=exc.limit, suggested_plan=exc.suggested_plan
-        )
     stream = None
     if isinstance(exc, StreamTruncated):
         # The refusal names where the stream goes on from.
@@ -96,9 +78,7 @@ def presented(
         last_owner = LastOwnerDetail(
             orgs=[OwnedOrgRef(id=UUID(i), name=n, slug=s) for i, n, s in exc.orgs]
         )
-    return envelope(
-        request, exc.http_status, exc.code, exc.message, headers, detail, stream, last_owner
-    )
+    return envelope(request, exc.http_status, exc.code, exc.message, headers, stream, last_owner)
 
 
 def register_error_handlers(app: FastAPI) -> None:

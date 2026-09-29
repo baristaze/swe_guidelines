@@ -88,7 +88,7 @@ def test_om_reaches_infra_only_through_interfaces(module: str, path: Path) -> No
 
 def test_the_scan_sees_the_whole_tree() -> None:
     names = {m for m, _ in OM_MODULES}
-    assert {"acme.om.root", "acme.om.base", "acme.om.tasks.impl.manager"} <= names
+    assert {"acme.om.root", "acme.om.base", "acme.om.tenancy.impl.manager"} <= names
     assert is_infra_impl("acme.infra.cache.valkey")
     assert is_infra_impl("acme.infra.impl.local")
     assert is_infra_impl("acme.infra.topics.dispatch")

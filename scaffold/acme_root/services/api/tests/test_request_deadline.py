@@ -3,16 +3,15 @@ counted from when it takes its slot, and every call the request makes to a
 provider or to AWS shares it. So a provider that hangs costs the request its
 deadline, not its timeouts times its retries: a sign-in through a WorkOS
 that never answers is unavailable by then; the three WorkOS calls of an
-invitation, each well inside its timeout, share one deadline; and a Slack
-install whose token store did not answer in time ends on the settings
-page, failed. A scan then holds every manager to handing each such call its
+invitation, each well inside its timeout, share one deadline; and an upload
+whose store did not take the bytes in time is unavailable and stays
+pending. A scan then holds every manager to handing each such call its
 context's deadline."""
 
 import ast
 import asyncio
 import inspect
 import json
-import subprocess
 import time
 from annotationlib import Format
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -20,7 +19,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -35,13 +33,10 @@ from acme.infra.secrets import SecretsInterface
 from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.workos import CREDENTIAL_CHECK_CODE, IdentityProviderWorkOSImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
-from acme.integrations.payments import PaymentsInterface
-from acme.integrations.slack import SlackInterface
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
 from acme.services.api.gateway.auth import Rctx
 
-PORTAL = "http://localhost:55173"
 NOW = "2026-09-26T10:00:00.000Z"
 
 
@@ -234,39 +229,43 @@ async def test_the_calls_of_one_request_share_its_deadline(tmp_path: Path) -> No
     assert answered in (made, made[:-1]), (made, answered)
 
 
-# The Slack install, which ends on a page the person reads.
+# An upload, whose bytes go to the store on the request.
 
 
-async def test_an_install_whose_token_store_did_not_answer_in_time_says_it_failed(
+async def test_an_upload_whose_store_did_not_answer_in_time_is_unavailable(
     client: httpx.AsyncClient,
     container: AppContainer,
     owner: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Slack answered; the org's secrets did not take the token by the
-    request's deadline. The browser lands on the settings page with the
-    install's outcome, failed, and not on an error body."""
+    """The store did not take the bytes by the request's deadline. The
+    answer is the refusal a client reads as "try again", the file is still
+    pending, and nothing confirms it until the bytes arrive."""
 
     async def unreachable(*args: Any, **kwargs: Any) -> None:
-        raise BackendUnreachable("secretsmanager", "put", PASSED)
+        raise BackendUnreachable("s3", "put", PASSED)
 
-    monkeypatch.setattr(container.infra.get_secrets(), "put", unreachable)
-    started = await client.post("/v1/slack/installation", headers=owner)
+    started = await client.post(
+        "/v1/media/files",
+        headers=owner,
+        json={"name": "report.pdf", "content_type": "application/pdf", "size_bytes": 5},
+    )
     assert started.status_code == 201, started.text
-    parts = urlsplit(started.json()["url"])
-    back = await client.get(f"{parts.path}?{parts.query}")
-    assert back.status_code == 302, back.text
-    assert back.headers["location"] == f"{PORTAL}/settings?slack=failed"
-    status = await client.get("/v1/slack/installation", headers=owner)
-    assert status.json() == {"installation": None}
+    file_id = started.json()["id"]
+    monkeypatch.setattr(container.infra.get_buckets(), "put", unreachable)
+    put = await client.put(f"/v1/media/files/{file_id}/content", headers=owner, content=b"%PDF-")
+    assert put.status_code == 503, put.text
+    assert put.json()["error"]["code"] == "unavailable"
+    kept = await client.get(f"/v1/media/files/{file_id}", headers=owner)
+    assert kept.json()["status"] == "pending"
+    confirmed = await client.post(f"/v1/media/files/{file_id}/confirm", headers=owner)
+    assert confirmed.status_code == 422, confirmed.text
 
 
 # Every call handed its deadline.
 
 DEADLINED: tuple[type, ...] = (
     IdentityProviderInterface,
-    PaymentsInterface,
-    SlackInterface,
     SecretsInterface,
     BucketsInterface,
     QueuesInterface,
@@ -278,14 +277,10 @@ SCANNED = ("om/src", "services/api/src")
 
 
 def repository_root() -> Path:
-    top = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-        cwd=Path(__file__).parent,
-    ).stdout.strip()
-    return Path(top)
+    """The checkout this test runs in: the nearest folder above it with an
+    `.env.example`, so a copy that is not yet a repository reads its own."""
+    here = Path(__file__).resolve().parent
+    return next(p for p in (here, *here.parents) if (p / ".env.example").is_file())
 
 
 def deadlined_methods() -> dict[str, set[str]]:
@@ -303,7 +298,7 @@ def deadlined_methods() -> dict[str, set[str]]:
 
 def doors_of(cls: ast.ClassDef) -> dict[str, str]:
     """The attributes a class keeps a door in, by the annotation of the
-    `__init__` argument it keeps: `self._slack = slack`, `slack: SlackInterface`."""
+    `__init__` argument it keeps: `self._queues = queues`, `queues: QueuesInterface`."""
     init = next(
         (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"), None
     )
@@ -375,16 +370,6 @@ def test_every_call_a_manager_makes_to_a_provider_or_aws_is_handed_its_deadline(
         "IdentityProviderInterface.resend_invitation",
         "IdentityProviderInterface.revoke_invitation",
         "IdentityProviderInterface.portal_link",
-        "PaymentsInterface.create_customer",
-        "PaymentsInterface.create_checkout",
-        "PaymentsInterface.create_portal_session",
-        "PaymentsInterface.set_cancel_at_period_end",
-        "SlackInterface.exchange_code",
-        "SlackInterface.uninstall",
-        "SlackInterface.revoke",
-        "SecretsInterface.get",
-        "SecretsInterface.put",
-        "SecretsInterface.delete",
         "BucketsInterface.put",
         "BucketsInterface.get",
         "BucketsInterface.exists",

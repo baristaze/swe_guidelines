@@ -38,7 +38,7 @@ describe("deleteAccount", () => {
   });
 
   it("keeps the person signed in and says why when the server refuses", async () => {
-    const refusal = new ApiError(409, "last_owner", "you are the last owner", "req_1", undefined, null, null, [
+    const refusal = new ApiError(409, "last_owner", "you are the last owner", "req_1", undefined, null, [
       { id: "o1", name: "Ajax", slug: "ajax" },
     ]);
     const e = effects(() => Promise.reject(refusal));

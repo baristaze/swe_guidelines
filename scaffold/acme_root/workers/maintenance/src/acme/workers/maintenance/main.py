@@ -19,31 +19,24 @@ from acme.infra.observability import (
     name_process,
 )
 from acme.infra.trust import install_trust_store
-from acme.om.opcontext import AppContext, AppType, RequestContext
+from acme.om.opcontext import RequestContext
 from acme.om.orchestrations.types.orchestration import OrchestrationKind
 from acme.om.work.types.work_item import WorkKind
-from acme.workers.maintenance.accounts import (
-    DeleteAccountHandlerImpl,
-    DeleteOrgHandlerImpl,
-    UnassignTasksHandlerImpl,
-)
+from acme.workers.maintenance.accounts import DeleteAccountHandlerImpl, DeleteOrgHandlerImpl
 from acme.workers.maintenance.container import MEDIA_PURGE_BATCH, WorkerContainer
-from acme.workers.maintenance.deliveries import DeliveryConsumer, DeliveryOptions
-from acme.workers.maintenance.handler import NoopHandlerImpl, SyncSeatsHandlerImpl
+from acme.workers.maintenance.deliveries import (
+    DeliveryConsumer,
+    DeliveryOptions,
+    IdentityDeliveriesImpl,
+)
+from acme.workers.maintenance.handler import NoopHandlerImpl
 from acme.workers.maintenance.health import Probe, WorkerHttpServer
 from acme.workers.maintenance.loop import AcrossStep, LoopOptions, WorkerLoop
 from acme.workers.maintenance.orchestrations import (
     OrchestrationHandlerImpl,
     WakeParkedHandlerImpl,
 )
-from acme.workers.maintenance.reminders import TaskReminderHandlerImpl
 from acme.workers.maintenance.settings import MaintenanceSettings
-from acme.workers.maintenance.slack_inbound import (
-    InboundOptions,
-    SlackInboundConsumer,
-    SlackInboundHandler,
-)
-from acme.workers.maintenance.slack_posts import SlackPostHandlerImpl
 
 log = logging.getLogger(__name__)
 
@@ -75,82 +68,47 @@ def unstaged(purge: Callable[[], Awaitable[int]]) -> AcrossStep:
 
 
 def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoop:
+    managers = container.managers
     return WorkerLoop(
-        work=container.managers.work,
-        outbox=container.managers.outbox,
+        work=managers.work,
+        outbox=managers.outbox,
         # Per tenant, what only a tenant deleted past its retention has: every
         # row of it goes. Any other tenant costs these nothing.
         purges={
-            "tasks": container.managers.tasks.purge_tenant,
             # Every file's object, then its row.
-            "media": container.managers.media.purge_tenant,
-            "tenancy": container.managers.tenancy.purge_tenant,
-            "events": container.managers.events.purge_tenant,
-            "billing": container.managers.billing.purge_tenant,
-            "slack": container.managers.slack.purge_tenant,
-            "orchestrations": container.managers.orchestrations.purge_tenant,
+            "media": managers.media.purge_tenant,
+            "tenancy": managers.tenancy.purge_tenant,
+            "events": managers.events.purge_tenant,
+            "orchestrations": managers.orchestrations.purge_tenant,
         },
         # Once a pass, across every tenant: each namespace's rows past their
         # retention.
         across={
-            # A deleted task's attachments, under its tenant's context, then the task.
-            "tasks": container.managers.tasks.purge_across_tenants,
             # A deleted file's object, then its row; an abandoned upload's too.
-            "media": unstaged(container.managers.media.purge_across_tenants),
-            "tenancy": unstaged(container.managers.tenancy.purge_across_tenants),
-            "idempotency": unstaged(container.managers.idempotency.purge_across_tenants),
+            "media": unstaged(managers.media.purge_across_tenants),
+            "tenancy": unstaged(managers.tenancy.purge_across_tenants),
+            "idempotency": unstaged(managers.idempotency.purge_across_tenants),
             # The trim: each tenant's floor moves with its events.
-            "events": unstaged(container.managers.events.purge_across_tenants),
-            "billing": unstaged(container.managers.billing.purge_across_tenants),
-            "slack": unstaged(container.managers.slack.purge_across_tenants),
-            "orchestrations": unstaged(container.managers.orchestrations.purge_across_tenants),
+            "events": unstaged(managers.events.purge_across_tenants),
+            "orchestrations": unstaged(managers.orchestrations.purge_across_tenants),
         },
         # The media purge's batch is its own: a whole one says there may be more.
         across_batches={"media": MEDIA_PURGE_BATCH},
-        # A record kept per day opens here: the org's cleanup of old done
-        # tasks. Its unique key makes every sweep after the day's first a no-op.
-        # The respace gives short ranks back to a run of open tasks whose
-        # ranks grew long.
-        chores={
-            "cleanup": container.managers.tasks.open_cleanup,
-            "respace": container.managers.tasks.respace_ranks,
-        },
-        # The tenants the chores run in: one read a pass across tenants finds
-        # those with an archivable task or a long rank, so a tenant with
-        # neither costs the pass nothing.
-        chore_tenants=container.managers.tasks.tenants_with_chores,
         # The platform's size, counted across tenants once an interval and
         # kept as the tally the operator plane reads instead of counting.
-        tally=container.managers.tenancy_operator.tally_size,
+        tally=managers.tenancy_operator.tally_size,
         handlers={
             WorkKind.NOOP: NoopHandlerImpl(),
-            WorkKind.SYNC_SEATS: SyncSeatsHandlerImpl(
-                container.managers.tenancy, container.managers.billing
-            ),
-            WorkKind.TASK_REMINDER: TaskReminderHandlerImpl(container.managers.tasks),
-            WorkKind.SLACK_POST: SlackPostHandlerImpl(
-                container.managers.tasks, container.managers.slack, container.slack
-            ),
             WorkKind.ORCHESTRATION: OrchestrationHandlerImpl(
-                container.managers.orchestrations,
-                {
-                    OrchestrationKind.TASK_IMPORT: container.managers.tasks.step_import,
-                    OrchestrationKind.TASK_CLEANUP: container.managers.tasks.step_cleanup,
-                },
+                managers.orchestrations,
+                {OrchestrationKind.NOOP: managers.orchestrations.step_noop},
             ),
-            WorkKind.WAKE_PARKED: WakeParkedHandlerImpl(container.managers.orchestrations),
+            WorkKind.WAKE_PARKED: WakeParkedHandlerImpl(managers.orchestrations),
             WorkKind.DELETE_ACCOUNT: DeleteAccountHandlerImpl(
-                container.managers.tenancy,
-                container.managers.billing,
-                container.managers.slack,
-                container.identity_provider,
+                managers.tenancy, container.identity_provider
             ),
-            WorkKind.UNASSIGN_TASKS: UnassignTasksHandlerImpl(container.managers.tasks),
             WorkKind.DELETE_ORG: DeleteOrgHandlerImpl(
-                container.managers.tenancy,
-                container.managers.billing,
-                container.managers.slack,
-                container.identity_provider,
+                managers.tenancy, container.identity_provider
             ),
         },
         topics=container.infra.get_topics(),
@@ -160,30 +118,14 @@ def build_loop(container: WorkerContainer, lane: str | None = None) -> WorkerLoo
 
 
 def build_consumer(container: WorkerContainer) -> DeliveryConsumer:
+    """The consumer of `Queues.WEBHOOKS`: each provider's deliveries, under
+    the name the API queues them with."""
     return DeliveryConsumer(
         queues=container.infra.get_queues(),
-        billing=container.managers.billing,
         tenancy=container.managers.tenancy,
+        providers={"identity": IdentityDeliveriesImpl(container.managers.events)},
         options=DeliveryOptions(worker_id=container.settings.worker_id),
     )
-
-
-def build_inbound(container: WorkerContainer) -> SlackInboundConsumer:
-    """The consumer of the `slack` queue: what the API checked, acknowledged,
-    and queued, handled under the request stage it mints."""
-    settings = container.settings
-    handler = SlackInboundHandler(
-        container.managers.slack,
-        container.managers.tasks,
-        container.managers.tenancy,
-        container.slack,
-        AppContext(type=AppType.SLACK, version=f"slack@{settings.worker_id}"),
-        settings.portal_url,
-    )
-    options = InboundOptions(
-        visibility=timedelta(seconds=settings.slack_inbound_visibility_seconds)
-    )
-    return SlackInboundConsumer(container.infra.get_queues(), handler, options)
 
 
 def boot(settings: MaintenanceSettings) -> None:
@@ -210,12 +152,10 @@ async def serve(lane: str | None) -> int:
     container = WorkerContainer.build(settings)
     await container.start()
     loop = build_loop(container, lane)
-    inbound = build_inbound(container)
     consumer = build_consumer(container)
     running = asyncio.get_running_loop()
 
     def stop() -> None:
-        inbound.stop()
         consumer.stop()
         loop.stop()
 
@@ -231,14 +171,11 @@ async def serve(lane: str | None) -> int:
         running,
     )
     http.start()
-    consuming = asyncio.create_task(inbound.run(), name="slack-inbound")
     try:
-        # The claim loop and the processor's deliveries run side by side; a
-        # stop ends both, the loop draining its items first.
+        # The claim loop, with the sweep, and the deliveries run side by
+        # side; a stop ends both, the loop draining its items first.
         await asyncio.gather(loop.run(), consumer.run())
     finally:
-        consuming.cancel()
-        await asyncio.gather(consuming, return_exceptions=True)
         http.stop()
         await container.close()
     log.info("%s stopped", settings.worker_id)

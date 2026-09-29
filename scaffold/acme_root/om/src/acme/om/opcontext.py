@@ -62,7 +62,6 @@ class Permission(StrEnum):
     WRITE = "write"
     MANAGE_MEMBERS = "manage_members"
     MANAGE_KEYS = "manage_keys"
-    MANAGE_BILLING = "manage_billing"
 
 
 class OperatorRole(StrEnum):
@@ -101,7 +100,6 @@ class AppType(StrEnum):
     CLI = "cli"
     API = "api"
     WORKER = "worker"
-    SLACK = "slack"  # a call from Slack: a command, an event, an install
 
 
 class SecurityContext(Platform):
@@ -119,7 +117,7 @@ class SecurityContext(Platform):
 
 class AppContext(Platform):
     type: AppType
-    version: str  # e.g. "portal@0.7.0"
+    version: str  # e.g. "portal@0.1.0"
 
 
 # Stages: refinement by evidence.

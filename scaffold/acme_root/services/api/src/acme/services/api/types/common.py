@@ -22,17 +22,6 @@ class RequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class PlanLimitDetail(View):
-    """What a `plan_limit_reached` refusal carries, so a client can offer the
-    plan that lifts the bound: the lever, the org's plan, the bound, and the
-    first plan above it that admits one more (null when none does)."""
-
-    lever: str
-    plan: str
-    limit: int | None
-    suggested_plan: str | None
-
-
 class StreamTruncatedDetail(View):
     """What a `stream_truncated` refusal carries: the floor, the highest seq
     trimmed from the stream, and the head. A client drops its cursor, reads
@@ -61,7 +50,6 @@ class ErrorBody(View):
     code: str
     message: str
     request_id: UUID
-    plan_limit: PlanLimitDetail | None = None
     stream: StreamTruncatedDetail | None = None
     last_owner: LastOwnerDetail | None = None
 

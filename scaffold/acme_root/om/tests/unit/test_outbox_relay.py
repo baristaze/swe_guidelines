@@ -8,8 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.outbox_storage import claim_all, make_row
-from contracts.task_storage import make_task
+from contracts.outbox_storage import a_user, claim_all, make_row
 from opentelemetry.sdk.trace import TracerProvider
 
 from acme.infra.impl.local import InfraLocalImpl
@@ -24,8 +23,8 @@ from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow, outbox_row, snapshot, versioned_row
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
-from acme.om.tasks.storage.impl.memory import TasksStorageMemoryImpl
 from acme.om.tenancy.impl.manager import TenancyOptions
+from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.work.types.work_item import WorkKind, work_row_kind
 
 NO_GRACE = OutboxOptions(grace=timedelta(0), backoff_base=timedelta(0), max_attempts=2)
@@ -59,12 +58,12 @@ async def test_the_row_carries_the_trace_context_its_stage_carries(
     no tracer was configured, and the far side then starts its own trace."""
     managers = build_managers(StorageMemoryImpl(), infra, TenancyOptions(dev_sign_in=True))
     ctx = await sign_in(managers)
-    task = make_task(created_by=ctx.user_id)
+    user = a_user()
     tracer = TracerProvider().get_tracer("acme.om.tests")
-    with tracer.start_as_current_span("POST /tasks") as span:
-        assert outbox_row(ctx, "tasks.task.created", task.id, snapshot(task)).traceparent is None
+    with tracer.start_as_current_span("POST /orgs/{org_id}/members") as span:
+        assert outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user)).traceparent is None
         traced = ctx.model_copy(update={"traceparent": current_traceparent()})
-    row = outbox_row(traced, "tasks.task.created", task.id, snapshot(task))
+    row = outbox_row(traced, "tenancy.user.created", user.id, snapshot(user))
     assert row.request_id == ctx.request_id
     assert row.traceparent is not None and row.traceparent == traced.traceparent
     assert f"{span.get_span_context().trace_id:032x}" in row.traceparent
@@ -78,12 +77,12 @@ async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max
     infra: InfraLocalImpl,
 ) -> None:
     outbox = OutboxStorageMemoryImpl()
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     org = new_id()
-    poison, fine = make_task(), make_task()
+    poison, fine = a_user(), a_user()
     poison_row, fine_row = make_row(org, poison.id), make_row(org, fine.id)
-    await tasks.create_task(org, poison, (poison_row,))
-    await tasks.create_task(org, fine, (fine_row,))
+    await tenancy.write_user(org, poison, (poison_row,))
+    await tenancy.write_user(org, fine, (fine_row,))
     events = PoisonedEvents(poison_row.id)
     relay = OutboxRelayImpl(outbox, events, infra.get_topics(), options=NO_GRACE)
     counted = dead_letters()
@@ -97,7 +96,7 @@ async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max
     assert failed.last_error == "RuntimeError: cannot append this one"
     assert dead_letters() == counted
     assert await relay.failed_within(timedelta(minutes=15)) == 0, "a retry is no dead letter"
-    assert [e.kind for e in await events.read_after(org, 0, 10)] == ["tasks.task.created"]
+    assert [e.kind for e in await events.read_after(org, 0, 10)] == ["tenancy.user.created"]
 
     # Second sweep: the last attempt is spent; the row is a dead letter with
     # an audit event under the row's own provenance, and is never claimed again.
@@ -119,11 +118,11 @@ async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max
 
 async def test_the_sweep_leaves_a_row_younger_than_the_grace(infra: InfraLocalImpl) -> None:
     outbox = OutboxStorageMemoryImpl()
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     org = new_id()
-    task = make_task()
-    row = make_row(org, task.id, age=timedelta(0))
-    await tasks.create_task(org, task, (row,))
+    user = a_user()
+    row = make_row(org, user.id, age=timedelta(0))
+    await tenancy.write_user(org, user, (row,))
     relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
     assert await relay.relay_pending(10) == 0, "the request path relays a fresh row"
     assert await relay.relay(org, row)
@@ -132,12 +131,12 @@ async def test_the_sweep_leaves_a_row_younger_than_the_grace(infra: InfraLocalIm
 
 async def test_purge_takes_done_and_failed_rows_past_the_retention(infra: InfraLocalImpl) -> None:
     outbox = OutboxStorageMemoryImpl()
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     org = new_id()
-    done, failed = make_task(), make_task()
+    done, failed = a_user(), a_user()
     done_row, failed_row = make_row(org, done.id), make_row(org, failed.id)
-    await tasks.create_task(org, done, (done_row,))
-    await tasks.create_task(org, failed, (failed_row,))
+    await tenancy.write_user(org, done, (done_row,))
+    await tenancy.write_user(org, failed, (failed_row,))
     await outbox.mark_done(org, [done_row.id])
     await outbox.record_failure(org, failed_row.id, "for good", utcnow())
     relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
@@ -180,13 +179,13 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
 
     infra.get_topics().subscribe(Topics.WORK_AVAILABLE, "test", record)
 
-    task = make_task(created_by=ctx.user_id)
+    user = a_user()
     tracer = TracerProvider().get_tracer("acme.om.tests")
-    with tracer.start_as_current_span("POST /tasks"):
+    with tracer.start_as_current_span("POST /orgs/{org_id}/members"):
         ctx = ctx.model_copy(update={"traceparent": current_traceparent()})
-    change = outbox_row(ctx, "tasks.task.created", task.id, snapshot(task))
-    asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), task.id, {})
-    assert await storage.get_tasks_storage().create_task(ctx.org_id, task, (change, asked))
+    change = outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user))
+    asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), user.id, {})
+    await storage.get_tenancy_storage().write_user(ctx.org_id, user, (change, asked))
     # One statement, two rows: the entity's change and the work it starts.
     landed = await claim_all(storage.get_outbox_storage())
     assert sorted(row.id for row in landed) == sorted([change.id, asked.id])
@@ -195,7 +194,7 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
     assert await managers.outbox.relay(ctx.org_id, asked)
     enqueued = await storage.get_work_storage().read_item_by_key(ctx.org_id, asked.id)
     assert enqueued is not None
-    assert enqueued.kind is WorkKind.NOOP and enqueued.target_id == task.id
+    assert enqueued.kind is WorkKind.NOOP and enqueued.target_id == user.id
     assert enqueued.created_by == ctx.user_id, "the actor of the write that asked"
     assert enqueued.updated_by == EMPTY_UUID
     # The handoff carries the request that made the write and its trace
@@ -239,13 +238,13 @@ async def test_the_gauge_reads_the_oldest_row_still_pending(infra: InfraLocalImp
     """How long ago the oldest row neither done nor failed landed, a row
     waiting out its delay included; zero once every row is settled."""
     outbox = OutboxStorageMemoryImpl()
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     org = new_id()
-    poison, fine = make_task(), make_task()
+    poison, fine = a_user(), a_user()
     poison_row = make_row(org, poison.id, age=timedelta(minutes=7))
     fine_row = make_row(org, fine.id, age=timedelta(minutes=1))
-    await tasks.create_task(org, poison, (poison_row,))
-    await tasks.create_task(org, fine, (fine_row,))
+    await tenancy.write_user(org, poison, (poison_row,))
+    await tenancy.write_user(org, fine, (fine_row,))
     relay = OutboxRelayImpl(
         outbox, PoisonedEvents(poison_row.id), infra.get_topics(), options=NO_GRACE
     )
@@ -269,12 +268,12 @@ class CountedMarks(OutboxStorageMemoryImpl):
 
 
 async def landed_rows(outbox: OutboxStorageMemoryImpl, org: UUID, count: int) -> list[OutboxRow]:
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     rows: list[OutboxRow] = []
     for _ in range(count):
-        task = make_task()
-        rows.append(make_row(org, task.id))
-        await tasks.create_task(org, task, (rows[-1],))
+        user = a_user()
+        rows.append(make_row(org, user.id))
+        await tenancy.write_user(org, user, (rows[-1],))
     return rows
 
 
@@ -360,10 +359,10 @@ async def test_a_work_row_is_done_once_enqueued_though_its_wake_up_is_dropped(
     storage = StorageMemoryImpl()
     managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True))
     ctx = await sign_in(managers)
-    task = make_task(created_by=ctx.user_id)
-    change = outbox_row(ctx, "tasks.task.created", task.id, snapshot(task))
-    asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), task.id, {})
-    assert await storage.get_tasks_storage().create_task(ctx.org_id, task, (change, asked))
+    user = a_user()
+    change = outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user))
+    asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), user.id, {})
+    await storage.get_tenancy_storage().write_user(ctx.org_id, user, (change, asked))
 
     async def dropped(topic: Topics, payload: TopicPayload) -> bool:
         return False
@@ -389,16 +388,18 @@ async def test_the_push_names_the_version_a_versioned_row_carries_and_none_other
 
     infra.get_topics().subscribe(Topics.ENTITY_CHANGED, "test", record)
     outbox = OutboxStorageMemoryImpl()
-    tasks = TasksStorageMemoryImpl(outbox)
+    tenancy = TenancyStorageMemoryImpl(outbox)
     managers = build_managers(StorageMemoryImpl(), infra, TenancyOptions(dev_sign_in=True))
     ctx = await sign_in(managers)
     rows = []
     for payload in ({"version": 4}, {}, {"version": "4"}, {"version": True}):
-        task = make_task(created_by=ctx.user_id)
-        row = outbox_row(ctx, "tasks.task.updated", task.id, payload)
-        await tasks.create_task(ctx.org_id, task, (row,))
+        user = a_user()
+        row = outbox_row(ctx, "tenancy.user.updated", user.id, payload)
+        await tenancy.write_user(ctx.org_id, user, (row,))
         rows.append(row)
-    assert versioned_row(ctx, "tasks.task.updated", rows[0].target_id, 4).payload == {"version": 4}
+    assert versioned_row(ctx, "tenancy.user.updated", rows[0].target_id, 4).payload == {
+        "version": 4
+    }
     relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
     assert await relay.relay_all(ctx.org_id, rows)
     assert [(p.target_id, p.version) for p in seen] == [

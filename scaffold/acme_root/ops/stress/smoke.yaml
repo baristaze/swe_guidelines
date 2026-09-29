@@ -10,12 +10,9 @@ target:
   p95_ms: 500
   error_ratio: 0.01
 weights:
-  list_open_tasks: 5
-  list_done_tasks: 2
-  create_task: 3
-  update_task: 2
-  complete_task: 2
-  reopen_task: 1
-  move_task: 1
-  delete_task: 1
-  list_events: 2
+  read_me: 1
+  list_users: 1
+  update_display_name: 1
+  create_api_key: 1
+  revoke_api_key: 1
+  list_events: 1

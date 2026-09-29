@@ -46,9 +46,9 @@ class IdentityView(View):
 
 class UpdateIdentityRequest(RequestBody):
     """Where the person is, as an IANA name ("Europe/Istanbul"): the portal
-    sends the browser's own on sign-in. A due date's reminder goes out at
-    nine in the morning in it; with none sent, in UTC. A name that is not
-    one is 422."""
+    sends the browser's own on sign-in, and a time shown or sent to the
+    person is in it; with none sent, in UTC. A name that is not one is
+    422."""
 
     time_zone: str = Field(min_length=1, max_length=64)
 
@@ -141,7 +141,7 @@ class DeviceTokenRequest(RequestBody):
 
 class DevSignInRequest(RequestBody):
     """Local and test only: a sign-in by address alone, with no browser round
-    trip, for the seed, the demos, the traffic generator, and the tests. A
+    trip, for the seed, the traffic generator, and the tests. A
     person nobody knew is made, with their personal org. A deployed
     environment never serves it: the route answers 404 there, and the
     process refuses to start with it on."""

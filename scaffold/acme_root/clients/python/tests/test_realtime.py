@@ -29,7 +29,7 @@ from acme.client.realtime import (
 ORG, USER = uuid4(), uuid4()
 
 
-def push(seq: int, kind: str = "tasks.task.created") -> str:
+def push(seq: int, kind: str = "tenancy.invitation.created") -> str:
     return json.dumps(
         {
             "type": "event",
@@ -158,7 +158,7 @@ def transport(
 def record(seq: int) -> dict[str, Any]:
     return {
         "seq": seq,
-        "kind": "tasks.task.updated",
+        "kind": "tenancy.invitation.updated",
         "target_id": str(uuid4()),
         "produced_at": "2026-09-18T12:00:00Z",
         "actor_id": str(USER),

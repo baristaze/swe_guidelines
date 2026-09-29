@@ -8,7 +8,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from contracts.plans import ON_TEAM
 from contracts.second_factor import TOTP_KEY
 
 from acme.infra.cache import CacheScope
@@ -37,7 +36,7 @@ from acme.om.tenancy.impl.manager import (
 )
 from acme.om.tenancy.rules import email_digest
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
-from acme.om.work.types.work_item import WorkKind, work_row_kind
+from acme.om.work.types.work_item import WorkKind, asks_for_work, work_row_kind
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 SIGNED_OUT = "http://localhost:5173/signed-out"
@@ -121,7 +120,6 @@ def manager(
             dev_sign_in=True, totp_encryption_key=TOTP_KEY, sign_out_return_uris=(SIGNED_OUT,)
         ),
         identity_provider=twin,
-        entitlements=ON_TEAM,
     )
 
 
@@ -235,13 +233,12 @@ async def test_the_account_goes_in_one_commit_and_asks_for_the_rest(
         assert "bob" not in str(row.payload).lower()
     kinds = {(row.org_id, row.kind, row.target_id) for row in relay.rows}
     assert (ajax.id, "tenancy.user.deleted", bob_in_ajax.id) in kinds
-    assert (ajax.id, work_row_kind(WorkKind.UNASSIGN_TASKS), bob_in_ajax.id) in kinds
     assert (ajax.id, "tenancy.session.revoked", bob.security.credential_id) in kinds
     assert (personal.id, "tenancy.api_key.deleted", key.api_key.id) in kinds
-    # The unassignment runs as Bob in Ajax; the rest in his personal org.
-    unassign = next(r for r in relay.rows if r.kind == work_row_kind(WorkKind.UNASSIGN_TASKS))
-    assert unassign.actor_id == bob_in_ajax.id
-    rest = next(r for r in relay.rows if r.kind == work_row_kind(WorkKind.DELETE_ACCOUNT))
+    # The rest runs in his personal org, and is the one work the commit asks for.
+    work = [r for r in relay.rows if asks_for_work(r.kind)]
+    assert [r.kind for r in work] == [work_row_kind(WorkKind.DELETE_ACCOUNT)]
+    rest = work[0]
     assert (rest.org_id, rest.target_id) == (personal.id, personal.id)
     assert rest.payload == {"provider_user_id": identity.subject}
     # The personal org stays until the provider's side is done.

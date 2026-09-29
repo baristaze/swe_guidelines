@@ -71,10 +71,10 @@ def test_configuring_error_reporting_does_not_name_the_process() -> None:
 
 def test_the_access_line_carries_its_fields_as_fields() -> None:
     access = record()
-    access.http = {"method": "GET", "route": "/v1/billing", "status": 200, "duration_ms": 12.5}
+    access.http = {"method": "GET", "route": "/v1/me", "status": 200, "duration_ms": 12.5}
     assert line(access)["http"] == {
         "method": "GET",
-        "route": "/v1/billing",
+        "route": "/v1/me",
         "status": 200,
         "duration_ms": 12.5,
     }

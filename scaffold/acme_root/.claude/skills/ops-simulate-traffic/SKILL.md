@@ -8,10 +8,10 @@ allowed-tools: Read, Bash(aws:*), Bash(uv run:*), Bash(make traffic PROFILE=ligh
 
 One generator, four profiles. The generator rides `clients/python` and
 the operator plane, drives the edge (never a manager), and plays
-realistic sessions: sign in, list, add a handful of entities, edit,
-complete, reopen, move, list again, delete one, read the events, one
-socket that sees its own change, sign out. The profiles differ by
-tenants, members, concurrency, and think time.
+realistic sessions: sign in, open the socket, read the person, list
+the members, rename the person, create an API key and revoke it, read
+the events, see one of its own changes arrive on the socket, sign out.
+The profiles differ by tenants, members, concurrency, and think time.
 
 Read `.claude/skills/_shared/ops-preamble.md` before the first step:
 the profiles, the account check, and the env file are there.
@@ -102,8 +102,9 @@ dispatch is due.
    and think time, and one sample request id of the run. A 5xx during
    the run is a
    finding with its request id; a 4xx from the generator's own
-   sessions (a conflict on a retried create, a 404 after the delete)
-   is expected where the session shape explains it.
+   sessions is expected only where the session shape explains it (a
+   `409` `idempotency_in_progress` on an API key create the client sent
+   again while the first was still running).
 4. Read one signal back to prove the run was seen: the request
    counter moved by at least the number of requests the table shows
    over the run's window (`--since-minutes`, the run's duration rounded

@@ -66,22 +66,4 @@ describe("session store", () => {
     useSessionStore.getState().clear();
     expect(JSON.parse(session.getItem(KEY) as string).state).toEqual({ token: null, orgSlug: null });
   });
-
-  it("drops a session an earlier build left in local storage and does not sign in from it", async () => {
-    local.setItem(KEY, JSON.stringify({ state: { token: "tok_old", orgSlug: "ajax" }, version: 0 }));
-    const { useSessionStore } = await import("./session");
-    expect(local.getItem(KEY)).toBeNull();
-    expect(useSessionStore.getState().token).toBeNull();
-  });
-
-  it("survives a storage that throws", async () => {
-    const { dropLegacyLocalSession } = await import("./session");
-    const throwing = {
-      removeItem: () => {
-        throw new Error("blocked");
-      },
-    };
-    expect(() => dropLegacyLocalSession(throwing)).not.toThrow();
-    expect(() => dropLegacyLocalSession(undefined)).not.toThrow();
-  });
 });

@@ -14,6 +14,7 @@ provenance."""
 import base64
 import hashlib
 import itertools
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import urlencode
@@ -31,17 +32,21 @@ from acme.integrations.identity import (
     IdentityProviderInterface,
     InvitationState,
     PortalIntent,
+    ProvidedDelivery,
     ProvidedInvitation,
     ProvidedOrganization,
     ProvidedSignIn,
     ProvidedUser,
 )
+from acme.integrations.identity.deliveries import sign, verified
 
 TWIN_ISSUER = "twin://identity"
 TWIN_AUTHORIZE = "https://identity.twin.invalid/authorize"
 TWIN_PORTAL = "https://identity.twin.invalid/portal"
 TWIN_DEVICE = "https://identity.twin.invalid/device"
 TWIN_LOGOUT = "https://identity.twin.invalid/logout"
+TWIN_WEBHOOK_SECRET = "twin-webhook-secret"
+"""The secret the twin signs its deliveries with; never a real endpoint's."""
 
 
 def s256(verifier: str) -> str:
@@ -375,6 +380,23 @@ class IdentityProviderTwinImpl(IdentityProviderInterface):
             for invitation_id, invitation in list(self.invitations.items()):
                 if invitation.organization_id == organization_id:
                     del self.invitations[invitation_id]
+
+    def signed_event(
+        self, event_type: str, data: dict[str, object], event_id: str | None = None
+    ) -> tuple[bytes, str]:
+        """An event as the provider would deliver it: the body, and the
+        signature header over it. The same `event_id` is the same delivery."""
+        event = {
+            "id": event_id or f"event_{next(self._counter)}",
+            "event": event_type,
+            "data": data,
+            "created_at": self._clock.now(UTC).isoformat(),
+        }
+        payload = json.dumps(event).encode()
+        return payload, sign(payload, TWIN_WEBHOOK_SECRET)
+
+    def verify_delivery(self, payload: bytes, signature: str | None) -> ProvidedDelivery:
+        return verified(payload, signature, TWIN_WEBHOOK_SECRET)
 
     def describe(self) -> str:
         return "identity provider: the twin (in-process, local only)"

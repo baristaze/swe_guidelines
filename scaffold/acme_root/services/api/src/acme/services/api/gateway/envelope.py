@@ -10,7 +10,6 @@ from acme.services.api.types.common import (
     ErrorBody,
     ErrorResponse,
     LastOwnerDetail,
-    PlanLimitDetail,
     StreamTruncatedDetail,
 )
 
@@ -24,7 +23,6 @@ def error_response(
     code: str,
     message: str,
     headers: dict[str, str] | None = None,
-    plan_limit: PlanLimitDetail | None = None,
     stream: StreamTruncatedDetail | None = None,
     last_owner: LastOwnerDetail | None = None,
 ) -> JSONResponse:
@@ -33,14 +31,13 @@ def error_response(
             code=code,
             message=message,
             request_id=request_id,
-            plan_limit=plan_limit,
             stream=stream,
             last_owner=last_owner,
         )
     )
     # A detail the refusal does not carry is absent, not null; a detail it
     # carries keeps its own null fields.
-    details = (("plan_limit", plan_limit), ("stream", stream), ("last_owner", last_owner))
+    details = (("stream", stream), ("last_owner", last_owner))
     absent = {name for name, value in details if not value}
     content = body.model_dump(mode="json", exclude={"error": absent})
     return JSONResponse(status_code=status, content=content, headers=headers)

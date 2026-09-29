@@ -14,19 +14,6 @@ interface SessionState {
   clear: () => void;
 }
 
-/** An earlier build persisted the session in local storage; a token it left
- * there is dropped on load, never carried over. Storage may be unavailable
- * (a private window, a blocked origin), in which case there is nothing to drop. */
-export function dropLegacyLocalSession(storage: Pick<Storage, "removeItem"> | undefined): void {
-  try {
-    storage?.removeItem(SESSION_STORAGE_KEY);
-  } catch {
-    // Nothing to drop.
-  }
-}
-
-dropLegacyLocalSession(typeof localStorage === "undefined" ? undefined : localStorage);
-
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({

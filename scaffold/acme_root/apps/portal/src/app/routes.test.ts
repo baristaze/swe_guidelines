@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // A switch lands in the new org on fresh screens: the signed-in shell is
 // mounted once per org, so the page on show, its queries, and its state start
-// over under the new session. The real routes, shell, task page, and org chip
+// over under the new session. The real routes, shell, home page, and org chip
 // run over a fake transport that answers by the token the tab holds; the
 // socket is left out, since its reopening is the channel's own test.
 import { act, createElement, type ReactNode } from "react";
@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { IssuedSessionView, MeView, MembershipChoiceView, OrgView, TaskView, UserView } from "../api";
+import type { IssuedSessionView, MeView, MembershipChoiceView, OrgView, UserView } from "../api";
 import { useSessionStore } from "../store/session";
 import { queryClient } from "./queryClient";
 import { routes } from "./routes";
@@ -41,11 +41,6 @@ vi.mock("./api", () => ({
   },
 }));
 vi.mock("../realtime/RealtimeProvider", () => ({ RealtimeProvider: ({ children }: { children: ReactNode }) => children }));
-vi.mock("../features/billing/PaymentNotice", () => ({ PaymentNotice: () => null }));
-vi.mock("../features/tasks/ArchivedTasks", () => ({ ArchivedTasks: () => null }));
-vi.mock("../features/tasks/TaskItem", () => ({
-  TaskItem: ({ task }: { task: TaskView }) => createElement("div", { "data-task": task.title }, task.title),
-}));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 const at = "2026-09-01T00:00:00Z";
@@ -61,12 +56,6 @@ type Slug = keyof typeof orgs;
 const tokenOf = (slug: Slug) => `ses_${slug}`;
 const slugOf = (token: string | null) => (Object.keys(orgs) as Slug[]).find((slug) => tokenOf(slug) === token);
 
-const taskOf = (slug: Slug): TaskView => ({
-  id: `t_${slug}`, title: `${orgs[slug].name}'s task`, notes: "", status: "open", assignee_id: null,
-  rank: "0", version: 1, created_by: "u1", deleted_at: null, due_on: null, reminded_at: null,
-  created_at: at, updated_at: at,
-});
-
 function answer(path: string): unknown {
   const slug = slugOf(net.token());
   if (!slug) throw new Error(`read without a session: ${path}`);
@@ -77,11 +66,7 @@ function answer(path: string): unknown {
     const items: MembershipChoiceView[] = [orgs.ajax, orgs.beta].map((org) => ({ org, user, role: "owner" }));
     return { items, next_cursor: null };
   }
-  if (path.startsWith("/v1/tasks?status=open")) return { items: [taskOf(slug)], next_cursor: null };
-  if (path.startsWith("/v1/tasks?status=done")) return { items: [], next_cursor: null };
-  if (path.startsWith("/v1/tasks/imports")) return { items: [] };
   if (path.startsWith("/v1/users")) return { items: [user], next_cursor: null };
-  if (path === "/v1/billing") return { plan: "team" };
   if (path === "/v1/me/identity") return { id: "i1", email: user.email, operator_role: null, created_at: at, time_zone: null };
   throw new Error(`no read for ${path}`);
 }
@@ -121,7 +106,8 @@ const readsAfterSwitch = () => {
   expect(exchanged).toBeGreaterThanOrEqual(0);
   return net.calls.slice(exchanged + 1).filter((call) => call.method === "get");
 };
-const shownTasks = () => [...container.querySelectorAll("[data-task]")].map((node) => node.getAttribute("data-task"));
+/** The org the home card names. */
+const shownOrg = () => container.querySelector("#org h2")?.textContent ?? null;
 const button = (text: string) =>
   [...container.querySelectorAll("button")].find((node) => node.textContent?.includes(text)) as HTMLButtonElement;
 
@@ -147,23 +133,24 @@ afterEach(async () => {
   useSessionStore.getState().clear();
 });
 
-it("shows the new org's tasks after a switch from the chip, read once under the new session", async () => {
+it("shows the new org's home after a switch from the chip, read once under the new session", async () => {
   await open("/");
-  expect(shownTasks()).toEqual(["Ajax's task"]);
+  expect(shownOrg()).toBe("Ajax");
+  expect(container.querySelector("[data-home]")!.textContent).toContain("1 member");
 
   await act(async () => switcher().click());
   await act(async () => button("Beta").click());
   await settle();
 
   expect(router.state.location.pathname).toBe("/");
-  expect(shownTasks()).toEqual(["Beta's task"]);
+  expect(shownOrg()).toBe("Beta");
   const after = readsAfterSwitch();
   expect(after.every((read) => read.token === tokenOf("beta"))).toBe(true);
-  expect(after.filter((read) => read.path.startsWith("/v1/tasks?status=open"))).toHaveLength(1);
-  expect(after.filter((read) => read.path.startsWith("/v1/tasks?status=done"))).toHaveLength(1);
+  expect(after.filter((read) => read.path === "/v1/me")).toHaveLength(1);
+  expect(after.filter((read) => read.path.startsWith("/v1/users"))).toHaveLength(1);
 });
 
-it("lands on the new org's tasks after creating one at /orgs/new", async () => {
+it("lands on the new org's home after creating one at /orgs/new", async () => {
   await open("/orgs/new");
   const name = container.querySelector("input") as HTMLInputElement;
   await act(async () => {
@@ -174,8 +161,8 @@ it("lands on the new org's tasks after creating one at /orgs/new", async () => {
   await settle();
 
   expect(router.state.location.pathname).toBe("/");
-  expect(shownTasks()).toEqual(["Gamma's task"]);
+  expect(shownOrg()).toBe("Gamma");
   const after = readsAfterSwitch();
   expect(after.every((read) => read.token === tokenOf("gamma"))).toBe(true);
-  expect(after.filter((read) => read.path.startsWith("/v1/tasks?status=open"))).toHaveLength(1);
+  expect(after.filter((read) => read.path === "/v1/me")).toHaveLength(1);
 });

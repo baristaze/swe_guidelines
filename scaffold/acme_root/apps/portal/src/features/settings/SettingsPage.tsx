@@ -1,17 +1,14 @@
 import { Banner, Button, Card, ErrorText, LinkButton, Muted, Page, Select, Table, TextField } from "../../design/kit";
 import { AppNav } from "../../app/AppNav";
-import { BackToTasks } from "../../app/BackToTasks";
 import { tokens } from "../../design/tokens";
 import { DeleteAccountCard } from "./DeleteAccountCard";
 import { DeleteOrgCard } from "./DeleteOrgCard";
 import { RoleControl } from "./RoleControl";
-import { SettingsTabs } from "./SettingsTabs";
 import { StorageCard } from "./StorageCard";
 import { useDeleteAccountVm } from "./useDeleteAccountVm";
 import { useDeleteOrgVm } from "./useDeleteOrgVm";
 import { useInvitationsVm } from "./useInvitationsVm";
-import { useSettingsVm, type SettingsVm } from "./useSettingsVm";
-import { PaymentNotice } from "../billing/PaymentNotice";
+import { useSettingsVm } from "./useSettingsVm";
 
 export function SettingsPage() {
   const vm = useSettingsVm();
@@ -19,8 +16,7 @@ export function SettingsPage() {
   const leaving = useDeleteAccountVm(vm.me);
   const closing = useDeleteOrgVm(vm.me);
   return (
-    <Page title="Settings" back={<BackToTasks />} nav={<AppNav />} notice={<PaymentNotice />}>
-      <SettingsTabs />
+    <Page title="Settings" nav={<AppNav />}>
       {vm.error ? <Banner>{vm.error.message}</Banner> : null}
       <Card title="Members" id="members">
         {vm.loading ? (
@@ -149,43 +145,8 @@ export function SettingsPage() {
           ) : null}
         </Card>
       ) : null}
-      <SlackCard slack={vm.slack} />
       <DeleteOrgCard vm={closing} />
       <DeleteAccountCard vm={leaving} />
     </Page>
-  );
-}
-
-function SlackCard({ slack }: { slack: SettingsVm["slack"] }) {
-  const { summary } = slack;
-  return (
-    <Card title="Slack">
-      {slack.loading ? (
-        <Muted>Loading</Muted>
-      ) : slack.error ? (
-        <Banner>{slack.error.message}</Banner>
-      ) : (
-        <div style={{ display: "grid", gap: tokens.space.md }}>
-          <div data-slack-state={summary.state}>{summary.line}</div>
-          {summary.fix ? <Banner>{summary.fix}</Banner> : null}
-          <Muted>
-            In Slack, <code>/acme</code> shows your open tasks, <code>/acme team</code> the team&apos;s, and{" "}
-            <code>/acme add</code> adds one. Acme knows you by the email of your Slack profile.
-          </Muted>
-          {slack.canManage ? (
-            <div style={{ display: "flex", gap: tokens.space.sm }}>
-              <Button onClick={() => void slack.install()} disabled={slack.installing}>
-                {summary.installLabel}
-              </Button>
-              {slack.installed ? (
-                <Button tone="danger" onClick={() => void slack.uninstall()} disabled={slack.uninstalling}>
-                  Remove from Slack
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      )}
-    </Card>
   );
 }
