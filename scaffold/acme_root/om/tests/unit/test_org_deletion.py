@@ -15,6 +15,7 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.base import EMPTY_UUID, new_id
+from acme.om.context import AppContext, AppType, RequestContext, Role, TenantContext
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     NotAuthenticated,
@@ -23,7 +24,6 @@ from acme.om.exceptions import (
     ValidationFailed,
 )
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
-from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext, Role
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
@@ -120,7 +120,7 @@ TOKENS: dict[UUID, str] = {}
 """The token behind each session the tests signed in with, by session id."""
 
 
-async def dev(manager: TenancyManagerImpl, email: str, org_id: UUID | None = None) -> OpContext:
+async def dev(manager: TenancyManagerImpl, email: str, org_id: UUID | None = None) -> TenantContext:
     """A person signed in locally, in `org_id` or else their personal org."""
     login = await manager.dev_sign_in(request(), email)
     if org_id is None:

@@ -1,11 +1,11 @@
-"""The operator service: takes OperatorContext and never an OpContext. A
+"""The operator service: takes OperatorContext and never a TenantContext. A
 read of one tenant names it by id; the views are the tenant's own."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
 
+from acme.om.context import OperatorContext
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import OperatorContext
 from acme.services.api.types.admin import (
     AddMemberRequest,
     ConfirmTotpRequest,

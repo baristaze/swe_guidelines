@@ -24,6 +24,18 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import (
+    AppContext,
+    AppType,
+    CredentialKind,
+    OperatorContext,
+    OperatorPermission,
+    OperatorRole,
+    Permission,
+    RequestContext,
+    Role,
+    TenantContext,
+)
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     Conflict,
@@ -43,18 +55,6 @@ from acme.om.exceptions import (
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
 from acme.om.idempotency.types.attempt import Attempt, lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
-from acme.om.opcontext import (
-    AppContext,
-    AppType,
-    CredentialKind,
-    OpContext,
-    OperatorContext,
-    OperatorPermission,
-    OperatorRole,
-    Permission,
-    RequestContext,
-    Role,
-)
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
@@ -139,7 +139,7 @@ def storage(
 
 
 async def begin_attempt(
-    markers: IdempotencyStorageMemoryImpl, ctx: OpContext, key: str, target_id: UUID
+    markers: IdempotencyStorageMemoryImpl, ctx: TenantContext, key: str, target_id: UUID
 ) -> Attempt:
     """What the gateway does before a creating request: a pending marker on the
     id the create uses, under a token of its own, and the attempt that carries
@@ -235,7 +235,7 @@ async def operator_deletes(
     return deleted
 
 
-async def sign_in(manager: TenancyManagerImpl, email: str, org_id: UUID) -> OpContext:
+async def sign_in(manager: TenancyManagerImpl, email: str, org_id: UUID) -> TenantContext:
     login = await manager.dev_sign_in(request(), email)
     issued = await manager.exchange_login(
         await manager.authenticate_login(request(), login.token), org_id
@@ -2300,13 +2300,13 @@ async def old_release_tenant(
 # A team org of one's own.
 
 
-async def signed_up(manager: TenancyManagerImpl, email: str, name: str) -> OpContext:
+async def signed_up(manager: TenancyManagerImpl, email: str, name: str) -> TenantContext:
     """A person who signed in the first time, in a session in their personal org."""
     issued = await manager.dev_sign_in(request(), email, name)
     return await sign_in_with(manager, email, issued.memberships[0].org.id)
 
 
-async def sign_in_with(manager: TenancyManagerImpl, email: str, org_id: UUID) -> OpContext:
+async def sign_in_with(manager: TenancyManagerImpl, email: str, org_id: UUID) -> TenantContext:
     login = await manager.dev_sign_in(request(), email)
     session = await manager.exchange_login(
         await manager.authenticate_login(request(), login.token), org_id

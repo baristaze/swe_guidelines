@@ -26,7 +26,7 @@ def test_every_script_refuses_an_unknown_argument(repo, name):
 def test_slug_lowercases_drops_punctuation_and_hyphenates():
     assert slug("The Storage Layer") == "the-storage-layer"
     assert slug("Local: Docker Compose") == "local-docker-compose"
-    assert slug("`OpContext` and *friends*") == "opcontext-and-friends"
+    assert slug("`TenantContext` and *friends*") == "tenantcontext-and-friends"
     assert slug("  Park vs. fail  ") == "park-vs-fail"
 
 
@@ -65,7 +65,7 @@ GITHUB_SLUGGER = [
     ("The `__init__` module", "the-__init__-module"),
     ("`_private` and `__dunder__`", "_private-and-__dunder__"),
     # inline code and emphasis keep their text
-    ("`OpContext` and *friends*", "opcontext-and-friends"),
+    ("`TenantContext` and *friends*", "tenantcontext-and-friends"),
     ("the _emph_ word", "the-emph-word"),
     ("**Bold** and __strong__", "bold-and-strong"),
     ("Glob `*`", "glob-"),

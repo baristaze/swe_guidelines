@@ -24,11 +24,11 @@ def test_stale_skill_fails_check_and_is_left_alone(repo, gen, capsys):
 
 
 def test_regenerate_writes_every_group_from_the_table(repo, gen, capsys):
-    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `ctx.md` | OpContext: tenancy |\n")
+    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `ctx.md` | TenantContext: tenancy |\n")
     repo.write("lenses/ctx.md", "# Context\n")
     assert gen.main([]) == 0
     assert "1 written, 1 unchanged" in capsys.readouterr().out
-    assert repo.read("skills/arch-review-ctx/SKILL.md") == render_template("ctx", "Context", "OpContext: tenancy")
+    assert repo.read("skills/arch-review-ctx/SKILL.md") == render_template("ctx", "Context", "TenantContext: tenancy")
 
 
 def test_lens_file_without_a_title_stops_generation(repo, gen):

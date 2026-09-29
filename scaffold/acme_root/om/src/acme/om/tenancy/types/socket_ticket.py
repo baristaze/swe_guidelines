@@ -7,7 +7,7 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.base import Created, Identifiable, Platform
-from acme.om.opcontext import CredentialKind, OpContext
+from acme.om.context import CredentialKind, TenantContext
 
 
 class SocketTicket(Identifiable, Created):
@@ -33,7 +33,7 @@ class SocketPrincipal(Platform):
     `membership_id` is the membership the context was built from: a change
     to it names the membership, not the user."""
 
-    ctx: OpContext
+    ctx: TenantContext
     expires_at: datetime
     credential_kind: CredentialKind
     membership_id: UUID

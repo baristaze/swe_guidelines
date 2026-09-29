@@ -14,7 +14,7 @@ lens needs its source read in full. A path that starts with `../` is
 read from this skill's folder as `realpath` resolves it. If either file
 is missing, stop and say the installation is incomplete.
 
-This pass covers OpContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles, Telemetry (Correlation Across a Handoff), Cross-Cutting Conventions (Tests): stages, scopes, OperatorContext, authorization, tenancy, provenance.
+This pass covers TenantContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles, Telemetry (Correlation Across a Handoff), Cross-Cutting Conventions (Tests): stages, scopes, OperatorContext, authorization, tenancy, provenance.
 
 ## Input
 

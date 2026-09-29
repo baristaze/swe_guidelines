@@ -26,10 +26,10 @@ from acme.infra.observability import OUTCOMES, current_traceparent, request_id_v
 from acme.infra.queues import QueueMessage, Queues, QueuesInterface
 from acme.integrations.identity import ProvidedDelivery
 from acme.om.base import EMPTY_UUID, Platform, derived_id, new_id
+from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.events.manager import audit_event
 from acme.om.exceptions import InvalidCredential
-from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
 from acme.om.tenancy import TenancyManagerInterface
 
 log = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class DeliveryProviderInterface[D](ABC):
         ...
 
     @abstractmethod
-    async def apply(self, ctx: OpContext, delivery: D) -> bool:
+    async def apply(self, ctx: TenantContext, delivery: D) -> bool:
         """Applies the delivery in its org. True when this call applied it,
         False when a copy was applied before."""
         ...
@@ -79,7 +79,7 @@ class IdentityDeliveriesImpl(DeliveryProviderInterface[ProvidedDelivery]):
         except ValueError:
             return None
 
-    async def apply(self, ctx: OpContext, delivery: ProvidedDelivery) -> bool:
+    async def apply(self, ctx: TenantContext, delivery: ProvidedDelivery) -> bool:
         event = audit_event(
             ctx,
             derived_id(delivery.key, delivery.created),

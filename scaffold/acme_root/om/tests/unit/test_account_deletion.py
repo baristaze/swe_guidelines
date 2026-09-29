@@ -14,6 +14,7 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.twin import TWIN_LOGOUT, IdentityProviderTwinImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role, TenantContext
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     LastOwner,
@@ -24,7 +25,6 @@ from acme.om.exceptions import (
     ValidationFailed,
 )
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
-from acme.om.opcontext import AppContext, AppType, OpContext, OperatorRole, RequestContext, Role
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
@@ -123,14 +123,14 @@ def manager(
     )
 
 
-async def enter(manager: TenancyManagerImpl, token: str, org_id: UUID) -> OpContext:
+async def enter(manager: TenancyManagerImpl, token: str, org_id: UUID) -> TenantContext:
     issued = await manager.exchange_login(
         await manager.authenticate_login(request(), token), org_id
     )
     return await manager.authenticate(request(), issued.token)
 
 
-async def dev(manager: TenancyManagerImpl, email: str, org_id: UUID | None = None) -> OpContext:
+async def dev(manager: TenancyManagerImpl, email: str, org_id: UUID | None = None) -> TenantContext:
     """A person signed in locally, in `org_id` or else their personal org."""
     login = await manager.dev_sign_in(request(), email)
     if org_id is None:

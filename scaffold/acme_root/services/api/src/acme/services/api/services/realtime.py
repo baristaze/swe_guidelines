@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 
 from acme.infra.topics import Topics
-from acme.om.opcontext import ActorScope, OpContext
+from acme.om.context import ActorScope, TenantContext
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.realtime.envelopes import EventEnvelope, IssuedTicketView
 
@@ -27,17 +27,17 @@ ticket is redeemed under the rights the member has now."""
 
 class RealtimeServiceInterface(ABC):
     @abstractmethod
-    async def issue_ticket(self, ctx: OpContext) -> IssuedTicketView: ...
+    async def issue_ticket(self, ctx: TenantContext) -> IssuedTicketView: ...
 
     @abstractmethod
-    async def head(self, ctx: OpContext) -> int:
+    async def head(self, ctx: TenantContext) -> int:
         """The tenant's stream position when a socket opens, read from the
         database; the hello carries it so a client can replay from there
         before it has seen any push."""
         ...
 
     @abstractmethod
-    async def pong_head(self, ctx: OpContext) -> int:
+    async def pong_head(self, ctx: TenantContext) -> int:
         """The head a pong carries: the highest `seq` this process has heard
         on the bus or read for the tenant, while it was confirmed within the
         bound the settings name, and else a fresh read, as `head`. Never
@@ -63,7 +63,7 @@ class RealtimeServiceInterface(ABC):
         """Hands `deliver` every push on `topic` for the caller's tenant, projected
         onto its view; returns the unsubscribe callable. Raises ValidationFailed
         for a topic the channel does not carry. Reads the tenant and the user
-        and nothing else; `head` and `issue_ticket` keep `OpContext` because
+        and nothing else; `head` and `issue_ticket` keep `TenantContext` because
         the managers behind them authorize."""
         ...
 

@@ -16,7 +16,7 @@ from worker_support import build_container, request, signing, start_noop, upload
 from acme.infra.buckets import Buckets
 from acme.integrations.exceptions import ProviderConflict, ProviderRefused, ProviderUnavailable
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
-from acme.om.opcontext import OpContext, Role
+from acme.om.context import Role, TenantContext
 from acme.om.work.types.handler import WorkParked, WorkRefused
 from acme.om.work.types.work_item import WorkItem, WorkKind
 from acme.workers.maintenance.container import WorkerContainer
@@ -29,21 +29,23 @@ def identity_of(container: WorkerContainer) -> IdentityProviderTwinImpl:
     return cast(IdentityProviderTwinImpl, container.identity_provider)
 
 
-async def owner_of(container: WorkerContainer, slug: str) -> OpContext:
+async def owner_of(container: WorkerContainer, slug: str) -> TenantContext:
     ctx, _ = await container.managers.tenancy.bootstrap(
         request(), slug.title(), slug, f"owner@{slug}.test", "Owner"
     )
     return ctx
 
 
-async def bob_signs_in(container: WorkerContainer, org_id: UUID) -> tuple[OpContext, OpContext]:
+async def bob_signs_in(
+    container: WorkerContainer, org_id: UUID
+) -> tuple[TenantContext, TenantContext]:
     """Bob, a member of the org, signs in through the provider's twin, which
     then knows him by a subject: his session in the org, and in his personal
     org."""
     tenancy = container.managers.tenancy
     await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
     through = signing(container, container.identity_provider)
-    places: list[OpContext] = []
+    places: list[TenantContext] = []
     login = await through.sign_in_with_code(
         request(), identity_of(container).issue_code("bob@example.test")
     )
@@ -57,7 +59,7 @@ async def bob_signs_in(container: WorkerContainer, org_id: UUID) -> tuple[OpCont
     return places[0], places[1]
 
 
-async def claim_deletion(container: WorkerContainer) -> tuple[OpContext, WorkItem]:
+async def claim_deletion(container: WorkerContainer) -> tuple[TenantContext, WorkItem]:
     claimed = await container.managers.work.claim(
         request(), "default", [WorkKind.DELETE_ACCOUNT], "test", LEASE
     )

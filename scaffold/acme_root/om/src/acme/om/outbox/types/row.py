@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.om.base import Created, FrozenMapping, Identifiable, new_id, utcnow
-from acme.om.opcontext import ProvenanceScope
+from acme.om.context import ProvenanceScope
 
 
 class OutboxRow(Identifiable, Created):

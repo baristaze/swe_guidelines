@@ -3,7 +3,7 @@ from typing import ClassVar
 from uuid import UUID
 
 from acme.om.base import EMPTY_UUID, Identifiable, Trackable
-from acme.om.opcontext import CredentialKind, OperatorRole
+from acme.om.context import CredentialKind, OperatorRole
 
 
 class Session(Identifiable, Trackable):

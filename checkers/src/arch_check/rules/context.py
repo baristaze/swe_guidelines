@@ -1,9 +1,11 @@
 """The context group: stages, scopes, the first parameter, and tenant keys.
 
 The stages are the classes the guideline names, `RequestContext`,
-`IdentityContext`, `OpContext`, and `OperatorContext`, declared with the
-scopes (`*Scope`) in the stage module `<pkg>.om.opcontext`. A rule that
-reads the stage module finds nothing to judge in a project without one.
+`IdentityContext`, `TenantContext`, and `OperatorContext`, declared with the
+scopes (`*Scope`) in the stage module `<pkg>.om.context`. A rule that
+reads the stage module finds nothing to judge in a project without one,
+and CTX-02 refuses a stage declared anywhere else under `<pkg>.om`, so a
+tree whose stages sit elsewhere is never reported clean.
 The operations are the public methods of `*ManagerInterface`,
 `*ServiceInterface`, and `*HandlerInterface` classes, and the storage
 signatures those of `*StorageInterface` classes.
@@ -16,10 +18,22 @@ from collections.abc import Iterator
 
 from arch_check.config import glob_match
 from arch_check.model import Violation
-from arch_check.project import Function, Project, SourceFile, base_names, classes, dotted, is_under, last, methods
+from arch_check.project import (
+    Function,
+    Project,
+    SourceFile,
+    base_names,
+    classes,
+    dotted,
+    is_under,
+    last,
+    methods,
+    top_classes,
+)
 from arch_check.registry import rule
 from arch_check.rules._contracts_util import (
     REQUEST_STAGE,
+    STAGE_MODULE,
     STAGES,
     arguments,
     body_without_docstring,
@@ -76,7 +90,7 @@ def scope_names(project: Project) -> set[str]:
 
 def stage_names(project: Project, file: SourceFile, tree: ast.Module) -> dict[str, str]:
     """The names a module spells a stage with, beside the stage's own: an import under another name, and a
-    module-level alias of one stage (`CtxDep = Annotated[OpContext, Depends(context)]`)."""
+    module-level alias of one stage (`CtxDep = Annotated[TenantContext, Depends(context)]`)."""
     out = {local: real for local, full in imported_names(project, file).items() if (real := last(full) or "") in STAGES}
     for node in tree.body:
         target: ast.expr | None = None
@@ -166,7 +180,7 @@ def context_comes_first(project: Project) -> Iterator[Violation]:
                     file.rel, arg, f"{cls.name}.{fn.name} takes {typed[0]} in position {i + 1}; the context is first"
                 )
         if cls.name.endswith("ManagerInterface") and args and head_name(args[0].annotation) in scopes:
-            yield Violation.at(file.rel, args[0], f"{cls.name}.{fn.name} takes a scope; a manager operation takes OpContext")
+            yield Violation.at(file.rel, args[0], f"{cls.name}.{fn.name} takes a scope; a manager operation takes TenantContext")
 
 
 # --- CTX-02
@@ -183,8 +197,18 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
     (`from acme.om.base import X` or `from acme.om import base`). No field of a class there
     is typed with a class defined under `<pkg>.om.<ns>.types`.
     `RequestContext` declares `request_id` and `app`, and a class of the
-    module declares `credential_id`. Identity passed beside the context
-    is judged."""
+    module declares `credential_id`. No class named for a stage is
+    declared under `<pkg>.om` outside the stage module, since the stage
+    rules read only that module. Identity passed beside the context is
+    judged."""
+    home = f"{project.package}.{STAGE_MODULE}"
+    for f, t in project.trees(project.sub("om")):
+        if not is_under(f.module, home):
+            for cls in top_classes(t):
+                if cls.name in STAGES:
+                    yield Violation.at(
+                        f.rel, cls, f"{cls.name} is declared outside om/context.py, the stage module, so no stage rule judges it"
+                    )
     file = stage_module(project)
     tree = project.tree(file) if file else None
     if file is None or tree is None:
@@ -321,7 +345,7 @@ def returns_stage(fn: Function) -> bool:
 )
 def context_is_immutable(project: Project) -> Iterator[Violation]:
     """In a function under `<pkg>.om`, `<pkg>.gateway`, `<pkg>.services`,
-    or `<pkg>.workers`, a name typed with `IdentityContext`, `OpContext`, or
+    or `<pkg>.workers`, a name typed with `IdentityContext`, `TenantContext`, or
     `OperatorContext` is never `.model_copy(...)`-ed and never has an
     attribute assigned. No function named `with_*` or `override*` returns
     a stage outside the stage module. Narrowing passed as an argument is
@@ -419,12 +443,12 @@ def authorization_in_managers(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-10",
     coverage="partial",
-    summary="Storage takes org_id first; an OpContext operation takes no org_id.",
+    summary="Storage takes org_id first; a TenantContext operation takes no org_id.",
 )
 def tenant_first(project: Project) -> Iterator[Violation]:
     """On a `*StorageInterface` method that takes `org_id`, it is the first
     parameter. No operation of a `*ManagerInterface` or
-    `*ServiceInterface` that takes `OpContext` first also takes `org_id`.
+    `*ServiceInterface` that takes `TenantContext` first also takes `org_id`.
     Where `user_id` goes is judged: on a personal scope it follows
     `org_id`, but on `add_team_member(org_id, team_id, user_id)` it is
     the target, not the scope. A tenant-less storage method is CTX-12's;
@@ -436,8 +460,8 @@ def tenant_first(project: Project) -> Iterator[Violation]:
                 yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} takes org_id in position {names.index('org_id') + 1}")
     for file, cls, fn in operations(project):
         args = arguments(fn)
-        if args and stage_of(args[0]) == "OpContext" and "org_id" in [a.arg for a in args]:
-            yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} takes org_id beside OpContext, which carries it")
+        if args and stage_of(args[0]) == "TenantContext" and "org_id" in [a.arg for a in args]:
+            yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} takes org_id beside TenantContext, which carries it")
 
 
 # --- CTX-12
@@ -566,14 +590,14 @@ def payloads_carry_the_tenant(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-20",
     coverage="partial",
-    summary="OperatorContext refines IdentityContext with no org_id; no operation accepts both it and OpContext.",
+    summary="OperatorContext refines IdentityContext with no org_id; no operation accepts both it and TenantContext.",
 )
 def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
     """`OperatorContext` has `IdentityContext` among its ancestors, and
     neither it nor a stage it refines declares `org_id`. No operation (a public
     method of a `*ManagerInterface`, `*ServiceInterface`, or
     `*HandlerInterface`, or of a class implementing one) has a parameter
-    typed as a union of `OpContext` and `OperatorContext`. A gateway,
+    typed as a union of `TenantContext` and `OperatorContext`. A gateway,
     error, or log helper that reads either is not an operation. The
     allowlist gate is judged."""
     file = stage_module(project)
@@ -597,9 +621,9 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
                 continue
             for fn in interface_methods(cls):
                 for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]:
-                    if {"OpContext", "OperatorContext"} <= set(union_members(arg.annotation)):
+                    if {"TenantContext", "OperatorContext"} <= set(union_members(arg.annotation)):
                         yield Violation.at(
-                            f.rel, arg, f"{cls.name}.{fn.name} accepts either OpContext or OperatorContext; it takes one"
+                            f.rel, arg, f"{cls.name}.{fn.name} accepts either TenantContext or OperatorContext; it takes one"
                         )
 
 
@@ -613,8 +637,8 @@ def operator_plane_has_its_own_context(project: Project) -> Iterator[Violation]:
 )
 def stage_hierarchy(project: Project) -> Iterator[Violation]:
     """In the stage module, no stage is a `Protocol`; `IdentityContext` and
-    `OpContext` subclass `RequestContext`; `OperatorContext` subclasses
-    `IdentityContext`; `OpContext` does not subclass `IdentityContext`.
+    `TenantContext` subclass `RequestContext`; `OperatorContext` subclasses
+    `IdentityContext`; `TenantContext` does not subclass `IdentityContext`.
     A subclass is a direct or an indirect one.
     A stage the module does not declare is not judged. Re-checking a
     credential inside an operation is judged."""
@@ -622,7 +646,7 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
     stages = stage_classes(project)
     if file is None:
         return
-    expected = {"IdentityContext": REQUEST_STAGE, "OpContext": REQUEST_STAGE, "OperatorContext": "IdentityContext"}
+    expected = {"IdentityContext": REQUEST_STAGE, "TenantContext": REQUEST_STAGE, "OperatorContext": "IdentityContext"}
     index = class_index(project)
     for name in STAGES:
         cls = stages.get(name)
@@ -634,8 +658,10 @@ def stage_hierarchy(project: Project) -> Iterator[Violation]:
         lineage = ancestors(project, index, name)
         if parent and parent in stages and parent not in lineage:
             yield Violation.at(stage_rel(project, cls, file), cls, f"{name} does not subclass {parent}")
-        if name == "OpContext" and "IdentityContext" in lineage:
-            yield Violation.at(stage_rel(project, cls, file), cls, "OpContext subclasses IdentityContext; it does not refine it")
+        if name == "TenantContext" and "IdentityContext" in lineage:
+            yield Violation.at(
+                stage_rel(project, cls, file), cls, "TenantContext subclasses IdentityContext; it does not refine it"
+            )
 
 
 # --- CTX-22
@@ -708,11 +734,11 @@ def scopes_are_protocols(project: Project) -> Iterator[Violation]:
 @rule(
     "CTX-24",
     coverage="partial",
-    summary="An operation taking OperatorContext never calls outbox_row or builds an OpContext.",
+    summary="An operation taking OperatorContext never calls outbox_row or builds a TenantContext.",
 )
 def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
     """No function whose first parameter (after `self`) is typed
-    `OperatorContext` calls `outbox_row(...)` or constructs `OpContext`.
+    `OperatorContext` calls `outbox_row(...)` or constructs `TenantContext`.
     Who the operator row names is judged or run as a test."""
     for file, tree in project.trees():
         aliases = imported_names(project, file)
@@ -725,7 +751,7 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
                 continue
             for call in calls(fn):
                 name = called_name(call)
-                if name == "outbox_row" or constructed(call, {"OpContext"}, aliases):
+                if name == "outbox_row" or constructed(call, {"TenantContext"}, aliases):
                     yield Violation.at(
                         file.rel, call, f"{fn.name} takes OperatorContext and calls {name}; the operator plane stamps its own"
                     )
@@ -733,8 +759,8 @@ def operator_writes_own_provenance(project: Project) -> Iterator[Violation]:
 
 # --- CTX-26
 
-SITE_STAGES = ["IdentityContext", "OpContext", "OperatorContext", "SecurityContext"]
-DEFAULT_SITES = ["**/om/tenancy/impl/**", "**/om/opcontext.py"]
+SITE_STAGES = ["IdentityContext", "TenantContext", "OperatorContext", "SecurityContext"]
+DEFAULT_SITES = ["**/om/tenancy/impl/**", "**/om/context.py"]
 
 
 def site_matches(entry: str, rel: str, qualname: str) -> bool:
@@ -766,7 +792,7 @@ def stage_copies(tree: ast.Module, names: dict[str, str]) -> dict[ast.Call, str]
     summary="Every production site that constructs a stage above the request stage is listed, and every entry is used.",
 )
 def stage_sites_are_enumerated(project: Project) -> Iterator[Violation]:
-    """A call that constructs `IdentityContext`, `OpContext`,
+    """A call that constructs `IdentityContext`, `TenantContext`,
     `OperatorContext`, or `SecurityContext` (the class, or its
     `model_validate`, `model_construct`, or `model_copy`), copies a name
     bound to one of the first three (`ctx.model_copy(...)` where `ctx` is

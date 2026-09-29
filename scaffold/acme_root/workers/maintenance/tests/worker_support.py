@@ -13,8 +13,8 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity import IdentityProviderInterface
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import Platform, new_id, utcnow
+from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.media.types.file import File, FilePurpose
-from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationKind
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
@@ -33,7 +33,7 @@ class RecordingHandler(WorkHandlerInterface):
         self._inner = NoopHandlerImpl()
         self.handled: list[WorkItem] = []
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         await self._inner.handle(ctx, item)
         self.handled.append(item)
 
@@ -64,7 +64,7 @@ def signing(
     )
 
 
-async def sign_in(container: WorkerContainer, slug: str = "ajax") -> OpContext:
+async def sign_in(container: WorkerContainer, slug: str = "ajax") -> TenantContext:
     """A session in a seeded org, `ajax` unless named, whose owner is
     `ann@<slug>.test`, signed in by address."""
     tenancy = container.managers.tenancy
@@ -77,7 +77,7 @@ async def sign_in(container: WorkerContainer, slug: str = "ajax") -> OpContext:
 
 
 async def upload(
-    container: WorkerContainer, ctx: OpContext, name: str = "photo.png", *, confirm: bool = True
+    container: WorkerContainer, ctx: TenantContext, name: str = "photo.png", *, confirm: bool = True
 ) -> File:
     """A file the person stored in the org: its row, and its object in the
     store. Unconfirmed, the upload is started and never finished: a pending
@@ -105,7 +105,7 @@ async def upload(
     return await media.confirm_file(ctx, file.id)
 
 
-async def start_noop(container: WorkerContainer, ctx: OpContext, steps: int) -> Orchestration:
+async def start_noop(container: WorkerContainer, ctx: TenantContext, steps: int) -> Orchestration:
     """A `noop` record of `steps` steps, started by the person: it lands
     running, with the work row of its first step."""
     now = utcnow()
@@ -124,7 +124,7 @@ async def start_noop(container: WorkerContainer, ctx: OpContext, steps: int) -> 
 
 
 def make_item(
-    ctx: OpContext,
+    ctx: TenantContext,
     *,
     kind: WorkKind = WorkKind.NOOP,
     payload: Platform | None = None,

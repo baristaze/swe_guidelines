@@ -20,9 +20,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from acme.infra.observability import RequestIdFilter
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
+from acme.om.context import Role
 from acme.om.events.types.event import Event
 from acme.om.exceptions import Unavailable
-from acme.om.opcontext import Role
 from acme.om.outbox.impl.relay import OutboxOptions, OutboxRelayImpl
 from acme.services.api.container import AppContainer
 from acme.services.api.gateway.relay import RELAY_SPAN

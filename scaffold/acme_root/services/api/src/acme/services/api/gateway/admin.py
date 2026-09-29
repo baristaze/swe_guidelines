@@ -7,14 +7,14 @@ write on the plane takes. The tenancy manager's `admit_operator` decides;
 the gate adds the rules of the edge that name the refusal: an operator with
 no second factor enrolled yet reaches the two enrolment routes, a sign-in
 with its code reaches the mint, and each is refused on every other route,
-by name. No OpContext exists on this path."""
+by name. No TenantContext exists on this path."""
 
 from typing import Annotated
 
 from fastapi import Depends, Request
 
+from acme.om.context import OperatorContext, OperatorPermission
 from acme.om.exceptions import OperatorTokenRequired, SecondFactorNotEnrolled
-from acme.om.opcontext import OperatorContext, OperatorPermission
 from acme.services.api.gateway.auth import Identity
 from acme.services.api.gateway.resolve import container_of
 

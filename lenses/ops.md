@@ -176,7 +176,7 @@ operator's sign-in only with a second factor, a TOTP code enrolled per
 operator identity.
 
 **Source.** Operations, Operator Roles; The Network Layer, The Gateway;
-OpContext, The Operator Context; Deployment, Security Defaults.
+TenantContext, The Operator Context; Deployment, Security Defaults.
 
 **Look for.** Any cloud user or access key in the roots, the scripts,
 or the cloud tool's configuration; the trust policy of each

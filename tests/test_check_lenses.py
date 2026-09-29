@@ -64,7 +64,7 @@ def test_fields_out_of_order_fail(repo, lenses, capsys):
 
 def test_unlisted_and_missing_files_fail(repo, lenses, capsys):
     repo.write("lenses/extra.md", "# Extra\n\n## EX-01 One\n")
-    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `context.md` | OpContext: tenancy |\n")
+    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `context.md` | TenantContext: tenancy |\n")
     assert lenses.main() == 1
     out = capsys.readouterr().out
     assert "lenses/extra.md is not listed" in out
@@ -310,20 +310,20 @@ def test_lens_syntax_inside_a_tilde_fence_is_an_example(repo, lenses, capsys):
 
 @pytest.fixture
 def named(repo):
-    """The Storage Layer names `table_name` and `get_rows()`; Interfaces names `OpContext` in a code block."""
+    """The Storage Layer names `table_name` and `get_rows()`; Interfaces names `TenantContext` in a code block."""
     repo.edit("architecture.md", "One table per entity.\n", "One table per entity, keyed by `table_name`.\n")
     repo.edit(
         "architecture.md",
         "Storage is behind an interface.\n",
         "Storage is behind an interface.\n\n#### Reads\n\nA read calls `repo.get_rows(limit)`.\n",
     )
-    repo.edit("architecture.md", "# not a heading: fenced code\n", "# not a heading: fenced code\nctx: OpContext\n")
+    repo.edit("architecture.md", "# not a heading: fenced code\n", "# not a heading: fenced code\nctx: TenantContext\n")
 
 
 def test_an_identifier_the_cited_section_holds_passes(repo, lenses, named, capsys):
     repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** One table per `table_name`.")
     repo.edit("lenses/om.md", "**Look for.** Tables holding two entities.", "**Look for.** Calls of `get_rows()`.")
-    repo.edit("lenses/om.md", "Direct calls across a layer boundary.", "An `OpContext` crossing a layer boundary.")
+    repo.edit("lenses/om.md", "Direct calls across a layer boundary.", "A `TenantContext` crossing a layer boundary.")
     assert lenses.main() == 0, capsys.readouterr().out
 
 
@@ -344,9 +344,9 @@ def test_a_renamed_identifier_in_a_principle_fails(repo, lenses, named, capsys):
 
 
 def test_a_guideline_identifier_in_a_violation_is_held_to_the_cited_section(repo, lenses, named, capsys):
-    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.", "**Violation.** An `OpContext` in a row.")
+    repo.edit("lenses/om.md", "**Violation.** A table with a discriminator column.", "**Violation.** A `TenantContext` in a row.")
     assert lenses.main() == 1
-    assert "OM-02 quotes `OpContext`, which The Storage Layer does not hold" in capsys.readouterr().out
+    assert "OM-02 quotes `TenantContext`, which The Storage Layer does not hold" in capsys.readouterr().out
 
 
 def test_a_breach_the_guideline_never_names_and_words_that_are_no_identifier_pass(repo, lenses, named, capsys):

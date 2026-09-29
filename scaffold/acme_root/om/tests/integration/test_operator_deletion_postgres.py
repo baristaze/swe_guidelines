@@ -11,8 +11,8 @@ import pytest
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id
+from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.exceptions import NotAuthenticated, NotFound
-from acme.om.opcontext import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.root import build_managers
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.settings import MigrationSettings

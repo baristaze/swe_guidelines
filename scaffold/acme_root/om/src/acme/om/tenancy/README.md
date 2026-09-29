@@ -72,7 +72,7 @@ plane. This is one of the kinds of thing
 ## How another namespace composes it
 
 Tenancy mints the context every other manager takes. A request's
-credential becomes an `OpContext` through `authenticate`, and a claimed
+credential becomes a `TenantContext` through `authenticate`, and a claimed
 work item's through `service_context`, on the service role with the
 person who asked as its attribution. A manager checks what it needs
 with `ctx.require(permission)`, and never reads tenancy's tables.

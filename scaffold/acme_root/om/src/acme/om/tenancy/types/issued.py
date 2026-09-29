@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.base import Platform
-from acme.om.opcontext import OperatorRole, Role
+from acme.om.context import OperatorRole, Role
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.org import Org
 from acme.om.tenancy.types.session import Session

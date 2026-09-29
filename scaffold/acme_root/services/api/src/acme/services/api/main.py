@@ -19,8 +19,8 @@ import uvicorn
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.impl.configured import absent_integrations
 from acme.om.base import new_id
+from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.exceptions import Conflict
-from acme.om.opcontext import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.storage import migrate
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer, boot, memory_storage, postgres_storage

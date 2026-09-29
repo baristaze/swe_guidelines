@@ -1,5 +1,5 @@
 """Operator routes under /v1/admin/*. They take OperatorContext and cannot
-reach a tenant manager because no OpContext exists on this path. A read
+reach a tenant manager because no TenantContext exists on this path. A read
 requires the read permission of the allowlist entry and a write the write
 one; the manager decides, and a refusal is the same `not_authorized` a
 viewer's write gets. The creating routes run under the operator's

@@ -10,8 +10,8 @@ from fastapi import Depends, Header, Query, Request, WebSocket, WebSocketExcepti
 from starlette.requests import HTTPConnection
 
 from acme.infra.observability import current_trace_id, current_traceparent
+from acme.om.context import AppContext, AppType, IdentityContext, RequestContext, TenantContext
 from acme.om.exceptions import NotAuthenticated, NotFound, PlatformException, ValidationFailed
-from acme.om.opcontext import AppContext, AppType, IdentityContext, OpContext, RequestContext
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.gateway.admission import deadline_of
 from acme.services.api.gateway.observability import request_id_of
@@ -78,7 +78,7 @@ async def current_context(
     request: Request,
     rctx: Rctx,
     authorization: Annotated[str | None, Header()] = None,
-) -> OpContext:
+) -> TenantContext:
     """The tenant stage: a session token or an api key, resolved to a membership.
     The lookup counts its failures against the client address, and the
     resolved credential spends its own budget (ADR 0059)."""
@@ -90,7 +90,7 @@ async def current_context(
     return ctx
 
 
-Ctx = Annotated[OpContext, Depends(current_context)]
+Ctx = Annotated[TenantContext, Depends(current_context)]
 
 
 async def dev_sign_in_open(request: Request) -> None:

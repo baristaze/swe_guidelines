@@ -18,7 +18,7 @@ from acme.apps.cli import main
 from acme.client.client import ApiClient
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
-from acme.om.opcontext import Role
+from acme.om.context import Role
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
 

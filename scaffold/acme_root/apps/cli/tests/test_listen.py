@@ -18,7 +18,7 @@ from acme.apps.cli.listen import listen
 from acme.client.client import DEFAULT_RETRIES, ApiClient, ApiError
 from acme.client.envelopes import EntityChanged
 from acme.client.realtime import State
-from acme.om.opcontext import Role
+from acme.om.context import Role
 
 CLOCK = datetime(2026, 9, 18, 9, 30, 0)
 CAROL = {"email": "carol@example.test"}

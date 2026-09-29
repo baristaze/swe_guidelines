@@ -14,7 +14,7 @@ import pytest
 
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
-from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
+from acme.om.context import AppContext, AppType, RequestContext, TenantContext
 from acme.om.orchestrations.types.orchestration import (
     Orchestration,
     OrchestrationKind,
@@ -50,7 +50,7 @@ def managers(storage: StoragePostgresImpl, tmp_path: Path) -> Managers:
     return build_managers(storage, InfraLocalImpl(tmp_path))
 
 
-async def an_org(managers: Managers) -> OpContext:
+async def an_org(managers: Managers) -> TenantContext:
     slug = f"ajax-{new_id().hex[-8:]}"
     owner, _ = await managers.tenancy.bootstrap(
         RequestContext(request_id=new_id(), app=APP),

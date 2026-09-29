@@ -23,8 +23,8 @@ from api_support import (
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from acme.om.context import OperatorRole, Role
 from acme.om.idempotency.impl.manager import IdempotencyOptions
-from acme.om.opcontext import OperatorRole, Role
 from acme.om.work.types.work_item import WorkKind
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer

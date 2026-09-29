@@ -1,6 +1,6 @@
 # Context
 
-Group id: `context`. Covers OpContext (with Stages, Scopes, and The
+Group id: `context`. Covers TenantContext (with Stages, Scopes, and The
 Operator Context), the authorization and tenancy split of Separation
 of Layers, the authorization step and parameter order of The Business
 Layer and its "Operations Without a Principal", the tenancy rules of
@@ -25,13 +25,13 @@ types to `network`.
 ## CTX-01 Context is the first argument of every operation
 
 **Principle.** Every manager, service, and worker-handler operation
-takes a context first: `OpContext` for a tenant operation,
+takes a context first: `TenantContext` for a tenant operation,
 `OperatorContext` for an operator one (CTX-20). Only a tenancy
 transition, an identity's operations before a tenant, and an operation
 with no principal take a weaker stage (CTX-16). A helper that needs
 less takes a scope (CTX-22); no manager operation does.
 
-**Source.** OpContext, The Operator Context; The Business Layer.
+**Source.** TenantContext, The Operator Context; The Business Layer.
 
 **Look for.** Manager interfaces, service interfaces, worker handlers:
 the first parameter of every async method, and the docstring of any
@@ -58,7 +58,7 @@ The request stage holds the request id, the app, the optional trace,
 and the causing request, which every stage above inherits and every log
 line, audit row, and error envelope reads.
 
-**Source.** OpContext; OpContext, Stages.
+**Source.** TenantContext; TenantContext, Stages.
 
 **Look for.** The context type definitions and the context module's
 imports, which reach nothing above the base module; the identity
@@ -88,7 +88,7 @@ set: a role is at most another when its permissions are a subset of the
 other's, and a rank used for comparison is derived from the table or
 held to it by a unit test.
 
-**Source.** OpContext.
+**Source.** TenantContext.
 
 **Look for.** The role-to-permission table and the module it lives in,
 credential issuing paths (API keys, invitations, session tokens), the
@@ -108,7 +108,7 @@ apart from the permission table with no test tying the two.
 **Principle.** Inside a tenant, an entity may be owned by a team, and
 visibility rules consult the context's team membership.
 
-**Source.** OpContext.
+**Source.** TenantContext.
 
 **Look for.** Entities with a team owner; visibility and listing rules
 in managers; the `in_team` check.
@@ -128,13 +128,13 @@ pass, by the bootstrap command per command. Every stage above it comes
 only from a transition: an operation of the tenancy manager, or one
 that asks it, as the claim of a worker does.
 
-**Source.** OpContext, Stages; The Business Layer, Operations Without a
+**Source.** TenantContext, Stages; The Business Layer, Operations Without a
 Principal; The Network Layer, The Gateway.
 
 **Look for.** Where the request stage is built (the gateway dependency,
 the worker loop, the bootstrap command); the transitions on the tenancy
 manager (a sign-in or a live session into the identity stage, a
-credential into `OpContext`, the operator admission into
+credential into `TenantContext`, the operator admission into
 `OperatorContext`, and one service context per live tenant for a sweep),
 what each takes (the stage below and the evidence) and returns (the
 stage above, or a refusal); the operations that ask a transition, the
@@ -162,7 +162,7 @@ is passed as an explicit argument, never by mutating or copying the
 context mid-request. A transition builds the stage above as a new
 object from the stage below; it is not a copy with changed fields.
 
-**Source.** OpContext; Stages.
+**Source.** TenantContext; Stages.
 
 **Look for.** Copies or mutations of the context after the gateway;
 methods that accept a context and hand a different one downstream;
@@ -185,7 +185,7 @@ the with or override helper; the rest is judged.
 thread locals, or hidden lookups. Everything ambient flows through the
 context.
 
-**Source.** OpContext; Telemetry, Logs.
+**Source.** TenantContext; Telemetry, Logs.
 
 **Look for.** Module-level globals holding a current user, tenant, or
 request; thread-local or context-variable reads of identity, tenant,
@@ -277,7 +277,7 @@ scoping id, or a filter with no default that every caller must spell.
 **Severity.** medium
 
 **Check.** `arch-check` decides the position of org_id in storage and
-the org_id beside OpContext; the rest is judged.
+the org_id beside TenantContext; the rest is judged.
 
 ## CTX-11 Both keys appear in every user-scoped query
 
@@ -406,11 +406,11 @@ The outbox relay and its two handoffs, the event append and the work
 enqueue, take `(org_id, row)` instead: the row carries tenant, actor,
 request id.
 
-**Source.** The Business Layer, Operations Without a Principal; OpContext,
+**Source.** The Business Layer, Operations Without a Principal; TenantContext,
 Stages; Worker Roles, The Work Queue.
 
 **Look for.** Manager methods whose first parameter is the request
-stage; what they return (the identity stage, an `OpContext`, or one
+stage; what they return (the identity stage, a `TenantContext`, or one
 service context per live tenant); their docstrings, which document
 them as transitions; the test that enumerates them; any method with no
 context at all, and whether the relay runs again from the sweep.
@@ -464,7 +464,7 @@ credential carries no tenant and is exchanged for a tenant-scoped
 session token. A live session also proves its identity, and an
 exchange presented with one ends it in the same write.
 
-**Source.** The Network Layer, The Gateway; OpContext, Stages.
+**Source.** The Network Layer, The Gateway; TenantContext, Stages.
 
 **Look for.** Credential formats, the dependencies that parse them,
 which routes accept which kind; what the identity dependency accepts,
@@ -505,7 +505,7 @@ operator allowlist, never on a tenant role or a feature flag.
 `OperatorContext` refines `IdentityContext` and has no tenant. An
 operation acting for a principal takes exactly one of the two.
 
-**Source.** OpContext, The Operator Context; OpContext, Stages; The
+**Source.** TenantContext, The Operator Context; TenantContext, Stages; The
 Network Layer, The Gateway; Client App Architecture, The Operator
 Console.
 
@@ -538,10 +538,10 @@ is judged.
 the stage it refines, so a function that asks for the weaker stage
 accepts the stronger one and never the reverse. An operation declares
 the weakest stage that proves what it needs and relies on that
-invariant instead of checking it again; `OpContext` does not refine
+invariant instead of checking it again; `TenantContext` does not refine
 `IdentityContext`.
 
-**Source.** OpContext, Stages.
+**Source.** TenantContext, Stages.
 
 **Look for.** The stage type definitions and their bases; the first
 parameter of every transition and every operation on the sign-in,
@@ -550,12 +550,12 @@ which operations a holder can call; credential and membership checks
 inside operations that already take a stage.
 
 **Violation.** An operation that takes `IdentityContext` and verifies
-the credential again, or takes `OpContext` and re-reads the membership
+the credential again, or takes `TenantContext` and re-reads the membership
 to decide whether it is live, the one exception being a work handler
 that reads it by name before a sensitive step as a recorded decision
-of that kind of work; a sign-in or exchange route handed an
-`OpContext`; a stage declared as a `Protocol` or satisfied by anything
-other than its transition; `OpContext` subclassing `IdentityContext`;
+of that kind of work; a sign-in or exchange route handed a
+`TenantContext`; a stage declared as a `Protocol` or satisfied by anything
+other than its transition; `TenantContext` subclassing `IdentityContext`;
 a bundle of managers per stage (a manager as a member of a context is
 CON-18).
 
@@ -570,9 +570,9 @@ a scope: a small `Protocol` of read-only properties naming the
 capability it needs. A stage satisfies a scope structurally, with no
 projection object built per call. A scope exists when a consumer
 declares it or another scope builds on it. A tenant manager operation
-takes `OpContext`, which is its scope.
+takes `TenantContext`, which is its scope.
 
-**Source.** OpContext, Scopes.
+**Source.** TenantContext, Scopes.
 
 **Look for.** The scope definitions and the consumer each one is
 derived from; helpers and edge concerns that read a subset of the
@@ -580,7 +580,7 @@ context (provenance stamping, rate limiting, realtime subscription);
 what they declare.
 
 **Violation.** A helper that reads only the request id and the actor
-and takes `OpContext`; a scope declared as an `ABC` the contexts
+and takes `TenantContext`; a scope declared as an `ABC` the contexts
 subclass; a view object copied out of the context to satisfy a scope;
 a scope neither a consumer declares nor another scope builds on; an
 authorization scope, since no consumer needs the permissions without
@@ -599,7 +599,7 @@ a consumer that needs two scopes with no concept between them takes the
 stage that carries both. Subclassing is the refinement of a stage,
 composition the only combinator of a scope.
 
-**Source.** OpContext, Scopes.
+**Source.** TenantContext, Scopes.
 
 **Look for.** The list of scope names; any name that concatenates two
 others; any operation that takes a scope where it relies on an
@@ -608,7 +608,7 @@ invariant only a stage proves.
 **Violation.** A scope named for the intersection of two others with
 no domain meaning; a growing list of composed names; an operation that
 authorizes, or relies on a live membership, and takes a scope instead
-of `OpContext`, so a scope stands in for a stage.
+of `TenantContext`, so a scope stands in for a stage.
 
 **Severity.** low
 
@@ -620,7 +620,7 @@ operator write is stamped by the operator managers from the identity
 id and the request id their stage carries, through a helper of the
 operator plane, never through `outbox_row`.
 
-**Source.** OpContext, Scopes.
+**Source.** TenantContext, Scopes.
 
 **Look for.** The write paths of the operator managers and the helper
 that stamps them; every call of `outbox_row` and the type of the
@@ -628,14 +628,14 @@ context handed to it; the `created_by` and the request id on rows the
 operator plane writes.
 
 **Violation.** An operator manager that calls `outbox_row`, or builds
-an `OpContext` or a placeholder tenant to satisfy `ProvenanceScope`;
+a `TenantContext` or a placeholder tenant to satisfy `ProvenanceScope`;
 an operator row whose `created_by` is not the identity id its stage
 carries, or that carries no request id; an operator write stamped by
 hand in a router or a storage impl instead of through the helper.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the outbox_row call and the OpContext
+**Check.** `arch-check` decides the outbox_row call and the TenantContext
 built on the operator plane; the rest is judged.
 
 ## CTX-25 The service role is not a rung a person can mint
@@ -645,7 +645,7 @@ ladder of roles: no credential a person mints carries it, and every
 operation that issues a credential refuses it by name, whatever the
 rank says.
 
-**Source.** OpContext.
+**Source.** TenantContext.
 
 **Look for.** Every credential issuing path (API keys, invitations,
 session tokens) and the check each makes against the service role by
@@ -665,10 +665,10 @@ never names the role.
 request stage and fails when a new one appears, the way it enumerates
 the tenant-less storage methods.
 
-**Source.** OpContext, Stages.
+**Source.** TenantContext, Stages.
 
 **Look for.** The list of construction sites the checker holds; every
-construction site of `IdentityContext`, `OpContext`, `OperatorContext`,
+construction site of `IdentityContext`, `TenantContext`, `OperatorContext`,
 and their sub-objects, in production code and in test helpers.
 
 **Violation.** A construction site the list does not name; no
@@ -685,7 +685,7 @@ code; the rest is judged.
 ## CTX-27 A socket closes at its session's expiry or on its revocation
 
 **Principle.** A stage lives no longer than its request. A socket holds
-the `OpContext` its ticket produced, so the session's expiry bounds
+the `TenantContext` its ticket produced, so the session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
 a membership's end travels on the topic bus as a change of its own
 kind, `tenancy.session.revoked` among them, and every process holding a
@@ -696,7 +696,7 @@ every socket also rechecks its session and membership on
 apart from the session's, and closing or pausing one never ends the
 session.
 
-**Source.** OpContext, Stages.
+**Source.** TenantContext, Stages.
 
 **Look for.** The socket handler and what bounds its life: the deadline
 it sets from the session's expiry when the ticket is redeemed, and the
@@ -751,7 +751,7 @@ the work in `caused_by_request_id`, read off the work item. The two are
 separate fields, both inherited by every stage above and both logged,
 and neither is written over the other.
 
-**Source.** Telemetry, Correlation Across a Handoff; OpContext, Stages.
+**Source.** Telemetry, Correlation Across a Handoff; TenantContext, Stages.
 
 **Look for.** The worker loop's mint per claim and per sweep pass and
 what it reads off the item; the request stage's fields; the log records
@@ -948,7 +948,7 @@ lost. Removing the issuer's membership revokes, in the same write,
 every key the issuer minted in that tenant, and a revoked key is refused
 `401`.
 
-**Source.** OpContext; The Network Layer, The Gateway.
+**Source.** TenantContext; The Network Layer, The Gateway.
 
 **Look for.** Where an API key is admitted: whether the admission
 reads the issuer's current membership and role beside the key's own,
@@ -978,7 +978,7 @@ holds `<ROOT>_OPERATOR_TOKEN`, a `read` token, and
 `<ROOT>_PROVISIONER_TOKEN`, a `write` token, and no password or TOTP
 secret.
 
-**Source.** OpContext, The Operator Context; The Network Layer, The
+**Source.** TenantContext, The Operator Context; The Network Layer, The
 Gateway; Deployment, Migrating a Deployed Database; Operations,
 Operator Credentials.
 

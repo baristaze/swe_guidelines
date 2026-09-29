@@ -12,13 +12,13 @@ from collections.abc import Mapping
 from uuid import UUID
 
 from acme.om.base import utcnow
+from acme.om.context import ProvenanceScope, TenantContext
 from acme.om.events.types.event import Event
-from acme.om.opcontext import OpContext, ProvenanceScope
 
 
 class EventsManagerInterface(ABC):
     @abstractmethod
-    async def append_event(self, ctx: OpContext, event: Event) -> Event:
+    async def append_event(self, ctx: TenantContext, event: Event) -> Event:
         """Appends an audit event under the caller's tenant. An append is a
         write, so WRITE is required, and the provenance the row records (the
         actor, the request, the app) is stamped from the context, never taken
@@ -29,7 +29,7 @@ class EventsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_events(self, ctx: OpContext, after_seq: int, limit: int) -> list[Event]:
+    async def get_events(self, ctx: TenantContext, after_seq: int, limit: int) -> list[Event]:
         """The tenant's events after `after_seq`, oldest first. Refused with
         `StreamTruncated`, which names the floor and the head, when `after_seq`
         is below the floor: the events after it are no longer all there."""
@@ -46,7 +46,7 @@ class EventsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def purge_tenant(self, ctx: OpContext) -> int:
+    async def purge_tenant(self, ctx: TenantContext) -> int:
         """The sweep, for one tenant deleted longer ago than its retention: its
         whole stream goes, a batch at most a call, so it keeps its org row as
         the record and no row of any other kind. Returns how many events went.
@@ -55,7 +55,7 @@ class EventsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_head(self, ctx: OpContext) -> int:
+    async def get_head(self, ctx: TenantContext) -> int:
         """The tenant's stream position: the last seq assigned, 0 before the
         first event. A client that opens the channel starts here."""
         ...

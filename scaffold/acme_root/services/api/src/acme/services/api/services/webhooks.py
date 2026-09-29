@@ -4,7 +4,7 @@ the queue; what a delivery means is the worker's to apply."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from acme.om.opcontext import RequestContext
+from acme.om.context import RequestContext
 from acme.services.api.types.webhooks import DeliveryReceivedView
 
 

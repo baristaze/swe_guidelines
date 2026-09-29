@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.opcontext import OperatorRole, Role
+from acme.om.context import OperatorRole, Role
 from acme.om.tenancy.rules import MAX_OPERATOR_TOKEN_TTL
 from acme.om.work.types.work_item import WorkKind, WorkStatus
 from acme.services.api.types.common import RequestBody, View

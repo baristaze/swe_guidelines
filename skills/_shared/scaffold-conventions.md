@@ -69,7 +69,7 @@ Each of these holds in every file a scaffold writes, and each is where
 a copy of the shape still goes wrong.
 
 - **The context comes first.** A manager or service operation takes its
-  stage first: `ctx: OpContext` for a tenant, `rctx` on the request
+  stage first: `ctx: TenantContext` for a tenant, `rctx` on the request
   stage for a transition or the sweep, `ictx` for an identity before a
   tenant, and `octx` on the operator plane. A storage method takes
   `org_id: UUID` first. A method that takes no tenant says why in its

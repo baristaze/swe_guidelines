@@ -10,22 +10,22 @@ from acme.infra.impl.local import InfraLocalImpl
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics, WorkAvailablePayload
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import (
+    AppContext,
+    AppType,
+    CredentialKind,
+    OperatorContext,
+    OperatorRole,
+    RequestContext,
+    Role,
+    TenantContext,
+)
 from acme.om.exceptions import (
     LeaseLost,
     NotAuthorized,
     NotFound,
     ValidationFailed,
     WorkNotFailed,
-)
-from acme.om.opcontext import (
-    AppContext,
-    AppType,
-    CredentialKind,
-    OpContext,
-    OperatorContext,
-    OperatorRole,
-    RequestContext,
-    Role,
 )
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
@@ -61,7 +61,7 @@ def managers(infra: InfraLocalImpl, storage: StorageMemoryImpl) -> Managers:
 
 
 @pytest.fixture
-async def ctx(managers: Managers) -> OpContext:
+async def ctx(managers: Managers) -> TenantContext:
     tenancy = managers.tenancy
     _, org = await tenancy.bootstrap(request(APP), "Ajax", "ajax", "ann@example.test", "Ann")
     login = await tenancy.dev_sign_in(request(APP), "ann@example.test")
@@ -71,7 +71,7 @@ async def ctx(managers: Managers) -> OpContext:
 
 
 async def test_enqueue_publishes_and_claim_returns_the_enqueuers_context(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     seen: list[TopicPayload] = []
 
@@ -103,7 +103,7 @@ async def test_enqueue_publishes_and_claim_returns_the_enqueuers_context(
 
 
 async def test_the_run_names_the_request_that_caused_it_and_keeps_its_own(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     """The stage a claim runs under is a new request that names the causing one.
     The enqueue leaves the item's cause and trace context as constructed: they
@@ -131,7 +131,7 @@ async def test_the_run_names_the_request_that_caused_it_and_keeps_its_own(
 
 
 async def test_an_item_that_names_no_causing_request_leaves_the_field_empty(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     """A required reference nobody owns is EMPTY_UUID on the row; the stage
     carries no cause at all, the way a request that arrived at the edge does."""
@@ -144,7 +144,7 @@ async def test_an_item_that_names_no_causing_request_leaves_the_field_empty(
 
 
 async def test_defer_and_release_hand_back_without_spending_an_attempt(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     await managers.work.enqueue(ctx, make_item().model_copy(update={"created_by": ctx.user_id}))
     claimed = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w1", LEASE)
@@ -164,7 +164,7 @@ async def test_defer_and_release_hand_back_without_spending_an_attempt(
 
 
 async def test_fail_requeues_with_a_growing_delay_then_fails(
-    managers: Managers, ctx: OpContext, monkeypatch: pytest.MonkeyPatch
+    managers: Managers, ctx: TenantContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     item = make_item().model_copy(update={"created_by": ctx.user_id, "max_attempts": 2})
     await managers.work.enqueue(ctx, item)
@@ -190,7 +190,7 @@ async def test_fail_requeues_with_a_growing_delay_then_fails(
     assert await managers.work.claim(request(), "default", [WorkKind.NOOP], "w1", LEASE) is None
 
 
-async def test_extend_lease_and_lease_loss(managers: Managers, ctx: OpContext) -> None:
+async def test_extend_lease_and_lease_loss(managers: Managers, ctx: TenantContext) -> None:
     await managers.work.enqueue(ctx, make_item().model_copy(update={"created_by": ctx.user_id}))
     claimed = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w1", LEASE)
     assert claimed is not None
@@ -209,7 +209,7 @@ async def test_extend_lease_and_lease_loss(managers: Managers, ctx: OpContext) -
 
 
 async def test_the_same_worker_re_claiming_after_a_requeue_refuses_its_stale_copy(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     # A worker whose lease expired, whose item the sweep requeued, and which
     # claims the same item again: the stale copy's completion carries the old
@@ -240,7 +240,7 @@ async def test_the_same_worker_re_claiming_after_a_requeue_refuses_its_stale_cop
 
 
 async def test_transitions_refuse_a_lost_lease_and_a_missing_item(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
     await managers.work.enqueue(ctx, make_item().model_copy(update={"created_by": ctx.user_id}))
     claimed = await managers.work.claim(
@@ -272,7 +272,7 @@ async def test_transitions_refuse_a_lost_lease_and_a_missing_item(
     assert done.status is WorkStatus.DONE
 
 
-async def second_tenant(managers: Managers) -> OpContext:
+async def second_tenant(managers: Managers) -> TenantContext:
     """Bob's context in a second team org, Beta."""
     tenancy = managers.tenancy
     _, beta = await tenancy.bootstrap(request(APP), "Beta", "beta", "bob@example.test", "Bob")
@@ -283,7 +283,7 @@ async def second_tenant(managers: Managers) -> OpContext:
 
 
 async def test_requeue_stale_runs_once_across_tenants_and_dead_letters_in_each(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     # One call reaches every tenant's expired leases, a batch at a time. An
     # item whose attempts are spent is a dead letter, and its audit event
@@ -331,7 +331,7 @@ async def test_requeue_stale_runs_once_across_tenants_and_dead_letters_in_each(
 
 
 async def test_a_dead_letter_in_a_gone_tenant_is_counted_without_an_event(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
     # A tenant that is gone has no stream to write into, as the claim's
     # orphan says: the requeue fails the item and counts it, and the other
@@ -362,7 +362,7 @@ async def test_a_dead_letter_in_a_gone_tenant_is_counted_without_an_event(
 
 
 async def test_enqueue_stamps_the_actor_and_clears_the_claim_whatever_the_caller_sent(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     sent = make_item().model_copy(
         update={
@@ -389,7 +389,7 @@ async def test_enqueue_stamps_the_actor_and_clears_the_claim_whatever_the_caller
 
 
 async def test_a_retried_enqueue_returns_the_row_as_stored_and_keeps_the_claim(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     seen: list[TopicPayload] = []
 
@@ -412,7 +412,7 @@ async def test_a_retried_enqueue_returns_the_row_as_stored_and_keeps_the_claim(
 
 
 async def test_a_reused_idempotency_key_returns_the_row_it_named(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     """A reused key is a retry, not a conflict: the insert reports it, the
     manager reads the row back, and the queue is not woken a second time. It is
@@ -433,7 +433,7 @@ async def test_a_reused_idempotency_key_returns_the_row_it_named(
 
 
 async def test_enqueue_refuses_a_payload_outside_the_kinds_shape(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     # WORK_PAYLOADS fixes the shape per kind; NOOP carries nothing.
     item = make_item().model_copy(update={"created_by": ctx.user_id, "payload": {"extra": 1}})
@@ -442,7 +442,7 @@ async def test_enqueue_refuses_a_payload_outside_the_kinds_shape(
 
 
 async def test_a_failed_item_is_a_dead_letter_with_an_audit_event(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     seen: list[TopicPayload] = []
 
@@ -467,7 +467,7 @@ async def test_a_failed_item_is_a_dead_letter_with_an_audit_event(
 
 
 async def test_a_failure_for_good_is_a_dead_letter_with_attempts_left(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     """A refusal is failed at once: the attempt the claim spent stays spent,
     the rest go unused, and the dead letter is the one an exhausted item
@@ -500,7 +500,7 @@ def operator(role: OperatorRole = OperatorRole.WRITE) -> OperatorContext:
     )
 
 
-async def failed_item(managers: Managers, ctx: OpContext) -> tuple[UUID, WorkItem]:
+async def failed_item(managers: Managers, ctx: TenantContext) -> tuple[UUID, WorkItem]:
     item = make_item().model_copy(update={"created_by": ctx.user_id, "max_attempts": 3})
     await managers.work.enqueue(ctx, item)
     claimed = await managers.work.claim(request(), "default", [WorkKind.NOOP], "w1", LEASE)
@@ -510,7 +510,7 @@ async def failed_item(managers: Managers, ctx: OpContext) -> tuple[UUID, WorkIte
 
 
 async def test_an_operator_requeues_a_failed_item_as_a_fresh_one(
-    managers: Managers, infra: InfraLocalImpl, ctx: OpContext
+    managers: Managers, infra: InfraLocalImpl, ctx: TenantContext
 ) -> None:
     woken: list[TopicPayload] = []
 
@@ -545,7 +545,7 @@ async def test_an_operator_requeues_a_failed_item_as_a_fresh_one(
 
 
 async def test_a_requeue_of_an_item_that_is_not_failed_is_refused(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     item_id, _ = await failed_item(managers, ctx)
     await managers.work_operator.requeue(operator(), ctx.org_id, item_id)
@@ -563,7 +563,7 @@ async def test_a_requeue_of_an_item_that_is_not_failed_is_refused(
 
 
 async def test_a_requeue_takes_the_write_permission_and_a_real_item(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     item_id, _ = await failed_item(managers, ctx)
     with pytest.raises(NotAuthorized):
@@ -577,7 +577,7 @@ async def test_a_requeue_takes_the_write_permission_and_a_real_item(
 
 
 async def test_a_retry_that_still_has_attempts_is_not_a_dead_letter(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     item = make_item().model_copy(update={"created_by": ctx.user_id, "max_attempts": 3})
     await managers.work.enqueue(ctx, item)
@@ -590,7 +590,10 @@ async def test_a_retry_that_still_has_attempts_is_not_a_dead_letter(
 
 
 async def test_purge_items_takes_done_and_failed_items_past_the_retention(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext, monkeypatch: pytest.MonkeyPatch
+    managers: Managers,
+    storage: StorageMemoryImpl,
+    ctx: TenantContext,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for _ in range(2):
         await managers.work.enqueue(ctx, make_item().model_copy(update={"created_by": ctx.user_id}))
@@ -617,7 +620,10 @@ async def test_purge_items_takes_done_and_failed_items_past_the_retention(
 
 
 async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext, monkeypatch: pytest.MonkeyPatch
+    managers: Managers,
+    storage: StorageMemoryImpl,
+    ctx: TenantContext,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The claim is written before the tenant is checked. A deleted tenant used
     # to leave the row claimed for good: no context to settle it under, and no
@@ -677,7 +683,7 @@ async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
 
 
 async def test_every_write_after_the_enqueue_is_the_platforms(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
     """`created_by` is the person who asked for the work and `updated_by` is the
     machinery that ran it: the claim, the renewal, the hand-back, the requeue,
@@ -717,7 +723,7 @@ async def test_every_write_after_the_enqueue_is_the_platforms(
 
 
 async def test_a_transition_writes_the_stored_row_and_not_the_workers_copy(
-    managers: Managers, storage: StorageMemoryImpl, ctx: OpContext
+    managers: Managers, storage: StorageMemoryImpl, ctx: TenantContext
 ) -> None:
     """The copy starts from the stored row: what a worker sends back cannot
     rewrite who asked for the work, when it was asked for, or what it is. The
@@ -745,7 +751,7 @@ async def test_a_transition_writes_the_stored_row_and_not_the_workers_copy(
 
 
 async def test_the_gauges_read_the_backlog_and_the_dead_letters_of_late(
-    managers: Managers, ctx: OpContext
+    managers: Managers, ctx: TenantContext
 ) -> None:
     """The age of the item ready longest, zero when nothing waits, and the
     items failed within a window, which an operator's requeue takes back out."""

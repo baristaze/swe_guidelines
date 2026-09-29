@@ -7,7 +7,7 @@ from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
 from acme.om.base import new_id, utcnow
-from acme.om.opcontext import AppContext, AppType, OperatorContext, RequestContext
+from acme.om.context import AppContext, AppType, OperatorContext, RequestContext
 from acme.om.tenancy.impl.manager import TenancyManagerImpl
 from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl
 from acme.om.tenancy.rules import TOTP_STEP, totp_code, totp_step

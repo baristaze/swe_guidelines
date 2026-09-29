@@ -11,7 +11,7 @@ itself is `noop`, which changes nothing else."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from acme.om.opcontext import OpContext
+from acme.om.context import TenantContext
 from acme.om.orchestrations.types.orchestration import (
     FailReason,
     Orchestration,
@@ -23,7 +23,7 @@ from acme.om.orchestrations.types.orchestration import (
 
 class OrchestrationsManagerInterface(ABC):
     @abstractmethod
-    async def start(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+    async def start(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         """The create: the record lands running at its first cursor, with the
         hint that announces it and the work row that asks for its first step,
         in one commit. The input must be the shape its kind fixes
@@ -32,10 +32,10 @@ class OrchestrationsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get(self, ctx: OpContext, record_id: UUID) -> Orchestration: ...
+    async def get(self, ctx: TenantContext, record_id: UUID) -> Orchestration: ...
 
     @abstractmethod
-    async def step_noop(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+    async def step_noop(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         """One step of a `noop` record: the cursor moves by one, and the record
         succeeds once it reaches its input's count. The record is written
         alone, conditioned on the version of `record`, with the work row of
@@ -44,20 +44,20 @@ class OrchestrationsManagerInterface(ABC):
 
     @abstractmethod
     async def get_recent(
-        self, ctx: OpContext, kind: OrchestrationKind, limit: int
+        self, ctx: TenantContext, kind: OrchestrationKind, limit: int
     ) -> OrchestrationPage:
         """The org's newest records of a kind, newest first; `limit` is clamped."""
         ...
 
     @abstractmethod
-    async def resume(self, ctx: OpContext, record_id: UUID) -> Orchestration:
+    async def resume(self, ctx: TenantContext, record_id: UUID) -> Orchestration:
         """A person's wake: a parked record runs again from its cursor, whatever
         its reason. A running record is answered as it is; a settled one is
         refused (`ValidationFailed`), since nothing is left to run."""
         ...
 
     @abstractmethod
-    async def wake(self, ctx: OpContext, reason: ParkReason) -> int:
+    async def wake(self, ctx: TenantContext, reason: ParkReason) -> int:
         """The event's wake: every record of the org parked for `reason`
         resumes, staggered; returns how many. What cleared the reason asks
         for it (a provider that answers again clears `provider_unavailable`)."""
@@ -66,7 +66,7 @@ class OrchestrationsManagerInterface(ABC):
     @abstractmethod
     async def fail(
         self,
-        ctx: OpContext,
+        ctx: TenantContext,
         record: Orchestration,
         reason: FailReason,
         detail: str | None = None,
@@ -85,7 +85,7 @@ class OrchestrationsManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def purge_tenant(self, ctx: OpContext) -> int:
+    async def purge_tenant(self, ctx: TenantContext) -> int:
         """The sweep, for one tenant past its own retention: every record, a
         batch at most a call. Any other tenant returns 0 and reads nothing:
         its settled records go across tenants."""

@@ -1,7 +1,7 @@
 """The operator plane of the tenancy swimlane: what a platform operator may
 do across every tenant. Every operation takes `OperatorContext` and nothing
 else, but the sweep's tally of the platform's size, which takes no context
-at all; the tenant manager takes `OpContext` and nothing else, so the type
+at all; the tenant manager takes `TenantContext` and nothing else, so the type
 system keeps the two planes apart. A read requires `OperatorPermission.READ`
 and a write `OperatorPermission.WRITE`, which the allowlist entry grants.
 
@@ -29,7 +29,7 @@ from acme.om.tenancy.types.user import User
 if TYPE_CHECKING:
     from datetime import timedelta
 
-    from acme.om.opcontext import OperatorContext, OperatorRole, Role
+    from acme.om.context import OperatorContext, OperatorRole, Role
 
 
 class TenancyOperatorManagerInterface(ABC):

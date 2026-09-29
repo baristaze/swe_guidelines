@@ -13,11 +13,11 @@ from collections.abc import Iterator
 
 from arch_check.project import Function, Project, SourceFile, classes, dotted, is_under, last, methods
 
-STAGES = ("RequestContext", "IdentityContext", "OpContext", "OperatorContext")
-"""The four stages, by the names the guideline gives them (OpContext, Stages)."""
+STAGES = ("RequestContext", "IdentityContext", "TenantContext", "OperatorContext")
+"""The four stages, by the names the guideline gives them (TenantContext, Stages)."""
 
 REQUEST_STAGE = "RequestContext"
-STAGE_MODULE = "om.opcontext"
+STAGE_MODULE = "om.context"
 """The module that declares the stages and the scopes, below the product package."""
 
 HTTP_VERBS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
@@ -42,7 +42,7 @@ def namespace_of(project: Project, module: str) -> str | None:
     if not is_under(module, om) or module == om:
         return None
     first = segments(module[len(om) + 1 :])[0]
-    if first in {"storage", "base", "root", "opcontext", "exceptions"}:
+    if first in {"storage", "base", "root", "context", "exceptions"}:
         return None
     return first
 
@@ -105,7 +105,7 @@ def names_in(node: ast.AST | None) -> set[str]:
 
 
 def head_name(node: ast.AST | None) -> str | None:
-    """The one name an annotation is, `ctx: OpContext` or `ctx: "OpContext"`; None for anything wider."""
+    """The one name an annotation is, `ctx: TenantContext` or `ctx: "TenantContext"`; None for anything wider."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
@@ -227,7 +227,7 @@ def calls(node: ast.AST) -> Iterator[ast.Call]:
 
 
 def called_name(call: ast.Call) -> str | None:
-    """The last name of what a call calls: `OpContext` for `opcontext.OpContext(...)`."""
+    """The last name of what a call calls: `TenantContext` for `context.TenantContext(...)`."""
     return last(dotted(call.func)) if isinstance(call.func, ast.Name | ast.Attribute) else None
 
 

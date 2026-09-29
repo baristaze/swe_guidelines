@@ -20,8 +20,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import ClassVar
 
 from acme.infra.observability import OUTCOMES
+from acme.om.context import Permission, TenantContext
 from acme.om.exceptions import NotFound, PreconditionFailed
-from acme.om.opcontext import OpContext, Permission
 from acme.om.orchestrations import OrchestrationsManagerInterface
 from acme.om.orchestrations.rules import outcome
 from acme.om.orchestrations.types.orchestration import (
@@ -36,7 +36,7 @@ from acme.om.work.types.work_item import WakeParkedPayload, WorkItem
 
 log = logging.getLogger(__name__)
 
-StepFn = Callable[[OpContext, Orchestration], Awaitable[Orchestration]]
+StepFn = Callable[[TenantContext, Orchestration], Awaitable[Orchestration]]
 """One step of a kind: `OrchestrationsManagerInterface.step_noop`, or the step
 of the namespace whose rows a product's kind changes."""
 
@@ -53,7 +53,7 @@ class OrchestrationHandlerImpl(WorkHandlerInterface):
         self._orchestrations = orchestrations
         self._steps = steps
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         try:
             record = await self._orchestrations.get(ctx, item.target_id)
         except NotFound:
@@ -115,7 +115,7 @@ class WakeParkedHandlerImpl(WorkHandlerInterface):
     def __init__(self, orchestrations: OrchestrationsManagerInterface) -> None:
         self._orchestrations = orchestrations
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         reason = WakeParkedPayload.model_validate(dict(item.payload)).reason
         woken = await self._orchestrations.wake(ctx, reason)
         log.info("woke %d records parked for %s in org %s", woken, reason.value, ctx.org_id)

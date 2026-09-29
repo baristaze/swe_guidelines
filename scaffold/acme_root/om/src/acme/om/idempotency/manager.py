@@ -11,14 +11,14 @@ not repeated."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
+from acme.om.context import OperatorContext, TenantContext
 from acme.om.idempotency.types.record import IdempotencyRecord
-from acme.om.opcontext import OpContext, OperatorContext
 
 
 class IdempotencyManagerInterface(ABC):
     @abstractmethod
     async def begin(
-        self, ctx: OpContext, key: str, request_digest: str, target_id: UUID
+        self, ctx: TenantContext, key: str, request_digest: str, target_id: UUID
     ) -> IdempotencyRecord:
         """Writes a pending record for (tenant, user, key) carrying `target_id`, the
         id the create will use, and a freshly minted `attempt_id`, and returns it:
@@ -34,7 +34,7 @@ class IdempotencyManagerInterface(ABC):
 
     @abstractmethod
     async def finish(
-        self, ctx: OpContext, key: str, attempt_id: UUID, status: int, body: str
+        self, ctx: TenantContext, key: str, attempt_id: UUID, status: int, body: str
     ) -> IdempotencyRecord:
         """Records the outcome on the record `begin` wrote, in one write conditional
         on `attempt_id` still holding it. Only an outcome a retry cannot change
@@ -84,7 +84,7 @@ class IdempotencyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def release(self, ctx: OpContext, key: str, attempt_id: UUID) -> None:
+    async def release(self, ctx: TenantContext, key: str, attempt_id: UUID) -> None:
         """Clears the attempt from the pending record `begin` wrote, because the
         attempt failed in a way a retry may change. The record stays, with its
         digest and its `target_id`, so the next attempt re-arms it and reruns on

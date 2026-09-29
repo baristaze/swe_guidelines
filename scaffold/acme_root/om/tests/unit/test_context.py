@@ -13,16 +13,13 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
-from acme.om.exceptions import InvalidCredential, NotAnOperator, NotAuthorized
-from acme.om.opcontext import (
+from acme.om.context import (
     ActorScope,
     AppContext,
     AppType,
     CredentialKind,
     CredentialScope,
     IdentityContext,
-    OpContext,
     OperatorContext,
     OperatorPermission,
     OperatorRole,
@@ -30,9 +27,12 @@ from acme.om.opcontext import (
     RequestContext,
     RequestScope,
     Role,
+    TenantContext,
     TenantScope,
     build_context,
 )
+from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
+from acme.om.exceptions import InvalidCredential, NotAnOperator, NotAuthorized
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
@@ -70,11 +70,11 @@ def manager(tmp_path: Path) -> TenancyManagerImpl:
 
 def test_every_stage_is_a_request_context_and_only_admin_is_an_identity() -> None:
     assert issubclass(IdentityContext, RequestContext)
-    assert issubclass(OpContext, RequestContext)
+    assert issubclass(TenantContext, RequestContext)
     assert issubclass(OperatorContext, IdentityContext)
-    assert not issubclass(OpContext, IdentityContext)
-    assert not issubclass(IdentityContext, OpContext)
-    assert not issubclass(OperatorContext, OpContext)
+    assert not issubclass(TenantContext, IdentityContext)
+    assert not issubclass(IdentityContext, TenantContext)
+    assert not issubclass(OperatorContext, TenantContext)
 
 
 def test_a_stage_is_immutable() -> None:
@@ -147,7 +147,7 @@ async def test_authenticate_produces_the_tenant_stage_and_refuses_a_login_token(
     issued = await manager.exchange_login(ictx, org.id)
     rctx = request()
     ctx = await manager.authenticate(rctx, issued.token)
-    assert type(ctx) is OpContext
+    assert type(ctx) is TenantContext
     assert ctx.org_id == org.id and ctx.security.role is Role.OWNER
     assert ctx.credential_kind is CredentialKind.SESSION_TOKEN
     assert ctx.credential_id != EMPTY_UUID

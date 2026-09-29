@@ -6,7 +6,7 @@ from uuid import UUID
 import httpx
 from api_support import OWNER, add_member, dev_login, seed_request, sign_in_as
 
-from acme.om.opcontext import OperatorRole, Role
+from acme.om.context import OperatorRole, Role
 from acme.services.api.container import AppContainer
 
 

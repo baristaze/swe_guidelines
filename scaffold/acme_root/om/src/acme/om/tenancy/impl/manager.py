@@ -25,6 +25,18 @@ from acme.integrations.identity import (
     ProvidedSignIn,
 )
 from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.context import (
+    CredentialKind,
+    IdentityContext,
+    OperatorContext,
+    OperatorPermission,
+    OperatorRole,
+    Permission,
+    RequestContext,
+    Role,
+    TenantContext,
+    build_context,
+)
 from acme.om.exceptions import (
     Conflict,
     CredentialExpired,
@@ -49,18 +61,6 @@ from acme.om.exceptions import (
     ValidationFailed,
 )
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import (
-    CredentialKind,
-    IdentityContext,
-    OpContext,
-    OperatorContext,
-    OperatorPermission,
-    OperatorRole,
-    Permission,
-    RequestContext,
-    Role,
-    build_context,
-)
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
 from acme.om.tenancy.impl.creates import (
@@ -327,7 +327,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         display_name: str,
         *,
         operator_role: OperatorRole | None = None,
-    ) -> tuple[OpContext, Org]:
+    ) -> tuple[TenantContext, Org]:
         org, user, membership = await create_org_with_owner(
             self._storage,
             org_id=new_id(),
@@ -357,7 +357,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         email: str,
         display_name: str,
         role: Role,
-    ) -> tuple[OpContext, User, bool]:
+    ) -> tuple[TenantContext, User, bool]:
         org = await self._storage.read_org_by_slug(slug)
         if org is None or org.deleted_at is not None:
             raise NotFound(f"org {slug!r} not found")
@@ -931,7 +931,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         rows = await self._storage.read_memberships_by_identity(ictx.identity_id, limit + 1, after)
         return OrgMembershipPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def authenticate(self, rctx: RequestContext, credential: str) -> OpContext:
+    async def authenticate(self, rctx: RequestContext, credential: str) -> TenantContext:
         kind = credential_kind_of(credential)
         if kind is CredentialKind.SESSION_TOKEN:
             found = await self._storage.read_session_by_digest(hash_token(credential))
@@ -1162,7 +1162,9 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise InvalidCredential("socket ticket expired")
         return await self.resume(rctx, org_id, behind.credential_kind, behind.credential_id)
 
-    async def service_context(self, rctx: RequestContext, org_id: UUID, user_id: UUID) -> OpContext:
+    async def service_context(
+        self, rctx: RequestContext, org_id: UUID, user_id: UUID
+    ) -> TenantContext:
         # Minted for the tenant on the service role's authority; the person is
         # the attribution, not the authority: they authorized the work once, at
         # enqueue, so neither their user nor their membership is read, and a
@@ -1191,7 +1193,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 return orgs
             after_id = page[-1].id
 
-    async def service_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def service_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         # Minted for the tenant, not for a member: the system user is the actor
         # and no user or membership is read, so it costs one read per page of
         # tenants and a tenant whose members have all left is still swept. So
@@ -1220,14 +1222,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
 
     # The principal.
 
-    async def get_org(self, ctx: OpContext) -> Org:
+    async def get_org(self, ctx: TenantContext) -> Org:
         ctx.require(Permission.READ)
         org = await self._storage.read_org(ctx.org_id)
         if org is None or org.deleted_at is not None:
             raise NotFound(f"org {ctx.org_id} not found")
         return org
 
-    async def get_me(self, ctx: OpContext) -> OrgMembership:
+    async def get_me(self, ctx: TenantContext) -> OrgMembership:
         ctx.require(Permission.READ)
         org, user, membership = await self._storage.read_principal(ctx.org_id, ctx.user_id)
         if org is None or org.deleted_at is not None:
@@ -1237,7 +1239,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         return OrgMembership(org=org, user=user, role=membership.role)
 
     async def create_org(
-        self, ctx: OpContext, name: str, slug: str | None, attempt: Attempt | None = None
+        self, ctx: TenantContext, name: str, slug: str | None, attempt: Attempt | None = None
     ) -> OrgMembership:
         ctx.require(Permission.READ)
         # A person makes an org, not a program: an api key belongs to the
@@ -1272,7 +1274,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._storage.create_org_with_owner(org.id, org, owner, membership)
         return OrgMembership(org=org, user=owner, role=membership.role)
 
-    async def get_identity(self, ctx: OpContext) -> Identity:
+    async def get_identity(self, ctx: TenantContext) -> Identity:
         ctx.require(Permission.READ)
         user = await self._live_user(ctx, ctx.user_id)
         identity = await self._storage.read_identity(user.identity_id)
@@ -1280,7 +1282,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise NotFound(f"identity {user.identity_id} not found")
         return identity
 
-    async def set_time_zone(self, ctx: OpContext, time_zone: str) -> Identity:
+    async def set_time_zone(self, ctx: TenantContext, time_zone: str) -> Identity:
         ctx.require(Permission.READ)
         try:
             check_time_zone(time_zone)
@@ -1294,7 +1296,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
     # Invitations and single sign-on.
 
     async def invite_member(
-        self, ctx: OpContext, email: str, role: Role, attempt: Attempt | None = None
+        self, ctx: TenantContext, email: str, role: Role, attempt: Attempt | None = None
     ) -> Invitation:
         ctx.require(Permission.MANAGE_MEMBERS)
         if role is Role.SERVICE:
@@ -1362,14 +1364,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
         return invitation
 
     async def get_invitations(
-        self, ctx: OpContext, after: UUID | None, limit: int
+        self, ctx: TenantContext, after: UUID | None, limit: int
     ) -> InvitationPage:
         ctx.require(Permission.MANAGE_MEMBERS)
         limit = self._clamp(limit)
         rows = await self._storage.read_invitations(ctx.org_id, after, limit + 1)
         return InvitationPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def resend_invitation(self, ctx: OpContext, invitation_id: UUID) -> Invitation:
+    async def resend_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
         ctx.require(Permission.MANAGE_MEMBERS)
         invitation = await self._pending_invitation(ctx, invitation_id)
         sent = await self._provider_call(
@@ -1391,7 +1393,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._relay.relay(ctx.org_id, row)
         return resent
 
-    async def revoke_invitation(self, ctx: OpContext, invitation_id: UUID) -> Invitation:
+    async def revoke_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
         ctx.require(Permission.MANAGE_MEMBERS)
         invitation = await self._pending_invitation(ctx, invitation_id)
         if invitation.open_at(utcnow()):
@@ -1406,7 +1408,9 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 raise Unavailable(f"invitations are not available: {error.message}") from None
         return await self._close_invitation(ctx, invitation, InvitationState.REVOKED)
 
-    async def sso_setup_link(self, ctx: OpContext, intent: PortalIntent, return_url: str) -> str:
+    async def sso_setup_link(
+        self, ctx: TenantContext, intent: PortalIntent, return_url: str
+    ) -> str:
         ctx.require(Permission.MANAGE_MEMBERS)
         if origin_of(return_url) not in {origin_of(u) for u in self._options.sign_in_redirect_uris}:
             raise ValidationFailed("the link comes back to this environment's portal only")
@@ -1424,7 +1428,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             )
         )
 
-    async def _provider_org(self, ctx: OpContext) -> Org:
+    async def _provider_org(self, ctx: TenantContext) -> Org:
         """The org, with its organization at the identity provider, made the
         first time and kept: the provider finds it by the org's id when a
         write of the link was lost, so a rerun never makes a second one."""
@@ -1458,7 +1462,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         except ProviderUnavailable as error:
             raise Unavailable(f"the identity provider is not available: {error.message}") from None
 
-    async def _refuse_member(self, ctx: OpContext, email: str) -> None:
+    async def _refuse_member(self, ctx: TenantContext, email: str) -> None:
         """An address whose person is a member of the org already is Conflict."""
         identity = await self._storage.read_identity_by_email_digest(email_digest(email))
         if identity is None:
@@ -1468,7 +1472,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             if member_org_id == ctx.org_id and user.deleted_at is None:
                 raise Conflict("that person is a member already")
 
-    async def _pending_invitation(self, ctx: OpContext, invitation_id: UUID) -> Invitation:
+    async def _pending_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
         invitation = await self._storage.read_invitation(ctx.org_id, invitation_id)
         if invitation is None:
             raise NotFound(f"invitation {invitation_id} not found")
@@ -1477,7 +1481,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         return invitation
 
     async def _close_invitation(
-        self, ctx: OpContext, invitation: Invitation, state: InvitationState
+        self, ctx: TenantContext, invitation: Invitation, state: InvitationState
     ) -> Invitation:
         closed = invitation.model_copy(
             update={"state": state, "updated_at": utcnow(), "updated_by": ctx.user_id}
@@ -1487,7 +1491,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._relay.relay(ctx.org_id, row)
         return closed
 
-    async def rename_user(self, ctx: OpContext, user_id: UUID, display_name: str) -> User:
+    async def rename_user(self, ctx: TenantContext, user_id: UUID, display_name: str) -> User:
         ctx.require(Permission.READ)
         if user_id != ctx.user_id:
             ctx.require(Permission.MANAGE_MEMBERS)
@@ -1506,13 +1510,13 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._write_user(ctx, updated, "updated")
         return updated
 
-    async def get_users(self, ctx: OpContext, after: UUID | None, limit: int) -> UserPage:
+    async def get_users(self, ctx: TenantContext, after: UUID | None, limit: int) -> UserPage:
         ctx.require(Permission.READ)
         limit = self._clamp(limit)
         rows = await self._storage.read_users(ctx.org_id, after, limit + 1)
         return UserPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def get_user(self, ctx: OpContext, user_id: UUID) -> User:
+    async def get_user(self, ctx: TenantContext, user_id: UUID) -> User:
         ctx.require(Permission.READ)
         user = await self._storage.read_user(ctx.org_id, user_id)
         if user is None or user.deleted_at is not None:
@@ -1522,14 +1526,16 @@ class TenancyManagerImpl(TenancyManagerInterface):
     # Memberships.
 
     async def get_memberships(
-        self, ctx: OpContext, after: UUID | None, limit: int
+        self, ctx: TenantContext, after: UUID | None, limit: int
     ) -> MembershipPage:
         ctx.require(Permission.READ)
         limit = self._clamp(limit)
         rows = await self._storage.read_memberships(ctx.org_id, limit + 1, after)
         return MembershipPage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
-    async def update_membership_role(self, ctx: OpContext, user_id: UUID, role: Role) -> Membership:
+    async def update_membership_role(
+        self, ctx: TenantContext, user_id: UUID, role: Role
+    ) -> Membership:
         ctx.require(Permission.MANAGE_MEMBERS)
         if role is Role.SERVICE:
             raise ValidationFailed("service is not a membership role")
@@ -1551,7 +1557,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._relay.relay(ctx.org_id, row)
         return updated
 
-    async def remove_member(self, ctx: OpContext, user_id: UUID) -> User:
+    async def remove_member(self, ctx: TenantContext, user_id: UUID) -> User:
         ctx.require(Permission.MANAGE_MEMBERS)
         if user_id == ctx.user_id:
             raise ValidationFailed("a member cannot remove themselves")
@@ -1598,7 +1604,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         return removed
 
     async def delete_account(
-        self, ctx: OpContext, confirm_email: str, return_to: str | None = None
+        self, ctx: TenantContext, confirm_email: str, return_to: str | None = None
     ) -> AccountDeleted:
         ctx.require(Permission.READ)
         # A person deletes their account, not a program: an api key belongs
@@ -1708,7 +1714,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             return None
         return identity.subject
 
-    async def delete_personal_org(self, ctx: OpContext) -> Org | None:
+    async def delete_personal_org(self, ctx: TenantContext) -> Org | None:
         ctx.require(Permission.MANAGE_MEMBERS)
         org = await self._storage.read_org(ctx.org_id)
         if org is None:
@@ -1738,7 +1744,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._relay.relay(org.id, row)
         return deleted
 
-    async def delete_org(self, ctx: OpContext, confirm_name: str) -> OrgDeleted:
+    async def delete_org(self, ctx: TenantContext, confirm_name: str) -> OrgDeleted:
         ctx.require(Permission.MANAGE_MEMBERS)
         # A person deletes the org, not a program: an api key is the tenant's,
         # and the tenant is not its to end.
@@ -1822,7 +1828,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             token=token, expires_at=session.expires_at, org=home.org, user=home.user, role=home.role
         )
 
-    async def delete_closed_org(self, ctx: OpContext) -> Org | None:
+    async def delete_closed_org(self, ctx: TenantContext) -> Org | None:
         ctx.require(Permission.MANAGE_MEMBERS)
         if ctx.security.role is not Role.SERVICE:
             raise NotAuthorized("a closed org is ended by the platform")
@@ -1850,20 +1856,20 @@ class TenancyManagerImpl(TenancyManagerInterface):
         await self._relay.relay(org.id, row)
         return deleted
 
-    async def count_members(self, ctx: OpContext) -> int:
+    async def count_members(self, ctx: TenantContext) -> int:
         ctx.require(Permission.READ)
         return await self._storage.count_members(ctx.org_id)
 
     # Credentials.
 
-    async def get_sessions(self, ctx: OpContext, limit: int) -> list[Session]:
+    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[Session]:
         ctx.require(Permission.READ)
         # Live at the storage: a page of dead sessions cannot hide a live one.
         return await self._storage.read_sessions(
             ctx.org_id, ctx.user_id, utcnow(), self._clamp(limit)
         )
 
-    async def revoke_session(self, ctx: OpContext, session_id: UUID) -> Session:
+    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> Session:
         ctx.require(Permission.READ)
         session = await self._storage.read_session(ctx.org_id, session_id)
         if session is None or session.revoked_at is not None:
@@ -1941,7 +1947,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             log.warning("the provider's session outlives the sign-out: %s", error.message)
             return None
 
-    async def get_api_keys(self, ctx: OpContext, after: UUID | None, limit: int) -> ApiKeyPage:
+    async def get_api_keys(self, ctx: TenantContext, after: UUID | None, limit: int) -> ApiKeyPage:
         ctx.require(Permission.MANAGE_KEYS)
         # A member manager sees the tenant's keys; anyone else their own, filtered
         # at the storage so a page of other people's keys cannot hide theirs.
@@ -1954,7 +1960,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
 
     async def create_api_key(
         self,
-        ctx: OpContext,
+        ctx: TenantContext,
         name: str,
         role: Role,
         ttl: timedelta | None = None,
@@ -2002,7 +2008,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             await self._relay.relay(ctx.org_id, row)
         return IssuedApiKey(key=key, api_key=stored)
 
-    async def revoke_api_key(self, ctx: OpContext, api_key_id: UUID) -> ApiKey:
+    async def revoke_api_key(self, ctx: TenantContext, api_key_id: UUID) -> ApiKey:
         ctx.require(Permission.MANAGE_KEYS)
         api_key = await self._storage.read_api_key(ctx.org_id, api_key_id)
         if api_key is None or api_key.deleted_at is not None:
@@ -2034,14 +2040,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
         )
         return purged
 
-    async def purge_tenant(self, ctx: OpContext) -> int:
+    async def purge_tenant(self, ctx: TenantContext) -> int:
         ctx.require(Permission.MANAGE_MEMBERS)
         if not await self.tenant_expired(ctx):
             return 0
         # The tenant itself is past the retention: every row of it goes.
         return await self._storage.purge_tenant(ctx.org_id, self._options.purge_batch)
 
-    async def tenant_expired(self, ctx: OpContext) -> bool:
+    async def tenant_expired(self, ctx: TenantContext) -> bool:
         ctx.require(Permission.READ)
         swept = self._pass
         if swept is not None and ctx.request_id == swept[0] and ctx.org_id in swept[1]:
@@ -2049,13 +2055,13 @@ class TenancyManagerImpl(TenancyManagerInterface):
         org = await self._storage.read_org(ctx.org_id)
         return org is not None and past_retention(org, utcnow() - self._options.retention)
 
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         ctx.require(Permission.MANAGE_MEMBERS)
         if not await self.tenant_expired(ctx):
             return False
         return await self._storage.mark_org_purged(ctx.org_id, utcnow())
 
-    async def issue_ticket(self, ctx: OpContext) -> IssuedTicket:
+    async def issue_ticket(self, ctx: TenantContext) -> IssuedTicket:
         ctx.require(Permission.READ)
         if ctx.security.credential_kind not in TICKET_CREDENTIALS:
             raise NotAuthorized("a ticket stands for a session token or an api key")
@@ -2083,7 +2089,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
     # appends the event and pushes at once, and the sweep catches what a crash
     # left behind.
 
-    async def _write_user(self, ctx: OpContext, user: User, action: str) -> None:
+    async def _write_user(self, ctx: TenantContext, user: User, action: str) -> None:
         row = outbox_row(ctx, f"tenancy.user.{action}", user.id, user_payload(user))
         await self._storage.write_user(ctx.org_id, user, (row,))
         await self._relay.relay(ctx.org_id, row)
@@ -2094,7 +2100,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         # the hash; the event is a record, not a credential.
         return {"user_id": str(session.user_id)}
 
-    def _session_row(self, ctx: OpContext, session: Session, action: str) -> OutboxRow:
+    def _session_row(self, ctx: TenantContext, session: Session, action: str) -> OutboxRow:
         return outbox_row(
             ctx, f"tenancy.session.{action}", session.id, self._session_payload(session)
         )
@@ -2107,7 +2113,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         if not await self._storage.create_session(org_id, session):
             raise Conflict(f"session {session.id} is already written")
 
-    async def _write_session(self, ctx: OpContext, session: Session, action: str) -> None:
+    async def _write_session(self, ctx: TenantContext, session: Session, action: str) -> None:
         row = self._session_row(ctx, session, action)
         await self._storage.write_session(ctx.org_id, session, (row,))
         await self._relay.relay(ctx.org_id, row)
@@ -2117,7 +2123,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
         # Ids only, and never the hash; the event is a record, not a credential.
         return {"user_id": str(api_key.user_id)}
 
-    async def _write_api_key(self, ctx: OpContext, api_key: ApiKey, action: str) -> None:
+    async def _write_api_key(self, ctx: TenantContext, api_key: ApiKey, action: str) -> None:
         row = outbox_row(ctx, f"tenancy.api_key.{action}", api_key.id, self._key_payload(api_key))
         await self._storage.write_api_key(ctx.org_id, api_key, (row,))
         await self._relay.relay(ctx.org_id, row)
@@ -2153,14 +2159,14 @@ class TenancyManagerImpl(TenancyManagerInterface):
         if api_key.expires_at <= utcnow():
             raise CredentialExpired("api key expired")
 
-    async def _live_user(self, ctx: OpContext, user_id: UUID) -> User:
+    async def _live_user(self, ctx: TenantContext, user_id: UUID) -> User:
         """Existence and tenancy, or NotFound."""
         user = await self._storage.read_user(ctx.org_id, user_id)
         if user is None or user.deleted_at is not None:
             raise NotFound(f"user {user_id} not found")
         return user
 
-    async def _live_membership(self, ctx: OpContext, user_id: UUID) -> Membership:
+    async def _live_membership(self, ctx: TenantContext, user_id: UUID) -> Membership:
         """The membership of a live user, or NotFound: a removed member has no
         membership to read or change, whatever the row says."""
         await self._live_user(ctx, user_id)
@@ -2169,7 +2175,7 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise NotFound(f"membership of user {user_id} not found")
         return membership
 
-    async def _refuse_personal_owner(self, ctx: OpContext, user_id: UUID, rule: str) -> None:
+    async def _refuse_personal_owner(self, ctx: TenantContext, user_id: UUID, rule: str) -> None:
         """A personal org belongs to its person for good: nobody removes them
         from it or changes their role, so it never changes hands. Anyone else
         in it is an ordinary member."""

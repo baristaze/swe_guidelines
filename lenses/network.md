@@ -109,7 +109,7 @@ long-running record is ASY-20, and a chain across services ASY-27.)
 ## NET-05 A stateful edge holds only the socket and its subscriptions
 
 **Principle.** A service that holds long-lived connections keeps in
-memory the open socket, the `OpContext` its ticket produced with the
+memory the open socket, the `TenantContext` its ticket produced with the
 expiry that bounds it, the subscriptions the client registered, and a
 bounded buffer of frames waiting to be written, and nothing else.
 

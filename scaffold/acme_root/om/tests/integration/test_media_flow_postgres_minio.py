@@ -19,12 +19,12 @@ from acme.infra.buckets.s3 import BucketsS3Impl
 from acme.infra.impl.settings import InfraSettings
 from acme.infra.topics.memory import TopicsMemoryImpl
 from acme.om.base import new_id, utcnow
+from acme.om.context import Role, TenantContext
 from acme.om.events.storage.impl.postgres import EventStoragePostgresImpl
 from acme.om.exceptions import NotFound, ValidationFailed
 from acme.om.media.impl.manager import MediaManagerImpl, MediaOptions
 from acme.om.media.storage.impl.postgres import MediaStoragePostgresImpl
 from acme.om.media.types.file import File, FilePurpose, FileStatus
-from acme.om.opcontext import OpContext, Role
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.postgres import OutboxStoragePostgresImpl
 from acme.om.storage.impl.pg_base import LoginSessions
@@ -94,7 +94,7 @@ def manager(
     return MediaManagerImpl(storage, buckets, members, relay, options or MediaOptions()), storage
 
 
-def a_file(ctx: OpContext, size: int = len(PDF), content_type: str = "application/pdf") -> File:
+def a_file(ctx: TenantContext, size: int = len(PDF), content_type: str = "application/pdf") -> File:
     now = utcnow()
     return File(
         id=new_id(),
@@ -111,7 +111,7 @@ def a_file(ctx: OpContext, size: int = len(PDF), content_type: str = "applicatio
 
 async def post_form(
     media: MediaManagerImpl,
-    ctx: OpContext,
+    ctx: TenantContext,
     file: File,
     data: bytes,
     **tampered: str,

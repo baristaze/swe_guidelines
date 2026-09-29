@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import Field
 
 from acme.om.base import FrozenMapping, Identifiable, Platform, Trackable
-from acme.om.opcontext import Permission
+from acme.om.context import Permission
 from acme.om.orchestrations.types.orchestration import ParkReason
 
 

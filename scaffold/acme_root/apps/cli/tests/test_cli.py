@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from acme.apps.cli import config, main
 from acme.client.client import ApiClient
-from acme.om.opcontext import Role
+from acme.om.context import Role
 
 
 def test_login_keeps_a_session_and_whoami_reads_it(

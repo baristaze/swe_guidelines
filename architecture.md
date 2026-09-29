@@ -66,7 +66,7 @@ These are the invariants. Each links the section that states it.
   without its technology.
 - [Dependencies arrive through constructors](#injectability), typed by
   interface.
-- [All ambient state rides the context](#opcontext), every operation's
+- [All ambient state rides the context](#tenantcontext), every operation's
   first argument.
 - [A context stage is evidence](#stages), and only a transition makes
   one.
@@ -120,7 +120,7 @@ These are the invariants. Each links the section that states it.
   - [Multiple impls per interface](#multiple-impls-per-interface)
   - [Composition by decoration](#composition-by-decoration)
   - [Injectability](#injectability)
-- [OpContext](#opcontext)
+- [TenantContext](#tenantcontext)
   - [Stages](#stages)
   - [Scopes](#scopes)
   - [The Operator Context](#the-operator-context)
@@ -498,9 +498,9 @@ signatures are the contract
 ``` python
 class MediaManagerInterface(ABC):
     @abstractmethod
-    async def get_file(self, ctx: OpContext, file_id: UUID) -> File: ...
+    async def get_file(self, ctx: TenantContext, file_id: UUID) -> File: ...
     @abstractmethod
-    async def confirm_file(self, ctx: OpContext, file_id: UUID) -> File: ...
+    async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> File: ...
 ```
 
 The interface describes a capability; the impl decides how to deliver
@@ -558,14 +558,14 @@ the environment. When two managers need each other, the cycle is
 broken above them: move the shared operation down, or pass a narrow
 callable.
 
-## OpContext
+## TenantContext
 
 `core`
 
 Every operation takes a context first. It says who is acting, for which
-tenant, with what role, from which app, under which request. `OpContext`
+tenant, with what role, from which app, under which request. `TenantContext`
 is a tenant operation's context, the one most operations take
-([`opcontext.py`](scaffold/acme_root/om/src/acme/om/opcontext.py)):
+([`context.py`](scaffold/acme_root/om/src/acme/om/context.py)):
 
 ``` python
 class SecurityContext(Platform):
@@ -585,7 +585,7 @@ class RequestContext(Platform):
     caused_by_request_id: UUID | None = None
     deadline: datetime | None = None  # when this request's time runs out
 
-class OpContext(RequestContext):
+class TenantContext(RequestContext):
     security: SecurityContext  # org_id, user_id as properties; require(), in_team()
 ```
 
@@ -612,25 +612,25 @@ nothing reaches around it through a global or a thread local.
 `core`
 
 A request proves who is behind it in steps, and each step is a type
-([`opcontext.py`](scaffold/acme_root/om/src/acme/om/opcontext.py)):
+([`context.py`](scaffold/acme_root/om/src/acme/om/context.py)):
 
 ```text
 RequestContext            a request exists; nobody is known yet
   ├─ IdentityContext      a person is verified by their own sign-in
   │    └─ OperatorContext the person is on the operator allowlist
-  └─ OpContext            a membership: one tenant, one user, one role
+  └─ TenantContext        a membership: one tenant, one user, one role
 ```
 
 A stage subclasses the stage it refines, so a function asking for the
-weaker one accepts the stronger, never the reverse. `OpContext` does
+weaker one accepts the stronger, never the reverse. `TenantContext` does
 not refine `IdentityContext`: an API key or a worker has no sign-in
-behind it. The chain grows below `OpContext` only when operations come
+behind it. The chain grows below `TenantContext` only when operations come
 to rely on a role instead of requiring a permission.
 
 The request stage is minted at an edge: the gateway, the worker loop,
 the bootstrap command. Every stage above it comes from a transition, an
 operation of the tenancy manager that consults the evidence and returns
-the next stage or refuses: `authenticate` for `OpContext`,
+the next stage or refuses: `authenticate` for `TenantContext`,
 `admit_operator` for `OperatorContext`. Nothing else constructs one,
 and `arch-check` holds the construction sites to that.
 
@@ -638,7 +638,7 @@ The stage is the proof. An operation takes the weakest stage that proves
 what it needs and never checks it again, and the type checker refuses a
 caller holding less. A sign-in route cannot reach a tenant manager.
 
-A stage lives as long as what minted it. A socket holds its `OpContext`
+A stage lives as long as what minted it. A socket holds its `TenantContext`
 and closes when the evidence goes: at the session's expiry, on a change
 on the bus that ends it, such as `tenancy.session.revoked`, and on a
 recheck every `session_recheck_interval` that finds the session or the
@@ -664,7 +664,7 @@ is written to, so it is a `Protocol` and not an `ABC`.
 A combination gets a name only when it is a domain concept, as
 provenance is. A scope never proves a stage, since anything with the
 right fields satisfies one, so a tenant operation still takes
-`OpContext`. And a manager never arrives on a context, as a request id
+`TenantContext`. And a manager never arrives on a context, as a request id
 never arrives in a constructor.
 
 > **Principle:** Scopes are typed capability boundaries. A consumer
@@ -681,14 +681,14 @@ second plane with its own context, `OperatorContext`: the identity stage
 refined by `admit_operator` when the identity is on the operator
 allowlist. It has no `org_id`, on purpose.
 
-An operation takes `OpContext` or `OperatorContext`, never a choice
+An operation takes `TenantContext` or `OperatorContext`, never a choice
 between them. Only three kinds take a weaker stage: a transition, an
 identity's own operations before any tenant, and [Operations Without a
 Principal](#operations-without-a-principal). An operator reads a
 tenant's rows only by naming the tenant, and every such read is
 recorded.
 
-> **Principle:** Tenant operations take `OpContext`; operator
+> **Principle:** Tenant operations take `TenantContext`; operator
 > operations take `OperatorContext`. The two never mix in one
 > signature.
 
@@ -710,7 +710,7 @@ once and you can read every manager
 ([`manager.py`](scaffold/acme_root/om/src/acme/om/media/impl/manager.py)):
 
 ``` python
-async def confirm_file(self, ctx: OpContext, file_id: UUID) -> File:
+async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> File:
     ctx.require(Permission.WRITE)             # authorize
     file = await self.get_file(ctx, file_id)  # verify: it exists, in this tenant
     ...                                       # and its object has arrived
@@ -720,7 +720,7 @@ async def confirm_file(self, ctx: OpContext, file_id: UUID) -> File:
     await self._write(ctx, stored, "updated")  # write
     return stored
 
-async def _write(self, ctx: OpContext, file: File, action: str) -> None:
+async def _write(self, ctx: TenantContext, file: File, action: str) -> None:
     rows = (outbox_row(ctx, f"media.file.{action}", file.id, {}),)
     await self._storage.write_file(ctx.org_id, file, rows)  # the row and its outbox rows, one call
     await self._relay.relay_all(ctx.org_id, rows)
@@ -1284,7 +1284,7 @@ flowchart TD
 A service scales out only while it is ephemeral: a process's memory
 must rebuild from durable sources. Domain services are always
 stateless. An app-specific service that holds a WebSocket is lightly
-stateful, narrowly: the connection, the `OpContext` its ticket produced,
+stateful, narrowly: the connection, the `TenantContext` its ticket produced,
 the subscriptions, and a bounded send buffer.
 
 > **Principle:** Domain services are always stateless. App-specific
@@ -1404,7 +1404,7 @@ Services run in one private network, and only the gateway has a public
 address. Calls between tasks use TLS wherever the runtime offers it. A
 service-to-service call carries a short-lived internal credential,
 minted by the caller, naming the principal, the tenant, the request, and
-its audience. The callee rebuilds `OpContext` from it and trusts no bare
+its audience. The callee rebuilds `TenantContext` from it and trusts no bare
 header.
 
 One key is one trust domain: any process holding it can speak for
@@ -1652,7 +1652,7 @@ A worker is a small loop
 claim when a slot is free, do the work through managers and services,
 write the result through a manager, whose outbox rows notify, and
 complete the item. A handler implements `WorkHandlerInterface`, one impl
-per kind, whose `handle(ctx, item)` takes the run's `OpContext`, and it
+per kind, whose `handle(ctx, item)` takes the run's `TenantContext`, and it
 is idempotent on the item's key.
 
 A worker runs items up to a capacity, and two fences hold one completion

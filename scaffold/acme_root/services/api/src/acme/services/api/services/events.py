@@ -2,10 +2,12 @@
 
 from abc import ABC, abstractmethod
 
-from acme.om.opcontext import OpContext
+from acme.om.context import TenantContext
 from acme.services.api.types.events import EventView
 
 
 class EventsServiceInterface(ABC):
     @abstractmethod
-    async def get_events(self, ctx: OpContext, after_seq: int, limit: int) -> list[EventView]: ...
+    async def get_events(
+        self, ctx: TenantContext, after_seq: int, limit: int
+    ) -> list[EventView]: ...

@@ -2,7 +2,7 @@ import json
 
 from acme.infra.queues import Queues, QueuesInterface
 from acme.integrations.identity import IdentityProviderInterface
-from acme.om.opcontext import RequestContext
+from acme.om.context import RequestContext
 from acme.services.api.services.webhooks import SignedDelivery, WebhooksServiceInterface
 from acme.services.api.types.webhooks import DeliveryReceivedView
 

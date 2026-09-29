@@ -6,6 +6,17 @@ import pytest
 from contracts.idempotency_storage import attempt_minted_at, attempt_of, make_record
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import (
+    AppContext,
+    AppType,
+    CredentialKind,
+    OperatorContext,
+    OperatorRole,
+    RequestContext,
+    Role,
+    TenantContext,
+    build_context,
+)
 from acme.om.exceptions import (
     IdempotencyAttemptLost,
     IdempotencyInProgress,
@@ -16,23 +27,12 @@ from acme.om.exceptions import (
 from acme.om.idempotency.impl.manager import IdempotencyManagerImpl, IdempotencyOptions
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
 from acme.om.idempotency.types.record import IdempotencyRecord
-from acme.om.opcontext import (
-    AppContext,
-    AppType,
-    CredentialKind,
-    OpContext,
-    OperatorContext,
-    OperatorRole,
-    RequestContext,
-    Role,
-    build_context,
-)
 from acme.om.tenancy.rules import operator_permissions_of, permissions_of
 
 APP = AppContext(type=AppType.API, version="api@test")
 
 
-def context(role: Role = Role.MEMBER, org_id: UUID | None = None) -> OpContext:
+def context(role: Role = Role.MEMBER, org_id: UUID | None = None) -> TenantContext:
     return build_context(
         RequestContext(request_id=new_id(), app=APP),
         user_id=new_id(),

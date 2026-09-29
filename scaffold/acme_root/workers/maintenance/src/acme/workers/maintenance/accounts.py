@@ -26,7 +26,7 @@ import logging
 from typing import ClassVar
 
 from acme.integrations.identity import IdentityProviderInterface
-from acme.om.opcontext import OpContext, Permission
+from acme.om.context import Permission, TenantContext
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import DeleteAccountPayload, DeleteOrgPayload, WorkItem
@@ -45,7 +45,7 @@ class DeleteAccountHandlerImpl(WorkHandlerInterface):
         self._tenancy = tenancy
         self._identity = identity
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         user_id = DeleteAccountPayload.model_validate(item.payload).provider_user_id
         if user_id is not None:
             async with provider_calls():
@@ -64,7 +64,7 @@ class DeleteOrgHandlerImpl(WorkHandlerInterface):
         self._tenancy = tenancy
         self._identity = identity
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         org_id = DeleteOrgPayload.model_validate(item.payload).provider_org_id
         if org_id is not None:
             async with provider_calls():

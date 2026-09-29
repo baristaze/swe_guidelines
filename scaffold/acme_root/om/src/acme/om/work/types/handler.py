@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from datetime import timedelta
 from typing import ClassVar
 
+from acme.om.context import Permission, TenantContext
 from acme.om.exceptions import WorkException
-from acme.om.opcontext import OpContext, Permission
 from acme.om.work.types.work_item import WorkItem
 
 
@@ -49,4 +49,4 @@ class WorkHandlerInterface(ABC):
     holds them all (`WORK_ENQUEUE_PERMISSIONS`), which a test holds."""
 
     @abstractmethod
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None: ...
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None: ...
