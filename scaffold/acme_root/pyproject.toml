@@ -93,7 +93,8 @@ adr = "docs/adr/0026-the-work-items-key-is-unique-per-tenant.md"
 reason = "the unique index is (org_id, idempotency_key), led by the tenant as the lens asks"
 
 # The company site is a page, not an app: HTML and CSS on Vite, no script,
-# so no React.
+# so no React. A substitution for one page (ADR 0002), named by path, since
+# DEL-12's options substitute a framework for every browser app.
 [[tool.arch-check.exception]]
 rule = "DEL-12"
 path = "apps/site/package.json"

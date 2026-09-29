@@ -4,11 +4,11 @@
 
 ## Context
 
-Naming Entities says an append-only record such as an audit entry is
-`Identifiable` and nothing else: never updated, so no `updated_at`;
-never hidden, so no `deleted_at`; and "its birth time is the one in its
-id, since every id is a `uuid_v7` with the millisecond in front, so the
-'when' of an audit entry costs no column".
+Naming Entities says an append-only record such as an event is
+`Identifiable` and carries its time in a field of its own, `created_at`
+or a name of its own: never updated, so no `updated_at`; never hidden,
+so no `deleted_at`. An id is not a clock (Identifiers), so a record's
+time is never read out of its id.
 
 `Event` is `Identifiable` and carries an explicit `produced_at`. Every
 construction sets it to the moment its id was minted, so inside the
@@ -26,12 +26,12 @@ day's events behind the platform's size
 
 ## Decision
 
-`Event` keeps `produced_at`, and this record is the deviation from
-Naming Entities.
+`Event` keeps `produced_at`, the time field of its own that Naming
+Entities asks of an append-only record, under the event's own name, and
+indexed.
 
 ## Consequences
 
 A review that reads Naming Entities against
-`om/src/acme/om/events/types/event.py` finds an append-only record with
-a birth-time column and cites this record. The cost is one column and
-its index on the `activity` role.
+`om/src/acme/om/events/types/event.py` finds the field the rule asks
+for. The cost is one column and its index on the `activity` role.

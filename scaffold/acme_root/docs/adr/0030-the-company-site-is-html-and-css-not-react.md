@@ -26,6 +26,11 @@ exception covers `apps/site/package.json` alone. Every app that holds
 state or calls the platform is React on Vite. The site becomes a React
 app like the portal the day it needs a script.
 
+It is a substitution, not a deviation: the page keeps the shape the
+stack is for, and only the technology it is written in changes.
+[ADR 0002](0002-technology-choices.md) names it with the rules it still
+satisfies.
+
 ## Consequences
 
 The site ships no JavaScript, so its Content-Security-Policy names its
@@ -37,4 +42,5 @@ Its tests stand in for the rule's intent: `apps/site/src/site.test.ts`
 fails when a page gains a `<script>` or loads anything from another
 origin, so the site cannot grow into an app without this record being
 revisited. `pyproject.toml` names `apps/site/package.json` as an
-exception to DEL-12, citing this record.
+exception to DEL-12, citing this record: the rule's options substitute
+a framework for every browser app, not for one page.
