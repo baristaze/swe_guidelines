@@ -6,7 +6,7 @@ import itertools
 
 import pytest
 
-from acme.om.opcontext import OperatorPermission, OperatorRole, Role
+from acme.om.context import OperatorPermission, OperatorRole, Role
 from acme.om.tenancy.rules import (
     OPERATOR_ROLE_PERMISSIONS,
     PERSON_ROLES,

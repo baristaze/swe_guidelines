@@ -17,8 +17,8 @@ from acme.infra.queues import QueueMessage, Queues
 from acme.integrations.identity import ProvidedDelivery
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
 from acme.om.base import new_id, utcnow
+from acme.om.context import TenantContext
 from acme.om.events.types.event import Event
-from acme.om.opcontext import OpContext
 from acme.workers.maintenance.container import WorkerContainer
 from acme.workers.maintenance.deliveries import DeliveryConsumer, DeliveryOptions
 from acme.workers.maintenance.main import build_consumer
@@ -65,7 +65,7 @@ def body_of(delivery: ProvidedDelivery, provider: str = "identity") -> bytes:
     ).encode()
 
 
-async def received(container: WorkerContainer, ctx: OpContext) -> list[Event]:
+async def received(container: WorkerContainer, ctx: TenantContext) -> list[Event]:
     events = await container.managers.events.get_events(ctx, after_seq=0, limit=100)
     return [event for event in events if event.kind == RECEIVED]
 

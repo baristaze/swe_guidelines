@@ -3,7 +3,7 @@ from typing import ClassVar
 from uuid import UUID
 
 from acme.om.base import Identifiable, Named, SoftDeletable, Trackable
-from acme.om.opcontext import Role
+from acme.om.context import Role
 
 
 class ApiKey(Identifiable, Named, Trackable, SoftDeletable):

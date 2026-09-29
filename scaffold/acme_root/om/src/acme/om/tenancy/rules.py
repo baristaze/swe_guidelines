@@ -15,7 +15,7 @@ from urllib.parse import quote
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from acme.om.opcontext import CredentialKind, OperatorPermission, OperatorRole, Permission, Role
+from acme.om.context import CredentialKind, OperatorPermission, OperatorRole, Permission, Role
 from acme.om.tenancy.types.org import Org
 
 MAX_API_KEY_TTL = timedelta(days=90)

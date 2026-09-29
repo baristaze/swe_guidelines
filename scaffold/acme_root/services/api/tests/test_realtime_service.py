@@ -15,8 +15,8 @@ from api_support import OWNER, add_member, build_container, seed_request
 
 from acme.infra.topics import EntityChangedPayload, Topics
 from acme.om.base import new_id, utcnow
+from acme.om.context import Role, TenantContext
 from acme.om.events.types.event import Event
-from acme.om.opcontext import OpContext, Role
 from acme.om.tenancy.rules import hash_token
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.container import AppContainer
@@ -251,7 +251,7 @@ class Heads:
         events = container.managers.events
         read = events.get_head
 
-        async def counted(ctx: OpContext) -> int:
+        async def counted(ctx: TenantContext) -> int:
             self.reads += 1
             return await read(ctx)
 
@@ -269,7 +269,7 @@ class Heads:
         self._patch.undo()
 
 
-async def owner_socket(container: AppContainer) -> tuple[OpContext, SocketPrincipal]:
+async def owner_socket(container: AppContainer) -> tuple[TenantContext, SocketPrincipal]:
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
     token = await session_of(container, org.id, OWNER["email"])
@@ -277,14 +277,14 @@ async def owner_socket(container: AppContainer) -> tuple[OpContext, SocketPrinci
     return owner, await principal_of(container, token)
 
 
-async def add_file(container: AppContainer, owner: OpContext, name: str) -> None:
+async def add_file(container: AppContainer, owner: TenantContext, name: str) -> None:
     """A write the relay announces on the bus: its event gets the next seq."""
     media = container.services.get_media_service()
     body = StartUploadRequest(name=f"{name}.pdf", content_type="application/pdf", size_bytes=5)
     await media.start_upload(owner, body, new_id())
 
 
-async def append_unheard(container: AppContainer, owner: OpContext) -> None:
+async def append_unheard(container: AppContainer, owner: TenantContext) -> None:
     """An event the bus never carried to this process: its subscription was
     down, or the publish was lost. The head moves; nothing is heard."""
     await container.managers.events.append_event(

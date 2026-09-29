@@ -1,7 +1,7 @@
 """A stage above the request stage is produced only by a transition. The
 type is the fence at every call site; at the construction sites it is this
 test: a static scan of every source tree enumerates every site that
-constructs `IdentityContext`, `OpContext`, or `OperatorContext`, or calls
+constructs `IdentityContext`, `TenantContext`, or `OperatorContext`, or calls
 `build_context`, and fails when a site appears that is not listed here.
 The list is the tenancy manager's transitions and the helper they use.
 Test fakes under `tests/` are outside the scan."""
@@ -21,7 +21,7 @@ SOURCE_TREES = (
     "clients/*/src",
 )
 
-STAGES = frozenset({"IdentityContext", "OpContext", "OperatorContext"})
+STAGES = frozenset({"IdentityContext", "TenantContext", "OperatorContext"})
 CONSTRUCTORS = STAGES | {"build_context"}
 CLASS_LEVEL_BUILDERS = frozenset({"model_validate", "model_construct", "model_copy"})
 
@@ -29,7 +29,7 @@ TRANSITIONS = "acme.om.tenancy.impl.manager"
 ALLOWED: Counter[tuple[str, str, str]] = Counter(
     {
         # The one helper that assembles a tenant context from its parts.
-        ("acme.om.opcontext", "build_context", "OpContext"): 1,
+        ("acme.om.context", "build_context", "TenantContext"): 1,
         # The transitions, and the seeding that produces the principal it runs under.
         (TRANSITIONS, "TenancyManagerImpl.bootstrap", "build_context"): 1,
         (TRANSITIONS, "TenancyManagerImpl.add_member", "build_context"): 1,
@@ -57,9 +57,9 @@ def source_files() -> Iterator[tuple[str, Path]]:
 
 
 def constructed(node: ast.Call) -> str | None:
-    """What a call constructs, when it is a stage or the helper: `OpContext(...)`,
-    `opcontext.OpContext(...)`, `build_context(...)`, and the class-level
-    `OpContext.model_validate(...)` and its siblings."""
+    """What a call constructs, when it is a stage or the helper: `TenantContext(...)`,
+    `context.TenantContext(...)`, `build_context(...)`, and the class-level
+    `TenantContext.model_validate(...)` and its siblings."""
     func = node.func
     if isinstance(func, ast.Name) and func.id in CONSTRUCTORS:
         return func.id
@@ -120,7 +120,7 @@ def test_only_the_transitions_construct_a_stage_above_the_request_stage() -> Non
 def test_the_scan_sees_every_source_tree() -> None:
     modules = {module for module, _ in source_files()}
     assert {
-        "acme.om.opcontext",
+        "acme.om.context",
         "acme.om.tenancy.impl.manager",
         "acme.services.api.gateway.auth",
         "acme.workers.maintenance.loop",
@@ -132,19 +132,19 @@ def test_the_scan_sees_every_source_tree() -> None:
 
 def test_the_scan_recognises_every_way_to_construct_a_stage() -> None:
     tree = ast.parse(
-        "OpContext(a=1)\n"
-        "opcontext.IdentityContext(b=2)\n"
+        "TenantContext(a=1)\n"
+        "context.IdentityContext(b=2)\n"
         "build_context(rctx)\n"
         "OperatorContext.model_validate({})\n"
-        "OpContext.model_copy(ctx)\n"
+        "TenantContext.model_copy(ctx)\n"
         "RequestContext(c=3)\n"
         "ctx.model_copy(update={})\n"
     )
     seen = [constructed(node) for node in ast.walk(tree) if isinstance(node, ast.Call)]
     assert [name for name in seen if name is not None] == [
-        "OpContext",
+        "TenantContext",
         "IdentityContext",
         "build_context",
         "OperatorContext",
-        "OpContext",
+        "TenantContext",
     ]

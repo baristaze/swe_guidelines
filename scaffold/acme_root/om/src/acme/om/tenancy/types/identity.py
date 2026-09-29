@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import ClassVar
 
 from acme.om.base import Identifiable, Trackable
-from acme.om.opcontext import OperatorRole
+from acme.om.context import OperatorRole
 
 
 class Identity(Identifiable, Trackable):

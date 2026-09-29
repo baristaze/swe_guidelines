@@ -155,7 +155,7 @@ tenantless = [
 # a tenant context and the tenancy manager's transitions.
 [tool.arch-check.options.CTX-26]
 sites = [
-    "om/src/acme/om/opcontext.py::build_context",
+    "om/src/acme/om/context.py::build_context",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.bootstrap",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.add_member",
     "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.authenticate_login",

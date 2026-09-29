@@ -6,7 +6,7 @@ it makes itself (a start, a resume, a park, a failure)."""
 
 from datetime import datetime
 
-from acme.om.opcontext import ProvenanceScope
+from acme.om.context import ProvenanceScope
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationStatus
 from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
 from acme.om.work.types.work_item import OrchestrationPayload, WorkKind, work_row_kind

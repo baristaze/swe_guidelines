@@ -3,6 +3,7 @@ from uuid import UUID
 
 from acme.infra.buckets import Buckets, BucketsInterface
 from acme.om.base import Platform, utcnow
+from acme.om.context import Permission, TenantContext
 from acme.om.exceptions import NotAuthorized, NotFound, TenantMismatch, ValidationFailed
 from acme.om.media.manager import MediaManagerInterface
 from acme.om.media.rules import content_disposition, extension_of, object_key, upload_refusal
@@ -11,7 +12,6 @@ from acme.om.media.types.file import File, FilePurpose, FileStatus
 from acme.om.media.types.page import FilePage
 from acme.om.media.types.transfer import DownloadLink, UploadForm
 from acme.om.media.types.usage import StorageUsage
-from acme.om.opcontext import OpContext, Permission
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import outbox_row
 from acme.om.tenancy import TenancyManagerInterface
@@ -52,7 +52,7 @@ class MediaManagerImpl(MediaManagerInterface):
         self._relay = relay
         self._options = options
 
-    async def create_file(self, ctx: OpContext, file: File) -> File:
+    async def create_file(self, ctx: TenantContext, file: File) -> File:
         ctx.require(Permission.WRITE)
         refusal = upload_refusal(
             file.purpose, file.name, file.content_type, file.size_bytes, file.subject_id
@@ -83,7 +83,7 @@ class MediaManagerImpl(MediaManagerInterface):
         await self._relay.relay_all(ctx.org_id, rows)
         return created
 
-    async def issue_upload(self, ctx: OpContext, file_id: UUID) -> UploadForm:
+    async def issue_upload(self, ctx: TenantContext, file_id: UUID) -> UploadForm:
         ctx.require(Permission.WRITE)
         file = await self._pending(ctx, file_id)
         ttl = self._options.upload_ttl
@@ -95,7 +95,7 @@ class MediaManagerImpl(MediaManagerInterface):
             return UploadForm(url=None, expires_at=expires_at)
         return UploadForm(url=post.url, fields=post.fields, expires_at=expires_at)
 
-    async def put_content(self, ctx: OpContext, file_id: UUID, data: bytes) -> File:
+    async def put_content(self, ctx: TenantContext, file_id: UUID, data: bytes) -> File:
         ctx.require(Permission.WRITE)
         file = await self._pending(ctx, file_id)
         # The bounds the form would carry: the size as a ceiling, the type as
@@ -107,7 +107,7 @@ class MediaManagerImpl(MediaManagerInterface):
         )
         return file
 
-    async def confirm_file(self, ctx: OpContext, file_id: UUID) -> File:
+    async def confirm_file(self, ctx: TenantContext, file_id: UUID) -> File:
         ctx.require(Permission.WRITE)
         file = await self.get_file(ctx, file_id)
         if file.status is FileStatus.STORED:
@@ -121,7 +121,7 @@ class MediaManagerImpl(MediaManagerInterface):
         await self._write(ctx, stored, "updated")
         return stored
 
-    async def get_file(self, ctx: OpContext, file_id: UUID) -> File:
+    async def get_file(self, ctx: TenantContext, file_id: UUID) -> File:
         ctx.require(Permission.READ)
         file = await self._storage.read_file(ctx.org_id, file_id)
         if file is None or file.deleted_at is not None:
@@ -130,7 +130,7 @@ class MediaManagerImpl(MediaManagerInterface):
 
     async def get_files(
         self,
-        ctx: OpContext,
+        ctx: TenantContext,
         purpose: FilePurpose,
         subject_id: UUID | None,
         after: UUID | None,
@@ -144,7 +144,7 @@ class MediaManagerImpl(MediaManagerInterface):
         return FilePage(items=tuple(rows[:limit]), has_more=len(rows) > limit)
 
     async def issue_download(
-        self, ctx: OpContext, file_id: UUID, *, inline: bool = False
+        self, ctx: TenantContext, file_id: UUID, *, inline: bool = False
     ) -> DownloadLink:
         file = await self._stored(ctx, file_id)
         ttl = self._options.download_ttl
@@ -158,17 +158,17 @@ class MediaManagerImpl(MediaManagerInterface):
         )
         return DownloadLink(url=url, expires_at=utcnow() + ttl)
 
-    async def get_content(self, ctx: OpContext, file_id: UUID) -> bytes:
+    async def get_content(self, ctx: TenantContext, file_id: UUID) -> bytes:
         file = await self._stored(ctx, file_id)
         return await self._buckets.get(ctx.org_id, BUCKET, file.key, deadline=ctx.deadline)
 
-    async def delete_file(self, ctx: OpContext, file_id: UUID) -> File:
+    async def delete_file(self, ctx: TenantContext, file_id: UUID) -> File:
         ctx.require(Permission.WRITE)
         file = await self.get_file(ctx, file_id)
         return await self._delete(ctx, file)
 
     async def delete_subject_files(
-        self, ctx: OpContext, purpose: FilePurpose, subject_id: UUID
+        self, ctx: TenantContext, purpose: FilePurpose, subject_id: UUID
     ) -> int:
         ctx.require(Permission.WRITE)
         deleted = 0
@@ -184,7 +184,7 @@ class MediaManagerImpl(MediaManagerInterface):
             if len(page) < self._options.max_limit:
                 return deleted
 
-    async def get_usage(self, ctx: OpContext) -> StorageUsage:
+    async def get_usage(self, ctx: TenantContext) -> StorageUsage:
         ctx.require(Permission.READ)
         return await self._storage.read_usage(ctx.org_id)
 
@@ -203,7 +203,7 @@ class MediaManagerImpl(MediaManagerInterface):
             await self._buckets.delete(org_id, BUCKET, file.key)
         return await self._storage.purge_files_across_tenants([f.id for _, f in files])
 
-    async def purge_tenant(self, ctx: OpContext) -> int:
+    async def purge_tenant(self, ctx: TenantContext) -> int:
         ctx.require(Permission.WRITE)
         if not await self._tenancy.tenant_expired(ctx):
             return 0
@@ -214,27 +214,27 @@ class MediaManagerImpl(MediaManagerInterface):
             await self._buckets.delete(ctx.org_id, BUCKET, file.key)
         return await self._storage.purge_files(ctx.org_id, [f.id for f in files])
 
-    async def _pending(self, ctx: OpContext, file_id: UUID) -> File:
+    async def _pending(self, ctx: TenantContext, file_id: UUID) -> File:
         file = await self.get_file(ctx, file_id)
         self._own(ctx, file)
         if file.status is not FileStatus.PENDING:
             raise ValidationFailed(f"file {file_id} is already stored")
         return file
 
-    async def _stored(self, ctx: OpContext, file_id: UUID) -> File:
+    async def _stored(self, ctx: TenantContext, file_id: UUID) -> File:
         file = await self.get_file(ctx, file_id)
         if file.status is not FileStatus.STORED:
             raise ValidationFailed(f"file {file_id} has not been uploaded")
         return file
 
     @staticmethod
-    def _own(ctx: OpContext, file: File) -> None:
+    def _own(ctx: TenantContext, file: File) -> None:
         """An upload is its starter's: nobody else signs a form for it, moves
         its bytes, or confirms it."""
         if file.created_by != ctx.user_id:
             raise NotAuthorized(f"file {file.id} is being uploaded by someone else")
 
-    async def _delete(self, ctx: OpContext, file: File) -> File:
+    async def _delete(self, ctx: TenantContext, file: File) -> File:
         now = utcnow()
         deleted = file.model_copy(
             update={
@@ -247,7 +247,7 @@ class MediaManagerImpl(MediaManagerInterface):
         await self._write(ctx, deleted, "deleted")
         return deleted
 
-    async def _write(self, ctx: OpContext, file: File, action: str) -> None:
+    async def _write(self, ctx: TenantContext, file: File, action: str) -> None:
         """The row and the row that announces it in one storage call, then the
         relay at once; the sweep catches what a crash left behind."""
         rows = (outbox_row(ctx, f"media.file.{action}", file.id, {}),)

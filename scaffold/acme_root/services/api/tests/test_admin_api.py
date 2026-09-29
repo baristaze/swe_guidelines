@@ -13,7 +13,7 @@ import pytest
 from api_support import OWNER, enrol_operator, sign_in_as
 
 from acme.om.base import new_id, utcnow
-from acme.om.opcontext import AppContext, AppType, OperatorRole, RequestContext
+from acme.om.context import AppContext, AppType, OperatorRole, RequestContext
 from acme.om.work.types.work_item import WorkItem, WorkKind
 from acme.services.api.container import AppContainer
 

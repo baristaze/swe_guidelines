@@ -37,9 +37,9 @@ from acme.infra.observability import (
     JsonFormatter,
 )
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import CredentialKind, RequestContext, Role, TenantContext, build_context
 from acme.om.events.manager import audit_event
 from acme.om.media.types.file import File
-from acme.om.opcontext import CredentialKind, OpContext, RequestContext, Role, build_context
 from acme.om.orchestrations.types.orchestration import OrchestrationKind, OrchestrationStatus
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.tenancy.rules import hash_token, permissions_of
@@ -65,7 +65,7 @@ class Tenants(WorkManagerInterface):
     and a record of the calls in order and of the tenants it was asked to
     mark purged. A partial double."""
 
-    def __init__(self, contexts: Sequence[OpContext], requeued: Sequence[int] = (0,)) -> None:
+    def __init__(self, contexts: Sequence[TenantContext], requeued: Sequence[int] = (0,)) -> None:
         self.contexts = list(contexts)
         self.marked: list[UUID] = []
         self.requeued = list(requeued)
@@ -74,7 +74,7 @@ class Tenants(WorkManagerInterface):
         self.failed = 0
         self.windows: list[timedelta] = []
 
-    async def maintenance_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         self.calls.append("contexts")
         return list(self.contexts)
 
@@ -94,7 +94,7 @@ class Tenants(WorkManagerInterface):
         self.windows.append(window)
         return self.failed
 
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         self.marked.append(ctx.org_id)
         return False
 
@@ -102,7 +102,7 @@ class Tenants(WorkManagerInterface):
 Tenants.__abstractmethods__ = frozenset()
 
 
-def listed(contexts: Sequence[OpContext], requeued: Sequence[int] = (0,)) -> Tenants:
+def listed(contexts: Sequence[TenantContext], requeued: Sequence[int] = (0,)) -> Tenants:
     return Tenants(contexts, requeued)  # pyright: ignore[reportAbstractUsage] (a partial double)
 
 
@@ -144,7 +144,7 @@ def quiet_outbox(relayed: Sequence[int] = (0,)) -> Outbox:
     return Outbox(relayed)  # pyright: ignore[reportAbstractUsage] (a partial double)
 
 
-def service_contexts(count: int) -> list[OpContext]:
+def service_contexts(count: int) -> list[TenantContext]:
     """The system scope and `count` tenants, as the sweep receives them."""
     rctx = request()
     return [
@@ -184,12 +184,12 @@ def sweeping(
 
 def recording(
     calls: list[tuple[str, UUID]], name: str, counts: Sequence[int] = (0,)
-) -> Callable[[OpContext], Awaitable[int]]:
+) -> Callable[[TenantContext], Awaitable[int]]:
     """A purge step that records each call and returns `counts` in turn, the
     last of them for ever after."""
     left = list(counts)
 
-    async def step(ctx: OpContext) -> int:
+    async def step(ctx: TenantContext) -> int:
         calls.append((name, ctx.org_id))
         return left.pop(0) if len(left) > 1 else left[0]
 
@@ -282,7 +282,7 @@ async def test_only_a_tenant_with_nothing_left_is_offered_to_be_marked_purged(
     work = listed([busy, idle, failing])
     calls: list[tuple[str, UUID]] = []
 
-    async def step(ctx: OpContext) -> int:
+    async def step(ctx: TenantContext) -> int:
         calls.append(("step", ctx.org_id))
         if ctx.org_id == failing.org_id:
             raise RuntimeError("the database is down")
@@ -630,7 +630,7 @@ async def test_each_purge_across_tenants_runs_once_a_pass_after_the_tenants(
         stages.add(rctx.request_id)
         return 0
 
-    async def tenant(ctx: OpContext) -> int:
+    async def tenant(ctx: TenantContext) -> int:
         calls.append("tenant")
         stages.add(ctx.request_id)
         return 0

@@ -12,7 +12,7 @@ import pytest
 from worker_support import build_container, make_item, request, sign_in, start_noop
 
 from acme.om.base import utcnow
-from acme.om.opcontext import OpContext
+from acme.om.context import TenantContext
 from acme.om.orchestrations.rules import advanced
 from acme.om.orchestrations.steps import step_rows
 from acme.om.orchestrations.types.orchestration import (
@@ -76,7 +76,7 @@ class Guarded:
         self.container = container
         self.down = True
 
-    async def __call__(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+    async def __call__(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         if not self.down:
             return await self.container.managers.orchestrations.step_noop(ctx, record)
         parked = advanced(
@@ -139,7 +139,7 @@ class Flaky:
         self.container = container
         self.failing = True
 
-    async def __call__(self, ctx: OpContext, record: Orchestration) -> Orchestration:
+    async def __call__(self, ctx: TenantContext, record: Orchestration) -> Orchestration:
         if self.failing:
             raise ConnectionResetError("the database went away")
         return await self.container.managers.orchestrations.step_noop(ctx, record)

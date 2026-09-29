@@ -4,25 +4,25 @@ import pytest
 from contracts.event_storage import IDENTITY, make_event
 
 from acme.om.base import new_id, utcnow
-from acme.om.events.impl.manager import EventsManagerImpl, EventsOptions
-from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
-from acme.om.exceptions import NotAuthorized, StreamTruncated
-from acme.om.opcontext import (
+from acme.om.context import (
     AppContext,
     AppType,
     CredentialKind,
-    OpContext,
     RequestContext,
     Role,
+    TenantContext,
     build_context,
 )
+from acme.om.events.impl.manager import EventsManagerImpl, EventsOptions
+from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
+from acme.om.exceptions import NotAuthorized, StreamTruncated
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.rules import permissions_of
 
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
 
 
-def context(role: Role = Role.MEMBER) -> OpContext:
+def context(role: Role = Role.MEMBER) -> TenantContext:
     return build_context(
         RequestContext(request_id=new_id(), app=APP),
         user_id=new_id(),
@@ -40,7 +40,7 @@ class Retention(TenancyManagerInterface):
     def __init__(self) -> None:
         self.expired = False
 
-    async def tenant_expired(self, ctx: OpContext) -> bool:
+    async def tenant_expired(self, ctx: TenantContext) -> bool:
         return self.expired
 
 
@@ -159,7 +159,7 @@ def keeping(retention: Retention, days: int | None, batch: int = 1000) -> Events
     return EventsManagerImpl(EventStorageMemoryImpl(), retention, options)
 
 
-async def append_aged(manager: EventsManagerImpl, ctx: OpContext, *days_ago: int) -> None:
+async def append_aged(manager: EventsManagerImpl, ctx: TenantContext, *days_ago: int) -> None:
     for days in days_ago:
         aged = make_event(ctx.org_id, produced_at=utcnow() - timedelta(days=days))
         await manager.append_event(ctx, aged)

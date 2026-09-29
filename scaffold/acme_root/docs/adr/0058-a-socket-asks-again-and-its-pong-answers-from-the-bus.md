@@ -14,7 +14,7 @@ socket would then stay open until the session's absolute expiry, up to
 30 days, and an API key's until the key's, up to 90. A change of role
 would reach an open socket not at all.
 
-CTX-27 (OpContext, Stages) puts a pull behind every trust decision a
+CTX-27 (TenantContext, Stages) puts a pull behind every trust decision a
 push carries: "Every socket rechecks its evidence on an interval: it
 reads its session and its membership, and closes when either has ended
 or the role is no longer the one it holds. The interval is a setting,

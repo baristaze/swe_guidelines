@@ -19,7 +19,7 @@ from acme.infra.observability import (
     name_process,
 )
 from acme.infra.trust import install_trust_store
-from acme.om.opcontext import RequestContext
+from acme.om.context import RequestContext
 from acme.om.orchestrations.types.orchestration import OrchestrationKind
 from acme.om.work.types.work_item import WorkKind
 from acme.workers.maintenance.accounts import DeleteAccountHandlerImpl, DeleteOrgHandlerImpl

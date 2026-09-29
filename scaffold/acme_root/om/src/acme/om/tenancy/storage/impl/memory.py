@@ -3,9 +3,9 @@ from datetime import datetime
 from uuid import UUID
 
 from acme.om.base import EMPTY_UUID
+from acme.om.context import CredentialKind, Role
 from acme.om.exceptions import Conflict, NotFound, UniqueKeyTaken
 from acme.om.idempotency.storage import AttemptFenceInterface
-from acme.om.opcontext import CredentialKind, Role
 from acme.om.outbox.storage import OutboxLandingInterface
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.memory_base import HasId, MemoryStorageBase, MemoryTable

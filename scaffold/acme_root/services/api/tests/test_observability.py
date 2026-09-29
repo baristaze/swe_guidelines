@@ -7,7 +7,7 @@ import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
-from acme.om.opcontext import OpContext
+from acme.om.context import TenantContext
 from acme.services.api.container import AppContainer
 
 
@@ -25,7 +25,7 @@ async def test_the_request_context_carries_the_trace_id_and_its_traceparent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ensure_tracer_provider()
-    built: list[OpContext] = []
+    built: list[TenantContext] = []
     original = container.managers.tenancy.authenticate
 
     async def spy(*args, **kwargs):

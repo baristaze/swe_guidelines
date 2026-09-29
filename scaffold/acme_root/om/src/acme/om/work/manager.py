@@ -6,14 +6,14 @@ from collections.abc import Sequence
 from datetime import timedelta
 from uuid import UUID
 
-from acme.om.opcontext import OpContext, OperatorContext, RequestContext
+from acme.om.context import OperatorContext, RequestContext, TenantContext
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.work.types.work_item import WorkItem, WorkKind
 
 
 class WorkManagerInterface(ABC):
     @abstractmethod
-    async def enqueue(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def enqueue(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         """A create: the copy stamps the actor, the timestamps, status QUEUED, and
         zero attempts, and clears every claim field, whatever the caller sent.
         The request that caused the work and its trace context are the item's,
@@ -47,7 +47,7 @@ class WorkManagerInterface(ABC):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         """Platform-internal: claims the oldest available item on the lane and rebuilds the
         enqueuer's principal under the service role, refining the request stage the
         worker minted for this claim; returns the context with the item. The
@@ -60,7 +60,7 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def complete(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def complete(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         """Every transition of a claimed item (complete, fail, defer, release,
         extend_lease) raises NotFound when the item is gone and LeaseLost when it
         is no longer claimed by `item.claimed_by`; the write is conditional on
@@ -68,13 +68,13 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def fail(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         """Requeues with a growing delay, or fails the item at max_attempts. A failed
         item is a dead letter: an audit event names it and a metric counts it."""
         ...
 
     @abstractmethod
-    async def fail_for_good(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail_for_good(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         """Fails the item at once, whatever attempts it has left: the handler
         said no retry changes the outcome. The same dead letter as an item
         whose attempts are spent: an audit event names it and a metric counts
@@ -82,17 +82,17 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def defer(self, ctx: OpContext, item: WorkItem, delay: timedelta) -> WorkItem:
+    async def defer(self, ctx: TenantContext, item: WorkItem, delay: timedelta) -> WorkItem:
         """Hands the item back for later without spending an attempt."""
         ...
 
     @abstractmethod
-    async def release(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def release(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         """Hands the item back now without spending an attempt."""
         ...
 
     @abstractmethod
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         """Renews the lease; raises LeaseLost when the item is no longer this worker's."""
         ...
 
@@ -133,14 +133,14 @@ class WorkManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def maintenance_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         """Platform-internal: the tenancy manager's service contexts (the system
         scope first, then every tenant), for the sweep, each refining the request
         stage the worker minted for this pass."""
         ...
 
     @abstractmethod
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         """Platform-internal: the tenancy manager's `mark_purged`, for the sweep,
         once a pass found nothing left of the tenant to trim."""
         ...

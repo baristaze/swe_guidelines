@@ -23,8 +23,8 @@ from pydantic import ValidationError
 from acme.infra.observability import failure_level
 from acme.infra.topics import Topics
 from acme.om.base import utcnow
+from acme.om.context import TenantContext
 from acme.om.exceptions import PlatformException
-from acme.om.opcontext import OpContext
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.gateway.auth import CLOSE_UNAUTHENTICATED, Ctx, Principal
 from acme.services.api.gateway.resolve import RealtimeService, container_of
@@ -110,7 +110,7 @@ async def mint_ticket(ctx: Ctx, realtime: RealtimeService) -> IssuedTicketView:
 
 async def serve_commands(
     websocket: WebSocket,
-    ctx: OpContext,
+    ctx: TenantContext,
     realtime: RealtimeServiceInterface,
     buffer: SendBuffer,
     subscriptions: dict[Topics, Callable[[], None]],

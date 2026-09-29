@@ -18,6 +18,15 @@ from acme.infra.cache import CacheScope
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.identity.absent import IdentityProviderAbsentImpl
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import (
+    AppContext,
+    AppType,
+    OperatorContext,
+    OperatorPermission,
+    OperatorRole,
+    RequestContext,
+    Role,
+)
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import (
     Conflict,
@@ -29,15 +38,6 @@ from acme.om.exceptions import (
 )
 from acme.om.idempotency.storage.impl.memory import IdempotencyStorageMemoryImpl
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import (
-    AppContext,
-    AppType,
-    OperatorContext,
-    OperatorPermission,
-    OperatorRole,
-    RequestContext,
-    Role,
-)
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow

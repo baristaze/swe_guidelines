@@ -12,9 +12,9 @@ import httpx
 import pytest
 from api_support import add_member, sign_in_as
 
+from acme.om.context import Role
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.media.types.file import FilePurpose
-from acme.om.opcontext import Role
 from acme.services.api.container import AppContainer
 from acme.services.api.gateway.ratelimit import RateLimited
 

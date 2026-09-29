@@ -26,11 +26,11 @@ from pydantic import BaseModel
 
 from acme.infra.observability import OUTCOMES
 from acme.om.base import new_id
+from acme.om.context import OperatorContext, TenantContext
 from acme.om.exceptions import IdempotencyAttemptLost, IdempotencyInProgress, PlatformException
 from acme.om.idempotency import IdempotencyManagerInterface
 from acme.om.idempotency.types.attempt import Attempt
 from acme.om.idempotency.types.record import IdempotencyRecord
-from acme.om.opcontext import OpContext, OperatorContext
 from acme.services.api.gateway.admin import OperatorCtx
 from acme.services.api.gateway.auth import Ctx
 from acme.services.api.gateway.resolve import container_of
@@ -71,7 +71,7 @@ class Marker(Protocol):
 
 
 class TenantMarker:
-    def __init__(self, manager: IdempotencyManagerInterface, ctx: OpContext) -> None:
+    def __init__(self, manager: IdempotencyManagerInterface, ctx: TenantContext) -> None:
         self._manager = manager
         self._ctx = ctx
 

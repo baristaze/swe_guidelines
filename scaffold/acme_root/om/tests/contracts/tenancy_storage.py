@@ -11,11 +11,11 @@ from uuid import UUID, uuid4
 import pytest
 
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import OperatorRole, Role
 from acme.om.exceptions import Conflict, NotFound, RowDeleted, TenantMismatch, UniqueKeyTaken
 from acme.om.idempotency.storage import IdempotencyStorageInterface
 from acme.om.idempotency.types.attempt import lease_bound
 from acme.om.idempotency.types.record import IdempotencyRecord
-from acme.om.opcontext import OperatorRole, Role
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.rules import email_digest

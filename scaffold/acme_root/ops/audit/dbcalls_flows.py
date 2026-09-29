@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "services" / "api" 
 from api_support import add_member, seed_request
 
 from acme.om.base import new_id
-from acme.om.opcontext import AppContext, AppType, RequestContext, Role
+from acme.om.context import AppContext, AppType, RequestContext, Role
 
 CALLBACK = "http://localhost:55173/auth/callback"
 VERIFIER = "v" * 43

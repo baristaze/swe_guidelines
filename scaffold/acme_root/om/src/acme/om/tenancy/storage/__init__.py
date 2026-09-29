@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
-from acme.om.opcontext import Role
+from acme.om.context import Role
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.identity import Identity

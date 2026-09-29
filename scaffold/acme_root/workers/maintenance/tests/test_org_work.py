@@ -12,7 +12,7 @@ from worker_support import build_container, request, signing, upload
 
 from acme.integrations.exceptions import ProviderRefused, ProviderUnavailable
 from acme.integrations.identity.twin import IdentityProviderTwinImpl
-from acme.om.opcontext import OpContext, OperatorRole, Role
+from acme.om.context import OperatorRole, Role, TenantContext
 from acme.om.work.types.handler import WorkHandlerInterface, WorkParked, WorkRefused
 from acme.om.work.types.work_item import WorkItem, WorkKind
 from acme.workers.maintenance.container import WorkerContainer
@@ -30,7 +30,7 @@ def handler_of(container: WorkerContainer) -> WorkHandlerInterface:
     return build_loop(container)._handlers[WorkKind.DELETE_ORG]  # pyright: ignore[reportPrivateUsage]
 
 
-async def signed_in_owner(container: WorkerContainer) -> OpContext:
+async def signed_in_owner(container: WorkerContainer) -> TenantContext:
     """Ajax's owner, signed in by address: an org is deleted from a session."""
     tenancy = container.managers.tenancy
     await tenancy.bootstrap(request(), "Ajax", "ajax", "owner@ajax.test", "Owner")
@@ -41,7 +41,7 @@ async def signed_in_owner(container: WorkerContainer) -> OpContext:
     return await tenancy.authenticate(request(), issued.token)
 
 
-async def claim(container: WorkerContainer) -> tuple[OpContext, WorkItem]:
+async def claim(container: WorkerContainer) -> tuple[TenantContext, WorkItem]:
     claimed = await container.managers.work.claim(
         request(), "default", [WorkKind.DELETE_ORG], "test", LEASE
     )

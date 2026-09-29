@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from acme.om.opcontext import CredentialKind, OperatorRole, Permission, Role
+from acme.om.context import CredentialKind, OperatorRole, Permission, Role
 from acme.om.tenancy.rules import MAX_API_KEY_TTL
 from acme.om.tenancy.types.invitation import InvitationState
 from acme.om.tenancy.types.org import OrgKind

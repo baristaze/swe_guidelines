@@ -14,7 +14,7 @@ import httpx
 from acme.infra.impl.local import InfraLocalImpl
 from acme.integrations.root import IntegrationsInterface
 from acme.om.base import new_id, utcnow
-from acme.om.opcontext import AppContext, AppType, OperatorRole, RequestContext, Role
+from acme.om.context import AppContext, AppType, OperatorRole, RequestContext, Role
 from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.root import StorageInterface
 from acme.om.tenancy.rules import totp_code, totp_step

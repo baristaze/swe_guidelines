@@ -19,7 +19,7 @@ from api_support import (
     seed_request,
 )
 
-from acme.om.opcontext import OperatorRole
+from acme.om.context import OperatorRole
 from acme.om.tenancy.impl.operator import TOTP_ISSUER
 from acme.om.tenancy.rules import email_digest
 from acme.services.api import main as api_main

@@ -7,7 +7,7 @@ to them: nobody reaches through the queue what they could not do directly."""
 import logging
 from typing import ClassVar
 
-from acme.om.opcontext import OpContext, Permission
+from acme.om.context import Permission, TenantContext
 from acme.om.work.types.handler import WorkHandlerInterface
 from acme.om.work.types.work_item import WorkItem
 
@@ -20,7 +20,7 @@ class NoopHandlerImpl(WorkHandlerInterface):
 
     REQUIRES: ClassVar[tuple[Permission, ...]] = ()
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         log.info(
             "noop %s for %s in org %s (attempt %d)",
             item.id,

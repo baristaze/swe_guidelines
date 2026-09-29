@@ -2,9 +2,9 @@ import base64
 from datetime import timedelta
 from uuid import UUID
 
+from acme.om.context import IdentityContext, RequestContext, TenantContext
 from acme.om.exceptions import ValidationFailed
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import IdentityContext, OpContext, RequestContext
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.types.issued import IssuedLogin
 from acme.services.api.services.tenancy import TenancyServiceInterface
@@ -152,12 +152,12 @@ class TenancyServiceImpl(TenancyServiceInterface):
         )
 
     async def delete_account(
-        self, ctx: OpContext, body: DeleteAccountRequest
+        self, ctx: TenantContext, body: DeleteAccountRequest
     ) -> AccountDeletedView:
         deleted = await self._tenancy.delete_account(ctx, body.email, body.return_to)
         return AccountDeletedView.model_validate(deleted)
 
-    async def get_me(self, ctx: OpContext) -> MeView:
+    async def get_me(self, ctx: TenantContext) -> MeView:
         # The context carries ids; the manager loads the user and the org in
         # one read. The role shown is the context's: an api key's is capped.
         me = await self._tenancy.get_me(ctx)
@@ -169,29 +169,31 @@ class TenancyServiceImpl(TenancyServiceInterface):
             app=ctx.app.type.value,
         )
 
-    async def update_me(self, ctx: OpContext, body: UpdateMeRequest) -> UserView:
+    async def update_me(self, ctx: TenantContext, body: UpdateMeRequest) -> UserView:
         user = await self._tenancy.rename_user(ctx, ctx.user_id, body.display_name)
         return UserView.model_validate(user)
 
-    async def get_identity(self, ctx: OpContext) -> IdentityView:
+    async def get_identity(self, ctx: TenantContext) -> IdentityView:
         return IdentityView.model_validate(await self._tenancy.get_identity(ctx))
 
-    async def update_identity(self, ctx: OpContext, body: UpdateIdentityRequest) -> IdentityView:
+    async def update_identity(
+        self, ctx: TenantContext, body: UpdateIdentityRequest
+    ) -> IdentityView:
         return IdentityView.model_validate(await self._tenancy.set_time_zone(ctx, body.time_zone))
 
-    async def get_org(self, ctx: OpContext) -> OrgView:
+    async def get_org(self, ctx: TenantContext) -> OrgView:
         return OrgView.model_validate(await self._tenancy.get_org(ctx))
 
-    async def delete_org(self, ctx: OpContext, body: DeleteOrgRequest) -> OrgDeletedView:
+    async def delete_org(self, ctx: TenantContext, body: DeleteOrgRequest) -> OrgDeletedView:
         return OrgDeletedView.model_validate(await self._tenancy.delete_org(ctx, body.name))
 
     async def create_org(
-        self, ctx: OpContext, body: CreateTeamOrgRequest, attempt: Attempt
+        self, ctx: TenantContext, body: CreateTeamOrgRequest, attempt: Attempt
     ) -> MembershipChoiceView:
         place = await self._tenancy.create_org(ctx, body.name, body.slug, attempt)
         return MembershipChoiceView.model_validate(place)
 
-    async def get_users(self, ctx: OpContext, cursor: str | None, limit: int) -> UserPageView:
+    async def get_users(self, ctx: TenantContext, cursor: str | None, limit: int) -> UserPageView:
         # The public page size is clamped here and again by the manager; the
         # manager's lookahead past it is what makes `has_more` true.
         limit = clamp_limit(limit)
@@ -203,7 +205,7 @@ class TenancyServiceImpl(TenancyServiceInterface):
         )
 
     async def get_memberships(
-        self, ctx: OpContext, cursor: str | None, limit: int
+        self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> MembershipPageView:
         limit = clamp_limit(limit)
         after = decode_cursor("memberships", cursor) if cursor else None
@@ -216,16 +218,16 @@ class TenancyServiceImpl(TenancyServiceInterface):
         )
 
     async def update_membership_role(
-        self, ctx: OpContext, user_id: UUID, body: UpdateMembershipRequest
+        self, ctx: TenantContext, user_id: UUID, body: UpdateMembershipRequest
     ) -> MembershipView:
         updated = await self._tenancy.update_membership_role(ctx, user_id, body.role)
         return MembershipView.model_validate(updated)
 
-    async def remove_member(self, ctx: OpContext, user_id: UUID) -> UserView:
+    async def remove_member(self, ctx: TenantContext, user_id: UUID) -> UserView:
         return UserView.model_validate(await self._tenancy.remove_member(ctx, user_id))
 
     async def get_invitations(
-        self, ctx: OpContext, cursor: str | None, limit: int
+        self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> InvitationPageView:
         limit = clamp_limit(limit)
         after = decode_cursor("invitations", cursor) if cursor else None
@@ -236,33 +238,35 @@ class TenancyServiceImpl(TenancyServiceInterface):
         )
 
     async def invite_member(
-        self, ctx: OpContext, body: InviteMemberRequest, attempt: Attempt
+        self, ctx: TenantContext, body: InviteMemberRequest, attempt: Attempt
     ) -> InvitationView:
         invitation = await self._tenancy.invite_member(ctx, body.email, body.role, attempt)
         return InvitationView.model_validate(invitation)
 
-    async def resend_invitation(self, ctx: OpContext, invitation_id: UUID) -> InvitationView:
+    async def resend_invitation(self, ctx: TenantContext, invitation_id: UUID) -> InvitationView:
         return InvitationView.model_validate(
             await self._tenancy.resend_invitation(ctx, invitation_id)
         )
 
-    async def revoke_invitation(self, ctx: OpContext, invitation_id: UUID) -> InvitationView:
+    async def revoke_invitation(self, ctx: TenantContext, invitation_id: UUID) -> InvitationView:
         return InvitationView.model_validate(
             await self._tenancy.revoke_invitation(ctx, invitation_id)
         )
 
-    async def sso_link(self, ctx: OpContext, body: SsoLinkRequest) -> SsoLinkView:
+    async def sso_link(self, ctx: TenantContext, body: SsoLinkRequest) -> SsoLinkView:
         url = await self._tenancy.sso_setup_link(ctx, body.intent, body.return_url)
         return SsoLinkView(url=url)
 
-    async def get_sessions(self, ctx: OpContext, limit: int) -> list[SessionView]:
+    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[SessionView]:
         sessions = await self._tenancy.get_sessions(ctx, clamp_limit(limit))
         return [SessionView.model_validate(s) for s in sessions]
 
-    async def revoke_session(self, ctx: OpContext, session_id: UUID) -> SessionView:
+    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> SessionView:
         return SessionView.model_validate(await self._tenancy.revoke_session(ctx, session_id))
 
-    async def get_api_keys(self, ctx: OpContext, cursor: str | None, limit: int) -> ApiKeyPageView:
+    async def get_api_keys(
+        self, ctx: TenantContext, cursor: str | None, limit: int
+    ) -> ApiKeyPageView:
         limit = clamp_limit(limit)
         after = decode_cursor("api-keys", cursor) if cursor else None
         page = await self._tenancy.get_api_keys(ctx, after, limit)
@@ -272,11 +276,11 @@ class TenancyServiceImpl(TenancyServiceInterface):
         )
 
     async def create_api_key(
-        self, ctx: OpContext, body: AddApiKeyRequest, attempt: Attempt
+        self, ctx: TenantContext, body: AddApiKeyRequest, attempt: Attempt
     ) -> IssuedApiKeyView:
         ttl = timedelta(days=body.ttl_days) if body.ttl_days is not None else None
         issued = await self._tenancy.create_api_key(ctx, body.name, body.role, ttl, attempt)
         return IssuedApiKeyView(key=issued.key, api_key=ApiKeyView.model_validate(issued.api_key))
 
-    async def revoke_api_key(self, ctx: OpContext, api_key_id: UUID) -> ApiKeyView:
+    async def revoke_api_key(self, ctx: TenantContext, api_key_id: UUID) -> ApiKeyView:
         return ApiKeyView.model_validate(await self._tenancy.revoke_api_key(ctx, api_key_id))

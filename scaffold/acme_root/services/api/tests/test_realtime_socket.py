@@ -24,8 +24,8 @@ from uvicorn.protocols.utils import ClientDisconnected
 from acme.infra.exceptions import BackendFailed
 from acme.infra.topics import Topics
 from acme.om.base import utcnow
+from acme.om.context import Role, TenantContext
 from acme.om.exceptions import Unavailable
-from acme.om.opcontext import OpContext, Role
 from acme.om.tenancy.rules import hash_token
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.app import create_app
@@ -379,7 +379,7 @@ def test_a_revocation_during_the_hello_still_closes_the_socket(
     working = service.head
     revoked: list[bool] = []
 
-    async def head_while_revoked(ctx: OpContext) -> int:
+    async def head_while_revoked(ctx: TenantContext) -> int:
         if not revoked:
             revoked.append(True)
             assert ctx.credential_id is not None

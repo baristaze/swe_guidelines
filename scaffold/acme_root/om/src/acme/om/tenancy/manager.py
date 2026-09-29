@@ -7,16 +7,16 @@ from datetime import timedelta
 from uuid import UUID
 
 from acme.integrations.identity import DeviceAuthorization, PortalIntent
-from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import (
+from acme.om.context import (
     CredentialKind,
     IdentityContext,
-    OpContext,
     OperatorContext,
     OperatorRole,
     RequestContext,
     Role,
+    TenantContext,
 )
+from acme.om.idempotency.types.attempt import Attempt
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation
@@ -48,12 +48,12 @@ from acme.om.tenancy.types.user import User
 
 class TenancyManagerInterface(ABC):
     """Manager of the tenancy swimlane, on the tenant plane: every operation
-    on a principal takes `OpContext`. The operator plane is
+    on a principal takes `TenantContext`. The operator plane is
     `TenancyOperatorManagerInterface`, which takes `OperatorContext`.
 
     The transitions come first. Each takes the weakest stage it needs and
     produces a stronger one: `RequestContext` in, `IdentityContext` or
-    `OpContext` out; `IdentityContext` in, `OperatorContext` out. They are the
+    `TenantContext` out; `IdentityContext` in, `OperatorContext` out. They are the
     only constructors of those stages, and the exceptions test names them.
     """
 
@@ -67,7 +67,7 @@ class TenancyManagerInterface(ABC):
         display_name: str,
         *,
         operator_role: OperatorRole | None = None,
-    ) -> tuple[OpContext, Org]:
+    ) -> tuple[TenantContext, Org]:
         """Platform-internal: seeds a fresh environment with one team org and its
         owner; an owner nobody has seen before is made with their personal org.
 
@@ -89,7 +89,7 @@ class TenancyManagerInterface(ABC):
         email: str,
         display_name: str,
         role: Role,
-    ) -> tuple[OpContext, User, bool]:
+    ) -> tuple[TenantContext, User, bool]:
         """Platform-internal: seeds a person into an existing org, for local and
         test environments; a person joins a deployed one by invitation.
 
@@ -234,7 +234,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def authenticate(self, rctx: RequestContext, credential: str) -> OpContext:
+    async def authenticate(self, rctx: RequestContext, credential: str) -> TenantContext:
         """Platform-internal: the transition to the tenant stage. The gateway asks
         for the principal behind a session token or an api key."""
         ...
@@ -324,7 +324,9 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def service_context(self, rctx: RequestContext, org_id: UUID, user_id: UUID) -> OpContext:
+    async def service_context(
+        self, rctx: RequestContext, org_id: UUID, user_id: UUID
+    ) -> TenantContext:
         """Platform-internal: the context a claimed work item runs under. Minted
         for the tenant on the service role, with `user_id` kept as the
         attribution: the person authorized the work once, at enqueue, so only
@@ -334,7 +336,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def service_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def service_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         """Platform-internal: one service context per tenant, deleted ones
         included, for sweeps, with one for the system scope (`EMPTY_UUID` as the
         org) first, since login credentials live there and a sweep that never
@@ -352,10 +354,10 @@ class TenancyManagerInterface(ABC):
     # The principal.
 
     @abstractmethod
-    async def get_org(self, ctx: OpContext) -> Org: ...
+    async def get_org(self, ctx: TenantContext) -> Org: ...
 
     @abstractmethod
-    async def get_me(self, ctx: OpContext) -> OrgMembership:
+    async def get_me(self, ctx: TenantContext) -> OrgMembership:
         """The caller's org, their user in it, and their membership's role,
         read together in one transaction. The context carries ids, so what
         the caller is shown is loaded here, as fresh as the request."""
@@ -363,7 +365,7 @@ class TenancyManagerInterface(ABC):
 
     @abstractmethod
     async def create_org(
-        self, ctx: OpContext, name: str, slug: str | None, attempt: Attempt | None = None
+        self, ctx: TenantContext, name: str, slug: str | None, attempt: Attempt | None = None
     ) -> OrgMembership:
         """A team org the caller makes and owns: the org, the caller's user in
         it under the display name they carry in this one, and the owner
@@ -378,12 +380,12 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_identity(self, ctx: OpContext) -> Identity:
+    async def get_identity(self, ctx: TenantContext) -> Identity:
         """The identity behind the caller's user."""
         ...
 
     @abstractmethod
-    async def set_time_zone(self, ctx: OpContext, time_zone: str) -> Identity:
+    async def set_time_zone(self, ctx: TenantContext, time_zone: str) -> Identity:
         """Records where the caller is, as an IANA name, on their identity,
         so it holds in every org they are in. A name that is not one
         (`tenancy.rules.check_time_zone`) is ValidationFailed."""
@@ -391,7 +393,7 @@ class TenancyManagerInterface(ABC):
 
     @abstractmethod
     async def invite_member(
-        self, ctx: OpContext, email: str, role: Role, attempt: Attempt | None = None
+        self, ctx: TenantContext, email: str, role: Role, attempt: Attempt | None = None
     ) -> Invitation:
         """Asks a person to join the org, by email, with a role capped at the
         caller's (NotAuthorized above it). The identity provider sends the
@@ -406,26 +408,28 @@ class TenancyManagerInterface(ABC):
 
     @abstractmethod
     async def get_invitations(
-        self, ctx: OpContext, after: UUID | None, limit: int
+        self, ctx: TenantContext, after: UUID | None, limit: int
     ) -> InvitationPage:
         """The org's pending invitations, newest first, a page at a time, for a
         member manager."""
         ...
 
     @abstractmethod
-    async def resend_invitation(self, ctx: OpContext, invitation_id: UUID) -> Invitation:
+    async def resend_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
         """Sends a pending invitation's email again, with a fresh expiry.
         InvitationClosed for one accepted or revoked."""
         ...
 
     @abstractmethod
-    async def revoke_invitation(self, ctx: OpContext, invitation_id: UUID) -> Invitation:
+    async def revoke_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
         """Revokes a pending invitation: its link stops working.
         InvitationClosed for one accepted or revoked."""
         ...
 
     @abstractmethod
-    async def sso_setup_link(self, ctx: OpContext, intent: PortalIntent, return_url: str) -> str:
+    async def sso_setup_link(
+        self, ctx: TenantContext, intent: PortalIntent, return_url: str
+    ) -> str:
         """A short-lived link to the identity provider's admin portal, where
         an owner or an admin of a team org sets up the org's single sign-on
         (`sso`) or proves its domain (`domain_verification`) themselves. A
@@ -435,26 +439,26 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def rename_user(self, ctx: OpContext, user_id: UUID, display_name: str) -> User:
+    async def rename_user(self, ctx: TenantContext, user_id: UUID, display_name: str) -> User:
         """Sets a user's display name in this org: the caller's own, or
         another member's with `manage_members`. Email and identity belong to
         the identity. A blank name is ValidationFailed."""
         ...
 
     @abstractmethod
-    async def get_users(self, ctx: OpContext, after: UUID | None, limit: int) -> UserPage:
+    async def get_users(self, ctx: TenantContext, after: UUID | None, limit: int) -> UserPage:
         """The tenant's members, by id, a page at a time: `after` is the id the
         previous page ended on, and `has_more` says another follows."""
         ...
 
     @abstractmethod
-    async def get_user(self, ctx: OpContext, user_id: UUID) -> User: ...
+    async def get_user(self, ctx: TenantContext, user_id: UUID) -> User: ...
 
     # Memberships.
 
     @abstractmethod
     async def get_memberships(
-        self, ctx: OpContext, after: UUID | None, limit: int
+        self, ctx: TenantContext, after: UUID | None, limit: int
     ) -> MembershipPage:
         """The tenant's memberships, by user id, a page at a time as `get_users`
         pages: a page ending on the same user id covers the same members, so
@@ -462,14 +466,16 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def update_membership_role(self, ctx: OpContext, user_id: UUID, role: Role) -> Membership:
+    async def update_membership_role(
+        self, ctx: TenantContext, user_id: UUID, role: Role
+    ) -> Membership:
         """Role-capped at the caller's role, for the target's old role and its
         new one. The person of a personal org keeps their role in it
         (PersonalOrgFixed)."""
         ...
 
     @abstractmethod
-    async def remove_member(self, ctx: OpContext, user_id: UUID) -> User:
+    async def remove_member(self, ctx: TenantContext, user_id: UUID) -> User:
         """Soft-deletes the member's user in this org, ends their membership,
         and revokes every live session and api key of theirs, in one
         transaction; no list shows them, no role change reaches them, and
@@ -479,7 +485,7 @@ class TenancyManagerInterface(ABC):
 
     @abstractmethod
     async def delete_account(
-        self, ctx: OpContext, confirm_email: str, return_to: str | None = None
+        self, ctx: TenantContext, confirm_email: str, return_to: str | None = None
     ) -> AccountDeleted:
         """The caller's whole account, gone for good, from a session only
         (NotAuthorized for an api key, which is a program's). `confirm_email`
@@ -499,7 +505,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def delete_personal_org(self, ctx: OpContext) -> Org | None:
+    async def delete_personal_org(self, ctx: TenantContext) -> Org | None:
         """Platform-internal, the last step of `DELETE_ACCOUNT`: deletes the
         caller's tenant when it is a personal org whose person is gone, and
         announces it, so its sockets close. A deleted personal org keeps no
@@ -509,7 +515,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def delete_org(self, ctx: OpContext, confirm_name: str) -> OrgDeleted:
+    async def delete_org(self, ctx: TenantContext, confirm_name: str) -> OrgDeleted:
         """The caller's team org, deleted by its owner, from a session only
         (NotAuthorized for an api key, which is a program's, and for any role
         but owner). `confirm_name` is the org's name as the owner typed it
@@ -529,7 +535,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def delete_closed_org(self, ctx: OpContext) -> Org | None:
+    async def delete_closed_org(self, ctx: TenantContext) -> Org | None:
         """Platform-internal, the last step of `DELETE_ORG`, on the service
         role only (NotAuthorized otherwise): soft-deletes the caller's closed
         team org, whoever closed it, and announces it, so its sockets close.
@@ -539,19 +545,19 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def count_members(self, ctx: OpContext) -> int:
+    async def count_members(self, ctx: TenantContext) -> int:
         """How many live members the org has."""
         ...
 
     # Credentials.
 
     @abstractmethod
-    async def get_sessions(self, ctx: OpContext, limit: int) -> list[Session]:
+    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[Session]:
         """The caller's own live sessions in this org, newest first."""
         ...
 
     @abstractmethod
-    async def revoke_session(self, ctx: OpContext, session_id: UUID) -> Session: ...
+    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> Session: ...
 
     @abstractmethod
     async def logout(self, ictx: IdentityContext, return_to: str | None = None) -> SignedOut:
@@ -568,7 +574,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_api_keys(self, ctx: OpContext, after: UUID | None, limit: int) -> ApiKeyPage:
+    async def get_api_keys(self, ctx: TenantContext, after: UUID | None, limit: int) -> ApiKeyPage:
         """The tenant's unrevoked keys for a member manager, the caller's own
         otherwise; newest first, a page at a time, as `get_users` pages."""
         ...
@@ -576,7 +582,7 @@ class TenancyManagerInterface(ABC):
     @abstractmethod
     async def create_api_key(
         self,
-        ctx: OpContext,
+        ctx: TenantContext,
         name: str,
         role: Role,
         ttl: timedelta | None = None,
@@ -595,7 +601,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def revoke_api_key(self, ctx: OpContext, api_key_id: UUID) -> ApiKey: ...
+    async def revoke_api_key(self, ctx: TenantContext, api_key_id: UUID) -> ApiKey: ...
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
@@ -612,7 +618,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def purge_tenant(self, ctx: OpContext) -> int:
+    async def purge_tenant(self, ctx: TenantContext) -> int:
         """The sweep, for one tenant deleted longer ago than the retention: every
         user, membership, api key, session, socket ticket, and invitation of
         the tenant goes, a batch of each at most a call, and the org row
@@ -622,7 +628,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def tenant_expired(self, ctx: OpContext) -> bool:
+    async def tenant_expired(self, ctx: TenantContext) -> bool:
         """Platform-internal: True when the tenant's org row is deleted longer ago
         than the retention. Every namespace's sweep asks it before its own
         purge, so one answer decides for the whole system: a tenant past it
@@ -633,7 +639,7 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         """Platform-internal, for the sweep, after a pass found nothing of the
         tenant left to trim: stamps the org `purged_at` when the tenant is past
         its retention, and the sweep leaves it out from then on; its org row
@@ -642,6 +648,6 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def issue_ticket(self, ctx: OpContext) -> IssuedTicket:
+    async def issue_ticket(self, ctx: TenantContext) -> IssuedTicket:
         """A single-use, short-lived ticket standing for the caller's credential."""
         ...

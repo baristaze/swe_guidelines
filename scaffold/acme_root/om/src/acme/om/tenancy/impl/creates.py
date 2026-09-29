@@ -25,8 +25,8 @@ from typing import Any
 from uuid import UUID
 
 from acme.om.base import new_id, utcnow
+from acme.om.context import OperatorRole, RequestScope, Role
 from acme.om.exceptions import Conflict, MembershipLimitReached, ValidationFailed
-from acme.om.opcontext import OperatorRole, RequestScope, Role
 from acme.om.outbox import OutboxRelayInterface
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.rules import (

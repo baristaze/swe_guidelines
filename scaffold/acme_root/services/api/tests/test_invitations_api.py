@@ -12,7 +12,7 @@ from httpx import ASGITransport
 
 from acme.integrations.identity.twin import TWIN_PORTAL, IdentityProviderTwinImpl
 from acme.integrations.impl.configured import IntegrationsOverImpl
-from acme.om.opcontext import Role
+from acme.om.context import Role
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer
 

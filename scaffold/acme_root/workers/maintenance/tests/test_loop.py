@@ -28,11 +28,11 @@ from acme.infra.observability import (
 )
 from acme.infra.topics import TopicPayload, Topics
 from acme.om.base import EMPTY_UUID, new_id, utcnow
+from acme.om.context import RequestContext, TenantContext
 from acme.om.events.impl.manager import EventsOptions
 from acme.om.events.types.event import Event
 from acme.om.exceptions import LeaseLost, Unavailable
 from acme.om.idempotency.impl.manager import IdempotencyOptions
-from acme.om.opcontext import OpContext, RequestContext
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationKind
 from acme.om.outbox.storage import OutboxStorageInterface
 from acme.om.outbox.types.row import OutboxRow, outbox_row
@@ -59,7 +59,7 @@ class SlowHandler(WorkHandlerInterface):
         self.cancelled_at: list[float] = []
         self.request_ids: dict[UUID, str | None] = {}
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         clock = asyncio.get_running_loop().time
         self.started.append(item.id)
         self.started_at.append(clock())
@@ -81,7 +81,7 @@ class RaisingHandler(WorkHandlerInterface):
         self.error = error
         self.runs = 0
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         self.runs += 1
         raise self.error
 
@@ -95,11 +95,11 @@ class CorrelationHandler(WorkHandlerInterface):
     its context, the two its log lines carry, and the span it raised."""
 
     def __init__(self) -> None:
-        self.contexts: list[OpContext] = []
+        self.contexts: list[TenantContext] = []
         self.ambient: list[tuple[str | None, str | None]] = []
         self.spans: list[trace.Span] = []
 
-    async def handle(self, ctx: OpContext, item: WorkItem) -> None:
+    async def handle(self, ctx: TenantContext, item: WorkItem) -> None:
         self.contexts.append(ctx)
         self.ambient.append((request_id_var.get(), caused_by_request_id_var.get()))
         self.spans.append(trace.get_current_span())
@@ -123,7 +123,7 @@ class LeaseLosingWork(WorkManagerInterface):
     def _record_renewal(self) -> None:
         self.renewals.append(asyncio.get_running_loop().time())
 
-    async def enqueue(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def enqueue(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         return await self._inner.enqueue(ctx, item)
 
     async def enqueue_relayed(self, org_id: UUID, row: OutboxRow) -> WorkItem:
@@ -136,25 +136,25 @@ class LeaseLosingWork(WorkManagerInterface):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         return await self._inner.claim(rctx, lane, kinds, worker_id, lease)
 
-    async def complete(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def complete(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         return await self._inner.complete(ctx, item)
 
-    async def fail(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         return await self._inner.fail(ctx, item, error)
 
-    async def fail_for_good(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail_for_good(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         return await self._inner.fail_for_good(ctx, item, error)
 
-    async def defer(self, ctx: OpContext, item: WorkItem, delay: timedelta) -> WorkItem:
+    async def defer(self, ctx: TenantContext, item: WorkItem, delay: timedelta) -> WorkItem:
         return await self._inner.defer(ctx, item, delay)
 
-    async def release(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def release(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         return await self._inner.release(ctx, item)
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         self._record_renewal()
         raise LeaseLost("held elsewhere")
 
@@ -170,17 +170,17 @@ class LeaseLosingWork(WorkManagerInterface):
     async def failed_within(self, window: timedelta) -> int:
         return await self._inner.failed_within(window)
 
-    async def maintenance_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         return await self._inner.maintenance_contexts(rctx)
 
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         return await self._inner.mark_purged(ctx)
 
 
 class StallingWork(LeaseLosingWork):
     """Decorates the real manager: every renewal hangs, as an unreachable database behaves."""
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         self._record_renewal()
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
@@ -190,7 +190,7 @@ class FailingWork(LeaseLosingWork):
     """Decorates the real manager: every renewal fails for a reason that says
     nothing about who holds the item, as an engine out of reach behaves."""
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         self._record_renewal()
         raise RuntimeError("engine out of reach")
 
@@ -199,7 +199,7 @@ class FailThenStallWork(LeaseLosingWork):
     """Decorates the real manager: the first renewal fails fast, every later one
     hangs, as an engine that refuses once and then stops answering behaves."""
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         self._record_renewal()
         if len(self.renewals) == 1:
             raise RuntimeError("engine out of reach")
@@ -210,7 +210,7 @@ class FailThenStallWork(LeaseLosingWork):
 class RenewingWork(LeaseLosingWork):
     """Decorates the real manager: every renewal goes through."""
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         self._record_renewal()
         return await self._inner.extend_lease(ctx, item, lease)
 
@@ -224,10 +224,10 @@ class FailingReleaseWork(LeaseLosingWork):
         super().__init__(inner)
         self.releases = 0
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         return await self._inner.extend_lease(ctx, item, lease)
 
-    async def release(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def release(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         self.releases += 1
         raise RuntimeError("engine out of reach")
 
@@ -241,7 +241,7 @@ class StopOnClaimWork(LeaseLosingWork):
         super().__init__(inner)
         self.stop: Callable[[], None] = lambda: None
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         return await self._inner.extend_lease(ctx, item, lease)
 
     async def claim(
@@ -251,7 +251,7 @@ class StopOnClaimWork(LeaseLosingWork):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         claimed = await self._inner.claim(rctx, lane, kinds, worker_id, lease)
         if claimed is not None:
             self.stop()
@@ -263,12 +263,12 @@ class EnqueueDuringClaimWork(LeaseLosingWork):
     inserts and announces an item while the claim is still on its way back.
     That is the window a Postgres snapshot plus a Valkey publish really open."""
 
-    def __init__(self, inner: WorkManagerInterface, ctx: OpContext, item: WorkItem) -> None:
+    def __init__(self, inner: WorkManagerInterface, ctx: TenantContext, item: WorkItem) -> None:
         super().__init__(inner)
         self._pending: list[WorkItem] = [item]
         self._ctx = ctx
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         return await self._inner.extend_lease(ctx, item, lease)
 
     async def claim(
@@ -278,7 +278,7 @@ class EnqueueDuringClaimWork(LeaseLosingWork):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         claimed = await self._inner.claim(rctx, lane, kinds, worker_id, lease)
         if claimed is None and self._pending:
             await self._inner.enqueue(self._ctx, self._pending.pop())
@@ -294,7 +294,7 @@ class EmptyClaimCountingWork(LeaseLosingWork):
         super().__init__(inner)
         self.empty_claims = 0
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         return await self._inner.extend_lease(ctx, item, lease)
 
     async def claim(
@@ -304,7 +304,7 @@ class EmptyClaimCountingWork(LeaseLosingWork):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         claimed = await self._inner.claim(rctx, lane, kinds, worker_id, lease)
         if claimed is None:
             self.empty_claims += 1
@@ -560,7 +560,9 @@ async def test_a_finished_item_wakes_the_claimer(tmp_path: Path) -> None:
     await task
 
 
-async def run_once(tmp_path: Path, error: Exception) -> tuple[WorkerContainer, OpContext, WorkItem]:
+async def run_once(
+    tmp_path: Path, error: Exception
+) -> tuple[WorkerContainer, TenantContext, WorkItem]:
     """One item, run once by a loop whose handler raises `error`, and read
     back once it has settled."""
     container = build_container(tmp_path)
@@ -764,7 +766,7 @@ class RequeueRecordingWork(LeaseLosingWork):
         self.requeue_limits: list[int] = []
         self.requeued: list[int] = []
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         return await self._inner.extend_lease(ctx, item, lease)
 
     async def requeue_stale(self, rctx: RequestContext, limit: int) -> int:
@@ -1090,7 +1092,7 @@ async def test_the_sweep_trims_a_living_stream_a_bounded_batch_a_pass(
     assert [e.seq for e in kept] == list(range(6, head + 1)), "whole above the floor"
 
 
-def aged_event(ctx: OpContext, produced_at: datetime) -> Event:
+def aged_event(ctx: TenantContext, produced_at: datetime) -> Event:
     return Event(
         id=new_id(),
         org_id=ctx.org_id,

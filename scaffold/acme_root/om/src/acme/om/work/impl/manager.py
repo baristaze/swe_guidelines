@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from acme.infra.observability import OUTCOMES
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface, WorkAvailablePayload
 from acme.om.base import EMPTY_UUID, Platform, new_id, utcnow
+from acme.om.context import Permission, RequestContext, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.events.manager import audit_event
 from acme.om.exceptions import (
@@ -18,7 +19,6 @@ from acme.om.exceptions import (
     UniqueKeyTaken,
     ValidationFailed,
 )
-from acme.om.opcontext import OpContext, Permission, RequestContext
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.work.manager import WorkManagerInterface
@@ -86,7 +86,7 @@ class WorkManagerImpl(WorkManagerInterface):
         self._topics = topics
         self._options = options
 
-    async def enqueue(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def enqueue(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         """The direct create, under a context: work a CLI, a sweep, or an app asks
         for on its own, which no core write announced. The actor is the
         context's and the key is the caller's."""
@@ -176,7 +176,7 @@ class WorkManagerImpl(WorkManagerInterface):
         kinds: Sequence[WorkKind],
         worker_id: str,
         lease: timedelta,
-    ) -> tuple[OpContext, WorkItem] | None:
+    ) -> tuple[TenantContext, WorkItem] | None:
         while True:
             found = await self._storage.claim_next(lane, kinds, worker_id, lease)
             if found is None:
@@ -194,7 +194,7 @@ class WorkManagerImpl(WorkManagerInterface):
                 continue
             return ctx, item
 
-    async def complete(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def complete(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         return await self._transition(
             ctx,
             item,
@@ -207,13 +207,15 @@ class WorkManagerImpl(WorkManagerInterface):
             },
         )
 
-    async def fail(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         return await self._fail(ctx, item, error, is_exhausted(item))
 
-    async def fail_for_good(self, ctx: OpContext, item: WorkItem, error: str) -> WorkItem:
+    async def fail_for_good(self, ctx: TenantContext, item: WorkItem, error: str) -> WorkItem:
         return await self._fail(ctx, item, error, True)
 
-    async def _fail(self, ctx: OpContext, item: WorkItem, error: str, exhausted: bool) -> WorkItem:
+    async def _fail(
+        self, ctx: TenantContext, item: WorkItem, error: str, exhausted: bool
+    ) -> WorkItem:
         """The failed run: a dead letter when `exhausted`, and otherwise back
         to the queue after the retry curve's delay."""
         now = utcnow()
@@ -240,13 +242,13 @@ class WorkManagerImpl(WorkManagerInterface):
             await self._dead_letter(ctx, failed)
         return failed
 
-    async def defer(self, ctx: OpContext, item: WorkItem, delay: timedelta) -> WorkItem:
+    async def defer(self, ctx: TenantContext, item: WorkItem, delay: timedelta) -> WorkItem:
         return await self._hand_back(ctx, item, delay)
 
-    async def release(self, ctx: OpContext, item: WorkItem) -> WorkItem:
+    async def release(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         return await self._hand_back(ctx, item, timedelta(0))
 
-    async def extend_lease(self, ctx: OpContext, item: WorkItem, lease: timedelta) -> WorkItem:
+    async def extend_lease(self, ctx: TenantContext, item: WorkItem, lease: timedelta) -> WorkItem:
         now = utcnow()
         return await self._transition(
             ctx, item, {"lease_expires_at": now + lease, "updated_at": now}
@@ -280,10 +282,10 @@ class WorkManagerImpl(WorkManagerInterface):
     async def failed_within(self, window: timedelta) -> int:
         return await self._storage.count_failed_since(utcnow() - window)
 
-    async def maintenance_contexts(self, rctx: RequestContext) -> list[OpContext]:
+    async def maintenance_contexts(self, rctx: RequestContext) -> list[TenantContext]:
         return await self._tenancy.service_contexts(rctx)
 
-    async def mark_purged(self, ctx: OpContext) -> bool:
+    async def mark_purged(self, ctx: TenantContext) -> bool:
         return await self._tenancy.mark_purged(ctx)
 
     async def _stored(self, org_id: UUID, queued: WorkItem, outcome: InsertOutcome) -> WorkItem:
@@ -300,7 +302,7 @@ class WorkManagerImpl(WorkManagerInterface):
             raise UniqueKeyTaken(f"idempotency key {queued.idempotency_key} was taken and is gone")
         return existing
 
-    async def _hand_back(self, ctx: OpContext, item: WorkItem, delay: timedelta) -> WorkItem:
+    async def _hand_back(self, ctx: TenantContext, item: WorkItem, delay: timedelta) -> WorkItem:
         now = utcnow()
         return await self._transition(
             ctx,
@@ -316,7 +318,9 @@ class WorkManagerImpl(WorkManagerInterface):
             },
         )
 
-    async def _transition(self, ctx: OpContext, item: WorkItem, update: dict[str, Any]) -> WorkItem:
+    async def _transition(
+        self, ctx: TenantContext, item: WorkItem, update: dict[str, Any]
+    ) -> WorkItem:
         """Confirms the item exists, is in this tenant, and is still claimed under
         the token the claim minted, then writes the transition conditionally on
         that token (`claim_token` in the statement itself). The token, not the
@@ -404,7 +408,7 @@ class WorkManagerImpl(WorkManagerInterface):
             return
         await self._dead_letter(ctx, item)
 
-    async def _dead_letter(self, ctx: OpContext, item: WorkItem) -> None:
+    async def _dead_letter(self, ctx: TenantContext, item: WorkItem) -> None:
         """A failed item is a dead letter: an audit event names it in the tenant's
         stream and a metric counts it. The queue row is in the `queue` role and the
         outbox in `core`, so this write follows the transition directly; a crash

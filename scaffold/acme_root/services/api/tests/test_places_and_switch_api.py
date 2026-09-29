@@ -8,7 +8,7 @@ import httpx
 import pytest
 from api_support import OWNER, enrolled_sign_in, seed_request, sign_in_as
 
-from acme.om.opcontext import OperatorRole, Role
+from acme.om.context import OperatorRole, Role
 from acme.services.api.container import AppContainer
 
 DEE = {"email": "dee@example.test", "display_name": "Dee"}

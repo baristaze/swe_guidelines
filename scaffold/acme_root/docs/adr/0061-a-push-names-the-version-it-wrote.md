@@ -9,7 +9,7 @@ The guideline says what a push carries (Realtime at the Edge):
 > A frame and a replayed record carry the identity of the change
 > (`seq`, `kind`, `target_id`, the actor) and no field of the entity.
 > A client reads the entity through the authorized read, which applies
-> the visibility rules of OpContext.
+> the visibility rules of TenantContext.
 
 NET-30 lets one field through: the record's compare-and-set `version`,
 which the write's outbox row carries and the relay copies onto the event

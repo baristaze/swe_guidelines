@@ -7,8 +7,8 @@ produces the credential the next request presents."""
 from abc import ABC, abstractmethod
 from uuid import UUID
 
+from acme.om.context import IdentityContext, RequestContext, TenantContext
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import IdentityContext, OpContext, RequestContext
 from acme.services.api.types.tenancy import (
     AccountDeletedView,
     AddApiKeyRequest,
@@ -109,97 +109,103 @@ class TenancyServiceInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_me(self, ctx: OpContext) -> MeView: ...
+    async def get_me(self, ctx: TenantContext) -> MeView: ...
 
     @abstractmethod
     async def delete_account(
-        self, ctx: OpContext, body: DeleteAccountRequest
+        self, ctx: TenantContext, body: DeleteAccountRequest
     ) -> AccountDeletedView: ...
 
     @abstractmethod
-    async def update_me(self, ctx: OpContext, body: UpdateMeRequest) -> UserView: ...
+    async def update_me(self, ctx: TenantContext, body: UpdateMeRequest) -> UserView: ...
 
     @abstractmethod
-    async def get_identity(self, ctx: OpContext) -> IdentityView: ...
+    async def get_identity(self, ctx: TenantContext) -> IdentityView: ...
 
     @abstractmethod
     async def update_identity(
-        self, ctx: OpContext, body: UpdateIdentityRequest
+        self, ctx: TenantContext, body: UpdateIdentityRequest
     ) -> IdentityView: ...
 
     @abstractmethod
-    async def get_org(self, ctx: OpContext) -> OrgView: ...
+    async def get_org(self, ctx: TenantContext) -> OrgView: ...
 
     @abstractmethod
-    async def delete_org(self, ctx: OpContext, body: DeleteOrgRequest) -> OrgDeletedView:
+    async def delete_org(self, ctx: TenantContext, body: DeleteOrgRequest) -> OrgDeletedView:
         """The caller's team org, deleted by its owner; the answer carries the
         owner's session in their personal org."""
         ...
 
     @abstractmethod
     async def create_org(
-        self, ctx: OpContext, body: CreateTeamOrgRequest, attempt: Attempt
+        self, ctx: TenantContext, body: CreateTeamOrgRequest, attempt: Attempt
     ) -> MembershipChoiceView:
         """A team org the caller owns; the answer is the caller's place in it,
         the choice the exchange takes to switch there."""
         ...
 
     @abstractmethod
-    async def get_users(self, ctx: OpContext, cursor: str | None, limit: int) -> UserPageView:
+    async def get_users(self, ctx: TenantContext, cursor: str | None, limit: int) -> UserPageView:
         """One page of the tenant's members; `cursor` is the previous page's
         `next_cursor`, opaque and refused when it is not one this list issued."""
         ...
 
     @abstractmethod
     async def get_memberships(
-        self, ctx: OpContext, cursor: str | None, limit: int
+        self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> MembershipPageView:
         """One page of the tenant's memberships; `cursor` as on `get_users`."""
         ...
 
     @abstractmethod
     async def update_membership_role(
-        self, ctx: OpContext, user_id: UUID, body: UpdateMembershipRequest
+        self, ctx: TenantContext, user_id: UUID, body: UpdateMembershipRequest
     ) -> MembershipView: ...
 
     @abstractmethod
-    async def remove_member(self, ctx: OpContext, user_id: UUID) -> UserView: ...
+    async def remove_member(self, ctx: TenantContext, user_id: UUID) -> UserView: ...
 
     @abstractmethod
     async def get_invitations(
-        self, ctx: OpContext, cursor: str | None, limit: int
+        self, ctx: TenantContext, cursor: str | None, limit: int
     ) -> InvitationPageView:
         """One page of the org's pending invitations; `cursor` as on `get_users`."""
         ...
 
     @abstractmethod
     async def invite_member(
-        self, ctx: OpContext, body: InviteMemberRequest, attempt: Attempt
+        self, ctx: TenantContext, body: InviteMemberRequest, attempt: Attempt
     ) -> InvitationView: ...
 
     @abstractmethod
-    async def resend_invitation(self, ctx: OpContext, invitation_id: UUID) -> InvitationView: ...
+    async def resend_invitation(
+        self, ctx: TenantContext, invitation_id: UUID
+    ) -> InvitationView: ...
 
     @abstractmethod
-    async def revoke_invitation(self, ctx: OpContext, invitation_id: UUID) -> InvitationView: ...
+    async def revoke_invitation(
+        self, ctx: TenantContext, invitation_id: UUID
+    ) -> InvitationView: ...
 
     @abstractmethod
-    async def sso_link(self, ctx: OpContext, body: SsoLinkRequest) -> SsoLinkView: ...
+    async def sso_link(self, ctx: TenantContext, body: SsoLinkRequest) -> SsoLinkView: ...
 
     @abstractmethod
-    async def get_sessions(self, ctx: OpContext, limit: int) -> list[SessionView]: ...
+    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[SessionView]: ...
 
     @abstractmethod
-    async def revoke_session(self, ctx: OpContext, session_id: UUID) -> SessionView: ...
+    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> SessionView: ...
 
     @abstractmethod
-    async def get_api_keys(self, ctx: OpContext, cursor: str | None, limit: int) -> ApiKeyPageView:
+    async def get_api_keys(
+        self, ctx: TenantContext, cursor: str | None, limit: int
+    ) -> ApiKeyPageView:
         """One page of the api key list; `cursor` as on `get_users`."""
         ...
 
     @abstractmethod
     async def create_api_key(
-        self, ctx: OpContext, body: AddApiKeyRequest, attempt: Attempt
+        self, ctx: TenantContext, body: AddApiKeyRequest, attempt: Attempt
     ) -> IssuedApiKeyView:
         """`attempt` carries the id the create uses, minted by the gateway
         before the idempotency marker, and the token of the marker holding it,
@@ -207,4 +213,4 @@ class TenancyServiceInterface(ABC):
         ...
 
     @abstractmethod
-    async def revoke_api_key(self, ctx: OpContext, api_key_id: UUID) -> ApiKeyView: ...
+    async def revoke_api_key(self, ctx: TenantContext, api_key_id: UUID) -> ApiKeyView: ...

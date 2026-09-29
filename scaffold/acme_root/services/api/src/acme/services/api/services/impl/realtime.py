@@ -9,9 +9,9 @@ from uuid import UUID
 
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics, TopicsInterface
 from acme.om.base import utcnow
+from acme.om.context import ActorScope, TenantContext
 from acme.om.events import EventsManagerInterface
 from acme.om.exceptions import NotAuthenticated, ValidationFailed
-from acme.om.opcontext import ActorScope, OpContext
 from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.services.api.realtime.envelopes import EventEnvelope, IssuedTicketView
@@ -90,12 +90,12 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
         # keeps the head of every tenant it holds a socket for.
         self._topics.subscribe(Topics.ENTITY_CHANGED, "socket-revocations", self._on_change)
 
-    async def head(self, ctx: OpContext) -> int:
+    async def head(self, ctx: TenantContext) -> int:
         seq = await self._events.get_head(ctx)
         self._learn(ctx.org_id, seq)
         return seq
 
-    async def pong_head(self, ctx: OpContext) -> int:
+    async def pong_head(self, ctx: TenantContext) -> int:
         known = self._heads.get(ctx.org_id)
         if known is not None and self._clock() - known.confirmed_at < self._head_max_age:
             return known.seq
@@ -127,7 +127,7 @@ class RealtimeServiceImpl(RealtimeServiceInterface):
             return RIGHTS_CHANGED
         return None
 
-    async def issue_ticket(self, ctx: OpContext) -> IssuedTicketView:
+    async def issue_ticket(self, ctx: TenantContext) -> IssuedTicketView:
         issued = await self._tenancy.issue_ticket(ctx)
         remaining = int((issued.expires_at - utcnow()).total_seconds())
         return IssuedTicketView(ticket=issued.ticket, expires_in_seconds=max(remaining, 0))

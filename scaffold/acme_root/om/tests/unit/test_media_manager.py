@@ -14,13 +14,13 @@ from acme.infra.buckets import Buckets
 from acme.infra.exceptions import UploadRefused
 from acme.infra.impl.local import InfraLocalImpl
 from acme.om.base import new_id, utcnow
+from acme.om.context import Role, TenantContext
 from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import NotAuthorized, NotFound, ValidationFailed
 from acme.om.media import rules
 from acme.om.media.impl.manager import MediaManagerImpl, MediaOptions
 from acme.om.media.storage.impl.memory import MediaStorageMemoryImpl
 from acme.om.media.types.file import File, FilePurpose, FileStatus
-from acme.om.opcontext import OpContext, Role
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 
@@ -62,7 +62,7 @@ def with_subjects(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def a_file(
-    ctx: OpContext,
+    ctx: TenantContext,
     name: str = "plan.pdf",
     *,
     content_type: str = "application/pdf",
@@ -85,7 +85,9 @@ def a_file(
     )
 
 
-async def uploaded(media: MediaManagerImpl, ctx: OpContext, file: File, data: bytes = PDF) -> File:
+async def uploaded(
+    media: MediaManagerImpl, ctx: TenantContext, file: File, data: bytes = PDF
+) -> File:
     """The whole flow over the local store: start, ask for a form (the local
     store cannot presign, so it has no URL), move the bytes, confirm."""
     created = await media.create_file(ctx, file)

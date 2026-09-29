@@ -9,9 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from acme.om.base import EMPTY_UUID, Identifiable, new_id
+from acme.om.context import CredentialKind, Role
 from acme.om.exceptions import Conflict, NotFound, UniqueKeyTaken
 from acme.om.idempotency.storage.tables.idempotency_records import IdempotencyRecords
-from acme.om.opcontext import CredentialKind, Role
 from acme.om.outbox.storage.tables.outbox_rows import OutboxRows
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.storage.impl.pg_base import (

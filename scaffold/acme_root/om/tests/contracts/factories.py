@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from acme.om.base import new_id, utcnow
-from acme.om.opcontext import CredentialKind, OperatorRole, Role
+from acme.om.context import CredentialKind, OperatorRole, Role
 from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation

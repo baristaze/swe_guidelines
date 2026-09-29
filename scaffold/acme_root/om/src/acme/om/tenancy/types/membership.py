@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from acme.om.base import Identifiable, SoftDeletable, Trackable
-from acme.om.opcontext import Role
+from acme.om.context import Role
 
 
 class Membership(Identifiable, Trackable, SoftDeletable):

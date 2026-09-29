@@ -1,8 +1,8 @@
 from datetime import timedelta
 from uuid import UUID
 
+from acme.om.context import OperatorContext, OperatorPermission, OperatorRole
 from acme.om.idempotency.types.attempt import Attempt
-from acme.om.opcontext import OperatorContext, OperatorPermission, OperatorRole
 from acme.om.tenancy import TenancyOperatorManagerInterface
 from acme.om.tenancy.types.session import Session
 from acme.om.work import WorkOperatorManagerInterface
