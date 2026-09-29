@@ -763,6 +763,42 @@ def test_no_tenancy_namespace_is_om_16(tmp_path):
     assert "has no tenancy namespace" in messages(report)[0]
 
 
+EVENT_SOURCE = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import Identifiable
+
+
+class Event(Identifiable):
+    org_id: UUID
+    seq: int = 0
+    kind: str  # "<namespace>.<entity>.<action>", or an audit kind such as "work.item.failed"
+    target_id: UUID
+    produced_at: datetime
+    actor_id: UUID
+    request_id: UUID
+    app: str
+"""
+
+EVENTS = {
+    f"{OM}/events/__init__.py": "from .manager import EventsManagerInterface\n",
+    f"{OM}/events/manager.py": "class EventsManagerInterface:\n    pass\n",
+    f"{OM}/events/types/__init__.py": "from .event import Event\n",
+    f"{OM}/events/types/event.py": EVENT_SOURCE,
+    f"{OM}/events/impl/__init__.py": "",
+    f"{OM}/events/storage/__init__.py": "",
+}
+
+
+def test_audit_as_a_kind_of_event_with_no_audit_namespace_passes_every_om_rule(tmp_path):
+    # an audit entry is an Event with an audit kind in the events namespace's stream
+    project(tmp_path, EVENTS)
+    assert not (tmp_path / OM / "audit").exists()
+    code, out, err = check(tmp_path, "--group", "om")
+    assert code == 0, out + err
+
+
 # --- OM-17
 
 

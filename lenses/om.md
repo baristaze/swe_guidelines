@@ -54,8 +54,8 @@ cross-tenant sweep may instead get the tenant back beside each row
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying an attribute that exists only for a
 column's sake; `org_id` on an entity every reader of which holds a
-context, an audit entry among them; an entity a reader without one
-takes, such as an `OutboxRow` or an `Event`, declared without it.
+context; an entity a reader without one takes, such as an `OutboxRow`
+or an `Event`, declared without it.
 
 **Severity.** medium
 
@@ -406,20 +406,24 @@ functions of a rules module; the rest is judged.
 ## OM-16 Cross-cutting namespaces are ordinary namespaces
 
 **Principle.** Tenancy (organizations, users, memberships,
-credentials) and audit (who did what, when, from which app) are
-first-class swimlanes with their own types, managers, and storage, not
-utilities hanging off the root.
+credentials) is a first-class swimlane with its own types, manager, and
+storage, not a utility hanging off the root. Audit (who did what, when,
+from which app) is a kind of event: an audit entry is an `Event` with an
+audit kind, appended to the events namespace's stream. Audit becomes a
+namespace of its own when it gains a reader of its own.
 
 **Source.** Namespaces as Swimlanes.
 
 **Look for.** Where identity, membership, credential, and audit types
-live; whether they have a manager interface and a storage like any other
-namespace.
+live; whether tenancy has a manager interface and a storage like any
+other namespace; where an audit entry is built and appended, and the
+kinds that mark one.
 
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
-interface; credential handling spread across services with no owning
-namespace.
+interface, or kept anywhere but the event stream; credential handling
+spread across services with no owning namespace; audit read by a screen
+or an export of its own while it is still a kind of event.
 
 **Severity.** medium
 

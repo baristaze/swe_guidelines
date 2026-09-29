@@ -439,7 +439,12 @@ caller asks for (`get_orders`), or the domain's own verb
 CamelCase.
 
 Cross-cutting concerns are namespaces like any other: tenancy, events,
-the outbox, idempotency, work. None is a utility off the root.
+the outbox, idempotency, work. None is a utility off the root. Audit,
+who did what and from which app, is a kind of event: an audit entry is
+an `Event` with an audit kind, in the events namespace's stream
+([Realtime at the Edge](#realtime-at-the-edge)). Audit becomes a
+namespace of its own when it gains a reader of its own, such as a
+screen that lists who did what, or an export.
 
 ### Pure Rules
 
@@ -1526,12 +1531,13 @@ and stream, so no process needs to know which replica holds whom
 ([`realtime/`](scaffold/acme_root/services/api/src/acme/services/api/realtime/)).
 
 Every push is also a record: an `Event` in `activity`, with `org_id`,
-`seq`, `kind`, `target_id`, and `actor_id`, and a payload of ids
+`seq`, `kind`, `target_id`, `actor_id`, the request, and the app, and a
+payload of ids
 ([`event.py`](scaffold/acme_root/om/src/acme/om/events/types/event.py)).
 One atomic method appends it and takes `seq` from a cursor row per
 tenant, so the sequence is gapless and a client reads a gap as a loss.
-`seq` orders events, not writes. An audit entry is the same record plus
-the request and the app.
+`seq` orders events, not writes. An audit entry is an event with an
+audit kind, so one stream records both.
 
 The stream is a stream of hints: a frame names the change, and its
 `version` when the entity has one, and nothing else of it, so a client

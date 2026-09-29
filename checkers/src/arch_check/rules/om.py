@@ -879,8 +879,9 @@ def tenancy_is_a_namespace(project: Project) -> Iterator[Violation]:
     """`<pkg>.om` has a tenancy namespace, and neither the base module nor
     any `util*` or `helper*` module of the OM defines `User`, `Org`,
     `Organization`, `Membership`, `Credential`, `ApiKey`, `AuditEntry`, or
-    `AuditRecord`. Where audit lives, and whether it has a storage
-    interface, is judged.
+    `AuditRecord`. An audit entry is an event with an audit kind, so no
+    audit namespace is asked for. Where audit is appended, and whether it
+    has gained a reader of its own, is judged.
 
     Option `[tool.arch-check.options.OM-16]`: `namespace`, the name of the
     tenancy namespace (default `"tenancy"`).

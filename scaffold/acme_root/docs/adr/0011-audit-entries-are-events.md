@@ -4,12 +4,10 @@
 
 ## Context
 
-OM-16 (Namespaces as Swimlanes): "Cross-cutting namespaces are
-namespaces like any other. Tenancy (organizations, users, memberships,
-credentials) and audit (who did what, when, from which app) are
-first-class swimlanes with their own types, managers, and storage, not
-utilities hanging off the root." Realtime at the Edge gives the shape:
-"an audit entry is the same shape plus the principal and the app."
+OM-16 (Namespaces as Swimlanes) makes audit, who did what, when, and
+from which app, a kind of event: an audit entry is an `Event` with an
+audit kind, in the events namespace's stream, until audit gains a
+reader of its own.
 
 Every event already carries the actor, the request, and the app, since
 the stream records who produced what. An audit entry adds only its
@@ -47,9 +45,8 @@ redact in the stream (STO-34).
 
 ## Consequences
 
-OM-16's "first-class swimlane" is met by the events namespace and this
-record. A review that looks for an audit namespace and finds none cites
-it.
+The events namespace is audit's swimlane, as OM-16 states, and this
+record names its kinds and who writes each.
 
 An audit entry is read by replaying the stream, filtered by kind. There
 is no place to query audit alone. The events table's retention is the
