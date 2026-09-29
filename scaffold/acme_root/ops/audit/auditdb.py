@@ -32,7 +32,8 @@ from acme.om.storage.settings import LOCAL_HOSTS, MigrationSettings
 PREFIX = "audit_"
 NAME = re.compile(r"^audit_[a-z0-9_]{1,40}$")
 MASTER_DEFAULT = "postgresql+asyncpg://acme:acme@127.0.0.1:55432/acme"
-SUPERUSER_DEFAULT = "postgresql+asyncpg://postgres:postgres@127.0.0.1:55432/postgres"
+SUPERUSER = ("postgres", "postgres")
+"""The local stack's superuser, as its compose file makes it."""
 
 
 def check_name(name: str) -> str:
@@ -54,7 +55,7 @@ def urls(name: str) -> dict[str, str]:
     """Every URL a process and the migrate module read, on the audit database."""
     check_name(name)
     settings = MigrationSettings()
-    master = os.environ.get("ACME_DATABASE_MASTER_URL") or MASTER_DEFAULT
+    master = master_url()
     return {
         "ACME_DATABASE_URL": on_database(settings.database_url, name),
         "ACME_DATABASE_SYSTEM_URL": on_database(settings.database_system_url, name),
@@ -63,15 +64,30 @@ def urls(name: str) -> dict[str, str]:
     }
 
 
+def master_url() -> str:
+    """The master's URL: the environment's, else the one `.env` names, so a
+    stack on ports of its own is the one the audit reaches."""
+    found = os.environ.get("ACME_DATABASE_MASTER_URL") or MigrationSettings().database_master_url
+    return found or MASTER_DEFAULT
+
+
 def superuser_on(database: str) -> str:
-    """The local superuser's URL on a database: the maker and the seeder."""
-    superuser = os.environ.get("ACME_AUDIT_SUPERUSER_URL") or SUPERUSER_DEFAULT
+    """The local superuser's URL on a database: the maker and the seeder. It
+    is `ACME_AUDIT_SUPERUSER_URL` when set, else the stack's superuser on the
+    master's host and port."""
+    superuser = os.environ.get("ACME_AUDIT_SUPERUSER_URL")
+    if not superuser:
+        user, password = SUPERUSER
+        superuser = (
+            make_url(master_url())
+            .set(username=user, password=password, database="postgres")
+            .render_as_string(hide_password=False)
+        )
     return on_database(superuser, database)
 
 
 def master_login() -> str:
-    master = os.environ.get("ACME_DATABASE_MASTER_URL") or MASTER_DEFAULT
-    return make_url(master).username or "acme"
+    return make_url(master_url()).username or "acme"
 
 
 async def _admin(sql: str) -> None:

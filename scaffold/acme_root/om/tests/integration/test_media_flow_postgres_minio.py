@@ -34,6 +34,16 @@ pytestmark = pytest.mark.integration
 PDF = b"%PDF-1.7 " + b"x" * 200
 
 
+def endpoint_of_stack() -> str:
+    """The stack's MinIO, from .env: a second stack beside it has another port."""
+    return InfraSettings().s3_endpoint_url or "http://127.0.0.1:59000"
+
+
+def signed_endpoint() -> str:
+    """The host a link is signed for: the stack's port, named `localhost`."""
+    return endpoint_of_stack().replace("127.0.0.1", "localhost")
+
+
 @pytest.fixture
 async def store() -> AsyncIterator[tuple[BucketsS3Impl, str]]:
     """The S3 impl over MinIO, on an uploads bucket of its own, emptied and
@@ -46,7 +56,7 @@ async def store() -> AsyncIterator[tuple[BucketsS3Impl, str]]:
         aws_secret_access_key=settings.s3_secret_key or "acme-minio-local",
         region_name=settings.aws_region,
     )
-    endpoint = "http://127.0.0.1:59000"
+    endpoint = endpoint_of_stack()
     prefix = f"acme-it-{secrets.token_hex(4)}"
     name = f"{prefix}-{Buckets.USER_FILE_UPLOADS.value}"
     admin: Any = session.client("s3", endpoint_url=endpoint)
@@ -58,7 +68,7 @@ async def store() -> AsyncIterator[tuple[BucketsS3Impl, str]]:
         region=settings.aws_region,
         bucket_prefix=prefix,
         timeout=timedelta(seconds=10),
-        presign_endpoint_url="http://localhost:59000",
+        presign_endpoint_url=signed_endpoint(),
     )
     await impl.start()
     try:
@@ -109,7 +119,7 @@ async def post_form(
     """What the browser does with the form: every field in order, then the
     file. `tampered` rewrites a field, as a page that edits its form would."""
     form = await media.issue_upload(ctx, file.id)
-    assert form.url is not None and form.url.startswith("http://localhost:59000/")
+    assert form.url is not None and form.url.startswith(signed_endpoint() + "/")
     fields = {**dict(form.fields), **tampered}
     async with httpx.AsyncClient(timeout=10) as client:
         return await client.post(
@@ -131,7 +141,7 @@ async def test_a_file_goes_up_to_the_store_and_comes_down_by_its_link(
     stored = await media.confirm_file(ctx, created.id)
     assert stored.status is FileStatus.STORED
     link = await media.issue_download(ctx, stored.id)
-    assert link.url is not None and link.url.startswith("http://localhost:59000/")
+    assert link.url is not None and link.url.startswith(signed_endpoint() + "/")
     async with httpx.AsyncClient(timeout=10) as client:
         fetched = await client.get(link.url)
     assert fetched.status_code == 200 and fetched.content == PDF
