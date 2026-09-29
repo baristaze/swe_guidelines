@@ -156,23 +156,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/orgs/{org_id}/billing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Org Billing */
-        get: operations["get_org_billing_v1_admin_orgs__org_id__billing_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/admin/orgs/{org_id}/events": {
         parameters: {
             query?: never;
@@ -202,44 +185,6 @@ export interface paths {
         put?: never;
         /** Add Member */
         post: operations["add_member_v1_admin_orgs__org_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/orgs/{org_id}/plan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Comp Plan
-         * @description Grants the org a plan with no payment, or takes the grant back. A put:
-         *     the same body twice leaves the same grant.
-         */
-        put: operations["comp_plan_v1_admin_orgs__org_id__plan_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/orgs/{org_id}/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Tasks */
-        get: operations["list_tasks_v1_admin_orgs__org_id__tasks_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -479,98 +424,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/billing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Billing */
-        get: operations["get_billing_v1_billing_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel
-         * @description The paid plan ends at its period's end; the org keeps it until then.
-         */
-        post: operations["cancel_v1_billing_cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/checkout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start Checkout
-         * @description Makes the org's customer at the processor the first time, which is a
-         *     durable row, so the route runs under the idempotency record.
-         */
-        post: operations["start_checkout_v1_billing_checkout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/portal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Open Portal */
-        post: operations["open_portal_v1_billing_portal_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resume */
-        post: operations["resume_v1_billing_resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -693,6 +546,31 @@ export interface paths {
         patch: operations["update_my_identity_v1_me_identity_patch"];
         trace?: never;
     };
+    "/v1/media/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Files
+         * @description The org's stored files, oldest first; a pending upload is not listed.
+         */
+        get: operations["list_files_v1_media_files_get"];
+        put?: never;
+        /**
+         * Start Upload
+         * @description A pending file, and nothing in the store yet: the upload form, the
+         *     bytes, and the confirm follow by its id.
+         */
+        post: operations["start_upload_v1_media_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/media/files/{file_id}": {
         parameters: {
             query?: never;
@@ -704,7 +582,8 @@ export interface paths {
         get: operations["get_file_v1_media_files__file_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete File */
+        delete: operations["delete_file_v1_media_files__file_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -954,271 +833,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/slack/installation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Installation */
-        get: operations["get_installation_v1_slack_installation_get"];
-        put?: never;
-        /** Start Install */
-        post: operations["start_install_v1_slack_installation_post"];
-        /** Uninstall */
-        delete: operations["uninstall_v1_slack_installation_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Tasks */
-        get: operations["list_tasks_v1_tasks_get"];
-        put?: never;
-        /** Create Task */
-        post: operations["create_task_v1_tasks_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/archived": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Archived Tasks
-         * @description The done tasks the daily cleanup archived, newest first. An archived
-         *     task leaves the done list; it is still read by its id and restored.
-         */
-        get: operations["list_archived_tasks_v1_tasks_archived_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/bulk": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Change Tasks */
-        post: operations["change_tasks_v1_tasks_bulk_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Count Tasks
-         * @description How many tasks one list shows: the number a "Mark all" asks about.
-         */
-        get: operations["count_tasks_v1_tasks_count_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/imports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Imports */
-        get: operations["list_imports_v1_tasks_imports_get"];
-        put?: never;
-        /**
-         * Start Import
-         * @description Accepted: the import runs in the background, a hundred rows a step.
-         */
-        post: operations["start_import_v1_tasks_imports_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/imports/files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Import File
-         * @description Starts the upload of a CSV file to import (`text/csv`, a `.csv` name, at
-         *     most 1 MB). Then `POST /v1/media/files/{id}/upload`, the form, and
-         *     `POST /v1/media/files/{id}/confirm`.
-         */
-        post: operations["create_import_file_v1_tasks_imports_files_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/imports/{import_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Import */
-        get: operations["get_import_v1_tasks_imports__import_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/imports/{import_id}/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resume Import
-         * @description A parked import runs again from the row it stopped at, and parks again
-         *     at once if the plan still has no room. A running one is answered as it
-         *     is; a finished one is refused (422).
-         */
-        post: operations["resume_import_v1_tasks_imports__import_id__resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Task */
-        get: operations["get_task_v1_tasks__task_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Task */
-        delete: operations["delete_task_v1_tasks__task_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Task */
-        patch: operations["update_task_v1_tasks__task_id__patch"];
-        trace?: never;
-    };
-    "/v1/tasks/{task_id}/attachments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Attachments */
-        get: operations["list_attachments_v1_tasks__task_id__attachments_get"];
-        put?: never;
-        /** Attach File */
-        post: operations["attach_file_v1_tasks__task_id__attachments_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/{task_id}/attachments/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove Attachment */
-        delete: operations["remove_attachment_v1_tasks__task_id__attachments__file_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/{task_id}/move": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Move Task */
-        post: operations["move_task_v1_tasks__task_id__move_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tasks/{task_id}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Restore Task */
-        post: operations["restore_task_v1_tasks__task_id__restore_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/users": {
         parameters: {
             query?: never;
@@ -1236,7 +850,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/webhooks/slack/commands": {
+    "/webhooks/identity": {
         parameters: {
             query?: never;
             header?: never;
@@ -1245,59 +859,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Slack Command */
-        post: operations["slack_command_webhooks_slack_commands_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/webhooks/slack/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Slack Event */
-        post: operations["slack_event_webhooks_slack_events_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/webhooks/slack/oauth": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Slack Oauth */
-        get: operations["slack_oauth_webhooks_slack_oauth_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/webhooks/stripe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Stripe Delivery */
-        post: operations["stripe_delivery_webhooks_stripe_post"];
+        /** Identity Delivery */
+        post: operations["identity_delivery_webhooks_identity_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1333,20 +896,6 @@ export interface components {
             ttl_days?: number | null;
         };
         /**
-         * AddFileRequest
-         * @description An upload to start: the file's name as the uploader had it, its type,
-         *     and its size in bytes. The type must be one the purpose accepts and match
-         *     the name's extension; the size is the most the store will take.
-         */
-        AddFileRequest: {
-            /** Content Type */
-            content_type: string;
-            /** Name */
-            name: string;
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
          * AddMemberRequest
          * @description A person in the org, as `add-member` seeds one; the owner and the
          *     service role are refused, since the one owner is the one the create
@@ -1358,27 +907,6 @@ export interface components {
             /** Email */
             email: string;
             role: components["schemas"]["Role"];
-        };
-        /**
-         * AddTaskRequest
-         * @description `due_on` is the day the task is due, `YYYY-MM-DD`, never a time. It
-         *     schedules one reminder at nine in the morning of that day, in the time
-         *     zone of the person the task is for (the assignee, or the creator), pushed
-         *     to every open screen of the org and posted to its Slack channel when one
-         *     is connected.
-         */
-        AddTaskRequest: {
-            /** Assignee Id */
-            assignee_id?: string | null;
-            /** Due On */
-            due_on?: string | null;
-            /**
-             * Notes
-             * @default
-             */
-            notes: string;
-            /** Title */
-            title: string;
         };
         /**
          * ApiKeyPageView
@@ -1418,107 +946,6 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
-        };
-        /**
-         * BillingView
-         * @description The org's plan now, where it comes from, and what the org uses of it.
-         *     `ends_at` is set when a paid plan is set to end; the org is on
-         *     `plan_after` from then, and keeps everything it has. `can_manage` says
-         *     whether the caller may change the plan: an owner or an admin.
-         */
-        BillingView: {
-            /** Active Tasks */
-            active_tasks: number;
-            /** Can Manage */
-            can_manage: boolean;
-            /** Cancel At Period End */
-            cancel_at_period_end: boolean;
-            comped_plan: components["schemas"]["Plan"] | null;
-            /** Current Period End */
-            current_period_end: string | null;
-            /** Ends At */
-            ends_at: string | null;
-            limits: components["schemas"]["PlanLimitsView"];
-            /** Monthly Cents */
-            monthly_cents: number;
-            paid_plan: components["schemas"]["Plan"] | null;
-            /** Payment Failed */
-            payment_failed: boolean;
-            plan: components["schemas"]["Plan"];
-            plan_after: components["schemas"]["Plan"] | null;
-            /** Plans */
-            plans: components["schemas"]["PlanOfferView"][];
-            /** Seats */
-            seats: number;
-            status: components["schemas"]["SubscriptionStatus"] | null;
-            /** Storage Bytes */
-            storage_bytes: number;
-        };
-        /**
-         * BulkAction
-         * @description What a bulk change does to each task: the status a single edit would
-         *     write.
-         * @enum {string}
-         */
-        BulkAction: "complete" | "reopen";
-        /**
-         * BulkListRequest
-         * @description A whole list, by the scope and the status it shows.
-         */
-        BulkListRequest: {
-            scope: components["schemas"]["TaskScope"];
-            status: components["schemas"]["TaskStatus"];
-        };
-        /**
-         * BulkTasksRequest
-         * @description A change to many tasks in one call: `complete` or `reopen`, over the
-         *     tasks named in `ids` (at most 1000) or over every task of one list in
-         *     `all`, never both. `all` reads the list on the server, not the page a
-         *     client loaded: `complete` goes with the open list and `reopen` with the
-         *     done list. Each task is an edit of its own, under the rules a single edit
-         *     applies and fenced on the version the call read: a task that is not the
-         *     org's, already in the status asked for, or changed between the read and
-         *     the write is skipped and named, never a refusal of the rest. A reopen
-         *     puts each task on top of the open list, the last one named on top, up to
-         *     the plan's bound on active tasks. The call runs under an
-         *     `Idempotency-Key`, and a retry of it answers what the first one did.
-         */
-        BulkTasksRequest: {
-            action: components["schemas"]["BulkAction"];
-            all?: components["schemas"]["BulkListRequest"] | null;
-            /** Ids */
-            ids?: string[] | null;
-        };
-        /**
-         * BulkTasksView
-         * @description What a bulk change did. `changed` lists the tasks it wrote, in the order
-         *     it wrote them, and `skipped` the ones it left alone; each lists at most
-         *     1000, and the counts beside them are whole. To undo a change, send the
-         *     other action with `changed` as `ids`. `plan_limit` is set when a reopen
-         *     met the plan's bound on active tasks: the tasks past it are skipped as
-         *     `plan_limit`, and it carries what a `plan_limit_reached` refusal does, so
-         *     a client offers the plan that lifts it. Every changed task is announced
-         *     on the realtime channel as `tasks.task.updated`, as a single edit is.
-         */
-        BulkTasksView: {
-            action: components["schemas"]["BulkAction"];
-            /** Changed */
-            changed: string[];
-            /** Changed Count */
-            changed_count: number;
-            plan_limit?: components["schemas"]["PlanLimitDetail"] | null;
-            /** Skipped */
-            skipped: components["schemas"]["SkippedTaskView"][];
-            /** Skipped Count */
-            skipped_count: number;
-        };
-        /**
-         * CompPlanRequest
-         * @description The plan an operator grants without a payment; null, or free, takes
-         *     the grant back.
-         */
-        CompPlanRequest: {
-            plan: components["schemas"]["Plan"] | null;
         };
         /**
          * ConfirmTotpRequest
@@ -1584,7 +1011,7 @@ export interface components {
         };
         /**
          * DeliveryReceivedView
-         * @description The delivery checked out and is queued; the processor stops retrying.
+         * @description The delivery checked out and is queued; the provider stops retrying.
          */
         DeliveryReceivedView: {
             /** Received */
@@ -1593,7 +1020,7 @@ export interface components {
         /**
          * DevSignInRequest
          * @description Local and test only: a sign-in by address alone, with no browser round
-         *     trip, for the seed, the demos, the traffic generator, and the tests. A
+         *     trip, for the seed, the traffic generator, and the tests. A
          *     person nobody knew is made, with their personal org. A deployed
          *     environment never serves it: the route answers 404 there, and the
          *     process refuses to start with it on.
@@ -1647,7 +1074,6 @@ export interface components {
             last_owner?: components["schemas"]["LastOwnerDetail"] | null;
             /** Message */
             message: string;
-            plan_limit?: components["schemas"]["PlanLimitDetail"] | null;
             /**
              * Request Id
              * Format: uuid
@@ -1701,15 +1127,9 @@ export interface components {
             org_id: string;
         };
         /**
-         * FailReason
-         * @description Why a record ended without finishing: a bound, never a guard.
-         * @enum {string}
-         */
-        FailReason: "file_too_large" | "too_many_rows" | "not_csv" | "no_title_column" | "file_gone" | "defect";
-        /**
          * FilePageView
-         * @description One page of files, oldest first. `next_cursor` fetches the next page and
-         *     is null on the last one.
+         * @description One page of the org's stored files, oldest first. `next_cursor` fetches
+         *     the next page and is null on the last one.
          */
         FilePageView: {
             /** Items */
@@ -1719,11 +1139,12 @@ export interface components {
         };
         /**
          * FilePurpose
-         * @description Which domain context a file came from. The purpose decides the bounds an
-         *     upload is held to and what `subject_id` names.
+         * @description Which context a file came from. The purpose decides the bounds an
+         *     upload is held to and what `subject_id` names. A product adds a purpose
+         *     per kind of file it keeps, with its bounds (`media.rules.BOUNDS`).
          * @enum {string}
          */
-        FilePurpose: "task_attachment" | "voice_dictation" | "task_import";
+        FilePurpose: "upload";
         /**
          * FileStatus
          * @enum {string}
@@ -1792,70 +1213,6 @@ export interface components {
             operator_role: components["schemas"]["OperatorRole"] | null;
             /** Time Zone */
             time_zone?: string | null;
-        };
-        /**
-         * ImportPageView
-         * @description The org's newest imports, newest first.
-         */
-        ImportPageView: {
-            /** Items */
-            items: components["schemas"]["ImportView"][];
-        };
-        /**
-         * ImportView
-         * @description An import of tasks from a CSV file, read as it runs. `status` is
-         *     `running`, `parked`, `succeeded`, or `failed`. `total` is the file's data
-         *     rows, null until the first step counted them; `cursor` is how many were
-         *     read; `created` the tasks the import made, `skipped` the rows it passed
-         *     over, and `row_errors` the first twenty of those with the reason. A
-         *     `parked` import names its `park_reason`: `plan_limit` is the plan's bound
-         *     on active tasks, lifted by a higher plan (which resumes it) or by tasks
-         *     finished and `POST /v1/tasks/imports/{id}/resume`. A `failed` one names
-         *     its `fail_reason`: `file_too_large`, `too_many_rows`, `not_csv`,
-         *     `no_title_column`, `file_gone`, or `defect`. Every change is pushed as
-         *     `orchestrations.orchestration.updated` on the realtime channel.
-         */
-        ImportView: {
-            /** Created */
-            created: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
-            /** Cursor */
-            cursor: number;
-            fail_reason: components["schemas"]["FailReason"] | null;
-            /**
-             * File Id
-             * Format: uuid
-             */
-            file_id: string;
-            /** Finished At */
-            finished_at: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            park_reason: components["schemas"]["ParkReason"] | null;
-            /** Row Errors */
-            row_errors: components["schemas"]["RowErrorView"][];
-            /** Skipped */
-            skipped: number;
-            status: components["schemas"]["OrchestrationStatus"];
-            /** Total */
-            total: number | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * InvitationPageView
@@ -2118,42 +1475,6 @@ export interface components {
             permission: components["schemas"]["OperatorRole"];
         };
         /**
-         * MoveTaskRequest
-         * @description Places an open task right after `after_id`; null puts it at the top.
-         *     `expected_version` is the moved task's as the caller read it: 412
-         *     `precondition_failed` when the task changed since, and 422
-         *     `validation_failed` when the request names no version.
-         */
-        MoveTaskRequest: {
-            /** After Id */
-            after_id?: string | null;
-            /** Expected Version */
-            expected_version?: number | null;
-        };
-        /**
-         * OpenPortalRequest
-         * @description `flow` opens the processor's page on one task and comes back to
-         *     `return_url` when it is done; without it, the page's home.
-         */
-        OpenPortalRequest: {
-            /** Flow */
-            flow?: "payment_method_update" | null;
-            /** Return Url */
-            return_url: string;
-        };
-        /**
-         * OperatorBillingView
-         * @description One org's plan, as the operator plane reads it.
-         */
-        OperatorBillingView: {
-            comped_plan: components["schemas"]["Plan"] | null;
-            /** Ends At */
-            ends_at: string | null;
-            paid_plan: components["schemas"]["Plan"] | null;
-            plan: components["schemas"]["Plan"];
-            status: components["schemas"]["SubscriptionStatus"] | null;
-        };
-        /**
          * OperatorEventView
          * @description The same record as an operator reads it, with the two provenance fields
          *     a tenant's own feed leaves out: the request that produced it and the app
@@ -2284,11 +1605,6 @@ export interface components {
             updated_at: string;
         };
         /**
-         * OrchestrationStatus
-         * @enum {string}
-         */
-        OrchestrationStatus: "running" | "parked" | "succeeded" | "failed";
-        /**
          * OrgDeletedView
          * @description The org is gone for everyone in it: `deleted_at` is when. `session` is
          *     the owner's new session in their personal org, which replaces the one
@@ -2362,74 +1678,17 @@ export interface components {
             slug: string;
         };
         /**
-         * ParkReason
-         * @description Why a record waits, and so what wakes it.
-         * @enum {string}
-         */
-        ParkReason: "plan_limit";
-        /**
          * Permission
          * @enum {string}
          */
-        Permission: "read" | "write" | "manage_members" | "manage_keys" | "manage_billing";
-        /**
-         * Plan
-         * @enum {string}
-         */
-        Plan: "free" | "pro" | "team" | "max";
-        /**
-         * PlanLimitDetail
-         * @description What a `plan_limit_reached` refusal carries, so a client can offer the
-         *     plan that lifts the bound: the lever, the org's plan, the bound, and the
-         *     first plan above it that admits one more (null when none does).
-         */
-        PlanLimitDetail: {
-            /** Lever */
-            lever: string;
-            /** Limit */
-            limit: number | null;
-            /** Plan */
-            plan: string;
-            /** Suggested Plan */
-            suggested_plan: string | null;
-        };
-        /**
-         * PlanLimitsView
-         * @description A plan's bounds; a null count is no bound.
-         */
-        PlanLimitsView: {
-            /** Active Tasks */
-            active_tasks: number | null;
-            /** Api Keys */
-            api_keys: boolean;
-            /** Members */
-            members: number | null;
-            /** Storage Bytes */
-            storage_bytes: number;
-        };
-        /**
-         * PlanOfferView
-         * @description One plan on offer: its bounds and its monthly price. A per-seat plan's
-         *     `flat_cents` covers up to `included_seats` seats, and past them every
-         *     seat is `per_seat_cents`.
-         */
-        PlanOfferView: {
-            /** Flat Cents */
-            flat_cents: number;
-            /** Included Seats */
-            included_seats: number | null;
-            limits: components["schemas"]["PlanLimitsView"];
-            /** Per Seat Cents */
-            per_seat_cents: number;
-            plan: components["schemas"]["Plan"];
-        };
+        Permission: "read" | "write" | "manage_members" | "manage_keys";
         /**
          * PlatformSizeView
          * @description How big the platform is, what the first responder to an alarm reads
-         *     before it escalates: live tenants and users, and the tasks created and
-         *     events produced in the twenty-four hours from `since` to `counted_at`.
-         *     The maintenance worker counts it every few minutes, and this is its
-         *     latest count: `counted_at` says how old the answer is.
+         *     before it escalates: live tenants and users, and the events produced in
+         *     the twenty-four hours from `since` to `counted_at`. The maintenance
+         *     worker counts it every few minutes, and this is its latest count:
+         *     `counted_at` says how old the answer is.
          */
         PlatformSizeView: {
             /**
@@ -2444,8 +1703,6 @@ export interface components {
              * Format: date-time
              */
             since: string;
-            /** Tasks Last 24H */
-            tasks_last_24h: number;
             /** Tenants */
             tenants: number;
             /** Users */
@@ -2464,39 +1721,10 @@ export interface components {
             size_bytes: number;
         };
         /**
-         * RedirectView
-         * @description Where the person goes next: the processor's hosted page.
-         */
-        RedirectView: {
-            /** Url */
-            url: string;
-        };
-        /**
-         * RestoreTaskRequest
-         * @description Takes an archived task back to the done list. `expected_version` is the
-         *     task's as the caller read it: 412 `precondition_failed` when it changed
-         *     since, and 422 `validation_failed` when the request names none or the
-         *     task is not archived.
-         */
-        RestoreTaskRequest: {
-            /** Expected Version */
-            expected_version?: number | null;
-        };
-        /**
          * Role
          * @enum {string}
          */
         Role: "owner" | "admin" | "member" | "viewer" | "service";
-        /**
-         * RowErrorView
-         * @description A row the import skipped: its number, the first data row being 1, and why.
-         */
-        RowErrorView: {
-            /** Reason */
-            reason: string;
-            /** Row */
-            row: number;
-        };
         /**
          * SecondFactorRequest
          * @description The code from an authenticator, presented with a sign-in credential.
@@ -2616,104 +1844,6 @@ export interface components {
             revoked_at: string | null;
         };
         /**
-         * SkipReason
-         * @description Why a bulk change left one task alone. Every reason is a fact about the
-         *     task as the change found it, never a failure of the change.
-         * @enum {string}
-         */
-        SkipReason: "not_found" | "already_done" | "already_open" | "changed" | "plan_limit";
-        /**
-         * SkippedTaskView
-         * @description A task the bulk change left alone, and why: `not_found`,
-         *     `already_done`, `already_open`, `changed`, or `plan_limit`.
-         */
-        SkippedTaskView: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            reason: components["schemas"]["SkipReason"];
-        };
-        /**
-         * SlackEventAnswerView
-         * @description Slack's check of the events URL gets its `challenge` back; every other
-         *     event is acknowledged with nothing.
-         */
-        SlackEventAnswerView: {
-            /** Challenge */
-            challenge?: string | null;
-        };
-        /**
-         * SlackInstallStartView
-         * @description Slack's own page, where a person approves the install for their
-         *     workspace. The link carries a one-time state, works once, until
-         *     `expires_at`, and is shown here only: a replay under the same
-         *     Idempotency-Key answers with `url` null, and the caller asks for another.
-         */
-        SlackInstallStartView: {
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Url */
-            url: string | null;
-        };
-        /**
-         * SlackInstallationStatus
-         * @enum {string}
-         */
-        SlackInstallationStatus: "ok" | "broken";
-        /**
-         * SlackInstallationView
-         * @description The Slack workspace the org installed Acme into, and the channel it
-         *     posts to. `channel_id` is null until someone types `/acme connect` in a
-         *     channel. `status` is `broken` when Slack refused for good (`broken_reason`
-         *     says which refusal): the channel is gone or the app is not in it, which a
-         *     new `/acme connect` mends, or the token no longer renews, which a new
-         *     install mends. `created_by` is the member who installed it. The bot token
-         *     is never on the wire.
-         */
-        SlackInstallationView: {
-            /** Broken Reason */
-            broken_reason: string | null;
-            /** Channel Id */
-            channel_id: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            status: components["schemas"]["SlackInstallationStatus"];
-            /** Team Id */
-            team_id: string;
-            /** Team Name */
-            team_name: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * SlackStatusView
-         * @description Whether the org has installed Acme in Slack, and where.
-         */
-        SlackStatusView: {
-            installation: components["schemas"]["SlackInstallationView"] | null;
-        };
-        /**
          * SsoLinkRequest
          * @description What the identity provider's admin portal opens on: the single sign-on
          *     connection (`sso`) or the org's domains (`domain_verification`), and the
@@ -2737,28 +1867,18 @@ export interface components {
             url: string;
         };
         /**
-         * StartCheckoutRequest
-         * @description `return_url` is the portal page the person comes back to, paid or not;
-         *     it is one of the portal's own origins, or the request is refused.
+         * StartUploadRequest
+         * @description An upload to start: the file's name as the uploader had it, its type,
+         *     and its size in bytes. The type must be one the purpose accepts and match
+         *     the name's extension; the size is the most the store will take.
          */
-        StartCheckoutRequest: {
-            plan: components["schemas"]["Plan"];
-            /** Return Url */
-            return_url: string;
-        };
-        /**
-         * StartImportRequest
-         * @description The import of a CSV file uploaded under the `task_import` purpose
-         *     (`POST /v1/tasks/imports/files`, then the media routes) and confirmed.
-         *     Its columns are `title` (needed), `notes`, `due_on` (`YYYY-MM-DD`), and
-         *     `assignee_email` (a member of the org), by header name.
-         */
-        StartImportRequest: {
-            /**
-             * File Id
-             * Format: uuid
-             */
-            file_id: string;
+        StartUploadRequest: {
+            /** Content Type */
+            content_type: string;
+            /** Name */
+            name: string;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /**
          * StorageUsageView
@@ -2789,97 +1909,6 @@ export interface components {
             head: number;
         };
         /**
-         * SubscriptionStatus
-         * @description The processor's statuses, as it spells them.
-         * @enum {string}
-         */
-        SubscriptionStatus: "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused";
-        /**
-         * TaskCountView
-         * @description How many tasks one list shows: the open list, or the done list without
-         *     the archived tasks, in the scope asked for.
-         */
-        TaskCountView: {
-            /** Count */
-            count: number;
-            scope: components["schemas"]["TaskScope"];
-            status: components["schemas"]["TaskStatus"];
-        };
-        /**
-         * TaskPageView
-         * @description One page of a task list. `next_cursor` fetches the next page of the same
-         *     list, open or done, and is null on the last page. The page size is
-         *     clamped, and a list the clamp cut still says a page follows.
-         */
-        TaskPageView: {
-            /** Items */
-            items: components["schemas"]["TaskView"][];
-            /** Next Cursor */
-            next_cursor: string | null;
-        };
-        /**
-         * TaskScope
-         * @description Which tasks a list shows. The org is the team.
-         * @enum {string}
-         */
-        TaskScope: "mine" | "team";
-        /**
-         * TaskStatus
-         * @enum {string}
-         */
-        TaskStatus: "open" | "done";
-        /** TaskView */
-        TaskView: {
-            /** Archived At */
-            archived_at?: string | null;
-            /** Assignee Id */
-            assignee_id: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
-            /** Deleted At */
-            deleted_at: string | null;
-            /** Due On */
-            due_on?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Notes */
-            notes: string;
-            /**
-             * Position
-             * @deprecated
-             * @description The rank as a float, for a client of the release before, which requires it. Order by `rank`: no client reads this, and it leaves the wire in the release after this one.
-             */
-            position?: number | null;
-            /**
-             * Rank
-             * @description Where an open task sits in the open list, which is ascending by rank, then by id. An exact decimal number, written out in full: compare two as numbers, never as floats and never as text.
-             */
-            rank: string;
-            /** Reminded At */
-            reminded_at?: string | null;
-            status: components["schemas"]["TaskStatus"];
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Version */
-            version: number;
-        };
-        /**
          * TotpConfirmedView
          * @description The second factor is enrolled: from now on the operator plane admits
          *     this identity only on a sign-in that verified a code, so the next
@@ -2900,9 +1929,9 @@ export interface components {
         /**
          * UpdateIdentityRequest
          * @description Where the person is, as an IANA name ("Europe/Istanbul"): the portal
-         *     sends the browser's own on sign-in. A due date's reminder goes out at
-         *     nine in the morning in it; with none sent, in UTC. A name that is not
-         *     one is 422.
+         *     sends the browser's own on sign-in, and a time shown or sent to the
+         *     person is in it; with none sent, in UTC. A name that is not one is
+         *     422.
          */
         UpdateIdentityRequest: {
             /** Time Zone */
@@ -2916,29 +1945,6 @@ export interface components {
         /** UpdateMembershipRequest */
         UpdateMembershipRequest: {
             role: components["schemas"]["Role"];
-        };
-        /**
-         * UpdateTaskRequest
-         * @description A partial update: absent fields are kept. An explicit null
-         *     `assignee_id` unassigns the task. The version the update compares with is
-         *     the task's as the caller read it, in the `If-Match` header: the update
-         *     lands only when the task is still at it, and is refused with 412
-         *     `precondition_failed` when another write landed since, so the caller reads
-         *     again and decides over the current task. An update that names no version
-         *     is refused with 422 `validation_failed`, since it would overwrite blind.
-         *     An explicit null `due_on` clears the due date; a new one reschedules the
-         *     reminder, and the one scheduled before it never goes out.
-         */
-        UpdateTaskRequest: {
-            /** Assignee Id */
-            assignee_id?: string | null;
-            /** Due On */
-            due_on?: string | null;
-            /** Notes */
-            notes?: string | null;
-            status?: components["schemas"]["TaskStatus"] | null;
-            /** Title */
-            title?: string | null;
         };
         /** UploadFieldView */
         UploadFieldView: {
@@ -2993,7 +1999,7 @@ export interface components {
          * WorkKind
          * @enum {string}
          */
-        WorkKind: "NOOP" | "SYNC_SEATS" | "TASK_REMINDER" | "SLACK_POST" | "ORCHESTRATION" | "WAKE_PARKED" | "DELETE_ACCOUNT" | "UNASSIGN_TASKS" | "DELETE_ORG";
+        WorkKind: "NOOP" | "ORCHESTRATION" | "WAKE_PARKED" | "DELETE_ACCOUNT" | "DELETE_ORG";
         /**
          * WorkStatus
          * @enum {string}
@@ -3363,41 +2369,6 @@ export interface operations {
             };
         };
     };
-    get_org_billing_v1_admin_orgs__org_id__billing_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorBillingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_events_v1_admin_orgs__org_id__events_get: {
         parameters: {
             query?: {
@@ -3501,84 +2472,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    comp_plan_v1_admin_orgs__org_id__plan_put: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CompPlanRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OperatorBillingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_tasks_v1_admin_orgs__org_id__tasks_get: {
-        parameters: {
-            query?: {
-                status?: components["schemas"]["TaskStatus"];
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                org_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskPageView"];
                 };
             };
             /** @description Validation Error */
@@ -4093,180 +2986,6 @@ export interface operations {
             };
         };
     };
-    get_billing_v1_billing_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_v1_billing_cancel_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_checkout_v1_billing_checkout_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartCheckoutRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RedirectView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    open_portal_v1_billing_portal_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OpenPortalRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RedirectView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resume_v1_billing_resume_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_events_v1_events_get: {
         parameters: {
             query?: {
@@ -4642,7 +3361,116 @@ export interface operations {
             };
         };
     };
+    list_files_v1_media_files_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilePageView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_upload_v1_media_files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+                "idempotency-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_file_v1_media_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-app"?: string | null;
+                "x-app-version"?: string | null;
+            };
+            path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_v1_media_files__file_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -5269,779 +4097,6 @@ export interface operations {
             };
         };
     };
-    get_installation_v1_slack_installation_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SlackStatusView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_install_v1_slack_installation_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SlackInstallStartView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    uninstall_v1_slack_installation_delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SlackStatusView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_tasks_v1_tasks_get: {
-        parameters: {
-            query?: {
-                status?: components["schemas"]["TaskStatus"];
-                scope?: components["schemas"]["TaskScope"];
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskPageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_task_v1_tasks_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddTaskRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_archived_tasks_v1_tasks_archived_get: {
-        parameters: {
-            query?: {
-                scope?: components["schemas"]["TaskScope"];
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskPageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    change_tasks_v1_tasks_bulk_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BulkTasksRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BulkTasksView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    count_tasks_v1_tasks_count_get: {
-        parameters: {
-            query?: {
-                status?: components["schemas"]["TaskStatus"];
-                scope?: components["schemas"]["TaskScope"];
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskCountView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_imports_v1_tasks_imports_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportPageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_import_v1_tasks_imports_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartImportRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_import_file_v1_tasks_imports_files_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddFileRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_import_v1_tasks_imports__import_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                import_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resume_import_v1_tasks_imports__import_id__resume_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                import_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_task_v1_tasks__task_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_task_v1_tasks__task_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                /** @description The version the caller read, as an entity tag: `"3"`. 412 `precondition_failed` when the record changed since. */
-                "If-Match"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_task_v1_tasks__task_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                /** @description The version the caller read, as an entity tag: `"3"`. 412 `precondition_failed` when the record changed since. */
-                "If-Match"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTaskRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_attachments_v1_tasks__task_id__attachments_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FilePageView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    attach_file_v1_tasks__task_id__attachments_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "idempotency-key"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddFileRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_attachment_v1_tasks__task_id__attachments__file_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                task_id: string;
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    move_task_v1_tasks__task_id__move_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MoveTaskRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    restore_task_v1_tasks__task_id__restore_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RestoreTaskRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_users_v1_users_get: {
         parameters: {
             query?: {
@@ -6078,115 +4133,13 @@ export interface operations {
             };
         };
     };
-    slack_command_webhooks_slack_commands_post: {
+    identity_delivery_webhooks_identity_post: {
         parameters: {
             query?: never;
             header?: {
                 "x-app"?: string | null;
                 "x-app-version"?: string | null;
-                "X-Slack-Request-Timestamp"?: string | null;
-                "X-Slack-Signature"?: string | null;
-                "X-Slack-Retry-Num"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    slack_event_webhooks_slack_events_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "X-Slack-Request-Timestamp"?: string | null;
-                "X-Slack-Signature"?: string | null;
-                "X-Slack-Retry-Num"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SlackEventAnswerView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    slack_oauth_webhooks_slack_oauth_get: {
-        parameters: {
-            query?: {
-                code?: string | null;
-                state?: string | null;
-                error?: string | null;
-            };
-            header?: {
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            302: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    stripe_delivery_webhooks_stripe_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-app"?: string | null;
-                "x-app-version"?: string | null;
-                "Stripe-Signature"?: string | null;
+                "WorkOS-Signature"?: string | null;
             };
             path?: never;
             cookie?: never;

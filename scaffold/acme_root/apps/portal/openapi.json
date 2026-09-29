@@ -58,36 +58,6 @@
         "title": "AddApiKeyRequest",
         "type": "object"
       },
-      "AddFileRequest": {
-        "additionalProperties": false,
-        "description": "An upload to start: the file's name as the uploader had it, its type,\nand its size in bytes. The type must be one the purpose accepts and match\nthe name's extension; the size is the most the store will take.",
-        "properties": {
-          "content_type": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Content Type",
-            "type": "string"
-          },
-          "name": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "size_bytes": {
-            "exclusiveMinimum": 0.0,
-            "title": "Size Bytes",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "name",
-          "content_type",
-          "size_bytes"
-        ],
-        "title": "AddFileRequest",
-        "type": "object"
-      },
       "AddMemberRequest": {
         "additionalProperties": false,
         "description": "A person in the org, as `add-member` seeds one; the owner and the\nservice role are refused, since the one owner is the one the create\nminted.",
@@ -113,51 +83,6 @@
           "role"
         ],
         "title": "AddMemberRequest",
-        "type": "object"
-      },
-      "AddTaskRequest": {
-        "additionalProperties": false,
-        "description": "`due_on` is the day the task is due, `YYYY-MM-DD`, never a time. It\nschedules one reminder at nine in the morning of that day, in the time\nzone of the person the task is for (the assignee, or the creator), pushed\nto every open screen of the org and posted to its Slack channel when one\nis connected.",
-        "properties": {
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "due_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due On"
-          },
-          "notes": {
-            "default": "",
-            "title": "Notes",
-            "type": "string"
-          },
-          "title": {
-            "maxLength": 500,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "AddTaskRequest",
         "type": "object"
       },
       "ApiKeyPageView": {
@@ -241,274 +166,6 @@
           "deleted_at"
         ],
         "title": "ApiKeyView",
-        "type": "object"
-      },
-      "BillingView": {
-        "description": "The org's plan now, where it comes from, and what the org uses of it.\n`ends_at` is set when a paid plan is set to end; the org is on\n`plan_after` from then, and keeps everything it has. `can_manage` says\nwhether the caller may change the plan: an owner or an admin.",
-        "properties": {
-          "active_tasks": {
-            "title": "Active Tasks",
-            "type": "integer"
-          },
-          "can_manage": {
-            "title": "Can Manage",
-            "type": "boolean"
-          },
-          "cancel_at_period_end": {
-            "title": "Cancel At Period End",
-            "type": "boolean"
-          },
-          "comped_plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_period_end": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Period End"
-          },
-          "ends_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends At"
-          },
-          "limits": {
-            "$ref": "#/components/schemas/PlanLimitsView"
-          },
-          "monthly_cents": {
-            "title": "Monthly Cents",
-            "type": "integer"
-          },
-          "paid_plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "payment_failed": {
-            "title": "Payment Failed",
-            "type": "boolean"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/Plan"
-          },
-          "plan_after": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "plans": {
-            "items": {
-              "$ref": "#/components/schemas/PlanOfferView"
-            },
-            "title": "Plans",
-            "type": "array"
-          },
-          "seats": {
-            "title": "Seats",
-            "type": "integer"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubscriptionStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "storage_bytes": {
-            "title": "Storage Bytes",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "plan",
-          "limits",
-          "paid_plan",
-          "comped_plan",
-          "status",
-          "current_period_end",
-          "cancel_at_period_end",
-          "ends_at",
-          "plan_after",
-          "seats",
-          "active_tasks",
-          "storage_bytes",
-          "monthly_cents",
-          "payment_failed",
-          "can_manage",
-          "plans"
-        ],
-        "title": "BillingView",
-        "type": "object"
-      },
-      "BulkAction": {
-        "description": "What a bulk change does to each task: the status a single edit would\nwrite.",
-        "enum": [
-          "complete",
-          "reopen"
-        ],
-        "title": "BulkAction",
-        "type": "string"
-      },
-      "BulkListRequest": {
-        "additionalProperties": false,
-        "description": "A whole list, by the scope and the status it shows.",
-        "properties": {
-          "scope": {
-            "$ref": "#/components/schemas/TaskScope"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          }
-        },
-        "required": [
-          "scope",
-          "status"
-        ],
-        "title": "BulkListRequest",
-        "type": "object"
-      },
-      "BulkTasksRequest": {
-        "additionalProperties": false,
-        "description": "A change to many tasks in one call: `complete` or `reopen`, over the\ntasks named in `ids` (at most 1000) or over every task of one list in\n`all`, never both. `all` reads the list on the server, not the page a\nclient loaded: `complete` goes with the open list and `reopen` with the\ndone list. Each task is an edit of its own, under the rules a single edit\napplies and fenced on the version the call read: a task that is not the\norg's, already in the status asked for, or changed between the read and\nthe write is skipped and named, never a refusal of the rest. A reopen\nputs each task on top of the open list, the last one named on top, up to\nthe plan's bound on active tasks. The call runs under an\n`Idempotency-Key`, and a retry of it answers what the first one did.",
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/BulkAction"
-          },
-          "all": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BulkListRequest"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "maxItems": 1000,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ids"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "title": "BulkTasksRequest",
-        "type": "object"
-      },
-      "BulkTasksView": {
-        "description": "What a bulk change did. `changed` lists the tasks it wrote, in the order\nit wrote them, and `skipped` the ones it left alone; each lists at most\n1000, and the counts beside them are whole. To undo a change, send the\nother action with `changed` as `ids`. `plan_limit` is set when a reopen\nmet the plan's bound on active tasks: the tasks past it are skipped as\n`plan_limit`, and it carries what a `plan_limit_reached` refusal does, so\na client offers the plan that lifts it. Every changed task is announced\non the realtime channel as `tasks.task.updated`, as a single edit is.",
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/BulkAction"
-          },
-          "changed": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Changed",
-            "type": "array"
-          },
-          "changed_count": {
-            "title": "Changed Count",
-            "type": "integer"
-          },
-          "plan_limit": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlanLimitDetail"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "skipped": {
-            "items": {
-              "$ref": "#/components/schemas/SkippedTaskView"
-            },
-            "title": "Skipped",
-            "type": "array"
-          },
-          "skipped_count": {
-            "title": "Skipped Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "action",
-          "changed",
-          "changed_count",
-          "skipped",
-          "skipped_count"
-        ],
-        "title": "BulkTasksView",
-        "type": "object"
-      },
-      "CompPlanRequest": {
-        "additionalProperties": false,
-        "description": "The plan an operator grants without a payment; null, or free, takes\nthe grant back.",
-        "properties": {
-          "plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "plan"
-        ],
-        "title": "CompPlanRequest",
         "type": "object"
       },
       "ConfirmTotpRequest": {
@@ -655,7 +312,7 @@
         "type": "object"
       },
       "DeliveryReceivedView": {
-        "description": "The delivery checked out and is queued; the processor stops retrying.",
+        "description": "The delivery checked out and is queued; the provider stops retrying.",
         "properties": {
           "received": {
             "title": "Received",
@@ -670,7 +327,7 @@
       },
       "DevSignInRequest": {
         "additionalProperties": false,
-        "description": "Local and test only: a sign-in by address alone, with no browser round\ntrip, for the seed, the demos, the traffic generator, and the tests. A\nperson nobody knew is made, with their personal org. A deployed\nenvironment never serves it: the route answers 404 there, and the\nprocess refuses to start with it on.",
+        "description": "Local and test only: a sign-in by address alone, with no browser round\ntrip, for the seed, the traffic generator, and the tests. A\nperson nobody knew is made, with their personal org. A deployed\nenvironment never serves it: the route answers 404 there, and the\nprocess refuses to start with it on.",
         "properties": {
           "display_name": {
             "default": "",
@@ -767,16 +424,6 @@
             "title": "Message",
             "type": "string"
           },
-          "plan_limit": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlanLimitDetail"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
@@ -866,21 +513,8 @@
         "title": "ExchangeSessionRequest",
         "type": "object"
       },
-      "FailReason": {
-        "description": "Why a record ended without finishing: a bound, never a guard.",
-        "enum": [
-          "file_too_large",
-          "too_many_rows",
-          "not_csv",
-          "no_title_column",
-          "file_gone",
-          "defect"
-        ],
-        "title": "FailReason",
-        "type": "string"
-      },
       "FilePageView": {
-        "description": "One page of files, oldest first. `next_cursor` fetches the next page and\nis null on the last one.",
+        "description": "One page of the org's stored files, oldest first. `next_cursor` fetches\nthe next page and is null on the last one.",
         "properties": {
           "items": {
             "items": {
@@ -909,11 +543,9 @@
         "type": "object"
       },
       "FilePurpose": {
-        "description": "Which domain context a file came from. The purpose decides the bounds an\nupload is held to and what `subject_id` names.",
+        "description": "Which context a file came from. The purpose decides the bounds an\nupload is held to and what `subject_id` names. A product adds a purpose\nper kind of file it keeps, with its bounds (`media.rules.BOUNDS`).",
         "enum": [
-          "task_attachment",
-          "voice_dictation",
-          "task_import"
+          "upload"
         ],
         "title": "FilePurpose",
         "type": "string"
@@ -1066,136 +698,6 @@
           "created_at"
         ],
         "title": "IdentityView",
-        "type": "object"
-      },
-      "ImportPageView": {
-        "description": "The org's newest imports, newest first.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ImportView"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "ImportPageView",
-        "type": "object"
-      },
-      "ImportView": {
-        "description": "An import of tasks from a CSV file, read as it runs. `status` is\n`running`, `parked`, `succeeded`, or `failed`. `total` is the file's data\nrows, null until the first step counted them; `cursor` is how many were\nread; `created` the tasks the import made, `skipped` the rows it passed\nover, and `row_errors` the first twenty of those with the reason. A\n`parked` import names its `park_reason`: `plan_limit` is the plan's bound\non active tasks, lifted by a higher plan (which resumes it) or by tasks\nfinished and `POST /v1/tasks/imports/{id}/resume`. A `failed` one names\nits `fail_reason`: `file_too_large`, `too_many_rows`, `not_csv`,\n`no_title_column`, `file_gone`, or `defect`. Every change is pushed as\n`orchestrations.orchestration.updated` on the realtime channel.",
-        "properties": {
-          "created": {
-            "title": "Created",
-            "type": "integer"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "created_by": {
-            "format": "uuid",
-            "title": "Created By",
-            "type": "string"
-          },
-          "cursor": {
-            "title": "Cursor",
-            "type": "integer"
-          },
-          "fail_reason": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FailReason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "file_id": {
-            "format": "uuid",
-            "title": "File Id",
-            "type": "string"
-          },
-          "finished_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "park_reason": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ParkReason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "row_errors": {
-            "items": {
-              "$ref": "#/components/schemas/RowErrorView"
-            },
-            "title": "Row Errors",
-            "type": "array"
-          },
-          "skipped": {
-            "title": "Skipped",
-            "type": "integer"
-          },
-          "status": {
-            "$ref": "#/components/schemas/OrchestrationStatus"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "file_id",
-          "status",
-          "total",
-          "cursor",
-          "created",
-          "skipped",
-          "row_errors",
-          "park_reason",
-          "fail_reason",
-          "created_at",
-          "updated_at",
-          "finished_at",
-          "created_by"
-        ],
-        "title": "ImportView",
         "type": "object"
       },
       "InvitationPageView": {
@@ -1735,126 +1237,6 @@
         "title": "MintOperatorTokenRequest",
         "type": "object"
       },
-      "MoveTaskRequest": {
-        "additionalProperties": false,
-        "description": "Places an open task right after `after_id`; null puts it at the top.\n`expected_version` is the moved task's as the caller read it: 412\n`precondition_failed` when the task changed since, and 422\n`validation_failed` when the request names no version.",
-        "properties": {
-          "after_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After Id"
-          },
-          "expected_version": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Version"
-          }
-        },
-        "title": "MoveTaskRequest",
-        "type": "object"
-      },
-      "OpenPortalRequest": {
-        "additionalProperties": false,
-        "description": "`flow` opens the processor's page on one task and comes back to\n`return_url` when it is done; without it, the page's home.",
-        "properties": {
-          "flow": {
-            "anyOf": [
-              {
-                "const": "payment_method_update",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flow"
-          },
-          "return_url": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Return Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "return_url"
-        ],
-        "title": "OpenPortalRequest",
-        "type": "object"
-      },
-      "OperatorBillingView": {
-        "description": "One org's plan, as the operator plane reads it.",
-        "properties": {
-          "comped_plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "ends_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ends At"
-          },
-          "paid_plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Plan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "plan": {
-            "$ref": "#/components/schemas/Plan"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubscriptionStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "plan",
-          "paid_plan",
-          "comped_plan",
-          "status",
-          "ends_at"
-        ],
-        "title": "OperatorBillingView",
-        "type": "object"
-      },
       "OperatorEventView": {
         "description": "The same record as an operator reads it, with the two provenance fields\na tenant's own feed leaves out: the request that produced it and the app\nit came from, which is what a support investigation correlates on.",
         "properties": {
@@ -2072,16 +1454,6 @@
         "title": "OperatorWorkItemView",
         "type": "object"
       },
-      "OrchestrationStatus": {
-        "enum": [
-          "running",
-          "parked",
-          "succeeded",
-          "failed"
-        ],
-        "title": "OrchestrationStatus",
-        "type": "string"
-      },
       "OrgDeletedView": {
         "description": "The org is gone for everyone in it: `deleted_at` is when. `session` is\nthe owner's new session in their personal org, which replaces the one\nthat asked, as a switch's does; null when none could be made, and the\nowner signs in again.",
         "properties": {
@@ -2217,162 +1589,18 @@
         "title": "OwnedOrgRef",
         "type": "object"
       },
-      "ParkReason": {
-        "description": "Why a record waits, and so what wakes it.",
-        "enum": [
-          "plan_limit"
-        ],
-        "title": "ParkReason",
-        "type": "string"
-      },
       "Permission": {
         "enum": [
           "read",
           "write",
           "manage_members",
-          "manage_keys",
-          "manage_billing"
+          "manage_keys"
         ],
         "title": "Permission",
         "type": "string"
       },
-      "Plan": {
-        "enum": [
-          "free",
-          "pro",
-          "team",
-          "max"
-        ],
-        "title": "Plan",
-        "type": "string"
-      },
-      "PlanLimitDetail": {
-        "description": "What a `plan_limit_reached` refusal carries, so a client can offer the\nplan that lifts the bound: the lever, the org's plan, the bound, and the\nfirst plan above it that admits one more (null when none does).",
-        "properties": {
-          "lever": {
-            "title": "Lever",
-            "type": "string"
-          },
-          "limit": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Limit"
-          },
-          "plan": {
-            "title": "Plan",
-            "type": "string"
-          },
-          "suggested_plan": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Suggested Plan"
-          }
-        },
-        "required": [
-          "lever",
-          "plan",
-          "limit",
-          "suggested_plan"
-        ],
-        "title": "PlanLimitDetail",
-        "type": "object"
-      },
-      "PlanLimitsView": {
-        "description": "A plan's bounds; a null count is no bound.",
-        "properties": {
-          "active_tasks": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Tasks"
-          },
-          "api_keys": {
-            "title": "Api Keys",
-            "type": "boolean"
-          },
-          "members": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Members"
-          },
-          "storage_bytes": {
-            "title": "Storage Bytes",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "members",
-          "api_keys",
-          "active_tasks",
-          "storage_bytes"
-        ],
-        "title": "PlanLimitsView",
-        "type": "object"
-      },
-      "PlanOfferView": {
-        "description": "One plan on offer: its bounds and its monthly price. A per-seat plan's\n`flat_cents` covers up to `included_seats` seats, and past them every\nseat is `per_seat_cents`.",
-        "properties": {
-          "flat_cents": {
-            "title": "Flat Cents",
-            "type": "integer"
-          },
-          "included_seats": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Included Seats"
-          },
-          "limits": {
-            "$ref": "#/components/schemas/PlanLimitsView"
-          },
-          "per_seat_cents": {
-            "title": "Per Seat Cents",
-            "type": "integer"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/Plan"
-          }
-        },
-        "required": [
-          "plan",
-          "limits",
-          "flat_cents",
-          "included_seats",
-          "per_seat_cents"
-        ],
-        "title": "PlanOfferView",
-        "type": "object"
-      },
       "PlatformSizeView": {
-        "description": "How big the platform is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the tasks created and\nevents produced in the twenty-four hours from `since` to `counted_at`.\nThe maintenance worker counts it every few minutes, and this is its\nlatest count: `counted_at` says how old the answer is.",
+        "description": "How big the platform is, what the first responder to an alarm reads\nbefore it escalates: live tenants and users, and the events produced in\nthe twenty-four hours from `since` to `counted_at`. The maintenance\nworker counts it every few minutes, and this is its latest count:\n`counted_at` says how old the answer is.",
         "properties": {
           "counted_at": {
             "format": "date-time",
@@ -2388,10 +1616,6 @@
             "title": "Since",
             "type": "string"
           },
-          "tasks_last_24h": {
-            "title": "Tasks Last 24H",
-            "type": "integer"
-          },
           "tenants": {
             "title": "Tenants",
             "type": "integer"
@@ -2404,7 +1628,6 @@
         "required": [
           "tenants",
           "users",
-          "tasks_last_24h",
           "events_last_24h",
           "since",
           "counted_at"
@@ -2444,40 +1667,6 @@
         "title": "PurposeUsageView",
         "type": "object"
       },
-      "RedirectView": {
-        "description": "Where the person goes next: the processor's hosted page.",
-        "properties": {
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "RedirectView",
-        "type": "object"
-      },
-      "RestoreTaskRequest": {
-        "additionalProperties": false,
-        "description": "Takes an archived task back to the done list. `expected_version` is the\ntask's as the caller read it: 412 `precondition_failed` when it changed\nsince, and 422 `validation_failed` when the request names none or the\ntask is not archived.",
-        "properties": {
-          "expected_version": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Version"
-          }
-        },
-        "title": "RestoreTaskRequest",
-        "type": "object"
-      },
       "Role": {
         "enum": [
           "owner",
@@ -2488,25 +1677,6 @@
         ],
         "title": "Role",
         "type": "string"
-      },
-      "RowErrorView": {
-        "description": "A row the import skipped: its number, the first data row being 1, and why.",
-        "properties": {
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "row": {
-            "title": "Row",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "row",
-          "reason"
-        ],
-        "title": "RowErrorView",
-        "type": "object"
       },
       "SecondFactorRequest": {
         "additionalProperties": false,
@@ -2720,181 +1890,6 @@
         "title": "SignedOutView",
         "type": "object"
       },
-      "SkipReason": {
-        "description": "Why a bulk change left one task alone. Every reason is a fact about the\ntask as the change found it, never a failure of the change.",
-        "enum": [
-          "not_found",
-          "already_done",
-          "already_open",
-          "changed",
-          "plan_limit"
-        ],
-        "title": "SkipReason",
-        "type": "string"
-      },
-      "SkippedTaskView": {
-        "description": "A task the bulk change left alone, and why: `not_found`,\n`already_done`, `already_open`, `changed`, or `plan_limit`.",
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "reason": {
-            "$ref": "#/components/schemas/SkipReason"
-          }
-        },
-        "required": [
-          "id",
-          "reason"
-        ],
-        "title": "SkippedTaskView",
-        "type": "object"
-      },
-      "SlackEventAnswerView": {
-        "description": "Slack's check of the events URL gets its `challenge` back; every other\nevent is acknowledged with nothing.",
-        "properties": {
-          "challenge": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Challenge"
-          }
-        },
-        "title": "SlackEventAnswerView",
-        "type": "object"
-      },
-      "SlackInstallStartView": {
-        "description": "Slack's own page, where a person approves the install for their\nworkspace. The link carries a one-time state, works once, until\n`expires_at`, and is shown here only: a replay under the same\nIdempotency-Key answers with `url` null, and the caller asks for another.",
-        "properties": {
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
-          }
-        },
-        "required": [
-          "url",
-          "expires_at"
-        ],
-        "title": "SlackInstallStartView",
-        "type": "object"
-      },
-      "SlackInstallationStatus": {
-        "enum": [
-          "ok",
-          "broken"
-        ],
-        "title": "SlackInstallationStatus",
-        "type": "string"
-      },
-      "SlackInstallationView": {
-        "description": "The Slack workspace the org installed Acme into, and the channel it\nposts to. `channel_id` is null until someone types `/acme connect` in a\nchannel. `status` is `broken` when Slack refused for good (`broken_reason`\nsays which refusal): the channel is gone or the app is not in it, which a\nnew `/acme connect` mends, or the token no longer renews, which a new\ninstall mends. `created_by` is the member who installed it. The bot token\nis never on the wire.",
-        "properties": {
-          "broken_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Broken Reason"
-          },
-          "channel_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channel Id"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "created_by": {
-            "format": "uuid",
-            "title": "Created By",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SlackInstallationStatus"
-          },
-          "team_id": {
-            "title": "Team Id",
-            "type": "string"
-          },
-          "team_name": {
-            "title": "Team Name",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "team_id",
-          "team_name",
-          "channel_id",
-          "status",
-          "broken_reason",
-          "created_by",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SlackInstallationView",
-        "type": "object"
-      },
-      "SlackStatusView": {
-        "description": "Whether the org has installed Acme in Slack, and where.",
-        "properties": {
-          "installation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SlackInstallationView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "installation"
-        ],
-        "title": "SlackStatusView",
-        "type": "object"
-      },
       "SsoLinkRequest": {
         "additionalProperties": false,
         "description": "What the identity provider's admin portal opens on: the single sign-on\nconnection (`sso`) or the org's domains (`domain_verification`), and the\npage of this environment's portal it links back to.",
@@ -2935,41 +1930,34 @@
         "title": "SsoLinkView",
         "type": "object"
       },
-      "StartCheckoutRequest": {
+      "StartUploadRequest": {
         "additionalProperties": false,
-        "description": "`return_url` is the portal page the person comes back to, paid or not;\nit is one of the portal's own origins, or the request is refused.",
+        "description": "An upload to start: the file's name as the uploader had it, its type,\nand its size in bytes. The type must be one the purpose accepts and match\nthe name's extension; the size is the most the store will take.",
         "properties": {
-          "plan": {
-            "$ref": "#/components/schemas/Plan"
-          },
-          "return_url": {
-            "maxLength": 2000,
+          "content_type": {
+            "maxLength": 255,
             "minLength": 1,
-            "title": "Return Url",
+            "title": "Content Type",
             "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
           }
         },
         "required": [
-          "plan",
-          "return_url"
+          "name",
+          "content_type",
+          "size_bytes"
         ],
-        "title": "StartCheckoutRequest",
-        "type": "object"
-      },
-      "StartImportRequest": {
-        "additionalProperties": false,
-        "description": "The import of a CSV file uploaded under the `task_import` purpose\n(`POST /v1/tasks/imports/files`, then the media routes) and confirmed.\nIts columns are `title` (needed), `notes`, `due_on` (`YYYY-MM-DD`), and\n`assignee_email` (a member of the org), by header name.",
-        "properties": {
-          "file_id": {
-            "format": "uuid",
-            "title": "File Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file_id"
-        ],
-        "title": "StartImportRequest",
+        "title": "StartUploadRequest",
         "type": "object"
       },
       "StorageUsageView": {
@@ -3023,221 +2011,6 @@
         "title": "StreamTruncatedDetail",
         "type": "object"
       },
-      "SubscriptionStatus": {
-        "description": "The processor's statuses, as it spells them.",
-        "enum": [
-          "incomplete",
-          "incomplete_expired",
-          "trialing",
-          "active",
-          "past_due",
-          "canceled",
-          "unpaid",
-          "paused"
-        ],
-        "title": "SubscriptionStatus",
-        "type": "string"
-      },
-      "TaskCountView": {
-        "description": "How many tasks one list shows: the open list, or the done list without\nthe archived tasks, in the scope asked for.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "scope": {
-            "$ref": "#/components/schemas/TaskScope"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          }
-        },
-        "required": [
-          "status",
-          "scope",
-          "count"
-        ],
-        "title": "TaskCountView",
-        "type": "object"
-      },
-      "TaskPageView": {
-        "description": "One page of a task list. `next_cursor` fetches the next page of the same\nlist, open or done, and is null on the last page. The page size is\nclamped, and a list the clamp cut still says a page follows.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/TaskView"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "required": [
-          "items",
-          "next_cursor"
-        ],
-        "title": "TaskPageView",
-        "type": "object"
-      },
-      "TaskScope": {
-        "description": "Which tasks a list shows. The org is the team.",
-        "enum": [
-          "mine",
-          "team"
-        ],
-        "title": "TaskScope",
-        "type": "string"
-      },
-      "TaskStatus": {
-        "enum": [
-          "open",
-          "done"
-        ],
-        "title": "TaskStatus",
-        "type": "string"
-      },
-      "TaskView": {
-        "properties": {
-          "archived_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archived At"
-          },
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "created_by": {
-            "format": "uuid",
-            "title": "Created By",
-            "type": "string"
-          },
-          "deleted_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deleted At"
-          },
-          "due_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due On"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "notes": {
-            "title": "Notes",
-            "type": "string"
-          },
-          "position": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "deprecated": true,
-            "description": "The rank as a float, for a client of the release before, which requires it. Order by `rank`: no client reads this, and it leaves the wire in the release after this one.",
-            "title": "Position"
-          },
-          "rank": {
-            "description": "Where an open task sits in the open list, which is ascending by rank, then by id. An exact decimal number, written out in full: compare two as numbers, never as floats and never as text.",
-            "title": "Rank",
-            "type": "string"
-          },
-          "reminded_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reminded At"
-          },
-          "status": {
-            "$ref": "#/components/schemas/TaskStatus"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "notes",
-          "status",
-          "assignee_id",
-          "created_at",
-          "updated_at",
-          "created_by",
-          "deleted_at",
-          "version",
-          "rank"
-        ],
-        "title": "TaskView",
-        "type": "object"
-      },
       "TotpConfirmedView": {
         "description": "The second factor is enrolled: from now on the operator plane admits\nthis identity only on a sign-in that verified a code, so the next\nrequest signs in again with one.",
         "properties": {
@@ -3261,7 +2034,7 @@
       },
       "UpdateIdentityRequest": {
         "additionalProperties": false,
-        "description": "Where the person is, as an IANA name (\"Europe/Istanbul\"): the portal\nsends the browser's own on sign-in. A due date's reminder goes out at\nnine in the morning in it; with none sent, in UTC. A name that is not\none is 422.",
+        "description": "Where the person is, as an IANA name (\"Europe/Istanbul\"): the portal\nsends the browser's own on sign-in, and a time shown or sent to the\nperson is in it; with none sent, in UTC. A name that is not one is\n422.",
         "properties": {
           "time_zone": {
             "maxLength": 64,
@@ -3303,71 +2076,6 @@
           "role"
         ],
         "title": "UpdateMembershipRequest",
-        "type": "object"
-      },
-      "UpdateTaskRequest": {
-        "additionalProperties": false,
-        "description": "A partial update: absent fields are kept. An explicit null\n`assignee_id` unassigns the task. The version the update compares with is\nthe task's as the caller read it, in the `If-Match` header: the update\nlands only when the task is still at it, and is refused with 412\n`precondition_failed` when another write landed since, so the caller reads\nagain and decides over the current task. An update that names no version\nis refused with 422 `validation_failed`, since it would overwrite blind.\nAn explicit null `due_on` clears the due date; a new one reschedules the\nreminder, and the one scheduled before it never goes out.",
-        "properties": {
-          "assignee_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee Id"
-          },
-          "due_on": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due On"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TaskStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "title": "UpdateTaskRequest",
         "type": "object"
       },
       "UploadFieldView": {
@@ -3490,13 +2198,9 @@
       "WorkKind": {
         "enum": [
           "NOOP",
-          "SYNC_SEATS",
-          "TASK_REMINDER",
-          "SLACK_POST",
           "ORCHESTRATION",
           "WAKE_PARKED",
           "DELETE_ACCOUNT",
-          "UNASSIGN_TASKS",
           "DELETE_ORG"
         ],
         "title": "WorkKind",
@@ -3516,7 +2220,7 @@
   },
   "info": {
     "title": "Acme API",
-    "version": "0.7.0"
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4460,97 +3164,6 @@
         ]
       }
     },
-    "/v1/admin/orgs/{org_id}/billing": {
-      "get": {
-        "operationId": "get_org_billing_v1_admin_orgs__org_id__billing_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "org_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Org Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorBillingView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Org Billing",
-        "tags": [
-          "admin"
-        ]
-      }
-    },
     "/v1/admin/orgs/{org_id}/events": {
       "get": {
         "operationId": "list_events_v1_admin_orgs__org_id__events_get",
@@ -4896,234 +3509,6 @@
           }
         },
         "summary": "Add Member",
-        "tags": [
-          "admin"
-        ]
-      }
-    },
-    "/v1/admin/orgs/{org_id}/plan": {
-      "put": {
-        "description": "Grants the org a plan with no payment, or takes the grant back. A put:\nthe same body twice leaves the same grant.",
-        "operationId": "comp_plan_v1_admin_orgs__org_id__plan_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "org_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Org Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompPlanRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperatorBillingView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Comp Plan",
-        "tags": [
-          "admin"
-        ]
-      }
-    },
-    "/v1/admin/orgs/{org_id}/tasks": {
-      "get": {
-        "operationId": "list_tasks_v1_admin_orgs__org_id__tasks_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "org_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Org Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskStatus",
-              "default": "open"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskPageView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Tasks",
         "tags": [
           "admin"
         ]
@@ -6370,451 +4755,6 @@
         ]
       }
     },
-    "/v1/billing": {
-      "get": {
-        "operationId": "get_billing_v1_billing_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BillingView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Billing",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/v1/billing/cancel": {
-      "post": {
-        "description": "The paid plan ends at its period's end; the org keeps it until then.",
-        "operationId": "cancel_v1_billing_cancel_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BillingView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Cancel",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/v1/billing/checkout": {
-      "post": {
-        "description": "Makes the org's customer at the processor the first time, which is a\ndurable row, so the route runs under the idempotency record.",
-        "operationId": "start_checkout_v1_billing_checkout_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartCheckoutRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedirectView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Start Checkout",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/v1/billing/portal": {
-      "post": {
-        "operationId": "open_portal_v1_billing_portal_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OpenPortalRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedirectView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Open Portal",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/v1/billing/resume": {
-      "post": {
-        "operationId": "resume_v1_billing_resume_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BillingView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Resume",
-        "tags": [
-          "billing"
-        ]
-      }
-    },
     "/v1/events": {
       "get": {
         "operationId": "list_events_v1_events_get",
@@ -7768,7 +5708,312 @@
         ]
       }
     },
+    "/v1/media/files": {
+      "get": {
+        "description": "The org's stored files, oldest first; a pending upload is not listed.",
+        "operationId": "list_files_v1_media_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePageView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "media"
+        ]
+      },
+      "post": {
+        "description": "A pending file, and nothing in the store yet: the upload form, the\nbytes, and the confirm follow by its id.",
+        "operationId": "start_upload_v1_media_files_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Upload",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/v1/media/files/{file_id}": {
+      "delete": {
+        "operationId": "delete_file_v1_media_files__file_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-app-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-App-Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete File",
+        "tags": [
+          "media"
+        ]
+      },
       "get": {
         "operationId": "get_file_v1_media_files__file_id__get",
         "parameters": [
@@ -9381,2165 +7626,6 @@
         ]
       }
     },
-    "/v1/slack/installation": {
-      "delete": {
-        "operationId": "uninstall_v1_slack_installation_delete",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SlackStatusView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Uninstall",
-        "tags": [
-          "slack"
-        ]
-      },
-      "get": {
-        "operationId": "get_installation_v1_slack_installation_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SlackStatusView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Installation",
-        "tags": [
-          "slack"
-        ]
-      },
-      "post": {
-        "operationId": "start_install_v1_slack_installation_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SlackInstallStartView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Start Install",
-        "tags": [
-          "slack"
-        ]
-      }
-    },
-    "/v1/tasks": {
-      "get": {
-        "operationId": "list_tasks_v1_tasks_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskStatus",
-              "default": "open"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskScope",
-              "default": "team"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskPageView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Tasks",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "post": {
-        "operationId": "create_task_v1_tasks_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddTaskRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Task",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/archived": {
-      "get": {
-        "description": "The done tasks the daily cleanup archived, newest first. An archived\ntask leaves the done list; it is still read by its id and restored.",
-        "operationId": "list_archived_tasks_v1_tasks_archived_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskScope",
-              "default": "team"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskPageView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Archived Tasks",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/bulk": {
-      "post": {
-        "operationId": "change_tasks_v1_tasks_bulk_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkTasksRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkTasksView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Change Tasks",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/count": {
-      "get": {
-        "description": "How many tasks one list shows: the number a \"Mark all\" asks about.",
-        "operationId": "count_tasks_v1_tasks_count_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskStatus",
-              "default": "open"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/TaskScope",
-              "default": "team"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskCountView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Count Tasks",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/imports": {
-      "get": {
-        "operationId": "list_imports_v1_tasks_imports_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportPageView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Imports",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "post": {
-        "description": "Accepted: the import runs in the background, a hundred rows a step.",
-        "operationId": "start_import_v1_tasks_imports_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartImportRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Start Import",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/imports/files": {
-      "post": {
-        "description": "Starts the upload of a CSV file to import (`text/csv`, a `.csv` name, at\nmost 1 MB). Then `POST /v1/media/files/{id}/upload`, the form, and\n`POST /v1/media/files/{id}/confirm`.",
-        "operationId": "create_import_file_v1_tasks_imports_files_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Import File",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/imports/{import_id}": {
-      "get": {
-        "operationId": "get_import_v1_tasks_imports__import_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "import_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Import Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Import",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/imports/{import_id}/resume": {
-      "post": {
-        "description": "A parked import runs again from the row it stopped at, and parks again\nat once if the plan still has no room. A running one is answered as it\nis; a finished one is refused (422).",
-        "operationId": "resume_import_v1_tasks_imports__import_id__resume_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "import_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Import Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Resume Import",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/{task_id}": {
-      "delete": {
-        "operationId": "delete_task_v1_tasks__task_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "description": "The version the caller read, as an entity tag: `\"3\"`. 412 `precondition_failed` when the record changed since.",
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The version the caller read, as an entity tag: `\"3\"`. 412 `precondition_failed` when the record changed since.",
-              "title": "If-Match"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Task",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "get": {
-        "operationId": "get_task_v1_tasks__task_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Task",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "patch": {
-        "operationId": "update_task_v1_tasks__task_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "description": "The version the caller read, as an entity tag: `\"3\"`. 412 `precondition_failed` when the record changed since.",
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "The version the caller read, as an entity tag: `\"3\"`. 412 `precondition_failed` when the record changed since.",
-              "title": "If-Match"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateTaskRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Task",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/{task_id}/attachments": {
-      "get": {
-        "operationId": "list_attachments_v1_tasks__task_id__attachments_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FilePageView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Attachments",
-        "tags": [
-          "tasks"
-        ]
-      },
-      "post": {
-        "operationId": "attach_file_v1_tasks__task_id__attachments_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "idempotency-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 255,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Attach File",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/{task_id}/attachments/{file_id}": {
-      "delete": {
-        "operationId": "remove_attachment_v1_tasks__task_id__attachments__file_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "file_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "File Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Attachment",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/{task_id}/move": {
-      "post": {
-        "operationId": "move_task_v1_tasks__task_id__move_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MoveTaskRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Move Task",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
-    "/v1/tasks/{task_id}/restore": {
-      "post": {
-        "operationId": "restore_task_v1_tasks__task_id__restore_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestoreTaskRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Restore Task",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
     "/v1/users": {
       "get": {
         "operationId": "list_users_v1_users_get",
@@ -11647,9 +7733,9 @@
         ]
       }
     },
-    "/webhooks/slack/commands": {
+    "/webhooks/identity": {
       "post": {
-        "operationId": "slack_command_webhooks_slack_commands_post",
+        "operationId": "identity_delivery_webhooks_identity_post",
         "parameters": [
           {
             "in": "header",
@@ -11685,7 +7771,7 @@
           },
           {
             "in": "header",
-            "name": "X-Slack-Request-Timestamp",
+            "name": "WorkOS-Signature",
             "required": false,
             "schema": {
               "anyOf": [
@@ -11696,332 +7782,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Slack-Request-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Slack-Signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Slack-Signature"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Slack-Retry-Num",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Slack-Retry-Num"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Slack Command",
-        "tags": [
-          "webhooks"
-        ]
-      }
-    },
-    "/webhooks/slack/events": {
-      "post": {
-        "operationId": "slack_event_webhooks_slack_events_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Slack-Request-Timestamp",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Slack-Request-Timestamp"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Slack-Signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Slack-Signature"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Slack-Retry-Num",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Slack-Retry-Num"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SlackEventAnswerView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Slack Event",
-        "tags": [
-          "webhooks"
-        ]
-      }
-    },
-    "/webhooks/slack/oauth": {
-      "get": {
-        "operationId": "slack_oauth_webhooks_slack_oauth_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "code",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Code"
-            }
-          },
-          {
-            "in": "query",
-            "name": "state",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "State"
-            }
-          },
-          {
-            "in": "query",
-            "name": "error",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Error"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Slack Oauth",
-        "tags": [
-          "webhooks"
-        ]
-      }
-    },
-    "/webhooks/stripe": {
-      "post": {
-        "operationId": "stripe_delivery_webhooks_stripe_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-app",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-app-version",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-App-Version"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Stripe-Signature",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Stripe-Signature"
+              "title": "Workos-Signature"
             }
           }
         ],
@@ -12047,7 +7808,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Stripe Delivery",
+        "summary": "Identity Delivery",
         "tags": [
           "webhooks"
         ]
