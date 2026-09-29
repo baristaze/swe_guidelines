@@ -1012,8 +1012,9 @@ soft-deleted and purged after its retention, which leaves a grace
 period to restore it, or gone at once: one atomic write deletes their
 identity and every user, membership, and credential it holds, outside
 the sweep, so the fields they asked to lose wait out no retention. What
-they made in a team org stays the org's, under their id. Payloads carry ids, never a
-personal value, so erasure redacts audit entries and nothing else.
+they made in a team org stays the org's, under their id. Payloads and
+events, audit entries among them, carry ids, never a personal value, so
+an erasure has nothing to redact in them.
 
 <!-- agents-only
 When `activity` or `queue` comes back to an earlier point than `core`,
