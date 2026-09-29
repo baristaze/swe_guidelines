@@ -961,9 +961,22 @@ def repeat_need(scn: S.Scenario) -> float | None:
 
 
 def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by."""
+    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by.
+
+    A model whose cache hits are not billed at a tenth of its input price
+    names its own, `cache_read`, and its price carries it.
+    """
     names = matrix.get("anthropic", {}).get("prices", {})
-    return {m: price for m in names if (price := J.price_for(matrix, "anthropic", m)) is not None}
+    out: dict[str, dict[str, float]] = {}
+    for model, spec in names.items():
+        price = J.price_for(matrix, "anthropic", model)
+        if price is None:
+            continue
+        hit = spec.get("cache_read")
+        if isinstance(hit, (int, float)) and not isinstance(hit, bool) and 0 <= hit < float("inf"):
+            price["cache_read"] = float(hit)
+        out[model] = price
+    return out
 
 
 def planned_phases(

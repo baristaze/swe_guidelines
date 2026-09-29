@@ -71,14 +71,15 @@ T = TypeVar("T")
 # copy to edit; this is the fallback when the file is missing, and it is the
 # shape the file follows: one model, optional fallbacks tried in order when a
 # model is refused or out of quota, the effort word each SDK expects, and the
-# list price of each model in US dollars per million input and output tokens.
+# list price of each model in US dollars per million input and output tokens,
+# with its cache-hit price, `cache_read`, where that is not a tenth of its input.
 DEFAULT_MATRIX: dict[str, dict[str, Any]] = {
     "anthropic": {
         "model": "claude-opus-5-5",
         "fallbacks": ["claude-opus-5", "claude-sonnet-5"],
         "effort": {"low": "low", "medium": "medium", "high": "high"},
         "prices": {
-            "claude-opus-5-5": {"input": 4, "output": 20},
+            "claude-opus-5-5": {"input": 4, "output": 20, "cache_read": 0.2},
             "claude-opus-5": {"input": 5, "output": 25},
             "claude-sonnet-5": {"input": 2, "output": 10},
         },
