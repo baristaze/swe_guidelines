@@ -1,7 +1,8 @@
 // The app's one retry policy, as pure rules the transport client runs.
 // Only a failure that can differ on a second attempt is retried, the count is
-// bounded, and the delay grows and carries jitter. The query library's own
-// retry is off (see src/app/queryClient.ts), so no call is retried twice over.
+// bounded, and the delay grows and carries jitter. An app turns its query
+// library's own retry off (the portal's src/app/queryClient.ts), so no call
+// is retried twice over.
 
 /** Extra attempts a retryable failure gets after the first one. */
 export const DEFAULT_RETRY_ATTEMPTS = 2;

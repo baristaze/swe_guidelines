@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_BASE_DELAY_MS } from "../api";
+import { DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_BASE_DELAY_MS } from "@acme/client";
 import { DEFAULT_REQUEST_TIMEOUT_MS, resolveConfig } from "./config";
 
 const defaults = {

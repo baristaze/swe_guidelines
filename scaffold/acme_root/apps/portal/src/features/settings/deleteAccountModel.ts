@@ -1,7 +1,7 @@
 // Pure: what the "Delete my account" card says and when it lets the person
 // go on. The person types their account's email to say they mean it; the
 // server checks the same, forgiving space and letter case as it does.
-import { ApiError, type OwnedOrg } from "../../api";
+import { ApiError, type OwnedOrg } from "@acme/client";
 import { errorMessage } from "../../app/errorMessage";
 
 /** What happens to an account's data, said before and after. */

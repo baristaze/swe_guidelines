@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import type { MembershipChoiceView } from "../api";
+import type { MembershipChoiceView } from "@acme/client";
 import { useMe, useMyMemberships, useSwitchOrg } from "../queries/tenancy";
 import { useNoticesStore } from "../store/notices";
 import { adoptSession } from "./adoptSession";

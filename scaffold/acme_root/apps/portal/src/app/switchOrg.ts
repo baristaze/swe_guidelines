@@ -8,7 +8,7 @@
 // old tenant dropped (the token, every cached answer) and the new session
 // taken up. A refusal leaves the tab where it was, and one that says the
 // held session is gone signs the tab out; anything else is said.
-import { ApiError, type IssuedSessionView } from "../api";
+import { ApiError, type IssuedSessionView } from "@acme/client";
 import { errorMessage } from "./errorMessage";
 import type { SessionHold } from "./forgetSession";
 

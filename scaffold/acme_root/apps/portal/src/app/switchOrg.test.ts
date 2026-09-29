@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type IssuedSessionView } from "../api";
+import { ApiError, type IssuedSessionView } from "@acme/client";
 import { chipChoices } from "./orgChipModel";
 import { switchOrg, type SwitchEffects } from "./switchOrg";
 

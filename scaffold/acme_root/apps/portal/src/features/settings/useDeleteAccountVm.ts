@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { MeView, OwnedOrg } from "../../api";
+import type { MeView, OwnedOrg } from "@acme/client";
 import { forgetSession } from "../../app/forgetSession";
 import { useDeleteAccount } from "../../queries/tenancy";
 import { noteAccountDeleted, noteSignedOut } from "../../store/signInState";

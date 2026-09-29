@@ -3,7 +3,7 @@
 // tab, and the stream cursor.
 // Everything it reaches for is handed in, so the loop runs in a test over a
 // fake socket and fake timers. The provider owns one of these per session.
-import type { EventView } from "../api";
+import type { EventView } from "@acme/client";
 import type { ConnectionState } from "../store/connection";
 import { entityOf, isEntityChanged, parseEnvelope, type ClientCommand, type Envelope } from "./envelopes";
 import {

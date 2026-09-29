@@ -1,6 +1,6 @@
 // The socket loop over a fake socket and fake timers: what it sends, when it
 // reconnects, and how it moves the stream cursor.
-import { ApiError, type EventView } from "../api";
+import { ApiError, type EventView } from "@acme/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useConnectionStore } from "../store/connection";
 import { CLOSE_UNAUTHENTICATED, openChannel, SOCKET_OPEN, type Channel, type SocketLike } from "./channel";

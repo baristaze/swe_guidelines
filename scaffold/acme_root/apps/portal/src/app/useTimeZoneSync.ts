@@ -3,7 +3,7 @@
 // the page never waits on it. The next session tries again.
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import type { IdentityView, UpdateIdentityRequest } from "../api";
+import type { IdentityView, UpdateIdentityRequest } from "@acme/client";
 import { useIdentity } from "../queries/tenancy";
 import { keys } from "../queries/keys";
 import { api } from "./api";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../../api";
+import { ApiError } from "@acme/client";
 import { checkNewOrg, isSlug, newOrgBody, newOrgRefusal, suggestSlug } from "./newOrgModel";
 
 describe("checkNewOrg", () => {

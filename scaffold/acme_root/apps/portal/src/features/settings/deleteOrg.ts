@@ -7,7 +7,7 @@
 // switch does, and lands there. When no session came back, the tab forgets
 // the old one and the owner signs in again. A refusal changes nothing, and
 // it is said; one that says the held session is gone signs the tab out.
-import { ApiError, type IssuedSessionView, type OrgDeletedView } from "../../api";
+import { ApiError, type IssuedSessionView, type OrgDeletedView } from "@acme/client";
 import { errorMessage } from "../../app/errorMessage";
 import type { SessionHold } from "../../app/forgetSession";
 

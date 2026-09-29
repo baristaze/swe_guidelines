@@ -1,7 +1,7 @@
 // Runs without a browser: an in-memory Storage stands in for the tab's
 // session storage, as adoptSession's own test does.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IssuedSessionView } from "../api";
+import type { IssuedSessionView } from "@acme/client";
 import type { TakeUpEffects } from "./takeUpSignIn";
 
 class MemoryStorage implements Storage {
@@ -83,7 +83,7 @@ describe("takeUpSignIn", () => {
 
   it("keeps the new session when the old one was gone already", async () => {
     // The modules are loaded afresh per test, so the error is the class they load.
-    const { ApiError } = await import("../api");
+    const { ApiError } = await import("@acme/client");
     const t = await tab(() => Promise.reject(new ApiError(401, "not_authenticated", "Sign in first.", "req_1")));
     t.useSessionStore.getState().setSession("ses_old", "ajax");
 

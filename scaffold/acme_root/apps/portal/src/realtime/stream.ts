@@ -2,7 +2,7 @@
 // saw, and how a replayed record becomes the envelope it would have been.
 // The socket is a hint; the stream in storage is the truth, so a gap is
 // closed by fetching after the cursor rather than by trusting the frame.
-import { ApiError, type EventView } from "../api";
+import { ApiError, type EventView } from "@acme/client";
 import type { EventEnvelope } from "./envelopes";
 
 // The last contiguous seq the client applied; null until the first push.

@@ -6,7 +6,7 @@
 // answers with the identity provider's logout, the browser goes there last,
 // so the provider's own session ends too and the next sign-in on this
 // browser asks who it is.
-import { ApiError, type SignedOutView } from "../api";
+import { ApiError, type SignedOutView } from "@acme/client";
 import { errorMessage } from "./errorMessage";
 
 export const NOT_REVOKED_MESSAGE = "Signed out here; the server did not revoke the session.";

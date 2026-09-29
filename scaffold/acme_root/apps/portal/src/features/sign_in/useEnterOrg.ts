@@ -1,4 +1,4 @@
-import type { IssuedLoginView, MembershipChoiceView } from "../../api";
+import type { IssuedLoginView, MembershipChoiceView } from "@acme/client";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { adoptSession } from "../../app/adoptSession";

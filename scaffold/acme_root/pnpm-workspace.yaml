@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "clients/typescript"
 
 # Dependencies whose install scripts may run. esbuild downloads its binary.
 allowBuilds:

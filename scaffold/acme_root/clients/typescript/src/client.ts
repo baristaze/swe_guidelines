@@ -1,7 +1,7 @@
 // One transport client: bearer, app header, the error envelope parsed into
 // a typed error carrying the request id, a 401 that clears authentication,
-// a deadline on every call, and the app's one retry. The one file in the app
-// that may call fetch.
+// a deadline on every call, and the app's one retry. Every browser app sends
+// through it, and nothing outside this package calls fetch.
 
 import type { LastOwnerDetail, OwnedOrgRef } from "./types";
 import {
@@ -263,8 +263,8 @@ export function createClient(options: ClientOptions): ApiClient {
   }
 
   /**
-   * The app's one retry, and the only one: the query library's is off, so a
-   * failing dependency sees these attempts and no multiple of them. A request
+   * The app's one retry, and the only one: an app turns its query library's
+   * off, so a failing dependency sees these attempts and no multiple of them. A request
    * that may not be sent twice gets one attempt whatever the failure is.
    */
   async function request<T>(
