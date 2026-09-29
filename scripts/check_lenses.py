@@ -40,7 +40,18 @@ Rules:
   anywhere; one it never names is the lens's own example of a breach
   (`uuid4()`). `CROSS_REFERENCES` lists the few a lens names from
   another section on purpose. A renamed or moved identifier fails here
-  before a reader meets it.
+  before a reader meets it. A section's text includes its agents-only
+  blocks (`<!-- agents-only ... -->`), which a rendered page hides and an
+  agent reads, and no other HTML comment. It also includes the code of
+  every scaffold file the section links (`[..](scaffold/...)`), a folder
+  standing for the code files under it, so an identifier the text leaves
+  to the scaffold is still held, and a rename in the scaffold fails here;
+- a tag is one of `core`, `default`, `optional`, and `style`, in inline
+  code, alone on the first line under a `##` or `###` heading. A lone
+  backticked word there that is none of the four is refused. A tag covers
+  its own heading's text, not the headings below it;
+- a lens whose every citation names a section or subsection tagged
+  `style` is `low`: a house convention's breach is a low finding at most.
 
 Exit status is non-zero when any rule fails. Standard library only.
 """
@@ -53,13 +64,14 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _common import NUMBERED_REFERENCE, arguments, fenced_lines, headings, unfenced
+from _common import NUMBERED_REFERENCE, arguments, commented_lines, fenced_lines, headings, unfenced
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDELINE = ROOT / "architecture.md"
 LENSES = ROOT / "lenses"
 README = ROOT / "README.md"
 RULES = ROOT / "checkers" / "src" / "arch_check" / "rules"
+SCAFFOLD = ROOT / "scaffold"
 
 FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
@@ -79,6 +91,15 @@ SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 IDENTIFIER = re.compile(r"(?=.*(?:_|[a-z][A-Z]|\.|\(\)$))[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\(\))?")
 FILE_NAME = re.compile(r".+\.(?:py|pyi|toml|json|jsonc|html|md|txt|ya?ml|sql|ts|tsx|js|mjs|lock|cfg|ini|sh|env)")
 CODE_SPAN = re.compile(r"`([^`]+)`")
+TAGS = ("core", "default", "optional", "style")
+TAG_LINE = re.compile(r"^`([a-z]+)`$")
+SCAFFOLD_LINK = re.compile(r"\]\(\s*<?(scaffold/[^)\s>#]*)")
+CODE_SUFFIXES = frozenset(
+    {".py", ".pyi", ".sql", ".ts", ".tsx", ".js", ".mjs", ".tf", ".hcl", ".toml", ".json", ".yml", ".yaml", ".sh"}
+)
+CODE_NAMES = frozenset({"Makefile", "Dockerfile"})
+SKIPPED_DIRS = frozenset({"node_modules", ".venv", "__pycache__", "dist", "build", ".git"})
+"""What counts as the scaffold's code when a section links a file of it, or a folder."""
 CROSS_REFERENCES = frozenset(
     {
         ("CTX-24", "created_by"),  # the provenance field an operator row stamps, defined with the OM root
@@ -115,7 +136,10 @@ def paragraph_labels() -> dict[tuple[str, str], set[str]]:
     out: dict[tuple[str, str], set[str]] = {}
     section: str | None = None
     current: tuple[str, str] | None = None
-    for line in unfenced(GUIDELINE.read_text(encoding="utf-8")).splitlines():
+    text = GUIDELINE.read_text(encoding="utf-8")
+    for line, comment in zip(unfenced(text).split("\n"), commented_lines(text), strict=True):
+        if comment:
+            continue  # a label a rendered page hides is no label to cite
         m = re.match(r"^(#{1,3}) (.+)$", line)
         if m:
             level, title = len(m.group(1)), m.group(2).strip()
@@ -129,9 +153,46 @@ def paragraph_labels() -> dict[tuple[str, str], set[str]]:
     return out
 
 
-def section_texts() -> dict[str, str]:
-    """Map each section title to its text: from its `##` heading to the next, subsections and code included."""
+def guideline_text() -> str:
+    """The guideline as an agent reads it: every line but those of an HTML comment that is not an agents-only block."""
     text = GUIDELINE.read_text(encoding="utf-8")
+    kept = (line for line, comment in zip(text.split("\n"), commented_lines(text), strict=True) if comment != "comment")
+    return "\n".join(kept)
+
+
+def scaffold_code(target: str, cache: dict[str, str]) -> str:
+    """The code a link into the scaffold names: the file, or every code file under the folder; empty when it is missing.
+
+    A missing target is `check_links.py`'s to report; here it simply holds nothing.
+    """
+    if target not in cache:
+        path = (ROOT / target).resolve()
+        if not path.is_relative_to(SCAFFOLD.resolve()):
+            files: list[Path] = []
+        elif path.is_file():
+            files = [path]
+        elif path.is_dir():
+            files = sorted(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and not SKIPPED_DIRS.intersection(p.relative_to(path).parts)
+                and (p.suffix in CODE_SUFFIXES or p.name in CODE_NAMES or p.name.endswith(".Dockerfile"))
+            )
+        else:
+            files = []
+        cache[target] = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in files)
+    return cache[target]
+
+
+def section_texts() -> dict[str, str]:
+    """Map each section title to its text: from its `##` heading to the next, subsections and code included.
+
+    The text keeps the section's agents-only blocks and drops every other
+    HTML comment, and it takes in the code of each scaffold file or folder
+    the section links.
+    """
+    text = guideline_text()
     out: dict[str, list[str]] = {}
     current: str | None = None
     for line, code in zip(text.split("\n"), fenced_lines(text), strict=True):
@@ -141,7 +202,64 @@ def section_texts() -> dict[str, str]:
             out[current] = []
         elif current is not None:
             out[current].append(line)
-    return {title: "\n".join(lines) for title, lines in out.items()}
+    cache: dict[str, str] = {}
+    texts: dict[str, str] = {}
+    for title, lines in out.items():
+        body = "\n".join(lines)
+        linked = dict.fromkeys(SCAFFOLD_LINK.findall(body))
+        texts[title] = "\n".join([body, *(scaffold_code(t.rstrip("/"), cache) for t in linked)])
+    return texts
+
+
+def tags(errors: list[str] | None = None) -> dict[tuple[str, str | None], str]:
+    """Map (section, subsection or None) to the tag under its heading; a lone backticked word that is no tag is an error.
+
+    A tag is the first non-blank line under a `##` or `###` heading, a
+    backticked word alone on its line. It covers that heading's own text.
+    """
+    text = GUIDELINE.read_text(encoding="utf-8")
+    out: dict[tuple[str, str | None], str] = {}
+    section: str | None = None
+    pending: tuple[str, str | None] | None = None
+    lines = unfenced(text).split("\n")
+    for n, (line, comment) in enumerate(zip(lines, commented_lines(text), strict=True), start=1):
+        if comment:
+            continue
+        m = re.match(r"^(#{2,3}) (.+?)\s*$", line)
+        if m:
+            level, title = len(m.group(1)), m.group(2)
+            section = title if level == 2 else section
+            pending = (title, None) if level == 2 else (section, title) if section is not None else None
+            continue
+        if not line.strip():
+            continue
+        tag = TAG_LINE.match(line.strip())
+        if pending is not None and tag:
+            if tag.group(1) in TAGS:
+                out[pending] = tag.group(1)
+            elif errors is not None:
+                errors.append(f"architecture.md:{n}: `{tag.group(1)}` is no tag; a tag is one of {', '.join(TAGS)}")
+        pending = None
+    return out
+
+
+def cited_parts(value: str, known: dict[str, set[str]]) -> list[tuple[str, str | None]]:
+    """What a Source value cites, in order: (section, None) for a whole section, (section, subsection) for a part."""
+    out: list[tuple[str, str | None]] = []
+    sec: str | None = None
+    for citation in (c.strip().rstrip(".") for c in value.split(";") if c.strip()):
+        m = LABELLED.match(citation)
+        citation = m.group(1).strip() if m else citation
+        head, _, tail = citation.partition(", ")
+        if citation in known:
+            sec = citation
+            out.append((sec, None))
+        elif head in known and tail.strip() in known[head]:
+            sec = head
+            out.append((sec, tail.strip()))
+        elif sec is not None and citation in known[sec]:
+            out.append((sec, citation))
+    return out
 
 
 def cited_sections(value: str, known: dict[str, set[str]]) -> list[str]:
@@ -177,7 +295,7 @@ def check_identifiers(
     if not cited:
         return  # an unknown citation is reported by check_source
     held = "\n".join(texts.get(c, "") for c in cited)
-    everywhere = GUIDELINE.read_text(encoding="utf-8")
+    everywhere = guideline_text()
     for name, value, ln in fields:
         if name not in ("Principle", "Look for", "Violation"):
             continue
@@ -283,6 +401,27 @@ def registered_rules(errors: list[str]) -> dict[str, tuple[str, str]]:
     return out
 
 
+def check_style(
+    lens_id: str,
+    fields: list[tuple[str, str, int]],
+    path: Path,
+    known: dict[str, set[str]],
+    tagged: dict[tuple[str, str | None], str],
+    errors: list[str],
+) -> None:
+    """A lens whose every citation is tagged `style` is `low`: a house convention's breach is low at most."""
+    source = next((value for name, value, _ in fields if name == "Source"), "")
+    severity = next(((value.strip("` "), ln) for name, value, ln in fields if name == "Severity"), None)
+    parts = cited_parts(source, known)
+    if severity is None or severity[0] == "low" or not parts:
+        return
+    if all(tagged.get(part) == "style" for part in parts):
+        errors.append(
+            f"{path.name}:{severity[1]}: {lens_id} is {severity[0]}, and every section it cites is tagged `style`; "
+            "a lens on a house convention is low"
+        )
+
+
 def check_file(
     path: Path,
     known: dict[str, set[str]],
@@ -291,12 +430,14 @@ def check_file(
     ids: dict[str, str] | None = None,
     labels: dict[tuple[str, str], set[str]] | None = None,
     texts: dict[str, str] | None = None,
+    tagged: dict[tuple[str, str | None], str] | None = None,
 ) -> int:
     """Check one lens file; return its lens count.
 
     `ids` maps every lens id seen so far to the file that holds it, so a
     second file reusing a prefix and number is caught.
     """
+    tagged = tags() if tagged is None else tagged
     text = path.read_text(encoding="utf-8")
     lines = text.split("\n")
     prefix: str | None = None
@@ -346,6 +487,7 @@ def check_file(
         if found not in (list(FIELDS), [*FIELDS, OPTIONAL]):
             errors.append(f"{where}: fields are {found}, expected {list(FIELDS)}, optionally followed by {OPTIONAL}")
         check_identifiers(lens_id, fields, path, known, section_texts() if texts is None else texts, errors)
+        check_style(lens_id, fields, path, known, tagged, errors)
         for name, value, ln in fields:
             if name == "Severity" and value.strip("` ") not in SEVERITIES:
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
@@ -379,6 +521,7 @@ def main(argv: Sequence[str] = ()) -> int:
     known = sections()
     labels = paragraph_labels()
     texts = section_texts()
+    tagged = tags(errors)
     groups = listed_groups()
     files = {p.name: p for p in LENSES.glob("*.md") if p.name != "README.md"}
     for group, filename in groups.items():
@@ -396,7 +539,7 @@ def main(argv: Sequence[str] = ()) -> int:
     ids: dict[str, str] = {}
     for name in sorted(files):
         before = set(checks)
-        total += check_file(files[name], known, errors, checks, ids, labels, texts)
+        total += check_file(files[name], known, errors, checks, ids, labels, texts, tagged)
         lens_files.update(dict.fromkeys(set(checks) - before, name))
     rules = registered_rules(errors)
     for lens_id, (coverage, ln) in sorted(checks.items()):
