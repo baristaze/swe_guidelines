@@ -139,7 +139,9 @@ refused or expired, stop, and name the refresh the preamble gives.
    that fired is reported either way.
 6. Write the report. A fail names the next skill: `ops-investigate`
    with the window, or `ops-infra-as-code` when the numbers say a
-   lever.
+   lever. A session follows at most 2 hops of Next. The skill it
+   starts with is hop zero; the report of the second hop still names
+   its next skill, and the session stops there and reports.
 
 ## What it never does
 

@@ -120,7 +120,18 @@ Rules:
   and with no count only its session's turns or wall time would. Fenced
   code and table rows are left out. A fix and a rerun pair only inside one
   paragraph or item, so a rerun in a nested bullet under the fix's step is
-  not paired; that loop, and a loop said in other words, is held by hand.
+  not paired; that loop, and a loop said in other words, is held by hand;
+- every other loop an ops skill of the scaffold runs states its count, and
+  each skill `LOOP_BOUNDS` names says each of its bounds in those words,
+  outside fenced code: a watch's batches, its shortest interval, and the
+  calls a batch makes; the request ids a search follows, one pass each,
+  and the feed read from the window's first `seq`; a Logs Insights
+  query's polls; the hops of Next a session follows, or a Next that is
+  the person's to run; and an audit's rerun of a failed flow, which
+  names no rerun the pairing above reads. A skill the scaffold does not
+  have is not read. Each batch, poll, and hand-off spends tokens and, in the cloud,
+  a billed call, and a rewrite that drops a count passes every other
+  gate.
 
 Exit status is non-zero on any failure. Standard library only.
 """
@@ -639,6 +650,38 @@ def check_bounds(errors: list[str]) -> None:
             )
 
 
+HOPS = "at most 2 hops of Next"
+PERSONS_NEXT = "Next is the person's to run, never the session's"
+POLLS = "Poll `get-query-results` at most 10 times"
+LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
+    "ops-watch": ("at most 30 batches", "at least 30 seconds", "at most 20 tool calls", HOPS),
+    "ops-root-cause": ("at most 5 request ids, one pass each", "the window's first `seq`", POLLS),
+    "ops-investigate": (POLLS, HOPS),
+    "stress-test-run": (HOPS,),
+    "ops-cloud-deployment-create": (PERSONS_NEXT,),
+    "stress-test-create-or-update": (PERSONS_NEXT,),
+    "audit-database-calls": ("the first run plus at most 1 rerun",),
+}
+"""The count each loop of an ops skill of the scaffold stops at, in the words its skill says it.
+
+A strong model keeps going until something stops it, and with only a
+clock nothing does before its session runs out. So each count sits well
+above real use, and each skill says what it does when it reaches it. A
+Next the person runs is a hand-off the session never follows.
+"""
+
+
+def check_loop_bounds(skills: list[Path], errors: list[str]) -> None:
+    """Every scaffold skill `LOOP_BOUNDS` names says each of its bounds, in those words, outside fenced code."""
+    for skill in skills:
+        if skill.parent.name not in LOOP_BOUNDS or not skill.exists():
+            continue
+        said = " ".join(unfenced(body_of(skill.read_text(encoding="utf-8"))).split())
+        for bound in LOOP_BOUNDS[skill.parent.name]:
+            if bound not in said:
+                errors.append(f"{skill.relative_to(ROOT)}: does not say {bound!r}; each loop an ops skill runs states its count")
+
+
 def main(argv: Sequence[str] = ()) -> int:
     arguments(__doc__, argv)
     errors: list[str] = []
@@ -761,6 +804,7 @@ def main(argv: Sequence[str] = ()) -> int:
     check_audits(copied, errors)
     check_work_row(errors)
     check_bounds(errors)
+    check_loop_bounds(copied, errors)
     for group in sorted(groups - review_groups):
         errors.append(f"skills/: no arch-review-{group} skill for lens group '{group}'")
     full = SKILLS / "arch-review-full" / "SKILL.md"

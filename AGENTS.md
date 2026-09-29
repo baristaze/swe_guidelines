@@ -121,6 +121,12 @@ cites the changed text changes with it.
   `skills/<name>/references/`, named by the step that reads it.
 - A step that fixes and runs again states its bound: the first run plus
   at most 3 reruns, then stop and say which gate fails and why.
+- Every other loop an ops skill of the scaffold runs states its count,
+  well above real use, and what the skill does when it reaches it: a
+  watch's batches and their calls, a query's polls, the request ids a
+  search follows, and the hops of Next a session follows.
+  `scripts/check_skills.py` holds each count in the skill that states
+  it.
 - Exactly one review skill per lens group, and `arch-review-full` names
   all of them.
 
