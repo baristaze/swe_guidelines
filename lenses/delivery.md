@@ -368,7 +368,7 @@ only consume the hook.
 directly; a predicate or formatter defined inside a component file; a
 screen with no model module and untested decision logic in the hook.
 
-**Severity.** medium
+**Severity.** low
 
 ## DEL-15 Generated types behind a facade; one transport client
 

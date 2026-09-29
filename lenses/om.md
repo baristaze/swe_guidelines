@@ -152,19 +152,21 @@ CON-17.)
 **Check.** `arch-check` decides methods on the root and the mixins and
 entity-to-entity inheritance; the rest is judged.
 
-## OM-06 Append-only records carry identity only
+## OM-06 Append-only records carry identity and a birth time
 
 **Principle.** A record that is never updated and never hidden (an
-audit entry, a ledger line, an event) is `Identifiable` and nothing
-else: no `updated_at`, no `deleted_at`.
+audit entry, a ledger line, an event) is `Identifiable` and `Created`
+and nothing else: no `updated_at`, no `deleted_at`. Its time is its
+`created_at`, never one read out of its id.
 
 **Source.** Naming Entities.
 
 **Look for.** Entities whose managers only ever create them; the mixins
-those entities compose.
+those entities compose; where a record's time is read from.
 
 **Violation.** An audit or event entity composed with `Trackable` or
-`SoftDeletable`; an `updated_at` on a record no code path updates.
+`SoftDeletable`; an `updated_at` on a record no code path updates; a
+record's time taken from the timestamp inside its id.
 
 **Severity.** low
 

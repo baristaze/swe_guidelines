@@ -349,11 +349,11 @@ and concrete tables setting none; the rest is judged.
 ## STO-14 The first three index rules
 
 **Principle.** A feed gets a compound index on `(org_id, id)`, which
-sorts by creation time because ids are v7; a descending index is never
-needed. A column that leads a compound index gets no single-column
-index of its own, so a feed table composes `FeedIdentifiableMixin`,
-whose `org_id` carries none. Index what the SQL filters on, never what
-Python filters afterwards.
+keeps it in id order, and ids are v7, so an insert lands at the tail; a
+descending index is never needed. A column that leads a compound index
+gets no single-column index of its own, so a feed table composes
+`FeedIdentifiableMixin`, whose `org_id` carries none. Index what the
+SQL filters on, never what Python filters afterwards.
 
 **Source.** The Storage Layer, Defining ORM Classes; Naming Entities,
 Identifiers.

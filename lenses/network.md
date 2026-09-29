@@ -38,9 +38,11 @@ than by namespace or by app-specific service.
 
 ## NET-02 Services split along namespace lines
 
-**Principle.** A web service is the scalability unit, one per major OM
-namespace; the first form of a split is the API image with a
-`namespaces` setting. A call into another namespace stays in-process
+**Principle.** A web service is the scalability unit. When a namespace
+earns a service of its own, the split follows namespace lines, and its
+first form is the API image with a `namespaces` setting; a service
+earns an image of its own only when its code diverges. A call into
+another namespace stays in-process
 wherever the process holds the callee's code and roles, which a split
 leaves true; the remote impl is for the process that does not.
 
@@ -540,7 +542,8 @@ as a model field; code that reads `seq` as the order of core writes.
 gains optional ones; a removal or a rename is a new prefix. A reader
 ignores unknown fields. A wire-only payload or an envelope gains only
 optional, defaulted fields, so both ends roll out in either order; a
-stored payload is STO-25. A service rolls out before its apps.
+stored payload is STO-25. Every process ships from one commit, so a new
+request field is accepted one release before an app sends it.
 
 **Source.** The Network Layer, Public Types.
 
@@ -549,7 +552,7 @@ and envelope against the committed OpenAPI document; the model config
 of payload and envelope bases; whether a consumer fails
 on an unknown field; whether a field added to a payload has a default,
 since a new reader in front of an old writer holds only then; the
-order in which a service and its apps are deployed, since a request
+release in which an app first sends a request field, since a request
 forbids what it does not know.
 
 **Violation.** A field removed or renamed on a view, or a required
@@ -558,7 +561,7 @@ that rejects an unknown field, so producer and consumer must deploy
 together (the topic payload base's own config is ASY-09); a required
 field added to a topic payload or an envelope, so an old producer's
 message fails to parse; an app that sends
-a new request field before the service that accepts it is deployed.
+a new request field in the release that first accepts it.
 
 **Severity.** medium
 
