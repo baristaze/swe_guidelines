@@ -4,6 +4,7 @@ operator token an agent presents instead of a sign-in, and the grant job's
 command."""
 
 import argparse
+from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
@@ -19,6 +20,7 @@ from api_support import (
 )
 
 from acme.om.opcontext import OperatorRole
+from acme.om.tenancy.impl.operator import TOTP_ISSUER
 from acme.om.tenancy.rules import email_digest
 from acme.services.api import main as api_main
 from acme.services.api.container import AppContainer
@@ -47,7 +49,7 @@ async def test_an_operator_enrols_a_second_factor_before_the_plane_admits_them(
     minted = await client.post("/v1/admin/me/totp", headers=enrolling)
     assert minted.status_code == 200, minted.text
     uri = minted.json()["otpauth_uri"]
-    assert uri.startswith("otpauth://totp/Acme%3Aroot%40example.test?secret=")
+    assert uri.startswith(f"otpauth://totp/{quote(TOTP_ISSUER)}%3Aroot%40example.test?secret=")
     secret = secret_of(uri)
     wrong = await client.post(
         "/v1/admin/me/totp/confirm", headers=enrolling, json={"totp_code": "000000"}

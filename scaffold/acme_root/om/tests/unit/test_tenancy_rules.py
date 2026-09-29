@@ -65,10 +65,10 @@ def test_a_code_matches_one_step_either_side_and_nothing_else() -> None:
 
 
 def test_the_otpauth_uri_carries_the_secret_the_account_and_the_issuer() -> None:
-    uri = otpauth_uri(b"12345678901234567890", "root@example.test", "Acme")
+    uri = otpauth_uri(b"12345678901234567890", "root@example.test", "Big Co")
     assert uri == (
-        "otpauth://totp/Acme%3Aroot%40example.test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
-        "&issuer=Acme&algorithm=SHA1&digits=6&period=30"
+        "otpauth://totp/Big%20Co%3Aroot%40example.test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+        "&issuer=Big%20Co&algorithm=SHA1&digits=6&period=30"
     )
 
 

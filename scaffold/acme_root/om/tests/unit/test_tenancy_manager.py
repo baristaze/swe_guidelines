@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
 import pytest
@@ -59,7 +60,11 @@ from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
 from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
-from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl, TenancyOperatorOptions
+from acme.om.tenancy.impl.operator import (
+    TOTP_ISSUER,
+    TenancyOperatorManagerImpl,
+    TenancyOperatorOptions,
+)
 from acme.om.tenancy.rules import (
     email_digest,
     hash_token,
@@ -1094,7 +1099,8 @@ async def test_an_operator_enrols_a_second_factor_before_the_plane_admits_them(
     first = secret_of((await operator.enrol_totp(enrolling)).otpauth_uri)
     # Minting again replaces a secret nobody confirmed.
     issued = await operator.enrol_totp(enrolling)
-    assert issued.otpauth_uri.startswith("otpauth://totp/Acme%3Aroot%40example.test?secret=")
+    issuer = quote(TOTP_ISSUER)
+    assert issued.otpauth_uri.startswith(f"otpauth://totp/{issuer}%3Aroot%40example.test?secret=")
     secret = secret_of(issued.otpauth_uri)
     assert secret != first
     stored = await storage.read_identity(enrolling.identity_id)
