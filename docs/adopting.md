@@ -48,13 +48,22 @@ shows them.
 
 ## Install the skills
 
-Install the plugin as the [README](../README.md#install-the-skills)
-says. A copy installed from `main` can carry changes past the release
-it names, so a team that pins versions adds the marketplace from a tag:
+The skills follow the [Agent Skills](https://agentskills.io/specification)
+standard, and the [README](../README.md#install-the-skills) gives two
+routes. In Claude Code, install the plugin. In any other agent that
+reads the standard, clone this repository and link each skill into the
+project's `.agents/skills/`. In a copy of the scaffold, `.claude/skills`
+links to that folder, so Claude Code finds the linked skills there too.
+
+A copy installed from `main` can carry changes past the release it
+names, so a team that pins versions installs from a tag. The plugin
+adds the marketplace from it:
 
 ```text
 /plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.38.0
 ```
+
+The clone checks it out: `git -C ../swe_guidelines checkout v0.38.0`.
 
 ## Run the checker
 
@@ -141,8 +150,10 @@ lowers a severity.
 ## Operate with the built-in skills
 
 A copy of the scaffold carries its operational skills and audits under
-`.claude/skills/`. They belong to the project, so they are not
-namespaced: `/ops-investigate --env staging`. The scaffold's
+`.agents/skills/`, the folder every agent that reads the standard
+shares, and `.claude/skills` links to it for Claude Code. They belong
+to the project, so they are not namespaced: `/ops-investigate --env
+staging` in Claude Code, `$ops-investigate --env staging` in Codex. The scaffold's
 [`ops/README.md`](../scaffold/acme_root/ops/README.md) lists each one,
 the role it holds, and what it answers. Each holds the one role its
 row names, and refuses a wider one. A skill that takes `--env` runs
@@ -150,8 +161,10 @@ with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
 
-An existing tree copies the scaffold's `.claude/skills/` and renames
-`acme` in them to its own name, in each form `scaffold/new.py` uses.
+An existing tree copies the scaffold's `.agents/skills/`, links
+`.claude/skills` to it (`ln -s ../.agents/skills .claude/skills`), and
+renames `acme` in them to its own name, in each form `scaffold/new.py`
+uses.
 The skills assume the roles, the profiles, the env file, the
 `<root>-ops` binary, the tools under `ops/audit/`, and the operator
 plane's read routes that the scaffold carries. A tree without them adds
@@ -173,19 +186,3 @@ guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guide
 	  curl -fsSL $(GUIDELINE_URL)/lenses/$$g.md -o vendor/swe_guidelines/lenses/$$g.md; done
 	@echo "synced $(GUIDELINE_TAG)"
 ```
-
-## Optional: project skills without the plugin
-
-Clone this repository beside the project and link the skill folders
-into `.claude/skills/`:
-
-```bash
-git clone https://github.com/baristaze/swe_guidelines ../swe_guidelines
-mkdir -p .claude/skills
-for s in ../swe_guidelines/skills/arch-*; do ln -s "$(cd "$s" && pwd)" ".claude/skills/$(basename "$s")"; done
-```
-
-A skill reads `${CLAUDE_SKILL_DIR}/../../architecture.md`, which
-resolves through the link to the clone. Claude Code does not document
-skills found through linked folders, so the plugin is the supported
-route.

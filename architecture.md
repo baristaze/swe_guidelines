@@ -2009,8 +2009,10 @@ an environment too.
 ### Operational Skills
 
 Every system ships with an operational skill per task that repeats,
-written into the tree by the scaffold
-([`.claude/skills/`](scaffold/acme_root/.claude/skills/)):
+written into the tree by the scaffold. The skills live in
+[`.agents/skills/`](scaffold/acme_root/.agents/skills/), the folder
+every agent that reads the [Agent Skills](https://agentskills.io/specification)
+standard shares, and `.claude/skills` links to it for Claude Code.
 
 | Skill                            | Role          | Answers                                         |
 |----------------------------------|---------------|-------------------------------------------------|
@@ -2132,7 +2134,8 @@ is the whole tree ([`scaffold/acme_root/`](scaffold/acme_root/)):
 ├── scripts/          # runnable entry points
 ├── specs/            # architecture.md: the pin and the deviations
 ├── docs/             # the system as built, adr/, runbooks/
-├── .claude/skills/   # the operational skills
+├── .agents/skills/   # the operational skills
+├── .claude/skills    # a link to .agents/skills
 ├── .github/workflows/
 ├── Makefile          # setup, check, test-*, migrate, seed, up, down, openapi, traffic
 └── llms.txt          # the knowledge map

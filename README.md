@@ -13,9 +13,10 @@ systems in Python, and the tools that hold a project to it.
   checkable detail under each rule.
 - **[`checkers/`](checkers/README.md)**: `arch-check`, the static
   checker. It decides the lenses a program can decide, in a second.
-- **[`skills/`](skills/)**: Claude Code skills that review a change
-  through the lenses, add a piece in the prescribed shape, and record a
-  deviation.
+- **[`skills/`](skills/)**: skills that review a change through the
+  lenses, add a piece in the prescribed shape, and record a deviation.
+  They follow the [Agent Skills](https://agentskills.io/specification)
+  standard, so they run in Claude Code and in any agent that reads it.
 - **[`benchmark/`](benchmark/README.md)**: the harness that has
   frontier models score a subject against a rubric.
 
@@ -72,7 +73,8 @@ its configuration.
 
 ## Install the skills
 
-The repository is a Claude Code plugin marketplace:
+There are two routes. In Claude Code, the repository is a plugin
+marketplace:
 
 ```text
 /plugin marketplace add baristaze/swe_guidelines
@@ -87,6 +89,22 @@ shipped with:
 /plugin update swe-guidelines
 /reload-plugins
 ```
+
+In any other agent that reads the standard, such as Codex, clone the
+repository beside the project and link each skill into the project's
+`.agents/skills/`:
+
+```bash
+git clone https://github.com/baristaze/swe_guidelines ../swe_guidelines
+mkdir -p .agents/skills
+for s in ../swe_guidelines/skills/arch-*; do ln -s "$(cd "$s" && pwd)" ".agents/skills/$(basename "$s")"; done
+echo '.agents/skills/arch-*' >> .git/info/exclude
+```
+
+A skill reads the guideline and the lenses by their paths from its own
+folder, so through the link it reads the clone. The links hold this
+machine's paths, so they stay out of the project's history.
+`git -C ../swe_guidelines pull` updates the skills.
 
 ## The skills
 
