@@ -23,6 +23,10 @@ it resumes onto it. This holds them together:
 - every run folder is named by exactly one row, as that row's run or as
   a part of its chain. So a folder of a chain with a row of its own
   fails, and so does a folder no row and no chain names;
+- no chain forks: no run folder is the source of two. A fork cannot be
+  one row, so it is named once, and a run resumes or is judged again
+  from its chain's newest folder, which carries every milestone before
+  it;
 - every row's Cost (USD) is its chain's total: what the chain's folders
   spent, each its `spend.total_usd`, to the cent. It reads "—" when no
   folder of the chain recorded a spend, and "at least" when one did not
@@ -351,11 +355,19 @@ def check_scenario(folder: Path, errors: list[str]) -> list[Path]:
             )
         if started:
             above = (row.run, started)
+    # A folder two folders ran from forks its chain, and no set of rows holds a fork. The fork is named once, and the
+    # rows it leaves over-named (it and the folders before it) or unnamed (the folders after it) are not named again.
+    forks = {run.name: after for run in runs if len(after := CH.continued_by(run)) > 1}
+    before = {part.name for name in forks for part in CH.lineage(folder / name)[0]}
+    after_fork = {run.name for run in runs if any(part.name in forks for part in CH.lineage(run)[0][:-1])}
+    for name, paths in sorted(forks.items()):
+        errors.append(f"{shown(folder / name)}: {CH.one_line(folder / name, paths)}")
     for run in runs:
         roles = named.get(run.name, [])
         if not roles:
-            errors.append(f"{where}: no row names the run folder {run.name}, as its run or as a part of its chain")
-        elif len(roles) > 1:
+            if run.name not in after_fork:
+                errors.append(f"{where}: no row names the run folder {run.name}, as its run or as a part of its chain")
+        elif len(roles) > 1 and run.name not in before:
             said = "; ".join(f"line {ln}, as {role}" for ln, role in roles)
             errors.append(f"{where}: {run.name} is named by {len(roles)} rows ({said}); a run and its resumes are one row")
     return runs

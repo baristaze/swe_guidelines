@@ -223,15 +223,24 @@ def spend(total, unpriced=()):
     return {"judges": {}, "subject": {}, "total_usd": total, "unpriced": list(unpriced)}
 
 
+def versions(commit, claude=None):
+    checkout = {"commit": commit * 40, "plugin_version": "1.0.0", "dirty": False, "dirty_paths": [], "dirty_sha256": None}
+    return {"checkout": checkout} | ({"claude_code": f"{claude} (Claude Code)"} if claude else {})
+
+
 def chained(repo, first_spend=None):
-    """A run, its resume after a phase, and a resume of its judges, chained by `source`, as the harness records them."""
-    a_run(repo, RUN, "2026-01-01T08:00:00Z", spend=first_spend or spend(82.5281))
+    """A run, its resume after a phase, and a resume of its judges, chained by `source`, as the harness records them.
+
+    The first two ran the subject on Claude Code 2.1.283, from two commits; the last ran only judges, from a third.
+    """
+    a_run(repo, RUN, "2026-01-01T08:00:00Z", spend=first_spend or spend(82.5281), versions=versions("a", "2.1.283"))
     a_run(
         repo,
         RESUMED,
         "2026-01-02T08:00:00Z",
         spend=spend(87.7648),
         source={"run_id": RUN, "path": f"benchmark/runs/{RUN}", "after": "scaffold", "repeats": [0], "refused": [], "capped": []},
+        versions=versions("b", "2.1.283"),
     )
     judges = [{"repeat": 0, "run": ["openai"], "carried": ["anthropic"]}]
     a_run(
@@ -240,13 +249,20 @@ def chained(repo, first_spend=None):
         "2026-01-03T08:00:00Z",
         spend=spend(30.1202),
         source={"run_id": RESUMED, "path": "x", "repeats": [0], "refused": [], "capped": [], "judges": judges},
+        versions=versions("c"),
     )
     index(repo, "alpha")
 
 
+CHAIN_HEAD = "| Run | Started (UTC) | Cost (USD) | Commit | Claude Code |\n|---|---|---|---|---|\n"
+
+
 def test_a_run_and_its_resumes_are_one_row_whose_cost_is_the_chain_s_total(repo, runs, capsys):
     chained(repo)
-    page(repo, "alpha", row(JUDGED, "$200.41"))
+    # The row's Commit names each commit of the chain's folders, oldest first, and its Claude Code the one that ran
+    # the subject: the resume of the judges ran none.
+    chain_row = f"| [{JUDGED}]({JUDGED}/report.md) | 2026-01-01 08:00 | $200.41 | `aaaaaaa`, `bbbbbbb`, `ccccccc` | 2.1.283 |\n"
+    page(repo, "alpha", chain_row, head=CHAIN_HEAD)
     assert runs.main() == 0
     assert "runs ok: 3 run folder(s)" in capsys.readouterr().out
 
@@ -277,6 +293,41 @@ def test_a_folder_no_row_and_no_chain_names_fails(repo, runs, capsys):
     out = capsys.readouterr().out
     assert f"no row names the run folder {JUDGED}, as its run or as a part of its chain" in out
     assert f"no row names the run folder {ONE_A}" in out and "2 run index mismatch(es)" in out
+
+
+AGAIN = "20260104-000000-alpha-again"
+
+
+@pytest.mark.parametrize(
+    "named",
+    [
+        [(AGAIN, "$84.53")],  # the second resume alone: the first one is left over
+        [(AGAIN, "$84.53"), (RESUMED, "$170.29")],  # both: the run is named twice
+        [(RESUMED, "$170.29")],  # the first resume alone: the second one is left over
+    ],
+)
+def test_a_chain_that_forks_fails_with_one_line_to_resume_from(repo, runs, capsys, named):
+    chained(repo)
+    source = {"run_id": RUN, "path": "x", "after": "scaffold", "repeats": [0], "refused": [], "capped": []}
+    a_run(repo, AGAIN, "2026-01-04T08:00:00Z", spend=spend(2.0), source=source)  # a second resume of the run
+    shutil.rmtree(repo.root / "benchmark" / "runs" / "alpha" / JUDGED)
+    page(repo, "alpha", *(row(name, cost) for name, cost in named))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        f"benchmark/runs/alpha/{RUN}: {RUN} is already the source of {RESUMED} and {AGAIN}, beside it. A chain has one "
+        "line, so a run resumes or is judged again from the chain's newest folder, which carries every milestone before it"
+    ) in out
+    assert "is named by" not in out and "no row names" not in out and "1 run index mismatch(es)" in out
+
+
+def test_a_dry_run_beside_a_run_does_not_fork_its_chain(repo, runs, capsys):
+    chained(repo)
+    repo.write(f"benchmark/runs/alpha/{AGAIN}/run.json", json.dumps({"source": {"run_id": RUN}}) + "\n")
+    page(repo, "alpha", row(JUDGED, "$200.41"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"no row names the run folder {AGAIN}" in out and "is already the source of" not in out
 
 
 def test_a_chain_whose_source_is_not_beside_it_breaks(repo, runs, capsys):
