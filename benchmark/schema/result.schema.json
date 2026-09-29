@@ -195,6 +195,50 @@
         }
       }
     },
+    "chain": {
+      "description": "For a run that continues another, by resuming it or judging its output again: the chain it ends. Its run folders from the first, each with its start and what it spent; each stage a folder ran, per repeat (a phase, a subject's one session, or the judges), with that folder, its status, its cost, and its time; and the folders' total. The total is a lower bound, at_least, when a folder recorded no spend, a model had no price, or the chain breaks before its first folder, which broken then says.",
+      "type": "object",
+      "required": ["folders", "stages", "total_usd", "unpriced", "at_least"],
+      "additionalProperties": false,
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["run_id", "started_at", "total_usd"],
+            "additionalProperties": false,
+            "properties": {
+              "run_id": { "type": "string", "minLength": 1 },
+              "started_at": { "type": ["string", "null"] },
+              "total_usd": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repeat", "stage", "run_id", "status", "cost_usd", "time_s"],
+            "additionalProperties": false,
+            "properties": {
+              "repeat": { "type": "integer", "minimum": 0 },
+              "stage": { "type": "string", "minLength": 1 },
+              "run_id": { "type": "string", "minLength": 1 },
+              "status": { "type": "string" },
+              "cost_usd": { "type": ["number", "null"], "minimum": 0 },
+              "estimated": { "description": "A phase that reported no cost: its cost is the harness's estimate.", "const": true },
+              "time_s": { "type": ["number", "null"], "minimum": 0 },
+              "judges": { "description": "For the judges: those the folder ran in the repeat.", "type": "array", "items": { "type": "string" } },
+              "missed": { "description": "For the judges: those of them that did not answer.", "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "total_usd": { "type": "number", "minimum": 0 },
+        "unpriced": { "type": "array", "items": { "type": "string" } },
+        "at_least": { "type": "boolean" },
+        "broken": { "type": "string", "minLength": 1 }
+      }
+    },
     "spend": {
       "description": "What the run spent: tokens and US dollars per judge, for the subject, and in all. A model with no price is named under unpriced, and its cost is not in any figure.",
       "type": "object",

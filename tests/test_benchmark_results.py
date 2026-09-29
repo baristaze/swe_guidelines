@@ -366,7 +366,7 @@ RUNS = Path(__file__).resolve().parent.parent / "benchmark" / "runs"
 def test_every_checked_in_run_still_validates_against_the_schema():
     """A later schema adds fields as optional, so a run recorded before them stays valid."""
     pytest.importorskip("jsonschema")
-    for results in sorted(RUNS.glob("*/results.json")):
+    for results in sorted(RUNS.glob("*/*/results.json")):
         data = json.loads(results.read_text(encoding="utf-8"))
         assert R.validate(data, SCHEMA) == [], results.parent.name
 
