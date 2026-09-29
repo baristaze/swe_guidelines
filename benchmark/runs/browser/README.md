@@ -1,0 +1,51 @@
+# browser
+
+The subject is four chat products a reader would use: chatgpt.com,
+claude.ai, gemini.google.com, and grok.com, each signed in, in a
+browser. Each is asked one question: evaluate this repository as a
+senior software engineer and architect, and score it from 0 to 100. The
+prompt, and the contract that shapes the answer, are in
+[prompt.md](../../browser/prompt.md), and
+[arch-benchmark-browser](../../../skills/arch-benchmark-browser/SKILL.md)
+runs it. Two t-shirt sizes pick each site's model and effort, as
+[sizes.yaml](../../browser/sizes.yaml) maps them. A size names the
+current model of its tier, so the model behind a size can move from one
+run to the next, and each cell names the one that ran.
+
+There is no judge. Each score is the product's own, from the answer's
+`Score: NN/100` line. So a row says what four products thought of the
+repository on one day, and the rows show how that moved from release to
+release.
+
+Two rows compare when their runs share the sizes, the prompt, and the
+contract, as each run's `results.json` records them. The Set column
+marks them: rows of one set compare, and rows of two sets do not. A
+score marked `smaller-mode` ran on a smaller model or mode than its size
+asked for, because the account locks that one, and it compares with no
+other score.
+
+Each run's folder holds its `results.json` and one answer per session,
+as the product wrote it, redacted. `[redacted]` marks each place a
+conversation's address, a device or account name, or the name of the
+guideline's reference implementation stood. No screenshot is checked
+in. When `arch-benchmark-browser` runs in a checkout of this
+repository, it writes the run's folder here and adds its row at the top.
+
+The columns:
+
+- Run: the run's folder, linking its `results.json`.
+- Started (UTC): when the run started (`started_at`).
+- Head: the commit the repository's default branch pointed at then
+  (`repository_head`), short.
+- Sizes: the model size, then the effort size.
+- chatgpt.com, claude.ai, gemini.google.com, and grok.com: the score,
+  linking the answer, or the status where there is none; then the model
+  and effort labels the site had checked, and the status when it is not
+  `ok`.
+- Set: the rows that compare share a letter.
+- Note: why a session is not `ok`, or why a run compares with none.
+
+"—" marks what a run does not record.
+
+| Run | Started (UTC) | Head | Sizes | chatgpt.com | claude.ai | gemini.google.com | grok.com | Set | Note |
+|---|---|---|---|---|---|---|---|---|---|

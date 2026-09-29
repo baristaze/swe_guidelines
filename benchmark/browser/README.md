@@ -56,6 +56,14 @@ are not compared as one. A session whose account locks the model,
 mode, or effort its size asked for answers on a smaller one. It is recorded
 `smaller-mode`, and it stays out of any comparison of like for like.
 
+When the skill runs in a checkout of this repository, it also checks
+the run in: `results.json` and the answers go to
+`benchmark/runs/browser/<YYYYMMDD-HHMMSS>/`, and the run's row to
+[its page](../runs/browser/README.md). That copy is text only and
+redacted: no screenshot, no conversation URL, and no device or account
+name. So the proof stays on the machine that ran it, and the page shows
+the scores.
+
 ## Words
 
 A run is a benchmark, in full; the word is never shortened.

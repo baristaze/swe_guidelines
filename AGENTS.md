@@ -76,7 +76,10 @@ cites the changed text changes with it.
   time, so its tests run with nothing installed. A run folder is checked
   in under `benchmark/runs/<scenario>/` once `run.py redact` has scanned
   it, with its row added by hand; `scripts/check_runs.py` holds the
-  rest. `make benchmark` calls paid APIs and is not part of `make check`.
+  rest. A browser run goes under `benchmark/runs/browser/`, text only
+  and redacted, and `arch-benchmark-browser` writes its folder and its
+  row when it runs in a checkout. `make benchmark` calls paid APIs and
+  is not part of `make check`.
 - `checkers/` holds `arch-check`, its own package
   (`checkers/src/arch_check/`, Python 3.11, standard library only). A
   rule is one module under `rules/`, and its id is the id of the lens it
