@@ -19,11 +19,11 @@ A person asks to delete their account. What that means is decided:
   would carry on as if nothing happened.
 
 STO-32 (The Storage Layer, Database Roles) makes the sweep's purge the
-one hard delete, save this one: a person's account deletion removes
-their identity and every user, membership, and credential it holds at
-once, in one atomic write. A soft delete would keep a user row's email
-and name for the retention, which is the one thing the person asked not
-to happen.
+one hard delete, save this one: a person's account may go at once
+instead of after its retention, in one atomic write that removes their
+identity and every user, membership, and credential it holds. A soft
+delete would keep a user row's email and name for the retention, which
+is the one thing the person asked not to happen here.
 
 ## Decision
 
