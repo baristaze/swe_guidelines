@@ -12,8 +12,8 @@ npm_pin = $(shell sed -n 's|^ *"$(1)": *"\([^"]*\)".*|\1|p' $(PINS)/package.json
 # not carry; uv brings them at pinned versions, locally and in CI alike.
 PYTEST := uv run --no-project --with pytest==$(call pin,pytest) --with pyyaml==$(call pin,pyyaml) \
   --with jsonschema==$(call pin,jsonschema) python -m pytest
-# make runs reads the benchmark scenarios, which are YAML, so it runs with
-# pyyaml at the pin the tests use.
+# make runs reads the benchmark scenarios, and make snippets the YAML
+# blocks of the Markdown, so both run with pyyaml at the pin the tests use.
 PYTHON_YAML := uv run --no-project --with pyyaml==$(call pin,pyyaml) python
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
@@ -21,12 +21,12 @@ MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 RUFF := uvx ruff@$(call pin,ruff)
 MYPY := uvx --with pytest==$(call pin,pytest) mypy@$(call pin,mypy)
 
-.PHONY: help check lint ruff mypy lenses leaks links runs toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
+.PHONY: help check lint ruff mypy lenses leaks links snippets runs toc version skills agents test plugin checkers-dist gen-skills gen-skills-check gen-toc benchmark benchmark-serve clean
 
 help:              ## show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-check: lint ruff mypy lenses leaks links runs toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
+check: lint ruff mypy lenses leaks links snippets runs toc version gen-skills-check skills agents test plugin ## run every check (what CI runs)
 
 lint:              ## markdownlint over every Markdown file
 	$(MARKDOWNLINT) "**/*.md" "#node_modules"
@@ -46,6 +46,9 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
+
+snippets:          ## every Python and YAML block in the Markdown parses, so no line of a snippet sits at the wrong indentation
+	$(PYTHON_YAML) scripts/check_snippets.py
 
 runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, and no file holds a key or a provider account's id
 	$(PYTHON_YAML) scripts/check_runs.py
