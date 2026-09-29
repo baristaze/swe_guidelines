@@ -66,6 +66,9 @@ def test_a_name_that_is_not_one_is_refused(name, reason):
         ("AcmeReaders", "FreePressReaders"),
         ("Welcome to Acme.", "Welcome to Free Press."),
         ("x-acme", "x-free-press"),
+        ("X-Acme-Edge", "X-Free-Press-Edge"),
+        ("X-ACME-TOKEN", "X-FREE-PRESS-TOKEN"),
+        ("Smoke@Platform.Acme.Invalid", "Smoke@Platform.Free-Press.Invalid"),
     ],
 )
 def test_each_form_of_the_placeholder_takes_its_form_of_the_name(text, renamed):

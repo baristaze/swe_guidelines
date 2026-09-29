@@ -92,31 +92,37 @@ def refusal(name: str) -> str | None:
 
 
 TOKEN = re.compile(r"ACME|Acme|acme")
-DOMAIN = re.compile(r"\.(?:example|invalid|test|local)\b")
+DOMAIN = re.compile(r"\.(?:example|invalid|test|local)\b", re.IGNORECASE)
 
 
 def rename(text: str, names: Names) -> str:
     """Every form of the placeholder in `text`, each in its own form of the
     name, in one pass, so a name that holds the placeholder is never renamed
-    twice.
+    twice. The case follows the placeholder's; the words join by the place:
 
-    - `ACME` is the UPPER prefix (`ACME_DATABASE_URL`).
-    - `Acme` before a letter or a digit is part of an identifier
-      (`AcmeReaders`), and PascalCase; anywhere else it is prose, and Title.
-    - `acme` touching a hyphen, or standing in a domain, is kebab: a
-      distribution (`acme-om`), a resource (`acme-staging`), a domain
-      (`api.acme.example`). Anywhere else it is snake: a package, a login, a
-      path, the database."""
+    - touching a hyphen, or standing in a domain, by a hyphen: a
+      distribution (`acme-om`), a resource (`acme-staging`), a header
+      (`X-Acme-Edge`), a domain (`api.acme.example`, `Platform.Acme.Invalid`);
+    - `Acme` before a letter or a digit, by nothing: an identifier
+      (`AcmeReaders`);
+    - `Acme` anywhere else, by a space: prose;
+    - anywhere else, by an underscore: a package, a login, a path, the
+      environment (`ACME_DATABASE_URL`)."""
+    words = names.snake.split("_")
 
     def form(match: re.Match[str]) -> str:
         word, start, end = match.group(0), match.start(), match.end()
-        if word == "ACME":
-            return names.upper
-        if word == "Acme":
-            return names.pascal if text[end : end + 1].isalnum() else names.title
         if text[start - 1 : start] == "-" or text[end : end + 1] == "-" or DOMAIN.match(text, end):
-            return names.kebab
-        return names.snake
+            joiner = "-"
+        elif word == "Acme":
+            joiner = "" if text[end : end + 1].isalnum() else " "
+        else:
+            joiner = "_"
+        if word == "ACME":
+            return joiner.join(w.upper() for w in words)
+        if word == "Acme":
+            return joiner.join(w.capitalize() for w in words)
+        return joiner.join(words)
 
     return TOKEN.sub(form, text)
 
