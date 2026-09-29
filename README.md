@@ -94,7 +94,7 @@ shipped with:
 |---------------------------|-------------------------------------------------------|
 | `arch-review-full`        | All eight lens groups in parallel, one report         |
 | `arch-review-<group>`     | One group: `om`, `contracts`, `context`, `storage`, `async`, `network`, `delivery`, `ops` |
-| `arch-scaffold-new`       | A whole system, by sequencing the scaffolds below     |
+| `arch-scaffold-new`       | Copies the scaffold, runs its gates, adds the first namespace |
 | `arch-scaffold-namespace` | A new object-model swimlane                           |
 | `arch-scaffold-entity`    | One entity end to end, from type to API               |
 | `arch-scaffold-service`   | A web service                                         |

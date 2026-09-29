@@ -2,7 +2,7 @@
 """Check that every lens file follows the format in lenses/README.md and cites a real section.
 
 A lens holds the checkable detail under a rule the guideline states. It is
-stricter than the story, never contrary to it. This check holds its shape,
+stricter than the story, never contrary to it. This check holds its format,
 its citations, and the names it quotes; that it stays inside its rule is
 held by review.
 

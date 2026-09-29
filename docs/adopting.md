@@ -19,9 +19,8 @@ This](../architecture.md#how-to-read-this), say what can wait:
 - A `style` section is a house convention. A departure is a low finding
   at most.
 
-Untagged text is the rule. A project that departs from it on purpose
-[records a deviation](#record-deviations-as-adrs), and a review then
-reports the deviation instead of a finding.
+Untagged text is the rule. A departure from it on purpose is [a
+deviation](#record-deviations-as-adrs), recorded in an ADR.
 
 ## A new project
 
@@ -34,6 +33,8 @@ python3 scaffold/new.py ~/code/pressroom
 The copy carries the pointer, the checker, the record of
 substitutions, and the operational skills, pinned at this release. It
 runs as it is, and the project builds its own domain on top.
+`/swe-guidelines:arch-scaffold-new` does the same from the plugin, then
+records the product's first decisions and adds its first namespace.
 
 ## An existing codebase
 
@@ -47,14 +48,12 @@ system or a migrated database, such as tenant isolation. The scaffold's
 ## Install the skills
 
 Install the plugin as the [README](../README.md#install-the-skills)
-says. A team that pins versions adds the marketplace from a tag:
+says. A copy installed from `main` can carry changes past the release
+it names, so a team that pins versions adds the marketplace from a tag:
 
 ```text
 /plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.38.0
 ```
-
-A copy installed from `main` can carry changes made after the release
-it names, so a team that needs to know what it runs pins the tag.
 
 ## Run the checker
 
