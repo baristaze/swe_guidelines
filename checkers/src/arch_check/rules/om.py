@@ -616,14 +616,18 @@ ID_PACKAGES = frozenset({"uuid6", "uuid_extensions", "uuid_utils", "ulid", "shor
 @rule(
     "OM-12",
     coverage="partial",
-    summary="Above storage, no id factory but new_id(): no uuid1/3/4/5, and uuid7 only in the base module.",
+    summary="Above storage, no id factory but new_id() and derived_id(): no uuid1/3/4/5, and uuid7 only in the base module.",
 )
 def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
     """Under `<pkg>.om`, `<pkg>.services`, and `<pkg>.workers`: no import
     or call of `uuid1`, `uuid3`, `uuid4`, or `uuid5`, no import of a
     third-party id package, and `uuid7` only in the base module, behind
-    `new_id()`. An entity built without an id, and an id minted in a
-    storage impl through `new_id()`, are judged."""
+    `new_id()`. `derived_id()`, in the base module too, builds its v7
+    from a key that names the record, a delivery's or an orchestration
+    step's, and calls no factory. An entity built without an id, an id
+    minted in a storage impl through `new_id()`, and a caller of
+    `derived_id()` that neither a delivery nor a step drives, are
+    judged."""
     idx = index(project)
     for file, tree in project.trees(*above_storage(project)):
         in_base = file.module == idx.base_module
@@ -876,8 +880,9 @@ def tenancy_is_a_namespace(project: Project) -> Iterator[Violation]:
     """`<pkg>.om` has a tenancy namespace, and neither the base module nor
     any `util*` or `helper*` module of the OM defines `User`, `Org`,
     `Organization`, `Membership`, `Credential`, `ApiKey`, `AuditEntry`, or
-    `AuditRecord`. Where audit lives, and whether it has a storage
-    interface, is judged.
+    `AuditRecord`. An audit entry is an event with an audit kind, so no
+    audit namespace is asked for. Where audit is appended, and whether it
+    has gained a reader of its own, is judged.
 
     Option `[tool.arch-check.options.OM-16]`: `namespace`, the name of the
     tenancy namespace (default `"tenancy"`).

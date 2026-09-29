@@ -9,7 +9,7 @@ record, once, every technology it uses and every substitution it makes.
 
 ## Decision
 
-Acme adopts every technology the guideline names:
+Acme adopts every technology the guideline names, save one substitution:
 
 | Choice in the guideline | Adopted |
 |-------------------------|---------|
@@ -27,7 +27,11 @@ Acme adopts every technology the guideline names:
 | Traces and metrics | OpenTelemetry, the Prometheus client (CloudWatch and X-Ray through an ADOT collector in the cloud; Prometheus, Grafana, and Jaeger locally) |
 | Logging | Python `logging`; errors to a Sentry-compatible backend through the Sentry SDK (GlitchTip locally) |
 
-Substitutions: none.
+The substitution:
+
+| Choice in the guideline | Substitute | Reason | Rules it still satisfies |
+|-------------------------|------------|--------|--------------------------|
+| Browser apps are React on Vite (DEL-12) | The company site, `apps/site`: HTML and CSS on Vite, with no script | A page with no state, no API call, and no socket has nothing to render in a client ([ADR 0030](0030-the-company-site-is-html-and-css-not-react.md)) | Vite builds it into static files behind CloudFront; it reaches no origin but its own; its look is the portal's `theme.css`; every app that holds state or calls the platform stays React on Vite |
 
 One name differs and is not a substitution. The guideline writes
 `rediss://` for TLS to the cache. The cache URL here uses `valkeys://`,

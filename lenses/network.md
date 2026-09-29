@@ -527,26 +527,33 @@ idle timeout defined in two places that can drift in separate changes.
 
 **Principle.** The record behind every push is an `Event` in the
 `activity` role, appended by one named atomic method that assigns
-`seq`, per tenant and gapless, from a cursor row updated and returned
-inside the append's transaction, never from `MAX(seq) + 1` with a
-retry. A manager records one event per write through the outbox.
+`seq`, per tenant and gapless above the tenant's floor, from a cursor
+row updated and returned inside the append's transaction, never from
+`MAX(seq) + 1` with a retry. A manager records one event per write
+through the outbox. The trim deletes the oldest run past the retention
+and moves the floor in the same transaction; a read below the floor is
+`410 stream_truncated`, naming the floor and the head.
 
 **Source.** The Network Layer, Realtime at the Edge.
 
 **Look for.** The `Event` type (`Identifiable` plus `org_id`, `seq`,
-`kind`, `target_id`, `actor_id`, a typed payload) and its table's
-role; the audit entry, the same fields plus the request id and the
-app, whose `org_id` is a storage column and not a model field; the
-append method, the cursor row it locks, and where the head `seq`
-the pong carries is read from; the `after_seq` read. (Whether the
+`kind`, `target_id`, `actor_id`, the request id, the app, a typed
+payload) and its table's role; the audit kinds, which ride the same
+type; the append method, the cursor row it locks, and where the head
+`seq` the pong carries is read from; the trim, the floor on the cursor
+row, and the `after_seq` read that compares with it. (Whether the
 event row rides an outbox row of the core write is STO-20.)
 
 **Violation.** `seq` minted in Python, global across tenants, or with
-gaps; `MAX(seq) + 1` computed in the append and retried on the
-collision; an event table in the `core` role; an event with no
-`actor_id`; an audit entry that lacks the request id, the app, or a
-field of the event other than `org_id`, or one that declares `org_id`
-as a model field; code that reads `seq` as the order of core writes.
+gaps above the floor; `MAX(seq) + 1` computed in the append and retried
+on the collision; an event table in the `core` role; an event with no
+`actor_id`, request id, or app; an audit entry of a type or a table of
+its own while audit has no reader of its own and no retention longer
+than the stream's (OM-16); a trim that deletes
+without moving the floor, or moves it in another transaction; a read
+below the floor answered with a page, or a client that asks the same
+read again instead of reading afresh and going on from the head; code
+that reads `seq` as the order of core writes.
 
 **Severity.** medium
 

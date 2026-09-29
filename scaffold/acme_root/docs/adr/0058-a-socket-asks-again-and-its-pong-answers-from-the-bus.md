@@ -15,10 +15,10 @@ socket would then stay open until the session's absolute expiry, up to
 would reach an open socket not at all.
 
 CTX-27 (TenantContext, Stages) puts a pull behind every trust decision a
-push carries: "Every socket rechecks its evidence on an interval: it
-reads its session and its membership, and closes when either has ended
-or the role is no longer the one it holds. The interval is a setting,
-`session_recheck_interval`, five minutes by default."
+push carries: every socket rechecks its session and its membership
+every `realtime_recheck_seconds`, a setting of the realtime service,
+five minutes by default, and closes when either has ended or the role
+changed.
 
 The ping has a cost of its own. Each client pings every 25 seconds, and
 a pong that reads the tenant's head is one transaction of three round
@@ -38,10 +38,8 @@ interval, so sockets opened together (a deploy's reconnects) do not
 check together. No two checks are more than one interval apart, so a
 revocation the bus lost keeps its socket open for one interval at most.
 
-**The setting's name is the realtime service's.** The guideline's
-`session_recheck_interval` is `realtime_recheck_seconds` here, beside
-the realtime service's other bounds. The interval, its default, and the
-bound it states are the guideline's. Only the name differs.
+**The setting is the realtime service's.** `realtime_recheck_seconds`
+sits beside the realtime service's other bounds, as Stages names it.
 
 **The recheck asks and does not use.** `resume` takes
 `record_use=False` for it, and records no use of the session. An open

@@ -148,7 +148,8 @@ judged.
 
 **Principle.** Every ID is passed top-down. We do not create an object
 in the DB and read its ID afterwards. IDs originate above storage, with
-`new_id()`.
+`new_id()`, or with `derived_id()` from a key that names the record, for
+what an outside delivery creates or an orchestration step makes.
 
 **Source.** The Storage Layer, Storage Principles; Naming Entities,
 Identifiers.
@@ -854,18 +855,21 @@ backup schedule.
 
 **Principle.** A soft-deleted row is purged by the maintenance sweep
 after its entity's retention period, and the purge is the one hard
-delete. Personal data lives in named fields, so erasing a person is a
-sweep over a list, not a hunt.
+delete, save a person's own account, which may go at once instead: one
+atomic write removes their identity and every user, membership, and
+credential it holds. Personal data lives in named fields, so erasing a
+person is a sweep over a list, not a hunt.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The retention period per entity that the purge reads;
-every hard delete and where it runs; the fields that hold personal
-data.
+every hard delete and where it runs; an account deleted at once, where
+there is one: its atomic write, what it removes, and what a team org
+keeps under the person's id; the fields that hold personal data.
 
 **Violation.** A soft-deletable entity with no retention period; a hard
-delete outside the purge; personal data spread over unnamed fields, so
-erasing a person is a hunt.
+delete outside the purge and an account deleted at once; personal data
+spread over unnamed fields, so erasing a person is a hunt.
 
 **Severity.** medium
 
@@ -893,26 +897,29 @@ migration with no count check, or no test over two tenants.
 
 **Severity.** high
 
-## STO-34 Payloads carry ids; erasure redacts the audit
+## STO-34 Payloads and events carry ids, never a personal value
 
-**Principle.** Outbox payloads and events carry ids, never the values
-of personal fields, so erasing a person never has to rewrite them.
-Audit entries may carry values. Erasure redacts the personal fields of
-an erased subject's audit entries, which is the one write an
-append-only record takes, and the erasure sweep states that write.
+**Principle.** Outbox payloads and events, an audit entry among them,
+carry ids, never the values of personal fields, so erasing a person
+never has to rewrite them: an erasure has nothing to redact in the
+stream. An append-only record that holds a personal field has it
+redacted in place by the erasure sweep, the one write such a record
+takes, and the sweep states that write.
 
-**Source.** The Storage Layer, Database Roles; The Network Layer,
-Realtime at the Edge.
+**Source.** Naming Entities; The Storage Layer, Database Roles; The
+Network Layer, Realtime at the Edge.
 
 **Look for.** The payload of every outbox row kind and every event
-kind, and which fields it copies from the entity; the erasure sweep,
-the audit entries it reads for an erased subject, and the fields it
-redacts.
+kind, audit kinds included, and which fields it copies from the entity;
+the erasure sweep, the append-only records it reads for an erased
+subject, and the fields it redacts.
 
-**Violation.** An outbox payload or an event that carries a name, an
-email, an address, or another personal value instead of the id that
-reads it; an erasure that leaves an erased subject's values in the
-audit; a write to an audit entry other than the erasure's redaction,
-or a redaction the erasure sweep does not state.
+**Violation.** An outbox payload or an event, an audit entry among
+them, that carries a name, an email, an address, or another personal
+value instead of the id that reads it; an erasure that leaves an erased
+subject's values in an append-only record; a write to an append-only
+record other than the erasure's redaction, or a redaction the erasure
+sweep does not state. The trim that deletes the stream past its
+retention is no such write (NET-22).
 
 **Severity.** medium

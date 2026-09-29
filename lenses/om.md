@@ -54,8 +54,8 @@ cross-tenant sweep may instead get the tenant back beside each row
 **Violation.** An entity gaining a field because a client wanted it in
 JSON; an entity carrying an attribute that exists only for a
 column's sake; `org_id` on an entity every reader of which holds a
-context, an audit entry among them; an entity a reader without one
-takes, such as an `OutboxRow` or an `Event`, declared without it.
+context; an entity a reader without one takes, such as an `OutboxRow`
+or an `Event`, declared without it.
 
 **Severity.** medium
 
@@ -291,25 +291,33 @@ every class on the chain; the rest is judged.
 
 **Principle.** Every id is a time-ordered `uuid_v7` produced by
 `new_id()` by whoever constructs the entity, always above the storage
-layer.
+layer. A record a second run must find rather than make again takes
+`derived_id(key, at, part)` instead, from a key that names it: what an
+outside delivery creates, from the delivery's key, and what an
+orchestration step makes, from the record and the row. A second run
+presents the same id.
 
 **Source.** Naming Entities, Identifiers.
 
 **Look for.** Where entity ids are created and which factory produces
 them; entity constructions that leave `id` for a lower layer to fill;
-any `uuid4()` or other generator imported by OM or service code.
+any `uuid4()` or other generator imported by OM or service code; each
+caller of `derived_id()` and the key it passes.
 
 **Violation.** `uuid4()` used for an entity id; an entity constructed
 without an id on the assumption that storage will assign one; an id
-minted inside a storage impl or assigned by the database. The id a
-creating `POST` mints before its idempotency marker, ahead of the
-entity, is that protocol and not a breach (NET-24). (Ids read back out
-of the database are STO-06.)
+minted inside a storage impl or assigned by the database; `derived_id()`
+for a record neither a delivery nor an orchestration step makes, or
+over a key that does not name the record; `new_id()` for what a delivery
+creates or a step makes, so a second run duplicates it. The id a
+creating `POST` mints before its idempotency
+marker, ahead of the entity, is that protocol and not a breach (NET-24).
+(Ids read back out of the database are STO-06.)
 
 **Severity.** medium
 
-**Check.** `arch-check` decides every id factory but `new_id()` above
-storage; the rest is judged.
+**Check.** `arch-check` decides every id factory but `new_id()` and
+`derived_id()` above storage; the rest is judged.
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 
@@ -402,20 +410,27 @@ functions of a rules module; the rest is judged.
 ## OM-16 Cross-cutting namespaces are ordinary namespaces
 
 **Principle.** Tenancy (organizations, users, memberships,
-credentials) and audit (who did what, when, from which app) are
-first-class swimlanes with their own types, managers, and storage, not
-utilities hanging off the root.
+credentials) is a first-class swimlane with its own types, manager, and
+storage, not a utility hanging off the root. Audit (who did what, when,
+from which app) is a kind of event: an audit entry is an `Event` with an
+audit kind, appended to the events namespace's stream. Audit becomes a
+namespace of its own when it gains a reader of its own, or must be kept
+longer than the stream.
 
 **Source.** Namespaces as Swimlanes.
 
 **Look for.** Where identity, membership, credential, and audit types
-live; whether they have a manager interface and a storage like any other
-namespace.
+live; whether tenancy has a manager interface and a storage like any
+other namespace; where an audit entry is built and appended, and the
+kinds that mark one.
 
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
-interface; credential handling spread across services with no owning
-namespace.
+interface, or kept anywhere but the event stream while it is still a
+kind of event; credential handling
+spread across services with no owning namespace; audit that has a
+screen or an export of its own, or must be kept longer than the stream,
+while it is still a kind of event.
 
 **Severity.** medium
 

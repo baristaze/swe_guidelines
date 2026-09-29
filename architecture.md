@@ -37,9 +37,11 @@ heading. There are four:
 
 Untagged text is the rule. A departure from it is recorded as a
 deviation, in an ADR of the project's own. A tag covers the text under
-its own heading, and a principle takes its section's tag. Nuance that
-only an agent needs sits in a short `agents-only` comment inside its
-section, which a rendered page does not show.
+its own heading, up to the next heading of any level. So a `##` tag
+never reaches the `###` sections under it: each carries its own tag, or
+none. A principle takes its section's tag. Nuance that only an agent
+needs sits in a short `agents-only` comment inside its section, which a
+rendered page does not show.
 
 The detail lives in the tools, and that is a choice. This document
 tells the story. The [lenses](lenses/README.md) and the skills hold the
@@ -388,7 +390,14 @@ lease needs no more than near the truth
 
 Whoever constructs the entity mints its id, above the storage layer,
 with `new_id()`. The database never assigns one, and nothing reads one
-back.
+back. The one exception is a record a second run must find rather than
+make again: what an outside delivery creates, or what a step of an
+orchestration makes. Its id is `derived_id(key, at, part)`, a v7 whose
+time is `at` and whose random bits come from a key that names the
+record: the delivery's key, or the orchestration record with the row
+as `part` ([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A
+second run presents the same id, so its create meets the row already
+there and creates nothing.
 
 `EMPTY_UUID`, the zero UUID, means the platform: not a tenant and not a
 person. It is the `org_id` of cross-tenant reference data, and the value
@@ -397,8 +406,9 @@ item the platform claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
-> `new_id()`. The order is for the index; the time is a field, save
-> for the one lease that reads an attempt's id.
+> `new_id()`, or with `derived_id()` from a key that names the record,
+> so a second run makes the same id. The order is for the index; the
+> time is a field, save for the one lease that reads an attempt's id.
 
 ## Namespaces as Swimlanes
 
@@ -431,7 +441,13 @@ caller asks for (`get_orders`), or the domain's own verb
 CamelCase.
 
 Cross-cutting concerns are namespaces like any other: tenancy, events,
-the outbox, idempotency, work. None is a utility off the root.
+the outbox, idempotency, work. None is a utility off the root. Audit,
+who did what and from which app, is a kind of event: an audit entry is
+an `Event` with an audit kind, in the events namespace's stream
+([Realtime at the Edge](#realtime-at-the-edge)). Audit becomes a
+namespace of its own when it gains a reader of its own, such as a
+screen that lists who did what, or an export, or when it must be kept
+longer than the stream.
 
 ### Pure Rules
 
@@ -641,8 +657,9 @@ caller holding less. A sign-in route cannot reach a tenant manager.
 A stage lives as long as what minted it. A socket holds its `TenantContext`
 and closes when the evidence goes: at the session's expiry, on a change
 on the bus that ends it, such as `tenancy.session.revoked`, and on a
-recheck every `session_recheck_interval` that finds the session or the
-membership ended or the role changed. The recheck is not activity and
+recheck that finds the session or the membership ended or the role
+changed. The recheck runs every `realtime_recheck_seconds`, a setting of
+the realtime service beside its other bounds. It is not activity and
 never moves `last_seen_at`. The server does not cap a connection's life,
 since the recheck bounds its trust, and closing a socket never ends its
 session.
@@ -807,7 +824,8 @@ surprises.
   named atomic method.
 - Joins stay inside an impl. No trigger, no database function: what
   happens, happens in our code.
-- Ids are passed top-down, from `new_id()`, and never read back.
+- Ids are passed top-down, from `new_id()` or `derived_id()`, and never
+  read back.
 - Defaults live in the object model.
 - A new engine changes only `impl/`, and a swap is done when the
   contract suite passes, not when it compiles.
@@ -989,8 +1007,14 @@ Analytics across tenants reads a mirror, never a role the application
 writes. Every database is backed up and its restore rehearsed, and a
 role restored behind its siblings is reconciled from the outbox, whose
 done rows outlive the backup window. Purge, after retention, is the one
-hard delete. Payloads carry ids, never a personal value, so erasure
-redacts audit entries and nothing else.
+hard delete, save one. A person who deletes their account is either
+soft-deleted and purged after its retention, which leaves a grace
+period to restore it, or gone at once: one atomic write deletes their
+identity and every user, membership, and credential it holds, outside
+the sweep, so the fields they asked to lose wait out no retention. What
+they made in a team org stays the org's, under their id. Payloads and
+events, audit entries among them, carry ids, never a personal value, so
+an erasure has nothing to redact in them.
 
 <!-- agents-only
 When `activity` or `queue` comes back to an earlier point than `core`,
@@ -1518,12 +1542,13 @@ and stream, so no process needs to know which replica holds whom
 ([`realtime/`](scaffold/acme_root/services/api/src/acme/services/api/realtime/)).
 
 Every push is also a record: an `Event` in `activity`, with `org_id`,
-`seq`, `kind`, `target_id`, and `actor_id`, and a payload of ids
+`seq`, `kind`, `target_id`, `actor_id`, the request, and the app, and a
+payload of ids
 ([`event.py`](scaffold/acme_root/om/src/acme/om/events/types/event.py)).
 One atomic method appends it and takes `seq` from a cursor row per
 tenant, so the sequence is gapless and a client reads a gap as a loss.
-`seq` orders events, not writes. An audit entry is the same record plus
-the request and the app.
+`seq` orders events, not writes. An audit entry is an event with an
+audit kind, so one stream records both.
 
 The stream is a stream of hints: a frame names the change, and its
 `version` when the entity has one, and nothing else of it, so a client
@@ -1542,6 +1567,16 @@ hello frame and every pong carry the tenant's head `seq`, so a quiet
 socket cannot hide a loss, and a reconnect asks for everything after
 the last contiguous `seq`. A socket takes only subscribe, unsubscribe,
 and ping; commands go over REST.
+
+Replay reaches back as far as the stream is kept. The stream's
+retention is a setting of the worker that trims it, longer than the
+backups and the outbox keep theirs, so a restore never needs a trimmed
+event. The trim deletes the oldest run of events past the retention
+and, in the same transaction, moves the tenant's floor to the last
+`seq` it deleted. The stream is gapless above the floor. A read below
+the floor is `410 stream_truncated`, naming the floor and the head.
+Asking again never succeeds, so the client reads afresh what it shows
+and goes on from the head.
 
 <!-- agents-only
 - A dropped stream frame is logged. The control lane has a small bound
@@ -2256,8 +2291,11 @@ The shapes cover almost every case: `NotFound` (404), `Conflict` (409),
 `PreconditionFailed` (412), `ValidationFailed` (422), `NotAuthenticated`
 (401), `NotAuthorized` (403), and `Unavailable` (503), for what cannot
 be reached right now, each with its name in snake case as its code. A
-namespace's exception inherits a shape. A boundary catches both roots
-and translates them in one place; managers never format HTTP.
+namespace's exception inherits a shape. One that no shape fits sets a
+status and a code of its own under the root, as a read of the event
+stream below its floor is `410 stream_truncated`. A boundary catches
+both roots and translates them in one place; managers never format
+HTTP.
 
 ### Configuration
 

@@ -598,6 +598,50 @@ def test_a_client_minting_an_idempotency_key_is_not_om_12(tmp_path):
     assert code == 0
 
 
+DERIVED_ID = """
+
+def derived_id(key: UUID, at: datetime, part: str = "") -> UUID:
+    millis = int(at.timestamp() * 1000) & ((1 << 48) - 1)
+    tail = int.from_bytes(hashlib.sha256(key.bytes + part.encode()).digest()[:10], "big")
+    value = (millis << 80) | (0x7 << 76) | ((tail >> 68) << 64) | (0b10 << 62) | (tail & ((1 << 62) - 1))
+    return UUID(int=value)
+"""
+
+DELIVERY_HANDLER = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import derived_id
+
+
+def entry_id(delivery_key: UUID, delivered_at: datetime) -> UUID:
+    return derived_id(delivery_key, delivered_at)
+"""
+
+
+ORCHESTRATION_STEP = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import derived_id
+
+
+def row_id(record_id: UUID, started_at: datetime, row: int) -> UUID:
+    return derived_id(record_id, started_at, str(row))
+"""
+
+
+def test_an_id_derived_from_a_delivery_or_a_step_passes_every_om_rule(tmp_path):
+    # the ids not minted fresh: a v7 built in the base module from a key that names the record,
+    # a delivery's key, or an orchestration record and the row its step makes
+    worker = "workers/maintenance/src/acme/workers/maintenance/deliveries.py"
+    step = f"{OM}/tasks/impl/import_step.py"
+    base = "import hashlib\n" + BASE_SOURCE + DERIVED_ID
+    project(tmp_path, {BASE: base, worker: DELIVERY_HANDLER, step: ORCHESTRATION_STEP})
+    code, out, err = check(tmp_path, "--group", "om")
+    assert code == 0, out + err
+
+
 # --- OM-13
 
 
@@ -732,6 +776,42 @@ def test_no_tenancy_namespace_is_om_16(tmp_path):
     code, report = run(tmp_path, "OM-16", missing)
     assert code == 1
     assert "has no tenancy namespace" in messages(report)[0]
+
+
+EVENT_SOURCE = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import Identifiable
+
+
+class Event(Identifiable):
+    org_id: UUID
+    seq: int = 0
+    kind: str  # "<namespace>.<entity>.<action>", or an audit kind such as "work.item.failed"
+    target_id: UUID
+    produced_at: datetime
+    actor_id: UUID
+    request_id: UUID
+    app: str
+"""
+
+EVENTS = {
+    f"{OM}/events/__init__.py": "from .manager import EventsManagerInterface\n",
+    f"{OM}/events/manager.py": "class EventsManagerInterface:\n    pass\n",
+    f"{OM}/events/types/__init__.py": "from .event import Event\n",
+    f"{OM}/events/types/event.py": EVENT_SOURCE,
+    f"{OM}/events/impl/__init__.py": "",
+    f"{OM}/events/storage/__init__.py": "",
+}
+
+
+def test_audit_as_a_kind_of_event_with_no_audit_namespace_passes_every_om_rule(tmp_path):
+    # an audit entry is an Event with an audit kind in the events namespace's stream
+    project(tmp_path, EVENTS)
+    assert not (tmp_path / OM / "audit").exists()
+    code, out, err = check(tmp_path, "--group", "om")
+    assert code == 0, out + err
 
 
 # --- OM-17

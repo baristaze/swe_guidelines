@@ -5,7 +5,8 @@
 ## Context
 
 OM-12 (Identifiers): "Every id is `uuid_v7`, minted above storage with
-`new_id()`." Idempotency on the Consumer Side says a message from
+`new_id()`, or with `derived_id()` from a key that names the record, so
+a second run makes the same id." Idempotency on the Consumer Side says a message from
 outside carries a key derived from the provider's delivery, a UUID v5
 over the provider's name and its delivery id, and the handler dedupes
 on it. The key lives on the row the effect produces, or the marker and
@@ -29,7 +30,10 @@ worker records each delivery that names an org as an audit entry,
 The append is idempotent on the event's id, so a copy the queue hands
 over again appends nothing.
 
-This is the deviation from OM-12. Every other id is `new_id()`.
+OM-12 names it with what an orchestration step makes
+([ADR 0039](0039-long-running-work-is-a-record-a-guard-parks-and-a-bound-fails.md))
+as the ids not minted with `new_id()` (Identifiers). Every other id is
+`new_id()`.
 
 ## Consequences
 
