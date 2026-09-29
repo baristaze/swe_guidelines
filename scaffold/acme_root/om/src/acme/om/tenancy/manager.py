@@ -390,16 +390,6 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def get_time_zone(self, ctx: OpContext, user_id: UUID) -> str | None:
-        """The time zone of a user of this org, as their identity holds it:
-        what a reminder's hour is read in. None when the person has sent none,
-        or when the user is not this org's; a member who left keeps theirs
-        while the user row stays."""
-        ...
-
-    # Invitations and single sign-on.
-
-    @abstractmethod
     async def invite_member(
         self, ctx: OpContext, email: str, role: Role, attempt: Attempt | None = None
     ) -> Invitation:

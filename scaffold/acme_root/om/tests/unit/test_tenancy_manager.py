@@ -2626,25 +2626,18 @@ async def test_two_exchanges_of_one_sign_in_admit_one(
     assert [s.id for s in await manager.get_sessions(ctx, limit=10)] == [ctx.security.credential_id]
 
 
-async def test_a_person_records_their_time_zone_and_the_org_reads_it(
-    manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
+async def test_a_person_records_their_time_zone_on_their_identity(
+    manager: TenancyManagerImpl,
 ) -> None:
-    """The zone is the person's, on their identity: set by them, refused
-    when it is not an IANA name, and read by their org. A user of another
-    org, or none, reads as no zone."""
-    ann, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    bob = await add_member(storage, org.id, "bob@example.test", Role.MEMBER)
-    assert await manager.get_time_zone(ann, ann.user_id) is None
+    """The zone is the person's, on their identity: set by them, and refused
+    when it is not an IANA name, which leaves the one they had."""
+    ann, _ = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    assert (await manager.get_identity(ann)).time_zone is None
     identity = await manager.set_time_zone(ann, "Asia/Tokyo")
     assert identity.time_zone == "Asia/Tokyo"
-    assert await manager.get_time_zone(ann, ann.user_id) == "Asia/Tokyo"
-    assert await manager.get_time_zone(ann, bob.id) is None
     with pytest.raises(ValidationFailed):
         await manager.set_time_zone(ann, "+09:00")
-    assert await manager.get_time_zone(ann, ann.user_id) == "Asia/Tokyo"
-    assert await manager.get_time_zone(ann, new_id()) is None
-    zed, _ = await manager.bootstrap(request(), "Zenith", "zenith", "zed@example.test", "Zed")
-    assert await manager.get_time_zone(zed, ann.user_id) is None, "another org's user"
+    assert (await manager.get_identity(ann)).time_zone == "Asia/Tokyo"
 
 
 # A sign-in reads a person's places in one read, however many they hold.

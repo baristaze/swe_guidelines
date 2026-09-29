@@ -45,9 +45,8 @@ class Identity(Identifiable, Trackable):
     totp_confirmed_at: datetime | None = None
     totp_last_step: int | None = None
     # Where the person is, as an IANA name ("Europe/Istanbul"): the portal
-    # sends the browser's own when the person signs in. It decides the hour
-    # of the morning a due date's reminder goes out. None until first sent,
-    # and a reminder then keeps UTC's morning.
+    # sends the browser's own when the person signs in, and a product reads
+    # the person's day in it. None until first sent.
     time_zone: str | None = None
 
     @property

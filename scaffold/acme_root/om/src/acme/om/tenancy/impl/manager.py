@@ -1291,14 +1291,6 @@ class TenancyManagerImpl(TenancyManagerInterface):
             raise NotFound(f"identity {user.identity_id} not found")
         return await self.get_identity(ctx)
 
-    async def get_time_zone(self, ctx: OpContext, user_id: UUID) -> str | None:
-        ctx.require(Permission.READ)
-        user = await self._storage.read_user(ctx.org_id, user_id)
-        if user is None:
-            return None
-        identity = await self._storage.read_identity(user.identity_id)
-        return None if identity is None else identity.time_zone
-
     # Invitations and single sign-on.
 
     async def invite_member(

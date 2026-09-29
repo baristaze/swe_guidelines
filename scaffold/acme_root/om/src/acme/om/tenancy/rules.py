@@ -87,8 +87,8 @@ _TIME_ZONE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+)*")
 def check_time_zone(name: str) -> None:
     """A time zone is an IANA name this process knows ("Europe/Istanbul",
     "UTC"), refused with ValueError otherwise: an offset like "+03:00" moves
-    with no daylight saving, and a zone the process cannot read would time a
-    reminder by guess."""
+    with no daylight saving, and a zone the process cannot read would place
+    the person's day by guess."""
     if len(name) > MAX_TIME_ZONE_LENGTH or not _TIME_ZONE_NAME.fullmatch(name):
         raise ValueError("a time zone is an IANA name, like Europe/Istanbul")
     try:

@@ -265,7 +265,7 @@ def a_change() -> EntityChangedPayload:
         idempotency_key=new_id(),
         produced_at=utcnow(),
         org_id=new_id(),
-        kind="tasks.task.updated",
+        kind="tenancy.user.updated",
         target_id=new_id(),
         seq=1,
     )
