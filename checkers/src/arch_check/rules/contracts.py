@@ -728,7 +728,7 @@ REQUEST_STATE = frozenset({"request_id", "actor_id", "user_id", "org_id", "tenan
 )
 def constructors_take_structure(project: Project) -> Iterator[Violation]:
     """No field or property of a class in the stage module
-    (`<pkg>.om.opcontext`) is typed with an `*Interface`, an `*Impl`, or
+    (`<pkg>.om.context`) is typed with an `*Interface`, an `*Impl`, or
     a name holding `Manager`, `Storage`, or `Container`. No `*Impl`
     constructor has a parameter named `request_id`, `actor_id`,
     `user_id`, `org_id`, `tenant_id`, or `ctx`. A locator reached from

@@ -612,7 +612,7 @@ def test_a_process_with_no_container_or_no_lifecycle_is_con_16(tmp_path):
 
 # --- CON-18
 
-STAGE_MODULE = f"{OM}/opcontext.py"
+STAGE_MODULE = f"{OM}/context.py"
 
 
 def test_contexts_of_ids_and_structural_constructors_pass_con_18(tmp_path):
@@ -635,7 +635,7 @@ def test_an_ssl_context_in_a_constructor_passes_con_18(tmp_path):
 
 
 def test_a_manager_on_a_context_or_a_tenant_in_a_constructor_is_con_18(tmp_path):
-    stages = "class OpContext(Platform):\n    tasks: TasksManagerInterface\n"
+    stages = "class TenantContext(Platform):\n    tasks: TasksManagerInterface\n"
     impl = (
         "class TasksManagerImpl(TasksManagerInterface):\n    def __init__(self, storage: S, org_id: UUID) -> None:\n"
         "        pass\n"
@@ -646,10 +646,10 @@ def test_a_manager_on_a_context_or_a_tenant_in_a_constructor_is_con_18(tmp_path)
 
 
 def test_con_18_reports_a_stage_packages_class_in_its_own_module(tmp_path):
-    package = f"{OM}/opcontext"
+    package = f"{OM}/context"
     files = {
-        f"{package}/__init__.py": "from acme.om.opcontext.stages import *  # noqa: F403\n",
-        f"{package}/stages.py": "class OpContext(Platform):\n    tasks: TasksManagerInterface\n",
+        f"{package}/__init__.py": "from acme.om.context.stages import *  # noqa: F403\n",
+        f"{package}/stages.py": "class TenantContext(Platform):\n    tasks: TasksManagerInterface\n",
     }
     code, found, _ = run(tmp_path, "CON-18", files)
     assert (code, found) == (1, [("CON-18", f"{package}/stages.py", 2)])
