@@ -392,6 +392,15 @@ def phase_argv(
     A resumed session names the session it continues. A phase that starts
     in the output folder is started there by a shell, since the runtime
     starts every command in the workspace.
+
+    `--max-budget-usd` counts only the spend of the call it is given to,
+    so a resumed session's earlier spend is not counted against it, and a
+    resumed phase's `max_usd` bounds that phase's own spend.
+    `--include-partial-messages` is not passed. With it, Claude Code writes
+    the main agent's raw stream events, whose `message_delta` carries its
+    final output count, but never a helper agent's. The estimate would
+    still miss the helpers' output, and the stream would take a line for
+    every chunk the main agent streams.
     """
     if scn.subject.phases:
         prompt, reads = phase_prompt(scn, phase, target)
@@ -436,6 +445,7 @@ def subject_argv(
     `plugin` and `target` are paths as the subject sees them, which the
     runtime answers: this machine's paths on the host, the mount points
     in a container, the copies in the run's folder on another machine.
+    A command subject's `argv` has `{target}` and `{plugin}` filled in.
     """
     if scn.kind == "command":
         return [w.replace("{target}", target or "").replace("{plugin}", plugin or "") for w in scn.subject.argv]
@@ -663,7 +673,18 @@ def keep_archive(zip_file: Path, art_dir: Path, run_dir: Path, commit: str | Non
 
 @dataclasses.dataclass
 class Budget:
-    """The run's spend cap over the subject and the judges, in US dollars, and what the run has spent."""
+    """The run's spend cap over the subject and the judges, in US dollars, and what the run has spent.
+
+    The cap is checked before each repeat and before each phase, and
+    nothing more starts once the run has spent it. A repeat starts only
+    when what is left covers the caps of every phase it runs, and a
+    resumed repeat's judges too; otherwise it, and every repeat after it,
+    does not start. The judges' spend counts once the last of them has
+    answered. The cap stops nothing that is running: a phase that starts
+    below it can spend up to its own `max_usd`, and a repeat's judges still
+    judge it. So a run can end above the cap, by about one phase and one
+    repeat's judges.
+    """
 
     cap: float | None
     spent: float = 0.0
@@ -713,6 +734,7 @@ class SkillRepeat:
     archived: bool | None = None
     # The phase that ended the run early, why, and the phases after it, which did not run: `no_tree`, the
     # output folder held no file after it; `incomplete`, its session ended with an Agent call unanswered.
+    # The repeat fails, and the run starts no later repeat.
     ended_early: dict[str, Any] | None = None
 
 
