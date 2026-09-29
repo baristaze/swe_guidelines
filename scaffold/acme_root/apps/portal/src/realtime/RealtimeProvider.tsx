@@ -4,7 +4,7 @@
 // shows the degraded banner. A paused socket shows none: it is not a failure.
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
-import type { IssuedTicketView } from "../api";
+import type { IssuedTicketView } from "@acme/client";
 import { api } from "../app/api";
 import { forgetSessionIfHeld } from "../app/forgetSession";
 import { Banner } from "../design/kit";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../../api";
+import { ApiError } from "@acme/client";
 import { confirms, GONE_LINE, listed, ownedAlone, refusalText, strandedHere } from "./deleteAccountModel";
 
 const ajax = { id: "o1", name: "Ajax", slug: "ajax" };

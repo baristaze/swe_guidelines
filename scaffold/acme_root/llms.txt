@@ -1,6 +1,6 @@
 # Acme
 
-> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a Python client at the edge. A product renames it and builds its domain on top.
+> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a TypeScript and a Python client at the edge. A product renames it and builds its domain on top.
 
 This file is the knowledge map. Each section lists the documents one
 audience is served; a document not listed under an audience is not
@@ -33,6 +33,7 @@ served to it. Exposure is by listing, never by folder.
 - [The portal](apps/portal/README.md): the browser app shell
 - [The company site](apps/site/README.md): the static page and where it is served
 - [The command line](apps/cli/README.md): the terminal client and its exit codes
+- [The TypeScript client](clients/typescript/README.md): the one client every browser app imports
 - [The Python client](clients/python/README.md): the one client every Python caller goes through
 
 ## Platform operators

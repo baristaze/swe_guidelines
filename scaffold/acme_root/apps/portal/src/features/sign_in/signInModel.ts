@@ -1,5 +1,5 @@
 // Pure: what the sign-in pages decide. No React, no fetch, no storage.
-import type { MembershipChoiceView } from "../../api";
+import type { MembershipChoiceView } from "@acme/client";
 import { byPlace } from "../../app/orgChipModel";
 import type { PendingSignIn } from "../../store/signInState";
 

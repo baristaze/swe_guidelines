@@ -7,7 +7,7 @@
 // server could not end lapses when it expires. The logout's answer may name
 // the identity provider's logout; it is not followed, since the person is
 // signing in, not out, and the provider's session is the new sign-in's.
-import type { IssuedSessionView } from "../api";
+import type { IssuedSessionView } from "@acme/client";
 import { isAlreadyGone } from "./signOut";
 
 export interface TakeUpEffects {

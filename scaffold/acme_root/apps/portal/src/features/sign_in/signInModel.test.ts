@@ -1,4 +1,4 @@
-import type { MembershipChoiceView } from "../../api";
+import type { MembershipChoiceView } from "@acme/client";
 import { describe, expect, it } from "vitest";
 import type { PendingSignIn } from "../../store/signInState";
 import { callbackStep, checkEmail, chooseOrg, landingPath, readStart } from "./signInModel";

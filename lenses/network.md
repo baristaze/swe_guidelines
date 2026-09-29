@@ -375,9 +375,9 @@ rest is judged.
 ## NET-15 One client per language per service
 
 **Principle.** A service is accessed in exactly one way, so each
-language has one client for it, in one place, built from the committed
-OpenAPI document: one generated type set for a TypeScript app and one
-typed client package for Python consumers.
+language has one client for it, in one place under `clients/`, built
+from the committed OpenAPI document: one TypeScript client package every
+browser app imports, and one typed client package for Python consumers.
 
 **Source.** The Network Layer, Clients Live in One Place.
 
@@ -391,6 +391,9 @@ consumer hand-rolling HTTP calls to a service that has a client; a
 client built from anything other than the committed document.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/clients/typescript` and
+`scaffold/acme_root/clients/python`
 
 ## NET-16 Pushes travel on the bus and are filtered at the socket
 

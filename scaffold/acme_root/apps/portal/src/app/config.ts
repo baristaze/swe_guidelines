@@ -6,7 +6,7 @@
 // and the Vite build variables apply instead; with none of those either, the
 // API is the page's origin there too, since the dev server and the portal
 // container forward /v1 to it.
-import { DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_BASE_DELAY_MS } from "../api";
+import { DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_BASE_DELAY_MS, pageJson } from "@acme/client";
 
 export interface RuntimeConfig {
   /** Absolute base URL of the API; an empty value in the file means the page's origin. */
@@ -79,17 +79,9 @@ export function resolveConfig(fetched: unknown, env: BuildEnv, origin: string): 
 let current: RuntimeConfig | null = null;
 
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  let fetched: unknown = null;
-  try {
-    // A static file of the page's own origin, not an API call.
-    // eslint-disable-next-line no-restricted-globals
-    const response = await fetch("/config.json", { cache: "no-store" });
-    if (response.ok && response.headers.get("content-type")?.includes("json")) {
-      fetched = await response.json();
-    }
-  } catch {
-    // No config file: the build variables apply.
-  }
+  // A static file of the page's own origin, not an API call; with none, the
+  // build variables apply.
+  const fetched = await pageJson("/config.json");
   current = resolveConfig(fetched, import.meta.env, window.location.origin);
   return current;
 }

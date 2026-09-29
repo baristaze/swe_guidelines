@@ -225,12 +225,13 @@ test-telemetry: ## The telemetry round trip over the devx profile
 traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 	uv run acme-ops traffic --env local --profile $(PROFILE) --duration $(DURATION) --orgs 0
 
-# One committed document, apps/portal/openapi.json; both generated type sets
-# come from it: the portal's schema.d.ts and the Python client's schema.py.
-openapi: ## Emit the API document and regenerate the portal's and the Python client's types
-	uv run --package acme-api acme-api openapi --out apps/portal/openapi.json
-	pnpm --filter @acme/portal generate
-	uv run datamodel-codegen --input apps/portal/openapi.json --input-file-type openapi \
+# One committed document, clients/typescript/openapi.json; both generated type
+# sets come from it: the TypeScript client's schema.d.ts and the Python
+# client's schema.py.
+openapi: ## Emit the API document and regenerate the TypeScript and the Python client's types
+	uv run --package acme-api acme-api openapi --out clients/typescript/openapi.json
+	pnpm --filter @acme/client generate
+	uv run datamodel-codegen --input clients/typescript/openapi.json --input-file-type openapi \
 		--output clients/python/src/acme/client/schema.py \
 		--output-model-type pydantic_v2.BaseModel --target-python-version 3.14 \
 		--use-standard-collections --use-union-operator --use-annotated \

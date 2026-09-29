@@ -33,7 +33,7 @@ import type {
   UpdateMembershipRequest,
   UserPageView,
   UserView,
-} from "../api";
+} from "@acme/client";
 import { api } from "../app/api";
 import { keys } from "./keys";
 
