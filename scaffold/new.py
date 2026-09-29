@@ -4,7 +4,8 @@
     python3 scaffold/new.py ~/code/pressroom
 
 The last part of the destination is the name: one or two snake_case words,
-such as `pressroom` or `free_press`. The copy renames every path and every
+such as `pressroom` or `free_press`, of at most 17 characters, the most the
+tightest cloud name built from it holds. The copy renames every path and every
 text file from `acme` to the name, in each of its forms: the Python package
 and the database logins take the snake form (`free_press`), the
 distributions, the domains, and the cloud resources the kebab form
@@ -35,6 +36,15 @@ PLACEHOLDER = "acme"
 NAME = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)?$")
 """One or two snake_case words: a Python package, a database login, and a
 directory alike."""
+
+TIGHTEST_NAME = "{name}-production-api"
+"""The tightest cloud name a copy builds from the name: the API's target group
+behind the load balancer, in the longest environment's name."""
+TIGHTEST_LIMIT = 32
+"""What AWS holds a target group's name to."""
+MAX_NAME_LENGTH = TIGHTEST_LIMIT - len(TIGHTEST_NAME.format(name=""))
+"""The longest name a copy takes, 17: its tightest cloud name fits, and every
+line of the copy stays within its own lint."""
 
 SKIPPED = frozenset(
     {
@@ -84,6 +94,12 @@ def refusal(name: str) -> str | None:
     """Why a name cannot be a product's, or None when it can."""
     if not NAME.match(name):
         return f"{name!r} is not one or two snake_case words, such as pressroom or free_press"
+    if len(name) > MAX_NAME_LENGTH:
+        tightest = TIGHTEST_NAME.format(name=name.replace("_", "-"))
+        return (
+            f"{name!r} is longer than {MAX_NAME_LENGTH} characters: the target group "
+            f"{tightest} would pass the {TIGHTEST_LIMIT} AWS allows"
+        )
     if name in sys.stdlib_module_names or keyword.iskeyword(name):
         return f"{name!r} is a Python module or keyword; the package would shadow it"
     if name == PLACEHOLDER:
@@ -172,7 +188,11 @@ def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
 def main(argv: list[str] | None = None, source: Path = SOURCE, plugin: Path = PLUGIN) -> int:
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1 or args[0].startswith("-"):
-        print("usage: python3 scaffold/new.py <dir>/<name>", file=sys.stderr)
+        print(
+            "usage: python3 scaffold/new.py <dir>/<name>\n"
+            f"  <name>: one or two snake_case words, at most {MAX_NAME_LENGTH} characters",
+            file=sys.stderr,
+        )
         return 2
     dest = Path(args[0]).expanduser().resolve()
     problem = refusal(dest.name)

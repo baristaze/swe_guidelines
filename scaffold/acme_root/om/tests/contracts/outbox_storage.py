@@ -22,6 +22,9 @@ from acme.om.tenancy.types.user import User
 from contracts.factories import make_user
 from contracts.racing import race
 
+IDENTITY = "0195f1a2-7b3c-7d4e-8f00-00000000d1d1"
+"""The identity a user row names: a payload carries ids, never a person's field."""
+
 NO_DELAY = timedelta(0)
 
 CROSS_TENANT_CASES: frozenset[str] = frozenset({"mark_done", "record_failure"})
@@ -37,7 +40,7 @@ def make_row(org_id: UUID, target_id: UUID, *, age: timedelta = timedelta(minute
         org_id=org_id,
         kind="tenancy.user.created",
         target_id=target_id,
-        payload={"display_name": "t"},
+        payload={"identity_id": IDENTITY},
         actor_id=new_id(),
         request_id=new_id(),
         app="portal",
@@ -81,7 +84,10 @@ class OutboxStorageContract:
         claimed = await claim_all(outbox)
         mine = [row for row in claimed if row.id in (row_a.id, row_b.id)]
         assert [(row.org_id, row.id) for row in mine] == [(org_a, row_a.id), (org_b, row_b.id)]
-        assert [row.payload for row in mine] == [{"display_name": "t"}, {"display_name": "t"}]
+        assert [row.payload for row in mine] == [
+            {"identity_id": IDENTITY},
+            {"identity_id": IDENTITY},
+        ]
         assert [row.attempts for row in mine] == [1, 1]
         assert (await tenancy.read_user(org_a, first.id)) == first
 
