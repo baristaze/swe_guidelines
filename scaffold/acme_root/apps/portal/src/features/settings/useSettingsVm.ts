@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { errorMessage } from "../../app/errorMessage";
-import type { Role } from "../../api";
+import type { Role } from "@acme/client";
 import {
   useApiKeys,
   useCreateApiKey,

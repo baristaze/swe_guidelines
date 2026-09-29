@@ -26,7 +26,7 @@ benchmark, and the docstrings of the Python under `scripts/`,
 `checkers/`, and `benchmark/`.
 The scaffold (`scaffold/`) is published text too: its Markdown, YAML, and
 JSON are held to the `product` group, and every text file under it,
-the skills in its own `.claude/` folder included, to the reference name.
+the skills in its own `.agents/` folder included, to the reference name.
 Exit status is non-zero on any hit. Standard library only.
 """
 

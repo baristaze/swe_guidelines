@@ -36,8 +36,10 @@ gets onto the plane.
 
 ## Skills
 
-Under `.claude/skills/`. Each skill that reaches an environment reads
-`.claude/skills/_shared/ops-preamble.md` first, and holds the one role its
+Under `.agents/skills/`, the folder every agent that reads the Agent
+Skills standard shares; `.claude/skills` links to it for Claude Code. Each
+skill that reaches an environment reads
+`.agents/skills/_shared/ops-preamble.md` first, and holds the one role its
 row names.
 
 | Skill | Needs | Answers |

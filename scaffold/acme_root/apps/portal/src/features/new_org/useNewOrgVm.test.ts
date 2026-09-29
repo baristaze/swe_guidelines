@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ApiError, type IssuedSessionView, type MembershipChoiceView } from "../../api";
+import { ApiError, type IssuedSessionView, type MembershipChoiceView } from "@acme/client";
 import { useSessionStore } from "../../store/session";
 import { useNewOrgVm } from "./useNewOrgVm";
 

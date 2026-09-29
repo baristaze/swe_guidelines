@@ -1,4 +1,4 @@
-import type { MembershipChoiceView } from "../../api";
+import type { MembershipChoiceView } from "@acme/client";
 import { placeNote } from "../../app/orgChipModel";
 import { Card, Muted } from "../../design/kit";
 

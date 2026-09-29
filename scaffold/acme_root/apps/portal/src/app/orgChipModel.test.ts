@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MembershipChoiceView } from "../api";
+import type { MembershipChoiceView } from "@acme/client";
 import { chipChoices, placeNote } from "./orgChipModel";
 
 const place = (id: string, name: string, kind: "personal" | "team" = "team", role = "owner"): MembershipChoiceView =>

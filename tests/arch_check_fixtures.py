@@ -141,7 +141,7 @@ BASE: dict[str, str] = {
         "# 1. One root package\n\nDate: 2026-01-01\n\n## Context\n\nOne product.\n\n"
         "## Decision\n\nOne root package.\n\n## Consequences\n\nShort imports.\n"
     ),
-    **{f".claude/skills/{name}/SKILL.md": f"---\nname: {name}\n---\n" for name in SKILLS},
+    **{f".agents/skills/{name}/SKILL.md": f"---\nname: {name}\n---\n" for name in SKILLS},
     "llms.txt": (
         "# acme\n\n> The acme platform.\n\n## Users\n\n- [Object model](om/README.md): the nouns\n\n"
         "## Operators\n\n- [Infra](infra/README.md): the platform services\n\n"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError } from "../../api";
+import { ApiError } from "@acme/client";
 import { deleteAccount, type DeleteAccountEffects } from "./deleteAccount";
 
 function effects(remove: DeleteAccountEffects["remove"]) {

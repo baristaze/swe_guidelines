@@ -2,7 +2,7 @@
 // person's places come from the memberships list. The chip always opens:
 // it lists the other places to switch to, when there are any, and offers a
 // new team org, which a person with one place needs most.
-import type { MembershipChoiceView } from "../api";
+import type { MembershipChoiceView } from "@acme/client";
 
 export interface ChipChoices {
   canSwitch: boolean;

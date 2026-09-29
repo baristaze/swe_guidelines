@@ -3,7 +3,7 @@
 // more. A fault (a 5xx, or an answer the API never classified) is not theirs
 // to fix, so it carries the request id as a reference to quote when reporting
 // it. Anything else is the error's own words, or the caller's.
-import { ApiError } from "../api";
+import { ApiError } from "@acme/client";
 
 /** The server's words as a sentence: a capital first letter and a full stop. */
 export function asSentence(text: string): string {

@@ -237,9 +237,9 @@ def test_python_code_and_the_tests_are_not_scanned_for_product_terms(repo, leaks
     [
         "scaffold/acme_root/README.md",
         "scaffold/acme_root/om/src/acme/om/README.md",
-        "scaffold/acme_root/.claude/skills/ops-watch/SKILL.md",
+        "scaffold/acme_root/.agents/skills/ops-watch/SKILL.md",
         "scaffold/acme_root/deployment/local/docker-compose.yml",
-        "scaffold/acme_root/apps/portal/openapi.json",
+        "scaffold/acme_root/clients/typescript/openapi.json",
     ],
 )
 def test_the_scaffold_is_scanned_for_product_terms(repo, leaks, capsys, rel):
@@ -250,7 +250,7 @@ def test_the_scaffold_is_scanned_for_product_terms(repo, leaks, capsys, rel):
 
 @pytest.mark.parametrize(
     "rel",
-    ["scaffold/acme_root/.claude/skills/ops-watch/SKILL.md", "scaffold/acme_root/om/src/acme/om/base.py"],
+    ["scaffold/acme_root/.agents/skills/ops-watch/SKILL.md", "scaffold/acme_root/om/src/acme/om/base.py"],
 )
 def test_reference_name_fails_anywhere_in_the_scaffold_its_skills_included(repo, leaks, capsys, rel):
     repo.write(rel, "# built like the reference\n")

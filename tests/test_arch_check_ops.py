@@ -15,7 +15,7 @@ def found(tmp_path, rule, files):
 
 
 def skills(*missing):
-    return {f".claude/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in SKILLS if n not in missing}
+    return {f".agents/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in SKILLS if n not in missing}
 
 
 # --- OPS-11
@@ -28,22 +28,27 @@ def test_ops_11_the_thirteen_skills_pass(tmp_path):
 def test_ops_11_the_optional_audits_are_not_required_and_are_accepted(tmp_path):
     optional = ("audit-credential-lifetimes", "audit-provider-calls")
     assert not set(optional) & set(SKILLS)
-    extra = {f".claude/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in optional}
+    extra = {f".agents/skills/{n}/SKILL.md": f"---\nname: {n}\n---\n" for n in optional}
     assert found(tmp_path, "OPS-11", skills() | extra) == (0, [])
 
 
 def test_ops_11_a_skill_with_no_frontmatter_passes(tmp_path):
-    assert found(tmp_path, "OPS-11", {".claude/skills/stress-test-run/SKILL.md": "# Stress test\n"}) == (0, [])
+    assert found(tmp_path, "OPS-11", {".agents/skills/stress-test-run/SKILL.md": "# Stress test\n"}) == (0, [])
 
 
 def test_ops_11_a_missing_audit_fails(tmp_path):
-    code, where = found(tmp_path, "OPS-11", {".claude/skills/audit-retention/SKILL.md": None})
-    assert (code, where) == (1, [("OPS-11", ".claude/skills/audit-retention/SKILL.md", 1)])
+    code, where = found(tmp_path, "OPS-11", {".agents/skills/audit-retention/SKILL.md": None})
+    assert (code, where) == (1, [("OPS-11", ".agents/skills/audit-retention/SKILL.md", 1)])
+
+
+def test_ops_11_a_skill_kept_in_claude_code_s_folder_alone_passes(tmp_path):
+    files = skills("ops-watch") | {".claude/skills/ops-watch/SKILL.md": "---\nname: ops-watch\n---\n"}
+    assert found(tmp_path, "OPS-11", files) == (0, [])
 
 
 def test_ops_11_a_missing_skill_fails(tmp_path):
-    code, where = found(tmp_path, "OPS-11", {".claude/skills/ops-watch/SKILL.md": None})
-    assert (code, where) == (1, [("OPS-11", ".claude/skills/ops-watch/SKILL.md", 1)])
+    code, where = found(tmp_path, "OPS-11", {".agents/skills/ops-watch/SKILL.md": None})
+    assert (code, where) == (1, [("OPS-11", ".agents/skills/ops-watch/SKILL.md", 1)])
 
 
 # --- OPS-20

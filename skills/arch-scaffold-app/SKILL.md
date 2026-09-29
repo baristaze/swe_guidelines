@@ -6,8 +6,10 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make chec
 
 # arch-scaffold-app
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
+A path that starts with `../` is read from this skill's folder
+as `realpath` resolves it.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls), Apps (Apps Are
 Dumb, Push-First Apps), Client App Architecture (Stack; State and Data;
 Views, View-Models, Models; API Access; One Tenant at a Time; Realtime:
@@ -28,7 +30,7 @@ portal.
 
 | Kind | The shape | Under `apps/<app-name>/` |
 |------|-----------|--------------------------|
-| `portal` | `apps/portal/` | the package, the config loaded from `/config.json` before the first render, the shell and routes, the sign-in gate, the query keys and hooks, the stores, the one realtime channel, the screens in the view, view-model, and model split, and the README |
+| `portal` | `apps/portal/` | the package over the client of `clients/typescript/`, the config loaded from `/config.json` before the first render, the shell and routes, the sign-in gate, the query keys and hooks, the stores, the one realtime channel, the screens in the view, view-model, and model split, and the README |
 | `admin` | `apps/portal/`, less its realtime channel, its org chip, and its tenant stores | the same, with its own sign-in and the operator plane's screens over `/v1/admin/*` |
 | `cli` | `apps/cli/` | the distribution over `<name>-client`, its settings, its commands, the feed command when the API has a socket, and the tests |
 
@@ -38,7 +40,6 @@ portal.
 |------|--------|
 | `pnpm-workspace.yaml`, `package.json` (root) (browser app) | the package, in the workspace scripts `make check` runs |
 | `pyproject.toml` (root) (CLI) | the member in `[tool.uv.workspace] members` |
-| `Makefile` (browser app) | `openapi` regenerates the app's types from the document of the service it calls |
 | `.env.example`, `scripts/dev.sh`, `README.md` (root) (browser app) | its dev port, its `public/config.json` written and its dev server started, its local URL |
 | `deployment/terraform/modules/environment/main.tf` (browser app) | a `static_site` instance beside `module "portal"`, on its own subdomain, `admin` for the console |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` (browser app) | its bundle built once under the commit by staging and promoted to production, never built again, beside the portal's |
@@ -46,15 +47,19 @@ portal.
 
 ## Procedure
 
-1. A browser app's feature code never calls `fetch` and never imports
-   `schema.d.ts`: everything goes through `src/api/`, whose one client
-   owns the timeout and the one retry. The bearer lives in memory and in
-   the tab's session storage, never in local storage. A view never
+1. A browser app never calls `fetch` and never imports `schema.d.ts`:
+   everything goes through the client package of `clients/typescript/`,
+   whose one client owns the timeout and the one retry. The app builds
+   its one instance of it, as the portal's `src/app/api.ts` does, and
+   its ESLint config forbids `fetch` and the generated path, as the
+   portal's does. The bearer lives in memory and in the tab's session
+   storage, never in local storage. A view never
    re-implements a domain rule to enable an action: the service exposes
    the decision on the view, or the app acts on the error envelope.
-2. The console imports the portal's `src/api/` and its design kit as a
-   workspace dependency and copies neither. It holds no socket, no
-   tenant context, no membership picker, and no org chip. Its sign-in
+2. The console imports the client from `clients/typescript/`, never
+   through the portal, and takes the portal's design kit as a workspace
+   dependency; it copies neither. It holds no socket, no tenant context,
+   no membership picker, and no org chip. Its sign-in
    is the person's own, then the second factor the operator gate asks
    for, `POST /v1/auth/second-factor`. It renders the gate's refusals:
    `second_factor_required`, and `second_factor_not_enrolled`, which
@@ -74,9 +79,11 @@ portal.
    origin, as the portal does: the dev server and the distribution
    forward `/v1`, so no request is cross-origin.
 6. Add the package to its workspace and install (`pnpm install` or
-   `uv sync`), then run `make openapi` so the generated types exist
+   `uv sync`). A browser app depends on the client package as
+   `workspace:*`, under the name `clients/typescript/package.json`
+   gives it. Then run `make openapi`, so the client's types are current
    before the first screen.
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

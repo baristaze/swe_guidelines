@@ -40,8 +40,8 @@ report says which it is: measured or read.
 - A counted run needs the local stack up (`make infra-up`, with `make
   migrate` run once). A flow the counter cannot run is reported as not
   measured.
-- A review that reads OPS-11 against `.claude/skills/audit-credential-lifetimes`
-  or `.claude/skills/audit-provider-calls` finds a counted run and cites
+- A review that reads OPS-11 against `.agents/skills/audit-credential-lifetimes`
+  or `.agents/skills/audit-provider-calls` finds a counted run and cites
   this record.
 - The run's database is its own, named after the audit and the day, and
   a run never drops a database it did not make.

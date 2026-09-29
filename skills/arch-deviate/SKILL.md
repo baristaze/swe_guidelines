@@ -15,23 +15,23 @@ Deviations. It is not a finding, and it never lowers a severity.
 
 ## Input
 
-`$ARGUMENTS` names the rule being deviated from, as a lens id
+The arguments name the rule being deviated from, as a lens id
 (`STO-02`), a section by title (`The Storage Layer, Storage
 Principles`), or a sentence describing it, optionally followed by a
 one-line reason. A technology substitution (an equivalent in place of
 a technology the guideline names) is not a deviation and is recorded
 in the project's technology-choices ADR instead, as the guideline's
 "Technology Choices and How to Override Them" section states; when
-`$ARGUMENTS` describes one, say so and stop. Ask in one
+the arguments describe one, say so and stop. Ask in one
 message for what is missing: the reason, the scope of the deviation
 (which namespace, service, or table), and whether it is permanent or
 has a condition for ending.
 
 ## Procedure
 
-1. Resolve the rule: find the lens in `${CLAUDE_SKILL_DIR}/../../lenses/`
-   and the section in `${CLAUDE_SKILL_DIR}/../../architecture.md`. Quote
-   the principle verbatim.
+1. Resolve the rule: find the lens in `../../lenses/` and the section in
+   `../../architecture.md`, paths from this skill's folder as `realpath`
+   resolves it. Quote the principle verbatim.
 2. The ADR goes under `docs/adr/`, created when it does not exist:
    `arch-check` refuses a deviation whose `adr` is anywhere else. Number
    the new record as one more than the highest numeric prefix present
@@ -45,7 +45,7 @@ has a condition for ending.
 6. When the lens has a `Check` line naming `arch-check`, the ADR alone
    does not pass the gate: the checker still fails on the code. Give
    it the entry that names the ADR, in the shape `checkers/README.md`
-   in this plugin shows (`${CLAUDE_SKILL_DIR}/../../checkers/README.md`,
+   in this plugin shows (`../../checkers/README.md`,
    Exceptions); the rule id is the lens id. A whole rule turned off
    is a `[[tool.arch-check.disable]]` entry with `rule`, `adr` (the
    ADR's path), and `reason`. A rule

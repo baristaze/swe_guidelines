@@ -26,9 +26,10 @@ the platform's size, the orgs and their members and events, an org's
 deletion, and the requeue of a failed work item.
 
 The console lands in `apps/admin` when operators need a screen.
-It takes the portal's stack (React, Vite, TanStack Query, Zustand, the
-generated types behind a facade, the shared transport client), its own
-origin (`admin.`) and its own bundle, and opens no realtime socket.
+It takes the portal's stack (React, Vite, TanStack Query, Zustand) and
+the TypeScript client of `clients/typescript/` (the generated types
+behind a facade, the shared transport client), its own origin (`admin.`)
+and its own bundle, and opens no realtime socket.
 
 ## Consequences
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MeView } from "../../api";
+import type { MeView } from "@acme/client";
 import { confirmsName, mayDeleteOrg, ORG_GONE_LINE } from "./deleteOrgModel";
 
 const owner: MeView = {

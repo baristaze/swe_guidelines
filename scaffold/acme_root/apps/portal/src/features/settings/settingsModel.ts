@@ -1,5 +1,5 @@
 // Pure: rows, formatting, and gating predicates for the settings screen.
-import type { ApiKeyView, InvitationView, MembershipView, MeView, Role, UserView } from "../../api";
+import type { ApiKeyView, InvitationView, MembershipView, MeView, Role, UserView } from "@acme/client";
 
 export interface MemberRow {
   id: string;

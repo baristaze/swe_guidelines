@@ -23,12 +23,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # skipped: benchmark/runs/README.md, the index of the runs, and each
 # scenario's benchmark/runs/<scenario>/README.md are written by hand and
 # checked like the manual, and the run folders inside those are records.
-# Under `scaffold/`, a `.claude/` folder is kept: it holds the skills a copy
-# of the scaffold runs, and is published with it.
+# The scaffold's skills sit in its `.agents/skills/`, which is read; its
+# `.claude/skills` is a link to that folder, and a link is never walked, so
+# each skill is read once.
 SKIP_DIRS = {".git", ".claude", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
 SKIP_PATHS = {("benchmark", "runs")}
-PUBLISHED = ("scaffold", ".claude")
-"""(the folder, the skipped directory name kept under it)."""
 
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 CLOSING = re.compile(r"(?:^|\s+)#+$")
@@ -38,9 +37,7 @@ LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 
 def skipped(parts: Sequence[str]) -> bool:
     """Whether a file, by the parts of its path from the root, is left out of the repository's files."""
-    folder, kept = PUBLISHED
-    dirs = [part for part in parts[:-1] if not (parts[0] == folder and part == kept)]
-    if any(part in SKIP_DIRS for part in dirs):
+    if any(part in SKIP_DIRS for part in parts[:-1]):
         return True
     return any(tuple(parts[: len(skip)]) == skip and len(parts) > len(skip) + 2 for skip in SKIP_PATHS)
 

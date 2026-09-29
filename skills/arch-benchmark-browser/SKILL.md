@@ -8,15 +8,16 @@ disable-model-invocation: true
 # arch-benchmark-browser
 
 Ask four products the same question and keep the answers with their
-proof. The prompt, the contract, the size map, and the schema live at
-`${CLAUDE_SKILL_DIR}/../../benchmark/browser/` and
-`${CLAUDE_SKILL_DIR}/../../benchmark/schema/browser-session.schema.json`.
-If any is missing, stop and say the installation is incomplete.
+proof. The prompt, contract, size map, and schema live at
+`../../benchmark/browser/` and
+`../../benchmark/schema/browser-session.schema.json`, paths from this
+skill's folder as `realpath` resolves it. If any is missing, stop and
+say the installation is incomplete.
 
 ## Input
 
-`$ARGUMENTS` names two sizes, `model=<size> effort=<size>`, each one of
-`xs`, `s`, `m`, `l`, `xl`. When one is missing, it is `m`. It may also
+The arguments name two sizes, `model=<size> effort=<size>`, each of
+`xs`, `s`, `m`, `l`, `xl`. A missing one is `m`. It may also
 name a subset of sites (`sites=claude.ai,gemini.google.com`); the
 default is all four. It may ask for a comparison with earlier runs:
 `compare=<run_id>,<run_id>` names them, and `compare=all` means every
@@ -292,7 +293,7 @@ Facts that decide how the steps below go. Read them before the browser.
    (`shutil.copyfile` from the path the tool reports); the tool saves
    JPEG. These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
-11. Only when `$ARGUMENTS` has `compare=`. List the earlier runs with
+11. Only when the arguments have `compare=`. List the earlier runs with
     `python3`:
     `sorted((Path.home() / "Downloads" / "benchmark_browser").glob("*/results.json"))`,
     since the tools have no `ls` and `glob` does not expand `~`. With

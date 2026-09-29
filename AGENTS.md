@@ -53,14 +53,20 @@ cites the changed text changes with it.
   `arch-scaffold-new` copies the scaffold with `scaffold/new.py`.
   `skills/arch-new-aspect` is the one skill that edits this repository:
   it adds an aspect to the guideline and cascades it.
-- `scaffold/acme_root/.claude/skills/` holds the skills a new tree runs
+- `scaffold/acme_root/.agents/skills/` holds the skills a new tree runs
   as its own: the operational skills, the audits, and the ticket
-  triage. They are not skills of this plugin. `make leaks`, `make
-  links`, and `make lint` read them, and `scripts/check_skills.py`
-  holds their frontmatter and their count bounds as a skill's.
-- `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
-  to. `scripts/check_agents.py` holds it to the review template and to
-  its `maxTurns`. Every review skill repeats "Never edit, stage, or
+  triage. They are not skills of this plugin. `.agents/skills/` is the
+  folder every agent that reads the Agent Skills standard shares;
+  `scaffold/acme_root/.claude/skills` is a link to it, for Claude Code,
+  and `scaffold/new.py` copies the link as a link. `make leaks`, `make
+  links`, and `make lint` read the skills, and `scripts/check_skills.py`
+  holds their frontmatter, their paths, the link, and their count
+  bounds as a skill's.
+- `agents/arch-reviewer.md` is the Claude Code subagent
+  `arch-review-full` fans out to; subagents have no open standard, so in
+  another agent the skill starts a general subagent or runs the groups
+  one after another. `scripts/check_agents.py` holds it to the review
+  template and to its `maxTurns`. Every review skill repeats "Never edit, stage, or
   commit" on purpose.
 - `.claude-plugin/` holds the plugin and marketplace manifests; the
   repository root is the plugin. `plugin.json` carries the one release
@@ -89,10 +95,26 @@ cites the changed text changes with it.
   named as agents.
 - "X, never Y" names the near miss a rule rules out. It is part of the
   rule, not history.
+- Every skill follows the [Agent Skills
+  standard](https://agentskills.io/specification), so it runs in any
+  agent that reads it. Its frontmatter holds the standard's fields and
+  nothing else, except `disable-model-invocation`: Claude Code's key,
+  which VS Code, Cursor, and Factory also read, and which the
+  standard's validator refuses. So only a skill a person must start by
+  name carries it, and that skill also carries Codex's switch,
+  `agents/openai.yaml` with `policy.allow_implicit_invocation: false`.
+  A skill names its own files by a path from its own folder
+  (`../../architecture.md`, `references/<file>`), never through a path
+  one agent substitutes, such as `${CLAUDE_SKILL_DIR}`, and a command
+  runs such a file by its absolute path. A skill that climbs out of its
+  folder says the path is read from the folder as `realpath` resolves
+  it: the clone route links each skill, and an agent that shortens
+  `../` by hand reads the wrong file. Its arguments are "the
+  arguments", never `$ARGUMENTS`.
 - Every plugin skill's `name` equals its folder name and starts with
   `arch-`, and its `allowed-tools` names only what its body runs.
-  `scripts/check_skills.py` holds the frontmatter; the git, uv, and pnpm
-  entries are held by hand.
+  `scripts/check_skills.py` holds the frontmatter and the paths; the
+  git, uv, and pnpm entries are held by hand.
 - A scaffold skill has the sections Input, Created, Changed, Procedure,
   and Output, in that order.
 - A skill keeps its spine inline and moves long reference material into
