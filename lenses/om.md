@@ -414,7 +414,8 @@ credentials) is a first-class swimlane with its own types, manager, and
 storage, not a utility hanging off the root. Audit (who did what, when,
 from which app) is a kind of event: an audit entry is an `Event` with an
 audit kind, appended to the events namespace's stream. Audit becomes a
-namespace of its own when it gains a reader of its own.
+namespace of its own when it gains a reader of its own, or must be kept
+longer than the stream.
 
 **Source.** Namespaces as Swimlanes.
 
@@ -426,8 +427,9 @@ kinds that mark one.
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
 interface, or kept anywhere but the event stream; credential handling
-spread across services with no owning namespace; audit read by a screen
-or an export of its own while it is still a kind of event.
+spread across services with no owning namespace; audit that has a
+screen or an export of its own, or must be kept longer than the stream,
+while it is still a kind of event.
 
 **Severity.** medium
 

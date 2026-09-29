@@ -446,7 +446,8 @@ who did what and from which app, is a kind of event: an audit entry is
 an `Event` with an audit kind, in the events namespace's stream
 ([Realtime at the Edge](#realtime-at-the-edge)). Audit becomes a
 namespace of its own when it gains a reader of its own, such as a
-screen that lists who did what, or an export.
+screen that lists who did what, or an export, or when it must be kept
+longer than the stream.
 
 ### Pure Rules
 

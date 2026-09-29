@@ -7,7 +7,7 @@
 OM-16 (Namespaces as Swimlanes) makes audit, who did what, when, and
 from which app, a kind of event: an audit entry is an `Event` with an
 audit kind, in the events namespace's stream, until audit gains a
-reader of its own.
+reader of its own or must be kept longer than the stream.
 
 Every event already carries the actor, the request, and the app, since
 the stream records who produced what. An audit entry adds only its

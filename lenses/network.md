@@ -548,7 +548,8 @@ event row rides an outbox row of the core write is STO-20.)
 gaps above the floor; `MAX(seq) + 1` computed in the append and retried
 on the collision; an event table in the `core` role; an event with no
 `actor_id`, request id, or app; an audit entry of a type or a table of
-its own while audit is a kind of event (OM-16); a trim that deletes
+its own while audit has no reader of its own and no retention longer
+than the stream's (OM-16); a trim that deletes
 without moving the floor, or moves it in another transaction; a read
 below the floor answered with a page, or a client that asks the same
 read again instead of reading afresh and going on from the head; code
