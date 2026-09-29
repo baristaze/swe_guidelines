@@ -707,12 +707,14 @@ that names none gets no turn cap.
   that phase's own spend, as a fresh phase's does. The harness also
   prices the usage of every assistant message the stream
   carries, at the matrix's price for its model, and stops the phase
-  when that passes the cap. A cache read is priced at a tenth of the
-  input price, and a cache write at 1.25 times it, or twice it for a
-  one-hour write. A model the matrix does not price is priced at its
-  dearest Anthropic model, and named under `unpriced`. The stream shows
-  what the session shows it, so a subagent the stream does not carry is
-  held by Claude Code's cap alone;
+  when that passes the cap. A cache read is priced at the model's
+  cache-hit price, `cache_read`, where the matrix names one, else at a
+  tenth of the input price. A cache write is priced at 1.25 times the
+  input price, or twice it for a one-hour write. A model the matrix
+  does not price is priced at its dearest Anthropic model, and named
+  under `unpriced`. The estimate counts each message's output as the
+  message starts (see Spend), so it reads low. A subagent the stream
+  does not carry is held by Claude Code's cap alone;
 - the timeout, `timeout_s`, which the harness holds: it stops the
   session and every process of its group;
 - the gate reruns, which the harness holds, reading each Bash call in
@@ -1125,15 +1127,34 @@ joins the matrix joins the prices. They are the standard tier's, below
 each provider's long-context threshold, where every prompt of the
 shipped scenarios falls. Every input token is priced as uncached input,
 so a provider's cache discount makes the true bill lower, never higher.
-A judgement's `cost_usd` is its usage at those prices.
+A judgement's `cost_usd` is its usage at those prices. A model whose
+cache hits are not billed at a tenth of its input price also names
+`cache_read`, its price per million cache-hit tokens, for the subject's
+estimate below.
 
 The subject's spend is on each repeat, as `subject_usage` and
 `subject_cost_usd`. A skill's figures come from each session's result,
-and its cost is the one Claude Code reports, caching included. A
-session the harness stopped wrote no result, and its cost is the
-harness's estimate from the stream, which the run's notes name. Its
-`reasoning_tokens` are the thinking tokens the result reports, which
-its output already counts. A `qa` answer is priced like a judgement.
+and its cost is the one Claude Code reports, caching included. Its
+tokens are the ones that cost counts: each model's under the result's
+`modelUsage`, summed, which count the session's helper agents as well
+as its main agent. The result's `usage` counts the main agent alone.
+Its `reasoning_tokens` are the thinking tokens `modelUsage` reports,
+which its output already counts. A `qa` answer is priced like a
+judgement.
+
+A session the harness stopped wrote no result, and its cost is the
+harness's estimate from the stream, which the run's notes name. The
+estimate prices each message at its model's price in the matrix, a
+cache read at the model's `cache_read` where the matrix names one. It
+counts each message's input in full and its output as the message
+starts. Each line of the stream carries a message's usage from the
+start of the message, and none carries its final output count. With
+`--include-partial-messages`, Claude Code also writes the main agent's
+raw stream events, whose `message_delta` carries that count, but never
+a helper agent's. The harness does not pass it: the count would still
+miss every helper's output, and the stream would take a line for every
+chunk the main agent streams. So the estimate leaves out nearly all of
+a session's output, and reads low by about what that output cost.
 
 `results.json` totals it all under `spend`: each judge's tokens and
 cost, the subject's, and `total_usd`. `report.md` shows the same in its
