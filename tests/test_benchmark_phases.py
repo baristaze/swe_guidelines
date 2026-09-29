@@ -6,6 +6,11 @@ does, and its answer says what it saw.
 """
 
 import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -292,9 +297,11 @@ def test_a_dry_run_resolves_the_phases_and_runs_nothing(tmp_path, monkeypatch):
     assert [p["name"] for p in (scaffold, mvp, review)] == ["scaffold", "mvp", "review"]
     argv = scaffold["argv"]
     assert argv == resolved["subject_argv"] and "handoff note at HANDOFF.md" in argv[argv.index("-p") + 1]
-    # The subject runs under env, with its subagents and commands in the foreground, on every runtime.
-    assert argv[:3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
-    assert review["argv"][5:8] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+    # The subject runs under env, with its subagents and commands in the foreground, and arch-check from the staged
+    # plugin, on every runtime.
+    arch_check = f"ARCH_CHECK={run.subject_vars(argv[argv.index('--plugin-dir') + 1])['ARCH_CHECK']}"
+    assert argv[:4] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
+    assert review["argv"][5:9] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
     assert mvp["argv"][mvp["argv"].index("--resume") + 1] == "<the session of scaffold>"
     assert review["argv"][:5] == ["sh", "-c", PH.IN_FOLDER, "sh", "site"]
     assert resolved["max_spend_usd"] == 20
@@ -839,7 +846,8 @@ def test_a_container_runs_the_subject_under_env_with_its_background_tasks_off(tm
         command = rt.command(run.phase_argv(scn, one, "swe-guidelines", "/plugin", None), rt.workspace)
         inside = command[command.index("img:1") + 1 :]  # what the container runs
         at = inside.index("env")
-        assert inside[at : at + 3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+        arch_check = 'ARCH_CHECK=uvx --python "$(shell cat .python-version)" --from /plugin/checkers arch-check'
+        assert inside[at : at + 4] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
 
 
 # A phase with an Agent call left pending --------------------------------------
@@ -997,3 +1005,47 @@ def test_an_agent_call_stays_pending_to_the_end_of_the_session_only_when_its_res
     watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [result]}}))
     watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
     assert watch.pending == ([{"id": "t1", "description": "helper"}] if pending else [])
+
+
+# What a subject is handed of this repository -------------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+SKELETON = ROOT / "skills" / "arch-scaffold-new" / "references" / "skeleton.md"
+
+
+def scaffold_line() -> str:
+    """The Makefile line the scaffold writes for arch-check, at this checkout's release."""
+    (line,) = re.findall(r"`(ARCH_CHECK \?= [^`]+)`", SKELETON.read_text(encoding="utf-8"))
+    version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    return line.replace("<version>", version)
+
+
+def make_n(folder: Path, arch_check: str | None) -> str:
+    """What `make -n arch-check` prints in a folder, with ARCH_CHECK in its environment or not."""
+    env = {"PATH": os.environ["PATH"], **({"ARCH_CHECK": arch_check} if arch_check is not None else {})}
+    done = subprocess.run(["make", "-n", "arch-check"], cwd=folder, env=env, capture_output=True, text=True, check=True)
+    return done.stdout
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="needs make")
+def test_the_subject_s_arch_check_runs_from_the_staged_plugin_and_fetches_no_release(tmp_path, run_phases):
+    gate = 'case "$ARCH_CHECK" in *"/plugin/checkers arch-check") exit 0;; *) exit 1;; esac'
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", cwd="output"), gates=[gate]))
+    assert code == 0
+    plugin = results(run_dir)["subject"]["plugin"]
+    checkers = shlex.quote(f"{plugin}/checkers")
+    given = [s["arch_check"] if s else None for s in seen(run_dir)]
+    # Every session is handed arch-check from the staged plugin's checkers, and so are the gates on its tree.
+    assert given[0] == given[1] == f'uvx --python "$(shell cat .python-version)" --from {checkers} arch-check'
+    words = shlex.split(given[0])
+    assert words[words.index("--from") + 1] == f"{plugin}/checkers"
+    assert [g["passed"] for g in results(run_dir)["repeats"][0]["gates"]] == [True]
+    # A tree with the scaffold's line fetches this repository at its release, unless the environment names ARCH_CHECK.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / ".python-version").write_text("3.13\n", encoding="utf-8")
+    (tree / "Makefile").write_text(f"{scaffold_line()}\n\narch-check:\n\t$(ARCH_CHECK)\n", encoding="utf-8")
+    assert '--from "git+https://github.com/baristaze/swe_guidelines@v' in make_n(tree, None)
+    printed = make_n(tree, given[0])
+    assert printed == f'uvx --python "3.13" --from {checkers} arch-check\n'
+    assert "git+https" not in printed

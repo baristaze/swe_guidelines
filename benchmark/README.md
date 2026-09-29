@@ -578,14 +578,24 @@ result returns to the session that asked for it. In print mode, a task
 left in the background ends the main agent's turn, and the session
 never gives it back. The runtimes hand the subject its environment each
 their own way, and a word of its command reaches it the same way on all
-three. The session runs with `--output-format
-stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
-and the answer, the models, and the spend are read from its last line,
-the result. Each repeat records `subject_models`, the models the result
-reports under `modelUsage`, and a run notes a repeat whose result does
-not report the pinned model. A result with `is_error` set is a failed
-repeat, whatever the exit code. A skill subject is bounded by money and
-time: `max_usd`, which every skill subject names, goes to Claude Code
+three. The same `env` sets `ARCH_CHECK` to arch-check from the staged
+plugin's `checkers`:
+`uvx --python "$(shell cat .python-version)" --from <plugin>/checkers arch-check`.
+The scaffold's Makefile sets `ARCH_CHECK ?=` to a uvx command that
+fetches this repository whole, at the release the tree pins, into the
+subject's HOME, and a release can hold run folders: every finished tree
+of a scenario, the judges' gaps, and the review's report. `?=` lets the
+environment win, so `make arch-check` builds the checker from the staged
+copy, on the tree's Python, and no subject is handed a run folder. The
+gates on the final tree run with the same two variables. The session
+runs with `--output-format stream-json --verbose`, so every turn is a
+line of `streams/cli.jsonl`, and the answer, the models, and the spend
+are read from its last line, the result. Each repeat records
+`subject_models`, the models the result reports under `modelUsage`, and
+a run notes a repeat whose result does not report the pinned model. A
+result with `is_error` set is a failed repeat, whatever the exit code.
+A skill subject is bounded by money and time: `max_usd`, which every
+skill subject names, goes to Claude Code
 as `--max-budget-usd`, and `timeout_s` ends the session. A turn count is
 no bound. A scenario may name `max_turns`, and only then does Claude
 Code get `--max-turns`. The harness also holds the spend from the
