@@ -1,11 +1,26 @@
 """scripts/check_skills.py: skill shape and frontmatter."""
 
+import os
+
 import pytest
 
 
 @pytest.fixture
 def skills(repo):
     return repo.script("check_skills")
+
+
+LINK = "scaffold/acme_root/.claude/skills"
+"""Claude Code's folder of the scaffold's skills: a link to the folder every other agent reads."""
+
+
+@pytest.fixture(autouse=True)
+def claude_link(repo):
+    """The scaffold's `.claude/skills`, a link to `../.agents/skills`, as the repository has it."""
+    link = repo.root / LINK
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to("../.agents/skills")
+    return link
 
 
 RANKED = "remove the call, fold it into another, defer it, cache its answer, and only then run calls in parallel"
@@ -22,7 +37,7 @@ def operational_skills(repo, roles: dict[str, str], ranked: str = RANKED) -> Non
     )
 
 
-COPIED = "scaffold/acme_root/.claude/skills"
+COPIED = "scaffold/acme_root/.agents/skills"
 """Where the scaffold keeps the skills a new tree copies and runs."""
 
 
@@ -131,7 +146,32 @@ def test_the_descriptions_together_have_a_budget(repo, skills, capsys, monkeypat
 def test_an_unknown_frontmatter_key_fails(repo, skills, capsys):
     repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent", "allowed_tools: Read, Agent")
     assert skills.main() == 1
-    assert "frontmatter key 'allowed_tools' is not one the host reads" in capsys.readouterr().out
+    assert "frontmatter key 'allowed_tools' is neither a field of the Agent Skills standard" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("line", ["argument-hint: <scope>", "model: opus", "user-invocable: false", "context: fork"])
+def test_a_key_one_agent_alone_reads_fails_in_a_skill_and_in_a_scaffold_skill(repo, skills, capsys, line):
+    key = line.partition(":")[0]
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", f"allowed-tools: Read, Agent\n{line}\n")
+    repo.write(copied("ops-watch"), f'---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n{line}\n---\n')
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    for rel in ("skills/arch-review-full/SKILL.md", copied("ops-watch")):
+        assert f"{rel}: frontmatter key {key!r} is neither a field of the Agent Skills standard" in out
+
+
+def test_the_standards_optional_fields_and_disable_model_invocation_pass(repo, skills):
+    fields = 'license: MIT\ncompatibility: "Needs git and Python 3.11."\ndisable-model-invocation: true\n'
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", f"allowed-tools: Read, Agent\n{fields}")
+    repo.write(copied("ops-watch"), f'---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n{fields}---\n')
+    assert skills.main() == 0
+
+
+def test_a_compatibility_past_the_standards_limit_fails(repo, skills, capsys):
+    tools = "allowed-tools: Read, Agent\n"
+    repo.edit("skills/arch-review-full/SKILL.md", tools, f"{tools}compatibility: {'x' * 501}\n")
+    assert skills.main() == 1
+    assert "compatibility is 501 characters; the standard allows 1 to 500" in capsys.readouterr().out
 
 
 def test_a_scaffold_skill_references_the_conventions(repo, skills, capsys):
@@ -184,8 +224,7 @@ def test_make_target_the_body_runs_passes(repo, skills, capsys):
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`, then `make migrate-check --dry-run`.\n"
-        "3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`, then `make migrate-check --dry-run`.\n3. Conventions: `../_shared/scaffold-conventions.md`.",
     )
     assert skills.main() == 0
     assert "skills ok" in capsys.readouterr().out
@@ -213,10 +252,24 @@ def test_make_target_the_body_never_runs_fails(repo, skills, capsys):
     assert "never runs make openapi" in capsys.readouterr().out
 
 
-def test_skill_dir_reference_must_exist(repo, skills, capsys):
-    repo.edit("skills/arch-review-om/SKILL.md", "lenses/om.md", "lenses/om.md` and `${CLAUDE_SKILL_DIR}/notes.md")
+def test_a_path_from_the_skills_folder_must_exist(repo, skills, capsys):
+    repo.edit("skills/arch-review-om/SKILL.md", "`../../lenses/om.md`", "`../../lenses/om.md` and `../notes.md`")
     assert skills.main() == 1
-    assert "${CLAUDE_SKILL_DIR}/notes.md does not exist" in capsys.readouterr().out
+    assert "skills/arch-review-om/SKILL.md: reference ../notes.md does not exist" in capsys.readouterr().out
+    repo.edit("skills/arch-review-om/SKILL.md", "`../notes.md`", "`../../lenses/`, then `../..`.")
+    assert skills.main() == 0
+
+
+@pytest.mark.parametrize("variable", ["${CLAUDE_SKILL_DIR}", "${CLAUDE_PLUGIN_ROOT}", "${CLAUDE_PROJECT_DIR}", "$ARGUMENTS"])
+def test_a_substitution_one_agent_makes_fails(repo, skills, capsys, variable):
+    repo.edit("skills/arch-review-om/SKILL.md", "`../../lenses/om.md`", f"`{variable}/../../lenses/om.md`")
+    repo.write("agents/arch-reviewer.md", f"# Reviewer\n\nRead `{variable}/architecture.md`.\n")
+    head = '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n---\n'
+    repo.write(copied("ops-watch"), f"{head}\nRead `{variable}`.\n")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    for rel in ("skills/arch-review-om/SKILL.md", "agents/arch-reviewer.md", copied("ops-watch")):
+        assert f"{rel}: names {variable}, a substitution one agent makes and the others read as text" in out
 
 
 def test_every_group_has_one_review_skill_named_by_full(repo, skills, capsys):
@@ -260,18 +313,18 @@ def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):
 
 
 def test_a_reference_in_the_scaffold_conventions_resolves_from_each_including_skill(repo, skills, capsys):
-    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `${CLAUDE_SKILL_DIR}/../../missing.json`.\n")
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `../../missing.json`.\n")
     assert skills.main() == 1  # the scaffold does not reference the conventions file yet
     assert "a scaffold skill references skills/_shared/scaffold-conventions.md" in capsys.readouterr().out
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`.\n3. Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`.\n3. Conventions: `../_shared/scaffold-conventions.md`.",
     )
     assert skills.main() == 1
     assert (
         "skills/arch-scaffold-thing/SKILL.md (via skills/_shared/scaffold-conventions.md): "
-        "reference ${CLAUDE_SKILL_DIR}/../../missing.json does not exist"
+        "reference ../../missing.json does not exist"
     ) in capsys.readouterr().out
     repo.write("missing.json", "{}\n")
     assert skills.main() == 0
@@ -292,12 +345,12 @@ def test_an_unquoted_description_fails(repo, skills, capsys):
     assert skills.main() == 0
 
 
-def test_skill_dir_reference_must_resolve_inside_the_repository(repo, skills, capsys):
+def test_a_path_from_the_skills_folder_must_resolve_inside_the_repository(repo, skills, capsys):
     (repo.root.parent / "outside.md").write_text("# Outside\n", encoding="utf-8")
-    repo.edit("skills/arch-review-om/SKILL.md", "lenses/om.md", "lenses/om.md` and `${CLAUDE_SKILL_DIR}/../../../outside.md")
+    repo.edit("skills/arch-review-om/SKILL.md", "`../../lenses/om.md`", "`../../lenses/om.md` and `../../../outside.md`")
     assert skills.main() == 1
-    assert "${CLAUDE_SKILL_DIR}/../../../outside.md resolves outside the repository" in capsys.readouterr().out
-    repo.edit("skills/arch-review-om/SKILL.md", "/../../../outside.md", "/../../lenses/om.md")
+    assert "reference ../../../outside.md resolves outside the repository" in capsys.readouterr().out
+    repo.edit("skills/arch-review-om/SKILL.md", "`../../../outside.md`", "`../../lenses/om.md`")
     assert skills.main() == 0
 
 
@@ -405,19 +458,18 @@ def test_a_reference_file_a_step_names_passes_and_its_own_references_resolve(rep
     out = capsys.readouterr().out
     assert (
         "skills/arch-scaffold-thing/references/parts.md: no step of skills/arch-scaffold-thing/SKILL.md "
-        "names ${CLAUDE_SKILL_DIR}/references/parts.md" in out
+        "names references/parts.md" in out
     )
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "1. Write the thing.",
-        "1. Read `${CLAUDE_SKILL_DIR}/references/parts.md`, then write the thing.",
+        "1. Read `references/parts.md`, then write the thing.",
     )
     assert skills.main() == 0
-    repo.write("skills/arch-scaffold-thing/references/parts.md", "# Parts\n\nRead `${CLAUDE_SKILL_DIR}/gone.json`.\n")
+    repo.write("skills/arch-scaffold-thing/references/parts.md", "# Parts\n\nRead `references/gone.json`.\n")
     assert skills.main() == 1
     assert (
-        "skills/arch-scaffold-thing/references/parts.md: reference ${CLAUDE_SKILL_DIR}/gone.json does not exist"
-        in capsys.readouterr().out
+        "skills/arch-scaffold-thing/references/parts.md: reference references/gone.json does not exist" in capsys.readouterr().out
     )
 
 
@@ -426,10 +478,10 @@ def test_a_reference_named_outside_the_procedure_is_still_an_orphan(repo, skills
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "| `thing.py` | the thing |",
-        "| `thing.py` | the thing, listed in `${CLAUDE_SKILL_DIR}/references/parts.md` |",
+        "| `thing.py` | the thing, listed in `references/parts.md` |",
     )
     assert skills.main() == 1
-    assert "names ${CLAUDE_SKILL_DIR}/references/parts.md" in capsys.readouterr().out
+    assert "names references/parts.md" in capsys.readouterr().out
 
 
 def test_a_body_over_the_word_bound_fails(repo, skills, capsys):
@@ -629,3 +681,45 @@ def test_an_at_most_that_counts_something_else_is_no_bound(repo, skills, capsys)
 def test_fenced_code_a_table_row_or_a_fix_in_another_paragraph_is_no_loop(repo, skills, text):
     conventions(repo, text)
     assert skills.main() == 0
+
+
+def test_a_scaffold_skill_name_the_standard_refuses_fails(repo, skills, capsys):
+    repo.write(copied("ops--watch"), '---\nname: ops--watch\ndescription: "Watch."\nallowed-tools: Read\n---\n')
+    assert skills.main() == 1
+    assert (
+        f"{copied('ops--watch')}: name 'ops--watch' is not lowercase words joined by one hyphen each" in capsys.readouterr().out
+    )
+
+
+def test_a_plugin_skill_name_with_a_doubled_hyphen_fails(repo, skills, capsys):
+    repo.write("skills/arch--odd/SKILL.md", '---\nname: arch--odd\ndescription: "Odd."\nallowed-tools: Read\n---\n')
+    assert skills.main() == 1
+    assert "skills/arch--odd/SKILL.md: name 'arch--odd' must match" in capsys.readouterr().out
+
+
+def test_a_scaffold_skill_path_resolves_inside_the_tree_a_copy_carries(repo, skills, capsys):
+    head = '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n---\n\n'
+    repo.write(f"{COPIED}/_shared/ops-preamble.md", "# Preamble\n")
+    repo.write(copied("ops-watch"), head + "Read `../_shared/ops-preamble.md` first.\n")
+    assert skills.main() == 0
+    repo.write(copied("ops-watch"), head + "Read `../_shared/gone.md` first.\n")
+    assert skills.main() == 1
+    assert f"{copied('ops-watch')}: reference ../_shared/gone.md does not exist" in capsys.readouterr().out
+    repo.write("scaffold/outside.md", "# Outside\n")
+    repo.write(copied("ops-watch"), head + "Read `../../../../outside.md` first.\n")
+    assert skills.main() == 1
+    assert "reference ../../../../outside.md resolves outside scaffold/acme_root" in capsys.readouterr().out
+
+
+def test_the_scaffolds_claude_skills_is_a_link_to_its_agents_skills(repo, skills, capsys, claude_link):
+    repo.write(copied("ops-watch"), '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n---\n')
+    assert skills.main() == 0
+    assert os.readlink(claude_link) == "../.agents/skills"
+    claude_link.unlink()
+    claude_link.symlink_to("../skills")
+    assert skills.main() == 1
+    assert f"{LINK}: links to '../skills'; it links to '../.agents/skills'" in capsys.readouterr().out
+    claude_link.unlink()
+    claude_link.mkdir()
+    assert skills.main() == 1
+    assert f"{LINK}: not a link" in capsys.readouterr().out
