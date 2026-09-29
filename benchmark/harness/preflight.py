@@ -9,8 +9,9 @@ key is checked against its provider's model list, which costs nothing,
 and no subject runs and no judge is asked.
 
 - `budgets`: the run has its spend cap. Every session of a skill
-  subject has its turn cap, its spend cap, and its timeout, and each
-  phase its gate-rerun cap. A session with no spend bound fails.
+  subject has its spend cap and its timeout, and each phase its
+  gate-rerun cap. A turn count is no bound, so none is needed. A session
+  with no spend cap or no timeout fails.
 - `checkout`: the checkout holds no change a commit does not, in what
   decides a score: the `dirty` that `versions.checkout` records is
   false. A rehearsal skips it: it is never checked in.
@@ -38,9 +39,16 @@ and no subject runs and no judge is asked.
 - `network`: the model API a skill calls, and the registries the
   scenario names, answer from where the subject runs.
 - `requires`: what the scenario requires works there. For `docker`, a
-  Compose stack starts, turns healthy within 120 seconds, and stops.
+  Compose stack starts, turns healthy within 120 seconds, and stops. It
+  pulls a small public image, `COMPOSE_IMAGE`, and leaves it there; no
+  other check leaves anything.
 
-A check that does not apply to the run is a `skip`, with the reason.
+A check that does not apply to the run is a `skip`, with the reason:
+`awake` off macOS, `workspace` off the vm runtime, the runtime's checks
+for a `qa` subject, which runs no command, and `checkout` for a
+rehearsal. A key is recorded by the name of its variable, never by its
+value. Like a dry run, a preflight leaves a run folder that holds
+`run.json` alone, which `make runs` refuses under `benchmark/runs/`.
 
 A run that spends holds this machine awake while it runs: on macOS the
 harness starts `caffeinate -i -s -w <its own process id>` and stops it

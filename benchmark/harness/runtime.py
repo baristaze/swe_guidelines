@@ -302,7 +302,12 @@ class BaseRuntime:
         return self.sandbox / "hidden" / (self.slot or "run") / rel
 
     def hide(self, rel: str) -> None:
-        """Move a path of the workspace out of it, when it is there; the subject is not given where it goes."""
+        """Move a path of the workspace out of it, when it is there; the subject is not given where it goes.
+
+        That keeps it out of the paths the subject is given, not out of its
+        reach: on the host and on another machine, a subject that searches
+        the machine can still find it.
+        """
         _move(self.workspace / rel, self.hidden(rel))
 
     def show(self, rel: str) -> None:
@@ -682,13 +687,28 @@ class ContainerRuntime(BaseRuntime):
 
 @dataclass
 class VmConfig:
-    """How to reach the other machine, and how to get files there and back."""
+    """How to reach the other machine, and how to get files there and back.
 
+    The runtime config names these keys, and `tools`, which the preflight
+    reads (`preflight.parse_tools`). A run with no `exec_prefix`, or one
+    that needs a plugin or a target and has neither `copy` nor the
+    override, is refused before it starts.
+    """
+
+    # The words before every command there, handed on as words.
     exec_prefix: list[str] = field(default_factory=list)
+    # Makes a copy of a staged folder there: `{local}` is the folder here,
+    # `{remote}` the path its copy takes there.
     copy: list[str] = field(default_factory=list)
+    # Optional: copy the repeat's workspace there before the subject runs,
+    # and `fetch` back after; `{local}` and `{remote}` are the two workspaces.
     sync: list[str] = field(default_factory=list)
+    # The folder there that holds the lock and the runs' folders.
     remote_workspace: str = "/tmp/benchmark-workspace"
     fetch: list[str] = field(default_factory=list)
+    # Optional: a path the operator placed there, used in place of a copy.
+    # Nothing makes it afresh and no version names it. A plugin path that is
+    # a whole checkout holds the answer files, in the subject's reach.
     remote_plugin: str | None = None
     remote_target: str | None = None
     # The names the prefix takes from this machine's environment besides

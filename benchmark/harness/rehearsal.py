@@ -32,7 +32,10 @@ never raises a bound the scenario sets:
 
 A rehearsal runs the preflight first, with the `checkout` check as a
 skip: a rehearsal is never checked in, and a change to the harness is
-worth rehearsing before it is committed. Its `run.json` and its
+worth rehearsing before it is committed. A check that fails stops it
+before it spends anything. `--rehearsal --preflight` runs that
+preflight alone, and `--rehearsal --dry-run` resolves the rehearsal and
+runs nothing. Its `run.json` and its
 `results.json` are marked `rehearsal`, and `make runs` refuses a run
 folder so marked.
 
