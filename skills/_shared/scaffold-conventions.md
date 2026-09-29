@@ -162,9 +162,10 @@ workspace. Nothing is reordered or removed.
    conformance test. That fix is the person's decision, recorded as an
    ADR.
 2. Print the guideline version, then every file created or changed,
-   one per line, from `git status --porcelain --untracked-files=all`,
-   then each command run, once, with the outcome of its last run. A stop
-   closes the output with
+   one per line, from `git status --porcelain --untracked-files=all`
+   (in a tree with no commit yet, which it lists whole, as the skill
+   wrote them), then each command run, once, with the outcome of its
+   last run. A stop closes the output with
    `Stopped: <command>: <what went wrong>; <cause>`, the cause one of:
    the count ran out, pre-existing, the machine, needs an exception.
 

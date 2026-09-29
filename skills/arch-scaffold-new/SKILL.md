@@ -120,7 +120,12 @@ states: the first run plus at most 3 reruns.
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
-with the name and where it came from first, the ADRs by number after
-the files, and then `The tree is uncommitted, and the first commit is
-the person's.` A `Stopped:` line, when there is one, still closes the
-output.
+with these differences. The name and where it came from come first.
+The copy is one line, the one `new.py` printed (its file count, the
+folder, the name, and the pin), in place of its files: nothing is
+committed, so `git status` names every copied file. After it, each file
+this skill and the skills it followed wrote or changed, one per line,
+as they wrote them; then the ADRs by number, and the database gates
+skipped when Docker did not run. Then `The tree is uncommitted, and the
+first commit is the person's.` A `Stopped:` line, when there is one,
+still closes the output.
