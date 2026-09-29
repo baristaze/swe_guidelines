@@ -33,7 +33,10 @@ groups in one line each.
 2. Find the sections and subsections that govern the question. Read
    them in full; quote the `Principle` callouts verbatim when they
    answer the question directly.
-3. Find the lenses that a reviewer would apply. Name them by id.
+3. Find the lenses that a reviewer would apply. Name them by id. When
+   a lens has a `Shape` line, name the scaffold file it points to,
+   `${CLAUDE_SKILL_DIR}/../../<path>`, and read it: it shows the rule as
+   code, and pointing at it beats describing it.
 4. When the input is a path, open the code and say, for each rule that
    applies, whether the code follows it, in one line each. Do not run
    a full review; point at `arch-review-<group>`

@@ -231,6 +231,8 @@ table class lives outside `storage/tables/`.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/media/storage`
+
 **Check.** `arch-check` decides the shape and the tables it can read;
 the rest is judged.
 
@@ -262,6 +264,8 @@ rather than as an impl (`Storage`, `PostgresStorage`), so the
 technology is not last.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/root.py`
 
 **Check.** `arch-check` decides the root's getters, `healthcheck`,
 `close`, and its two named impls; the rest is judged.
@@ -428,6 +432,8 @@ announces it twice; a key collision that escapes as a driver error.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/impl/pg_base.py`
+
 ## STO-17 Every table has one database role
 
 **Principle.** Every table belongs to one database role, the schema
@@ -447,6 +453,8 @@ foreign keys whose target is in another role.
 map. A join, foreign key, or transaction spans two roles.
 
 **Severity.** high
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/roles.py`
 
 **Check.** `arch-check` decides the role map against the table classes,
 declared schemas, and cross-role foreign keys; the rest is judged.
@@ -473,6 +481,8 @@ table of another role and the runner accepts it. A run that names no
 role and migrates a subset of the roles.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/migrations`
 
 **Check.** `arch-check` decides the file names, the pairs, the wrappers,
 the roles each file names, and that every table a migration names is
@@ -531,6 +541,10 @@ done when the bus refused its publish, or holds a work row pending on
 a wake-up that no rerun of the enqueue publishes again.
 
 **Severity.** high
+
+**Shape.**
+`scaffold/acme_root/om/src/acme/om/outbox/types/row.py`,
+`scaffold/acme_root/om/src/acme/om/media/impl/manager.py`
 
 **Check.** `arch-check` decides storage signatures outside the outbox's
 own storage that take a single outbox row; the rest is judged.
@@ -757,6 +771,8 @@ whose tenant policy is missing, so the runtime login reads across
 tenants or reads nothing; a split with no measurement recorded.
 
 **Severity.** high
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/scopes.py`
 
 **Check.** `arch-check` decides the scope map against the role map and
 the row-level security the chain leaves; the rest is judged.

@@ -174,6 +174,9 @@ domain exceptions to statuses.
 
 **Severity.** medium
 
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/gateway/errors.py`
+
 **Check.** `arch-check` decides HTTP exceptions and error statuses in
 routers and service code, and the one module per service that
 registers handlers; the rest is judged.
@@ -199,6 +202,9 @@ cache is down; a rate limit relied on as a security boundary. (A cache
 that fails closed anywhere else is ASY-06.)
 
 **Severity.** medium
+
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/gateway/ratelimit.py`
 
 ## NET-09 Creating requests accept an idempotency key
 
@@ -228,6 +234,9 @@ primitive. (What a create that issued a secret stores is NET-31. A
 sign-up has no tenant or principal to hold a marker, and is NET-35.)
 
 **Severity.** high
+
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/gateway/idempotency.py`
 
 **Check.** `arch-check` decides the idempotency dependency on every POST
 answering 201 or 202; the rest is judged.
@@ -489,6 +498,8 @@ routed by ad hoc inspection.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/apps/portal/src/realtime`
+
 ## NET-21 The channel degrades and its timeouts are pinned
 
 **Principle.** The client reconnects with exponential backoff, and
@@ -705,6 +716,9 @@ minted below the gateway or read from the header by a router, or a
 socket whose context carries none.
 
 **Severity.** medium
+
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/gateway/observability.py`
 
 ## NET-29 The data tier splits by role, never by service
 

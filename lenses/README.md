@@ -47,6 +47,8 @@ way:
 
 **Severity.** high | medium | low
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/base.py`
+
 **Check.** `arch-check` decides it.
 ```
 
@@ -70,6 +72,13 @@ them, never by number: sections are inserted and removed, and a number
 would move under a lens. A rule stated in a section's own introduction
 cites the section alone. Several citations are separated by `;`; a
 bare subsection after a `;` belongs to the section cited before it.
+
+`Shape` is optional. It names one or two files or folders of the
+scaffold, `scaffold/acme_root/<path>` in backticks, that show the rule
+as code. A review compares the code under review with them, and a
+reviewer reads the file rather than a description of it. A lens gets
+a `Shape` line where a scaffold file shows its rule plainly, not on
+every lens. `make lenses` holds each path to one that exists.
 
 `Check` is optional. It says that `arch-check`, the static checker in
 `checkers/`, decides the lens, in one of two sentences. "`arch-check`

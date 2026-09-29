@@ -22,7 +22,11 @@ Rules:
 - no line of a lens file is wider than 80 columns;
 - a lens count stated in README.md or lenses/README.md ("N lenses") equals
   the size of the catalog;
-- an optional Check field, after Severity, reads "`arch-check` decides it."
+- an optional Shape field, after Severity, names one or two files or
+  folders of the scaffold that show the rule, each a path in backticks
+  that starts `scaffold/acme_root/` and exists, separated by a comma or
+  `and`; a review compares the code with them;
+- an optional Check field, after Severity and Shape, reads "`arch-check` decides it."
   or "`arch-check` decides <part>; the rest is judged.", and agrees both
   ways with the rules `checkers/src/arch_check/rules/` registers: a lens
   with a Check line has a rule of its id with the same coverage (`full`
@@ -77,7 +81,12 @@ FIELDS = ("Principle", "Source", "Look for", "Violation", "Severity")
 SEVERITIES = {"high", "medium", "low"}
 HEADING = re.compile(r"^## ([A-Z]{2,3})-(\d{2}) (.+)$")
 OPTIONAL = "Check"
-FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Check)\.\*\*\s*(.*)$")
+SHAPE = "Shape"
+ORDERS = (list(FIELDS), [*FIELDS, SHAPE], [*FIELDS, OPTIONAL], [*FIELDS, SHAPE, OPTIONAL])
+"""The fields of a lens, in order: the five, then Shape and Check when the lens has them."""
+FIELD = re.compile(r"^\*\*(Principle|Source|Look for|Violation|Severity|Shape|Check)\.\*\*\s*(.*)$")
+SHAPE_ROOT = "scaffold/acme_root/"
+MAX_SHAPES = 2
 CHECK_FULL = "`arch-check` decides it."
 CHECK_PARTIAL = re.compile(r"^`arch-check` decides (.+); the rest is judged\.$")
 LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
@@ -422,6 +431,23 @@ def check_style(
         )
 
 
+def check_shape(value: str, path: Path, ln: int, errors: list[str]) -> None:
+    """A Shape names one or two paths of the scaffold, each in backticks and each there, and nothing else."""
+    spans = CODE_SPAN.findall(value)
+    rest = CODE_SPAN.sub("", value).strip(" ,.")
+    if not 1 <= len(spans) <= MAX_SHAPES or rest not in ("", "and"):
+        errors.append(
+            f"{path.name}:{ln}: Shape reads '{value}'; it names one or two paths under {SHAPE_ROOT}, each in backticks"
+        )
+        return
+    for span in spans:
+        target = (ROOT / span).resolve()
+        if not span.startswith(SHAPE_ROOT) or not target.is_relative_to((ROOT / SHAPE_ROOT).resolve()):
+            errors.append(f"{path.name}:{ln}: Shape names `{span}`, which is not under {SHAPE_ROOT}")
+        elif not target.exists():
+            errors.append(f"{path.name}:{ln}: Shape names `{span}`, which does not exist")
+
+
 def check_file(
     path: Path,
     known: dict[str, set[str]],
@@ -484,8 +510,10 @@ def check_file(
                 fields[-1] = (name, f"{value} {line}".strip(), ln)
             j += 1
         found = [f[0] for f in fields]
-        if found not in (list(FIELDS), [*FIELDS, OPTIONAL]):
-            errors.append(f"{where}: fields are {found}, expected {list(FIELDS)}, optionally followed by {OPTIONAL}")
+        if found not in ORDERS:
+            errors.append(
+                f"{where}: fields are {found}, expected {list(FIELDS)}, optionally followed by {SHAPE}, then {OPTIONAL}"
+            )
         check_identifiers(lens_id, fields, path, known, section_texts() if texts is None else texts, errors)
         check_style(lens_id, fields, path, known, tagged, errors)
         for name, value, ln in fields:
@@ -493,6 +521,8 @@ def check_file(
                 errors.append(f"{path.name}:{ln}: severity '{value}' is not high, medium, or low")
             if name == "Source":
                 check_source(value, path, ln, known, errors, labels)
+            if name == SHAPE:
+                check_shape(value, path, ln, errors)
             if name == "Principle" and len(value.split()) > MAX_PRINCIPLE_WORDS:
                 errors.append(f"{path.name}:{ln}: Principle is {len(value.split())} words, limit {MAX_PRINCIPLE_WORDS}")
             if name == OPTIONAL:

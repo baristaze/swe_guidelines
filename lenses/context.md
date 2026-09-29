@@ -330,6 +330,10 @@ the enumeration names.
 
 **Severity.** medium
 
+**Shape.**
+`scaffold/acme_root/pyproject.toml`,
+`scaffold/acme_root/om/tests/unit/test_storage_exceptions.py`
+
 **Check.** `arch-check` decides the docstring and the enumeration of
 every tenant-less method; the rest is judged.
 
@@ -673,6 +677,8 @@ the code for a new site.
 
 **Severity.** high
 
+**Shape.** `scaffold/acme_root/om/tests/unit/test_stage_construction.py`
+
 **Check.** `arch-check` decides every construction site in production
 code; the rest is judged.
 
@@ -784,6 +790,8 @@ write untried; a storage method added with no case of its own.
 
 **Severity.** high
 
+**Shape.** `scaffold/acme_root/om/tests/contracts/media_storage.py`
+
 ## CTX-31 The isolation suite is verified against a deliberate breach
 
 **Principle.** An isolation suite is worth what it catches, so a tenant
@@ -828,6 +836,8 @@ argument reads across tenants; a cross-tenant call the enumeration
 does not know about.
 
 **Severity.** high
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/storage/impl/pg_base.py`
 
 ## CTX-33 A cached read sits below authorization
 
