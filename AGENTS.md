@@ -102,7 +102,10 @@ cites the changed text changes with it.
   path from its own folder (`../../architecture.md`,
   `references/<file>`), never through a path one agent substitutes,
   such as `${CLAUDE_SKILL_DIR}`, and a command runs such a file by its
-  absolute path. Its arguments are "the arguments", never `$ARGUMENTS`.
+  absolute path. A skill that climbs out of its folder says the path is
+  read from the folder a link points to: the clone route links each
+  skill, and an agent that shortens `../` by hand reads the wrong file.
+  Its arguments are "the arguments", never `$ARGUMENTS`.
 - Every plugin skill's `name` equals its folder name and starts with
   `arch-`, and its `allowed-tools` names only what its body runs.
   `scripts/check_skills.py` holds the frontmatter and the paths; the

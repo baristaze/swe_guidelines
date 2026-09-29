@@ -9,8 +9,8 @@ allowed-tools: Read, Grep, Glob
 Answer a question about the architecture with the guideline as the
 source of truth, not with general opinion. The guideline is at
 `../../architecture.md` and the lens catalog at `../../lenses/`, paths
-from this skill's folder. If either is missing, stop and say the
-installation is incomplete.
+from this skill's folder, through its link when it is one. If either is
+missing, stop and say the installation is incomplete.
 
 ## Input
 

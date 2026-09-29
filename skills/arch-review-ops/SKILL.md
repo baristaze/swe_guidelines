@@ -9,10 +9,10 @@ allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git sho
 Judge the code from one perspective only: the lenses in
 `../../lenses/ops.md`. Other perspectives have their own skills; do
 not borrow their rules, and do not flag anything a lens in this file
-does not name. The guideline itself is at `../../architecture.md` when
-a lens needs its source read in full. A path that starts with `../` is
-read from this skill's folder. If either file is missing, stop and say
-the installation is incomplete.
+does not name. The guideline itself is at `../../architecture.md` when a
+lens needs its source read in full. A path that starts with `../` is
+read from this skill's folder, through its link when it is one. If
+either file is missing, stop and say the installation is incomplete.
 
 This pass covers Operations, Documentation as Code: roles, credentials, ops skills, alarms, scale-out, cost, environments, traffic, READMEs.
 

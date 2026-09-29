@@ -8,16 +8,16 @@ disable-model-invocation: true
 # arch-benchmark-browser
 
 Ask four products the same question and keep the answers with their
-proof. The prompt, the contract, the size map, and the schema live at
+proof. The prompt, contract, size map, and schema live at
 `../../benchmark/browser/` and
 `../../benchmark/schema/browser-session.schema.json`, paths from this
-skill's folder.
-If any is missing, stop and say the installation is incomplete.
+skill's folder, through its link when it is one. If any is missing, stop
+and say the installation is incomplete.
 
 ## Input
 
-The arguments name two sizes, `model=<size> effort=<size>`, each one of
-`xs`, `s`, `m`, `l`, `xl`. When one is missing, it is `m`. It may also
+The arguments name two sizes, `model=<size> effort=<size>`, each of
+`xs`, `s`, `m`, `l`, `xl`. A missing one is `m`. It may also
 name a subset of sites (`sites=claude.ai,gemini.google.com`); the
 default is all four. It may ask for a comparison with earlier runs:
 `compare=<run_id>,<run_id>` names them, and `compare=all` means every
