@@ -80,11 +80,15 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    defect of the scaffold: stop with the cause pre-existing, name the
    gate, and change nothing.
 3. Tell whether Docker runs: `docker info` exits 0 when it does. When
-   it runs, settle the local stack's host ports before any stack
-   starts. They are knobs, `<NAME>_<SERVICE>_PORT`, and `.env.example`
-   lists them with the URL knobs that name them. Check each with
-   `lsof -i :<port>`. For each that is taken, set a free one in `.env`,
-   with every URL knob that names it, and never stop what holds it.
+   it runs, settle the local ports before any stack starts. Copy
+   `.env.example` whole to `.env`, as `make up` does. Then check every
+   port knob in it with `lsof -i :<port>`: the compose stack's
+   (`<NAME>_POSTGRES_PORT` and the rest) and the host processes'
+   (`<NAME>_PORT`, `<NAME>_METRICS_PORT`, `<NAME>_COLLECTOR_SCRAPE_PORT`,
+   and any other `_PORT` knob the file holds). For each that is taken,
+   set a free one in `.env`, with every URL knob that names it, and
+   never stop what holds it. The compose project is the product's name;
+   `COMPOSE_PROJECT_NAME` in `.env` sets another.
    When Docker does not run, the database targets of this skill and of
    the skills it follows (`make infra-up`, `make migrate`,
    `make migrate-check`, `make test-integration`) are skipped, and the
