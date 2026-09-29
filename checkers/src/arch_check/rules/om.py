@@ -616,14 +616,17 @@ ID_PACKAGES = frozenset({"uuid6", "uuid_extensions", "uuid_utils", "ulid", "shor
 @rule(
     "OM-12",
     coverage="partial",
-    summary="Above storage, no id factory but new_id(): no uuid1/3/4/5, and uuid7 only in the base module.",
+    summary="Above storage, no id factory but new_id() and derived_id(): no uuid1/3/4/5, and uuid7 only in the base module.",
 )
 def ids_are_minted_by_new_id(project: Project) -> Iterator[Violation]:
     """Under `<pkg>.om`, `<pkg>.services`, and `<pkg>.workers`: no import
     or call of `uuid1`, `uuid3`, `uuid4`, or `uuid5`, no import of a
     third-party id package, and `uuid7` only in the base module, behind
-    `new_id()`. An entity built without an id, and an id minted in a
-    storage impl through `new_id()`, are judged."""
+    `new_id()`. `derived_id()`, in the base module too, builds its v7
+    from a delivery's key and calls no factory. An entity built without
+    an id, an id minted in a storage impl through `new_id()`, and a
+    caller of `derived_id()` that no outside delivery drives, are
+    judged."""
     idx = index(project)
     for file, tree in project.trees(*above_storage(project)):
         in_base = file.module == idx.base_module

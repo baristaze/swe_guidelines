@@ -598,6 +598,35 @@ def test_a_client_minting_an_idempotency_key_is_not_om_12(tmp_path):
     assert code == 0
 
 
+DERIVED_ID = """
+
+def derived_id(key: UUID, at: datetime, part: str = "") -> UUID:
+    millis = int(at.timestamp() * 1000) & ((1 << 48) - 1)
+    tail = int.from_bytes(hashlib.sha256(key.bytes + part.encode()).digest()[:10], "big")
+    value = (millis << 80) | (0x7 << 76) | ((tail >> 68) << 64) | (0b10 << 62) | (tail & ((1 << 62) - 1))
+    return UUID(int=value)
+"""
+
+DELIVERY_HANDLER = """\
+from datetime import datetime
+from uuid import UUID
+
+from acme.om.base import derived_id
+
+
+def entry_id(delivery_key: UUID, delivered_at: datetime) -> UUID:
+    return derived_id(delivery_key, delivered_at)
+"""
+
+
+def test_an_id_derived_from_a_delivery_passes_every_om_rule(tmp_path):
+    # the one id not minted fresh: a v7 built in the base module from the delivery's key
+    worker = "workers/maintenance/src/acme/workers/maintenance/deliveries.py"
+    project(tmp_path, {BASE: "import hashlib\n" + BASE_SOURCE + DERIVED_ID, worker: DELIVERY_HANDLER})
+    code, out, err = check(tmp_path, "--group", "om")
+    assert code == 0, out + err
+
+
 # --- OM-13
 
 

@@ -291,25 +291,29 @@ every class on the chain; the rest is judged.
 
 **Principle.** Every id is a time-ordered `uuid_v7` produced by
 `new_id()` by whoever constructs the entity, always above the storage
-layer.
+layer. A record an outside delivery creates takes `derived_id(key, at)`
+instead: a v7 whose time is the delivery's and whose random bits come
+from the delivery's key, so a copy handled again presents the same id.
 
 **Source.** Naming Entities, Identifiers.
 
 **Look for.** Where entity ids are created and which factory produces
 them; entity constructions that leave `id` for a lower layer to fill;
-any `uuid4()` or other generator imported by OM or service code.
+any `uuid4()` or other generator imported by OM or service code; each
+caller of `derived_id()` and the key it passes.
 
 **Violation.** `uuid4()` used for an entity id; an entity constructed
 without an id on the assumption that storage will assign one; an id
-minted inside a storage impl or assigned by the database. The id a
-creating `POST` mints before its idempotency marker, ahead of the
-entity, is that protocol and not a breach (NET-24). (Ids read back out
-of the database are STO-06.)
+minted inside a storage impl or assigned by the database; `derived_id()`
+for a record no outside delivery creates, or over a key other than the
+delivery's. The id a creating `POST` mints before its idempotency
+marker, ahead of the entity, is that protocol and not a breach (NET-24).
+(Ids read back out of the database are STO-06.)
 
 **Severity.** medium
 
-**Check.** `arch-check` decides every id factory but `new_id()` above
-storage; the rest is judged.
+**Check.** `arch-check` decides every id factory but `new_id()` and
+`derived_id()` above storage; the rest is judged.
 
 ## OM-13 EMPTY_UUID means the platform, and optional means None
 

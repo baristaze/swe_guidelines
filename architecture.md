@@ -390,7 +390,12 @@ lease needs no more than near the truth
 
 Whoever constructs the entity mints its id, above the storage layer,
 with `new_id()`. The database never assigns one, and nothing reads one
-back.
+back. A record an outside delivery creates is the one exception. Its id
+is `derived_id(key, at)`: a v7 whose time is the delivery's and whose
+random bits come from the delivery's key
+([`base.py`](scaffold/acme_root/om/src/acme/om/base.py)). A copy the
+queue hands over again presents the same id, so its create meets the
+row already there and creates nothing.
 
 `EMPTY_UUID`, the zero UUID, means the platform: not a tenant and not a
 person. It is the `org_id` of cross-tenant reference data, and the value
@@ -399,8 +404,9 @@ item the platform claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
-> `new_id()`. The order is for the index; the time is a field, save
-> for the one lease that reads an attempt's id.
+> `new_id()`, or with `derived_id()` for a record an outside delivery
+> creates. The order is for the index; the time is a field, save for
+> the one lease that reads an attempt's id.
 
 ## Namespaces as Swimlanes
 
