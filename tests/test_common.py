@@ -106,7 +106,9 @@ def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
         ".venv/lib/README.md",
         ".git/x.md",
         ".claude/worktrees/agent-1/architecture.md",
-        "benchmark/runs/one/report.md",
+        "benchmark/runs/one/20260101-000000-one-aa/report.md",
+        "benchmark/runs/one/README.md",
+        "benchmark/runs/README.md",
         "benchmark/README.md",
         "docs/notes.txt",
     ]:
@@ -116,7 +118,8 @@ def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
     assert "benchmark/README.md" in found
     assert not {f for f in found if f.split("/")[0] in {"node_modules", ".pytest_cache", ".venv", ".git", ".claude"}}
     assert "docs/node_modules/pkg/README.md" not in found
-    assert "benchmark/runs/one/report.md" not in found
+    assert "benchmark/runs/one/20260101-000000-one-aa/report.md" not in found  # a run folder is a record
+    assert {"benchmark/runs/README.md", "benchmark/runs/one/README.md"} <= found  # the index and a scenario's page are not
     assert "docs/notes.txt" not in found
 
 

@@ -72,16 +72,17 @@ def test_a_file_at_any_depth_of_a_scoped_directory_is_scanned(repo, leaks, capsy
 
 
 def test_benchmark_runs_and_files_outside_every_scope_are_not_scanned(repo, leaks):
-    repo.write("benchmark/runs/one/report.md", "# Run\n\nThe firmware.\n")
+    repo.write("benchmark/runs/one/20260101-000000-one-aa/report.md", "# Run\n\nThe firmware.\n")
     repo.write("CHANGELOG.md", "# Changelog\n\nThe firmware, previously.\n")
     repo.write("docs/node_modules/pkg/README.md", "# Pkg\n\nThe firmware.\n")
     assert leaks.main() == 0
 
 
-def test_the_index_of_the_benchmark_runs_is_scanned(repo, leaks, capsys):
-    repo.write("benchmark/runs/README.md", "# Benchmark runs\n\nThe firmware.\n")
+@pytest.mark.parametrize("rel", ["benchmark/runs/README.md", "benchmark/runs/one/README.md"])
+def test_the_index_and_a_scenario_s_page_of_the_benchmark_runs_are_scanned(repo, leaks, capsys, rel):
+    repo.write(rel, "# Benchmark runs\n\nThe firmware.\n")
     assert leaks.main() == 1
-    assert "benchmark/runs/README.md:3: product term 'firmware'" in capsys.readouterr().out
+    assert f"{rel}:3: product term 'firmware'" in capsys.readouterr().out
 
 
 def test_product_term_fails_in_agents_md(repo, leaks, capsys):
@@ -156,6 +157,7 @@ def test_reference_name_is_allowed_in_the_scenario_that_judges_against_it(repo, 
         "benchmark/scenarios/review-om.yaml",
         "benchmark/scenarios/create-full-system.json",
         "benchmark/runs/README.md",
+        "benchmark/runs/create-full-system/README.md",
     ],
 )
 def test_reference_name_fails_beside_that_scenario(repo, leaks, capsys, rel):

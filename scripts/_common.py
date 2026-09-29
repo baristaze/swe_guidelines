@@ -18,9 +18,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # packages, Claude Code's own folder (agent worktrees live under
 # .claude/worktrees/), and the benchmark run folders, which hold what a
 # run recorded, not the manual. A directory name is skipped at any depth.
-# A path in SKIP_PATHS is read from the root, and the folders inside it are
-# skipped while its own files are not: benchmark/runs/README.md, the index
-# of the runs, is written by hand and checked like the manual.
+# A path in SKIP_PATHS is read from the root. Its own files, and those of
+# the folders directly inside it, are kept, and anything deeper is
+# skipped: benchmark/runs/README.md, the index of the runs, and each
+# scenario's benchmark/runs/<scenario>/README.md are written by hand and
+# checked like the manual, and the run folders inside those are records.
 SKIP_DIRS = {".git", ".claude", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".markdownlint-cli2-cache"}
 SKIP_PATHS = {("benchmark", "runs")}
 
@@ -34,7 +36,7 @@ def skipped(parts: Sequence[str]) -> bool:
     """Whether a file, by the parts of its path from the root, is left out of the repository's files."""
     if any(part in SKIP_DIRS for part in parts[:-1]):
         return True
-    return any(tuple(parts[: len(skip)]) == skip and len(parts) > len(skip) + 1 for skip in SKIP_PATHS)
+    return any(tuple(parts[: len(skip)]) == skip and len(parts) > len(skip) + 2 for skip in SKIP_PATHS)
 
 
 def markdown_files(root: Path) -> list[Path]:

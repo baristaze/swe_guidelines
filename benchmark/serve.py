@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Serve a runs folder: the reports, the command line as it happens, the frames.
+"""Serve a runs root: the reports, the command line as it happens, the frames.
 
     uv run benchmark/serve.py --runs benchmark/runs --port 8765
+
+A runs root holds a folder per scenario, and each of those its run
+folders, as `run.py` writes them. A run is named by its folder's name,
+which holds its start and its scenario and is unique.
 
 Standard library only, so it starts with no install and no network of
 its own. It reads; it never writes and never starts a run. The files it
@@ -11,7 +15,7 @@ costs nothing and nothing is lost by watching late.
 Routes:
 
 - `GET /` an index page listing the runs
-- `GET /runs` the runs as JSON
+- `GET /runs` the runs as JSON, each with its scenario
 - `GET /runs/<id>/report.md`, `/results.json`, `/run.json` the files
 - `GET /runs/<id>/streams/cli` the command line as `text/event-stream`
 - `GET /runs/<id>/streams/browser.mjpeg` the frame folder as MJPEG
@@ -52,13 +56,21 @@ SECURITY_HEADERS = {
 }
 
 
+def run_dirs(folder: Path) -> list[Path]:
+    """Every run folder under a runs root, in the folders of the scenarios, newest name first."""
+    scenarios = [p for p in folder.iterdir() if p.is_dir()] if folder.is_dir() else []
+    found = [run for scenario in scenarios for run in scenario.iterdir() if run.is_dir()]
+    return sorted(found, key=lambda p: (p.name, p.parent.name), reverse=True)
+
+
 def runs_of(folder: Path) -> list[dict]:
-    """Every run folder, newest name first, with what it holds."""
+    """Every run folder, newest name first, with its scenario and what it holds."""
     out = []
-    for path in sorted((p for p in folder.iterdir() if p.is_dir()), reverse=True) if folder.is_dir() else []:
+    for path in run_dirs(folder):
         out.append(
             {
                 "id": path.name,
+                "scenario": path.parent.name,
                 "report": (path / "report.md").exists(),
                 "results": (path / "results.json").exists(),
                 "streams": sorted(p.name for p in (path / "streams").iterdir()) if (path / "streams").is_dir() else [],
@@ -114,7 +126,7 @@ WILDCARD = {"0.0.0.0", "::", ""}
 
 
 class RunsServer(ThreadingHTTPServer):
-    """The server, holding the runs folder its handlers serve."""
+    """The server, holding the runs root its handlers serve."""
 
     def __init__(self, address: tuple[str, int], runs: Path) -> None:
         super().__init__(address, Handler)
@@ -153,7 +165,7 @@ class RunsServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    """One request. The runs folder is set on the server."""
+    """One request. The runs root is set on the server."""
 
     server_version = "benchmark-serve/1"
 
@@ -180,9 +192,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _run_dir(self, name: str) -> Path | None:
         """The run folder of a name, or None when the name is not one."""
-        if name not in {r["id"] for r in runs_of(self.runs)}:
-            return None
-        return self.runs / name
+        return next((path for path in run_dirs(self.runs) if path.name == name), None)
 
     def do_GET(self) -> None:
         assert isinstance(self.server, RunsServer)
@@ -227,7 +237,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _index(self) -> None:
         rows = "\n".join(
-            f"<li><code>{html.escape(r['id'])}</code> "
+            f"<li><code>{html.escape(r['scenario'])}</code> <code>{html.escape(r['id'])}</code> "
             f'<a href="/runs/{html.escape(r["id"])}/report.md">report</a> '
             f'<a href="/runs/{html.escape(r["id"])}/results.json">results</a> '
             f'<a href="/runs/{html.escape(r["id"])}/streams/cli">command line</a></li>'
@@ -282,8 +292,8 @@ def serve(runs: Path, port: int, host: str = "127.0.0.1") -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="benchmark/serve.py", description="Serve a benchmark runs folder.")
-    parser.add_argument("--runs", default=str(Path(__file__).resolve().parent / "runs"), help="the runs folder to serve")
+    parser = argparse.ArgumentParser(prog="benchmark/serve.py", description="Serve a benchmark runs root.")
+    parser.add_argument("--runs", default=str(Path(__file__).resolve().parent / "runs"), help="the runs root to serve")
     parser.add_argument("--port", type=int, default=8765, help="the port to listen on")
     parser.add_argument("--host", default="127.0.0.1", help="the address to bind")
     args = parser.parse_args(argv)

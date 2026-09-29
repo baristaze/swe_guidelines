@@ -72,7 +72,7 @@ def test_link_that_leaves_the_repository_fails(repo, links, capsys, target):
 
 def test_caches_and_benchmark_runs_are_not_scanned(repo, links):
     repo.write(".pytest_cache/README.md", "# Cache\n\n[x](missing.md)\n")
-    repo.write("benchmark/runs/one/report.md", "# Run\n\n[x](missing.md)\n")
+    repo.write("benchmark/runs/one/20260101-000000-one-aa/report.md", "# Run\n\n[x](missing.md)\n")
     assert links.main() == 0
     repo.write("benchmark/sub/x.md", "# Deep\n\n[x](missing.md)\n")
     assert links.main() == 1
@@ -84,6 +84,15 @@ def test_the_index_of_the_benchmark_runs_is_scanned(repo, links, capsys):
     assert links.main() == 1
     out = capsys.readouterr().out
     assert "two/report.md" in out and "one/report.md" not in out
+
+
+def test_a_scenario_s_page_of_the_benchmark_runs_is_scanned(repo, links, capsys):
+    repo.write("benchmark/runs/one/20260101-000000-one-aa/report.md", "# Run\n")
+    page = "# one\n\n[aa](20260101-000000-one-aa/report.md) [bb](20260102-000000-one-bb/report.md)\n"
+    repo.write("benchmark/runs/one/README.md", page)
+    assert links.main() == 1
+    out = capsys.readouterr().out
+    assert "20260102-000000-one-bb/report.md" in out and "20260101-000000-one-aa/report.md" not in out
 
 
 def test_external_links_are_not_fetched(repo, links):

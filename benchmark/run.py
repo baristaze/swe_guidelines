@@ -21,14 +21,15 @@
       --rehearsal --out /tmp/rehearsals
     uv run benchmark/run.py --scenario create-full-system --runtime-config benchmark/runtime/lima/runtime-config.yaml \
       --with extras
-    uv run benchmark/run.py judge --source benchmark/runs/<run folder> --dry-run
-    uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold --dry-run
+    uv run benchmark/run.py judge --source benchmark/runs/<scenario>/<run folder> --dry-run
+    uv run benchmark/run.py resume --source benchmark/runs/<scenario>/<run folder> --after scaffold --dry-run
     uv run benchmark/run.py list
 
-Everything a run produced lands in one folder under `--out`: the
-resolved scenario, the streams as they were written, the artifact, one
-file per judgement, and an agentic judge's transcript beside it,
-`results.json` in the schema, and `report.md`.
+Everything a run produced lands in one run folder, in its scenario's
+folder under `--out`, the runs root: the resolved scenario, the streams
+as they were written, the artifact, one file per judgement, and an
+agentic judge's transcript beside it, `results.json` in the schema, and
+`report.md`.
 
 `--preflight` resolves the run as `--dry-run` does, then checks what it
 needs, where it runs, before it spends anything (`harness/preflight.py`).
@@ -40,6 +41,11 @@ of by default.
 `judge --source <run folder>` judges an earlier run's archived output
 again with this checkout's judges, and runs no subject: the judgement
 lands in a new run folder beside the source.
+
+A run that judges or resumes another continues it: its `results.json`
+and its report carry the chain it ends, each run folder from the first
+with every stage it ran and what it spent, and the total
+(`harness/chain.py`).
 
 `resume --source <run folder> [--after <phase>]` starts a new run from
 a phase's milestone: it restores what that phase left into a fresh
@@ -74,6 +80,7 @@ if str(BENCHMARK) not in sys.path:
     sys.path.insert(0, str(BENCHMARK))
 
 from harness import archive as A  # noqa: E402
+from harness import chain as CH  # noqa: E402
 from harness import evidence as E  # noqa: E402
 from harness import judge as J  # noqa: E402
 from harness import phases as PH  # noqa: E402
@@ -151,22 +158,40 @@ def subject_env(scn: S.Scenario, source: dict[str, str] | None = None) -> dict[s
     return RT.scrub(env, source)[0]
 
 
-def new_run_dir(out: Path, scenario: str) -> tuple[str, Path]:
-    """A run folder no other run has, and its name.
+def new_run_dir(folder: Path, scenario: str) -> tuple[str, Path]:
+    """A run folder no other run has, made in `folder`, and its name.
 
     The name starts with the second and the scenario, so the folders sort
     by time. A random suffix tells apart two runs of one scenario started
     in the same second, and the folder is created only when it is not
     there yet, so no run ever writes into another's.
     """
-    out.mkdir(parents=True, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
     while True:
         run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{scenario}-{uuid.uuid4().hex[:8]}"
         try:
-            (out / run_id).mkdir()
+            (folder / run_id).mkdir()
         except FileExistsError:
             continue
-        return run_id, out / run_id
+        return run_id, folder / run_id
+
+
+def runs_folder(out: str | None, scenario: str, source: Path | None = None) -> Path:
+    """The folder a new run folder goes in: its scenario's folder under the runs root `--out` names.
+
+    With no `--out`, the root is `benchmark/runs`, and a run that judges or
+    resumes another goes beside it, in its source's folder, so a chain
+    stays in one folder.
+    """
+    if out:
+        return Path(out).resolve() / scenario
+    return source.parent if source is not None else DEFAULT_OUT / scenario
+
+
+def chain_of(source: Path, run: R.RunResult) -> dict[str, Any]:
+    """The chain a run that continues `source` ends: the folders of the source's chain, then this run (`harness.chain`)."""
+    folders, broken = CH.lineage(source)
+    return CH.chain([*[(f.name, CH.record(f)) for f in folders], (run.run_id, run.as_dict())], broken)
 
 
 def git_sha(path: Path) -> str:
@@ -1087,7 +1112,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="run",
         choices=["run", "judge", "resume", "list", "redact"],
         help="run a scenario, judge a run's archived output again, resume a run from a phase's milestone, "
-        "list what there is, or redact every key from the run folders under --out",
+        "list what there is, or redact every key from the run folders under the runs root --out names",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument(
@@ -1136,7 +1161,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out",
         default=None,
-        help="folder the run folders are written under; benchmark/runs, and for judge and resume the source's folder",
+        help="the runs root: a run folder goes in <out>/<scenario>/; benchmark/runs by default, "
+        "and judge and resume write beside the source when it is not given",
     )
     parser.add_argument(
         "--claude", default=os.environ.get("CLAUDE_BIN", "claude"), help="the Claude Code binary the subject runs"
@@ -1292,7 +1318,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"the target {target} is not a folder", file=sys.stderr)
         return 2
 
-    run_id, run_dir = new_run_dir(out, scn.name)
+    run_id, run_dir = new_run_dir(runs_folder(args.out, scn.name), scn.name)
 
     config: dict = {}
     if args.runtime_config:
@@ -1767,6 +1793,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     run.notes = notes
     if args.rehearsal:
         run.rehearsal = RH.outcome(scn, run.repeats, bool(failed_subjects), budget.cap, archived, held=held)
+    if resume is not None:
+        run.chain = chain_of(resume.folder, run)
     data, problems = write_record(run, run_dir)
     summary = data["summary"]
     if problems:
@@ -1955,8 +1983,7 @@ def command_judge(args: argparse.Namespace) -> int:
     cap = args.max_spend_usd if args.max_spend_usd is not None else S.judging_cap(scn, len(judged), len(P.members(flags)))
     if resolved.get("rehearsal") and cap is not None:
         cap = min(cap, RH.MAX_SPEND_USD)
-    out = Path(args.out).resolve() if args.out else source.parent
-    run_id, run_dir = new_run_dir(out, scn.name)
+    run_id, run_dir = new_run_dir(runs_folder(args.out, scn.name, source), scn.name)
     sandbox = RT.new_sandbox()
     try:
         # A run that can spend holds this machine awake until it ends; a dry run does not.
@@ -2144,6 +2171,7 @@ def judge_again(
         if key in origin:
             origin[key] = [g for g in origin[key] if g["repeat"] in origin["repeats"]]
     run.notes = notes
+    run.chain = chain_of(source, run)
     data, problems = write_record(run, run_dir)
     if problems:
         return 5
@@ -2336,13 +2364,14 @@ class Resume:
     `scenario` holds every phase the source took, which the judges are
     told of. `origin` is what `run.json` and `results.json` name the
     source by. `repeats` holds each repeat resumed, by the number it had
-    in the source, with its milestone.
+    in the source, with its milestone. `folder` is the source's run folder.
     """
 
     scenario: S.Scenario
     after: str
     origin: dict[str, Any]
     repeats: dict[int, Milestone]
+    folder: Path
 
     def says(self, scn: S.Scenario, cap: float | None) -> str:
         """One line on what the run resumes and what it may spend, for the console."""
@@ -2524,10 +2553,9 @@ def command_resume(args: argparse.Namespace) -> int:
         "refused": refused,
         "capped": [],
     }
-    out = Path(args.out).resolve() if args.out else source.parent
-    run_id, run_dir = new_run_dir(out, scn.name)
+    run_id, run_dir = new_run_dir(runs_folder(args.out, scn.name, source), scn.name)
     effort = args.effort or scn.judges.effort
-    resume = Resume(whole, after, origin, resumed)
+    resume = Resume(whole, after, origin, resumed, source)
     return launch(
         args,
         scn,
@@ -2723,8 +2751,7 @@ def resume_judges(
         flags = P.Provider(0)
         for plan in plans.values():
             flags |= plan.run
-        out = Path(args.out).resolve() if args.out else source.parent
-        run_id, run_dir = new_run_dir(out, scn.name)
+        run_id, run_dir = new_run_dir(runs_folder(args.out, scn.name, source), scn.name)
         each = "; ".join(
             f"repeat {i} runs {', '.join(P.name(p) for p in P.members(c.run)) or 'no judge'} and carries "
             f"{', '.join(j.provider for j in c.carried) or 'none'}"
