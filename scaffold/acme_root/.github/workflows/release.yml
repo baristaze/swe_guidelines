@@ -1,0 +1,129 @@
+# The only way `release` moves: a fast-forward to the last commit staging
+# deployed, dispatched by a person. That is `main`'s tip only when its
+# staging deploy has finished and passed; a commit still deploying, or one
+# whose deploy failed, is never released. Each deploy-staging run is named
+# by the commit it deploys, and the newest run whose apply succeeded names
+# the target. The push is refused when `release` is not an
+# ancestor of `main` (someone committed to it), and git itself refuses a push
+# that is not a fast-forward. A pull request into `release` fails the
+# `no pull request into release` check, so nobody merges into it either.
+#
+# The push is made with the `RELEASE_DEPLOY_KEY` secret when it is set: a
+# deploy key with write access, listed as a bypass actor of the ruleset that
+# locks `release` (the runbook says how), and a push with it fires the push
+# event deploy-production.yml listens for. Without the secret the push is
+# made with the workflow's own token, which a ruleset cannot exempt and whose
+# pushes fire no workflow, so the job dispatches deploy-production.yml itself.
+name: release
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  no_pull_request_into_release:
+    name: no pull request into release
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::nothing merges into release. It moves only by a fast-forward from main: dispatch the release workflow on main."
+          exit 1
+
+  fast_forward:
+    name: fast-forward release to main
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: dispatched on main
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::dispatch the release workflow on main, not $REF"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: release is an ancestor of the last commit staging deployed
+        id: refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --quiet origin main
+          git fetch --quiet origin release || true
+          # The newest deploy-staging run on main that succeeded whole, its
+          # smoke test included, and whose apply job succeeded. A run where the
+          # cloud was not configured succeeds with that job skipped, and does
+          # not count.
+          main=""
+          for run in $(gh run list --workflow deploy-staging.yml --branch main --status success \
+              --limit 30 --json databaseId -q '.[].databaseId'); do
+            applied="$(gh run view "$run" --json jobs \
+              -q '[.jobs[] | select(.name == "plan and apply staging, migrate, and publish") | .conclusion] | first // ""')"
+            [ "$applied" = "success" ] || continue
+            main="$(gh run view "$run" --json displayTitle -q '.displayTitle' | awk '{ print $NF }')"
+            break
+          done
+          if [ -z "$main" ] || ! git cat-file -e "$main^{commit}" 2>/dev/null; then
+            echo "::error::no deploy-staging run on main has applied staging yet; there is nothing a release may take."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$main" origin/main; then
+            echo "::error::the last commit staging deployed ($main) is not on main."
+            exit 1
+          fi
+          echo "The last commit staging deployed is \`$main\` (main is at \`$(git rev-parse origin/main)\`)." >> "$GITHUB_STEP_SUMMARY"
+          echo "main=$main" >> "$GITHUB_OUTPUT"
+          if ! git rev-parse --verify --quiet origin/release >/dev/null; then
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+            echo "release does not exist yet; it will be created at \`$main\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          release="$(git rev-parse origin/release)"
+          if [ "$release" = "$main" ]; then
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+            echo "release is already at \`$main\`; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$release" "$main"; then
+            echo "::error::release ($release) is not an ancestor of main ($main): someone committed to release. Reset it to a main commit by hand (the runbook), then dispatch again."
+            exit 1
+          fi
+          echo "moved=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "release moves from \`$release\` to \`$main\`:"
+            echo ""
+            git log --oneline "$release..$main" | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: push the fast-forward
+        if: steps.refs.outputs.moved == 'true'
+        env:
+          MAIN: ${{ steps.refs.outputs.main }}
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -n "$RELEASE_DEPLOY_KEY" ]; then
+            key="$(mktemp)"
+            printf '%s\n' "$RELEASE_DEPLOY_KEY" > "$key"
+            GIT_SSH_COMMAND="ssh -i $key -o StrictHostKeyChecking=accept-new" \
+              git push "git@github.com:$REPOSITORY.git" "$MAIN:refs/heads/release"
+            rm -f "$key"
+            echo "Pushed with the deploy key; the push starts deploy-production." >> "$GITHUB_STEP_SUMMARY"
+          else
+            git push origin "$MAIN:refs/heads/release"
+            gh workflow run deploy-production.yml --ref release
+            echo "Pushed with the workflow token, which fires no push event; deploy-production was dispatched on release." >> "$GITHUB_STEP_SUMMARY"
+          fi

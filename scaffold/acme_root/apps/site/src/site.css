@@ -1,0 +1,348 @@
+/* The site's look. The tokens are the portal's own (theme.css), so the page
+   and the product are one palette, one accent, one light and one dark; the
+   font is the same Inter, bundled, so the page loads nothing from another
+   origin. What is below is layout and the few components a landing page
+   needs. Dark follows the system: the page has no script to toggle it. */
+@import "@fontsource-variable/inter";
+@import "../../portal/src/design/theme.css";
+
+:root {
+  --site-column: 1120px;
+  --site-gutter: clamp(16px, 4vw, 40px);
+  --site-glow: rgba(82, 80, 214, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --site-glow: rgba(109, 107, 240, 0.22);
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--acme-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.column {
+  max-width: var(--site-column);
+  margin: 0 auto;
+  padding: 0 var(--site-gutter);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip:focus {
+  left: 16px;
+  top: 12px;
+  z-index: 50;
+  background: var(--acme-surface);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+/* The mark: the portal's check in the accent square. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--acme-text);
+  font-weight: 650;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.mark-fill {
+  fill: var(--acme-accent);
+}
+
+.mark-check {
+  fill: none;
+  stroke: var(--acme-accent-text);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Buttons, after the portal's kit. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 16px;
+  font-size: 15px;
+  font-weight: 560;
+  line-height: 22px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.button:hover {
+  text-decoration: none;
+}
+
+.button:active {
+  transform: translateY(0.5px);
+}
+
+.button[data-size="lg"] {
+  min-height: 46px;
+  padding: 10px 22px;
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+.button[data-tone="accent"] {
+  background: var(--acme-accent);
+  color: var(--acme-accent-text);
+  box-shadow: var(--acme-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.button[data-tone="accent"]:hover {
+  background: var(--acme-accent-hover);
+}
+
+.button[data-tone="plain"] {
+  background: var(--acme-surface);
+  color: var(--acme-text);
+  border-color: var(--acme-border-strong);
+  box-shadow: var(--acme-shadow-sm);
+}
+
+.button[data-tone="plain"]:hover {
+  background: var(--acme-surface-subtle);
+}
+
+.button[data-tone="ghost"] {
+  color: var(--acme-text);
+}
+
+.button[data-tone="ghost"]:hover {
+  background: var(--acme-surface-subtle);
+}
+
+/* The bar: sticky, blurred, like the portal's. */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--acme-border);
+}
+
+.bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--acme-topbar);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+}
+
+.bar-inner {
+  max-width: var(--site-column);
+  margin: 0 auto;
+  padding: 12px var(--site-gutter);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.bar-links {
+  display: flex;
+  gap: 24px;
+  margin-right: auto;
+  margin-left: 16px;
+}
+
+.bar-links a {
+  color: var(--acme-muted);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.bar-links a:hover {
+  color: var(--acme-text);
+  text-decoration: none;
+}
+
+.bar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* The hero. */
+.hero {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(72px, 14vw, 160px) 0 clamp(72px, 12vw, 144px);
+  overflow: hidden;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto;
+  height: 720px;
+  z-index: -1;
+  background: radial-gradient(closest-side, var(--site-glow), transparent);
+  pointer-events: none;
+}
+
+.hero-inner {
+  max-width: 820px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: clamp(38px, 6.4vw, 64px);
+  line-height: 1.05;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 24px auto 0;
+  max-width: 640px;
+  color: var(--acme-muted);
+  font-size: clamp(17px, 2vw, 19px);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+/* The footer. */
+.footer {
+  border-top: 1px solid var(--acme-border);
+  padding: 32px 0 48px;
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.footer-line {
+  color: var(--acme-muted);
+  font-size: 14px;
+  margin-right: auto;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 14px;
+}
+
+.footer-links a {
+  color: var(--acme-muted);
+}
+
+.footer-links a:hover {
+  color: var(--acme-text);
+}
+
+/* The page a missing address gets. */
+.missing {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.missing h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.missing p {
+  color: var(--acme-muted);
+  max-width: 420px;
+}
+
+.missing .hero-actions {
+  margin-top: 8px;
+}
+
+/* Narrower windows. */
+@media (max-width: 760px) {
+  .bar-links {
+    display: none;
+  }
+
+  .bar-inner {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .bar-actions .button[data-tone="ghost"] {
+    padding: 7px 10px;
+  }
+
+  .hero-actions .button {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

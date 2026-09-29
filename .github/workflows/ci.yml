@@ -88,3 +88,56 @@ jobs:
         run: make test
       - name: build the wheel and run the arch-check entry point from it
         run: make checkers-dist
+
+  scaffold:
+    # A copy of the scaffold, made the way a project starts, passes its own
+    # gates: the fast gate, the integration suite over its compose stack,
+    # and arch-check from this checkout. So the scaffold stays runnable as
+    # the guideline moves.
+    name: a copy of the scaffold passes its own gates
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      COPY: ${{ github.workspace }}/../pressroom
+      # uv sync and uv run fail instead of rewriting a stale uv.lock.
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: read the tool pins
+        id: pins
+        run: echo "uv=$(sed -n 's|^uv==||p' .github/pins/requirements.txt)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          enable-cache: true
+          cache-dependency-glob: scaffold/acme_root/uv.lock
+      - name: copy the scaffold under a name of its own
+        run: time python3 scaffold/new.py "$COPY"
+      # The pnpm version comes from packageManager in the copy's package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ../pressroom/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: scaffold/acme_root/.nvmrc
+      - name: make setup
+        working-directory: ${{ env.COPY }}
+        run: make setup
+      # arch-check runs from this checkout's checkers/, on the copy's Python.
+      - name: make check, with arch-check from this checkout
+        working-directory: ${{ env.COPY }}
+        run: make check ARCH_CHECK="uv run --no-project --python $(cat .python-version) python $GITHUB_WORKSPACE/checkers/arch_check.py"
+      - name: the integration suite over the copy's compose stack
+        working-directory: ${{ env.COPY }}
+        run: |
+          cp .env.example .env
+          make infra-up
+          make migrate
+          make migrate-check
+          make test-integration
+      - name: stop the copy's stack
+        if: always()
+        working-directory: ${{ env.COPY }}
+        run: make infra-down || true

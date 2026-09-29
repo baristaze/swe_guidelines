@@ -1,0 +1,168 @@
+[project]
+name = "acme-workspace"
+version = "0.1.0"
+description = "Acme: a multi-tenant system for teams of people and the agents that work alongside them."
+requires-python = ">=3.14"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+# Every member ships a subpackage of the one root package `acme` (ADR 0001).
+members = [
+    "om",
+    "infra",
+    "integrations",
+    "services/api",
+    "workers/maintenance",
+    "clients/python",
+    "apps/cli",
+    "ops",
+]
+
+[tool.uv.sources]
+acme-om = { workspace = true }
+acme-infra = { workspace = true }
+acme-integrations = { workspace = true }
+acme-api = { workspace = true }
+acme-maintenance = { workspace = true }
+acme-client = { workspace = true }
+acme-cli = { workspace = true }
+acme-ops = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.16.8",
+    "pyright>=1.1.414",
+    "httpx>=0.28.1",
+    # Pinned exactly: `make openapi` regenerates clients/python/src/acme/client/schema.py
+    # with it and CI checks the committed file is current.
+    "datamodel-code-generator==0.82.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+pythonpath = [
+    "om/tests",
+    "services/api/tests",
+    "workers/maintenance/tests",
+    "clients/python/tests",
+    "apps/cli/tests",
+    "ops/tests",
+    "ops/audit",
+]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = [
+    "om/tests",
+    "infra/tests",
+    "integrations/tests",
+    "services/api/tests",
+    "workers/maintenance/tests",
+    "clients/python/tests",
+    "apps/cli/tests",
+    "ops/tests",
+]
+markers = [
+    "integration: needs the local compose stack",
+    "slow: takes more than a few seconds",
+    "telemetry: needs the devx profile",
+]
+
+# The guideline's static checker (`make arch-check`). The layout is the
+# guideline's, so only the package and the project's own lists are named.
+[tool.arch-check]
+package = "acme"
+
+# A revoked key's hash stays refused; the lookup reads revoked keys to
+# answer "revoked".
+[[tool.arch-check.exception]]
+rule = "STO-26"
+path = "om/src/acme/om/tenancy/storage/tables/api_keys.py"
+adr = "docs/adr/0019-an-api-key-hash-stays-unique-after-revocation.md"
+reason = "an api key hash digests a fresh random secret and the lookup reads revoked keys too"
+
+# The work item's key is unique per tenant, which is the index the lens
+# names; the rule's partial coverage reads the key alone.
+[[tool.arch-check.exception]]
+rule = "ASY-16"
+path = "om/src/acme/om/work/storage/tables/work_items.py"
+adr = "docs/adr/0026-the-work-items-key-is-unique-per-tenant.md"
+reason = "the unique index is (org_id, idempotency_key), led by the tenant as the lens asks"
+
+# The company site is a page, not an app: HTML and CSS on Vite, no script,
+# so no React.
+[[tool.arch-check.exception]]
+rule = "DEL-12"
+path = "apps/site/package.json"
+adr = "docs/adr/0030-the-company-site-is-html-and-css-not-react.md"
+reason = "a static page with no script and no state; the portal and every app that calls the platform stay React on Vite"
+
+# The storage methods that take no tenant, the same list
+# om/tests/unit/test_storage_exceptions.py holds.
+[tool.arch-check.options.CTX-12]
+tenantless = [
+    "EventStorageInterface.count_since",
+    "EventStorageInterface.trim",
+    "IdempotencyStorageInterface.purge_records",
+    "MediaStorageInterface.purge_files_across_tenants",
+    "MediaStorageInterface.read_purgeable",
+    "OrchestrationsStorageInterface.purge_settled",
+    "OutboxStorageInterface.claim_pending",
+    "OutboxStorageInterface.count_failed_since",
+    "OutboxStorageInterface.oldest_pending_at",
+    "OutboxStorageInterface.purge_done",
+    "TenancyStorageInterface.clear_failed_sign_ins",
+    "TenancyStorageInterface.confirm_totp",
+    "TenancyStorageInterface.count_orgs",
+    "TenancyStorageInterface.count_orgs_and_users",
+    "TenancyStorageInterface.delete_person",
+    "TenancyStorageInterface.disable_operator",
+    "TenancyStorageInterface.purge_deleted",
+    "TenancyStorageInterface.purge_sign_in_delays",
+    "TenancyStorageInterface.read_api_key_by_digest",
+    "TenancyStorageInterface.read_identity",
+    "TenancyStorageInterface.read_identity_by_email_digest",
+    "TenancyStorageInterface.read_identity_by_issuer_subject",
+    "TenancyStorageInterface.read_memberships_by_identity",
+    "TenancyStorageInterface.read_operator_tokens",
+    "TenancyStorageInterface.read_org_by_slug",
+    "TenancyStorageInterface.read_orgs",
+    "TenancyStorageInterface.read_platform_size",
+    "TenancyStorageInterface.read_session_by_digest",
+    "TenancyStorageInterface.read_session_by_id",
+    "TenancyStorageInterface.read_session_with_identity_by_digest",
+    "TenancyStorageInterface.read_sign_in_delay",
+    "TenancyStorageInterface.read_users_by_identity",
+    "TenancyStorageInterface.record_failed_sign_in",
+    "TenancyStorageInterface.redeem_socket_ticket",
+    "TenancyStorageInterface.use_totp_step",
+    "TenancyStorageInterface.write_identity",
+    "TenancyStorageInterface.write_platform_size",
+    "TenancyStorageInterface.write_time_zone",
+    "TenancyStorageInterface.write_totp_secret",
+    "WorkStorageInterface.claim_next",
+    "WorkStorageInterface.count_failed_since",
+    "WorkStorageInterface.oldest_ready_at",
+    "WorkStorageInterface.purge_items",
+    "WorkStorageInterface.requeue_stale",
+]
+
+# The sites that build a stage above the request stage, the same list
+# om/tests/unit/test_stage_construction.py holds: the helper that assembles
+# a tenant context and the tenancy manager's transitions.
+[tool.arch-check.options.CTX-26]
+sites = [
+    "om/src/acme/om/opcontext.py::build_context",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.bootstrap",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.add_member",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.authenticate_login",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.authenticate",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.admit_operator",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.resume",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.service_context",
+    "om/src/acme/om/tenancy/impl/manager.py::TenancyManagerImpl.service_contexts",
+]
+builders = ["build_context"]

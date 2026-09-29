@@ -1,0 +1,159 @@
+# The operator allowlist of a deployed environment changes here and nowhere
+# else: a person dispatches this workflow on the environment's branch, and
+# it runs the API image's `grant-operator` subcommand as a one-off task on
+# the grant task definition the environment root declares, under the deploy
+# role. Staging's runs on `main` at once. Production's runs on `release` and
+# waits behind the same required reviewer as production's apply, because it
+# declares the same environment. No administrator step, and no identity on
+# the operator plane, widens the allowlist.
+#
+# The identity signs up first, like any person. A grant puts it on the
+# allowlist with one permission; the person then enrols the second factor at
+# the console's first sign-in, and until then the plane admits it to the
+# enrolment alone. `disable` takes an entry off.
+#
+# `mint_token` mints the operator token of one of the two identities no
+# person signs in as: the provisioner's (`write`, for a traffic run) or the
+# smoke identity's (`read`, for the deploys' smoke step). The task writes
+# the token into the secret `acme-<env>-provisioner-token` or
+# `acme-<env>-smoke-token` and never prints it; it expires within the hour.
+# `uv run acme-ops token --env <env> --identity provisioner` copies the
+# provisioner's into the env file.
+#
+# The email is masked in the log before any step can print it: a public
+# repository's logs are public. The task definition's name is the root's
+# `grant_task_definition_arn` output, and scripts/cloud_grant.sh runs it.
+name: grant-operator
+run-name: grant-operator on ${{ inputs.environment }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment whose allowlist changes.
+        required: true
+        type: choice
+        options: [staging, production]
+      email:
+        description: The identity's email; it signed up already.
+        required: true
+      permission:
+        description: >-
+          The entry's permission. `none` leaves the entry as it is, for a mint
+          alone.
+        required: true
+        type: choice
+        options: [none, read, write]
+        default: none
+      disable:
+        description: Take the entry off the allowlist.
+        required: false
+        type: boolean
+        default: false
+      mint_token:
+        description: >-
+          Mint the operator token of a machine identity into its secret: the
+          provisioner's or the smoke identity's. Never a person's.
+        required: true
+        type: choice
+        options: [none, provisioner, smoke]
+        default: none
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: grant-operator-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  # The region deployment/cloud/environments.json names; a test holds them
+  # equal.
+  AWS_REGION: us-west-2
+  TERRAFORM_VERSION: "1.16.3"
+
+jobs:
+  grant:
+    name: change ${{ inputs.environment }}'s operator allowlist
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The deploy role of that environment, and in production its approval.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: mask the email
+        env:
+          EMAIL: ${{ inputs.email }}
+        run: echo "::add-mask::$EMAIL"
+      - name: dispatched on the environment's branch, asking one coherent thing
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          REF: ${{ github.ref }}
+          PERMISSION: ${{ inputs.permission }}
+          DISABLE: ${{ inputs.disable }}
+          MINT_TOKEN: ${{ inputs.mint_token }}
+        run: |
+          case "$ENVIRONMENT:$REF" in
+            staging:refs/heads/main|production:refs/heads/release) ;;
+            *) echo "::error::$ENVIRONMENT's allowlist changes from its own branch only (staging: main, production: release), not $REF"; exit 1 ;;
+          esac
+          if [ "$DISABLE" = "true" ] && { [ "$PERMISSION" != "none" ] || [ "$MINT_TOKEN" != "none" ]; }; then
+            echo "::error::disable takes the entry off; it goes with neither a permission nor a mint"
+            exit 1
+          fi
+          if [ "$DISABLE" != "true" ] && [ "$PERMISSION" = "none" ] && [ "$MINT_TOKEN" = "none" ]; then
+            echo "::error::nothing asked: name a permission, disable, or a token to mint"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      # The root is read for its outputs and nothing else: no plan, no apply.
+      - name: read the environment root's outputs
+        id: root
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          case "$ENVIRONMENT" in
+            staging) root=environments/staging ;;
+            production) root=environments/prod ;;
+          esac
+          terraform -chdir="deployment/terraform/$root" init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$root/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+          echo "dir=deployment/terraform/$root" >> "$GITHUB_OUTPUT"
+      - name: grant, or disable
+        if: inputs.disable || inputs.permission != 'none'
+        env:
+          ROOT: ${{ steps.root.outputs.dir }}
+          EMAIL: ${{ inputs.email }}
+          PERMISSION: ${{ inputs.permission }}
+          DISABLE: ${{ inputs.disable }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ "$DISABLE" = "true" ]; then
+            scripts/cloud_grant.sh "$ROOT" --email "$EMAIL" --disable
+            echo "An entry of \`$ENVIRONMENT\`'s operator allowlist is disabled." >> "$GITHUB_STEP_SUMMARY"
+          else
+            scripts/cloud_grant.sh "$ROOT" --email "$EMAIL" --permission "$PERMISSION"
+            echo "An identity holds \`$PERMISSION\` on \`$ENVIRONMENT\`'s operator allowlist. It enrols the second factor at its first sign-in." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: mint the machine identity's token into its secret
+        if: inputs.mint_token != 'none'
+        env:
+          ROOT: ${{ steps.root.outputs.dir }}
+          EMAIL: ${{ inputs.email }}
+          MINT_TOKEN: ${{ inputs.mint_token }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          scripts/cloud_grant.sh "$ROOT" --email "$EMAIL" --mint-token "$MINT_TOKEN"
+          echo "A \`$MINT_TOKEN\` token is in \`acme-$ENVIRONMENT-$MINT_TOKEN-token\`; it expires within the hour." >> "$GITHUB_STEP_SUMMARY"

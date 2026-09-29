@@ -1,0 +1,63 @@
+# The collector beside the host processes, in the shape of the cloud's
+# sidecar (deployment/terraform/modules/service/main.tf): a Prometheus
+# receiver scrapes the api and the maintenance worker that scripts/dev.sh
+# runs on 127.0.0.1, and the samples go on to Prometheus by remote write.
+# The processes stay on loopback, and the collector listens on nothing.
+#
+# Three settings place it, and docker-compose.yml sets all three:
+#   ACME_COLLECTOR_SCRAPE_HOST  where the host processes answer
+#   ACME_COLLECTOR_SCRAPE_PORT  the api's port on that host
+#   ACME_COLLECTOR_WRITE_URL    Prometheus' remote-write receiver
+# On the compose network (the default) the host is host.docker.internal and
+# the write URL is http://prometheus:9090/api/v1/write. On Linux,
+# docker-compose.linux.yml puts the collector on the host's network, where
+# they are 127.0.0.1 and the port Prometheus publishes on the host.
+#
+# The api's port is a knob because one host target is all the api job has, and
+# the process that answers it is not always on 8000: `make collector-scrape
+# SCRAPE_PORT=54321` points the collector at another and recreates it, which
+# is what the telemetry round trip does with the free port it took.
+#
+# The job names and the runs_in label are the ones Prometheus used when it
+# scraped the host processes itself, so every dashboard and query reads the
+# same series. The test that reads the counter back derives its wait from the
+# scrape interval and the batch timeout below.
+
+receivers:
+  prometheus:
+    config:
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: api
+          static_configs:
+            - targets: ["${env:ACME_COLLECTOR_SCRAPE_HOST}:${env:ACME_COLLECTOR_SCRAPE_PORT}"]
+              labels: {runs_in: host}
+        - job_name: maintenance
+          static_configs:
+            - targets: ["${env:ACME_COLLECTOR_SCRAPE_HOST}:9464"]
+              labels: {runs_in: host}
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  prometheus_remote_write:
+    endpoint: ${env:ACME_COLLECTOR_WRITE_URL}
+    # job and instance carry the target; nothing else about the resource is
+    # a label Prometheus scraping it directly would have written.
+    target_info: {enabled: false}
+    disable_scope_info: true
+
+service:
+  # No listener of its own: on the host's network a metrics port here would
+  # be a port on the machine.
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus_remote_write]

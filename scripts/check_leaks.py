@@ -24,6 +24,9 @@ is not Markdown: the workflows and templates under `.github/`, the plugin
 manifests, the YAML and JSON of the skills, the agents, and the
 benchmark, and the docstrings of the Python under `scripts/`,
 `checkers/`, and `benchmark/`.
+The scaffold (`scaffold/`) is published text too: its Markdown, YAML, and
+JSON are held to the `product` group, and every text file under it,
+the skills in its own `.claude/` folder included, to the reference name.
 Exit status is non-zero on any hit. Standard library only.
 """
 
@@ -106,6 +109,7 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("benchmark/", ["product", "shape"]),
     ("checkers/", ["product", "shape"]),
     (".github/", ["product"]),
+    ("scaffold/", ["product", "shape"]),
 ]
 
 
@@ -118,6 +122,7 @@ TEXT_SCOPES: list[tuple[str, tuple[str, ...], list[str]]] = [
     ("skills/", (".yml", ".yaml", ".json"), ["product"]),
     ("agents/", (".yml", ".yaml", ".json"), ["product"]),
     ("benchmark/", (".yml", ".yaml", ".json"), ["product"]),
+    ("scaffold/", (".yml", ".yaml", ".json"), ["product"]),
 ]
 
 # The Python whose docstrings are published prose: the scripts, the
@@ -176,6 +181,15 @@ def is_text(path: Path) -> bool:
     return b"\0" not in data
 
 
+def left_out(parts: Sequence[str]) -> bool:
+    """Whether a file is outside the text this check reads: what `skipped`
+    leaves out, but for the scaffold's own `.claude/` folder, which holds the
+    skills a copy of the scaffold runs and is published with it."""
+    if tuple(parts[:1]) == ("scaffold",):
+        parts = [part for part in parts if part != ".claude"]
+    return skipped(parts)
+
+
 def text_files(root: Path) -> list[Path]:
     """Every text file of the repository, from git when it can, the skipped directories left out."""
     try:
@@ -189,7 +203,7 @@ def text_files(root: Path) -> list[Path]:
     except (OSError, subprocess.CalledProcessError):
         out = [p.relative_to(root).as_posix() for p in root.rglob("*")]
     return [
-        root / rel for rel in sorted(set(out)) if not skipped(rel.split("/")) and (root / rel).is_file() and is_text(root / rel)
+        root / rel for rel in sorted(set(out)) if not left_out(rel.split("/")) and (root / rel).is_file() and is_text(root / rel)
     ]
 
 

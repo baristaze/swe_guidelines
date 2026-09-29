@@ -1,0 +1,7 @@
+{
+  "ping_interval_seconds": 25,
+  "server_ping_interval_seconds": 20,
+  "server_ping_timeout_seconds": 20,
+  "load_balancer_idle_timeout_seconds": 60,
+  "edge_websocket_idle_timeout_seconds": 600
+}

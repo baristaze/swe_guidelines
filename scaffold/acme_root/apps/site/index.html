@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Acme</title>
+    <meta name="description" content="Acme is a multi-tenant system for teams." />
+    <link rel="canonical" href="%SITE_URL%/" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Acme" />
+    <meta property="og:description" content="A multi-tenant system for teams." />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <link rel="stylesheet" href="/src/site.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the content</a>
+
+    <header class="bar">
+      <nav class="bar-inner" aria-label="Main">
+        <a class="brand" href="#top" aria-label="Acme, back to the top">
+          <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="8" class="mark-fill" />
+            <path d="M8.5 14.5l3.8 3.8 7.2-8.1" class="mark-check" />
+          </svg>
+          <span>Acme</span>
+        </a>
+        <div class="bar-links">
+          <a href="%GITHUB_URL%">GitHub</a>
+        </div>
+        <div class="bar-actions">
+          <a class="button" data-tone="ghost" href="%APP_URL%/login">Sign in</a>
+          <a class="button" data-tone="accent" href="%APP_URL%/login?screen_hint=sign-up">Sign up</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="column hero-inner">
+          <h1>Acme</h1>
+          <p class="lede">A multi-tenant system for teams.</p>
+          <div class="hero-actions">
+            <a class="button" data-tone="accent" data-size="lg" href="%APP_URL%/login?screen_hint=sign-up">Sign up</a>
+            <a class="button" data-tone="plain" data-size="lg" href="%APP_URL%/login">Sign in</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="column footer-inner">
+        <a class="brand" href="#top" aria-label="Acme, back to the top">
+          <svg width="22" height="22" viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="8" class="mark-fill" />
+            <path d="M8.5 14.5l3.8 3.8 7.2-8.1" class="mark-check" />
+          </svg>
+          <span>Acme</span>
+        </a>
+        <p class="footer-line">A multi-tenant system for teams.</p>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="%APP_URL%/login">Sign in</a>
+          <a href="%GITHUB_URL%">GitHub</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

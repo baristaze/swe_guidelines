@@ -1,0 +1,172 @@
+name: ci
+
+# A pull request merges only on a branch up to date with main (the main
+# ruleset), so its checks ran on its merge with the current main.
+# merge_group runs the same checks in a merge queue, which only an
+# organization's repository can turn on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+# A new push to a pull request supersedes its running checks; main keeps
+# every run, since deploy-staging.yml follows each successful one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # uv sync and uv run fail instead of rewriting a stale uv.lock.
+  UV_LOCKED: "1"
+
+jobs:
+  check:
+    name: fast gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Every action in every workflow is pinned by commit, and the comment
+      # names the release that commit carries. A tag moves, and the deploy
+      # workflows hand an action the credential that reaches the cloud, so a
+      # tag is a name someone else can repoint. The comment is the version
+      # the bump reads and raises; the commit is what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      # The pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: make setup
+      - run: make check
+      - name: the apps build
+        run: pnpm run build
+      - name: the committed OpenAPI document is current
+        run: make openapi && git diff --exit-code
+
+  integration:
+    name: integration over the compose stack
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - run: uv sync --all-packages
+      - run: cp .env.example .env
+      - run: make infra-up
+      - run: make migrate
+      - name: every role's ORM metadata matches the migrated schema
+        run: make migrate-check
+      - run: make test-integration
+      - run: make infra-down
+        if: always()
+
+  telemetry:
+    name: the telemetry round trip over the devx profile
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - run: uv sync --all-packages
+      - run: cp .env.example .env
+      # The data services and the dashboards. `make devx-up` fails when a
+      # long-running service is not healthy or GlitchTip's seed fails.
+      # The runner is Linux, so the Makefile puts the collector that scrapes
+      # the host processes on the host's network; the round trip's counter
+      # leg is the proof that it reaches the API on 127.0.0.1, at the free
+      # port the test takes and aims the collector at for the length of the
+      # run. It puts the default target back afterwards, which is what the
+      # traffic step below then needs.
+      - name: the compose stack with the devx profile
+        run: |
+          make devx-up
+          test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' acme-otel-collector-1)" = host
+      - run: make migrate seed
+      # The round trip skips, naming what is missing, on a machine that has
+      # no devx profile up. Here everything it needs is a step above, so a
+      # skip would be a green job that proved nothing: this says so, and the
+      # test fails instead.
+      - run: make test-telemetry
+        env:
+          ACME_TELEMETRY_REQUIRED: "1"
+      - name: the API on 8000 for the traffic run
+        run: |
+          nohup uv run acme-api serve > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/healthz && break; sleep 1; done
+      # The telemetry step signs people in from this runner's address too,
+      # and the login rate limit is per address over a minute-long window, so
+      # the two steps share one budget. A sign-in the limit turns away waits
+      # the window out and asks again, which is cheaper than ordering the job
+      # around a window no step can see.
+      - run: make traffic PROFILE=light DURATION=30
+      - name: the API's log, on a failure
+        if: failure()
+        run: tail -n 100 api.log || true
+      - name: the collector's log, on a failure
+        if: failure()
+        run: docker logs acme-otel-collector-1 2>&1 | tail -n 50 || true
+      - run: make down
+        if: always()
+
+  images:
+    name: images build
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        image: [api, maintenance, portal]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: build ${{ matrix.image }} without pushing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deployment/docker/${{ matrix.image }}.Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  terraform:
+    name: terraform format and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        root: [bootstrap/staging, bootstrap/prod, environments/staging, environments/prod]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.3"
+      - run: terraform fmt -check -recursive deployment/terraform
+      - run: terraform -chdir=deployment/terraform/${{ matrix.root }} init -backend=false -input=false
+      - run: terraform -chdir=deployment/terraform/${{ matrix.root }} validate
+      - if: matrix.root == 'bootstrap/staging'
+        run: terraform -chdir=deployment/terraform/modules/static_site init -backend=false -input=false
+      - if: matrix.root == 'bootstrap/staging'
+        run: terraform -chdir=deployment/terraform/modules/static_site test
+      # The environment plans whole with the company site left out, and with it.
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/environments/staging test
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/service init -backend=false -input=false
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/service test
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/dashboard init -backend=false -input=false
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/dashboard test
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/alarms init -backend=false -input=false
+      - if: matrix.root == 'environments/staging'
+        run: terraform -chdir=deployment/terraform/modules/alarms test

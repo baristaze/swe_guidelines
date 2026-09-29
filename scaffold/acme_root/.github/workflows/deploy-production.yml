@@ -1,0 +1,750 @@
+# Production is the `release` branch, moved only by a fast-forward from
+# `main` (release.yml). A push to `release` plans production, waits for a
+# person's approval on that plan, and applies exactly it. Nothing is built
+# here: the images are the digests staging tagged with this commit, and the
+# portal and the company site are the builds staging kept for it (the site's
+# production build, made beside staging's), so a release commit staging never
+# built is refused before anything is planned, and `release` must be an
+# ancestor of `main`, or someone committed to it.
+#
+# Production has an AWS account of its own (deployment/cloud/environments.json)
+# and reads nothing from staging's. What it releases are the copies staging's
+# account replicates into it: every image, digest for digest, into
+# production's registry, and every static build into production's artifacts
+# bucket. A commit staging built before the replication was on has no copy
+# here and is refused the same way.
+#
+# The approval gates the credential, not only the step. Two roles stand
+# behind this workflow, both in production's account and declared by
+# deployment/terraform/bootstrap/prod, each trusting exactly one subject:
+#
+#   environment:production-plan -> acme-plan-production    reads and plans
+#   environment:production      -> acme-deploy-production  applies
+#
+# `resolve` and `plan` run before anyone approves, so they declare
+# `production-plan` and hold a credential that can change nothing: it reads
+# production, takes the state lock while it plans, and writes the plan file.
+# `apply` declares `production`, whose required reviewer is the approval, and
+# a job that has not waited there never produces the subject the applying
+# role trusts. The plan is in the `plan` job's summary and in the
+# `production-plan` artifact.
+#
+# Each of the two GitHub environments holds its own variables under the same
+# names: AWS_ROLE_ARN is the plan role in `production-plan` and the deploy
+# role in `production`. scripts/cloud_create.sh production sets them.
+#
+# The state holds no secret value: the database password is written
+# write-only, to the database and to its secret, and never lands in the state
+# or a saved plan. A refresh still reads production's secrets through the
+# secret store, which the plan role is granted for that. What it cannot do is
+# change production, and that is the line the approval holds.
+#
+# Inside the apply the migration runs as a one-off task on the new API image
+# before the services roll (the service module orders it), when the release
+# brings one (deployment/migration-inputs.json names what counts); a migration that
+# fails ends the apply with the old tasks still serving, and the apply waits
+# until the new tasks serve, so a rollout ECS rolls back fails the job.
+#
+# After the rollout the apply records the release outside the cloud, as the
+# commit status `released/production`, and runs the smoke test: the smoke
+# identity's operator token, minted by the grant task, reads the operator
+# plane through the edge (scripts/cloud_smoke.sh). The smoke steps live in
+# the apply job, since a job of their own would wait for a second approval.
+# They are skipped, with a notice, until the `production` environment's
+# SMOKE_EMAIL names the identity a grant made.
+#
+# The fast rollback returns production to the previous release, and only to
+# that one: the newest commit of release, before its tip, that carries
+# `released/production`. A person dispatches this workflow on release with
+# that commit as `rollback_to`, and it waits for the same approval. It swaps
+# each service's image back to that release's digest and the portal and the
+# site back to their builds, all as staging recorded them, and runs no migration and plans
+# no Terraform, so nothing else the current release declared moves: the
+# previous release runs on the current schema, because every migration is
+# compatible with the release before it. It leaves release where it is; the
+# next apply writes the declared shape again. Anything older rolls forward,
+# by a revert through main.
+#
+# The saved plan goes to the state bucket, next to the state it was computed
+# against and under the same access: a plan file carries sensitive values
+# unmasked, and a workflow artifact of a public repository is downloadable
+# by anyone. The text rendering, in which Terraform masks them, is the
+# reviewer's copy.
+name: deploy-production
+
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+    inputs:
+      rollback_to:
+        description: >-
+          The fast rollback: the previous release, by its full sha, and no
+          other. Its images, its portal, and its site come back behind the same approval,
+          with no migration and no plan. Empty deploys release's tip.
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+  # The digests staging recorded as commit statuses when it deployed.
+  statuses: read
+  # The guard reads the production environment's protection rules.
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  # The region deployment/cloud/environments.json names; a test holds them
+  # equal.
+  AWS_REGION: us-west-2
+  TERRAFORM_VERSION: "1.16.3"
+
+jobs:
+  guard:
+    name: release is a prefix of main and the cloud is configured
+    runs-on: ubuntu-latest
+    # To read the plan environment's variables. No rule on it, and this job
+    # assumes no role.
+    environment: production-plan
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      mode: ${{ steps.commit.outputs.mode }}
+    steps:
+      - name: this is the release branch
+        if: github.ref != 'refs/heads/release'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::production deploys from refs/heads/release only, not $REF"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Release's tip, or on a rollback the previous release: the newest
+      # commit of release before its tip that production applied, as the
+      # `released/production` status the apply writes says. Nothing older.
+      - name: the commit to deploy
+        id: commit
+        env:
+          TIP: ${{ github.sha }}
+          REQUESTED: ${{ inputs.rollback_to }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "$REQUESTED" ]; then
+            echo "sha=$TIP" >> "$GITHUB_OUTPUT"
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          previous=""
+          for commit in $(git rev-list --first-parent --max-count=500 "$TIP^" 2>/dev/null); do
+            # The newest status of the context decides: a release rolled back
+            # from carries an error over its success, and is not returned to.
+            released="$(gh api "repos/$REPOSITORY/commits/$commit/statuses" --paginate \
+              -q '[.[] | select(.context == "released/production")] | first | .state // ""')"
+            if [ "$released" = "success" ]; then previous="$commit"; break; fi
+          done
+          if [ -z "$previous" ]; then
+            echo "::error::no release before release's tip ($TIP) carries released/production: there is no previous release to roll back to. Roll forward with a revert through main."
+            exit 1
+          fi
+          requested="$(git rev-parse --verify --quiet "$REQUESTED^{commit}" || true)"
+          if [ "$requested" != "$previous" ]; then
+            echo "::error::the fast rollback goes to the previous release only, $previous, not $REQUESTED. Anything older rolls forward with a revert through main."
+            exit 1
+          fi
+          echo "sha=$previous" >> "$GITHUB_OUTPUT"
+          echo "mode=rollback" >> "$GITHUB_OUTPUT"
+          echo "A rollback to the previous release, \`$previous\` (release stays at \`$TIP\`)." >> "$GITHUB_STEP_SUMMARY"
+      - name: release is an ancestor of main
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          git fetch --quiet origin main
+          if git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "\`$SHA\` is on \`main\`: release is a prefix of main." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::$SHA is not an ancestor of main. release moves only by a fast-forward from main (release.yml); a commit made on release is not deployed. Reset release to a main commit and dispatch release.yml."
+            exit 1
+          fi
+      # The approval gate is a setting outside the repository; this makes its
+      # absence a failed run instead of an unreviewed apply.
+      - name: the production environment requires a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! rules="$(gh api "repos/$REPOSITORY/environments/production" --jq '[.protection_rules[]? | .type] | join(",")' 2>&1)"; then
+            echo "::error::the production environment cannot be read ($rules): create it with a required reviewer (the deploy runbook) before releasing"
+            exit 1
+          fi
+          case ",$rules," in
+            *,required_reviewers,*)
+              echo "The \`production\` environment requires a reviewer; the apply waits for one." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "::error::the production environment has no required-reviewers rule (rules: '$rules'); without it the apply would run unreviewed. Add the reviewer (the deploy runbook) before releasing."
+              exit 1 ;;
+          esac
+      - name: the cloud is configured
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+          APP_DOMAIN_NAME: ${{ vars.APP_DOMAIN_NAME }}
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+        run: |
+          missing=""
+          # SITE_DOMAIN_NAME is optional: without it the release leaves the
+          # company site out (resolve says so) and releases everything else.
+          for name in AWS_ROLE_ARN TF_STATE_BUCKET ARTIFACTS_BUCKET API_DOMAIN_NAME APP_DOMAIN_NAME ALARM_EMAIL; do
+            [ -n "${!name}" ] || missing="${missing:+$missing, }$name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the production-plan environment's variables $missing are empty: there is no cloud to release to (scripts/cloud_create.sh production sets them)"
+            exit 1
+          fi
+
+  resolve:
+    name: what staging built for this commit
+    needs: guard
+    if: needs.guard.outputs.mode == 'release'
+    runs-on: ubuntu-latest
+    # No rule on this environment: it is how the job presents a subject the
+    # read-only role trusts, before there is anything to approve.
+    environment: production-plan
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      maintenance_image: ${{ steps.images.outputs.maintenance_image }}
+      site_domain_name: ${{ steps.site.outputs.site_domain_name }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        id: ecr
+      - name: the image digests staging tagged with this commit
+        id: images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          # Replication is asynchronous and usually done in seconds, so a copy
+          # that is not here yet is waited for, a bounded ten minutes, before
+          # it is refused.
+          resolve() {
+            local digest="" attempt
+            for attempt in $(seq 1 20); do
+              digest="$(aws ecr describe-images --repository-name "$1" \
+                --image-ids "imageTag=$SHA" \
+                --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
+              if [ -n "$digest" ] && [ "$digest" != "None" ]; then break; fi
+              digest=""
+              [ "$attempt" = 20 ] || sleep 30
+            done
+            if [ -z "$digest" ]; then
+              # To stderr: the function is called in a command substitution,
+              # so anything on stdout is captured into the image variable and
+              # the annotation the runbook tells operators to look for never
+              # reaches the log.
+              echo "::error::$1 has no image tagged $SHA in production's registry: staging never built this commit, or built it before the replication into production was on. Release a commit deploy-staging built after that." >&2
+              exit 1
+            fi
+            echo "$REGISTRY/$1@$digest"
+          }
+          # What staging recorded when it deployed this commit, on the
+          # repository host and outside either account. A copy that differs
+          # was changed after staging built it, and nothing is planned.
+          recorded() {
+            gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+              -q "[.[] | select(.context == \"deployed/$1\" and .state == \"success\")] | first | .description // empty"
+          }
+          verify() {
+            local image="$1" name="$2" want
+            want="$(recorded "$name")"
+            if [ -z "$want" ]; then
+              echo "::error::$SHA carries no deployed/$name status: staging never deployed this commit." >&2
+              exit 1
+            fi
+            if [ "${image##*@}" != "$want" ]; then
+              echo "::error::$name in production's registry is ${image##*@}, and staging recorded $want: the copy is not what staging built." >&2
+              exit 1
+            fi
+          }
+          api_image="$(resolve acme-api)"
+          maintenance_image="$(resolve acme-maintenance)"
+          verify "$api_image" acme-api
+          verify "$maintenance_image" acme-maintenance
+          echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
+          echo "maintenance_image=$maintenance_image" >> "$GITHUB_OUTPUT"
+          echo "Images staging built for \`$SHA\`: \`$api_image\`, \`$maintenance_image\`." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.sha }}
+      - name: the portal build staging kept for this commit
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          found=false
+          for attempt in $(seq 1 20); do
+            if aws s3api head-object --bucket "$ARTIFACTS_BUCKET" --key "builds/portal/$SHA/index.html" >/dev/null 2>&1; then
+              found=true
+              break
+            fi
+            [ "$attempt" = 20 ] || sleep 30
+          done
+          if ! $found; then
+            echo "::error::production's artifacts bucket holds no portal build under builds/portal/$SHA after ten minutes: staging never built this commit, or built it before the replication into production was on."
+            exit 1
+          fi
+          # The same comparison as the images', over the files themselves.
+          want="$(gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+            -q '[.[] | select(.context == "deployed/portal" and .state == "success")] | first | .description // empty')"
+          aws s3 sync --quiet "s3://$ARTIFACTS_BUCKET/builds/portal/$SHA" portal-check
+          have="$(scripts/build_digest.sh portal-check)"
+          if [ -z "$want" ] || [ "$have" != "$want" ]; then
+            echo "::error::the portal build in production's artifacts bucket digests to $have, and staging recorded '${want}': the copy is not what staging deployed."
+            exit 1
+          fi
+          echo "Portal: \`s3://$ARTIFACTS_BUCKET/builds/portal/$SHA\`, $have, as staging recorded." >> "$GITHUB_STEP_SUMMARY"
+      # The site's build holds both environments' pages; the digest staging
+      # recorded covers both, and production publishes its own of the two.
+      # The site is optional, by the same rule as staging's: with no
+      # SITE_DOMAIN_NAME, or no issued certificate for it, the release leaves
+      # it out and says so. With both, the commit must carry a site build
+      # staging published, since a plan without the site would take down a
+      # site production already serves.
+      - name: the company site build staging kept for this commit
+        id: site
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SITE_DOMAIN_NAME: ${{ vars.SITE_DOMAIN_NAME }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "$SITE_DOMAIN_NAME" ]; then
+            echo "site_domain_name=" >> "$GITHUB_OUTPUT"
+            echo "The company site is left out of this release: the \`production-plan\` environment's \`SITE_DOMAIN_NAME\` is empty (scripts/cloud_create.sh production sets it)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          issued="$(aws acm list-certificates --region us-east-1 --certificate-statuses ISSUED \
+            --query "CertificateSummaryList[?DomainName=='$SITE_DOMAIN_NAME'].CertificateArn | [0]" --output text)"
+          if [ -z "$issued" ] || [ "$issued" = "None" ]; then
+            echo "site_domain_name=" >> "$GITHUB_OUTPUT"
+            echo "The company site is left out of this release: no issued certificate for \`$SITE_DOMAIN_NAME\` in us-east-1 yet (scripts/cloud_create.sh production, step 3b)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          found=false
+          for attempt in $(seq 1 20); do
+            if aws s3api head-object --bucket "$ARTIFACTS_BUCKET" --key "builds/site/$SHA/production/index.html" >/dev/null 2>&1; then
+              found=true
+              break
+            fi
+            [ "$attempt" = 20 ] || sleep 30
+          done
+          if ! $found; then
+            echo "::error::production's artifacts bucket holds no site build under builds/site/$SHA after ten minutes: staging never built this commit, or built it before the replication into production was on."
+            exit 1
+          fi
+          want="$(gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+            -q '[.[] | select(.context == "deployed/site" and .state == "success")] | first | .description // empty')"
+          aws s3 sync --quiet "s3://$ARTIFACTS_BUCKET/builds/site/$SHA" site-check
+          have="$(scripts/build_digest.sh site-check)"
+          if [ -z "$want" ] || [ "$have" != "$want" ]; then
+            echo "::error::the site build in production's artifacts bucket digests to $have, and staging recorded '${want}': the copy is not what staging built."
+            exit 1
+          fi
+          echo "Site: \`s3://$ARTIFACTS_BUCKET/builds/site/$SHA\`, $have, as staging recorded." >> "$GITHUB_STEP_SUMMARY"
+          echo "site_domain_name=$SITE_DOMAIN_NAME" >> "$GITHUB_OUTPUT"
+
+  plan:
+    name: plan production
+    needs: [guard, resolve]
+    runs-on: ubuntu-latest
+    environment: production-plan
+    outputs:
+      plan_key: ${{ steps.plan.outputs.plan_key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: plan production
+        id: plan
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+          APP_DOMAIN_NAME: ${{ vars.APP_DOMAIN_NAME }}
+          SITE_DOMAIN_NAME: ${{ needs.resolve.outputs.site_domain_name }}
+          ALARM_EMAIL: ${{ vars.ALARM_EMAIL }}
+          # Empty (unset) leaves browser error reporting off, the root default.
+          PORTAL_SENTRY_DSN: ${{ vars.PORTAL_SENTRY_DSN }}
+          API_IMAGE: ${{ needs.resolve.outputs.api_image }}
+          MAINTENANCE_IMAGE: ${{ needs.resolve.outputs.maintenance_image }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          terraform -chdir=deployment/terraform/environments/prod init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/prod/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+          terraform -chdir=deployment/terraform/environments/prod plan -input=false -out=tfplan \
+            -var "api_image=$API_IMAGE" \
+            -var "maintenance_image=$MAINTENANCE_IMAGE" \
+            -var "alarm_email=$ALARM_EMAIL" \
+            -var "api_domain_name=$API_DOMAIN_NAME" \
+            -var "app_domain_name=$APP_DOMAIN_NAME" \
+            -var "site_domain_name=$SITE_DOMAIN_NAME" \
+            -var "portal_sentry_dsn=$PORTAL_SENTRY_DSN"
+          terraform -chdir=deployment/terraform/environments/prod show -no-color tfplan > plan.txt
+          plan_key="plans/environments/prod/$SHA-$RUN.tfplan"
+          aws s3 cp deployment/terraform/environments/prod/tfplan "s3://$TF_STATE_BUCKET/$plan_key"
+          echo "plan_key=$plan_key" >> "$GITHUB_OUTPUT"
+          {
+            echo "## production plan for \`$SHA\`"
+            echo ""
+            echo "Images: \`$API_IMAGE\`, \`$MAINTENANCE_IMAGE\`."
+            echo ""
+            grep -E '^(Plan:|No changes\.)' plan.txt || echo "See the plan below."
+            echo ""
+            echo "<details><summary>terraform show</summary>"
+            echo ""
+            echo '```'
+            head -c 900000 plan.txt
+            [ "$(wc -c < plan.txt)" -le 900000 ] || echo "... (truncated; the production-plan artifact holds the whole text)"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-plan
+          path: plan.txt
+          if-no-files-found: error
+          retention-days: 90
+
+  apply:
+    name: apply the approved plan, migrate, and publish
+    needs: [guard, resolve, plan]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+      # Reads what staging recorded, and records the release.
+      statuses: write
+    steps:
+      # The guard read the plan environment's variables; these are this
+      # environment's own, and an empty one fails here, before any change.
+      - name: the production environment is configured
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+        run: |
+          missing=""
+          for name in AWS_ROLE_ARN TF_STATE_BUCKET ARTIFACTS_BUCKET; do
+            [ -n "${!name}" ] || missing="${missing:+$missing, }$name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the production environment's variables $missing are empty (scripts/cloud_create.sh production sets them)"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      # Before anything changes: the registry's lifecycle keeps the images
+      # tagged `prod-`, so the digests production is about to run are never
+      # expired under it. The digest is named, so a manifest that came back
+      # altered is refused rather than tagged as a new image.
+      - name: keep the promoted images
+        env:
+          API_IMAGE: ${{ needs.resolve.outputs.api_image }}
+          MAINTENANCE_IMAGE: ${{ needs.resolve.outputs.maintenance_image }}
+          SHA: ${{ needs.guard.outputs.sha }}
+        run: |
+          keep() {
+            local image="$1" repository digest manifest media out
+            repository="${image%@*}"
+            repository="${repository#*/}"
+            digest="${image##*@}"
+            manifest="$(aws ecr batch-get-image --repository-name "$repository" \
+              --image-ids "imageDigest=$digest" --query 'images[0].imageManifest' --output text)"
+            media="$(aws ecr batch-get-image --repository-name "$repository" \
+              --image-ids "imageDigest=$digest" --query 'images[0].imageManifestMediaType' --output text)"
+            if ! out="$(aws ecr put-image --repository-name "$repository" --image-tag "prod-$SHA" \
+                --image-digest "$digest" --image-manifest "$manifest" \
+                --image-manifest-media-type "$media" 2>&1)"; then
+              case "$out" in
+                *ImageAlreadyExistsException*) echo "$repository@$digest is tagged prod-$SHA already" ;;
+                *) echo "$out" >&2; exit 1 ;;
+              esac
+            fi
+          }
+          keep "$API_IMAGE"
+          keep "$MAINTENANCE_IMAGE"
+      # Exactly the approved plan: Terraform refuses it once the state moved.
+      # The migration runs inside, on the new API task definition, before
+      # either service rolls.
+      - name: apply the approved plan (migrate, then roll)
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          PLAN_KEY: ${{ needs.plan.outputs.plan_key }}
+        run: |
+          terraform -chdir=deployment/terraform/environments/prod init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/prod/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+          aws s3 cp "s3://$TF_STATE_BUCKET/$PLAN_KEY" deployment/terraform/environments/prod/tfplan
+          terraform -chdir=deployment/terraform/environments/prod apply -input=false tfplan
+      - name: fetch the portal build staging kept for this commit
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          aws s3 sync "s3://$ARTIFACTS_BUCKET/builds/portal/$SHA" portal-dist
+          want="$(gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+            -q '[.[] | select(.context == "deployed/portal" and .state == "success")] | first | .description // empty')"
+          have="$(scripts/build_digest.sh portal-dist)"
+          if [ -z "$want" ] || [ "$have" != "$want" ]; then
+            echo "::error::the portal build fetched for publishing digests to $have, and staging recorded '${want}'; nothing is published."
+            exit 1
+          fi
+      - name: publish the same portal to production
+        run: scripts/deploy_static.sh portal deployment/terraform/environments/prod portal-dist
+      - name: fetch the company site build staging kept for this commit
+        if: needs.resolve.outputs.site_domain_name != ''
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          aws s3 sync "s3://$ARTIFACTS_BUCKET/builds/site/$SHA" site-dist
+          want="$(gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+            -q '[.[] | select(.context == "deployed/site" and .state == "success")] | first | .description // empty')"
+          have="$(scripts/build_digest.sh site-dist)"
+          if [ -z "$want" ] || [ "$have" != "$want" ]; then
+            echo "::error::the site build fetched for publishing digests to $have, and staging recorded '${want}'; nothing is published."
+            exit 1
+          fi
+      - name: publish the company site's production build
+        if: needs.resolve.outputs.site_domain_name != ''
+        run: scripts/deploy_static.sh site deployment/terraform/environments/prod site-dist/production
+      # After the rollout, readiness is asked once more, through the edge: the
+      # load balancer probes liveness only, so this is where a new release
+      # that cannot reach its storage fails the run. It never replaces a task.
+      - name: the new release is ready
+        run: |
+          API_DOMAIN_NAME="$(jq -er .environments.production.api_domain_name deployment/cloud/environments.json)"
+          for _ in $(seq 1 10); do
+            if curl -fsS --max-time 10 "https://$API_DOMAIN_NAME/readyz" >/dev/null; then
+              echo "\`https://$API_DOMAIN_NAME/readyz\` answers ready." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::https://$API_DOMAIN_NAME/readyz did not answer ready within the rollout's grace; the release is serving but not ready."
+          exit 1
+      # The deployment record production keeps: the fast rollback reads it
+      # to find the previous release. A commit whose apply failed has none.
+      - name: record the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ needs.guard.outputs.sha }}
+          API_IMAGE: ${{ needs.resolve.outputs.api_image }}
+        run: |
+          gh api -X POST "repos/$REPOSITORY/statuses/$SHA" -f state=success \
+            -f context=released/production -f description="${API_IMAGE##*@}" >/dev/null
+          echo "\`released/production\` recorded on \`$SHA\`." >> "$GITHUB_STEP_SUMMARY"
+      - name: the smoke identity reads the operator plane
+        env:
+          SMOKE_EMAIL: ${{ vars.SMOKE_EMAIL }}
+        run: |
+          API_DOMAIN_NAME="$(jq -er .environments.production.api_domain_name deployment/cloud/environments.json)"
+          scripts/cloud_smoke.sh deployment/terraform/environments/prod production "$API_DOMAIN_NAME"
+
+  rollback:
+    name: roll back to the previous release, images and static files only
+    needs: guard
+    if: needs.guard.outputs.mode == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The same approval as an apply: the rollback writes production.
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+      # Reads what staging recorded, and marks the release rolled back from.
+      statuses: write
+    steps:
+      - name: the production environment is configured
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+        run: |
+          missing=""
+          for name in AWS_ROLE_ARN TF_STATE_BUCKET ARTIFACTS_BUCKET; do
+            [ -n "${!name}" ] || missing="${missing:+$missing, }$name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the production environment's variables $missing are empty (scripts/cloud_create.sh production sets them)"
+            exit 1
+          fi
+      # Release's tip: its root reads the state the current release applied,
+      # for the outputs alone, and its scripts publish the portal and the site.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: read the root's outputs, and plan nothing
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          terraform -chdir=deployment/terraform/environments/prod init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/prod/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+      # The images production ran for that release: the `prod-<commit>` tags
+      # its apply added, compared with what staging recorded for the commit.
+      - name: the previous release's images, portal, and site, as staging recorded them
+        id: previous
+        env:
+          SHA: ${{ needs.guard.outputs.sha }}
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          recorded() {
+            gh api "repos/$REPOSITORY/commits/$SHA/statuses" --paginate \
+              -q "[.[] | select(.context == \"deployed/$1\" and .state == \"success\")] | first | .description // empty"
+          }
+          registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
+          for name in acme-api acme-maintenance; do
+            digest="$(aws ecr describe-images --repository-name "$name" --image-ids "imageTag=prod-$SHA" \
+              --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
+            want="$(recorded "$name")"
+            if [ -z "$digest" ] || [ "$digest" = "None" ] || [ "$digest" != "$want" ]; then
+              echo "::error::$name tagged prod-$SHA is '${digest}', and staging recorded '${want}': the previous release's image is not the one it ran."
+              exit 1
+            fi
+            echo "${name#acme-}_image=$registry/$name@$digest" >> "$GITHUB_OUTPUT"
+          done
+          aws s3 sync --quiet "s3://$ARTIFACTS_BUCKET/builds/portal/$SHA" portal-dist
+          have="$(scripts/build_digest.sh portal-dist)"
+          want="$(recorded portal)"
+          if [ -z "$want" ] || [ "$have" != "$want" ]; then
+            echo "::error::the previous release's portal build digests to $have, and staging recorded '${want}'; nothing is rolled back."
+            exit 1
+          fi
+          # A release from before the company site was built has no site
+          # build, and production may have no site yet; either way the site
+          # stays as it is.
+          want="$(recorded site)"
+          site_bucket="$(terraform -chdir=deployment/terraform/environments/prod output -raw site_bucket 2>/dev/null || true)"
+          if [ -z "$want" ] || [ -z "$site_bucket" ]; then
+            echo "site=false" >> "$GITHUB_OUTPUT"
+            echo "\`$SHA\` carries no \`deployed/site\`, or production serves no site: the site stays as it is." >> "$GITHUB_STEP_SUMMARY"
+          else
+            aws s3 sync --quiet "s3://$ARTIFACTS_BUCKET/builds/site/$SHA" site-dist
+            have="$(scripts/build_digest.sh site-dist)"
+            if [ "$have" != "$want" ]; then
+              echo "::error::the previous release's site build digests to $have, and staging recorded '${want}'; nothing is rolled back."
+              exit 1
+            fi
+            echo "site=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Each service's running revision, with its application's image swapped
+      # for the previous release's digest and everything else as it is: the
+      # same secrets, roles, sizes, and sidecar.
+      - name: swap each service's image back
+        env:
+          API_IMAGE: ${{ steps.previous.outputs.api_image }}
+          MAINTENANCE_IMAGE: ${{ steps.previous.outputs.maintenance_image }}
+        run: |
+          cluster="$(terraform -chdir=deployment/terraform/environments/prod output -raw cluster_name)"
+          swap() {
+            local service="$1" image="$2" current definition revision
+            current="$(aws ecs describe-services --cluster "$cluster" --services "$service" \
+              --query 'services[0].taskDefinition' --output text)"
+            definition="$(aws ecs describe-task-definition --task-definition "$current" --include TAGS --output json \
+              | jq --arg name "$service" --arg image "$image" '
+                  (.tags // []) as $tags
+                  | .taskDefinition
+                  | .containerDefinitions |= map(if .name == $name then .image = $image else . end)
+                  | {family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions, volumes,
+                     placementConstraints, requiresCompatibilities, cpu, memory, runtimePlatform,
+                     ephemeralStorage, pidMode, ipcMode, proxyConfiguration}
+                  | with_entries(select(.value != null and .value != []))
+                  | if ($tags | length) > 0 then .tags = $tags else . end')"
+            revision="$(aws ecs register-task-definition --cli-input-json "$definition" \
+              --query 'taskDefinition.taskDefinitionArn' --output text)"
+            aws ecs update-service --cluster "$cluster" --service "$service" --task-definition "$revision" >/dev/null
+            echo "\`$service\`: \`$current\` -> \`$revision\` (\`$image\`)." >> "$GITHUB_STEP_SUMMARY"
+          }
+          swap api "$API_IMAGE"
+          swap maintenance "$MAINTENANCE_IMAGE"
+          aws ecs wait services-stable --cluster "$cluster" --services api maintenance
+      - name: publish the previous release's portal
+        run: scripts/deploy_static.sh portal deployment/terraform/environments/prod portal-dist
+      - name: publish the previous release's site
+        if: steps.previous.outputs.site == 'true'
+        run: scripts/deploy_static.sh site deployment/terraform/environments/prod site-dist/production
+      - name: the previous release is ready
+        env:
+          SHA: ${{ needs.guard.outputs.sha }}
+          TIP: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          API_DOMAIN_NAME="$(jq -er .environments.production.api_domain_name deployment/cloud/environments.json)"
+          for _ in $(seq 1 10); do
+            if curl -fsS --max-time 10 "https://$API_DOMAIN_NAME/readyz" >/dev/null; then
+              echo "Production runs \`$SHA\` again and answers ready. \`release\` stays where it is; the next apply writes its declared shape." >> "$GITHUB_STEP_SUMMARY"
+              # The release rolled back from is never the previous release of
+              # a later one: its record now reads as rolled back.
+              gh api -X POST "repos/$REPOSITORY/statuses/$TIP" -f state=error \
+                -f context=released/production -f description="rolled back to $SHA" >/dev/null
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::https://$API_DOMAIN_NAME/readyz did not answer ready after the rollback."
+          exit 1

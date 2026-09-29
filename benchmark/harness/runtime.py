@@ -105,11 +105,15 @@ DEFAULT_IMAGE = "swe-guidelines-benchmark:latest"
 CONTAINER_PLUGIN = "/plugin"
 CONTAINER_TARGET = "/target"
 # What a subject may read of the plugin checkout: the payload the skills
-# reference, and nothing else. The benchmark, its fixtures and their
-# answer keys, the docs, and the repository's own CLAUDE.md stay out.
-PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "LICENSE")
+# reference, and nothing else. The scaffold is there so a subject copies it
+# (`scaffold/new.py`). The benchmark, its fixtures and their answer keys,
+# the docs, and the repository's own CLAUDE.md stay out.
+PLUGIN_PAYLOAD = (".claude-plugin", "skills", "agents", "lenses", "architecture.md", "checkers", "scaffold", "LICENSE")
 # What no staged copy carries: the caches a tool leaves behind.
 STAGE_IGNORE = shutil.ignore_patterns(*V.CACHES)
+# What no staged plugin carries either: what `make setup` installs in a
+# scaffold, and its local settings, which `scaffold/new.py` leaves out too.
+PLUGIN_IGNORE = shutil.ignore_patterns(*V.CACHES, ".venv", "node_modules", ".terraform", ".env")
 # The subject's own key, by the name the subject reads it under and the
 # name the harness reads it from. `claude -p` reads ANTHROPIC_API_KEY; its
 # value comes from SUBJECT_ANTHROPIC_API_KEY, never from a judge's key, so
@@ -152,7 +156,7 @@ def stage_plugin(root: Path, dest: Path) -> Path:
     for name in PLUGIN_PAYLOAD:
         source = root / name
         if source.is_dir():
-            shutil.copytree(source, dest / name, symlinks=False, ignore=STAGE_IGNORE, dirs_exist_ok=True)
+            shutil.copytree(source, dest / name, symlinks=False, ignore=PLUGIN_IGNORE, dirs_exist_ok=True)
         elif source.is_file():
             shutil.copy2(source, dest / name)
     return dest
@@ -298,7 +302,12 @@ class BaseRuntime:
         return self.sandbox / "hidden" / (self.slot or "run") / rel
 
     def hide(self, rel: str) -> None:
-        """Move a path of the workspace out of it, when it is there; the subject is not given where it goes."""
+        """Move a path of the workspace out of it, when it is there; the subject is not given where it goes.
+
+        That keeps it out of the paths the subject is given, not out of its
+        reach: on the host and on another machine, a subject that searches
+        the machine can still find it.
+        """
         _move(self.workspace / rel, self.hidden(rel))
 
     def show(self, rel: str) -> None:
@@ -678,13 +687,28 @@ class ContainerRuntime(BaseRuntime):
 
 @dataclass
 class VmConfig:
-    """How to reach the other machine, and how to get files there and back."""
+    """How to reach the other machine, and how to get files there and back.
 
+    The runtime config names these keys, and `tools`, which the preflight
+    reads (`preflight.parse_tools`). A run with no `exec_prefix`, or one
+    that needs a plugin or a target and has neither `copy` nor the
+    override, is refused before it starts.
+    """
+
+    # The words before every command there, handed on as words.
     exec_prefix: list[str] = field(default_factory=list)
+    # Makes a copy of a staged folder there: `{local}` is the folder here,
+    # `{remote}` the path its copy takes there.
     copy: list[str] = field(default_factory=list)
+    # Optional: copy the repeat's workspace there before the subject runs,
+    # and `fetch` back after; `{local}` and `{remote}` are the two workspaces.
     sync: list[str] = field(default_factory=list)
+    # The folder there that holds the lock and the runs' folders.
     remote_workspace: str = "/tmp/benchmark-workspace"
     fetch: list[str] = field(default_factory=list)
+    # Optional: a path the operator placed there, used in place of a copy.
+    # Nothing makes it afresh and no version names it. A plugin path that is
+    # a whole checkout holds the answer files, in the subject's reach.
     remote_plugin: str | None = None
     remote_target: str | None = None
     # The names the prefix takes from this machine's environment besides

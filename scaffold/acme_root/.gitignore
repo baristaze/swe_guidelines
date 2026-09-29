@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+
+# Node
+node_modules/
+apps/*/dist/
+*.tsbuildinfo
+.vite/
+.eslintcache
+coverage/
+
+# Test and tool reports
+reports/
+junit*.xml
+*.log
+
+# Local state
+.env
+.local/
+deployment/local/data/
+
+# Terraform: the lock files stay, the working state never
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating systems
+.DS_Store
+Thumbs.db

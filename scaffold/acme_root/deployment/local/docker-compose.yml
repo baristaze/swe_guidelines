@@ -1,0 +1,272 @@
+# Every technology piece Acme depends on, as a local container.
+# Application processes run on the host; see scripts/dev.sh.
+# Every host port is a knob, ACME_<SERVICE>_PORT, in the 5xxxx range by
+# default; inside the network the containers use their own ports. So two
+# stacks run side by side on one machine once each has its own ports in
+# .env. .env.example lists every knob with its default, which is also the
+# fallback below, and the Makefile passes .env.example and .env as env files
+# so the knobs reach the stack.
+# The `devx` profile adds developer dashboards over the same services:
+#   docker compose -f deployment/local/docker-compose.yml --profile devx up -d
+# The project is the product's name, which names every container and volume;
+# COMPOSE_PROJECT_NAME or -p sets another.
+name: acme
+
+services:
+  # The superuser is `postgres` and the local master is `acme`, which the
+  # init script creates as LOGIN NOSUPERUSER NOBYPASSRLS CREATEROLE and makes
+  # the owner of the database. `make migrate` has it make the three logins
+  # the processes connect as, none of them a superuser or BYPASSRLS. A
+  # superuser walks past every row-level security policy, so the second fence
+  # only exists for a login that is not one. The init script runs on an empty
+  # data directory: `make reset` after a pull.
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: acme
+    ports:
+      - "127.0.0.1:${ACME_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acme -d acme"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:9.1-alpine
+    ports:
+      - "127.0.0.1:${ACME_VALKEY_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.7.1
+    ports:
+      - "127.0.0.1:${ACME_ELASTICMQ_PORT:-59324}:9324"
+    volumes:
+      # The queues and their dead-letter queues, as the cloud declares them.
+      - ./elasticmq/elasticmq.conf:/opt/elasticmq.conf:ro
+    healthcheck:
+      # 1.7 dropped the built-in stats UI on 9325; probe the SQS API itself.
+      test: ["CMD-SHELL", "wget -q -O- 'http://127.0.0.1:9324/?Action=ListQueues' >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # MinIO serves no public image to pull, so this is the community fork of
+  # the same server that PGSTY builds (github.com/pgsty/minio): the same
+  # settings and data format, `mc` bundled, and the console kept. The tag
+  # names the release and the digest pins it.
+  minio:
+    image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    command: server /data --console-address ":9001"
+    environment:
+      # MinIO refuses a root password shorter than eight characters.
+      MINIO_ROOT_USER: acme
+      MINIO_ROOT_PASSWORD: acme-minio-local
+    ports:
+      - "127.0.0.1:${ACME_MINIO_PORT:-59000}:9000"
+      - "127.0.0.1:${ACME_MINIO_CONSOLE_PORT:-59001}:9001"
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Developer dashboards (profile devx). Local only; none of them has auth.
+  # They restart on their own when a service they watch is reset under them.
+  # A host port here is a knob, so a clash is fixed in .env, not in this file.
+
+  pgweb:
+    image: sosedoff/pgweb:0.17.0
+    profiles: [devx]
+    restart: unless-stopped
+    environment:
+      # The superuser, not the application's login: `acme` is fenced by the
+      # row-level security policies and a browser with no tenant set reads
+      # nothing. A local dashboard is a place to look at every row.
+      PGWEB_DATABASE_URL: postgres://postgres:postgres@postgres:5432/acme?sslmode=disable
+    ports:
+      - "127.0.0.1:${ACME_PGWEB_PORT:-58081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  valkey-admin:
+    image: valkey/valkey-admin:1.1.1
+    profiles: [devx]
+    restart: unless-stopped
+    environment:
+      DEPLOYMENT_MODE: Web
+      VALKEY_HOST: valkey
+      VALKEY_PORT: "6379"
+    ports:
+      - "127.0.0.1:${ACME_VALKEY_ADMIN_PORT:-58080}:8080"
+    depends_on:
+      valkey:
+        condition: service_healthy
+
+  elasticmq-ui:
+    image: softwaremill/elasticmq-ui:1.7.1
+    profiles: [devx]
+    restart: unless-stopped
+    environment:
+      SQS_ENDPOINT: http://elasticmq:9324
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    ports:
+      - "127.0.0.1:${ACME_ELASTICMQ_UI_PORT:-53000}:3000"
+    depends_on:
+      elasticmq:
+        condition: service_healthy
+
+  # Traces: set ACME_OTEL_ENDPOINT=http://127.0.0.1:<ACME_JAEGER_OTLP_PORT>
+  # for host processes.
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    profiles: [devx]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ACME_JAEGER_PORT:-56686}:16686"
+      - "127.0.0.1:${ACME_JAEGER_OTLP_PORT:-54318}:4318"
+
+  # Metrics: Prometheus scrapes the api and the maintenance worker when they
+  # run as containers; the collector below scrapes them as host processes and
+  # remote-writes into Prometheus. Grafana reads Prometheus and Jaeger.
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    profiles: [devx]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${ACME_PROMETHEUS_PORT:-59090}:9090"
+
+  # The host processes' collector, as the cloud's sidecar: it scrapes the api
+  # (ACME_COLLECTOR_SCRAPE_PORT, 8000 unless a run says otherwise) and the
+  # worker (9464) that scripts/dev.sh binds to 127.0.0.1, and remote-writes
+  # into Prometheus. These settings place it on the compose network; on Linux
+  # docker-compose.linux.yml moves it onto the host's network, the one place a
+  # loopback listener answers (the Makefile adds that file there). It
+  # publishes no port.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    profiles: [devx]
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/collector.yml"]
+    environment:
+      ACME_COLLECTOR_SCRAPE_HOST: host.docker.internal
+      ACME_COLLECTOR_SCRAPE_PORT: "${ACME_COLLECTOR_SCRAPE_PORT:-8000}"
+      ACME_COLLECTOR_WRITE_URL: http://prometheus:9090/api/v1/write
+    volumes:
+      - ./otel-collector/collector.yml:/etc/otelcol-contrib/collector.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - prometheus
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    profiles: [devx]
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/acme-overview.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${ACME_GRAFANA_PORT:-53001}:3000"
+    depends_on:
+      - prometheus
+
+  # Errors: GlitchTip, a Sentry-compatible backend, in its own database on the
+  # stack's Postgres and with Postgres for its queue (VALKEY_URL empty). The
+  # two one-shot services create that database and seed an admin and a
+  # project whose DSN key is fixed:
+  #   http://0123456789abcdef0123456789abcdef@localhost:<ACME_GLITCHTIP_PORT>/1
+  # `up --wait` holds until a one-shot that another service depends on with
+  # service_completed_successfully has exited 0, and counts any other
+  # one-shot's exit as a failure, even a clean one. glitchtip-db is the first
+  # kind. Nothing depends on glitchtip-seed, so it has a profile of its own
+  # that `up` leaves out, and the Makefile runs it as a step whose exit code
+  # is the seed's.
+  glitchtip-db:
+    image: postgres:18-alpine
+    profiles: [devx]
+    environment:
+      PGPASSWORD: postgres
+    # The superuser creates the database and hands it to the application's
+    # login, which is not allowed to create one of its own.
+    command:
+      - sh
+      - -c
+      - >-
+        psql -h postgres -U postgres -d postgres -tAc "select 1 from pg_database where datname = 'glitchtip'" | grep -q 1
+        || psql -h postgres -U postgres -d postgres -c "create database glitchtip owner acme"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  glitchtip:
+    image: glitchtip/glitchtip:6.2.6
+    profiles: [devx]
+    restart: unless-stopped
+    command: ./bin/run-all-in-one.sh
+    environment: &glitchtip-env
+      DATABASE_URL: postgres://acme:acme@postgres:5432/glitchtip
+      VALKEY_URL: ""
+      SECRET_KEY: local-only-not-a-secret-glitchtip-key
+      GLITCHTIP_DOMAIN: http://localhost:${ACME_GLITCHTIP_PORT:-58000}
+      DEFAULT_FROM_EMAIL: glitchtip@example.test
+      EMAIL_URL: consolemail://
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    ports:
+      - "127.0.0.1:${ACME_GLITCHTIP_PORT:-58000}:8000"
+    depends_on:
+      glitchtip-db:
+        condition: service_completed_successfully
+
+  glitchtip-seed:
+    image: glitchtip/glitchtip:6.2.6
+    profiles: [devx-seed]
+    command: ["sh", "-c", "./manage.py shell < /seed/seed.py"]
+    environment:
+      <<: *glitchtip-env
+      GLITCHTIP_ADMIN_EMAIL: admin@example.test
+      GLITCHTIP_ADMIN_PASSWORD: acme-local
+      GLITCHTIP_PROJECT_KEY: 0123456789abcdef0123456789abcdef
+      GLITCHTIP_EXPECTED_DSN: http://0123456789abcdef0123456789abcdef@localhost:${ACME_GLITCHTIP_PORT:-58000}/1
+      # The read-only API token the signal reader uses; ACME_ERROR_TRACKER_TOKEN in .env.example.
+      GLITCHTIP_API_TOKEN: ${ACME_ERROR_TRACKER_TOKEN:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+    volumes:
+      - ./glitchtip/seed.py:/seed/seed.py:ro
+    depends_on:
+      glitchtip:
+        condition: service_healthy
+
+volumes:
+  postgres:
+  minio:

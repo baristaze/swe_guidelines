@@ -1,0 +1,249 @@
+# One stress run against staging, dispatched by a person. Never on push: a
+# run drives real traffic at a deployed environment, writes rows, and costs
+# money, so it happens because someone asked for it.
+#
+# A run is refused today, before it provisions anything: the traffic
+# generator signs its people in by the local sign-in, which a deployed
+# environment does not serve (ADR 0029), and a person there signs in
+# through WorkOS in a browser. The workflow stays as the shape of a run.
+#
+# There is no environment input. Staging is the only environment this
+# workflow knows, so production cannot be picked from a dropdown by mistake
+# and a fat finger cannot point a load generator at the environment people
+# use. A production run is a person's own, with the platform developer's word
+# and the runbook's steps.
+#
+# What this is: a reference shape for a stress test on staging. One small
+# GitHub runner drives it, so what it measures is what one generator can ask
+# for, not what the platform can serve. The sign-ins it makes come from one
+# address and the API rate limits them there, and a runner's CPU and its one
+# network path bound the rest. A real load test needs many generators, from
+# many addresses, and this workflow is not that. It is how a run is wired:
+# the credential, the tenants, the scenario, the signals, and the verdict.
+#
+# The target is an input, not a fixed judgement. The scenario states one, and
+# a dispatch may state its own p95 and error ratio instead, so one scenario
+# answers two questions: does the wiring work, and does this environment hold
+# a number someone cares about. The run prints the target it judged and where
+# each half of it came from.
+#
+# The credential is the provisioner's, and it does not stand: the run grants
+# the provisioner `write` on the operator allowlist, mints its operator token
+# through the grant task the way the deploys' smoke step does
+# (scripts/cloud_grant.sh), reads the token into one step's environment, and
+# disables the entry again when the run ends, whatever the outcome. The token
+# is never written to a file; the environment file the ops CLI reads holds
+# the API's address and nothing secret.
+#
+# The `staging` environment's PROVISIONER_EMAIL names the identity, the way
+# SMOKE_EMAIL names the smoke identity: grant it once with
+# grant-operator.yml, then
+# `gh variable set PROVISIONER_EMAIL --env staging --body <email>`.
+name: stress
+run-name: stress ${{ inputs.scenario }} on staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: The scenario to run, named as its file under ops/stress/.
+        required: true
+        default: staging
+      duration_seconds:
+        description: >-
+          Seconds, overriding the scenario's duration. Empty runs the
+          scenario's own. The target does not move with it.
+        required: false
+      p95_ms:
+        description: >-
+          The pass mark for the working requests' p95, in milliseconds.
+          Empty judges the scenario's own. A stricter one is how a run
+          asks a harder question than the scenario file does.
+        required: false
+      error_ratio:
+        description: >-
+          The share of requests that may fail, as a fraction (0.01 is one
+          in a hundred). Empty judges the scenario's own.
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+# One run at a time, and a running one is never cancelled: two generators
+# against one environment measure each other.
+concurrency:
+  group: stress-staging
+  cancel-in-progress: false
+
+env:
+  # The region deployment/cloud/environments.json names; a test holds them
+  # equal.
+  AWS_REGION: us-west-2
+  TERRAFORM_VERSION: "1.16.3"
+  # uv sync and uv run fail instead of rewriting a stale uv.lock.
+  UV_LOCKED: "1"
+  ROOT: deployment/terraform/environments/staging
+
+jobs:
+  stress:
+    name: stress staging with the ${{ inputs.scenario }} scenario
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # The deploy role of staging, and the environment's own variables.
+    environment: staging
+    steps:
+      - name: mask the email
+        env:
+          PROVISIONER_EMAIL: ${{ vars.PROVISIONER_EMAIL }}
+        run: |
+          [ -z "${PROVISIONER_EMAIL:-}" ] || echo "::add-mask::$PROVISIONER_EMAIL"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: dispatched on main, with everything a run needs
+        env:
+          REF: ${{ github.ref }}
+          SCENARIO: ${{ inputs.scenario }}
+          DURATION: ${{ inputs.duration_seconds }}
+          P95_MS: ${{ inputs.p95_ms }}
+          ERROR_RATIO: ${{ inputs.error_ratio }}
+          PROVISIONER_EMAIL: ${{ vars.PROVISIONER_EMAIL }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+        run: |
+          [ "$REF" = "refs/heads/main" ] || {
+            echo "::error::staging runs from main, not $REF"; exit 1; }
+          case "$SCENARIO" in
+            *[!a-z0-9-]*|"") echo "::error::a scenario is named in lower case, as its file is"; exit 1 ;;
+          esac
+          [ -f "ops/stress/$SCENARIO.yaml" ] || {
+            echo "::error::there is no ops/stress/$SCENARIO.yaml in this checkout"; exit 1; }
+          case "${DURATION:-0}" in
+            *[!0-9]*) echo "::error::duration_seconds is a whole number of seconds"; exit 1 ;;
+          esac
+          # The target the dispatch states, when it states one: a p95 in
+          # milliseconds and a ratio, both plain decimals. The run itself
+          # refuses a p95 at or below zero and a ratio outside 0 to 1.
+          case "${P95_MS:-1}" in
+            ""|.|*[!0-9.]*|*.*.*) echo "::error::p95_ms is a number of milliseconds, like 2500"; exit 1 ;;
+          esac
+          case "${ERROR_RATIO:-0}" in
+            ""|.|*[!0-9.]*|*.*.*) echo "::error::error_ratio is a fraction, like 0.01"; exit 1 ;;
+          esac
+          for name in AWS_ROLE_ARN TF_STATE_BUCKET API_DOMAIN_NAME; do
+            [ -n "${!name}" ] || { echo "::error::the staging environment's $name is empty; there is no cloud to run against"; exit 1; }
+          done
+          [ -n "${PROVISIONER_EMAIL:-}" ] || {
+            echo "::error::the staging environment's PROVISIONER_EMAIL is empty. Grant the provisioner with grant-operator.yml, then set the variable: gh variable set PROVISIONER_EMAIL --env staging --body <email>"; exit 1; }
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - run: uv sync --all-packages
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      # The root is read for its outputs, which scripts/cloud_grant.sh needs:
+      # no plan, no apply.
+      - name: read the environment root's outputs
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          terraform -chdir="$ROOT" init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/staging/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true"
+      # The generator reads the signals back through the ops CLI, which takes
+      # a named AWS profile: a person's investigate role. The only credential
+      # here is this job's own deploy-role session, so the run names a profile
+      # that hands that session on, and no credential is written to a file.
+      - name: the environment the ops CLI reads, with no token in it
+        env:
+          API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+        run: |
+          mkdir -p ~/.aws ~/.config/acme/ops
+          cat >> ~/.aws/config <<'AWS'
+
+          [profile acme-stress]
+          credential_process = aws configure export-credentials --format process
+          AWS
+          umask 077
+          cat > ~/.config/acme/ops/staging.env <<ENV
+          ACME_API_URL=https://$API_DOMAIN_NAME
+          ACME_AWS_PROFILE=acme-stress
+          ACME_AWS_REGION=$AWS_REGION
+          ENV
+          chmod 600 ~/.config/acme/ops/staging.env
+      - name: the provisioner holds write for this run
+        env:
+          PROVISIONER_EMAIL: ${{ vars.PROVISIONER_EMAIL }}
+        run: scripts/cloud_grant.sh "$ROOT" --email "$PROVISIONER_EMAIL" --permission write
+      # The mint and the run are one step: the token goes from the secret into
+      # this shell's environment and nowhere else, and shell state does not
+      # survive a step. A missed target exits 1 and fails the run.
+      - name: run the scenario and judge it
+        env:
+          PROVISIONER_EMAIL: ${{ vars.PROVISIONER_EMAIL }}
+          SCENARIO: ${{ inputs.scenario }}
+          DURATION: ${{ inputs.duration_seconds }}
+          P95_MS: ${{ inputs.p95_ms }}
+          ERROR_RATIO: ${{ inputs.error_ratio }}
+        run: |
+          scripts/cloud_grant.sh "$ROOT" --email "$PROVISIONER_EMAIL" --mint-token provisioner
+          secret="$(terraform -chdir="$ROOT" output -json operator_token_secret_names | jq -er .provisioner)"
+          ACME_PROVISIONER_TOKEN="$(aws secretsmanager get-secret-value \
+            --secret-id "$secret" --query SecretString --output text)"
+          echo "::add-mask::$ACME_PROVISIONER_TOKEN"
+          export ACME_PROVISIONER_TOKEN
+          if [ -z "$ACME_PROVISIONER_TOKEN" ] || [ "$ACME_PROVISIONER_TOKEN" = "None" ]; then
+            echo "::error::$secret holds no token after the mint"
+            exit 1
+          fi
+          set -o pipefail
+          uv run acme-ops stress --scenario "ops/stress/$SCENARIO.yaml" --env staging \
+            ${DURATION:+--duration "$DURATION"} \
+            ${P95_MS:+--p95-ms "$P95_MS"} \
+            ${ERROR_RATIO:+--error-ratio "$ERROR_RATIO"} \
+            --report stress-report.json \
+            | tee stress-run.txt
+      - name: the run, in the summary
+        if: always()
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          {
+            echo "## Stress: \`$SCENARIO\` on staging"
+            echo ""
+            echo "One runner drove this. It is the shape of a stress run, not a load test: a load test needs many generators."
+            echo ""
+            echo "The \`target:\` line below says which pass mark this run judged and where each half of it came from: the scenario's file, or this dispatch."
+            echo ""
+            echo '```'
+            tail -c 60000 stress-run.txt 2>/dev/null || echo "the run printed nothing"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: stress-${{ inputs.scenario }}
+          path: |
+            stress-report.json
+            stress-run.txt
+          if-no-files-found: warn
+          retention-days: 30
+      # A write credential that stands between runs is what the guideline
+      # refuses, so the entry goes off again however the run ended.
+      - name: the provisioner's entry goes off again
+        if: always()
+        env:
+          PROVISIONER_EMAIL: ${{ vars.PROVISIONER_EMAIL }}
+        run: |
+          if [ -z "${PROVISIONER_EMAIL:-}" ]; then
+            echo "no provisioner was granted; nothing to disable"
+            exit 0
+          fi
+          scripts/cloud_grant.sh "$ROOT" --email "$PROVISIONER_EMAIL" --disable
+          echo "The provisioner's entry on staging's operator allowlist is disabled again." >> "$GITHUB_STEP_SUMMARY"
