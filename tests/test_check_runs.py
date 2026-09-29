@@ -3,12 +3,15 @@
 import gzip
 import io
 import json
+import re
 import shutil
+import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
-from test_benchmark_redact import ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429
+from test_benchmark_redact import ANTHROPIC, ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429
 
 HEAD = "| Run | Started (UTC) | Cost (USD) |\n|---|---|---|\n"
 ONE_A = "20260101-000000-alpha-aa"
@@ -675,3 +678,193 @@ def test_the_account_the_other_judges_errors_name_fails_in_any_file_until_it_is_
     assert "3 run index mismatch(es)" in out
     assert len(runs.X.redact_folder(folder, set())) == 3
     assert runs.main() == 0
+
+
+# The browser benchmark ----------------------------------------------------------
+
+SCHEMA = Path(__file__).resolve().parent.parent / "benchmark" / "schema" / "browser-session.schema.json"
+BROWSER_HEAD = "| Run | Started (UTC) | chatgpt.com | claude.ai |\n|---|---|---|---|\n"
+OLD = "20260920-224602"
+NEW = "20260929-212716"
+
+
+def a_session(site, **recorded):
+    """A session as today's skill records it, its url redacted; `recorded` adds or replaces keys, and None drops one."""
+    session = {
+        "site": site,
+        "url": "[redacted]",
+        "model_label": "Latest",
+        "effort_label": "High",
+        "started_at": "2026-09-29T21:29:18Z",
+        "finished_at": "2026-09-29T21:32:35Z",
+        "score": 94,
+        "read_version": "not stated",
+        "polls": 1,
+        "response_path": f"{site}.md",
+        "status": "ok",
+    } | recorded
+    return {key: value for key, value in session.items() if value is not None}
+
+
+def a_browser_run(repo, name, started, sessions=None, answer="Score: 94/100\n", **recorded):
+    """A published browser run: its results.json and one answer per session, redacted."""
+    sessions = [a_session("chatgpt.com"), a_session("claude.ai")] if sessions is None else sessions
+    results = {
+        "run_id": name,
+        "started_at": started,
+        "finished_at": started,
+        "repository_head": "b" * 40,
+        "prompt": "Evaluate the repository.",
+        "contract": "Score first.",
+        "sizes": {"model": "m", "effort": "m"},
+        "sessions": sessions,
+    } | recorded
+    results = {key: value for key, value in results.items() if value is not None}
+    repo.write(f"benchmark/runs/browser/{name}/results.json", json.dumps(results, indent=2) + "\n")
+    for session in sessions:
+        repo.write(
+            f"benchmark/runs/browser/{name}/{session['response_path']}",
+            f"# {session['site']}\n\n- URL: [redacted]\n\n## Answer\n\n{answer}",
+        )
+
+
+def browser_row(name):
+    return f"| [{name}]({name}/results.json) | when | [94]({name}/chatgpt.com.md) Latest, High | [94]({name}/claude.ai.md) |\n"
+
+
+def browser_page(repo, *names):
+    """The browser page with a row per name, the index, and the schema the check holds each run to."""
+    repo.write("benchmark/schema/browser-session.schema.json", SCHEMA.read_text(encoding="utf-8"))
+    page(repo, "browser", *(browser_row(name) for name in names), head=BROWSER_HEAD)
+    index(repo, "browser")
+
+
+def two_browser_runs(repo):
+    """Today's run, and one recorded before the schema required the head, a session's version read, and its polls."""
+    a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", answer="Score: 94/100\n\nSent at https://claude.ai/new.\n")
+    older = [a_session(site, read_version=None, polls=None) for site in ("chatgpt.com", "claude.ai")]
+    a_browser_run(repo, OLD, "2026-09-20T22:46:02Z", older, repository_head=None)
+    browser_page(repo, NEW, OLD)
+
+
+def test_browser_runs_in_their_schema_text_only_and_redacted_pass(repo, runs, capsys):
+    two_browser_runs(repo)
+    assert runs.main() == 0
+    out = capsys.readouterr().out
+    assert "runs ok: 2 run folder(s)" in out and "each browser run in its schema, text only, naming no conversation" in out
+
+
+def test_a_browser_run_with_an_image_fails(repo, runs, capsys):
+    two_browser_runs(repo)
+    repo.write(f"benchmark/runs/browser/{NEW}/chatgpt.com.jpg", "\xff\xd8\xff not text")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        f"benchmark/runs/browser/{NEW}/chatgpt.com.jpg: is not the run's results.json or a session's answer; "
+        "a published browser run is text only, with no screenshot"
+    ) in out
+    assert "1 run index mismatch(es)" in out
+
+
+@pytest.mark.parametrize(
+    ("file", "said", "found"),
+    [
+        ("results.json", "https://gemini.google.com/app/0123456789abcdef", "gemini.google.com/app/0"),  # in a note
+        ("chatgpt.com.md", "https://chatgpt.com/c/00000000-1111-2222-3333-444444444444", "chatgpt.com/c/"),
+        ("claude.ai.md", "https://claude.ai/chat/55555555-6666-7777-8888-999999999999", "claude.ai/chat/"),
+        ("chatgpt.com.md", "https://grok.com/c/aaaaaaaa-bbbb-cccc-dddd?rid=eeeeeeee", "grok.com/c/"),
+        ("claude.ai.md", "https://chatgpt.com/share/00000000-1111", "chatgpt.com/share/"),
+    ],
+)
+def test_a_browser_run_that_holds_a_conversation_s_address_fails(repo, runs, capsys, file, said, found):
+    two_browser_runs(repo)
+    if file == "results.json":
+        a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", [a_session("chatgpt.com", note=f"the first attempt, {said}, errored")])
+    else:
+        repo.write(f"benchmark/runs/browser/{NEW}/{file}", f"# {file}\n\n- URL: {said}\n")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/browser/{NEW}/{file}:" in out
+    assert f"holds the address of a conversation ({found}...); a published run replaces it with [redacted]" in out
+
+
+def test_a_browser_session_whose_url_is_not_redacted_fails(repo, runs, capsys):
+    two_browser_runs(repo)
+    a_browser_run(
+        repo, NEW, "2026-09-29T21:27:16Z", [a_session("chatgpt.com"), a_session("claude.ai", url="https://claude.ai/new")]
+    )
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"{NEW}/results.json: the claude.ai session's url is not [redacted]; a published run names no conversation" in out
+    assert "1 run index mismatch(es)" in out  # a new-chat page is not a conversation's address
+
+
+def test_a_browser_run_no_row_names_fails_and_so_does_a_row_with_no_run(repo, runs, capsys):
+    two_browser_runs(repo)
+    page(repo, "browser", browser_row(NEW), browser_row("20260101-000000"), head=BROWSER_HEAD)
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/browser/README.md: no row names the run folder {OLD}" in out
+    assert "browser/README.md:8: links 20260101-000000/results.json, and browser holds no such run" in out
+    page(repo, "browser", browser_row(NEW), browser_row(OLD), browser_row(OLD), head=BROWSER_HEAD)
+    assert runs.main() == 1
+    assert f"{OLD} is named by 2 rows (lines 8, 9); a run has one row" in capsys.readouterr().out
+
+
+def test_browser_rows_run_from_the_newest_start(repo, runs, capsys):
+    two_browser_runs(repo)
+    page(repo, "browser", browser_row(OLD), browser_row(NEW), head=BROWSER_HEAD)
+    assert runs.main() == 1
+    assert f"browser/README.md:8: {NEW} started 2026-09-29T21:27:16Z, after {OLD} above it" in capsys.readouterr().out
+
+
+def test_a_browser_run_outside_its_schema_fails(repo, runs, capsys):
+    two_browser_runs(repo)
+    sessions = [a_session("chatgpt.com", score=101, screenshot="chatgpt.com.jpg"), a_session("claude.ai", status=None)]
+    a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", sessions, sizes={"model": "m"})
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    where = f"benchmark/runs/browser/{NEW}/results.json"
+    assert f"{where}: sessions/0/score: 101 is greater than the maximum of 100" in out
+    assert f"{where}: sessions/0: Additional properties are not allowed ('screenshot' was unexpected)" in out
+    assert f"{where}: sessions/1: 'status' is a required property" in out
+    assert f"{where}: sizes: 'effort' is a required property" in out
+    # A key the schema required from the start is required of an older run too.
+    a_browser_run(repo, OLD, "2026-09-20T22:46:02Z", [a_session("chatgpt.com", model_label=None)], repository_head=None)
+    assert runs.main() == 1
+    assert f"browser/{OLD}/results.json: sessions/0: 'model_label' is a required property" in capsys.readouterr().out
+
+
+def test_a_browser_session_whose_answer_is_not_in_the_run_folder_fails(repo, runs, capsys):
+    two_browser_runs(repo)
+    (repo.root / "benchmark" / "runs" / "browser" / NEW / "claude.ai.md").unlink()
+    a_browser_run(repo, OLD, "2026-09-20T22:46:02Z", [a_session("chatgpt.com", response_path="../chatgpt.com.md")])
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"browser/{NEW}: the claude.ai session's answer claude.ai.md is not in the run folder" in out
+    assert f"browser/{OLD}/results.json: the chatgpt.com session's response_path '../chatgpt.com.md' is not a file" in out
+
+
+def test_a_browser_run_that_names_the_reference_implementation_fails(repo, runs, capsys):
+    name = re.sub(r"\\b", "", runs.REFUSED_TERMS["reference"][0])  # the one list make leaks refuses it by
+    two_browser_runs(repo)
+    a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", answer=f"Score: 94/100\n\nCloned someone/{name.title()} too.\n")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"browser/{NEW}/chatgpt.com.md:9: names the reference implementation; a published run replaces the name" in out
+    assert f"browser/{NEW}/claude.ai.md:9: names the reference implementation" in out
+
+
+def test_a_key_in_a_browser_run_fails(repo, runs, capsys):
+    two_browser_runs(repo)
+    a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", answer=f"Score: 94/100\n\nexport KEY={ANTHROPIC}\n")
+    assert runs.main() == 1
+    assert f"browser/{NEW}/chatgpt.com.md holds a string shaped like a key" in capsys.readouterr().out
+
+
+def test_a_browser_run_without_jsonschema_fails(repo, runs, capsys, monkeypatch):
+    two_browser_runs(repo)
+    monkeypatch.setitem(sys.modules, "jsonschema", None)
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"browser/{NEW}: jsonschema is not installed, so no one can say the run is in its schema" in out
