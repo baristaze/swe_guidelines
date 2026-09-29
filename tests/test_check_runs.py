@@ -7,6 +7,8 @@ import zipfile
 
 import pytest
 
+from test_benchmark_redact import ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429
+
 HEAD = "| Run | Scenario |\n|---|---|\n"
 
 
@@ -422,7 +424,7 @@ def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
     a_zip(repo, ONE_A, {"README.md": "clean\n"})
     repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 0
-    assert "no key or organization id in any file" in capsys.readouterr().out
+    assert "no key or account id in any file" in capsys.readouterr().out
 
 
 def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
@@ -475,10 +477,31 @@ def test_an_organization_id_in_any_file_plain_or_compressed_fails_until_it_is_re
     out = capsys.readouterr().out
     shown = f"benchmark/runs/{ONE_A}"
     places = ("judgements/0-openai.jsonl", "judgements/0-openai.jsonl.gz", "artifacts/0/output.zip: logs/judge.log", "report.md")
+    found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
     for where in places:
-        assert f"{shown}/{where} holds a string shaped like a key, an organization id, or a limit's figures" in out
+        assert f"{shown}/{where} holds {found}" in out
     assert "4 run index mismatch(es)" in out
     redacted = runs.X.redact_folder(folder, set())
     assert sorted(redacted) == sorted(path for path in folder.rglob("*") if path.suffix in (".jsonl", ".gz", ".zip", ".md"))
     assert runs.main() == 0
-    assert "no key or organization id in any file" in capsys.readouterr().out
+    assert "no key or account id in any file" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("said", [ANTHROPIC_429, ANTHROPIC_429_WITHOUT_ID, XAI_429], ids=["anthropic", "anthropic-no-id", "xai"])
+def test_the_account_the_other_judges_errors_name_fails_in_any_file_until_it_is_redacted(said, repo, runs, capsys):
+    a_scenario(repo, "alpha", ["vm"])
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    folder = repo.root / "benchmark" / "runs" / ONE_A
+    (folder / "judgements").mkdir()
+    (folder / "judgements" / "0-judge.jsonl").write_text(json.dumps({"error": said}) + "\n", encoding="utf-8")
+    (folder / "judgements" / "0-judge.jsonl.gz").write_bytes(gzip.compress(said.encode()))
+    a_zip(repo, ONE_A, {"logs/judge.log": said})
+    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    shown = f"benchmark/runs/{ONE_A}"
+    for where in ("judgements/0-judge.jsonl", "judgements/0-judge.jsonl.gz", "artifacts/0/output.zip: logs/judge.log"):
+        assert f"{shown}/{where} holds a string shaped like a key, or an account id" in out
+    assert "3 run index mismatch(es)" in out
+    assert len(runs.X.redact_folder(folder, set())) == 3
+    assert runs.main() == 0

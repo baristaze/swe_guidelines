@@ -35,9 +35,9 @@ and the run folders together:
   does not load, or that two files name, fails too, since nothing says
   where it runs;
 - no file in a run folder, plain or compressed, holds a string shaped
-  like a key, a provider's organization id, or a rate limit's figures,
-  the strings `run.py redact` replaces by their shape. A plain file is
-  scanned as bytes. A zip, a tar, and a gzip, bzip2, or xz stream are
+  like a key, or an account id or a limit's figures that a provider's
+  error names: the strings `run.py redact` replaces by their shape. A
+  plain file is scanned as bytes. A zip, a tar, and a gzip, bzip2, or xz stream are
   read the way `run.py redact` reads them, member by member and down the
   levels, since a compressed member hides its text from a scan of the
   bytes. A compressed form the scan cannot read, a part of one it cannot
@@ -243,7 +243,7 @@ def packed_keys(name: str) -> list[str]:
                 out.append(f"{shown}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
             else:
                 where = f"{shown}: {place}" if place else str(shown)
-                found = "a string shaped like a key, an organization id, or a limit's figures"
+                found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
                 out.append(f"{where} holds {found}; run `run.py redact`")
     return out
 
@@ -325,7 +325,7 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists, "
-        "no rehearsal, no key or organization id in any file"
+        "no rehearsal, no key or account id in any file"
     )
     return 0
 
