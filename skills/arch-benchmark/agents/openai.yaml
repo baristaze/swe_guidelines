@@ -1,0 +1,5 @@
+# Codex's settings for this skill. A person starts it by name, and the
+# model never starts it on its own, as disable-model-invocation says in
+# SKILL.md for the agents that read that key.
+policy:
+  allow_implicit_invocation: false

@@ -140,8 +140,9 @@ allowed-tools: Read, Grep, Bash(git diff:*)
 # arch-review-{group}
 
 Read `../../lenses/{group}.md` and the guideline at
-`../../architecture.md`. Take the scope from
-`git diff`. Never edit, stage, or commit.
+`../../architecture.md`, from this skill's folder as `realpath`
+resolves it. Take the scope from `git diff`. Never edit, stage, or
+commit.
 """
 
 REVIEW_FULL = """\

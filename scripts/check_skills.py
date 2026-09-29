@@ -14,11 +14,18 @@ Rules:
 - the frontmatter holds only the fields of the Agent Skills standard
   (https://agentskills.io/specification: `name`, `description`,
   `license`, `compatibility`, `metadata`, `allowed-tools`), plus
-  `disable-model-invocation`, which the agents that read the standard
-  share. A client that validates strictly refuses a skill with any other
-  key, and a misspelled key, `allowed_tools` for one, would otherwise be
-  a skill that silently runs with no tool limits. A `compatibility` holds
+  `disable-model-invocation`, Claude Code's key, which VS Code, Cursor,
+  and Factory also read: a person starts the skill by name, and the
+  model never does. The standard's validator refuses that key, so only a
+  skill that must never start on its own carries it. Any other key is an
+  error: a misspelled key, `allowed_tools` for one, would otherwise be a
+  skill that silently runs with no tool limits. A `compatibility` holds
   at most 500 characters, as the standard says;
+- a skill that says `disable-model-invocation: true` carries Codex's
+  switch too, `agents/openai.yaml` in its folder with
+  `policy.allow_implicit_invocation: false`, and a skill whose
+  `agents/openai.yaml` turns implicit invocation off says the key: in
+  both agents a person starts it, never the model;
 - every arch-scaffold-* skill references `skills/_shared/scaffold-conventions.md`
   when that file exists;
 - a skill names its own files by a path from its own folder, as the
@@ -31,7 +38,11 @@ Rules:
   inside this repository. A path inside
   `skills/_shared/scaffold-conventions.md` is resolved from the folder of
   every skill whose body references that file, since that is the skill
-  the reader runs;
+  the reader runs. A plugin skill, or that file, that names a path
+  climbing out of the folder (`../`) says to read it as `realpath`
+  resolves the folder: the clone route links each skill folder, and an
+  agent that shortens `../` from the link's own path reads a file that
+  is not there;
 - there is exactly one arch-review-<group> skill per lens group and none for
   a group that does not exist;
 - arch-review-full names every group's review skill;
@@ -157,7 +168,13 @@ DESCRIPTIONS_TOTAL = 6000
 STANDARD_KEYS = frozenset({"name", "description", "license", "compatibility", "metadata", "allowed-tools"})
 """The frontmatter fields of the Agent Skills standard."""
 KNOWN_KEYS = STANDARD_KEYS | {"disable-model-invocation"}
-"""The standard's fields, and the one more the agents that read it share: only the person invokes the skill."""
+"""The standard's fields, and Claude Code's key that keeps the model from starting a skill."""
+OPENAI_SETTINGS = "agents/openai.yaml"
+"""Codex's file of a skill's own settings, in the skill's folder."""
+IMPLICIT_OFF = re.compile(r"^[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*(?:#.*)?$")
+REALPATH = "`realpath`"
+NO_REALPATH = "names a path out of {whose} folder (../) and never says to read it as `realpath` resolves the folder"
+"""How a skill that climbs out of its folder says to resolve the folder first, when it is a link."""
 COMPATIBILITY_LIMIT = 500
 DESCRIPTION_STANDARD_LIMIT = 1024
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
@@ -264,6 +281,34 @@ def check_keys(fm: dict[str, str], rel: str, errors: list[str]) -> None:
     size = len(fm.get("compatibility", "x"))
     if not 0 < size <= COMPATIBILITY_LIMIT:
         errors.append(f"{rel}: compatibility is {size} characters; the standard allows 1 to {COMPATIBILITY_LIMIT}")
+
+
+def implicit_off(settings: Path) -> bool:
+    """Whether Codex's `agents/openai.yaml` sets `allow_implicit_invocation: false` under `policy:`."""
+    if not settings.is_file():
+        return False
+    inside = False
+    for line in settings.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line[0].isspace():
+            inside = line.split("#", 1)[0].strip() == "policy:"
+        elif inside and IMPLICIT_OFF.match(line):
+            return True
+    return False
+
+
+def check_invocation(folder: Path, fm: dict[str, str], rel: str, errors: list[str]) -> None:
+    """Claude Code's `disable-model-invocation: true` and Codex's `policy.allow_implicit_invocation: false` agree."""
+    manual = fm.get("disable-model-invocation", "").strip().lower() == "true"
+    settings = folder / OPENAI_SETTINGS
+    off = implicit_off(settings)
+    where = settings.relative_to(ROOT).as_posix()
+    if manual and not off:
+        errors.append(
+            f"{rel}: disable-model-invocation is true, but {where} does not set "
+            "policy.allow_implicit_invocation: false, so Codex's model may start the skill"
+        )
+    elif off and not manual:
+        errors.append(f"{rel}: {where} turns implicit invocation off; say disable-model-invocation: true too")
 
 
 def check_reference(folder: Path, ref: str, within: Path, where: str, errors: list[str]) -> None:
@@ -376,6 +421,7 @@ def check_scaffold_skill(path: Path, errors: list[str]) -> None:
         errors.append(f"{rel}: missing frontmatter")
         return
     check_keys(fm, str(rel), errors)
+    check_invocation(path.parent, fm, str(rel), errors)
     name = fm.get("name", "")
     if name != path.parent.name:
         errors.append(f"{rel}: name '{name}' differs from its folder '{path.parent.name}'")
@@ -617,6 +663,7 @@ def main(argv: Sequence[str] = ()) -> int:
         if not NAME.match(name) or len(name) > NAME_LIMIT:
             errors.append(f"{rel}: name '{name}' must match {NAME.pattern}, at most {NAME_LIMIT} characters")
         check_keys(fm, str(rel), errors)
+        check_invocation(folder, fm, str(rel), errors)
         desc = fm.get("description", "")
         total += len(desc)
         if not desc:
@@ -681,6 +728,8 @@ def main(argv: Sequence[str] = ()) -> int:
             refs += [(ref, f"{rel} (via skills/{CONVENTIONS})") for ref in references(shared)]
         for ref, where in refs:
             check_reference(folder, ref, ROOT, where, errors)
+        if any(ref.startswith("../") for ref in references(body_of(text))) and REALPATH not in body_of(text):
+            errors.append(f"{rel}: {NO_REALPATH.format(whose='its')}")
         if name.startswith("arch-scaffold-") and (SKILLS / CONVENTIONS).exists() and CONVENTIONS not in body_of(text):
             errors.append(f"{rel}: a scaffold skill references skills/{CONVENTIONS}")
         if name.startswith("arch-scaffold-"):
@@ -703,6 +752,12 @@ def main(argv: Sequence[str] = ()) -> int:
         check_scaffold_skill(skill, errors)
     check_scaffold_link(errors)
     check_substitutions(errors)
+    shared = SKILLS / CONVENTIONS
+    if shared.exists():
+        text = shared.read_text(encoding="utf-8")
+        if any(ref.startswith("../") for ref in references(text)) and REALPATH not in text:
+            whose = "the skill's"
+            errors.append(f"skills/{CONVENTIONS}: {NO_REALPATH.format(whose=whose)}")
     check_audits(copied, errors)
     check_work_row(errors)
     check_bounds(errors)

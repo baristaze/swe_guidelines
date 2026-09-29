@@ -98,14 +98,19 @@ cites the changed text changes with it.
 - Every skill follows the [Agent Skills
   standard](https://agentskills.io/specification), so it runs in any
   agent that reads it. Its frontmatter holds the standard's fields and
-  `disable-model-invocation`, nothing else. It names its own files by a
-  path from its own folder (`../../architecture.md`,
-  `references/<file>`), never through a path one agent substitutes,
-  such as `${CLAUDE_SKILL_DIR}`, and a command runs such a file by its
-  absolute path. A skill that climbs out of its folder says the path is
-  read from the folder a link points to: the clone route links each
-  skill, and an agent that shortens `../` by hand reads the wrong file.
-  Its arguments are "the arguments", never `$ARGUMENTS`.
+  nothing else, except `disable-model-invocation`: Claude Code's key,
+  which VS Code, Cursor, and Factory also read, and which the
+  standard's validator refuses. So only a skill a person must start by
+  name carries it, and that skill also carries Codex's switch,
+  `agents/openai.yaml` with `policy.allow_implicit_invocation: false`.
+  A skill names its own files by a path from its own folder
+  (`../../architecture.md`, `references/<file>`), never through a path
+  one agent substitutes, such as `${CLAUDE_SKILL_DIR}`, and a command
+  runs such a file by its absolute path. A skill that climbs out of its
+  folder says the path is read from the folder as `realpath` resolves
+  it: the clone route links each skill, and an agent that shortens
+  `../` by hand reads the wrong file. Its arguments are "the
+  arguments", never `$ARGUMENTS`.
 - Every plugin skill's `name` equals its folder name and starts with
   `arch-`, and its `allowed-tools` names only what its body runs.
   `scripts/check_skills.py` holds the frontmatter and the paths; the

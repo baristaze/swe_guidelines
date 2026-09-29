@@ -164,6 +164,8 @@ def test_the_standards_optional_fields_and_disable_model_invocation_pass(repo, s
     fields = 'license: MIT\ncompatibility: "Needs git and Python 3.11."\ndisable-model-invocation: true\n'
     repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", f"allowed-tools: Read, Agent\n{fields}")
     repo.write(copied("ops-watch"), f'---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n{fields}---\n')
+    for folder in ("skills/arch-review-full", f"{COPIED}/ops-watch"):
+        repo.write(f"{folder}/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n")
     assert skills.main() == 0
 
 
@@ -224,7 +226,8 @@ def test_make_target_the_body_runs_passes(repo, skills, capsys):
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`, then `make migrate-check --dry-run`.\n3. Conventions: `../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`, then `make migrate-check --dry-run`.\n"
+        "3. Conventions: `../_shared/scaffold-conventions.md`, as `realpath` resolves it.",
     )
     assert skills.main() == 0
     assert "skills ok" in capsys.readouterr().out
@@ -313,13 +316,15 @@ def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):
 
 
 def test_a_reference_in_the_scaffold_conventions_resolves_from_each_including_skill(repo, skills, capsys):
-    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `../../missing.json`.\n")
+    repo.write(
+        "skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `../../missing.json` as `realpath` resolves it.\n"
+    )
     assert skills.main() == 1  # the scaffold does not reference the conventions file yet
     assert "a scaffold skill references skills/_shared/scaffold-conventions.md" in capsys.readouterr().out
     repo.edit(
         "skills/arch-scaffold-thing/SKILL.md",
         "2. Run `make check`.",
-        "2. Run `make check`.\n3. Conventions: `../_shared/scaffold-conventions.md`.",
+        "2. Run `make check`.\n3. Conventions: `../_shared/scaffold-conventions.md`, as `realpath` resolves it.",
     )
     assert skills.main() == 1
     assert (
@@ -723,3 +728,48 @@ def test_the_scaffolds_claude_skills_is_a_link_to_its_agents_skills(repo, skills
     claude_link.mkdir()
     assert skills.main() == 1
     assert f"{LINK}: not a link" in capsys.readouterr().out
+
+
+def test_a_path_out_of_the_folder_says_to_resolve_the_folder_with_realpath(repo, skills, capsys):
+    assert skills.main() == 0
+    repo.edit("skills/arch-review-om/SKILL.md", " as `realpath`\nresolves it", "")
+    assert skills.main() == 1
+    assert (
+        "skills/arch-review-om/SKILL.md: names a path out of its folder (../) and never says to read it as `realpath`"
+        in capsys.readouterr().out
+    )
+    repo.write("skills/_shared/scaffold-conventions.md", "# Conventions\n\nRead `../../lenses/om.md`.\n")
+    assert skills.main() == 1
+    assert "skills/_shared/scaffold-conventions.md: names a path out of the skill's folder" in capsys.readouterr().out
+
+
+MANUAL = "allowed-tools: Read, Agent\ndisable-model-invocation: true\n"
+IMPLICIT_OFF = "# Codex\npolicy:\n  allow_implicit_invocation: false\n"
+
+
+def test_a_skill_a_person_starts_by_name_says_so_to_codex_too(repo, skills, capsys):
+    repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", MANUAL)
+    head = '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\ndisable-model-invocation: true\n---\n'
+    repo.write(copied("ops-watch"), head)
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        "skills/arch-review-full/SKILL.md: disable-model-invocation is true, but "
+        "skills/arch-review-full/agents/openai.yaml does not set policy.allow_implicit_invocation: false" in out
+    )
+    assert f"{copied('ops-watch')}: disable-model-invocation is true" in out
+    repo.write("skills/arch-review-full/agents/openai.yaml", IMPLICIT_OFF)
+    repo.write(f"{COPIED}/ops-watch/agents/openai.yaml", IMPLICIT_OFF)
+    assert skills.main() == 0
+    repo.write("skills/arch-review-full/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true\n")
+    assert skills.main() == 1
+    assert "skills/arch-review-full/agents/openai.yaml does not set" in capsys.readouterr().out
+
+
+def test_codex_s_switch_without_the_key_fails(repo, skills, capsys):
+    repo.write("skills/arch-review-full/agents/openai.yaml", IMPLICIT_OFF)
+    assert skills.main() == 1
+    assert (
+        "skills/arch-review-full/SKILL.md: skills/arch-review-full/agents/openai.yaml turns implicit invocation off; "
+        "say disable-model-invocation: true too" in capsys.readouterr().out
+    )
