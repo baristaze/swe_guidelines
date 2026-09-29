@@ -26,7 +26,8 @@ should hold, as a check to make by eye on the tab: the login initiation
 URI, the app homepage URL, and the sign-out URIs with their default. The
 sign-out URIs cannot be probed either: WorkOS's logout answers the same for
 a return it lists and one it does not until a real session ends. No webhook
-is reconciled: the sign-in and the invitations need none.
+is reconciled either: the endpoint is made on the dashboard, and the command
+prints the one the desired state names.
 
 The Sessions tab has no API either. It bounds the AuthKit session a sign-in
 leaves in the browser, which lets the next sign-in there through with no

@@ -289,16 +289,15 @@ class WorkManagerImpl(WorkManagerInterface):
     async def _stored(self, org_id: UUID, queued: WorkItem, outcome: InsertOutcome) -> WorkItem:
         """The row a reported create met, read back by the key that collided:
         by id on `ID_EXISTS`, and by idempotency key on `KEY_EXISTS`, since the
-        row that holds the key carries another id. A key that reads back
-        nowhere is held by another tenant, which only the index on the key
-        alone refuses; it stays beside the tenant's index for one release, and
-        that is the one refusal here that is not a retry."""
+        row that holds the key carries another id. The key is unique per
+        tenant, so a key that reads back nowhere went between the insert and
+        the read, and the create is refused as a conflict."""
         if outcome is InsertOutcome.ID_EXISTS:
             existing = await self._storage.read_item(org_id, queued.id)
         else:
             existing = await self._storage.read_item_by_key(org_id, queued.idempotency_key)
         if existing is None:
-            raise UniqueKeyTaken(f"idempotency key {queued.idempotency_key} is another tenant's")
+            raise UniqueKeyTaken(f"idempotency key {queued.idempotency_key} was taken and is gone")
         return existing
 
     async def _hand_back(self, ctx: OpContext, item: WorkItem, delay: timedelta) -> WorkItem:

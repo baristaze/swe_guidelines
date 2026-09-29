@@ -1,6 +1,5 @@
-"""The provider of a process that signs nobody in: every call is refused as
-unavailable. The worker holds this one, and so does an API whose environment
-names no provider."""
+"""The provider of a process whose environment names none: every call is
+refused as unavailable, and nobody signs in through a provider."""
 
 from datetime import datetime
 from typing import Literal, NoReturn

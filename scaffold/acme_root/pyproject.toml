@@ -89,7 +89,7 @@ reason = "an api key hash digests a fresh random secret and the lookup reads rev
 [[tool.arch-check.exception]]
 rule = "ASY-16"
 path = "om/src/acme/om/work/storage/tables/work_items.py"
-adr = "docs/adr/0026-what-0-31-0-leaves-as-a-choice.md"
+adr = "docs/adr/0026-the-work-items-key-is-unique-per-tenant.md"
 reason = "the unique index is (org_id, idempotency_key), led by the tenant as the lens asks"
 
 # The company site is a page, not an app: HTML and CSS on Vite, no script,

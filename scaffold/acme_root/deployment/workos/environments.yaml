@@ -38,8 +38,10 @@ staging:
     - https://app.staging.acme.example/signed-out
   # The deployed page, for the same reason as the default redirect.
   default_sign_out_uri: https://app.staging.acme.example/signed-out
-  # The sign-in and the invitations need no webhook.
-  webhooks: []
+  # Where the provider delivers its organization events; the endpoint is
+  # made on the dashboard, with its secret in ACME_WORKOS_WEBHOOK_SECRET.
+  webhooks:
+    - https://api.staging.acme.example/webhooks/identity
 
 production:
   api_key_variable: WORKOS_PRODUCTION_API_KEY
@@ -52,5 +54,7 @@ production:
   sign_out_uris:
     - https://app.acme.example/signed-out
   default_sign_out_uri: https://app.acme.example/signed-out
-  # The sign-in and the invitations need no webhook.
-  webhooks: []
+  # Where the provider delivers its organization events; the endpoint is
+  # made on the dashboard, with its secret in ACME_WORKOS_WEBHOOK_SECRET.
+  webhooks:
+    - https://api.acme.example/webhooks/identity

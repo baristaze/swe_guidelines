@@ -1089,8 +1089,7 @@ export interface components {
          * EventView
          * @description One record of the tenant's append-only stream, paged by `after_seq`.
          *     `kind` is "<namespace>.<entity>.<action>", or an audit kind; the payload
-         *     stays inside, an event is a record and not a second read path. The rename
-         *     from `entity`/`entity_id`/`action` stayed under `/v1` (ADR 0006).
+         *     stays inside, an event is a record and not a second read path.
          */
         EventView: {
             /**

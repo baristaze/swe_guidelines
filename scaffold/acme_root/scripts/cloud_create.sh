@@ -222,7 +222,7 @@ bootstrap_vars+=(-var "anomaly_monitor=$anomaly_monitor")
 say "+ aws budgets describe-budgets --account-id $account_id  (answers once the management account turned Budgets on)"
 if ! $dry_run && ! probe="$(aws budgets describe-budgets --account-id "$account_id" --max-results 1 2>&1)"; then
   case "$probe" in
-    *"linked account"*) refuse "Budgets is not on for account $account_id: the management account turns it on (deployment/cloud/first_time_manual.md, 8a), then run this again." ;;
+    *"linked account"*) refuse "Budgets is not on for account $account_id: the management account turns it on (deployment/cloud/first_time_manual.md, "Turn on Cost Explorer and Budgets for the member accounts"), then run this again." ;;
     *) refuse "cannot tell whether Budgets answers for account $account_id: $probe" ;;
   esac
 fi
@@ -615,7 +615,7 @@ esac
 say "== 8. The first operator, the provisioner, and the smoke identity, through the pipeline"
 say "Each identity signs up at https://$app_domain_name first, like any person. Then, on $grant_branch:"
 say "  gh workflow run grant-operator.yml --ref $grant_branch -f environment=$environment -f email=<operator> -f permission=read"
-say "    The operator enrols the second factor at the console's first sign-in, then runs, in their own terminal:"
+say "    The operator enrols the second factor at the operator plane's first sign-in, then runs, in their own terminal:"
 say "    uv run acme-ops token --env $environment --identity operator"
 say "  gh workflow run grant-operator.yml ... -f email=<provisioner> -f permission=write -f mint_token=provisioner"
 case "$environment" in

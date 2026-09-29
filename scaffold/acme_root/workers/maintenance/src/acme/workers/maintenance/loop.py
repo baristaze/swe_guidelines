@@ -472,7 +472,7 @@ class WorkerLoop:
         tenants run on every pass, each at least once and again while its
         batch comes back full and the budget lasts. The count of the
         platform's size runs once an interval, whatever the budget, as the
-        gauges do: it is three counts and a write, and the operator plane
+        gauges do: it is two counts and a write, and the operator plane
         reads it. The four reads of the queue and the outbox end every pass,
         whatever the budget, since the alarms read them."""
         clock = asyncio.get_running_loop().time

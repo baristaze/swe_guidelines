@@ -461,7 +461,7 @@
         "type": "object"
       },
       "EventView": {
-        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path. The rename\nfrom `entity`/`entity_id`/`action` stayed under `/v1` (ADR 0006).",
+        "description": "One record of the tenant's append-only stream, paged by `after_seq`.\n`kind` is \"<namespace>.<entity>.<action>\", or an audit kind; the payload\nstays inside, an event is a record and not a second read path.",
         "properties": {
           "actor_id": {
             "format": "uuid",

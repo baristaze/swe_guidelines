@@ -53,7 +53,7 @@ def fold_email(email: str) -> str:
     are one address and one person (ADR 0072). Every address is folded
     before it is written and before it is looked up. The database folds the
     same way, `lower(email COLLATE pg_unicode_fast)`, in the digest it
-    computes and in the migration that folded the stored addresses."""
+    computes."""
     return email.lower()
 
 

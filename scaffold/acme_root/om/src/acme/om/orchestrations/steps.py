@@ -8,7 +8,7 @@ from datetime import datetime
 
 from acme.om.opcontext import ProvenanceScope
 from acme.om.orchestrations.types.orchestration import Orchestration, OrchestrationStatus
-from acme.om.outbox.types.row import OutboxRow, outbox_row
+from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
 from acme.om.work.types.work_item import OrchestrationPayload, WorkKind, work_row_kind
 
 CREATED = "orchestrations.orchestration.created"
@@ -22,15 +22,16 @@ def step_rows(
     created: bool = False,
     not_before: datetime | None = None,
 ) -> tuple[OutboxRow, ...]:
-    """The hint (ids only, as every row carries), then the next step's work
-    row while the record runs. The work waits in the queue until
-    `not_before`, which is how a wake staggers the steps it resumes.
+    """The hint (ids, and the version the write left, as the row of a
+    versioned record carries: ADR 0061), then the next step's work row while
+    the record runs. The work waits in the queue until `not_before`, which is
+    how a wake staggers the steps it resumes.
 
     The work row asks as the person who started the record, whoever wrote
     this step: a step woken by the platform or an operator still runs as the
     person who asked for the work, so what it makes is theirs, and their
     principal is the one the claim rebuilds."""
-    hint = outbox_row(ctx, CREATED if created else UPDATED, record.id, {})
+    hint = versioned_row(ctx, CREATED if created else UPDATED, record.id, record.version)
     if record.status is not OrchestrationStatus.RUNNING:
         return (hint,)
     payload = OrchestrationPayload(not_before=not_before or record.updated_at)
