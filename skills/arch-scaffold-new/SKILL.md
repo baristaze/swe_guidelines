@@ -28,9 +28,10 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 - `<name>` is the project's code name, its Python package, and its
   folder at once: one or two snake_case words, never a standard-library
   module, a Python keyword, or `acme`. With no name given, take it from
-  the product's own name in the spec or the description (`Free
-  Journalism` gives `free_journalism`), in at most two words. Ask only
-  when the product names nothing.
+  the product's own name in the spec or the description, in at most two
+  words, leaving out a word any product could carry, such as platform,
+  app, or system (`Free Journalism Platform` gives `free_journalism`).
+  Ask only when the product names nothing.
 - The folder is `<name>` in the current directory. It must not exist,
   or must be empty. Refuse when the current directory is inside a git
   repository (`git rev-parse --show-toplevel` answers there), since the
@@ -62,7 +63,8 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 2. Copy: `python3 ${CLAUDE_SKILL_DIR}/../../scaffold/new.py <name>`.
    Then, in the folder, `make setup` and `make check`. The copy is green
    before this skill writes anything, so a gate that fails here is a
-   defect of the scaffold: stop and name it, and change nothing.
+   defect of the scaffold: stop with the cause pre-existing, name the
+   gate, and change nothing.
 3. Record the product's first decisions, one ADR each, in the shape of
    the copy's own ADRs:
    - the product on the core: what an org, a member, and an operator
@@ -94,5 +96,6 @@ states: the first run plus at most 3 reruns.
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
 with the name and where it came from first, the ADRs by number after
-the files, and `The tree is uncommitted, and the first commit is the
-person's.` last.
+the files, and then `The tree is uncommitted, and the first commit is
+the person's.` A `Stopped:` line, when there is one, still closes the
+output.
