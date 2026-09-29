@@ -5,6 +5,9 @@ scenario compare with each other, and runs of two scenarios do not, so
 each scenario has a folder and a page of its own: what the subject is
 asked to do, what it is given, how it is scored, and its runs.
 
+- [create-full-system](create-full-system/README.md): the scaffold
+  skills building a whole system from a product spec, and with extras
+  a review and its fixes.
 - [explain-tenancy](explain-tenancy/README.md): the `arch-explain`
   skill answering one question about the tenant fence.
 - [review-om](review-om/README.md): the `arch-review-om` skill

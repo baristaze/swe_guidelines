@@ -1,0 +1,225 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 197.683,
+  "usage": {
+    "input_tokens": 7160013,
+    "output_tokens": 11621,
+    "reasoning_tokens": 75
+  },
+  "cost_usd": 14.389752,
+  "error": null,
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": 79.6,
+    "references": {
+      "guideline": {
+        "weight": 0.4,
+        "score": 82,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The operator plane is served only as API routes under /v1/admin. There is no apps/admin console: no separate origin bundle, no shared design kit, and no operator screens. Terraform reserves admin.<base> as an allowed origin and a public name, but only the portal static site is deployed, so the reserved origin serves nothing.",
+            "in_output": "apps/",
+            "in_reference": "lenses/delivery.md DEL-16; architecture.md The Operator Console",
+            "lens": "DEL-16",
+            "fix": "Add apps/admin sharing the portal's stack, tokens, sign-in, and API client, on its own origin and bundle, with routes only under /v1/admin and no socket, and deploy it at admin.<base>."
+          },
+          {
+            "severity": "medium",
+            "what": "Operator and tenant operations share one TenancyManagerInterface and one impl. The operator writes are stamped through operator_outbox_row rather than outbox_row, but the plane is not a separate manager the way the guideline's operator plane and the reference realize it.",
+            "in_output": "om/src/acme/om/tenancy/manager.py",
+            "in_reference": "reference om/src/tadas/om/tenancy/operator.py; lenses/context.md CTX-24",
+            "lens": "CTX-24",
+            "fix": "Split the operator operations into a TenancyOperatorManagerInterface in its own module, and keep the tenant manager free of OperatorContext."
+          },
+          {
+            "severity": "medium",
+            "what": "Soft-deleted Journalist, Follow, and Org rows have no retention and no purge. The sweep purges outbox rows, work items, markers, tickets, and sessions, but the hard delete of a soft-deleted row never exists, and there is no erasure path that redacts an erased person's audit entries.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "lenses/storage.md STO-32, STO-34",
+            "lens": "STO-32",
+            "fix": "Give each soft-deletable entity a retention, purge it from the maintenance sweep as the only hard delete, and redact personal audit fields on erasure."
+          },
+          {
+            "severity": "medium",
+            "what": "Backups are declared (RDS backup_retention_period) but no runbook records a restore rehearsal or how a role restored earlier than its siblings is reconciled from the outbox.",
+            "in_output": "docs/runbooks/",
+            "in_reference": "lenses/storage.md STO-31; reference docs/runbooks/restore.md",
+            "lens": "STO-31",
+            "fix": "Add a restore runbook that records the rehearsal, the break-glass procedure, and the outbox reconciliation step."
+          },
+          {
+            "severity": "low",
+            "what": "No CLI app. The guideline's layout includes apps/cli as a thin REST client; the product has none.",
+            "in_output": "apps/",
+            "in_reference": "lenses/delivery.md DEL-17",
+            "lens": "DEL-17",
+            "fix": "Add apps/cli only if a command-line caller is part of the product; otherwise record the omission as a deviation."
+          }
+        ],
+        "strengths": [
+          "The object model is one distribution under om/ with the prescribed mixins, frozen root, FrozenMapping, namespace shape, and manager-owned fields, and updates copy from the stored row excluding provenance and manager-owned fields.",
+          "Tenancy has both fences: every query filters by tenant, the session funnel sets app.org_id with set_config local to the transaction, and every table carries the policy its scope map declares, with a recorded negative-control run.",
+          "Context stages, scopes, the operator gate, credential prefixes, socket tickets, session revocation, and the sign-in throttle are implemented where the guideline puts them, and the isolation contract cases cover both storage impls.",
+          "Workers claim within capacity, renew leases, cancel on Conflict, hand work back before going offline, and the maintenance sweep relays the outbox and purges the bookkeeping rows; durable work is a row with a per-tenant idempotency key.",
+          "The network edge has one error envelope, edge idempotency with secret stripping, health outside /v1, a committed OpenAPI document, and a generated client behind a facade; the portal keeps the bearer in session storage and Terraform sends a CSP."
+        ]
+      },
+      "reference": {
+        "weight": 0.6,
+        "score": 78,
+        "gaps": [
+          {
+            "severity": "medium",
+            "what": "The operator plane is not split into its own manager. The reference keeps TenancyOperatorManagerInterface, WorkOperatorManagerInterface, and BillingOperatorManagerInterface apart from the tenant managers; the output folds operator operations into TenancyManagerInterface.",
+            "in_output": "om/src/acme/om/tenancy/manager.py",
+            "in_reference": "om/src/tadas/om/tenancy/operator.py",
+            "lens": "CTX-24",
+            "fix": "Extract the operator operations into a separate interface and impl, wired beside the tenant manager in build_managers."
+          },
+          {
+            "severity": "medium",
+            "what": "No restore runbook. The reference records backups, the break-glass restore, the rehearsal, and outbox reconciliation in docs/runbooks/restore.md; the output has only the tenant-isolation runbook.",
+            "in_output": "docs/runbooks/",
+            "in_reference": "docs/runbooks/restore.md",
+            "lens": "STO-31",
+            "fix": "Add the restore runbook in the reference's shape, including the rehearsal record."
+          },
+          {
+            "severity": "low",
+            "what": "The outbox row omits the relay's attempt accounting. The reference's OutboxRow carries attempts, next_attempt_at, last_error, and failed_at so a row that will not relay becomes a dead letter; the output tracks only done_at.",
+            "in_output": "om/src/acme/om/outbox/types/__init__.py",
+            "in_reference": "om/src/tadas/om/outbox/types/row.py",
+            "lens": "ASY-19",
+            "fix": "Add the attempt fields and have the sweep spend an attempt and dead-letter a row past the bound."
+          },
+          {
+            "severity": "low",
+            "what": "No CLI distribution. The reference ships apps/cli as a thin REST client; the output has only the portal.",
+            "in_output": "apps/",
+            "in_reference": "apps/cli/",
+            "lens": "DEL-17",
+            "fix": "Add the CLI only if this product needs one; the reference has it because its product does."
+          }
+        ],
+        "strengths": [
+          "The repository, package, and namespace layout match the reference: one OM distribution, src layout, storage and infra roots with memory and configured impls, a services root, and workers sharing the service project shape.",
+          "The container boots in the same order (settings, logging, tracing, storage, infra, managers, services) and tests construct the same container over the memory storage root and local infra root.",
+          "Deployment matches the reference's shape: bootstrap and environment roots, one account per environment named in one file, central two-stage non-root Dockerfiles, promotion by digest, and the same workflow set.",
+          "Operations match: the four roles, the skill set under .claude/skills, the traffic generator and stress scenario, the signals readers, alarms, budget, and autoscaling declared as code.",
+          "Contract cases run over both storage impls and race the named atomic methods, and the three product loops have end-to-end integration tests, which is the reference's testing shape."
+        ]
+      }
+    },
+    "rationale": "The output follows the guideline's shape closely: one OM distribution, prescribed mixins, dual storage impls, a session funnel with forced row-level security, context stages, an operator gate, edge idempotency, and workers that claim, renew, and sweep. The largest miss is the operator console: admin.<base> is reserved and /v1/admin exists, but no separate app is built or deployed. Smaller misses are the operator plane sharing the tenancy manager, no purge of soft-deleted rows, and no restore-rehearsal runbook. Against the reference the same structural gaps hold, while domain differences (no CLI, no billing) are not counted.",
+    "tool_calls": 378,
+    "turns": 56,
+    "transcript": "judgements/0-xai.jsonl"
+  },
+  "carried": true,
+  "answer": {
+    "references": {
+      "guideline": {
+        "score": 82,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The operator plane is served only as API routes under /v1/admin. There is no apps/admin console: no separate origin bundle, no shared design kit, and no operator screens. Terraform reserves admin.<base> as an allowed origin and a public name, but only the portal static site is deployed, so the reserved origin serves nothing.",
+            "in_output": "apps/",
+            "in_reference": "lenses/delivery.md DEL-16; architecture.md The Operator Console",
+            "lens": "DEL-16",
+            "fix": "Add apps/admin sharing the portal's stack, tokens, sign-in, and API client, on its own origin and bundle, with routes only under /v1/admin and no socket, and deploy it at admin.<base>."
+          },
+          {
+            "severity": "medium",
+            "what": "Operator and tenant operations share one TenancyManagerInterface and one impl. The operator writes are stamped through operator_outbox_row rather than outbox_row, but the plane is not a separate manager the way the guideline's operator plane and the reference realize it.",
+            "in_output": "om/src/acme/om/tenancy/manager.py",
+            "in_reference": "reference om/src/tadas/om/tenancy/operator.py; lenses/context.md CTX-24",
+            "lens": "CTX-24",
+            "fix": "Split the operator operations into a TenancyOperatorManagerInterface in its own module, and keep the tenant manager free of OperatorContext."
+          },
+          {
+            "severity": "medium",
+            "what": "Soft-deleted Journalist, Follow, and Org rows have no retention and no purge. The sweep purges outbox rows, work items, markers, tickets, and sessions, but the hard delete of a soft-deleted row never exists, and there is no erasure path that redacts an erased person's audit entries.",
+            "in_output": "workers/maintenance/src/acme/workers/maintenance/loop.py",
+            "in_reference": "lenses/storage.md STO-32, STO-34",
+            "lens": "STO-32",
+            "fix": "Give each soft-deletable entity a retention, purge it from the maintenance sweep as the only hard delete, and redact personal audit fields on erasure."
+          },
+          {
+            "severity": "medium",
+            "what": "Backups are declared (RDS backup_retention_period) but no runbook records a restore rehearsal or how a role restored earlier than its siblings is reconciled from the outbox.",
+            "in_output": "docs/runbooks/",
+            "in_reference": "lenses/storage.md STO-31; reference docs/runbooks/restore.md",
+            "lens": "STO-31",
+            "fix": "Add a restore runbook that records the rehearsal, the break-glass procedure, and the outbox reconciliation step."
+          },
+          {
+            "severity": "low",
+            "what": "No CLI app. The guideline's layout includes apps/cli as a thin REST client; the product has none.",
+            "in_output": "apps/",
+            "in_reference": "lenses/delivery.md DEL-17",
+            "lens": "DEL-17",
+            "fix": "Add apps/cli only if a command-line caller is part of the product; otherwise record the omission as a deviation."
+          }
+        ],
+        "strengths": [
+          "The object model is one distribution under om/ with the prescribed mixins, frozen root, FrozenMapping, namespace shape, and manager-owned fields, and updates copy from the stored row excluding provenance and manager-owned fields.",
+          "Tenancy has both fences: every query filters by tenant, the session funnel sets app.org_id with set_config local to the transaction, and every table carries the policy its scope map declares, with a recorded negative-control run.",
+          "Context stages, scopes, the operator gate, credential prefixes, socket tickets, session revocation, and the sign-in throttle are implemented where the guideline puts them, and the isolation contract cases cover both storage impls.",
+          "Workers claim within capacity, renew leases, cancel on Conflict, hand work back before going offline, and the maintenance sweep relays the outbox and purges the bookkeeping rows; durable work is a row with a per-tenant idempotency key.",
+          "The network edge has one error envelope, edge idempotency with secret stripping, health outside /v1, a committed OpenAPI document, and a generated client behind a facade; the portal keeps the bearer in session storage and Terraform sends a CSP."
+        ]
+      },
+      "reference": {
+        "score": 78,
+        "gaps": [
+          {
+            "severity": "medium",
+            "what": "The operator plane is not split into its own manager. The reference keeps TenancyOperatorManagerInterface, WorkOperatorManagerInterface, and BillingOperatorManagerInterface apart from the tenant managers; the output folds operator operations into TenancyManagerInterface.",
+            "in_output": "om/src/acme/om/tenancy/manager.py",
+            "in_reference": "om/src/tadas/om/tenancy/operator.py",
+            "lens": "CTX-24",
+            "fix": "Extract the operator operations into a separate interface and impl, wired beside the tenant manager in build_managers."
+          },
+          {
+            "severity": "medium",
+            "what": "No restore runbook. The reference records backups, the break-glass restore, the rehearsal, and outbox reconciliation in docs/runbooks/restore.md; the output has only the tenant-isolation runbook.",
+            "in_output": "docs/runbooks/",
+            "in_reference": "docs/runbooks/restore.md",
+            "lens": "STO-31",
+            "fix": "Add the restore runbook in the reference's shape, including the rehearsal record."
+          },
+          {
+            "severity": "low",
+            "what": "The outbox row omits the relay's attempt accounting. The reference's OutboxRow carries attempts, next_attempt_at, last_error, and failed_at so a row that will not relay becomes a dead letter; the output tracks only done_at.",
+            "in_output": "om/src/acme/om/outbox/types/__init__.py",
+            "in_reference": "om/src/tadas/om/outbox/types/row.py",
+            "lens": "ASY-19",
+            "fix": "Add the attempt fields and have the sweep spend an attempt and dead-letter a row past the bound."
+          },
+          {
+            "severity": "low",
+            "what": "No CLI distribution. The reference ships apps/cli as a thin REST client; the output has only the portal.",
+            "in_output": "apps/",
+            "in_reference": "apps/cli/",
+            "lens": "DEL-17",
+            "fix": "Add the CLI only if this product needs one; the reference has it because its product does."
+          }
+        ],
+        "strengths": [
+          "The repository, package, and namespace layout match the reference: one OM distribution, src layout, storage and infra roots with memory and configured impls, a services root, and workers sharing the service project shape.",
+          "The container boots in the same order (settings, logging, tracing, storage, infra, managers, services) and tests construct the same container over the memory storage root and local infra root.",
+          "Deployment matches the reference's shape: bootstrap and environment roots, one account per environment named in one file, central two-stage non-root Dockerfiles, promotion by digest, and the same workflow set.",
+          "Operations match: the four roles, the skill set under .claude/skills, the traffic generator and stress scenario, the signals readers, alarms, budget, and autoscaling declared as code.",
+          "Contract cases run over both storage impls and race the named atomic methods, and the three product loops have end-to-end integration tests, which is the reference's testing shape."
+        ]
+      }
+    },
+    "rationale": "The output follows the guideline's shape closely: one OM distribution, prescribed mixins, dual storage impls, a session funnel with forced row-level security, context stages, an operator gate, edge idempotency, and workers that claim, renew, and sweep. The largest miss is the operator console: admin.<base> is reserved and /v1/admin exists, but no separate app is built or deployed. Smaller misses are the operator plane sharing the tenancy manager, no purge of soft-deleted rows, and no restore-rehearsal runbook. Against the reference the same structural gaps hold, while domain differences (no CLI, no billing) are not counted."
+  }
+}

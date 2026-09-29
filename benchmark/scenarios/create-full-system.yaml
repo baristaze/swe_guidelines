@@ -7,6 +7,12 @@ kind: skill
 # the tree against the guideline and against the guideline's reference
 # implementation.
 #
+# The extras are an opt-in. They are kept while their review finds high
+# findings in the tree the build left, and go when it finds none. The
+# scaffold skill runs its own review and closes its highs, so a second
+# review that finds nothing measures the review skill more than the
+# build.
+#
 # On the vm runtime only. The subject runs Docker, which only that
 # runtime provides, and the machine keeps the judges' keys and this file
 # out of the subject's reach.

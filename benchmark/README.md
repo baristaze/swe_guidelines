@@ -522,10 +522,12 @@ only. Its subject builds `free-journalism` from
 subject in phases). By default a run is the build: the scaffold, then
 the MVP. With extras, `--with extras`, a standalone review reads the
 tree and a last phase closes the review's high findings, and the rubric
-tells the judges so. Agentic judges score the tree against the guideline
-and against the guideline's reference implementation (see Agentic
-judges). It runs once, as its `repeat: 1` says. Its bounds are money
-and time only, and its scenario file says how they were sized. Its
+tells the judges so. The extras are an opt-in, kept while their review
+finds high findings in the build's tree, as the scenario file says.
+Agentic judges score the tree against the guideline and against the
+guideline's reference implementation (see Agentic judges). It runs
+once, as its `repeat: 1` says. Its bounds are money and time only, and
+its scenario file says how they were sized. Its
 run's spend cap is the sum of the caps of the phases that run and of
 the four judges' budgets: $810 for the build, and $975 with extras.
 So a run of it passes no cap. Run it with
