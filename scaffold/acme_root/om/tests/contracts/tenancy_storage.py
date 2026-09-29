@@ -138,7 +138,7 @@ def make_user_row(org_id: UUID, user: User) -> OutboxRow:
         org_id=org_id,
         kind="tenancy.user.created",
         target_id=user.id,
-        payload={"display_name": user.display_name},
+        payload={"identity_id": str(user.identity_id)},
         actor_id=user.created_by,
         request_id=new_id(),
         app="cli",
