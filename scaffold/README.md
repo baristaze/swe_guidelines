@@ -19,7 +19,7 @@ Everything a multi-tenant product needs before its first domain screen:
 - **Processes**: the API with its gateway and realtime socket, and the
   maintenance worker with its sweep.
 - **Apps and clients**: the portal shell, the CLI, the company site, and
-  the Python client, over the horizontal API.
+  the TypeScript and Python clients, over the horizontal API.
 - **Operations**: the ops package and its skills, the local stack with its
   dashboards, Terraform for the cloud, Dockerfiles, and CI and deploy
   workflows.
