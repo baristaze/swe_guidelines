@@ -71,6 +71,14 @@ DATABASE_AUDITS = [
 SKILL_PATH = re.compile(r"(?<![\w./-])((?:\.\./)+[\w.-][^\s`'\")]*|references/[^\s`'\")]+)")
 
 
+def _own(pattern: str = "*") -> list[str]:
+    """The tree's own skills, by folder name: a skill folder that is a link
+    belongs to what it links to, such as a clone of the guideline's
+    skills, and is held there."""
+    found = SKILLS.glob(f"{pattern}/SKILL.md")
+    return sorted(p.parent.name for p in found if not p.parent.is_symlink())
+
+
 def _skill(name: str) -> str:
     return (SKILLS / name / "SKILL.md").read_text()
 
@@ -107,11 +115,7 @@ def test_the_skills_that_hold_a_credential_are_the_ones_that_can_call_aws() -> N
     """A new ops skill that reaches the cloud joins the list above, or this
     fails: the preamble is not optional for a skill that holds a
     credential."""
-    reaches_the_cloud = sorted(
-        path.parent.name
-        for path in SKILLS.glob("*/SKILL.md")
-        if "Bash(aws:*)" in _allowed_tools(path.parent.name)
-    )
+    reaches_the_cloud = sorted(name for name in _own() if "Bash(aws:*)" in _allowed_tools(name))
     assert reaches_the_cloud == sorted(READERS)
 
 
@@ -139,7 +143,7 @@ def test_the_refusal_of_anything_but_the_administrator_stays_inline(name: str) -
 
 
 def test_the_audits_are_the_skills_named_for_one() -> None:
-    assert sorted(p.parent.name for p in SKILLS.glob("audit-*/SKILL.md")) == AUDITS
+    assert _own("audit-*") == AUDITS
 
 
 @pytest.mark.parametrize("name", [*AUDITS, "tickets-triage"])
@@ -194,7 +198,7 @@ def test_triage_closes_nothing_without_the_persons_word() -> None:
     assert "Never closes a ticket without `--apply` and the person's word in this session" in text
 
 
-@pytest.mark.parametrize("name", sorted(p.parent.name for p in SKILLS.glob("*/SKILL.md")))
+@pytest.mark.parametrize("name", _own())
 def test_every_reference_resolves_and_every_reference_file_is_named_by_a_step(name: str) -> None:
     """A skill keeps its spine and names its detail: a file beside SKILL.md
     is read by the step that names it, so one no step names is an orphan. A
@@ -211,6 +215,14 @@ def test_every_reference_resolves_and_every_reference_file_is_named_by_a_step(na
             continue
         relative = extra.relative_to(folder).as_posix()
         assert relative in SKILL_PATH.findall(procedure), f"{name}: no step names {relative}"
+
+
+def test_the_watch_hands_its_sub_agent_the_preamble_from_the_repository_root() -> None:
+    """A sub-agent gets the skill's text without its folder, so a path from
+    that folder does not resolve for it; the path from the root does."""
+    root_path = PREAMBLE.relative_to(ROOT).as_posix()
+    assert root_path == ".agents/skills/_shared/ops-preamble.md"
+    assert f"`{root_path}`" in _prose("ops-watch")
 
 
 def test_claude_code_finds_the_same_skills_through_a_link() -> None:

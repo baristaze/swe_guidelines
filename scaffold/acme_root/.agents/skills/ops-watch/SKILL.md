@@ -9,9 +9,12 @@ allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Ba
 A live tail with a cap. The skill polls the logs of one environment
 once per interval, reads the alarms every interval, and reports in
 batches. It is written to be run by a sub-agent: the invoking session
-spawns one with this skill's text and the arguments, and reads the
-report when the agent returns. A session that runs it inline waits
-for the whole window.
+spawns one with this skill's text, the arguments, and the preamble by
+its path from the repository root,
+`.agents/skills/_shared/ops-preamble.md`, since the sub-agent has the
+text without this skill's folder. The session reads the report when
+the agent returns. A session that runs it inline waits for the whole
+window.
 
 No command follows a stream. A command that never returns runs into
 the shell's time cap, which ends the call and loses the batch. So
@@ -20,8 +23,9 @@ between two is a `sleep` of the interval, which is capped well under
 the time cap.
 
 Read `../_shared/ops-preamble.md`, a path from this skill's folder,
-before the first step: the profiles, the account check, and the env
-file are there.
+before the first step; a sub-agent reads
+`.agents/skills/_shared/ops-preamble.md` from the repository root. The
+profiles, the account check, and the env file are there.
 
 ## Input
 
