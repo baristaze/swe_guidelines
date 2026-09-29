@@ -28,8 +28,13 @@ def covered(path: str) -> bool:
 
 
 def test_every_migration_file_is_an_input() -> None:
+    # Tracked or not yet: a copy fresh from its scaffold has staged nothing.
     tracked = subprocess.run(
-        ["git", "ls-files", "om/migrations"], cwd=ROOT, capture_output=True, text=True, check=True
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "om/migrations"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split()
     assert tracked, "git lists no migration files"
     missing = [path for path in tracked if not covered(path)]

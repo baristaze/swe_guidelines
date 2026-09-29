@@ -22,25 +22,16 @@ TABLE_ROLES: dict[str, DatabaseRole] = {
     "socket_tickets": DatabaseRole.CORE,
     "invitations": DatabaseRole.CORE,
     "work_items": DatabaseRole.QUEUE,
-    "tasks": DatabaseRole.CORE,
     "files": DatabaseRole.CORE,
     "idempotency_records": DatabaseRole.CORE,
     "events": DatabaseRole.ACTIVITY,
     "event_cursors": DatabaseRole.ACTIVITY,
     "outbox_rows": DatabaseRole.CORE,
-    "billing_accounts": DatabaseRole.CORE,
-    "billing_deliveries": DatabaseRole.CORE,
-    "slack_installations": DatabaseRole.CORE,
-    "slack_install_states": DatabaseRole.CORE,
-    "slack_posts": DatabaseRole.CORE,
     "orchestrations": DatabaseRole.CORE,
     "platform_sizes": DatabaseRole.ADMIN,
 }
 
-DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {
-    "slack_connections": DatabaseRole.CORE,
-    "slack_link_codes": DatabaseRole.CORE,
-}
+DROPPED_TABLE_ROLES: dict[str, DatabaseRole] = {}
 """Tables the migration chain made and later dropped. No process reaches
 them, so `role_for` does not know them; only the chain names them, and its
 role check reads this map beside the live one."""

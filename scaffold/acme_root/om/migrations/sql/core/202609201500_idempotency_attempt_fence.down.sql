@@ -1,1 +1,0 @@
-DROP INDEX core.ix_idempotency_records_org_id_target_id;

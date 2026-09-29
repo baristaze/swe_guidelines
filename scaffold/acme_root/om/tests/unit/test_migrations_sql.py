@@ -1,7 +1,6 @@
 """The migration files obey the role rules without a database."""
 
 import pytest
-from sqlalchemy.dialects import postgresql
 
 from acme.om.media.types.file import FileStatus
 from acme.om.storage.migrate import (
@@ -12,12 +11,6 @@ from acme.om.storage.migrate import (
     split_statements,
 )
 from acme.om.storage.roles import DatabaseRole
-from acme.om.tasks.rules import RANK_SCALE_BOUND
-from acme.om.tasks.storage.impl.postgres import (  # pyright: ignore[reportPrivateUsage]
-    _DONE_SHELF,
-    _LONG_RANK,
-)
-from acme.om.tasks.types.task import TaskStatus
 
 
 def test_every_sql_file_names_only_its_own_role() -> None:
@@ -53,17 +46,17 @@ def test_split_statements_keeps_a_function_body_whole() -> None:
     sql = (
         "-- a trigger\nCREATE FUNCTION core.f() RETURNS trigger LANGUAGE plpgsql AS $$\n"
         "BEGIN\n    NEW.a := 1;\n    RETURN NEW;\nEND\n$$;\n"
-        "CREATE TRIGGER t BEFORE INSERT ON core.tasks FOR EACH ROW EXECUTE FUNCTION core.f();\n"
+        "CREATE TRIGGER t BEFORE INSERT ON core.orgs FOR EACH ROW EXECUTE FUNCTION core.f();\n"
     )
     assert split_statements(sql) == [
         "CREATE FUNCTION core.f() RETURNS trigger LANGUAGE plpgsql AS $$\n"
         "BEGIN\n    NEW.a := 1;\n    RETURN NEW;\nEND\n$$",
-        "CREATE TRIGGER t BEFORE INSERT ON core.tasks FOR EACH ROW EXECUTE FUNCTION core.f()",
+        "CREATE TRIGGER t BEFORE INSERT ON core.orgs FOR EACH ROW EXECUTE FUNCTION core.f()",
     ]
 
 
 def test_a_function_is_checked_by_its_schema_alone() -> None:
-    check_role_of_sql(DatabaseRole.CORE, "DROP FUNCTION core.tasks_rank_from_position()")
+    check_role_of_sql(DatabaseRole.CORE, "DROP FUNCTION core.touch_updated_at()")
     with pytest.raises(RuntimeError):
         check_role_of_sql(DatabaseRole.CORE, "CREATE FUNCTION queue.f() RETURNS trigger")
 
@@ -99,7 +92,7 @@ def test_role_metadata_holds_only_that_role() -> None:
 SWEEP_INDEXES = {
     "users": "ix_users_org_id_deleted_at",
     "memberships": "ix_memberships_org_id_deleted_at",
-    "slack_installations": "ix_slack_installations_org_id_deleted_at",
+    "files": "ix_files_org_id_deleted_at",
 }
 """The index the per-tenant purge needs on each soft-deletable table whose
 only other org_id index is partial."""
@@ -153,23 +146,14 @@ def test_the_re_mint_fence_has_an_index_the_orm_and_the_chain_agree_on() -> None
 
 
 PARTIAL_INDEXES = {
-    "ix_tasks_org_id_status_updated_at_id_unarchived": "archived_at IS NULL AND deleted_at IS NULL",
-    "ix_tasks_org_id_status_updated_at_id_archived": (
-        "archived_at IS NOT NULL AND deleted_at IS NULL"
-    ),
-    "ix_tasks_org_id_assignee_id_status": "deleted_at IS NULL",
-    "ix_tasks_org_id_created_by_status": "assignee_id IS NULL AND deleted_at IS NULL",
     "ix_idempotency_records_attempt_id": "status IS NULL",
-    "ix_tasks_deleted_at": "deleted_at IS NOT NULL",
     "ix_files_deleted_at": "deleted_at IS NOT NULL",
     "ix_users_deleted_at": "deleted_at IS NOT NULL",
     "ix_memberships_deleted_at": "deleted_at IS NOT NULL",
     "ix_api_keys_deleted_at": "deleted_at IS NOT NULL",
-    "ix_slack_installations_deleted_at": "deleted_at IS NOT NULL",
-    "ix_slack_install_states_redeemed_at": "redeemed_at IS NOT NULL",
 }
-"""The partial indexes the task lists, the cleanup, the fence, and the purges
-across tenants read, with their predicates."""
+"""The partial indexes the fence and the purges across tenants read, with
+their predicates."""
 
 
 @pytest.mark.parametrize(("name", "predicate"), sorted(PARTIAL_INDEXES.items()))
@@ -186,27 +170,6 @@ def test_a_partial_index_names_no_bound_value(name: str, predicate: str) -> None
     )
     assert str(index.dialect_kwargs["postgresql_where"]) == predicate
     assert not any(op in predicate for op in ("=", "<", ">", " IN ")), predicate
-
-
-def test_the_long_rank_index_and_its_read_spell_one_literal_bound() -> None:
-    """The one partial index with a comparison: the respace's read names the
-    bound as a literal, the same one the predicate and the chain name, so a
-    generic plan still proves the predicate and reads the index."""
-    index = next(
-        i
-        for t in role_metadata(DatabaseRole.CORE).tables.values()
-        for i in t.indexes
-        if i.name == "ix_tasks_org_id_rank_long"
-    )
-    predicate = f"scale(rank) > {RANK_SCALE_BOUND} AND deleted_at IS NULL"
-    assert str(index.dialect_kwargs["postgresql_where"]) == predicate
-    assert [c.name for c in index.columns] == ["org_id", "rank"]
-    compiled = str(_LONG_RANK.compile(dialect=postgresql.dialect()))
-    assert compiled.endswith(f"> {RANK_SCALE_BOUND}") and "%(" not in compiled
-    chain = "\n".join(
-        path.read_text() for path in sorted((MIGRATIONS_DIR / "sql" / "core").glob("*.up.sql"))
-    )
-    assert f"(org_id, rank) WHERE {predicate};" in chain
 
 
 def test_the_pending_uploads_index_and_the_migration_spell_one_literal() -> None:
@@ -227,26 +190,3 @@ def test_the_pending_uploads_index_and_the_migration_spell_one_literal() -> None
         path.read_text() for path in sorted((MIGRATIONS_DIR / "sql" / "core").glob("*.up.sql"))
     )
     assert f"core.files (created_at) WHERE {predicate};" in chain
-
-
-def test_the_done_shelf_index_and_its_read_spell_one_literal() -> None:
-    """The index the sweep's read of the tenants with a chore due walks names
-    the done status in its predicate, and the chain builds it with that
-    predicate. The read names the status as the same literal, so a generic
-    plan proves the predicate and reads the index; the integration suite
-    reads that plan."""
-    index = next(
-        i
-        for t in role_metadata(DatabaseRole.CORE).tables.values()
-        for i in t.indexes
-        if i.name == "ix_tasks_updated_at_org_id_done_unarchived"
-    )
-    predicate = f"status = '{TaskStatus.DONE.value}' AND archived_at IS NULL AND deleted_at IS NULL"
-    assert str(index.dialect_kwargs["postgresql_where"]) == predicate
-    assert [c.name for c in index.columns] == ["updated_at", "org_id"]
-    compiled = str(_DONE_SHELF.compile(dialect=postgresql.dialect()))
-    assert f"= '{TaskStatus.DONE.value}'" in compiled and "%(" not in compiled
-    chain = "\n".join(
-        path.read_text() for path in sorted((MIGRATIONS_DIR / "sql" / "core").glob("*.up.sql"))
-    )
-    assert f"core.tasks (updated_at, org_id) WHERE {predicate};" in chain
