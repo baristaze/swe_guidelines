@@ -1,6 +1,7 @@
 """scripts/check_skills.py: skill shape and frontmatter."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -163,8 +164,11 @@ def test_a_key_one_agent_alone_reads_fails_in_a_skill_and_in_a_scaffold_skill(re
 def test_the_standards_optional_fields_and_disable_model_invocation_pass(repo, skills):
     fields = 'license: MIT\ncompatibility: "Needs git and Python 3.11."\ndisable-model-invocation: true\n'
     repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", f"allowed-tools: Read, Agent\n{fields}")
-    repo.write(copied("ops-watch"), f'---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n{fields}---\n')
-    for folder in ("skills/arch-review-full", f"{COPIED}/ops-watch"):
+    repo.write(
+        copied("ops-cloud-deployment-nuke"),
+        f'---\nname: ops-cloud-deployment-nuke\ndescription: "Destroy."\nallowed-tools: Read\n{fields}---\n',
+    )
+    for folder in ("skills/arch-review-full", f"{COPIED}/ops-cloud-deployment-nuke"):
         repo.write(f"{folder}/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n")
     assert skills.main() == 0
 
@@ -390,15 +394,15 @@ def test_an_optional_audit_skill_is_held_like_the_others(repo, skills, capsys):
 
 
 def test_a_scaffold_skill_is_held_to_the_skill_frontmatter(repo, skills, capsys):
-    good = '---\nname: ops-watch\ndescription: "Watch an environment."\nallowed-tools: Read, Bash(aws:*)\n---\n\n# ops-watch\n'
-    repo.write(copied("ops-watch"), good)
+    good = '---\nname: ops-infra-as-code\ndescription: "Plan."\nallowed-tools: Read, Bash(aws:*)\n---\n\n# ops-infra-as-code\n'
+    repo.write(copied("ops-infra-as-code"), good)
     assert skills.main() == 0
     assert "1 scaffold skills" in capsys.readouterr().out
-    bad = "---\nname: ops-wach\ndescription: Watch an environment.\nallowed-tools: Read Bash\n---\n"
-    repo.write(copied("ops-watch"), bad)
+    bad = "---\nname: ops-infra-as-cod\ndescription: Plan.\nallowed-tools: Read Bash\n---\n"
+    repo.write(copied("ops-infra-as-code"), bad)
     assert skills.main() == 1
     out = capsys.readouterr().out
-    assert "differs from its folder 'ops-watch'" in out
+    assert "differs from its folder 'ops-infra-as-code'" in out
     assert "description must be one double-quoted string" in out
     assert "allowed-tools must be comma-separated" in out
 
@@ -688,6 +692,42 @@ def test_fenced_code_a_table_row_or_a_fix_in_another_paragraph_is_no_loop(repo, 
     assert skills.main() == 0
 
 
+def looping(name: str, procedure: str) -> str:
+    """A scaffold skill of `name` whose procedure is `procedure`."""
+    return f'---\nname: {name}\ndescription: "Run {name}."\nallowed-tools: Read\n---\n\n# {name}\n\n## Procedure\n\n{procedure}\n'
+
+
+def test_each_loop_bound_of_an_ops_skill_is_held_and_named_when_dropped(repo, skills, capsys):
+    for name, bounds in skills.LOOP_BOUNDS.items():
+        repo.write(copied(name), looping(name, "\n".join(f"{i}. It says {bound}." for i, bound in enumerate(bounds, 1))))
+    assert skills.main() == 0
+    for name, bounds in skills.LOOP_BOUNDS.items():
+        whole = repo.read(copied(name))
+        for bound in bounds:
+            repo.write(copied(name), whole.replace(f"It says {bound}.", "It says nothing of it."))
+            assert skills.main() == 1
+            out = capsys.readouterr().out
+            assert f"{copied(name)}: does not say {bound!r}; each loop an ops skill runs states its count" in out
+            assert "1 problem(s)" in out
+        repo.write(copied(name), whole)
+
+
+def test_a_bound_is_read_across_line_breaks_and_never_from_fenced_code(repo, skills, capsys):
+    repo.write(
+        copied("stress-test-run"), looping("stress-test-run", "1. Report. A session follows at\n   most 2 hops of\n   Next.")
+    )
+    assert skills.main() == 0
+    repo.write(copied("stress-test-run"), looping("stress-test-run", "1. Report.\n\n```text\nat most 2 hops of Next\n```"))
+    assert skills.main() == 1
+    assert f"{copied('stress-test-run')}: does not say 'at most 2 hops of Next'" in capsys.readouterr().out
+
+
+def test_every_skill_the_loop_bounds_name_is_one_the_scaffold_has(skills):
+    """A skill the scaffold does not have is not read, so a renamed skill would drop its bounds unseen."""
+    real = Path(__file__).resolve().parent.parent / COPIED
+    assert [name for name in sorted(skills.LOOP_BOUNDS) if not (real / name / "SKILL.md").is_file()] == []
+
+
 def test_a_scaffold_skill_name_the_standard_refuses_fails(repo, skills, capsys):
     repo.write(copied("ops--watch"), '---\nname: ops--watch\ndescription: "Watch."\nallowed-tools: Read\n---\n')
     assert skills.main() == 1
@@ -703,21 +743,21 @@ def test_a_plugin_skill_name_with_a_doubled_hyphen_fails(repo, skills, capsys):
 
 
 def test_a_scaffold_skill_path_resolves_inside_the_tree_a_copy_carries(repo, skills, capsys):
-    head = '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n---\n\n'
+    head = '---\nname: ops-infra-as-code\ndescription: "Plan."\nallowed-tools: Read\n---\n\n'
     repo.write(f"{COPIED}/_shared/ops-preamble.md", "# Preamble\n")
-    repo.write(copied("ops-watch"), head + "Read `../_shared/ops-preamble.md` first.\n")
+    repo.write(copied("ops-infra-as-code"), head + "Read `../_shared/ops-preamble.md` first.\n")
     assert skills.main() == 0
-    repo.write(copied("ops-watch"), head + "Read `../_shared/gone.md` first.\n")
+    repo.write(copied("ops-infra-as-code"), head + "Read `../_shared/gone.md` first.\n")
     assert skills.main() == 1
-    assert f"{copied('ops-watch')}: reference ../_shared/gone.md does not exist" in capsys.readouterr().out
+    assert f"{copied('ops-infra-as-code')}: reference ../_shared/gone.md does not exist" in capsys.readouterr().out
     repo.write("scaffold/outside.md", "# Outside\n")
-    repo.write(copied("ops-watch"), head + "Read `../../../../outside.md` first.\n")
+    repo.write(copied("ops-infra-as-code"), head + "Read `../../../../outside.md` first.\n")
     assert skills.main() == 1
     assert "reference ../../../../outside.md resolves outside scaffold/acme_root" in capsys.readouterr().out
 
 
 def test_the_scaffolds_claude_skills_is_a_link_to_its_agents_skills(repo, skills, capsys, claude_link):
-    repo.write(copied("ops-watch"), '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\n---\n')
+    repo.write(copied("ops-infra-as-code"), '---\nname: ops-infra-as-code\ndescription: "Plan."\nallowed-tools: Read\n---\n')
     assert skills.main() == 0
     assert os.readlink(claude_link) == "../.agents/skills"
     claude_link.unlink()
@@ -749,17 +789,20 @@ IMPLICIT_OFF = "# Codex\npolicy:\n  allow_implicit_invocation: false\n"
 
 def test_a_skill_a_person_starts_by_name_says_so_to_codex_too(repo, skills, capsys):
     repo.edit("skills/arch-review-full/SKILL.md", "allowed-tools: Read, Agent\n", MANUAL)
-    head = '---\nname: ops-watch\ndescription: "Watch."\nallowed-tools: Read\ndisable-model-invocation: true\n---\n'
-    repo.write(copied("ops-watch"), head)
+    head = (
+        '---\nname: ops-cloud-deployment-nuke\ndescription: "Destroy."\nallowed-tools: Read\n'
+        "disable-model-invocation: true\n---\n"
+    )
+    repo.write(copied("ops-cloud-deployment-nuke"), head)
     assert skills.main() == 1
     out = capsys.readouterr().out
     assert (
         "skills/arch-review-full/SKILL.md: disable-model-invocation is true, but "
         "skills/arch-review-full/agents/openai.yaml does not set policy.allow_implicit_invocation: false" in out
     )
-    assert f"{copied('ops-watch')}: disable-model-invocation is true" in out
+    assert f"{copied('ops-cloud-deployment-nuke')}: disable-model-invocation is true" in out
     repo.write("skills/arch-review-full/agents/openai.yaml", IMPLICIT_OFF)
-    repo.write(f"{COPIED}/ops-watch/agents/openai.yaml", IMPLICIT_OFF)
+    repo.write(f"{COPIED}/ops-cloud-deployment-nuke/agents/openai.yaml", IMPLICIT_OFF)
     assert skills.main() == 0
     repo.write("skills/arch-review-full/agents/openai.yaml", "policy:\n  allow_implicit_invocation: true\n")
     assert skills.main() == 1
