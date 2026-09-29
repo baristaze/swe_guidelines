@@ -18,15 +18,17 @@ lenses (`skills/`), and the checkers that keep the three consistent
   `skills/_template/review.SKILL.md`; edit the template and run
   `make gen-skills`. The other skills are hand-written. The six
   scaffold skills share `skills/_shared/scaffold-conventions.md`; the
-  other hand-written skills do not. `skills/_shared/ops-skills/` holds
-  the fifteen project-local skills, the nine operational skills, the
-  four audits, and the two optional audits, as flat templates, one
-  file each, with `acme` for the product; `arch-scaffold-new` copies
-  them into a new tree, and `make leaks`, `make links`, and `make lint`
-  hold them. They are not skills of this plugin, but a new tree runs
-  them as skills, so `scripts/check_skills.py` reads their frontmatter.
+  other hand-written skills do not. A scaffold skill names the files
+  of the tree whose shape it follows and keeps only what an agent gets
+  wrong from them; `arch-scaffold-new` copies the scaffold with
+  `scaffold/new.py` and writes no part of the core by hand.
+  `scaffold/acme_root/.claude/skills/` holds the skills a new tree
+  copies with the rest and runs as its own: the operational skills,
+  the audits, the optional audits, and the ticket triage. They are not
+  skills of this plugin. `make leaks`, `make links`, and `make lint`
+  read them, and `scripts/check_skills.py` reads their frontmatter.
   It holds the same flat `key: value` lines a
-  skill's frontmatter has. The name equals the file name. The
+  skill's frontmatter has. The name equals the folder name. The
   description is one double-quoted string of at most 1024 characters,
   outside the plugin's description budget. `allowed-tools` is
   comma-separated, with no bare `Bash`, and each Bash entry is the
@@ -34,10 +36,11 @@ lenses (`skills/`), and the checkers that keep the three consistent
   audit it reads two things more, and holds each to Operations
   (Operational Skills). Its `## Role and credential` section opens
   with the role the section's table gives it. Its fixes rank remove,
-  fold, defer, cache, and only then parallel. The script also holds
-  one sentence the text states and three files restate, "a work row
-  is done once its item is queued": the text, STO-20, and the two
-  scaffolds that write the outbox relay each say it.
+  fold, defer, cache, and only then parallel. It holds every step of
+  them that fixes and runs again to its count bound, as it holds the
+  plugin's. The script also holds one sentence the text states and two
+  files restate, "a work row is done once its item is queued": the
+  text, STO-20, and the scaffold's outbox relay each say it.
   `skills/arch-new-aspect`
   is the one skill that edits this repository itself: it incorporates
   a new aspect into the guideline and cascades it through the lenses,

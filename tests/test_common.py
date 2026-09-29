@@ -123,6 +123,16 @@ def test_markdown_files_reach_every_depth_and_skip_caches_and_runs(repo):
     assert "docs/notes.txt" not in found
 
 
+def test_the_scaffolds_own_claude_folder_is_markdown_of_the_repository(repo):
+    repo.write("scaffold/acme_root/.claude/skills/ops-watch/SKILL.md", "# ops-watch\n")
+    repo.write(".claude/skills/ops-watch/SKILL.md", "# ops-watch\n")
+    repo.write("docs/.claude/notes.md", "# Notes\n")
+    found = {p.relative_to(repo.root).as_posix() for p in markdown_files(repo.root)}
+    assert "scaffold/acme_root/.claude/skills/ops-watch/SKILL.md" in found  # a copy runs it, so it is published
+    assert ".claude/skills/ops-watch/SKILL.md" not in found
+    assert "docs/.claude/notes.md" not in found
+
+
 def test_headings_skip_fenced_code_and_keep_levels():
     text = "# One\n\n```\n# not a heading\n```\n\n## Two\n\n### Three  \n"
     assert headings(text) == [(1, "One"), (2, "Two"), (3, "Three")]

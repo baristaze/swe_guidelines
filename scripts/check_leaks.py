@@ -181,15 +181,6 @@ def is_text(path: Path) -> bool:
     return b"\0" not in data
 
 
-def left_out(parts: Sequence[str]) -> bool:
-    """Whether a file is outside the text this check reads: what `skipped`
-    leaves out, but for the scaffold's own `.claude/` folder, which holds the
-    skills a copy of the scaffold runs and is published with it."""
-    if tuple(parts[:1]) == ("scaffold",):
-        parts = [part for part in parts if part != ".claude"]
-    return skipped(parts)
-
-
 def text_files(root: Path) -> list[Path]:
     """Every text file of the repository, from git when it can, the skipped directories left out."""
     try:
@@ -203,7 +194,7 @@ def text_files(root: Path) -> list[Path]:
     except (OSError, subprocess.CalledProcessError):
         out = [p.relative_to(root).as_posix() for p in root.rglob("*")]
     return [
-        root / rel for rel in sorted(set(out)) if not left_out(rel.split("/")) and (root / rel).is_file() and is_text(root / rel)
+        root / rel for rel in sorted(set(out)) if not skipped(rel.split("/")) and (root / rel).is_file() and is_text(root / rel)
     ]
 
 

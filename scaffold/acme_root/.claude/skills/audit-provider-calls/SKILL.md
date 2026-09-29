@@ -1,6 +1,6 @@
 ---
 name: audit-provider-calls
-description: "Audit every call to an external provider (WorkOS, the AWS services, any HTTP to a third party), per flow: each route, inbound webhook, worker job, and boot. For each flow, the calls in order, whether they repeat or stand apart, whether they sit on the request path, how often the flow runs, whether the client is reused, the timeout times the retries, and whether the request has an overall deadline. Counts the calls through the identity provider's twin where it can and reads the code where it cannot, then ranks fixes: remove a call, fold calls, move one off the request path, cache it, and run in parallel last. Never changes anything."
+description: "Audit every call to an external provider (WorkOS, the AWS services, any HTTP to a third party), per flow: each route, inbound webhook, worker job, and boot. For each flow, the calls in order, whether they repeat or stand apart, whether they sit on the request path, how often the flow runs, whether the client is reused, the timeout times the retries, and whether the request has an overall deadline. Counts the calls through the identity provider's twin where it can and reads the code where it cannot, then ranks fixes: remove a call, fold calls, defer one off the request path, cache it, and run in parallel last. Never changes anything."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(uv run:*), Bash(git:*), Bash(mkdir:*)
 ---
 
@@ -139,7 +139,7 @@ calls no real provider.
      finding.
 7. Rank the fixes in this order, and propose the first that applies:
    remove the call (its answer is known, or nothing reads it); fold
-   calls into one (a batch, one read that answers two); move it off the
+   calls into one (a batch, one read that answers two); defer it off the
    request path (into a job, or after the response); cache it (with the
    TTL and what invalidates it); and last, run independent calls in
    parallel, which lowers the latency and not the load, and still waits

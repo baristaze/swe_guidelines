@@ -35,7 +35,7 @@ Rules:
   operator (`;`, `&`, `|`, a redirect, a substitution, a quote) that would
   chain a second command; a make entry names a target, so `Bash(make:*)`
   and `Bash(make -C dir:*)` are refused;
-- every skill and every ops-skill template has a non-empty allowed-tools:
+- every skill, the scaffold's included, has a non-empty allowed-tools:
   a skill without one runs with every tool the session has;
 - allowed-tools names only what the body runs; the checker holds the make
   targets to it: for every `Bash(make <target>)` or `Bash(make <target>:*)`,
@@ -53,9 +53,9 @@ Rules:
   `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
   a heading inside fenced code is not a section, and a fence of backticks
   or tildes is read by the one rule in `_common.py`;
-- every ops-skill template under `skills/_shared/ops-skills/`, which a
-  scaffold copies into a new tree as a real skill, has the frontmatter a
-  skill has: its name is its file name, its description one
+- every skill of the scaffold, `scaffold/acme_root/.claude/skills/<name>/SKILL.md`,
+  which a copy of the scaffold runs as a real skill, has the frontmatter a
+  skill has: its name is its folder's name, its description one
   double-quoted string, and its allowed-tools entries each a Name or a
   `Bash(cmd:*)` prefix, comma-separated;
 - a skill keeps its spine and names its detail. Every Markdown file under a
@@ -65,24 +65,25 @@ Rules:
   reference file no step names is an orphan: nothing opens it, so it is an
   error. A `${CLAUDE_SKILL_DIR}/...` reference inside a reference file
   resolves from the skill's folder, the same way the body's does;
-- every audit template (`audit-*`) agrees with Operations (Operational
-  Skills) of architecture.md: the first words of its `## Role and
-  credential` section, up to a comma or a period, are the role the
-  section's table gives it, every audit in the table has a template, and
-  every paragraph or list item of the template or the section that names
+- every audit skill of the scaffold (`audit-*`) agrees with Operations
+  (Operational Skills) of architecture.md: the first words of its `## Role
+  and credential` section, up to a comma or a period, are the role the
+  section's table gives it, every audit in the table has a skill, and
+  every paragraph or list item of the skill or the section that names
   parallel calls ranks remove, fold, defer, cache, and parallel, first
-  named in that order. An adopter copies the template, so a template that
+  named in that order. A new tree copies the skill, so a skill that
   disagrees with the text puts the disagreement in every tree;
 - when the guideline has work rows (`work.<kind>`), the text, STO-20, and
-  the two scaffolds that write the outbox relay each say "a work row is
-  done once its item is queued", in those words, so the rule cannot
-  change in one of them alone;
+  the scaffold's outbox relay each say "a work row is done once its item
+  is queued", in those words, so the rule cannot change in one of them
+  alone;
 - a skill body stays under `BODY_WORDS` words. The body is loaded in full
   every time the skill runs, so its length is a cost paid per run, and the
   fix a failure names is the split: move the long per-step material into the
   file a step reads;
 - a step that fixes and runs again states its count bound. In every Markdown
-  file under skills/, a paragraph or list item that says fix beside a rerun
+  file under skills/ and under the scaffold's `.claude/skills/`, a paragraph
+  or list item that says fix beside a rerun
   (`rerun`, or `run` with `again` anywhere after it) or beside a backticked
   `make <target>` says `at most <n> reruns` in the same paragraph or item.
   The span of `run ... again` is the whole paragraph or item, so a block
@@ -112,7 +113,8 @@ NAME = re.compile(r"^arch-[a-z0-9-]+$")
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
-TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[a-z0-9-]+__[a-z0-9_]+)(\([^()]*\))?$")
+TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+)(\([^()]*\))?$")
+"""A tool: a Name, or an MCP tool, `mcp__<server>__<tool>`, whose server a connector may name in any case."""
 BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 # A rule names one command: no shell operator (`;`, `&`, `|`, a redirect, a
 # substitution, a quote) may chain a second one behind the first.
@@ -283,21 +285,31 @@ def lens_groups() -> set[str]:
 NO_TOOLS = "no allowed-tools; a skill names the tools it runs"
 """A skill with no allowed-tools runs with every tool the session has, so the key is required."""
 
-OPS_TEMPLATES = SKILLS / "_shared" / "ops-skills"
-"""The operational skills a scaffold copies into a new tree, where their frontmatter becomes a real skill's."""
+SCAFFOLD_SKILLS = ROOT / "scaffold" / "acme_root" / ".claude" / "skills"
+"""The skills of the scaffold: a new tree copies them with the rest, and runs them as its own."""
 
 
-def check_template(path: Path, errors: list[str]) -> None:
-    """An ops-skill template's frontmatter holds to the rules a skill's does: the name is the file's, the
+def scaffold_skills() -> list[Path]:
+    """The `SKILL.md` of every skill of the scaffold, by folder name; a folder whose name starts with `_` is shared text."""
+    if not SCAFFOLD_SKILLS.is_dir():
+        return []
+    return sorted(p / "SKILL.md" for p in SCAFFOLD_SKILLS.iterdir() if p.is_dir() and not p.name.startswith("_"))
+
+
+def check_scaffold_skill(path: Path, errors: list[str]) -> None:
+    """A scaffold skill's frontmatter holds to the rules a skill's does: the name is its folder's, the
     description one double-quoted string, and every allowed-tools entry a Name or a Bash(cmd:*) prefix."""
     rel = path.relative_to(ROOT)
+    if not path.exists():
+        errors.append(f"{rel.parent}: no SKILL.md")
+        return
     text = path.read_text(encoding="utf-8")
     fm = frontmatter(text, errors, str(rel))
     if not fm:
         errors.append(f"{rel}: missing frontmatter")
         return
-    if fm.get("name", "") != path.stem:
-        errors.append(f"{rel}: name '{fm.get('name', '')}' differs from the file name '{path.stem}'")
+    if fm.get("name", "") != path.parent.name:
+        errors.append(f"{rel}: name '{fm.get('name', '')}' differs from its folder '{path.parent.name}'")
     desc = fm.get("description", "")
     head = FRONTMATTER.match(text)
     if not desc:
@@ -334,10 +346,9 @@ WORK_ROW_DONE = "a work row is done once its item is queued"
 WORK_ROW_DONE_IN = (
     "architecture.md",
     "lenses/storage.md",
-    "skills/arch-scaffold-worker/SKILL.md",
-    "skills/arch-scaffold-new/references/object-model.md",
+    "scaffold/acme_root/om/src/acme/om/outbox/relay.py",
 )
-"""The text, STO-20, and the two scaffolds that write the relay: each states the rule in the same words."""
+"""The text, STO-20, and the scaffold's relay interface: each states the rule in the same words."""
 
 
 def section(text: str, title: str) -> str | None:
@@ -394,39 +405,40 @@ def ops_roles(text: str) -> dict[str, str] | None:
     return {m.group(1): m.group(2).lower() for m in map(OPS_ROW.match, table.splitlines()) if m}
 
 
-def check_audits(templates: list[Path], errors: list[str]) -> None:
-    """Every audit template agrees with Operations (Operational Skills): its Role and credential section opens with the
-    role the table gives it, and a paragraph or list item that names parallel calls ranks FIX_ORDER first, as the text
-    does. An adopter copies the template, so a template that disagrees with the text makes every copy disagree too."""
-    audits = {t.stem: t for t in templates if t.stem.startswith("audit-")}
+def check_audits(skills: list[Path], errors: list[str]) -> None:
+    """Every audit skill of the scaffold agrees with Operations (Operational Skills): its Role and credential section
+    opens with the role the table gives it, and a paragraph or list item that names parallel calls ranks FIX_ORDER
+    first, as the text does. A new tree copies the skill, so a skill that disagrees with the text makes every copy
+    disagree too."""
+    audits = {s.parent.name: s for s in skills if s.parent.name.startswith("audit-") and s.exists()}
     if not audits:
         return
     text = GUIDELINE.read_text(encoding="utf-8") if GUIDELINE.exists() else ""
     roles = ops_roles(text)
     if roles is None:
-        errors.append(f"architecture.md: no {OPS_SECTION} section to hold the audit templates to")
+        errors.append(f"architecture.md: no {OPS_SECTION} section to hold the audit skills to")
         return
     order = ", ".join(FIX_ORDER)
     if misranked(section(text, OPS_SECTION) or ""):
         errors.append(f"architecture.md: {OPS_SECTION} names parallel calls without ranking {order} first, in that order")
     for name in sorted(n for n in roles if n.startswith("audit-") and n not in audits):
-        errors.append(f"architecture.md: the {OPS_SECTION} table lists {name}, which has no template")
-    for name, template in sorted(audits.items()):
-        rel = template.relative_to(ROOT)
-        body = body_of(template.read_text(encoding="utf-8"))
+        errors.append(f"architecture.md: the {OPS_SECTION} table lists {name}, which the scaffold has no skill for")
+    for name, skill in sorted(audits.items()):
+        rel = skill.relative_to(ROOT)
+        body = body_of(skill.read_text(encoding="utf-8"))
         first = next(iter(blocks(section(body, ROLE_SECTION) or "")), "")
         said = re.split(r"[,.]", first, maxsplit=1)[0].strip().lower()
         if name not in roles:
             errors.append(f"{rel}: the {OPS_SECTION} table of architecture.md gives it no role")
         elif said != roles[name]:
             errors.append(f"{rel}: {ROLE_SECTION} opens with the role {said!r}; the {OPS_SECTION} table gives {roles[name]!r}")
-        if misranked(template.read_text(encoding="utf-8")):
+        if misranked(skill.read_text(encoding="utf-8")):
             errors.append(f"{rel}: names parallel calls without ranking {order} first, in that order")
 
 
 def check_work_row(errors: list[str]) -> None:
-    """When the guideline has work rows, the text, STO-20, and both scaffolds that write the relay each state
-    WORK_ROW_DONE in those words, so a change to the rule in one place fails here until the others follow."""
+    """When the guideline has work rows, the text, STO-20, and the scaffold's relay each state WORK_ROW_DONE in
+    those words, so a change to the rule in one place fails here until the others follow."""
     text = GUIDELINE.read_text(encoding="utf-8") if GUIDELINE.exists() else ""
     if "`work.<kind>`" not in text:
         return
@@ -435,7 +447,7 @@ def check_work_row(errors: list[str]) -> None:
         said = " ".join(path.read_text(encoding="utf-8").split()).lower() if path.exists() else ""
         if WORK_ROW_DONE not in said:
             errors.append(
-                f"{rel}: does not say {WORK_ROW_DONE!r}; the text, STO-20, and the relay's two scaffolds must each say it"
+                f"{rel}: does not say {WORK_ROW_DONE!r}; the text, STO-20, and the scaffold's relay must each say it"
             )
 
 
@@ -469,8 +481,10 @@ def unbounded_loops(text: str) -> list[str]:
 
 
 def check_bounds(errors: list[str]) -> None:
-    """Every Markdown file under skills/ bounds each step that fixes and runs again, as `unbounded_loops` reads it."""
-    for path in sorted(SKILLS.rglob("*.md")):
+    """Every Markdown file under skills/ and the scaffold's skills bounds each step that fixes and runs again, as
+    `unbounded_loops` reads it."""
+    scaffold = sorted(SCAFFOLD_SKILLS.rglob("*.md")) if SCAFFOLD_SKILLS.is_dir() else []
+    for path in [*sorted(SKILLS.rglob("*.md")), *scaffold]:
         for block in unbounded_loops(body_of(path.read_text(encoding="utf-8"))):
             errors.append(
                 f"{path.relative_to(ROOT)}: a step fixes and runs again with no count bound; "
@@ -593,10 +607,10 @@ def main(argv: Sequence[str] = ()) -> int:
                 errors.append(f"{rel}: does not reference lenses/{group}.md")
     if total > DESCRIPTIONS_TOTAL:
         errors.append(f"skills/: the descriptions total {total} characters, limit {DESCRIPTIONS_TOTAL}")
-    templates = sorted(OPS_TEMPLATES.glob("*.md")) if OPS_TEMPLATES.is_dir() else []
-    for template in templates:
-        check_template(template, errors)
-    check_audits(templates, errors)
+    copied = scaffold_skills()
+    for skill in copied:
+        check_scaffold_skill(skill, errors)
+    check_audits(copied, errors)
     check_work_row(errors)
     check_bounds(errors)
     for group in sorted(groups - review_groups):
@@ -613,7 +627,7 @@ def main(argv: Sequence[str] = ()) -> int:
         print("\n".join(errors))
         print(f"\n{len(errors)} problem(s) in {len(skills)} skill(s)")
         return 1
-    print(f"skills ok: {len(skills)} skills, {len(review_groups)} review groups, {len(templates)} ops-skill templates")
+    print(f"skills ok: {len(skills)} skills, {len(review_groups)} review groups, {len(copied)} scaffold skills")
     return 0
 
 

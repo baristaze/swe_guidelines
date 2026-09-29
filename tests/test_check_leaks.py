@@ -237,6 +237,7 @@ def test_python_code_and_the_tests_are_not_scanned_for_product_terms(repo, leaks
     [
         "scaffold/acme_root/README.md",
         "scaffold/acme_root/om/src/acme/om/README.md",
+        "scaffold/acme_root/.claude/skills/ops-watch/SKILL.md",
         "scaffold/acme_root/deployment/local/docker-compose.yml",
         "scaffold/acme_root/apps/portal/openapi.json",
     ],
