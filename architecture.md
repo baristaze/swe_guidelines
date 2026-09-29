@@ -37,9 +37,11 @@ heading. There are four:
 
 Untagged text is the rule. A departure from it is recorded as a
 deviation, in an ADR of the project's own. A tag covers the text under
-its own heading, and a principle takes its section's tag. Nuance that
-only an agent needs sits in a short `agents-only` comment inside its
-section, which a rendered page does not show.
+its own heading, up to the next heading of any level. So a `##` tag
+never reaches the `###` sections under it: each carries its own tag, or
+none. A principle takes its section's tag. Nuance that only an agent
+needs sits in a short `agents-only` comment inside its section, which a
+rendered page does not show.
 
 The detail lives in the tools, and that is a choice. This document
 tells the story. The [lenses](lenses/README.md) and the skills hold the
