@@ -1142,19 +1142,30 @@ Its `reasoning_tokens` are the thinking tokens `modelUsage` reports,
 which its output already counts. A `qa` answer is priced like a
 judgement.
 
-A session the harness stopped wrote no result, and its cost is the
-harness's estimate from the stream, which the run's notes name. The
+A session that wrote no result, such as one the harness stopped at
+its timeout, has only the harness's estimate from its stream. The
 estimate prices each message at its model's price in the matrix, a
 cache read at the model's `cache_read` where the matrix names one. It
-counts each message's input in full and its output as the message
-starts. Each line of the stream carries a message's usage from the
-start of the message, and none carries its final output count. With
-`--include-partial-messages`, Claude Code also writes the main agent's
-raw stream events, whose `message_delta` carries that count, but never
-a helper agent's. The harness does not pass it: the count would still
-miss every helper's output, and the stream would take a line for every
-chunk the main agent streams. So the estimate leaves out nearly all of
-a session's output, and reads low by about what that output cost.
+counts each message's input in full, and its output as the message
+starts, so it reads low. Each line of the stream carries a message's
+usage from the start of the message. No line Claude Code writes carries
+a helper agent's final output count. With `--include-partial-messages`,
+Claude Code 2.1.283 and 2.1.284 also write the main agent's raw stream
+events, whose `message_delta` carries its final count, and never a
+helper's. The harness does not pass it: the count would still miss the
+helpers' output, and the stream would take a line for every chunk the
+main agent streams. So the estimate leaves out nearly all of a
+session's output.
+
+Such a phase's cost is therefore a lower bound, and the run says so.
+Its record in `results.json` has `cost_lower_bound`, and the run's
+notes name it. `spend` names it under `estimated`, and the total reads
+"at least" in `report.md` and in what the run prints. The run's spend
+cap counts the phase at its `max_usd`, the most Claude Code's
+`--max-budget-usd` let it spend, or at the estimate when that is
+higher. The checks before each later phase and each later repeat read
+that count: a later repeat starts only when what is left covers its
+phases, and a later phase only while the cap is not reached.
 
 `results.json` totals it all under `spend`: each judge's tokens and
 cost, the subject's, and `total_usd`. `report.md` shows the same in its
