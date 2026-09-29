@@ -255,20 +255,19 @@ def statements(c: Counts) -> list[tuple[str, str]]:
         (
             "files",
             f"""INSERT INTO core.files (id, org_id, name, created_at, updated_at, created_by,
-                updated_by, key, extension,
-                                    content_type, size_bytes, purpose, subject_id, status,
-                                        deleted_at)
+                updated_by, key, extension, content_type, size_bytes, purpose, subject_id,
+                status, deleted_at)
             SELECT uuidv7(-(interval '300 days') + g * interval '20 minutes'), {big},
                    'f' || g || '.pdf', now() - interval '300 days', now(),
                    bu.u[1 + g % bu.k], bu.u[1 + g % bu.k], 'k' || g, 'pdf',
-                       'application/pdf', 100000, 'upload', NULL,
+                   'application/pdf', 100000, 'upload', NULL::uuid,
                    CASE WHEN g % 50 = 0 THEN 'pending' ELSE 'stored' END,
                    CASE WHEN g % 40 = 0 THEN now() - interval '10 days' END
             FROM generate_series(1, {c.files}) g, bu
             UNION ALL
             SELECT gen_random_uuid(), p.org_id, 'f.pdf', now() - interval '30 days', now(),
-                p.user_id, p.user_id, 'k', 'pdf',
-                   'application/pdf', 1000, 'upload', NULL, 'stored', NULL
+                   p.user_id, p.user_id, 'k', 'pdf',
+                   'application/pdf', 1000, 'upload', NULL::uuid, 'stored', NULL::timestamptz
             FROM people p CROSS JOIN generate_series(1, 10) k""",
         ),
         (
