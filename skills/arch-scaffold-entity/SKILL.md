@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-entity
-description: "Add one entity to an object-model namespace: the frozen type, the table and migration, storage in Postgres and memory, manager operations, wire types, router, and tests. Python."
+description: "Add one entity to an object-model namespace: the frozen type, the table and its migration with its policy, storage in Postgres and memory, manager operations, wire types, routes, a portal screen, and tests, in the shape of the scaffold's own. Python and TypeScript."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*)
 ---
 
@@ -10,139 +10,123 @@ Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
 Entities (Identifiers), The Business Layer (Shape of an Operation), The
 Storage Layer (Namespace Shape, Defining ORM Classes, Translation, A
-Storage Impl, Database Roles, The Second Fence, Migrations), The Network Layer (Service
-Interfaces and Impls, Public Types, Realtime at the Edge),
-Documentation as Code (A README at Every Level), Cross-Cutting
-Conventions (Exceptions).
-A section is read with its own introduction.
+Storage Impl, Database Roles, The Second Fence, Migrations), The Network
+Layer (Service Interfaces and Impls, Public Types, Realtime at the
+Edge), Documentation as Code (A README at Every Level), Cross-Cutting
+Conventions (Exceptions). A section is read with its own introduction.
 
 ## Input
 
 `<namespace> <EntityName> [field:type ...] [--role core|activity|queue|admin] [--scope system|org|identity|both] [--person-column <col>] [--no-api]`
 
 Example: `inventory Warehouse address:str timezone:str`. The role
-defaults to `core`. Ask in one message for the fields not given and
-for the mixins: `Named`? `Trackable`? `SoftDeletable`? For a
-`Trackable` entity, ask too whether concurrent edits matter: when they
-do, the entity carries a `version`. Ask which fields the manager owns:
-the fields it sets and a caller never writes (a `credential_ref`, a
-status its transitions own, a position). The answer
-"append-only" means `Identifiable` alone and, unless `--role` says
-otherwise, the `activity` role. A mixin is composed only when a
-manager operation exercises it: `Trackable` needs an update,
-`SoftDeletable` a delete.
+defaults to `core`, the scope to `org`. Ask in one message for the
+fields not given, and for:
 
-The tenancy scope defaults to `org`, as The Storage Layer (The Second
-Fence) names the four. `identity` rows belong to an identity and no
-tenant; the table composes `IdentityScopedMixin`, which carries `id`
-and `identity_id` and no `org_id`, and the policy rests on
-`identity_id`. `both` rows
-belong to a tenant and a person in it; the table carries `org_id` and
-the person column, `--person-column`, `user_id` by default, and the
-policy narrows by it. `system` rows belong to the platform: the table
-composes `GlobalIdentifiableMixin`, its migration enables no
-row-level security and creates no policy, and its storage methods take
-no `org_id` and are each listed under
-`[tool.arch-check.options.CTX-12] tenantless` with a docstring saying
-why. `<SCOPE>` is the scope in upper case.
-
-A `core`-role entity has a handoff: every write lands the core row
-and its `OutboxRow`s (from `om/outbox/`, as `arch-scaffold-new`
-defines it) in one commit, and the manager relays each at once
-through `OutboxRelayInterface.relay(org_id, row)`, which dispatches
-on the row's `kind`: an entity change appends the `Event` and
-publishes `ENTITY_CHANGED`. Work that follows the write rides a
-second outbox row of kind `work.<kind>` in the same tuple and the
-same commit, never an `enqueue`
-the manager makes itself, because the queue is another role. An
-`activity`-role entity is itself a
-record: it is appended by a named `append_<entity>` method, never
-upserted, and carries no outbox row, because nothing crosses a role.
-
-`<entity>` is the snake-case name, `<entities>` its plural, `<ns>` the
-namespace, `<role>` the role, `<stamp>` the minute stamp
-`YYYYMMDDHHMM` of the moment the migration is written.
+- the mixins: `Named`? `Trackable`? `SoftDeletable`? A mixin is
+  composed only when an operation exercises it: `Trackable` needs an
+  update, `SoftDeletable` a delete. "Append-only" means neither, the
+  mixins Naming Entities gives such a record, and, unless `--role` says
+  otherwise, the `activity` role;
+- whether concurrent edits of a `Trackable` entity matter. When they
+  do, the entity carries a `version`;
+- the fields the manager owns and a caller never writes (a status its
+  transitions own, a position, a derived key);
+- any unique key besides the id.
 
 ## Created
 
-| File                                                         | Holds                                                                  |
-|--------------------------------------------------------------|------------------------------------------------------------------------|
-| `om/src/<root>/om/<ns>/types/<entity>.py`                     | the frozen entity, mixins in house-style order; `MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]]`, declared on every entity even when empty, naming the fields the manager sets and a caller never writes (a `credential_ref` among them); `version: int` when concurrent edits matter, and then `version` in `MANAGER_OWNED_FIELDS`, since the manager's copy sets it |
-| `om/src/<root>/om/<ns>/storage/tables/<entities>.py`          | the table class composing the matching mixins; an `activity`-role entity is a feed and composes `FeedIdentifiableMixin` (no single-column `org_id` index) and declares the `(org_id, id)` index; no concrete table redeclares a mixin column |
-| `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`          | `CREATE TABLE <role>.<entities>` with the mixin header block first, then the table's policy in the shape its tenancy scope implies, with `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`; a `system`-scoped table gets neither, as The Storage Layer (The Second Fence) states |
-| `om/migrations/sql/<role>/<stamp>_<entities>.down.sql`        | the matching `DROP POLICY` and `DROP TABLE`                            |
-| `om/migrations/versions/<role>/<stamp>_<entities>.py`         | the wrapper: `revision = "<stamp>"`, `down_revision` = the role's current head, `run_sql(<role>, ...)` |
-| `om/tests/contracts/<entity>_storage.py`                      | the storage contract cases, parameterised by a storage fixture; a cross-tenant case per method of the interface, passing another tenant's identifier (another person's for `both`, another identity's for `identity`) and asserting that nothing is found and nothing changes, over the read, the list with its page, every write, and the paths that return early or raise, because the enumerating test reads the signature and only the case reads the query, as The Storage Layer (Namespace Shape) states; one case per unique key the table declares (a second row under the same key is refused by both impls, so the memory impl refuses what the engine refuses, as Interfaces (Multiple impls per interface) states; on a `SoftDeletable` entity the key is a partial unique index `WHERE deleted_at IS NULL` in the migration, the memory impl refuses only among the living, and the case creates, deletes, and creates again); a named atomic method the entity adds is raced as well as called: two callers at once, exactly one wins, over memory and over Postgres |
-| `om/tests/unit/test_<entity>_storage.py`                      | the contract cases over the memory impl                                |
-| `om/tests/integration/test_<entity>_storage_postgres.py`      | the same cases over Postgres, marked `integration`                    |
-| the tree's tenancy policy test (nothing to write)              | it reads the tenancy scope map, so the new table is covered the moment its scope is declared, and it fails until the migration carries the policy |
-| `om/tests/unit/test_<entity>_manager.py`                      | every operation the manager has, over the memory storage, including an update sent with another `created_by` or a cleared `deleted_at` that sees both stay as stored, an update sent with another value in each field of `MANAGER_OWNED_FIELDS` that sees each stay as stored, and, on a versioned entity, an update carrying a stale expected version refused with `PreconditionFailed` and the row left as it stood |
-| `<api>/tests/test_<ns>_<entity>_api.py` (unless `--no-api`)   | the routes over the in-process app and memory container; on a versioned entity, a `PATCH` whose `If-Match` names a stale version answered `412`, and one with no expected version, or with an `If-Match` and an `expected_version` that differ, refused as a validation failure |
+The shape of each file is its sibling for the `File` entity of the
+`media` namespace, unless the row names another.
 
-`<api>` is the service whose `--namespaces` includes `<ns>`, else
-`services/api`, else the API rows are skipped with a note. When `<ns>`
-is new to `<api>`, its `types/<ns>.py`, `services/<ns>.py`,
-`impl/<ns>.py`, and `routers/<ns>.py` do not exist yet, and the
-`Changed` rows below create them. `<ns_singular>` is the namespace's
-singular in snake case, as `arch-scaffold-namespace` names it.
+| File | Holds |
+|------|-------|
+| `om/src/<name>/om/<ns>/types/<entity>.py` | the frozen entity, mixins in house-style order, `MANAGER_OWNED_FIELDS` (with `version` in it on a versioned entity) |
+| `om/src/<name>/om/<ns>/storage/tables/<entities>.py` | the table over the matching mixins; the sibling by scope is below |
+| `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`, `.down.sql` | the table with its mixin header first, then its policy with `ENABLE` and `FORCE ROW LEVEL SECURITY`; the down drops the policy and the table |
+| `om/migrations/versions/<role>/<stamp>_<entities>.py` | `revision = "<stamp>"`, `down_revision` the role's current head, `run_sql(DatabaseRole.<ROLE>, ...)` |
+| `om/tests/contracts/<entity>_storage.py` | the storage contract cases, shape `om/tests/contracts/media_storage.py` |
+| `om/tests/unit/test_<entity>_storage.py`, `om/tests/integration/test_<entity>_storage_postgres.py` | those cases over memory, and over Postgres under the `integration` marker |
+| `om/tests/unit/test_<entity>_manager.py` | every operation over the memory storage |
+| `services/api/tests/test_<ns>_<entity>_api.py` (unless `--no-api`) | the routes over the in-process app, shape `services/api/tests/test_media_api.py` |
+| `apps/portal/src/features/<entities>/` (when a portal exists and unless `--no-api`) | `<Entities>Page.tsx`, `use<Entities>Vm.ts`, `<entities>Model.ts`, and its test, shape `apps/portal/src/features/settings/` |
+
+`<stamp>` is the minute the migration is written, `YYYYMMDDHHMM`. The
+table's sibling by scope, with its policy in its role's first migration:
+
+| Scope | Sibling | The policy |
+|-------|---------|------------|
+| `org` | `media/storage/tables/files.py` | on `org_id`, with the system login's clause |
+| `both` | `tenancy/storage/tables/api_keys.py` | on `org_id`, narrowed by the person column, `user_id` unless `--person-column` names another |
+| `system` | `tenancy/storage/tables/identities.py` | none: no row-level security, and every storage method is on the tenantless list |
+| `identity` | none; `ScopeKind.IDENTITY` in `storage/scopes.py` | on the identity column against `app.identity_id`; every storage method takes `identity_id` in place of `org_id` and is on the tenantless list |
 
 ## Changed
 
-| File                                                   | Change                                                                         |
-|--------------------------------------------------------|--------------------------------------------------------------------------------|
-| `om/src/<root>/om/<ns>/storage/__init__.py`             | `read_<entities>(org_id, limit)`, `read_<entity>(org_id, <entity>_id)`, and, for a `core`-role entity, `create_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...]) -> bool` (False when the id is already written; nothing changes then), or `-> InsertOutcome` when the table declares a unique key besides the id (`INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, naming the key that collided; nothing changes on a collision), with a read by that key beside it and `write_<entity>(org_id, <entity>, outbox_rows: tuple[OutboxRow, ...])`, which on a versioned entity is `write_<entity>(org_id, <entity>, outbox_rows, *, expected_version)` and writes only where the stored `version` equals it, reporting whether it wrote; for an `activity`-role one, `append_<entity>(org_id, <entity>)`; the scope decides the tenant parameters: `both` takes `org_id` and `user_id` at the front of every method, as The Storage Layer (Namespace Shape) shows for a user-bound scope; `identity` takes `identity_id` in place of `org_id`, and each such method is listed under `[tool.arch-check.options.CTX-12] tenantless` with a docstring saying why, like `system` |
-| `om/src/<root>/om/<ns>/storage/impl/postgres.py`        | the reads over `select`, ordered by `id`; the write over the base's `_upsert(table, entity, outbox_rows, org_id=org_id)`, which inserts the outbox rows in the same commit; the create over the base's `_insert` with the same arguments, which does nothing on an existing id or unique key and reports which, the outbox rows landing only when the insert won; the append over the same `_insert`; every statement opens through the funnel with the scope the method takes, by keyword: `_session_for(stmt, org_id=org_id)`, with `user_id=user_id` beside it for `both`, or `_session_for(stmt, identity_id=identity_id)` for `identity`, the same keywords `_upsert` and `_insert` take; both keys are in every `WHERE` clause for `both` |
-| `om/src/<root>/om/<ns>/storage/impl/memory.py`          | the same methods over the in-memory table; the memory base lands the outbox rows in the outbox memory storage the root wired |
-| `om/src/<root>/om/storage/roles.py`                     | `"<entities>": DatabaseRole.<ROLE>` in the table-to-role map `TABLE_ROLES`, and `"<entities>": TenancyScope.<SCOPE>` in the tenancy scope map `TABLE_SCOPES` beside it, naming the column the policy rests on (`identity_id` for `identity`, `--person-column` for `both`) |
-| `om/src/<root>/om/<ns>/README.md`                       | the noun in the product's language: what it is, what can happen to it (the operations the manager gains below), and which rules hold |
-| `om/src/<root>/om/<ns>/manager.py`                      | `get_<entities>(ctx, limit)`, `get_<entity>`, `create_<entity>`, plus `update_<entity>` when the entity is `Trackable` (taking `expected_version` after the entity when the entity is versioned) and `delete_<entity>` when it is `SoftDeletable`; an append-only entity gets neither |
-| `om/src/<root>/om/<ns>/impl/manager.py`                 | the operations: authorize (`Permission.READ` for reads, `Permission.WRITE` for writes), verify (`get_<entity>` on update and delete, raising `NotFound`, a soft-deleted row included; on create, the insert reports an existing id, or the unique key that collided, and the operation reads the row back by that key and returns it as stored), copy (on create, the actor from the context, the initial status, and a position when the entity has one, the id and the timestamps left as constructed; on update, `<Entity>.model_validate({**current.model_dump(), **<entity>.model_dump(exclude=set(PROVENANCE_FIELDS) \| set(<Entity>.MANAGER_OWNED_FIELDS)), "updated_at": utcnow(), "updated_by": ctx.user_id})`, starting from the stored row so no caller rewrites who made the row, brings a deleted one back, or sets a field the manager owns, and validated because it carries a dump; on a versioned entity the copy sets `version` to `expected_version + 1`, the write is the compare-and-set against the caller's `expected_version`, never a version re-read inside the update, and a write that finds another version raises `PreconditionFailed` (412); on delete, `deleted_at` and `deleted_by`), write with the tuple holding the row `outbox_row(ctx, "<ns>.<entity>.<created\|updated\|deleted>", <entity>.id, {})` builds, carrying the actor, the request id, and the app from the context and ids only, never a field's value, and a second row of kind `work.<kind>` when work follows the write, then `relay` per row, a relay that never raises, since the write has committed and a failure is left to the sweep, then return the copy; an `activity`-role entity's create is `append_<entity>` alone |
-| `om/src/<root>/om/exceptions.py` (when a leaf is needed) | `class <Ns>Exception(PlatformException): ...` once, then leaves that multiply-inherit a shape |
-| `<api>/.../types/<ns>.py` (unless `--no-api`)           | `<Entity>View`, `Add<Entity>Request`, and `Update<Entity>Request` only when the manager has `update_<entity>`; neither request carries a field of `MANAGER_OWNED_FIELDS`; on a versioned entity the view carries `version`, and `Update<Entity>Request` an optional `expected_version` |
-| `<api>/.../services/<ns>.py` (unless `--no-api`)        | the operations on `<Ns>ServiceInterface`: list, get, create, and, only when the manager has them, update and delete, each taking `ctx` and the request type and returning the view, the create also taking `<entity>_id`, the id the `Idempotency-Key` dependency minted before the marker, which the router passes, and the update, on a versioned entity, the expected version the router read |
-| `<api>/.../impl/<ns>.py` (unless `--no-api`)            | the translation on `<Ns>ServiceImpl`: build the entity from the request, call one manager operation, project the result onto the view; the partial update reads the current entity through the manager's `get_<entity>` and copies the request's set fields onto it before handing the whole entity to `update_<entity>`, with the caller's expected version and never the one it just read |
-| `<api>/.../routers/<ns>.py` (unless `--no-api`)         | list (with `limit`), get, post, and, only when the manager has them, patch and delete routes; on a versioned entity the get answers the version as a strong `ETag`, `"<version>"`, and the `PATCH` takes the expected version from the `If-Match` header or the body's `expected_version` (reading the header is binding the request, as reading a path parameter is, and not translating it), refusing one that carries neither, or both with different values, with `ValidationFailed`, and answering `412` when the version moved; each declares the route and its dependencies (the context, and on the post the gateway's `Idempotency-Key`, like every route that writes a durable row), calls one operation of the service impl, and returns what it returns |
-| `<api>/.../routers/__init__.py` (when `<ns>` is new to it) | the router added to `all_routers()`                                       |
-| `<api>/.../services/__init__.py`, `<api>/.../impl/__init__.py` (when `<ns>` is new to it) | `get_<ns_singular>_service()` on `ServicesInterface`, and `<Ns>ServiceImpl` constructed over the managers in `ServicesImpl`, so the container wires the new service at `build` |
-| `apps/<portal>/src/api/types.ts`, `apps/<portal>/src/queries/<ns>.ts`, `apps/<portal>/src/features/<entities>/` (when a portal exists) | the facade type, the query hooks, and the screen, in the shapes `arch-scaffold-app` defines |
+| File | Change |
+|------|--------|
+| `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope |
+| `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, and `purge_tenant(ctx)` when the namespace gains its first table |
+| `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
+| `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
+| `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(PlatformException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
+| `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
+| `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media` |
+| `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py`, `routers/__init__.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, its `<Ns>Service` alias, and its router in `HOSTED` |
+| `apps/portal/src/api/types.ts`, `queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts` (with the portal screen) | the facade type, a key whose first element is `<entity>`, the query hooks, the route, and `<entity>` in `PUSHED_ENTITIES` |
 
 ## Procedure
 
-1. Write the type, then the table, then storage, then manager, then
-   wire types and router, in that order, so each step has its
-   dependency in place.
-2. Lists filter `deleted_at IS NULL` only when the entity is
-   `SoftDeletable`, in both impls.
-3. The service impl builds the entity for `create_<entity>` from the
-   request with the id the router passed, minted by the
-   `Idempotency-Key` dependency before the marker (`new_id()` only
-   where no gateway is involved) and, when the
-   entity is `Trackable`, `utcnow()` and `ctx.user_id` for both
-   timestamps and both principals; for `update_<entity>` it reads the
-   current entity through the manager's `get_<entity>` and copies the
-   request's set fields onto it, an absent field meaning unchanged and
-   an explicit null meaning cleared where the field is optional (the
-   request carries no `created_at` or `created_by`, and that policy is
-   the request type's contract), then hands the whole entity to the
-   manager, whose copy starts from the stored row, leaves
-   `PROVENANCE_FIELDS` and `MANAGER_OWNED_FIELDS` as stored, and sets
-   `updated_at` and `updated_by`. On a versioned entity the expected
-   version is the caller's, from `If-Match` or `expected_version`,
-   passed through untouched; the impl never fills it from the row it
-   read, since that would turn the compare-and-set into last writer
-   wins. The router declares the route and
-   its dependencies and calls that one operation; it translates
-   nothing. `delete_<entity>` exists only for a `SoftDeletable` entity
-   and copies `deleted_at` and `deleted_by`; the hard delete is the
-   sweep's purge, never a route's. An append-only entity has no
-   update, no delete, and no `Update<Entity>Request`.
-4. After the table and its migration: `make infra-up`, `make migrate`,
-   then `make migrate-check`, which compares the ORM metadata with the
-   migrated schema; it needs Postgres, so it runs only against the
-   compose stack, refused when the effective database URL is not a
-   local address.
-5. After the routes: `make openapi`, so the committed contract and the
-   consuming apps' generated types carry the new views and requests.
+1. Write the type, the table and its migration, storage, the manager,
+   then the wire types and the routes, so each step has what it needs.
+2. The migration grants nothing: the role's first migration grants
+   every later table by default privilege. A unique key on a
+   `SoftDeletable` entity is a partial unique index
+   `WHERE deleted_at IS NULL`, and the memory impl refuses a duplicate
+   only among the living rows.
+3. A create returns `bool`, `False` when the id is already written. With
+   a second unique key it returns `InsertOutcome` instead, as
+   `create_item` in `om/src/<name>/om/work/storage/` does, and the
+   manager reads the row back by the key that collided.
+4. Manager operations follow authorize, verify, copy, write, and return
+   the copy it wrote. Reads take `Permission.READ`, writes
+   `Permission.WRITE`. A `core`-role write carries
+   `outbox_row(ctx, "<ns>.<entity>.<created|updated|deleted>", <entity>.id, {})`,
+   and a second row when work follows. An `activity`-role entity is
+   appended by `append_<entity>` and carries no outbox row. A list is a
+   page, `after` and a clamped `limit`, like `get_files`. A get or a
+   list leaves out a soft-deleted row, in both impls.
+5. On a versioned entity the write is a compare-and-set against the
+   caller's expected version, as the orchestrations storage writes
+   against `expected_version`. The copy sets `version` to the expected
+   version plus one, and a mismatch raises `PreconditionFailed` (412).
+   At the edge, the get answers the version as a strong `ETag`,
+   `"<version>"`. The `PATCH` takes the expected version from `If-Match`
+   or the body's `expected_version`, and refuses a request with neither,
+   or with both and different, as `ValidationFailed`. The service impl
+   passes the caller's version through and never fills it from the row
+   it read, which would make the compare-and-set last writer wins.
+6. The service impl translates and never decides. A partial update reads
+   the current entity through `get_<entity>`, copies the request's set
+   fields onto it (an absent field unchanged, an explicit null cleared
+   where the field is optional), and hands the whole entity to
+   `update_<entity>`. The create builds the entity with the id the
+   `Idem` dependency minted. `delete_<entity>` is a soft delete; the
+   hard delete is the sweep's purge, never a route's.
+7. The tests hold, beyond one case per operation: for every storage
+   method, the case that passes another tenant's id (another person's
+   for `both`, another identity's for `identity`); for each unique key,
+   a second row refused by both impls; for a named atomic method, two
+   callers at once of which exactly one wins, over memory and over
+   Postgres; an update sent with another `created_by`, a cleared
+   `deleted_at`, or another value of a manager-owned field, which leaves
+   each as stored; on a versioned entity, a stale version refused and the
+   row left as it stood, and `412` at the edge; and the other tenant
+   naming this tenant's row on every route that takes one, answered as
+   an id that never existed. The row-level security test reads the scope
+   map, so it holds the new table once its scope is declared.
+8. After the routes, `make openapi`, so the portal's types and the
+   Python client carry them, then the screen.
 
 ## Output
 

@@ -103,11 +103,11 @@ for the aspect in one message and stop.
        list gains. Read every `arch-scaffold-*` skill for it, and
        grep them and `agents/` for every identifier the aspect
        renames.
-     - `skills/_shared/`: `scaffold-conventions.md`, which every
-       scaffold follows, and the ops templates under
-       `skills/_shared/ops-skills/`, which a new tree copies as its
-       operational skills. A rule that changes what a scaffold writes
-       or what an operator runs lands there too.
+     - `skills/_shared/scaffold-conventions.md`, which every scaffold
+       follows, and `scaffold/acme_root/`, the core a new tree copies:
+       its code, and its operational skills under `.claude/skills/`.
+       A rule that changes what the core holds, what a scaffold
+       writes, or what an operator runs lands there too.
      - `docs/adopting.md`, when an adopter must do something or gains
        a place to look.
      - `README.md`, when a count or a summary changes.

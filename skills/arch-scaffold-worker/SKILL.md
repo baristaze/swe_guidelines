@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-worker
-description: "Create a worker role: the claim, handle, complete loop over the work queue, lease renewal and self-fencing, liveness, drain-first shutdown, the sweep, the image, and tests. Python."
+description: "Add a kind of background work: the kind, its payload and permission, its handler in the maintenance worker or in a worker of its own, and the tests, in the shape of the scaffold's work queue and worker. Python."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
 ---
 
@@ -9,124 +9,69 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Business
 Layer (Operations Without a Principal), The Storage Layer (Database
-Roles, The Second Fence), Infrastructure (Cache, Topics, Idempotency), The Network Layer
+Roles), Infrastructure (Topics, Idempotency), The Network Layer
 (Long-Running Orchestrations), Worker Roles (The Work Queue, Shape of a
-Worker, Shutdown, Maintenance Without a Scheduler, Implementation
-Options), Deployment (Infrastructure as Code), Cross-Cutting
-Conventions (The App Container).
+Worker, Shutdown, Maintenance Without a Scheduler), Deployment
+(Infrastructure as Code).
 
 ## Input
 
-`<worker-name> <WorkKind> [--lane <name>] [--container]`
+`<worker-name> <WORK_KIND> [--lane <name>] [--container]`
 
-Example: `shipment-notifier NOTIFY_SHIPMENT`. Both positional arguments
-are required; ask for them when missing. The lane defaults to
-`default`. `<worker>` is the worker name in snake case, `<Kind>` the
-work kind in CamelCase (`NOOP` gives `Noop`, `NOTIFY_SHIPMENT` gives
-`NotifyShipment`, so its handler is `NotifyShipmentHandlerImpl`).
+Example: `maintenance NOTIFY_SHIPMENT`. Both are required; ask when
+missing. `<Kind>` is the kind in CamelCase. When `<worker-name>` is a
+worker the tree has (`maintenance` in a copy), the kind joins it.
+Otherwise the skill creates the worker first.
 
-When the repository has no `work` namespace, this skill creates it
-first, in step 1, then the worker.
+A kind that needs its own capacity is first the maintenance image
+deployed again on a lane of its own (`<NAME>_WORKER_LANE`, or
+`serve --lane`), a deployment change and no code. Create a worker when
+the kind needs code or a dependency the maintenance worker should not
+carry.
 
 ## Created
 
-The file-by-file lists are long, so each one lives beside this file and
-is read by the step that names it, when that step runs and not before.
-
-| Reference                                          | Holds                                                                                                                                                | Read by                              |
-|----------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|
-| `${CLAUDE_SKILL_DIR}/references/work-namespace.md` | the `work` namespace under `om/src/<root>/om/work/`: the manager and its impl, the work item and the handler interface, the pure rules, storage and both impls, the table, the `queue` chain's first migration, and the contract, unit, and integration cases | step 1, only when the namespace is absent |
-| `${CLAUDE_SKILL_DIR}/references/worker.md`         | the worker under `workers/<worker-name>/`: the distribution, its settings, the handler, the container, the loop, the entry point, the image, and the tests | step 2                               |
-
-A reference file is detail. These are the lines a run must never miss,
-so they stay here:
-
-- One holder per claim. Complete, fail, defer, release, and
-  `extend_lease` are each conditional on the claim token in the storage
-  statement itself, never on `claimed_by`, since one worker can hold
-  one item twice across a requeue; a stale holder's write is refused
-  with `Conflict` and the item is handed back without spending an
-  attempt.
-- The work manager constructs no stage. The claim asks the tenancy
-  manager's `claim_context(...)` for the `OpContext` the work runs
-  under, as OpContext (Stages) requires of every stage above the
-  request stage.
-- A failure at `max_attempts` is final: the item is a dead letter, an
-  `AuditEntry` through the `audit` namespace names it, and a metric
-  counts it.
-- An effect the handler must make happen rides an outbox row or a work
-  item, never a topic alone, since a topic delivers at most once and
-  carries hints only.
-- A work row is done once its item is queued. The `WORK_AVAILABLE`
-  wake-up is a hint: the loop polls the queue every `poll_interval`
-  besides, so a dropped wake delays an item by one poll interval at
-  most, and a rerun of the enqueue finds the item by its key and
-  publishes nothing, as The Storage Layer (Database Roles) states.
-- The worker's liveness is its own. `/healthz` answers from the loop's
-  in-memory beat, with no I/O of its own, and a failed liveness publish
-  is logged and never pauses claiming.
-- The capacity is set against the pool this process opens for the roles
-  it touches and never independently of it.
+| File | Holds |
+|------|-------|
+| `workers/<worker-name>/src/<name>/workers/<worker>/<kind>.py` | `<Kind>HandlerImpl(WorkHandlerInterface)` with its `REQUIRES`, shape `handler.py` and `accounts.py` of `workers/maintenance/` |
+| `workers/<worker-name>/tests/test_<kind>.py` | the handler over the memory container, run twice with the same item |
+| `workers/<worker-name>/` (a new worker) | the distribution, shape `workers/maintenance/`: settings, container, loop, entry, main, health, and their tests, without the sweep and the delivery consumer, which stay in the maintenance worker |
+| `deployment/docker/<worker-name>.Dockerfile` (a new worker) | the image, shape `maintenance.Dockerfile` |
 
 ## Changed
 
-| File                                        | Change                                                          |
-|---------------------------------------------|-----------------------------------------------------------------|
-| `om/src/<root>/om/work/types/work_item.py`   | `<KIND>` added to `WorkKind`                                     |
-| `om/src/<root>/om/work/README.md`, `om/README.md` | the new kind named in the namespace's README when the namespace already existed; a link to that README from `om/README.md` (new namespace only) |
-| `om/src/<root>/om/storage/roles.py` (new namespace only) | `"work_items": DatabaseRole.QUEUE` in the role map `TABLE_ROLES`, and `"work_items": TenancyScope.ORG` in the tenancy scope map `TABLE_SCOPES` beside it |
-| `om/src/<root>/om/storage/root.py` and both impls (new namespace only) | `get_work_storage()`                    |
-| `om/src/<root>/om/root.py` (new namespace only) | `WorkManagerImpl` constructed and added to `Managers`, with `item_retention` from the options `build_managers` takes. The outbox relay impl is constructed first and takes the work manager as a callable bound at call time (`lambda: managers.work`), because the work manager needs the tenancy manager, which needs the relay |
-| `om/src/<root>/om/outbox/impl/` (new namespace only) | the relay's second branch: a row whose `kind` is `work.<kind>`, `<kind>` the `WorkKind` member's name in lower case, calls `WorkManagerInterface.enqueue_relayed(org_id, row)`, which publishes `WORK_AVAILABLE` as every enqueue does, and marks the row done once the item is queued, beside the entity-change branch `arch-scaffold-new` wrote; the relay takes the work manager by interface, so `enqueue_relayed` has its caller from this step on |
-| `om/tests/unit/test_outbox_relay.py` (new namespace only) | a `work.<kind>` row relayed twice leaves one work item, whose id is the row's id, and the item carries the row's actor, request id, and traceparent; the row is marked done once its item is queued, with a bus that refuses the wake-up too |
-| `om/src/<root>/om/tenancy/manager.py`, `impl/manager.py` (new namespace only) | `claim_context(rctx, org_id, user_id, caused_by_request_id) -> OpContext`, the transition the claim asks for: it reads the tenant and the membership of `user_id`, refuses a tenant that is gone with `NotFound`, and builds the `OpContext` under the role reserved for services for `user_id`; when `user_id` is `EMPTY_UUID` or holds no live membership, it builds the tenant's service context instead, the one `service_contexts` builds; `purge_socket_tickets(rctx)` and `purge_sessions(rctx)`, the sweep's two purges, when absent, since `arch-scaffold-new` writes them |
-| `om/src/<root>/om/idempotency/manager.py`, `impl/manager.py`, and the tenancy and idempotency storage interfaces and both impls of each (new namespace only) | when absent, since `arch-scaffold-new` writes them: `purge_markers(rctx)` on the idempotency manager; the storage purges, `IdempotencyStorageInterface.purge_markers(before, limit)` (markers past their retention), `TenancyStorageInterface.purge_socket_tickets(now, limit)` (socket tickets redeemed or past their expiry), and `TenancyStorageInterface.purge_sessions(now, idle_before, limit)` (sessions ended or past their idle or absolute lifetime), each one statement across tenants under `_session_for(stmt, org_id=EMPTY_UUID)` with a docstring saying why it takes no tenant |
-| root `pyproject.toml` and `om/tests/unit/` the request-stage test (new namespace only) | `WorkStorageInterface.claim_next`, `WorkStorageInterface.fail_orphaned`, `WorkStorageInterface.read_gauges`, `WorkStorageInterface.purge_items`, and, when absent, the three storage purges (`IdempotencyStorageInterface.purge_markers`, `TenancyStorageInterface.purge_socket_tickets`, `TenancyStorageInterface.purge_sessions`) added to `[tool.arch-check.options.CTX-12] tenantless`; `om/src/<root>/om/tenancy/impl/manager.py::TenancyManagerImpl.claim_context` added to `[tool.arch-check.options.CTX-26] sites`, since it constructs the `OpContext` the claim returns; and `claim`, `purge_items`, `read_gauges`, `maintenance_contexts`, `claim_context`, and, when absent, `purge_markers`, `purge_socket_tickets`, and `purge_sessions` to the request-stage test |
-| `infra/src/<root>/infra/topics/__init__.py` (when absent) | `Topics.WORK_AVAILABLE` and its payload            |
-| `infra/src/<root>/infra/cache/__init__.py` (when absent) | `WORKER_LIVENESS = "worker_liveness"` on the `CacheScope` enum, the scope the liveness key lives under |
-| `pyproject.toml` (root)                     | the member added to `[tool.uv.workspace] members`                |
-| `scripts/dev.sh`                            | starts the worker                                                |
-| `.env.example`                              | every field of the worker's settings under its prefix, with its local value |
-| `services/api/src/<root>/services/api/settings.py` (new namespace only) | `item_retention`, the same setting the worker reads, since the API's container builds the work manager too and `build_managers` passes it |
-| `deployment/terraform/modules/`, `deployment/terraform/environments/*/` | one instance of the service module per environment for this worker, with no load balancer route: its ECS service with rollout limits so it never exceeds its desired count, its log group with retention, its target-tracking autoscaling behind the root switch `autoscaling_enabled`, its running-tasks-below-desired alarm on the environment's alarm topic, and every setting without a local default passed as a variable or wired as a secret, as Deployment (Infrastructure as Code) states for every process |
-| `.github/workflows/deploy-staging.yml`, `deploy-production.yml` | the worker's image: built and pushed under the commit by the staging workflow's push-only build job, which records its digest on the repository host's deployment record; promoted by that digest for the release commit in the production workflow's plan, checked against the record, never rebuilt; a new worker's image repository is a bootstrap root change, applied by a create run in each account |
-| `deployment/local/docker-compose.full.yml` (with `--container`) | the worker as a container, for the case that asks for it; `scripts/dev.sh` starts it on the host either way |
+| File | Change |
+|------|--------|
+| `om/src/<name>/om/work/types/work_item.py` | the kind in `WorkKind`, its payload in `WORK_PAYLOADS`, its permission in `WORK_ENQUEUE_PERMISSIONS` |
+| `om/src/<name>/om/work/README.md` | the kind, in the product's language |
+| the worker's `main.py` | the handler in `handlers` of `build_loop` |
+| the producing manager's impl | the write that starts the work lands a row of kind `work_row_kind(WorkKind.<KIND>)` beside its own |
+| `pyproject.toml` (root), `scripts/dev.sh`, `.env.example` (a new worker) | the member, the process started, and every field of its settings |
+| `deployment/local/docker-compose.full.yml` (a new worker, with `--container`) | the worker as a container |
+| `deployment/terraform/modules/environment/main.tf`, `modules/account/variables.tf`, both deploy workflows (a new worker) | an instance of the service module beside `module "maintenance"`, with no load balancer route; its image in `images`; its image built once by staging and promoted by digest |
 
 ## Procedure
 
-1. When the `work` namespace exists, reuse its interfaces unchanged and
-   add only the kind, the handler, and the worker. When it is absent,
-   read `${CLAUDE_SKILL_DIR}/references/work-namespace.md`, write the
-   namespace first, and apply every `Changed` row marked "new
-   namespace only": the role and scope maps, the storage root and both
-   impls, `build_managers`, the outbox relay's second branch, the
-   tenancy and idempotency operations the sweep calls, the API's
-   `item_retention`, and their tests.
-2. Read `${CLAUDE_SKILL_DIR}/references/worker.md`, then write the
-   worker. The loop passes the context the claim returned to
-   `handle`; the handler never builds one. An item of a kind the
-   worker does not handle is released, not failed.
-3. Shutdown: stop claiming, cancel every task, return each item to
-   the queue with a note, stop the heartbeat, then mark the worker
-   offline.
-4. Apply the rest of the `Changed` table: the new kind on `WorkKind`,
-   the namespace README and its link from `om/README.md`,
-   `scripts/dev.sh`, every settings field in `.env.example`, the topic
-   and the cache scope when absent, one instance of the service module
-   per environment under `deployment/terraform/` with no load balancer
-   route, this worker's image in both deploy workflows, and the compose
-   file with `--container`.
-5. The worker's tenant-less storage methods (`claim_next`,
-   `fail_orphaned`, `read_gauges`, `purge_items`, and, when absent,
-   `purge_markers`, `purge_socket_tickets`, and `purge_sessions`) get
-   a docstring and an entry in
-   `[tool.arch-check.options.CTX-12] tenantless`, and
-   `claim_context` its entry in `[tool.arch-check.options.CTX-26]
-   sites`, before the fast gate runs; `arch-check` fails otherwise, as
-   it should.
-6. Add `workers/<worker-name>` to the root's `[tool.uv.workspace]
-   members` and run `uv sync` before the fast gate, so the workspace
-   resolves the new distribution.
+1. Add the kind, its payload shape on the `Platform` base, and the
+   permission a producer needs to ask for it. The handler's `REQUIRES`
+   names the permissions its calls take, and the test that holds the
+   two to each other fails until they agree: nobody reaches through the
+   queue what they could not do directly.
+2. The handler runs under the context the claim returned, and never
+   builds one. Handling an item twice changes nothing. A write to the
+   record the item advances is a compare-and-set on the record's
+   version, since the fences guard the queue row and not the record. An
+   effect the handler must make happen rides an outbox row or a work
+   item, never a topic alone.
+3. A long-running kind is an `OrchestrationKind` whose step is mapped in
+   `build_loop`, not a handler that loops; it parks or fails as Long-Running
+   Orchestrations states.
+4. A producer never enqueues from a manager. Its write carries the
+   work row in the same storage call, and the relay enqueues the item
+   under the row's id.
+5. A new worker sets its capacity against the pool it opens for the
+   roles it touches (`<NAME>_DATABASE_POOL_SIZE`), never apart from it.
+   Add its member and run `uv sync` before the fast gate.
 
 ## Output
 
