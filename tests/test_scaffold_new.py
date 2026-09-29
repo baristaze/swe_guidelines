@@ -186,3 +186,17 @@ def test_a_copy_of_the_scaffold_names_the_placeholder_nowhere(tmp_path, name):
         ):
             left.append(rel)
     assert left == []
+
+
+def test_a_two_word_copy_quotes_its_namespace_in_every_dashboard_search(tmp_path):
+    """CloudWatch's SEARCH needs a namespace with a space in double quotes, so
+    a two-word product's request and outcome widgets draw on its first deploy."""
+    dest = tmp_path / "free_press"
+    assert new.main([str(dest)]) == 0
+    dashboard = dest / "deployment" / "terraform" / "modules" / "dashboard"
+    template = (dashboard / "dashboard.json.tftpl").read_text(encoding="utf-8")
+    module = (dashboard / "main.tf").read_text(encoding="utf-8")
+    quoted = "SEARCH('{" + '\\"Free Press\\"' + ",OTelLib,"
+    assert template.count(quoted) == 2
+    assert module.count(quoted) == 1
+    assert "SEARCH('{Free" not in template + module
