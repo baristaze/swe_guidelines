@@ -5,94 +5,91 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.38.0 (2026-09-29)
+## 0.39.0 (2026-09-29)
 
-Every loop an agent runs has a count, and the benchmark measures a
-whole system. A scaffold that fixes a gate and runs it again, and an
-ops skill that watches, polls, or follows a request, now stops at a
-stated count and says what it does there. Money and time still bound
-each one first, and the count sits well above real use. The benchmark
-gains agentic judges that read the output against the guideline and
-against its reference implementation, a scenario that builds a system
-from a product spec in phases on a virtual machine, and the runs of
-every scenario, checked in on a page per scenario. Minor: rules are
-added and sharpened, and none is reversed.
+A new system starts as a copy of a core that runs, and the text tells
+the story. `scaffold/acme_root/` is a whole monorepo in the guideline's
+shape with no product domain, and `scaffold/new.py` copies it under a
+project's name in a second. The guideline is rewritten around it at a
+third of its length, with the code shapes linked to the scaffold's
+files and the detail held in the lenses and the skills. The skills
+follow the Agent Skills standard, so they run in any agent that reads
+it, not only in Claude Code. Minor: rules are added and sharpened, and
+the reversals are named below. One rename, `OpContext` to
+`TenantContext`, is one every adopter follows on upgrade.
 
 ### Changed
 
-- `skills/_shared/scaffold-conventions.md`, After writing: a gate that fails on what a
-  scaffold wrote is fixed, and its step's commands run again from the
-  first, at most 3 reruns. When the count runs out, the scaffold stops
-  and keeps its fixes. A failure that was there before, a command that
-  fails on the machine, and a fix that would need an exception to a
-  rule stop at once. `arch-scaffold-new`, `arch-upgrade-deps`, and
-  `arch-new-aspect` follow them, and the output ends with
-  `Stopped: <command>: <what went wrong>; <cause>`.
-- "Operations, Operational Skills": `ops-watch` runs at most 30
-  batches of 30 seconds to five minutes, each with at most 20 tool
-  calls. `ops-root-cause` follows at most 5 request ids, one pass
-  each. A Logs Insights query is polled at most 10 times. A session
-  follows at most 2 hops of a report's Next, and the Next of
-  `ops-cloud-deployment-create` and `stress-test-create-or-update` is
-  the person's to run. A tree that copied the templates on 0.37.0
-  takes the same bounds.
-- `agents/arch-reviewer.md` caps its turns at 80.
-- `run.py --out` names the runs root, and a run folder goes in
-  `<out>/<scenario>/`. A resume and a judge-again write beside their
-  source.
+- `OpContext` is `TenantContext`, the stage module `om/opcontext.py`
+  is `om/context.py`, and the section `## OpContext` is
+  `## TenantContext`. `arch-check` reads the stages from
+  `<pkg>.om.context` and takes no alias: a tree on the old names
+  renames when it moves its pin. CTX-02 fails a tree that declares a
+  stage anywhere else under `om`, so a tree still on the old names
+  fails instead of passing every stage rule unjudged.
+- `architecture.md` tells the story for two readers, a person and an
+  agent, in 14,121 prose words from 44,960. How to Read This defines
+  four tags (`core`, `default`, `optional`, `style`) and the
+  agents-only block, and The Core lists 26 invariants. Every code shape
+  is the scaffold's own, beside a link to its file. Every `##` and
+  `###` title is kept.
+- Reversed: the feed and the identity-scoped table mixins are gone from
+  the guideline, the lenses, and `arch-check`. A table whose `org_id`
+  leads a compound index sets `__org_id_index__ = False`, and an
+  identity table's column is the one its scope map names.
+- Reversed: the edge marker is `IdempotencyRecord`, fenced by its
+  `attempt_id` (OM-03, NET-24).
+- Reversed: an append-only record's time is a field of its own, not
+  the time inside its id (OM-06), and a create's times are stamped by
+  the manager, not kept as the caller built them (CON-17).
+- Reversed: DEL-14 drops from medium to low.
+- "Monorepo Folder Structure": a new system starts as a copy of the
+  scaffold, `arch-scaffold-new <name>`. It no longer takes a target
+  folder, a root package, `--no-portal`, or `--no-worker`: the name is
+  the folder and the package. Each scaffold skill names the scaffold
+  files whose shape it follows.
+- "Clients Live in One Place": the TypeScript client lives in
+  `clients/typescript/`, beside the Python one, and every browser app
+  imports it. DEL-15 and NET-15 follow, and `arch-scaffold-app` has a
+  new app import the package, never the portal.
+- The scaffold's operational skills live in `.agents/skills/`, the
+  folder the agents that read the Agent Skills standard share, and
+  `.claude/skills` is a link to it. Every skill names its files by a
+  path from its own folder, resolved with `realpath` where it climbs
+  out, instead of `${CLAUDE_SKILL_DIR}`. `arch-review-full` runs its
+  groups as subagents where the agent has them, and one after another
+  where it has none. OPS-11 finds a built-in skill in either folder.
+- `benchmark/README.md` is one page a person reads, and the harness
+  detail lives with the code.
 
 ### Added
 
-- `make skills` refuses a skill that fixes and reruns without saying
-  `at most <n> reruns`, and `make agents` refuses an agent with no turn
-  cap.
-- Agentic judges. Each provider's judge reads the output with
-  read-only tools over named roots, scores it against the guideline
-  and against the guideline's reference implementation, and names the
-  gaps behind each score. The harness weighs the two 0.4 and 0.6. A
-  judge has a budget in tokens and in dollars, and gets a last turn to
-  submit before it would pass either.
-- A skill subject runs in phases, each a fresh session bounded by money
-  and time, and keeps each phase's milestone. `run.py resume` starts a
-  new run after a phase, `run.py judge` judges an archived output
-  again, and a resume after the last phase runs only the judges named
-  and carries the rest. A chain has one line: a run resumes from its
-  newest folder, which reaches every milestone before it.
-- `create-full-system`: the scaffold skills build `free-journalism`
-  from its product spec, the scaffold and then the MVP. With
-  `--with extras`, a standalone review reads the tree and a last phase
-  closes its high findings. The extras are an opt-in.
-- The vm runtime, on a Lima machine: it stages the plugin and the
-  target, hands the subject its key through a file, mounts nothing of
-  the host, and removes the subject's containers, networks, and
-  volumes after each repeat. The subject runs `arch-check` from the
-  staged plugin, so it never fetches this repository at a tag.
-- `run.py --preflight` checks what a run needs before it spends
-  anything, and `run.py --rehearsal` runs a scenario end to end with
-  every bound cut small, for at most $5.
-- A run records what it spent, in tokens and dollars, the subject's
-  counted across every agent its session ran, and the versions it ran: the checkout,
-  Claude Code, the image, and the target. A phase whose session wrote
-  no result is a lower bound, and the run's spend cap counts it at its
-  phase's cap.
-- Checked-in runs live in `benchmark/runs/<scenario>/`, on a page per
-  scenario: what its subject does, how it is scored, and its runs. A
-  run and its resumes are one row, and its cost is the chain's total.
-  `make runs` holds the pages to the run folders, and refuses a
-  rehearsal, a run whose subject named the benchmark's run folders, and
-  a file holding a key or a provider's account id. `run.py redact`
-  replaces those ids and a rate limit's figures.
-- `arch-benchmark-browser` asks each site as a senior architect judging
-  the material only, adds grok.com as its fourth site, and says what a
-  session that did not run records and how a retry counts its polls.
+- `scaffold/acme_root/`, the domain-agnostic core: tenancy with the
+  operator plane, events and audit, the outbox, idempotency, the work
+  queue, orchestrations, and media on four database roles; the API and
+  its realtime socket, the maintenance worker, a portal shell, the CLI,
+  a landing site, both clients, the ops package and its skills, the
+  local stack, Terraform, CI and deploy workflows, and 48 ADRs. CI
+  copies it and runs the copy's own gates.
+- `scaffold/new.py <dir>/<name>` copies it under a name of one or two
+  snake_case words, at most 17 characters, in every form the name
+  takes, pins the guideline release, and links `.claude/skills` to
+  `.agents/skills` in the copy.
+- A lens may name the scaffold file that shows its rule, on a
+  `**Shape.**` line, and `make lenses` holds each path.
+- Two routes to install the skills: the Claude Code plugin, and for any
+  agent that reads the Agent Skills standard, a clone with each skill
+  linked into the project's `.agents/skills/`.
+- A skill a person starts by name carries Codex's switch,
+  `agents/openai.yaml` with `policy.allow_implicit_invocation: false`,
+  beside `disable-model-invocation`.
+- `make skills` holds every skill to the standard: its frontmatter
+  keys, its name, the two switches agreeing, and every path it names
+  resolving from its folder.
+- `make snippets` fails when a Python or YAML block in the Markdown
+  does not parse.
 
 ### Fixed
 
-- A judge and a qa subject time out, are asked at most twice, and get
-  no token limit below the model's maximum. A judge waits out a
-  per-minute rate limit and asks again, and its fallback names the
-  first model's last error.
-- An Agent call that returns its helper's hand-back counts as
-  answered, so a phase whose helpers all answered is not ended early.
-- The subject's cost estimate prices Claude Opus 5.5's cache hits at
-  $0.20 per million tokens.
+- Two fields of the `SecurityContext` and `OutboxRow` snippets sat one
+  level too deep.
