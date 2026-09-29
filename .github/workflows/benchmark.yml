@@ -172,7 +172,8 @@ jobs:
       - name: write the summary
         if: always() && steps.redact.outcome == 'success'
         run: |
-          for report in benchmark/runs/*/report.md; do
+          # Each run folder sits in its scenario's folder.
+          for report in benchmark/runs/*/*/report.md; do
             [ -f "$report" ] || continue
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             echo >> "$GITHUB_STEP_SUMMARY"
@@ -185,11 +186,12 @@ jobs:
           # The run folders hold the record: streams, artifacts, judgements,
           # results. The subject's HOME, TMPDIR, and workspace lived in a
           # sandbox outside them and are gone; the exclusions keep it so if
-          # an older run folder is ever in the tree.
+          # an older run folder is ever in the tree. Each run folder sits in
+          # its scenario's folder.
           path: |
             benchmark/runs
-            !benchmark/runs/*/home
-            !benchmark/runs/*/tmp
-            !benchmark/runs/*/workspace
+            !benchmark/runs/*/*/home
+            !benchmark/runs/*/*/tmp
+            !benchmark/runs/*/*/workspace
           if-no-files-found: warn
           retention-days: 30

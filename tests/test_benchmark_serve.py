@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 SERVE = Path(__file__).resolve().parent.parent / "benchmark" / "serve.py"
+RUNS = SERVE.parent / "runs"
 
 
 def load_serve():
@@ -26,8 +27,9 @@ def serve_module():
 
 @pytest.fixture
 def runs(tmp_path):
+    """A runs root as run.py writes one: a folder per scenario, holding its run folders."""
     folder = tmp_path / "runs"
-    run = folder / "20260101-000000-one"
+    run = folder / "one" / "20260101-000000-one"
     (run / "streams").mkdir(parents=True)
     (run / "report.md").write_text("# Benchmark run\n", encoding="utf-8")
     (run / "results.json").write_text(json.dumps({"run_id": "20260101-000000-one"}), encoding="utf-8")
@@ -56,8 +58,25 @@ def get(connection, path):
 
 def test_the_runs_listing_names_what_each_run_holds(serve_module, runs):
     listed = serve_module.runs_of(runs)
-    assert listed == [{"id": "20260101-000000-one", "report": True, "results": True, "streams": ["cli.jsonl"]}]
+    assert listed == [{"id": "20260101-000000-one", "scenario": "one", "report": True, "results": True, "streams": ["cli.jsonl"]}]
     assert serve_module.runs_of(runs / "missing") == []
+
+
+def test_the_runs_listing_reaches_every_scenario_s_folder_newest_first(serve_module, runs):
+    (runs / "two" / "20260102-000000-two").mkdir(parents=True)
+    (runs / "one" / "20251231-000000-one").mkdir()
+    assert [(r["scenario"], r["id"]) for r in serve_module.runs_of(runs)] == [
+        ("two", "20260102-000000-two"),
+        ("one", "20260101-000000-one"),
+        ("one", "20251231-000000-one"),
+    ]
+
+
+def test_the_runs_listing_holds_every_checked_in_run_folder(serve_module):
+    listed = {(r["scenario"], r["id"]) for r in serve_module.runs_of(RUNS)}
+    kept = {(p.parent.name, p.name) for p in RUNS.glob("*/*") if p.is_dir()}
+    assert listed == kept and len(listed) >= 9
+    assert all(r["report"] and r["results"] for r in serve_module.runs_of(RUNS))
 
 
 def test_the_index_and_the_json_listing_answer(client):
@@ -104,14 +123,14 @@ def test_a_path_that_leaves_the_run_is_a_404(client, runs):
     private = runs.parent / "runs-private"
     private.mkdir()
     (private / "secret.txt").write_text("secret\n", encoding="utf-8")
-    other = runs / "20260101-000000-two"
+    other = runs / "one" / "20260101-000000-two"
     other.mkdir()
     (other / "report.md").write_text("# Another run\n", encoding="utf-8")
     run = "/runs/20260101-000000-one"
-    assert get(client, f"{run}/streams/%2e%2e/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
-    assert get(client, f"{run}/artifacts/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
+    assert get(client, f"{run}/streams/%2e%2e/%2e%2e/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
+    assert get(client, f"{run}/artifacts/%2e%2e/%2e%2e/%2e%2e/runs-private/secret.txt")[0] == 404
     assert get(client, f"{run}/judgements/%2e%2e/%2e%2e/20260101-000000-two/report.md")[0] == 404
-    assert get(client, f"{run}/streams/..%2f..%2f..%2fruns-private%2fsecret.txt")[0] == 404
+    assert get(client, f"{run}/streams/..%2f..%2f..%2f..%2fruns-private%2fsecret.txt")[0] == 404
 
 
 def test_the_tail_decodes_a_character_only_once_it_is_whole(serve_module, tmp_path):
@@ -198,7 +217,7 @@ def test_a_request_for_another_host_name_is_refused(client):
 def test_the_frame_stream_serves_only_frames_inside_its_folder(client, runs, tmp_path):
     # The index names one frame of its own, one file outside the folder, and
     # one that is not a JPEG; only the first is served.
-    run = runs / "20260101-000000-one"
+    run = runs / "one" / "20260101-000000-one"
     frames = run / "streams" / "browser"
     frames.mkdir(parents=True)
     (frames / "0001.jpg").write_bytes(b"FRAME-INSIDE")
