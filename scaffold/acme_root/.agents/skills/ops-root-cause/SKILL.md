@@ -28,11 +28,13 @@ error tracker. `--since` is the window, a day by default.
 
 A run follows at most 5 request ids, one pass each: the first five
 given, in the order given, or without `--request-id`, the five newest
-failing requests tied to the symptom the investigation named (the Y
-of "tenant X sees Y"), never the newest failures of any kind. A pass
-that finds no cause reports "not found" for its id. After the fifth
-pass the skill stops and writes the report. It lists every id past
-the fifth as not followed, for a second run to take.
+failing requests tied to the symptom (the Y of "tenant X sees Y"),
+never the newest failures of any kind. The symptom is the one the
+prompt or the investigation's report names; when neither names one,
+ask for it, as for `--env`. A pass that finds no cause reports "not
+found" for its id. After the fifth pass the skill stops and writes the
+report. It lists every id past the fifth as not followed, for a second
+run to take.
 
 `local` reads the compose stack and its twins; no cloud is needed.
 
@@ -100,7 +102,7 @@ do not use up the first pass's one read of each signal.
    are the org and its members of step 2. Without `--request-id`, pick
    the request ids of the window's failed or missing writes here and in
    step 4, at most five, the newest first among those tied to the
-   symptom the investigation named.
+   symptom.
 
    The feed reads only forward from `after_seq`, with no time filter,
    so the skill first finds the window's first `seq`, and never reads
