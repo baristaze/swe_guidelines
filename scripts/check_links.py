@@ -7,9 +7,9 @@ like any other: the file is scanned with newlines read as spaces, so an
 anchor cannot hide behind a line break. Anchors come from
 `scripts/_common.py`, the same rule `gen_toc.py` writes them with, so a
 repeated heading resolves as `#title-1`, `#title-2`, and headings inside
-fenced code do not count. A link that starts with `/` resolves against
-the repository root, as GitHub resolves it. A link that resolves
-outside the repository is broken, whichever way it gets there.
+fenced code or an HTML comment do not count. A link that starts with `/`
+resolves against the repository root, as GitHub resolves it. A link that
+resolves outside the repository is broken, whichever way it gets there.
 
 No file refers to a section by number, and no heading is numbered: a
 cross-reference names the section by title, because numbers shift when

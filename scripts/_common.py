@@ -130,15 +130,49 @@ def unfenced(text: str) -> str:
     return "\n".join(" " * len(line) if code else line for line, code in zip(lines, fenced_lines(text), strict=True))
 
 
+COMMENT_OPEN, COMMENT_CLOSE = "<!--", "-->"
+AGENTS_ONLY = re.compile(r"^\s*<!--\s*agents-only\s*$")
+"""The opening line of an agents-only block: `<!-- agents-only`, alone on its line.
+
+The block's body is Markdown an agent reads and a rendered page hides.
+It ends at the first line holding `-->`."""
+
+
+def commented_lines(text: str) -> list[str | None]:
+    """For each line of `text` (split on newlines), the kind of HTML comment it lies in, or None.
+
+    A comment opens on a line outside fenced code that starts with
+    `<!--`, and runs to the first line holding `-->`, both included. The
+    kind is "agents-only" for a block that opens with `AGENTS_ONLY`, and
+    "comment" for any other. A rendered page shows neither, so a heading
+    inside one is no heading.
+    """
+    out: list[str | None] = []
+    kind: str | None = None
+    for line, code in zip(text.split("\n"), fenced_lines(text), strict=True):
+        if kind is None and not code and line.lstrip().startswith(COMMENT_OPEN):
+            kind = "agents-only" if AGENTS_ONLY.match(line) else "comment"
+            out.append(kind)
+            if COMMENT_CLOSE in line.split(COMMENT_OPEN, 1)[1]:
+                kind = None
+        elif kind is not None:
+            out.append(kind)
+            if COMMENT_CLOSE in line:
+                kind = None
+        else:
+            out.append(None)
+    return out
+
+
 def headings(text: str) -> list[tuple[int, str]]:
-    """(level, title) for every ATX heading, in order, skipping fenced code.
+    """(level, title) for every ATX heading, in order, skipping fenced code and HTML comments.
 
     A closing sequence of `#` is not part of the title, as CommonMark
     reads it: `## Tables ##` is the heading `Tables`.
     """
     out: list[tuple[int, str]] = []
-    for line in unfenced(text).splitlines():
-        m = HEADING.match(line)
+    for line, comment in zip(unfenced(text).split("\n"), commented_lines(text), strict=True):
+        m = None if comment else HEADING.match(line)
         if m:
             out.append((len(m.group(1)), CLOSING.sub("", m.group(2))))
     return out

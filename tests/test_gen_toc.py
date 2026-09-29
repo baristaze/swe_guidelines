@@ -65,3 +65,16 @@ def test_unknown_argument_is_refused_and_writes_nothing(repo, toc, flag):
         toc.main([flag])
     assert exit_.value.code == 2
     assert repo.read("architecture.md") == before
+
+
+def test_headings_inside_a_comment_are_left_out_and_anchor_nothing(repo, toc, capsys):
+    links = repo.script("check_links")
+    repo.edit(
+        "architecture.md",
+        "One table per entity.\n",
+        "One table per entity.\n\n<!-- agents-only\n### Hidden\n\nSee [the hidden part](#hidden).\n-->\n",
+    )
+    assert "Hidden" not in toc.render(repo.read("architecture.md"))
+    assert toc.main(["--check"]) == 0
+    assert links.main() == 1
+    assert "missing anchor #hidden" in capsys.readouterr().out

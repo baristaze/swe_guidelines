@@ -676,16 +676,17 @@ the code for a new site.
 **Check.** `arch-check` decides every construction site in production
 code; the rest is judged.
 
-## CTX-27 A socket closes at its session's expiry and on the revocation frame
+## CTX-27 A socket closes at its session's expiry or on its revocation
 
 **Principle.** A stage lives no longer than its request. A socket holds
 the `OpContext` its ticket produced, so the session's expiry bounds
 the socket and the process closes it at that instant; a revocation or
-a membership's end travels on the topic bus as `SESSION_REVOKED`, and
-every process holding a socket for that session closes it on the
-message. The bus is at most once, so every socket also rechecks its
-session and membership on `session_recheck_interval`, five minutes by
-default, without moving `last_seen_at`. A connection's lifetime is
+a membership's end travels on the topic bus as a change of its own
+kind, `tenancy.session.revoked` among them, and every process holding a
+socket it names closes it on the change. The bus is at most once, so
+every socket also rechecks its session and membership on
+`session_recheck_interval`, five minutes by default, without moving
+`last_seen_at`. A connection's lifetime is
 apart from the session's, and closing or pausing one never ends the
 session.
 
@@ -694,16 +695,16 @@ session.
 **Look for.** The socket handler and what bounds its life: the deadline
 it sets from the session's expiry when the ticket is redeemed, and the
 subscription on the topic bus that every process with sockets holds
-for `SESSION_REVOKED`; what a process does with a message naming a
-session it holds a socket for; what the
+for those changes; what a process does with a change naming a
+credential, a user, a membership, or an org it holds a socket for; what the
 socket carries meanwhile, hints only; the recheck, its interval, and
 what it writes.
 
 **Violation.** A socket that outlives its session's expiry because the
 client keeps pinging; a revocation that reaches a socket only at its
 next reconnect; a process that closes the sockets it revoked itself
-and ignores the frame from another; a socket whose context is
-refreshed in place instead of closed; a frame missed with no expiry to
+and ignores the change from another; a socket whose context is
+refreshed in place instead of closed; a change missed with no expiry to
 cover it, or with no recheck to bound it; a recheck that renews the
 session's idle window; a paused connection that ends the session.
 
