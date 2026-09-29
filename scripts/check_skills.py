@@ -752,10 +752,10 @@ def main(argv: Sequence[str] = ()) -> int:
         check_scaffold_skill(skill, errors)
     check_scaffold_link(errors)
     check_substitutions(errors)
-    shared = SKILLS / CONVENTIONS
-    if shared.exists():
-        text = shared.read_text(encoding="utf-8")
-        if any(ref.startswith("../") for ref in references(text)) and REALPATH not in text:
+    conventions_file = SKILLS / CONVENTIONS
+    if conventions_file.exists():
+        said = conventions_file.read_text(encoding="utf-8")
+        if any(ref.startswith("../") for ref in references(said)) and REALPATH not in said:
             whose = "the skill's"
             errors.append(f"skills/{CONVENTIONS}: {NO_REALPATH.format(whose=whose)}")
     check_audits(copied, errors)
