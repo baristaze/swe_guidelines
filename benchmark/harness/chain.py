@@ -100,7 +100,7 @@ def one_line(source: Path, after: list[Path], latest: Path | None = None) -> str
     at = f", {latest.name}," if latest is not None else ","
     return (
         f"{source.name} is already the source of {names}, beside it. A chain has one line, so a run resumes or is judged "
-        f"again from the chain's newest folder{at} which carries every milestone before it"
+        f"again from the chain's newest folder{at} which reaches every milestone before it"
     )
 
 
@@ -205,12 +205,14 @@ def chain(records: list[tuple[str, dict[str, Any]]], broken: str | None = None) 
 
     A folder's spend is its `spend.total_usd`. The total is their sum, and
     it is a lower bound, `at_least`, when a folder recorded no spend, a
-    model had no price, or the chain breaks before its first folder.
+    model had no price, a folder counted a phase at the harness's estimate
+    (`spend.estimated`), or the chain breaks before its first folder.
     """
     folders: list[dict[str, Any]] = []
     every: list[dict[str, Any]] = []
     total = 0.0
     unpriced: set[str] = set()
+    estimated = False
     for name, data in records:
         spend = data.get("spend")
         spent = number(spend.get("total_usd")) if isinstance(spend, dict) else None
@@ -218,6 +220,7 @@ def chain(records: list[tuple[str, dict[str, Any]]], broken: str | None = None) 
             total += spent
         if isinstance(spend, dict) and isinstance(spend.get("unpriced"), list):
             unpriced |= {str(m) for m in spend["unpriced"]}
+        estimated = estimated or bool(isinstance(spend, dict) and spend.get("estimated"))
         folders.append({"run_id": name, "started_at": data.get("started_at"), "total_usd": spent})
         every += stages(name, data)
     out: dict[str, Any] = {
@@ -225,7 +228,7 @@ def chain(records: list[tuple[str, dict[str, Any]]], broken: str | None = None) 
         "stages": every,
         "total_usd": round(total, 4),
         "unpriced": sorted(unpriced),
-        "at_least": bool(unpriced) or broken is not None or any(f["total_usd"] is None for f in folders),
+        "at_least": bool(unpriced) or estimated or broken is not None or any(f["total_usd"] is None for f in folders),
     }
     if broken is not None:
         out["broken"] = broken

@@ -169,26 +169,31 @@ earlier one wrote.
 
 A run folder under `benchmark/runs/<scenario>/` is checked in, and
 only after `uv run benchmark/run.py redact --out benchmark/runs` has
-scanned it for keys (see The workflow). Each scenario's folder has a
-`README.md`: a paragraph on what the subject is asked to do, what it is
-given, and how it is scored, then one row per run, newest first,
-linking to its report. A run and its resumes are one row (see A run and
-its resumes). `runs/README.md` is the index: one line per scenario,
-linking its page, and the key to the columns. The pull request that
-adds a run adds its row by hand; nothing generates the pages.
+scanned it for keys, and for the account ids and limit figures that
+OpenAI's, Anthropic's, and xAI's errors name (see The workflow). Each
+scenario's folder has a `README.md`: a paragraph on what the subject is
+asked to do, what it is given, and how it is scored, then one row per
+run, newest first, linking to its report. A run and its resumes are one
+row (see A run and its resumes). `runs/README.md` is the index: one
+line per scenario, linking its page, and the key to the columns. The
+pull request that adds a run adds its row by hand; nothing generates
+the pages.
 
 `make runs`, part of `make check`, fails when a run folder sits outside
 its scenario's folder, when a scenario's folder has no `README.md`, and
 when the index does not name each scenario's folder once. It fails when
 a run folder is named by no row, or by two, as a row's run or as a part
-of its chain; when a chain forks; when a row names a run that is not there, or whose chain
-breaks; when a row's cost is not its chain's total; and when a row sits
-above a run that started after it. It also fails on a run whose
-checkout was not clean (see Versions), on a run whose runtime its
-scenario does not list (see Where a scenario runs), on a rehearsal (see
-Rehearsal), and on a compressed file in a run folder that holds a
-string shaped like a key, or that the scan cannot read, on a `.zip` that
-does not open, and on a `.git` folder (see The workflow).
+of its chain; when a chain forks; when a row names a run that is not
+there, or whose chain breaks; when a row's cost is not its chain's
+total; and when a row sits above a run that started after it. It also
+fails on a run whose checkout was not clean (see Versions), on a run
+whose runtime its scenario does not list (see Where a scenario runs),
+on a rehearsal (see Rehearsal), on a run with a marked repeat (see A
+subject in phases), on a file in a run folder, plain or compressed, that
+holds a string shaped like a key or an account id or a limit's figures
+that `run.py redact` replaces, on a compressed file the scan cannot
+read, on a `.zip` that does not open, and on a `.git` folder (see The
+workflow).
 
 ## Versions
 
@@ -590,14 +595,24 @@ result returns to the session that asked for it. In print mode, a task
 left in the background ends the main agent's turn, and the session
 never gives it back. The runtimes hand the subject its environment each
 their own way, and a word of its command reaches it the same way on all
-three. The session runs with `--output-format
-stream-json --verbose`, so every turn is a line of `streams/cli.jsonl`,
-and the answer, the models, and the spend are read from its last line,
-the result. Each repeat records `subject_models`, the models the result
-reports under `modelUsage`, and a run notes a repeat whose result does
-not report the pinned model. A result with `is_error` set is a failed
-repeat, whatever the exit code. A skill subject is bounded by money and
-time: `max_usd`, which every skill subject names, goes to Claude Code
+three. The same `env` sets `ARCH_CHECK` to arch-check from the staged
+plugin's `checkers`:
+`uvx --python "$(shell cat .python-version)" --from <plugin>/checkers arch-check`.
+The scaffold's Makefile sets `ARCH_CHECK ?=` to a uvx command that
+fetches this repository whole, at the release the tree pins, into the
+subject's HOME, and a release can hold run folders: every finished tree
+of a scenario, the judges' gaps, and the review's report. `?=` lets the
+environment win, so `make arch-check` builds the checker from the staged
+copy, on the tree's Python, and no subject is handed a run folder. The
+gates on the final tree run with the same two variables. The session
+runs with `--output-format stream-json --verbose`, so every turn is a
+line of `streams/cli.jsonl`, and the answer, the models, and the spend
+are read from its last line, the result. Each repeat records
+`subject_models`, the models the result reports under `modelUsage`, and
+a run notes a repeat whose result does not report the pinned model. A
+result with `is_error` set is a failed repeat, whatever the exit code.
+A skill subject is bounded by money and time: `max_usd`, which every
+skill subject names, goes to Claude Code
 as `--max-budget-usd`, and `timeout_s` ends the session. A turn count is
 no bound. A scenario may name `max_turns`, and only then does Claude
 Code get `--max-turns`. The harness also holds the spend from the
@@ -719,12 +734,14 @@ that names none gets no turn cap.
   that phase's own spend, as a fresh phase's does. The harness also
   prices the usage of every assistant message the stream
   carries, at the matrix's price for its model, and stops the phase
-  when that passes the cap. A cache read is priced at a tenth of the
-  input price, and a cache write at 1.25 times it, or twice it for a
-  one-hour write. A model the matrix does not price is priced at its
-  dearest Anthropic model, and named under `unpriced`. The stream shows
-  what the session shows it, so a subagent the stream does not carry is
-  held by Claude Code's cap alone;
+  when that passes the cap. A cache read is priced at the model's
+  cache-hit price, `cache_read`, where the matrix names one, else at a
+  tenth of the input price. A cache write is priced at 1.25 times the
+  input price, or twice it for a one-hour write. A model the matrix
+  does not price is priced at its dearest Anthropic model, and named
+  under `unpriced`. The estimate counts each message's output as the
+  message starts (see Spend), so it reads low. A subagent the stream
+  does not carry is held by Claude Code's cap alone;
 - the timeout, `timeout_s`, which the harness holds: it stops the
   session and every process of its group;
 - the gate reruns, which the harness holds, reading each Bash call in
@@ -802,6 +819,26 @@ did not run under `ended_early`, and no later repeat starts.
   under `pending_agents`. The phases after it would build on work the
   session never finished. A phase that hit a bound ends `capped`,
   pending calls or not.
+
+**A subject that names the run folders.** The run folders under
+`benchmark/runs/` hold every finished tree of a scenario, the judges'
+gaps, and the review's report. The subject keeps the public internet,
+so a subject that goes looking can find them. So after each phase the
+harness reads its stream for a tool call whose input names them: any
+string of the input, as the message shows it or as the call was sent,
+that holds `benchmark/runs` as whole path segments. A Read, Grep, or
+Glob path, a Bash command, a WebFetch URL, and a subagent's prompt all
+count, and a subagent's calls count as the main agent's do.
+`swe-benchmark/runs` and `benchmark/runs-old` do not. The phase's record
+names each such call under `read_runs`: its tool, its id, the key of
+its input, and the value, cut to 300 characters. Its repeat is marked:
+the repeat's `read_runs` lists every call of its phases, a carried
+phase's too, each with its phase. The report opens with them under
+`## Marked`, the notes name the first, and the run exits 10 once its
+record is written. Nothing else changes: the phases after it run, and
+the repeat is judged. `make runs` refuses a run folder with a marked
+repeat, so the scores of a subject that may have read an earlier run's
+answers are never checked in.
 
 **The output.** After the last phase that ran, the harness archives the
 last checkpoint with `git archive --format=zip` and brings it back as
@@ -1137,15 +1174,45 @@ joins the matrix joins the prices. They are the standard tier's, below
 each provider's long-context threshold, where every prompt of the
 shipped scenarios falls. Every input token is priced as uncached input,
 so a provider's cache discount makes the true bill lower, never higher.
-A judgement's `cost_usd` is its usage at those prices.
+A judgement's `cost_usd` is its usage at those prices. A model whose
+cache hits are not billed at a tenth of its input price also names
+`cache_read`, its price per million cache-hit tokens, for the subject's
+estimate below.
 
 The subject's spend is on each repeat, as `subject_usage` and
 `subject_cost_usd`. A skill's figures come from each session's result,
-and its cost is the one Claude Code reports, caching included. A
-session the harness stopped wrote no result, and its cost is the
-harness's estimate from the stream, which the run's notes name. Its
-`reasoning_tokens` are the thinking tokens the result reports, which
-its output already counts. A `qa` answer is priced like a judgement.
+and its cost is the one Claude Code reports, caching included. Its
+tokens are the ones that cost counts: each model's under the result's
+`modelUsage`, summed, which count the session's helper agents as well
+as its main agent. The result's `usage` counts the main agent alone.
+Its `reasoning_tokens` are the thinking tokens `modelUsage` reports,
+which its output already counts. A `qa` answer is priced like a
+judgement.
+
+A session that wrote no result, such as one the harness stopped at
+its timeout, has only the harness's estimate from its stream. The
+estimate prices each message at its model's price in the matrix, a
+cache read at the model's `cache_read` where the matrix names one. It
+counts each message's input in full, and its output as the message
+starts, so it reads low. Each line of the stream carries a message's
+usage from the start of the message. No line Claude Code writes carries
+a helper agent's final output count. With `--include-partial-messages`,
+Claude Code 2.1.283 and 2.1.284 also write the main agent's raw stream
+events, whose `message_delta` carries its final count, and never a
+helper's. The harness does not pass it: the count would still miss the
+helpers' output, and the stream would take a line for every chunk the
+main agent streams. So the estimate leaves out nearly all of a
+session's output.
+
+Such a phase's cost is therefore a lower bound, and the run says so.
+Its record in `results.json` has `cost_lower_bound`, and the run's
+notes name it. `spend` names it under `estimated`, and the total reads
+"at least" in `report.md` and in what the run prints. The run's spend
+cap counts the phase at its `max_usd`, the most Claude Code's
+`--max-budget-usd` let it spend, or at the estimate when that is
+higher. The checks before each later phase and each later repeat read
+that count: a later repeat starts only when what is left covers its
+phases, and a later phase only while the cap is not reached.
 
 `results.json` totals it all under `spend`: each judge's tokens and
 cost, the subject's, and `total_usd`. `report.md` shows the same in its
@@ -1337,7 +1404,9 @@ No subject ran, so a repeat records no subject spend, and its exit
 status is 0. Its `phases` are the ones its source's repeat ran, each
 with its name, session, status, and cap, and none of its spend. So a
 folder `judge` wrote, judged again, tells its judges what its own
-source ran. The rest of how the subject ended is in the source run's
+source ran. A phase keeps its `read_runs` too, so a repeat whose source
+was marked stays marked, and the run exits 10 (see A subject in
+phases). The rest of how the subject ended is in the source run's
 record. `versions` names this checkout and the references, which decide
 the new score; the source's `versions` name what built the output. The
 report opens with the source, the repeats refused, the repeats the cap
@@ -1424,6 +1493,17 @@ refused, with its reason and no phase started, when:
 
 A source with no repeat to resume makes no run folder, and exits 2.
 
+A source that resumed another holds only the milestone it restored and
+those its own phases left. An earlier phase's milestone stays in the
+folder that made it. So when the source kept no milestone after the
+phase `--after` names, each repeat takes the one the nearest folder of
+its chain kept, following `source.run_id` to the folder of that name
+beside it (see A run and its resumes). It is checked as a milestone of
+the source is, in the folder that kept it. The newest folder of a chain
+so reaches every milestone before it. When no folder of the chain kept
+one, the repeat is refused: the source run kept no milestone after that
+phase.
+
 A run recorded before phases kept milestones names none. Its archive is
 then the milestone of its last phase, when the archive's commit is that
 phase's checkpoint, and `artifacts/<repeat>/output.zip` is restored with
@@ -1431,15 +1511,18 @@ the collected files beside it. Such a run kept no handoff note, so none
 is restored. An archive of another commit is refused.
 
 **What it records.** The new run lands beside the source, or in the
-scenario's folder under the root `--out` names. Each repeat keeps the number it had in the source. Its phases
-start with the source's records of the phases up to the milestone, each
-marked `carried`, and then those it ran. The milestone it restored is
+scenario's folder under the root `--out` names. Each repeat keeps the
+number it had in the source. Its phases start with the records of the
+phases up to the milestone, each marked `carried`, and then those it
+ran. The milestone it restored is
 copied into its own `milestones/`, and the carried record of that phase
 names the copy; an earlier phase's milestone stays in the source's
 folder. `results.json` and `run.json` name the source under `source`:
 its run folder, its path, the phase it resumed after, the source's
 checkout, which ran the carried phases, and each milestone restored,
-with its SHA-256 and commit. `versions` names this checkout, which ran
+with the run folder that kept it, its SHA-256, and its commit. The
+source is the folder the command named, even when a milestone came from
+an earlier folder of its chain. `versions` names this checkout, which ran
 the rest. `run.json` lists the phases it runs. The report opens with
 the source and marks each carried phase.
 
@@ -1557,11 +1640,12 @@ Its cost is theirs, and its time is the longest judgement's for agentic
 judges, which run at once, and the sum for one-shot judges, which run
 one after another. The chain's total is what its folders spent, each
 its `spend.total_usd`. It is a lower bound, `at_least`, when a folder
-recorded no spend, a model had no price, or the chain breaks: a source
-that is not beside its folder.
+recorded no spend, a model had no price, a folder counted a phase at
+the harness's estimate (`spend.estimated`), or the chain breaks: a
+source that is not beside its folder.
 
 A chain has one line: resume or judge again from its newest folder,
-which carries every milestone before it. Two runs from one folder
+which reaches every milestone before it. Two runs from one folder
 would fork the chain, and a fork cannot be one row. So `resume` and
 `judge` refuse a source that a run folder beside it already names as
 its `source`, with exit 2, before they make a run folder or spend
@@ -1649,6 +1733,23 @@ writes the summary or uploads the run folders, it runs
 file of every run folder as bytes, frames included, and replaces two
 things with `[redacted]`: the value of every provider key the harness
 knows by name, and anything shaped like a provider, GitHub, or AWS key.
+Every failed judge call is recorded: in the judge's transcript, and in
+`results.json` and `report.md` when the judge gives up. Three providers'
+errors name the account behind the key, so the scan also replaces these
+with `[redacted]`:
+
+- OpenAI's organization id, `org-` and 20 or more letters and digits,
+  wherever it stands, and the figures of the limit its 429 hit, written
+  as `Limit [redacted], Used [redacted], Requested [redacted]`.
+- Anthropic's organization id and the figure of its per-minute limit,
+  as its 429 names them: `the rate limit for your organization (<uuid>)
+  of N ... per minute`. The figure goes where the 429 names no id too.
+- xAI's team id, as its out-of-credit 429 names it: `Your team <uuid>
+  has either used all available credits ...`.
+
+No placeholder holds a quote or a backslash, so a JSON file stays JSON,
+and a second pass changes nothing.
+
 A compressed file hides its text from a scan of its bytes, so the scan
 unpacks the forms the standard library reads: a zip, member by member,
 names and comment included; a tar, member by member; and a gzip, bzip2,

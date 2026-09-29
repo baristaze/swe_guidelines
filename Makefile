@@ -47,7 +47,7 @@ leaks:             ## no product or hardware vocabulary in the Markdown
 links:             ## every relative link and anchor resolves
 	$(PYTHON) scripts/check_links.py
 
-runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists and is no rehearsal, and no compressed file holds a key
+runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, and no file holds a key or a provider account's id
 	$(PYTHON_YAML) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings

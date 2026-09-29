@@ -25,7 +25,7 @@ it resumes onto it. This holds them together:
   fails, and so does a folder no row and no chain names;
 - no chain forks: no run folder is the source of two. A fork cannot be
   one row, so it is named once, and a run resumes or is judged again
-  from its chain's newest folder, which carries every milestone before
+  from its chain's newest folder, which reaches every milestone before
   it;
 - every row's Cost (USD) is its chain's total: what the chain's folders
   spent, each its `spend.total_usd`, to the cent. It reads "—" when no
@@ -43,6 +43,9 @@ it resumes onto it. This holds them together:
   is marked `rehearsal`. A rehearsal ran with every bound cut small, so
   its scores mean nothing, and it may have run on changes no commit
   holds;
+- no repeat of a run folder is marked: its `results.json` names, under
+  `read_runs`, a tool call whose input named the benchmark's run
+  folders. That subject had an earlier run's answers in its reach;
 - every run that records its runtime ran on one its scenario lists. The
   scenario is the file under `benchmark/scenarios/` whose `name` is the
   one the run records, as the file is now: a run on a runtime the
@@ -50,14 +53,16 @@ it resumes onto it. This holds them together:
   stands behind. A run of a scenario no file there names, or whose file
   does not load, or that two files name, fails too, since nothing says
   where it runs;
-- no compressed file in a run folder holds a string shaped like a key:
-  a zip, a tar, and a gzip, bzip2, or xz stream are read the way
-  `run.py redact` reads them, member by member and down the levels, since
-  a compressed member hides its text from a scan of the bytes. A
-  compressed form the scan cannot read, a part of one it cannot unpack,
-  and a `.zip` that does not open fail too, since no one can say they
-  hold no key. So does a `.git` folder in a run folder: its objects are
-  compressed, and the output's zip is the record of the output.
+- no file in a run folder, plain or compressed, holds a string shaped
+  like a key, or an account id or a limit's figures that a provider's
+  error names: the strings `run.py redact` replaces by their shape. A
+  plain file is scanned as bytes. A zip, a tar, and a gzip, bzip2, or xz stream are
+  read the way `run.py redact` reads them, member by member and down the
+  levels, since a compressed member hides its text from a scan of the
+  bytes. A compressed form the scan cannot read, a part of one it cannot
+  unpack, and a `.zip` that does not open fail too, since no one can say
+  they hold no key. So does a `.git` folder in a run folder: its objects
+  are compressed, and the output's zip is the record of the output.
 
 A row is a body line of a table whose header's first cell is `Run`, and
 its run is the folder its first cell's `](<folder>/report.md)` link
@@ -222,6 +227,23 @@ def rehearsed(folder: Path) -> bool:
     return bool(record(folder).get("rehearsal") or record(folder, "run.json").get("rehearsal"))
 
 
+def read_runs(folder: Path) -> list[str]:
+    """Each marked repeat of a run folder, with the first call that marks it: the repeat's `read_runs`, or a phase's."""
+    listed = record(folder).get("repeats")
+    out = []
+    for repeat in listed if isinstance(listed, list) else []:
+        if not isinstance(repeat, dict):
+            continue
+        calls = list(repeat.get("read_runs") or [])
+        phases = repeat.get("phases")
+        for phase in phases if isinstance(phases, list) else []:
+            calls += (phase.get("read_runs") or []) if isinstance(phase, dict) else []
+        first = next((c for c in calls if isinstance(c, dict)), None)
+        if first is not None:
+            out.append(f"repeat {repeat.get('index')}, {first.get('tool')} with {first.get('key')} {first.get('value')!r}")
+    return out
+
+
 def unlisted(folder: Path, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
     """Why a run's runtime is not one its scenario lists, or None when it is or the run records no runtime or no scenario."""
     ran_on = runtime(folder)
@@ -254,7 +276,7 @@ def unclean(folder: Path) -> str | None:
 
 
 def packed_keys(folder: Path) -> list[str]:
-    """Why a run folder's compressed files fail: a key, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
+    """Why a run folder's files fail: a key or an id, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
     out = []
     for path in sorted(folder.rglob("*")):
         where = shown(path)
@@ -269,7 +291,7 @@ def packed_keys(folder: Path) -> list[str]:
             if path.suffix == ".zip" and kind != "zip":
                 out.append(f"{where}: does not open as a zip, so no one can say it holds no key")
                 continue
-            places = X.keys_in(data) if kind else []
+            places = X.keys_in(data)
         except (*X.READ_ERRORS, MemoryError) as exc:
             out.append(f"{where}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
             continue
@@ -278,7 +300,8 @@ def packed_keys(folder: Path) -> list[str]:
                 out.append(f"{where}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
             else:
                 at = f"{where}: {place}" if place else where
-                out.append(f"{at} holds a string shaped like a key; run `run.py redact`")
+                found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
+                out.append(f"{at} holds {found}; run `run.py redact`")
     return out
 
 
@@ -389,6 +412,11 @@ def check(errors: list[str]) -> int:
     for run in runs:
         if rehearsed(run):
             errors.append(f"{shown(run)}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in")
+        for marked in read_runs(run):
+            errors.append(
+                f"{shown(run)}: {marked} named the benchmark's run folders, so its subject had an "
+                "earlier run's answers in reach; a marked run is never checked in"
+            )
         reason = unclean(run)
         if reason:
             errors.append(f"{shown(run)}: {reason}; a checked-in run names a commit that holds what ran")
@@ -409,7 +437,7 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
-        "total, on a runtime its scenario lists, no rehearsal, no key in a compressed file"
+        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file"
     )
     return 0
 

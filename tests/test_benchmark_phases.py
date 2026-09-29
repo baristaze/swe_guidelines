@@ -6,6 +6,11 @@ does, and its answer says what it saw.
 """
 
 import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -13,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from harness import archive as A
+from harness import judge as J
 from harness import phases as PH
 from harness import scenario as S
 from harness.capture import CliStream
@@ -292,9 +298,11 @@ def test_a_dry_run_resolves_the_phases_and_runs_nothing(tmp_path, monkeypatch):
     assert [p["name"] for p in (scaffold, mvp, review)] == ["scaffold", "mvp", "review"]
     argv = scaffold["argv"]
     assert argv == resolved["subject_argv"] and "handoff note at HANDOFF.md" in argv[argv.index("-p") + 1]
-    # The subject runs under env, with its subagents and commands in the foreground, on every runtime.
-    assert argv[:3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
-    assert review["argv"][5:8] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+    # The subject runs under env, with its subagents and commands in the foreground, and arch-check from the staged
+    # plugin, on every runtime.
+    arch_check = f"ARCH_CHECK={run.subject_vars(argv[argv.index('--plugin-dir') + 1])['ARCH_CHECK']}"
+    assert argv[:4] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
+    assert review["argv"][5:9] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
     assert mvp["argv"][mvp["argv"].index("--resume") + 1] == "<the session of scaffold>"
     assert review["argv"][:5] == ["sh", "-c", PH.IN_FOLDER, "sh", "site"]
     assert resolved["max_spend_usd"] == 20
@@ -385,6 +393,54 @@ def test_the_estimate_prices_cache_reads_and_writes_and_counts_a_message_once():
         "cache_creation_input_tokens": 2000,
     }
     assert not watch.stop.is_set() and watch.capped is None
+
+
+def test_the_estimate_prices_each_model_s_cache_hits_at_the_matrix_s_price():
+    pytest.importorskip("yaml")
+    prices = run.subject_prices(J.load_matrix(run.MODELS))
+    assert prices["claude-opus-5-5"] == {"input": 4.0, "output": 20.0, "cache_read": 0.2}
+    assert "cache_read" not in prices["claude-sonnet-5"]
+    watch = PH.Watch(None, prices)
+    # The scaffold session's tokens, as its result's modelUsage gives them, against its total_cost_usd.
+    opus = {
+        "input_tokens": 950_244,
+        "cache_read_input_tokens": 201_427_435,
+        "cache_creation_input_tokens": 3_788_134,
+        "output_tokens": 975_048,
+    }
+    assert watch.cost("claude-opus-5-5", opus) == pytest.approx(82.528093, rel=0.01)
+    # A model with no cache_read of its own: its cache hits cost a tenth of its input, as a helper's on Sonnet 5 did.
+    sonnet = {
+        "input_tokens": 884,
+        "cache_read_input_tokens": 84_991_044,
+        "cache_creation_input_tokens": 1_135_902,
+        "output_tokens": 407_118,
+    }
+    assert watch.cost("claude-sonnet-5", sonnet) == pytest.approx(23.910912, rel=0.01)
+
+
+# The session of create-full-system's third phase, which ran eight helper agents: every assistant line it
+# wrote with the flags the harness passes, and its result, trimmed to their figures, the ids renumbered.
+WITH_HELPERS = Path(__file__).resolve().parent / "benchmark_stream_with_helpers.jsonl"
+
+
+def test_the_estimate_of_a_session_with_helpers_counts_every_agent_s_input_and_output_as_each_message_starts():
+    lines = WITH_HELPERS.read_text(encoding="utf-8").splitlines()
+    assert sum(1 for text in lines if (PH.parse(text) or {}).get("parent_tool_use_id")) > len(lines) / 2
+    watch = PH.Watch(None, run.subject_prices(J.DEFAULT_MATRIX))
+    for text in lines:
+        watch.feed("out", text)
+    result = PH.final_result(lines)
+    assert result is not None
+    figures = result["modelUsage"]["claude-opus-5-5"]
+    counted = watch.usage()["output_tokens"]
+    # Every agent's input and cache tokens at the matrix's price: what the result's cost gives them, within 3%.
+    estimated_input = watch.estimated_usd - counted * 20 / 1e6
+    assert estimated_input == pytest.approx(result["total_cost_usd"] - figures["outputTokens"] * 20 / 1e6, rel=0.03)
+    # Each line carries its message's output as the message starts, and no line its final count.
+    assert counted < 0.02 * figures["outputTokens"]
+    # The run records the tokens of every agent, from the same stream's result.
+    assert run.read_envelope_spend("\n".join(lines))[0]["input_tokens"] == 838 + 46_505_964 + 1_354_174
 
 
 def test_a_model_the_matrix_does_not_price_is_priced_at_its_dearest():
@@ -839,7 +895,8 @@ def test_a_container_runs_the_subject_under_env_with_its_background_tasks_off(tm
         command = rt.command(run.phase_argv(scn, one, "swe-guidelines", "/plugin", None), rt.workspace)
         inside = command[command.index("img:1") + 1 :]  # what the container runs
         at = inside.index("env")
-        assert inside[at : at + 3] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", "claude"]
+        arch_check = 'ARCH_CHECK=uvx --python "$(shell cat .python-version)" --from /plugin/checkers arch-check'
+        assert inside[at : at + 4] == ["env", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1", arch_check, "claude"]
 
 
 # A phase with an Agent call left pending --------------------------------------
@@ -913,6 +970,32 @@ def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run
     first, second = results(run_dir)["repeats"][0]["phases"]
     assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
     assert second["status"] == "ok"
+
+
+def test_a_phase_its_timeout_stops_before_a_result_is_a_lower_bound_counted_at_its_cap(run_phases):
+    usage = {"input_tokens": 150_000, "output_tokens": 0}  # $0.60 at the matrix's price
+    stopped = {**TREE, "messages": [["m1", "claude-opus-5-5", usage]], "sleep": 30}
+    # Each phase may spend $1, so a repeat needs $2 of the run's $3.
+    scenario = phased(phase("scaffold", stopped, timeout_s=1), phase("mvp"))
+    code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "3")
+    assert code == 0
+    data = results(run_dir)
+    first, second = data["repeats"][0]["phases"]
+    assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
+    assert first["cost_usd"] is None and first["estimated_usd"] == 0.6 and first["cost_lower_bound"] is True
+    assert second["status"] == "ok" and second["cost_usd"] == 0.25 and "cost_lower_bound" not in second
+    note = "phase scaffold reported no cost; its spend is the harness's estimate, $0.6000, a lower bound, "
+    assert any(f"{note}and the run's spend cap counts it at $1.0000" in n for n in data["notes"])
+    # The cap counts scaffold at its $1 cap, not its $0.60 estimate: $1.75 is left, short of a repeat's $2.
+    assert len(data["repeats"]) == 1
+    assert any("repeat 1 and after did not run: $1.7500 of the run's $3 spend cap is left" in n for n in data["notes"])
+    # What the run publishes is the estimate, marked as a lower bound.
+    assert data["repeats"][0]["subject_cost_usd"] == pytest.approx(0.85)
+    assert data["spend"]["total_usd"] == 0.85 and data["spend"]["estimated"] == ["repeat 0, phase scaffold"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Total: at least $0.8500. No result from repeat 0, phase scaffold, so its cost is the harness's estimate" in report
+    assert "| subject | " in report and "| at least $0.8500 |" in report
+    assert "at least $0.6000 (estimated)" in report
 
 
 # The models a session used ---------------------------------------------------
@@ -997,3 +1080,125 @@ def test_an_agent_call_stays_pending_to_the_end_of_the_session_only_when_its_res
     watch.feed("out", line({"type": "user", "message": {"role": "user", "content": [result]}}))
     watch.feed("out", line({"type": "result", "subtype": "success", "result": "done"}))
     assert watch.pending == ([{"id": "t1", "description": "helper"}] if pending else [])
+
+
+# What a subject is handed of this repository -------------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+SKELETON = ROOT / "skills" / "arch-scaffold-new" / "references" / "skeleton.md"
+
+
+def scaffold_line() -> str:
+    """The Makefile line the scaffold writes for arch-check, at this checkout's release."""
+    (line,) = re.findall(r"`(ARCH_CHECK \?= [^`]+)`", SKELETON.read_text(encoding="utf-8"))
+    version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+    return line.replace("<version>", version)
+
+
+def make_n(folder: Path, arch_check: str | None) -> str:
+    """What `make -n arch-check` prints in a folder, with ARCH_CHECK in its environment or not."""
+    env = {"PATH": os.environ["PATH"], **({"ARCH_CHECK": arch_check} if arch_check is not None else {})}
+    done = subprocess.run(["make", "-n", "arch-check"], cwd=folder, env=env, capture_output=True, text=True, check=True)
+    return done.stdout
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="needs make")
+def test_the_subject_s_arch_check_runs_from_the_staged_plugin_and_fetches_no_release(tmp_path, run_phases):
+    gate = 'case "$ARCH_CHECK" in *"/plugin/checkers arch-check") exit 0;; *) exit 1;; esac'
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", cwd="output"), gates=[gate]))
+    assert code == 0
+    plugin = results(run_dir)["subject"]["plugin"]
+    checkers = shlex.quote(f"{plugin}/checkers")
+    given = [s["arch_check"] if s else None for s in seen(run_dir)]
+    # Every session is handed arch-check from the staged plugin's checkers, and so are the gates on its tree.
+    assert given[0] == given[1] == f'uvx --python "$(shell cat .python-version)" --from {checkers} arch-check'
+    words = shlex.split(given[0])
+    assert words[words.index("--from") + 1] == f"{plugin}/checkers"
+    assert [g["passed"] for g in results(run_dir)["repeats"][0]["gates"]] == [True]
+    # A tree with the scaffold's line fetches this repository at its release, unless the environment names ARCH_CHECK.
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / ".python-version").write_text("3.13\n", encoding="utf-8")
+    (tree / "Makefile").write_text(f"{scaffold_line()}\n\narch-check:\n\t$(ARCH_CHECK)\n", encoding="utf-8")
+    assert '--from "git+https://github.com/baristaze/swe_guidelines@v' in make_n(tree, None)
+    printed = make_n(tree, given[0])
+    assert printed == f'uvx --python "3.13" --from {checkers} arch-check\n'
+    assert "git+https" not in printed
+
+
+# A subject that names the benchmark's run folders ---------------------------------
+
+EARLIER = "/tmp/swe_guidelines/benchmark/runs/20260927-204817-create-full-system-f263cfa8/report.md"
+LISTING = "https://github.com/baristaze/swe_guidelines/tree/main/benchmark/runs"
+
+
+def assistant(block: dict, parent: str | None = None, wire: dict | None = None) -> str:
+    """One assistant line of a stream, in the shape Claude Code writes it, trimmed."""
+    message = {"model": "claude-sonnet-5", "id": f"msg_{block['id']}", "type": "message", "role": "assistant", "content": [block]}
+    event = {"type": "assistant", "message": message, "parent_tool_use_id": parent, "session_id": "s"}
+    return line(event | ({"wire_tool_inputs": wire} if wire else {}))
+
+
+def call(ident: str, name: str, given: dict) -> dict:
+    return {"type": "tool_use", "id": ident, "name": name, "input": given, "caller": {"type": "direct"}}
+
+
+def test_a_tool_call_names_the_run_folders_when_a_string_of_its_input_holds_them_as_whole_segments():
+    lines = [
+        assistant(call("t1", "Read", {"file_path": EARLIER})),
+        assistant(call("t1", "Read", {"file_path": EARLIER})),  # one call, carried in two lines
+        assistant(call("t2", "WebFetch", {"url": LISTING, "prompt": "List the runs."}), parent="toolu_agent"),
+        # The message shows the command less its leading cd; the call as sent holds it.
+        assistant(call("t3", "Bash", {"command": "ls"}), wire={"t3": {"command": "cd /tmp/benchmark/runs && ls"}}),
+        assistant(call("t4", "Agent", {"description": "d", "prompt": "Read ../benchmark/runs/README.md first."})),
+        assistant(call("t5", "MultiEdit", {"edits": [{"old_string": "a", "new_string": "see benchmark/runs"}]})),
+        # Near misses: another folder's runs, a longer name, and the words apart.
+        assistant(call("t6", "Read", {"file_path": "/var/tmp/swe-benchmark/runs/x"})),
+        assistant(call("t7", "Bash", {"command": "ls benchmark/runs-old benchmark/runner && cat runs.txt"})),
+        assistant(call("t8", "Grep", {"pattern": "benchmark", "path": "runs"})),
+    ]
+    named = PH.runs_named(lines)
+    assert [(n["tool"], n["id"], n["key"], n["value"]) for n in named] == [
+        ("Read", "t1", "file_path", EARLIER),
+        ("WebFetch", "t2", "url", LISTING),
+        ("Bash", "t3", "command", "cd /tmp/benchmark/runs && ls"),
+        ("Agent", "t4", "prompt", "Read ../benchmark/runs/README.md first."),
+        ("MultiEdit", "t5", "edits.0.new_string", "see benchmark/runs"),
+    ]
+    assert PH.runs_named([assistant(call("t9", "Bash", {"command": "x" * 400 + " benchmark/runs"}))])[0]["value"] == "x" * 300
+
+
+def test_a_phase_whose_subject_names_the_run_folders_marks_its_repeat_and_the_run_exits_non_zero(run_phases, capsys):
+    reads = {
+        "bash": [["ls ../benchmark/runs", False]],
+        "tools": [["Read", {"file_path": EARLIER}], ["WebFetch", {"url": LISTING, "prompt": "List the runs."}]],
+    }
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", reads, cwd="output")))
+    assert code == run.READ_RUNS != 0
+    repeat = results(run_dir)["repeats"][0]
+    scaffold, review = repeat["phases"]
+    assert "read_runs" not in scaffold
+    assert [(c["tool"], c["key"], c["value"]) for c in review["read_runs"]] == [
+        ("Bash", "command", "ls ../benchmark/runs"),
+        ("Read", "file_path", EARLIER),
+        ("WebFetch", "url", LISTING),
+    ]
+    # The repeat is marked with each call and its phase, and the report and the notes name the calls.
+    assert repeat["read_runs"] == [{"phase": "review", **c} for c in review["read_runs"]]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Marked" in report and f"- repeat 0, phase `review`: `Read` with `file_path` `{EARLIER}`" in report
+    notes = results(run_dir)["notes"]
+    assert any("phase review made 3 tool call(s) naming the benchmark's run folders, the first Bash" in n for n in notes)
+    assert "repeat 0 is marked: phase review named the benchmark's run folders" in capsys.readouterr().err
+
+
+def test_a_phase_whose_calls_name_no_run_folder_passes_unmarked(run_phases):
+    near = {
+        "bash": [["ls benchmark/ && cat runs.txt", False]],
+        "tools": [["Read", {"file_path": "/var/tmp/swe-benchmark/runs/x"}], ["Glob", {"pattern": "**/*.py"}]],
+    }
+    code, run_dir = run_phases(phased(phase("scaffold", TREE), phase("review", near, cwd="output")))
+    assert code == 0
+    repeat = results(run_dir)["repeats"][0]
+    assert "read_runs" not in repeat and all("read_runs" not in p for p in repeat["phases"])
+    assert "## Marked" not in (run_dir / "report.md").read_text(encoding="utf-8")

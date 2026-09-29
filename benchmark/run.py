@@ -64,6 +64,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -115,6 +116,10 @@ PREFLIGHT_FAILED = 8
 # The exit status of a rehearsal that did not prove the pipeline to its end:
 # the run's spend cap cut it short, or a step it exists to prove did not happen.
 REHEARSAL_UNPROVEN = 9
+# The exit status of a run a repeat of which is marked: its subject named
+# the benchmark's run folders in a tool call. The record is written, and a
+# marked run folder is never checked in.
+READ_RUNS = 10
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -135,6 +140,28 @@ REPEAT = 3
 # their own way, so these reach it through `env` in its command, which
 # every runtime runs as it is.
 SUBJECT_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+# What `make arch-check` runs in a tree a skill subject builds: arch-check
+# from the staged plugin's checkers. The scaffold's Makefile sets
+# `ARCH_CHECK ?=` to a uvx command that fetches this repository whole, at
+# the release the tree pins, into the subject's HOME. A release can hold
+# run folders: every finished tree of a scenario, the judges' gaps, and
+# the review's report. `?=` lets the environment win, so no subject is
+# handed them. The value is the scaffold's own line with its source
+# changed, so arch-check still runs on the tree's Python. `$(shell ...)`
+# is make's, and make is what reads the variable.
+ARCH_CHECK = 'uvx --python "$(shell cat .python-version)" --from {checkers} arch-check'
+
+
+def subject_vars(plugin: str | None) -> dict[str, str]:
+    """The variables a skill subject's sessions, and the gates on its tree, run with: `SUBJECT_ENV` and `ARCH_CHECK`.
+
+    `plugin` is the staged plugin as the subject sees it. With none, there
+    is no `ARCH_CHECK`.
+    """
+    if not plugin:
+        return dict(SUBJECT_ENV)
+    checkers = shlex.quote(posixpath.join(plugin, "checkers"))
+    return {**SUBJECT_ENV, "ARCH_CHECK": ARCH_CHECK.format(checkers=checkers)}
 
 
 def subject_keys(scn: S.Scenario) -> list[str]:
@@ -361,7 +388,7 @@ def phase_argv(
     The session writes every turn to stdout as a JSON line
     (`--output-format stream-json --verbose`). Claude Code holds the spend
     cap itself, and a turn cap only when the phase names one; it runs
-    under `env` with `SUBJECT_ENV`.
+    under `env` with `subject_vars`.
     A resumed session names the session it continues. A phase that starts
     in the output folder is started there by a shell, since the runtime
     starts every command in the workspace.
@@ -373,7 +400,7 @@ def phase_argv(
         prompt, reads = f"/{name}:{scn.subject.skill} {subject_prompt(scn, target)}".strip(), bool(target)
     argv = [
         "env",
-        *(f"{name}={value}" for name, value in SUBJECT_ENV.items()),
+        *(f"{name}={value}" for name, value in subject_vars(plugin).items()),
         claude,
         "-p",
         prompt,
@@ -447,6 +474,14 @@ def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
 
 
 ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+# Each model's figures under a result's `modelUsage`, by the name its usage gives the same count.
+MODEL_TOKENS = {
+    "inputTokens": "input_tokens",
+    "cacheCreationInputTokens": "cache_creation_input_tokens",
+    "cacheReadInputTokens": "cache_read_input_tokens",
+    "outputTokens": "output_tokens",
+    "thinkingTokens": "thinking_tokens",
+}
 
 
 def token_count(value: Any) -> int | None:
@@ -472,23 +507,47 @@ def envelope_thinking(usage: Any, models: Any) -> int | None:
     return sum(found) if found else None
 
 
+def model_usage_tokens(models: Any) -> dict[str, int]:
+    """The tokens a result reports under `modelUsage`, summed over its models, by the names its usage gives them.
+
+    Each model's figures count every agent of the session that ran on
+    it, as its `costUSD` does. A count a model does not report is left
+    out, and a result whose models report none gives nothing.
+    """
+    sums: dict[str, int] = {}
+    for figures in (models if isinstance(models, dict) else {}).values():
+        for key, name in MODEL_TOKENS.items():
+            count = token_count(figures.get(key)) if isinstance(figures, dict) else None
+            if count is not None:
+                sums[name] = sums.get(name, 0) + count
+    return sums
+
+
 def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     """The tokens and the cost in US dollars of a `claude -p` session's result.
 
     Claude Code prices its own run, caching included, as `total_cost_usd`;
-    that figure is the subject's cost. `input_tokens` is every input token,
-    cached or not, with the cached ones also named on their own.
-    `output_tokens` already counts the thinking, and `reasoning_tokens`
-    names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
-    `thinkingTokens` over `modelUsage`, and no key when the result reports
-    neither. Output with no result spent nothing the run can see: no
-    tokens, cost None.
+    that figure is the subject's cost. The tokens are the ones it prices:
+    each model's under `modelUsage`, summed, which count the session's
+    helper agents as well as its main agent. The result's `usage` counts
+    the main agent alone, so it is read only when no model reports a
+    count. `input_tokens` is every input token, cached or not, with the
+    cached ones also named on their own. `output_tokens` already counts
+    the thinking, and `reasoning_tokens` names it, from the same figures:
+    the sum of `thinkingTokens`; or, when `usage` is read, its
+    `output_tokens_details.thinking_tokens`, else that sum. It has no key
+    when the result reports neither. Output with no result spent nothing
+    the run can see: no tokens, cost None.
     """
     data = envelope(stdout)
     if data is None:
         return {}, None
-    raw = data.get("usage")
-    counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+    counts = model_usage_tokens(data.get("modelUsage"))
+    thinking = counts.pop("thinking_tokens", None)
+    if not counts:
+        raw = data.get("usage")
+        counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if token_count(v) is not None}
+        thinking = envelope_thinking(raw, data.get("modelUsage"))
     usage: dict[str, int] = {}
     if counts:
         usage = {
@@ -497,7 +556,6 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
             "cache_read_input_tokens": counts.get("cache_read_input_tokens", 0),
             "cache_creation_input_tokens": counts.get("cache_creation_input_tokens", 0),
         }
-        thinking = envelope_thinking(raw, data.get("modelUsage"))
         if thinking is not None:
             usage["reasoning_tokens"] = thinking
     cost = data.get("total_cost_usd")
@@ -844,12 +902,16 @@ def run_skill(
                 {k: earlier_usage.get(k, 0) + own_usage.get(k, 0) for k in {*earlier_usage, *own_usage}},
             )
         phase_cost = spent if spent is not None else estimated
-        plan.budget.spent += phase_cost
+        # A session with no result spent at least its estimate, which counts each message's output as the message
+        # starts, and up to its phase's cap, as Claude Code's --max-budget-usd let it. The run's cap counts the most.
+        counted = phase_cost if spent is not None else max(phase.max_usd, estimated)
+        plan.budget.spent += counted
         cost += phase_cost
         priced = priced or spent is not None
-        if spent is None and estimated:
+        if spent is None:
             notes.append(
-                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}"
+                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}, "
+                f"a lower bound, and the run's spend cap counts it at ${counted:.4f}"
             )
         for name, value in (spent_usage or watch.usage()).items():
             usage[name] = usage.get(name, 0) + value
@@ -870,6 +932,9 @@ def run_skill(
             "estimated_usd": estimated,
             "wall_s": round(status.duration_s, 3),
         }
+        if spent is None:
+            # Its cost is the estimate, which reads low.
+            record["cost_lower_bound"] = True
         if by_model:
             # The models the session used and what each cost, so the run says what it measured.
             record["model_cost_usd"] = by_model
@@ -879,6 +944,15 @@ def run_skill(
             record["pending_agents"] = list(watch.pending)
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
+        if read := PH.runs_named(lines):
+            # The subject named an earlier run's answers: the repeat is marked, and its run is never checked in.
+            record["read_runs"] = read
+            first = read[0]
+            notes.append(
+                f"repeat {index}: phase {phase.name} made {len(read)} tool call(s) naming the benchmark's run folders, "
+                f"the first {first['tool']} with {first['key']} {first['value']!r}; the repeat is marked, "
+                "and the run is never checked in"
+            )
         holds: bool | None = None
         if folder and harness is not None:
             made, why, holds = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
@@ -932,9 +1006,12 @@ def run_skill(
             if not archived.ok:
                 notes.append(f"repeat {index}: the archive of {folder} failed (exit {archived.code})")
             gates = []
+            # The gates run with the variables the sessions ran with, so `make arch-check` runs the staged checker.
+            given = [f"{name}={value}" for name, value in subject_vars(plan.plugin).items()]
             for gate in scn.subject.gates:
                 harness.note(f"[gate] {gate}")
-                ran, _ = harness_run(rt, harness, plan, ["sh", "-c", PH.GATE, "sh", folder, gate], scn.subject.gate_timeout_s)
+                command = ["env", *given, "sh", "-c", PH.GATE, "sh", folder, gate]
+                ran, _ = harness_run(rt, harness, plan, command, scn.subject.gate_timeout_s)
                 gates.append(
                     {
                         "command": gate,
@@ -968,9 +1045,22 @@ def repeat_need(scn: S.Scenario) -> float | None:
 
 
 def subject_prices(matrix: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by."""
+    """The price of every Anthropic model the matrix prices, for the estimate a phase is watched by.
+
+    A model whose cache hits are not billed at a tenth of its input price
+    names its own, `cache_read`, and its price carries it.
+    """
     names = matrix.get("anthropic", {}).get("prices", {})
-    return {m: price for m in names if (price := J.price_for(matrix, "anthropic", m)) is not None}
+    out: dict[str, dict[str, float]] = {}
+    for model, spec in names.items():
+        price = J.price_for(matrix, "anthropic", model)
+        if price is None:
+            continue
+        hit = spec.get("cache_read")
+        if isinstance(hit, (int, float)) and not isinstance(hit, bool) and 0 <= hit < float("inf"):
+            price["cache_read"] = float(hit)
+        out[model] = price
+    return out
 
 
 def planned_phases(
@@ -1093,8 +1183,9 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
     if summary["self_judged"]:
         print(f"note: {summary['self_judged']}")
     spent = data["spend"]
-    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
-    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
+    why = [f"no price for {', '.join(spent['unpriced'])}"] if spent["unpriced"] else []
+    why += [f"{', '.join(spent['estimated'])} at the harness's estimate"] if spent.get("estimated") else []
+    print(f"spend      ${spent['total_usd']:.4f}" + (f" (at least; {'; '.join(why)})" if why else ""))
     for fallback in summary["fallbacks"]:
         print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
 
@@ -1104,6 +1195,21 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
         print(RH.says(run.rehearsal))
     print(f"report: {run_dir / 'report.md'}")
     return data, problems
+
+
+def marked(run: R.RunResult) -> int | None:
+    """`READ_RUNS` when a repeat's subject named the benchmark's run folders, each such repeat said; None otherwise."""
+    found = [r for r in run.repeats if r.read_runs()]
+    if not found:
+        return None
+    for repeat in found:
+        first = repeat.read_runs()[0]
+        print(
+            f"repeat {repeat.index} is marked: phase {first['phase']} named the benchmark's run folders, "
+            f"{first['tool']} with {first['key']} {first['value']!r}; this run is never checked in",
+            file=sys.stderr,
+        )
+    return READ_RUNS
 
 
 def said(j: R.AnyJudgement) -> str:
@@ -1125,7 +1231,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="run",
         choices=["run", "judge", "resume", "list", "redact"],
         help="run a scenario, judge a run's archived output again, resume a run from a phase's milestone, "
-        "list what there is, or redact every key from the run folders under the runs root --out names",
+        "list what there is, or redact every key and provider account id from the run folders under the runs root --out names",
     )
     parser.add_argument("--scenario", help="scenario name or path")
     parser.add_argument(
@@ -1243,7 +1349,7 @@ def command_list(out: Path) -> int:
 
 
 def command_redact(out: Path) -> int:
-    """Redact every key value and every key-shaped string from the run folders, in place.
+    """Redact every key value, key-shaped string, organization id, and limit's figures from the run folders, in place.
 
     A file that cannot be read or written is named, the rest are redacted
     still, and the command exits 1, so nothing unredacted is shown or
@@ -1252,8 +1358,8 @@ def command_redact(out: Path) -> int:
     failed: dict[Path, str] = {}
     found = X.redact_folder(out, X.key_values(), failed)
     for path, count in found.items():
-        print(f"redacted {count} key(s) in {path.relative_to(out)}")
-    print(f"redacted {sum(found.values())} key(s) in {len(found)} file(s) under {out}")
+        print(f"redacted {count} string(s) in {path.relative_to(out)}")
+    print(f"redacted {sum(found.values())} string(s) in {len(found)} file(s) under {out}")
     for path, reason in failed.items():
         print(f"could not redact {path.relative_to(out)}: {reason}", file=sys.stderr)
     return 1 if failed else 0
@@ -1812,6 +1918,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     summary = data["summary"]
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if failed_subjects:
         print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
         return 6
@@ -1863,8 +1971,9 @@ class SourceRepeat:
         return [p["name"] for p in self.phases] if self.phases else None
 
 
-# What a run that judges another run's output again keeps of each phase its source's repeat ran.
-PHASE_KEPT = ("name", "session", "status", "capped")
+# What a run that judges another run's output again keeps of each phase its source's repeat ran. A phase's
+# tool calls that named the benchmark's run folders are kept, so the output a marked subject made stays marked.
+PHASE_KEPT = ("name", "session", "status", "capped", "read_runs")
 
 
 def read_record(path: Path) -> dict[str, Any] | None:
@@ -2190,6 +2299,8 @@ def judge_again(
     data, problems = write_record(run, run_dir)
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if args.strict and data["summary"]["skipped"]:
         return 3
     return 0
@@ -2216,7 +2327,9 @@ class Milestone:
     `zip` is the phase's checkpoint as a zip, and `files` the folder of the
     files the scenario collected after the phase. `sha256` and `commit` are
     what the source run recorded of the zip. `note` is the handoff note as
-    it stood after the phase, when a hinted phase had kept one.
+    it stood after the phase, when a hinted phase had kept one. `folder` is
+    the run folder that kept it: the source, or an earlier folder of its
+    chain.
     """
 
     phase: str
@@ -2226,6 +2339,7 @@ class Milestone:
     commit: str | None
     carried: list[dict[str, Any]]
     note: Path | None = None
+    folder: Path | None = None
 
 
 def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int, tuple[dict[str, Milestone], dict[str, str]]]:
@@ -2260,6 +2374,7 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
                     kept.get("commit"),
                     records[: at + 1],
                     source / kept["handoff"] if isinstance(kept.get("handoff"), str) else None,
+                    source,
                 )
         if records and not any("milestone" in r for r in records):
             last = records[-1]
@@ -2275,10 +2390,32 @@ def source_milestones(source: Path, results: dict[str, Any] | None) -> dict[int,
             else:
                 zip_file = source / "artifacts" / str(index) / A.ZIP
                 found[last["name"]] = Milestone(
-                    last["name"], zip_file, zip_file.parent / "workspace", archive.get("sha256"), archive["commit"], records
+                    last["name"],
+                    zip_file,
+                    zip_file.parent / "workspace",
+                    archive.get("sha256"),
+                    archive["commit"],
+                    records,
+                    folder=source,
                 )
         out[index] = (found, refused)
     return out
+
+
+def earlier_milestone(source: Path, index: int, phase: str) -> Milestone | None:
+    """The milestone of `phase` in repeat `index` that the nearest folder before `source` in its chain kept; None when none did.
+
+    A resume copies only the milestone it restored, and an earlier phase's
+    milestone stays in the folder that made it. The chain (`harness.chain`)
+    reaches that folder, so a resume of the chain's newest folder can
+    start after any phase before it.
+    """
+    folders, _ = CH.lineage(source)
+    for folder in reversed(folders[:-1]):
+        found, _ = source_milestones(folder, read_record(folder / "results.json")).get(index, ({}, {}))
+        if phase in found:
+            return found[phase]
+    return None
 
 
 def within(name: str) -> bool:
@@ -2444,7 +2581,9 @@ def command_resume(args: argparse.Namespace) -> int:
     `--runtime-config` names one, the target, and the subject's model are
     the source's. Every repeat the source recorded is resumed from its
     milestone after the phase, and one without a milestone that can be
-    restored is refused with its reason. The run's spend cap is the caps of
+    restored is refused with its reason. A phase's milestone is the one the
+    source kept, or, when it kept none, the one the nearest folder of its
+    chain kept (`earlier_milestone`). The run's spend cap is the caps of
     the phases it runs and the judges' budgets, over the repeats it resumes,
     unless `--max-spend-usd` names one. A resume after the last phase
     resumes the judges instead (`resume_judges`).
@@ -2521,10 +2660,13 @@ def command_resume(args: argparse.Namespace) -> int:
     refused: list[dict[str, Any]] = []
     for index, (found, why) in sorted(kept.items()):
         milestone = found.get(after)
+        if milestone is None and after not in why:
+            # The source kept none of that phase: the nearest folder of its chain that did.
+            milestone = earlier_milestone(source, index, after)
         if milestone is None:
             reason: str | None = why.get(after, f"the source run kept no milestone after {after}")
         else:
-            reason = milestone_refusal(milestone, source)
+            reason = milestone_refusal(milestone, milestone.folder or source)
         if milestone is not None and reason is None:
             resumed[index] = milestone
             continue
@@ -2563,7 +2705,13 @@ def command_resume(args: argparse.Namespace) -> int:
         "after": after,
         "checkout": checkout if isinstance(checkout, dict) else None,
         "milestones": [
-            {"repeat": i, "path": m.zip.relative_to(source).as_posix(), "sha256": m.sha256, "commit": m.commit}
+            {
+                "repeat": i,
+                "run_id": (m.folder or source).name,
+                "path": m.zip.relative_to(m.folder or source).as_posix(),
+                "sha256": m.sha256,
+                "commit": m.commit,
+            }
             for i, m in sorted(resumed.items())
         ],
         "repeats": sorted(resumed),

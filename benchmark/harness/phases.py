@@ -13,14 +13,19 @@ A phase is bounded by count and by spend. Claude Code holds the turn cap
 reads the stream as it is written and holds two bounds of its own:
 
 - the spend, priced from the usage of every assistant message the stream
-  carries. The price is the model's in the matrix. A cache read is priced
-  at a tenth of the input price, a cache write at 1.25 times it, or twice
-  it for a write the usage names as a one-hour write. A model the matrix
-  has no price for is priced at the matrix's dearest Anthropic model, so
-  the estimate errs high. A message is counted once however many lines
-  carry it, and the total is kept as it goes. The stream shows what the
-  session shows it, so a subagent the stream does not carry is held by
-  Claude Code's own cap alone;
+  carries, the helpers' included. The price is the model's in the matrix.
+  A cache read is priced at the model's cache-hit price where the matrix
+  names one, `cache_read`, else at a tenth of the input price; a cache
+  write at 1.25 times the input price, or twice it for a write the usage
+  names as a one-hour write. A model the matrix has no price for is
+  priced at the matrix's dearest Anthropic model, so the estimate errs
+  high. A message is counted once however many lines carry it, and the
+  total is kept as it goes. Each line carries its message's usage from
+  the start of the message: the input in full, the output as it stood
+  then. No line carries a message's final output count, so the estimate
+  leaves out nearly all of the output, and reads low by about what it
+  cost. A subagent the stream does not carry is held by Claude Code's
+  own cap alone;
 - the gate reruns. A gate run is a Bash call one of whose commands is the
   gate itself: the command's first words, after any variable settings,
   are the gate's words. `echo make check` and a commit message that names
@@ -49,6 +54,13 @@ such launch should happen, and one that does means the setting did not
 hold. What the call's input asks decides nothing: with background tasks
 off, a call whose `run_in_background` is true runs in the foreground,
 and its one result is the subagent's hand-back, which answers it.
+
+After a phase, the harness reads its stream for the tool calls that name
+the benchmark's run folders (`runs_named`): every finished tree of a
+scenario, the judges' gaps, and the review's report. A call names them
+when a string anywhere in its input holds `benchmark/runs` as whole path
+segments: a Read, Grep, or Glob path, a Bash command, a WebFetch URL, a
+subagent's prompt. A subagent's calls count as the main agent's do.
 
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
@@ -99,7 +111,8 @@ AGENT_TOOLS = frozenset({"Agent", "Task"})
 # How the result of an Agent call that started its subagent in the background opens: a notice, not the answer.
 LAUNCH_NOTICE = "Async agent launched"
 SUBTYPE_CAPS = {"error_max_turns": "turns", "error_max_budget_usd": "spend"}
-# The multiples of a model's input price a cache read and a cache write are billed at.
+# The multiples of a model's input price a cache read and a cache write are billed at; a
+# price that names its own `cache_read`, in US dollars per million tokens, is billed at that.
 CACHE_READ = 0.1
 CACHE_WRITE = 1.25
 CACHE_WRITE_1H = 2.0
@@ -167,6 +180,57 @@ def parse(line: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+# The benchmark's run folders as a path or a URL names them: `benchmark/runs`
+# as whole segments, so `swe-benchmark/runs` and `benchmark/runs-old` are not them.
+RUNS = re.compile(r"(?<![\w.-])benchmark/runs(?![\w.-])")
+# The most of a value a record keeps when it names a call.
+NAMED_CHARS = 300
+
+
+def runs_named(lines: list[str]) -> list[dict[str, str]]:
+    """Each tool call of a stream whose input names the benchmark's run folders, in order.
+
+    A call is its tool, its id, the key of its input that names them, and
+    that value, cut to `NAMED_CHARS`. The input is read as the message
+    shows it and as the line's `wire_tool_inputs` gives it, the call as
+    sent, which can hold more: a leading `cd` the message leaves out. A
+    call a stream carries in several lines counts once.
+    """
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for event in events(lines):
+        message = event.get("message")
+        if event.get("type") != "assistant" or not isinstance(message, dict):
+            continue
+        wire = event.get("wire_tool_inputs")
+        sent: dict[str, Any] = wire if isinstance(wire, dict) else {}
+        for block in _content(message):
+            if block.get("type") != "tool_use":
+                continue
+            ident = str(block.get("id") or "")
+            if ident and ident in seen:
+                continue
+            strings = [*_strings(block.get("input"), ""), *_strings(sent.get(ident), "")]
+            found = next((kv for kv in strings if RUNS.search(kv[1])), None)
+            if found is None:
+                continue
+            seen.add(ident)
+            key, value = found
+            out.append({"tool": str(block.get("name") or ""), "id": ident, "key": key, "value": value[:NAMED_CHARS]})
+    return out
+
+
+def _strings(value: Any, key: str) -> list[tuple[str, str]]:
+    """Every string in a tool call's input, each with its key: `command`, `edits.0.new_string`."""
+    if isinstance(value, str):
+        return [(key, value)]
+    if isinstance(value, dict):
+        return [s for k, v in value.items() for s in _strings(v, f"{key}.{k}" if key else str(k))]
+    if isinstance(value, list):
+        return [s for at, v in enumerate(value) for s in _strings(v, f"{key}.{at}" if key else str(at))]
+    return []
 
 
 def final_result(lines: list[str]) -> dict[str, Any] | None:
@@ -414,9 +478,10 @@ class Watch:
         split = usage.get("cache_creation")
         hour = _count(split.get("ephemeral_1h_input_tokens")) if isinstance(split, dict) else 0
         written = _count(usage.get("cache_creation_input_tokens"))
+        hit = price.get("cache_read", price["input"] * CACHE_READ)
         return (
             _count(usage.get("input_tokens")) * price["input"]
-            + _count(usage.get("cache_read_input_tokens")) * price["input"] * CACHE_READ
+            + _count(usage.get("cache_read_input_tokens")) * hit
             + max(written - hour, 0) * price["input"] * CACHE_WRITE
             + hour * price["input"] * CACHE_WRITE_1H
             + _count(usage.get("output_tokens")) * price["output"]

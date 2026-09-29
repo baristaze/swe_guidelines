@@ -1,4 +1,4 @@
-"""No key leaves a run folder: every file is scanned and redacted in place.
+"""No key and no provider account leaves a run folder: every file is scanned and redacted in place.
 
 A run folder holds what a subject printed and wrote, and a subject can
 print anything it can read. So before a run folder is shown or uploaded,
@@ -6,6 +6,20 @@ every file in it is scanned as bytes, frames included, and two things
 are replaced with `[redacted]`: the value of every provider key the
 harness knows by name, and anything shaped like a provider key, whether
 the harness holds that key or not.
+
+A judge's error can name the account behind its key, and every failed
+judge call is recorded: in the judge's transcript, and in `results.json`
+and `report.md` when the judge gives up. An id is not a key, but it
+names the account, and a run folder once checked in is public for good.
+So the scan also replaces, with `[redacted]`, the account ids and limit
+figures that three providers' errors name:
+- OpenAI's organization id (`org-...`), wherever it stands, and the
+  figures of the limit its 429 hit (`Limit ..., Used ..., Requested ...`);
+- Anthropic's organization id and the figure of its per-minute limit, as
+  its 429 names them (`the rate limit for your organization (<uuid>) of
+  N ... per minute`), and that figure where the 429 names no id;
+- xAI's team id, as its out-of-credit 429 names it (`Your team <uuid>
+  has either used all available credits ...`).
 
 A compressed file does not hold its text as bytes a scan could see. So
 the scan unpacks the forms the standard library reads: a zip, member by
@@ -83,6 +97,35 @@ KEY_SHAPES = re.compile(
     rb"|github_pat_[A-Za-z0-9_]{20,}"
     rb"|AKIA[0-9A-Z]{16}"
 )
+UUID = rb"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+FIGURE = rb"\d+(?:[.,]\d+)*"
+# What a judge's error says about the account behind its key, each with what
+# it becomes, in the order they are replaced.
+ACCOUNT = (
+    # OpenAI's organization id: `org-` and 24 letters and digits, taken from 20
+    # on. A word such as `org-level` is far shorter. No boundary is required
+    # before it: in JSON text, an id at the start of a line follows the `n` of `\n`.
+    (re.compile(rb"org-[A-Za-z0-9]{20,}"), REDACTED),
+    # The figures of the limit OpenAI's 429 hit: "Limit 30000, Used 28172, Requested 4096".
+    (
+        re.compile(rb"Limit " + FIGURE + rb", Used " + FIGURE + rb", Requested " + FIGURE),
+        b"Limit " + REDACTED + b", Used " + REDACTED + b", Requested " + REDACTED,
+    ),
+    # Anthropic's organization id, in the parentheses its per-minute 429 puts
+    # it in: "the rate limit for your organization (<uuid>) of 80,000 output
+    # tokens per minute".
+    (re.compile(rb"(?<=organization \()" + UUID + rb"(?=\))"), REDACTED),
+    # The figure of that limit, after the id or where the 429 names none.
+    (
+        re.compile(
+            rb"(rate limit for your organization(?: \([^()\s]{1,40}\))? of )" + FIGURE + rb"(?= [A-Za-z ]{1,40}? per minute)"
+        ),
+        rb"\1" + REDACTED,
+    ),
+    # xAI's team id, after the word its out-of-credit 429 puts it after: "Your
+    # team <uuid> has either used all available credits".
+    (re.compile(rb"(?<=[Tt]eam )" + UUID), REDACTED),
+)
 
 
 def key_values(env: dict[str, str] | None = None) -> set[str]:
@@ -93,7 +136,12 @@ def key_values(env: dict[str, str] | None = None) -> set[str]:
 
 
 def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
-    """The data with every value and every key shape replaced, and how many were."""
+    """The data with every value, key shape, account id, and limit's figures replaced, and how many were.
+
+    No placeholder holds a quote or a backslash, so a JSON file stays
+    JSON, and none has a shape the scan replaces, so a second pass
+    changes nothing.
+    """
     count = 0
     # The longest value first, so a value inside another never leaves a tail.
     for value in sorted(values, key=len, reverse=True):
@@ -101,7 +149,11 @@ def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
         count += data.count(raw)
         data = data.replace(raw, REDACTED)
     data, shaped = KEY_SHAPES.subn(REDACTED, data)
-    return data, count + shaped
+    count += shaped
+    for pattern, placeholder in ACCOUNT:
+        data, found = pattern.subn(placeholder, data)
+        count += found
+    return data, count
 
 
 def _text(value: str, values: set[str]) -> tuple[str, int]:
@@ -264,7 +316,7 @@ UNPACK = {"zip": _zip, "tar": _tar, "gzip": _stream("gzip"), "bzip2": _stream("b
 
 
 def redact_file(path: str | Path, values: set[str]) -> tuple[int, list[str]]:
-    """Redact a file in place, as `redact_blob` does; return how many keys it held and where."""
+    """Redact a file in place, as `redact_blob` does; return how many strings it replaced and where."""
     path = Path(path)
     clean, count, places = redact_blob(path.read_bytes(), values)
     if count:
@@ -275,12 +327,16 @@ def redact_file(path: str | Path, values: set[str]) -> tuple[int, list[str]]:
 
 
 def keys_in(data: bytes) -> list[str]:
-    """Where bytes hold a string shaped like a key, or a part the scan cannot read, as `redact_blob` names them."""
+    """Where bytes hold what the scan replaces, or a part it cannot read, as `redact_blob` names them.
+
+    With no key value given, the scan replaces a string shaped like a key,
+    and the account ids and limit figures a provider's error names.
+    """
     return redact_blob(data, set())[2]
 
 
 def redact_folder(folder: str | Path, values: set[str], failed: dict[Path, str] | None = None) -> dict[Path, int]:
-    """Redact every file under the folder in place; return the files changed and how many keys each held.
+    """Redact every file under the folder in place; return the files changed and how many strings each had replaced.
 
     A symlink is not followed: it could point out of the folder, and the
     upload does not follow it either. A zip that changed has its manifest

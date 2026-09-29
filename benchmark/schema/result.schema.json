@@ -134,7 +134,7 @@
           "type": ["object", "null"]
         },
         "milestones": {
-          "description": "For a resumed run: each milestone it restored, by repeat, with its path in the source's folder, its SHA-256, and its commit.",
+          "description": "For a resumed run: each milestone it restored, by repeat, with the run folder that kept it (the source, or the nearest folder of its chain that kept that phase's), its path in that folder, its SHA-256, and its commit.",
           "type": "array",
           "items": {
             "type": "object",
@@ -142,6 +142,7 @@
             "additionalProperties": false,
             "properties": {
               "repeat": { "type": "integer", "minimum": 0 },
+              "run_id": { "type": "string", "minLength": 1 },
               "path": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
               "commit": { "type": ["string", "null"] }
@@ -196,7 +197,7 @@
       }
     },
     "chain": {
-      "description": "For a run that continues another, by resuming it or judging its output again: the chain it ends. Its run folders from the first, each with its start and what it spent; each stage a folder ran, per repeat (a phase, a subject's one session, or the judges), with that folder, its status, its cost, and its time; and the folders' total. The total is a lower bound, at_least, when a folder recorded no spend, a model had no price, or the chain breaks before its first folder, which broken then says.",
+      "description": "For a run that continues another, by resuming it or judging its output again: the chain it ends. Its run folders from the first, each with its start and what it spent; each stage a folder ran, per repeat (a phase, a subject's one session, or the judges), with that folder, its status, its cost, and its time; and the folders' total. The total is a lower bound, at_least, when a folder recorded no spend, a model had no price, a folder counted a phase at the harness's estimate (its spend.estimated), or the chain breaks before its first folder, which broken then says.",
       "type": "object",
       "required": ["folders", "stages", "total_usd", "unpriced", "at_least"],
       "additionalProperties": false,
@@ -248,7 +249,12 @@
         "judges": { "type": "object", "additionalProperties": { "$ref": "#/$defs/spent" } },
         "subject": { "$ref": "#/$defs/spent" },
         "total_usd": { "type": "number", "minimum": 0 },
-        "unpriced": { "type": "array", "items": { "type": "string" } }
+        "unpriced": { "type": "array", "items": { "type": "string" } },
+        "estimated": {
+          "description": "Each phase whose session wrote no result, as repeat and phase: the subject's cost counts it at the harness's estimate, a lower bound. Absent when there is none.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "subject": {
@@ -336,7 +342,7 @@
           },
           "artifact_paths": { "type": "array", "items": { "type": "string" } },
           "phases": {
-            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran. In a run that judges another run's output again, the phases the source's repeat ran, each with its name, session, status, and cap, and none of its spend.",
+            "description": "A skill subject's sessions, in order: how each ended, the bound that ended it, its turns, and what it spent. Only the phases that ran. In a run that judges another run's output again, the phases the source's repeat ran, each with its name, session, status, cap, and read_runs, and none of its spend.",
             "type": "array",
             "items": { "$ref": "#/$defs/phase" }
           },
@@ -355,6 +361,11 @@
               "reason": { "type": "string", "enum": ["no_tree", "incomplete"] },
               "not_run": { "type": "array", "items": { "type": "string" } }
             }
+          },
+          "read_runs": {
+            "description": "The mark of a repeat whose subject named the benchmark's run folders: each tool call of its phases, a carried phase's too, whose input named them, with its phase. A run with a marked repeat exits 10 and is never checked in.",
+            "type": "array",
+            "items": { "$ref": "#/$defs/read_call" }
           },
           "archive": {
             "description": "The output's last commit as a zip: its path and its manifest's in the run folder, its SHA-256, its size, how many files it holds, and the commit.",
@@ -684,6 +695,10 @@
           "type": "number",
           "minimum": 0
         },
+        "cost_lower_bound": {
+          "description": "The session wrote no result, so its cost is estimated_usd, a lower bound: the estimate counts each message's output as the message starts.",
+          "const": true
+        },
         "model_cost_usd": {
           "description": "Each model the session used and its cost in US dollars, from Claude Code's modelUsage; for a resumed session, what each added. Absent when the result reports none.",
           "type": "object",
@@ -737,7 +752,25 @@
             "additionalProperties": false,
             "properties": { "id": { "type": "string" }, "description": { "type": "string" } }
           }
+        },
+        "read_runs": {
+          "description": "The tool calls of the session whose input named the benchmark's run folders.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/read_call" }
         }
+      }
+    },
+    "read_call": {
+      "description": "A tool call whose input named the benchmark's run folders: its tool, its id, the key of its input that named them, and that value, cut to 300 characters; in a repeat's mark, its phase too.",
+      "type": "object",
+      "required": ["tool", "id", "key", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "phase": { "type": "string" },
+        "tool": { "type": "string" },
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "value": { "type": "string" }
       }
     },
     "content": {

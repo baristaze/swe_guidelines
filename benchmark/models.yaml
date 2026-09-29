@@ -3,6 +3,11 @@
 # effort level, and each model's list price in US dollars per million input
 # and output tokens.
 #
+# A model whose cache hits are not billed at a tenth of its input price
+# names its own price for them, `cache_read`, per million tokens. The
+# harness prices a skill subject's cache reads with it; a judgement's
+# input is priced as uncached, cache or not.
+#
 # The prices are the standard tier's, read from each provider's pricing
 # page on 2026-09-27, and below each provider's long-context threshold
 # (200k prompt tokens for Gemini and xAI, 272k for OpenAI), where every
@@ -23,7 +28,7 @@ anthropic:
     medium: medium
     high: high
   prices:
-    claude-opus-5-5: {input: 4, output: 20}
+    claude-opus-5-5: {input: 4, output: 20, cache_read: 0.2}
     claude-opus-5: {input: 5, output: 25}
     claude-sonnet-5: {input: 2, output: 10}
 

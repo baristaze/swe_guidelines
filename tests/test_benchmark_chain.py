@@ -142,7 +142,7 @@ def test_the_folders_that_ran_from_a_folder_are_those_whose_results_name_it_and_
     assert CH.fork(made[JUDGED]) is None
     assert CH.fork(made[FIRST]) == (
         f"{FIRST} is already the source of {RESUMED}, beside it. A chain has one line, so a run resumes or is judged "
-        f"again from the chain's newest folder, {JUDGED}, which carries every milestone before it"
+        f"again from the chain's newest folder, {JUDGED}, which reaches every milestone before it"
     )
 
 
@@ -213,6 +213,12 @@ def test_a_judge_again_ran_no_subject_and_judges_that_all_missed_failed():
 def test_a_chain_s_cost_reads_as_its_row_s_cell(spent, text):
     records = [(str(i), {} if s is None else {"spend": {"total_usd": s, "unpriced": []}}) for i, s in enumerate(spent)]
     assert CH.cost_text(CH.chain(records)) == text
+
+
+def test_a_folder_that_counted_a_phase_at_its_estimate_makes_the_total_a_lower_bound():
+    record = {"spend": {"total_usd": 2.0, "unpriced": [], "estimated": ["repeat 0, phase mvp"]}}
+    found = CH.chain([("one", {"spend": {"total_usd": 1.0, "unpriced": []}}), ("two", record)])
+    assert found["total_usd"] == 3.0 and found["at_least"] is True and CH.cost_text(found) == "at least $3.00"
 
 
 def test_a_model_with_no_price_makes_the_total_a_lower_bound():

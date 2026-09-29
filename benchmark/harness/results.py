@@ -89,7 +89,22 @@ class RepeatResult:
         for key in ("phases", "archive", "gates", "cut_short", "ended_early"):
             if getattr(self, key) is not None:
                 out[key] = getattr(self, key)
+        if read := self.read_runs():
+            out["read_runs"] = read
         return out
+
+    def read_runs(self) -> list[dict[str, Any]]:
+        """The repeat's mark: each tool call of its phases, a carried phase's too, that named the benchmark's run folders.
+
+        Each call carries its phase. A repeat with one had an earlier run's
+        answers in its subject's reach, and its run is never checked in.
+        """
+        return [
+            {"phase": str(phase.get("name")), **call}
+            for phase in self.phases or []
+            for call in phase.get("read_runs") or []
+            if isinstance(call, dict)
+        ]
 
 
 @dataclass
@@ -352,7 +367,9 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
     paid for by the run that made it, so it counts here for nothing. A call whose model has
     no price adds its tokens and is named under `unpriced`, so `cost_usd` is
     what the priced calls cost, and a total with anything unpriced is a
-    lower bound, never a guess.
+    lower bound, never a guess. A phase whose session wrote no result is
+    counted at the harness's estimate, which reads low, and is named under
+    `estimated`, so a total with any is a lower bound too.
     """
     judges: dict[str, dict[str, Any]] = {}
     subject = _total()
@@ -365,12 +382,21 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
     everything = [*judges.values(), subject]
     for total in everything:
         total["cost_usd"] = round(total["cost_usd"], 4)
-    return {
+    out: dict[str, Any] = {
         "judges": dict(sorted(judges.items())),
         "subject": subject,
         "total_usd": round(sum(t["cost_usd"] for t in everything), 4),
         "unpriced": sorted({m for t in everything for m in t["unpriced"]}),
     }
+    estimated = [
+        f"repeat {repeat.index}, phase {phase['name']}"
+        for repeat in repeats
+        for phase in repeat.phases or []
+        if phase.get("cost_lower_bound") and not phase.get("carried")
+    ]
+    if estimated:
+        out["estimated"] = estimated
+    return out
 
 
 def findings_by_severity(repeats: list[RepeatResult]) -> list[dict[str, Any]]:
@@ -442,21 +468,30 @@ def spend_lines(spent: dict[str, Any]) -> list[str]:
         _row(["---"] * 5),
     ]
     rows = [(f"judge `{p}`", t) for p, t in spent["judges"].items()] + [("subject", spent["subject"])]
+    estimated = spent.get("estimated") or []
     for who, t in rows:
-        cost = _usd(t["cost_usd"]) + (" + unpriced" if t["unpriced"] else "")
+        cost = ("at least " if who == "subject" and estimated else "") + _usd(t["cost_usd"])
+        cost += " + unpriced" if t["unpriced"] else ""
         lines.append(_row([who, f"{t['input_tokens']:,}", f"{t['output_tokens']:,}", f"{t['reasoning_tokens']:,}", cost]))
     total = _usd(spent["total_usd"])
+    why: list[str] = []
     if spent["unpriced"]:
         unpriced = ", ".join(f"`{m}`" for m in spent["unpriced"])
-        lines += ["", f"Total: at least {total}. No price for {unpriced}, so its tokens are counted and its cost is not.", ""]
-    else:
-        lines += ["", f"Total: {total}.", ""]
+        why.append(f"No price for {unpriced}, so its tokens are counted and its cost is not.")
+    if estimated:
+        why.append(
+            f"No result from {', '.join(estimated)}, so its cost is the harness's estimate, which counts each "
+            "message's output as the message starts and reads low."
+        )
+    lines += ["", f"Total: at least {total}. {' '.join(why)}" if why else f"Total: {total}.", ""]
     return lines
 
 
 def _cost(phase: dict[str, Any]) -> str:
     if phase.get("cost_usd") is not None:
         return _usd(phase["cost_usd"])
+    if phase.get("cost_lower_bound"):
+        return f"at least {_usd(phase.get('estimated_usd') or 0.0)} (estimated)"
     return f"{_usd(phase['estimated_usd'])} (estimated)" if phase.get("estimated_usd") else "-"
 
 
@@ -652,6 +687,24 @@ def rehearsal_lines(record: dict[str, Any]) -> list[str]:
     return [*lines, ""]
 
 
+def read_runs_lines(repeats: list[RepeatResult]) -> list[str]:
+    """The report's section on the marked repeats: each tool call whose input named the benchmark's run folders."""
+    calls = [(repeat.index, call) for repeat in repeats for call in repeat.read_runs()]
+    if not calls:
+        return []
+    lines = [
+        "## Marked",
+        "",
+        "A subject named the benchmark's run folders in a tool call, so an earlier run's answers were in its",
+        "reach. This run is never checked in, and it exits 10.",
+        "",
+    ]
+    for index, call in calls:
+        value = " ".join(str(call["value"]).split())
+        lines.append(f"- repeat {index}, phase `{call['phase']}`: `{call['tool']}` with `{call['key']}` `{value}`")
+    return [*lines, ""]
+
+
 def source_lines(source: dict[str, Any]) -> list[str]:
     """The opening lines of a run that started from another: that run, what this one took of it, and what was refused.
 
@@ -668,6 +721,13 @@ def source_lines(source: dict[str, Any]) -> list[str]:
         commit = (source.get("checkout") or {}).get("commit")
         if commit:
             lines += [f"That run's checkout, `{commit}`, ran the carried phases; this run's checkout ran the rest.", ""]
+        for kept in source.get("milestones", []):
+            if kept.get("run_id") not in (None, source["run_id"]):
+                lines += [
+                    f"Repeat {kept['repeat']} started from the milestone that `{kept['run_id']}` kept, the nearest folder "
+                    f"of that run's chain that kept it: `{kept['path']}`, sha256 `{kept['sha256']}`.",
+                    "",
+                ]
         verb, covered = "resumed", "their phases' caps and their judges' budgets"
     elif "judges" in source:
         lines = [
@@ -760,6 +820,7 @@ def report_text(run: RunResult) -> str:
         lines += [f"Optional groups taken: {taken}." if groups else "Optional groups taken: none.", ""]
     if run.rehearsal:
         lines += rehearsal_lines(run.rehearsal)
+    lines += read_runs_lines(run.repeats)
     if run.source:
         lines += source_lines(run.source)
     lines += ["## Scores", ""]

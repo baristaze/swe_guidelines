@@ -614,3 +614,11 @@ def test_a_gap_in_the_report_reads_as_sentences_with_its_lens_and_its_fix():
     )
     assert f"{expected} Fix: Add one." in text
     assert "### `reference` (weight 0.6)\n\nNo judge named a gap." in text
+
+
+def test_a_repeat_is_marked_by_a_call_of_any_of_its_phases_a_carried_one_too():
+    read = {"tool": "Bash", "id": "toolu_1", "key": "command", "value": "ls benchmark/runs"}
+    phases: list[dict] = [{"name": "scaffold", "carried": True, "read_runs": [read]}, {"name": "review"}]
+    marked = R.RepeatResult(index=0, exit_status={"code": 0}, phases=phases)
+    assert marked.as_dict()["read_runs"] == [{"phase": "scaffold", **read}]
+    assert "read_runs" not in R.RepeatResult(index=0, exit_status={"code": 0}, phases=[{"name": "review"}]).as_dict()
