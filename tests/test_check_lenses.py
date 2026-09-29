@@ -1,5 +1,7 @@
 """scripts/check_lenses.py: lens format and citations."""
 
+from pathlib import Path
+
 import pytest
 
 
@@ -410,3 +412,19 @@ def test_a_word_under_a_heading_that_is_no_tag_fails(repo, lenses, capsys):
     tag(repo, "### Tables", "preferred")
     assert lenses.main() == 1
     assert "`preferred` is no tag; a tag is one of core, default, optional, style" in capsys.readouterr().out
+
+
+REAL_BASE = Path(__file__).resolve().parent.parent / SCAFFOLD_BASE
+
+
+def test_a_rename_in_the_real_scaffold_base_module_fails_the_lens_that_quotes_it(repo, lenses, capsys):
+    """The scaffold's own `base.py`, linked from the section a lens cites, holds `PROVENANCE_FIELDS` for it."""
+    real = REAL_BASE.read_text(encoding="utf-8")
+    assert "PROVENANCE_FIELDS = frozenset(" in real
+    repo.write(SCAFFOLD_BASE, real)
+    repo.edit("architecture.md", "One table per entity.\n", f"One table per entity ([`base.py`]({SCAFFOLD_BASE})).\n")
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** No caller writes `PROVENANCE_FIELDS`.")
+    assert lenses.main() == 0, capsys.readouterr().out
+    repo.write(SCAFFOLD_BASE, real.replace("PROVENANCE_FIELDS", "BIRTH_FIELDS"))
+    assert lenses.main() == 1
+    assert "OM-02 quotes `PROVENANCE_FIELDS`, which The Storage Layer does not hold" in capsys.readouterr().out
