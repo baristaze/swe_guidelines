@@ -161,10 +161,25 @@ with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
 
-An existing tree copies the scaffold's `.agents/skills/`, links
-`.claude/skills` to it (`ln -s ../.agents/skills .claude/skills`), and
-renames `acme` in them to its own name, in each form `scaffold/new.py`
-uses.
+An existing tree copies the scaffold's `.agents/skills/` into its own
+and renames `acme` in them to its own name, in each form
+`scaffold/new.py` uses. Then, from the tree's root, it moves any skill
+of its own from `.claude/skills/` into `.agents/skills/`, and makes
+`.claude/skills` a link to that folder:
+
+```bash
+if [ -d .claude/skills ] && [ ! -L .claude/skills ]; then
+  for s in .claude/skills/*/; do [ -e "$s" ] && mv -n "$s" .agents/skills/; done
+  rmdir .claude/skills
+fi
+[ -e .claude/skills ] || { mkdir -p .claude && ln -s ../.agents/skills .claude/skills; }
+```
+
+A skill of the tree's own that has a scaffold skill's name stays in
+`.claude/skills/`, and so does a file that is not a skill's folder.
+`rmdir` then says the folder is not empty, and no link is made until
+it is.
+
 The skills assume the roles, the profiles, the env file, the
 `<root>-ops` binary, the tools under `ops/audit/`, and the operator
 plane's read routes that the scaffold carries. A tree without them adds
