@@ -2,8 +2,6 @@
 
 import pytest
 
-from conftest import SCAFFOLD
-
 
 @pytest.fixture
 def skills(repo):
@@ -553,9 +551,7 @@ def test_the_scaffolds_shared_text_is_no_skill_and_is_held_to_the_bound(repo, sk
     assert "0 scaffold skills" in capsys.readouterr().out
     repo.write(f"{COPIED}/_shared/ops-preamble.md", "# The preamble\n\n1. Run `make check` and fix what it reports.\n")
     assert skills.main() == 1
-    assert (
-        f"{COPIED}/_shared/ops-preamble.md: a step fixes and runs again with no count bound" in capsys.readouterr().out
-    )
+    assert f"{COPIED}/_shared/ops-preamble.md: a step fixes and runs again with no count bound" in capsys.readouterr().out
 
 
 def test_a_scaffold_skill_folder_with_no_skill_fails(repo, skills, capsys):

@@ -436,9 +436,7 @@ def check_shape(value: str, path: Path, ln: int, errors: list[str]) -> None:
     spans = CODE_SPAN.findall(value)
     rest = CODE_SPAN.sub("", value).strip(" ,.")
     if not 1 <= len(spans) <= MAX_SHAPES or rest not in ("", "and"):
-        errors.append(
-            f"{path.name}:{ln}: Shape reads '{value}'; it names one or two paths under {SHAPE_ROOT}, each in backticks"
-        )
+        errors.append(f"{path.name}:{ln}: Shape reads '{value}'; it names one or two paths under {SHAPE_ROOT}, each in backticks")
         return
     for span in spans:
         target = (ROOT / span).resolve()

@@ -198,7 +198,7 @@ def test_a_shape_names_scaffold_files_that_exist(repo, lenses, capsys):
 @pytest.mark.parametrize(
     "value, problem",
     [
-        ("`scaffold/acme_root/om/src/acme/om/gone.py`", "names `scaffold/acme_root/om/src/acme/om/gone.py`, which does not exist"),
+        ("`scaffold/acme_root/om/gone.py`", "names `scaffold/acme_root/om/gone.py`, which does not exist"),
         ("`architecture.md`", "names `architecture.md`, which is not under scaffold/acme_root/"),
         ("`scaffold/acme_root/../../architecture.md`", "which is not under scaffold/acme_root/"),
         (f"`{SHAPE}`, `{SHAPE}`, `{SHAPE}`", "it names one or two paths under scaffold/acme_root/, each in backticks"),
