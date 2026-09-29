@@ -173,6 +173,26 @@ def test_a_request_stage_without_its_ids_is_ctx_02(tmp_path):
     assert sorted(messages) == ["RequestContext declares no app", "no context class declares credential_id"]
 
 
+def test_stages_declared_outside_the_stage_module_are_ctx_02_and_fail_the_run(tmp_path):
+    elsewhere = f"{OM}/stages.py"
+    write_project(tmp_path, {elsewhere: CONTEXT})
+    code, report = check_json(tmp_path)
+    assert code == 1
+    stray = [f for f in report["findings"] if f["rule"] == "CTX-02"]
+    assert [(f["path"], f["message"].partition(" ")[0]) for f in stray] == [
+        (elsewhere, "RequestContext"),
+        (elsewhere, "IdentityContext"),
+        (elsewhere, "TenantContext"),
+        (elsewhere, "OperatorContext"),
+    ]
+    assert all(
+        f["message"].endswith("is declared outside om/context.py, the stage module, so no stage rule judges it") for f in stray
+    )
+    write_project(tmp_path / "base")  # declares no stage
+    code, report = check_json(tmp_path / "base", "--rule", "CTX-02")
+    assert (code, report["findings"]) == (0, [])
+
+
 # --- CTX-05
 
 

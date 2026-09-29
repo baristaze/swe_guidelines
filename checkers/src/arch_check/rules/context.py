@@ -3,7 +3,9 @@
 The stages are the classes the guideline names, `RequestContext`,
 `IdentityContext`, `TenantContext`, and `OperatorContext`, declared with the
 scopes (`*Scope`) in the stage module `<pkg>.om.context`. A rule that
-reads the stage module finds nothing to judge in a project without one.
+reads the stage module finds nothing to judge in a project without one,
+and CTX-02 refuses a stage declared anywhere else under `<pkg>.om`, so a
+tree whose stages sit elsewhere is never reported clean.
 The operations are the public methods of `*ManagerInterface`,
 `*ServiceInterface`, and `*HandlerInterface` classes, and the storage
 signatures those of `*StorageInterface` classes.
@@ -16,10 +18,22 @@ from collections.abc import Iterator
 
 from arch_check.config import glob_match
 from arch_check.model import Violation
-from arch_check.project import Function, Project, SourceFile, base_names, classes, dotted, is_under, last, methods
+from arch_check.project import (
+    Function,
+    Project,
+    SourceFile,
+    base_names,
+    classes,
+    dotted,
+    is_under,
+    last,
+    methods,
+    top_classes,
+)
 from arch_check.registry import rule
 from arch_check.rules._contracts_util import (
     REQUEST_STAGE,
+    STAGE_MODULE,
     STAGES,
     arguments,
     body_without_docstring,
@@ -183,8 +197,18 @@ def context_carries_ids(project: Project) -> Iterator[Violation]:
     (`from acme.om.base import X` or `from acme.om import base`). No field of a class there
     is typed with a class defined under `<pkg>.om.<ns>.types`.
     `RequestContext` declares `request_id` and `app`, and a class of the
-    module declares `credential_id`. Identity passed beside the context
-    is judged."""
+    module declares `credential_id`. No class named for a stage is
+    declared under `<pkg>.om` outside the stage module, since the stage
+    rules read only that module. Identity passed beside the context is
+    judged."""
+    home = f"{project.package}.{STAGE_MODULE}"
+    for f, t in project.trees(project.sub("om")):
+        if not is_under(f.module, home):
+            for cls in top_classes(t):
+                if cls.name in STAGES:
+                    yield Violation.at(
+                        f.rel, cls, f"{cls.name} is declared outside om/context.py, the stage module, so no stage rule judges it"
+                    )
     file = stage_module(project)
     tree = project.tree(file) if file else None
     if file is None or tree is None:
