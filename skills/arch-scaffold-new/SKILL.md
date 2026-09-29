@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-new
 description: "Start a new system in the guideline's shape: pick its name, copy the scaffold's domain-agnostic core under it, run its gates, record the product's first decisions, then add the first namespace."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*), Bash(docker info:*)
 ---
 
 # arch-scaffold-new
@@ -27,20 +27,34 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 
 - `<name>` is the project's code name, its Python package, and its
   folder at once: one or two snake_case words, never a standard-library
-  module, a Python keyword, or `acme`. With no name given, take it from
-  the product's own name in the spec or the description, in at most two
-  words, leaving out a word any product could carry, such as platform,
-  app, or system (`Free Journalism Platform` gives `free_journalism`).
-  Ask only when the product names nothing.
+  module, a Python keyword, or `acme`, and no longer than the bound
+  `new.py` holds it to, `MAX_NAME_LENGTH` (17 characters). The bound
+  keeps `<name-kebab>-production-api`, the API's target group, within
+  the 32 characters AWS allows, so the name survives the first cloud
+  deploy; `new.py` refuses a longer name and says the bound. With no
+  name given, take it from the product's own name in the spec or the
+  description, in at most two words, leaving out a word any product
+  could carry, such as platform, app, or system (`Free Journalism
+  Platform` gives `free_journalism`). When that name passes the bound,
+  take a shorter one the product gives: its short name, one of its two
+  words, or an abbreviation of them. Ask only when the product names
+  nothing.
 - The folder is `<name>` in the current directory. It must not exist,
-  or must be empty. Refuse when the current directory is inside a git
-  repository (`git rev-parse --show-toplevel` answers there), since the
-  copy starts a repository of its own.
-- With no `--first`, the first namespace is the noun the product's
-  first loop acts on, in the plural, with no entity.
-- `--codeowners` names the owners `.github/CODEOWNERS` lists. Without
-  it, the file keeps the copy's placeholder team, and the output says
-  so.
+  or must be empty: an empty folder of that name is no collision, and
+  the copy goes into it. Refuse when the current directory is inside a
+  git repository (`git rev-parse --show-toplevel` answers there), since
+  the copy starts a repository of its own.
+- A namespace always arrives with an entity, since
+  `om/tests/unit/test_interfaces.py` refuses an interface that declares
+  no method. With no `--first`, the first namespace is the noun the
+  product's first loop acts on, in the plural, and its entity is the
+  first that loop names, with the fields the product gives it. With
+  `--first` and no entity, the entity is that namespace's first in the
+  product.
+- `--codeowners` names the owners `.github/CODEOWNERS` lists, comma
+  separated, each an account or an `org/team`. Without it, the file
+  keeps the copy's placeholder team, and the output names the file as
+  one for the person to set.
 
 ## Created
 
@@ -48,14 +62,14 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 |------|-------|
 | `<name>/` | the scaffold, copied by `new.py` under the name in each of its forms, pinned at this plugin's release, in a new git repository with nothing staged |
 | `<name>/docs/adr/<n>-*.md` | the product's first decisions, numbered from one above the highest ADR there |
-| the first namespace | as `arch-scaffold-namespace` creates it |
+| the first namespace and its entity | as `arch-scaffold-namespace` and `arch-scaffold-entity` create them |
 
 ## Changed
 
 | File | Change |
 |------|--------|
 | `README.md`, `llms.txt` | the opening and the summary say what the product is, in place of the core's description |
-| `.github/CODEOWNERS` (with `--codeowners`) | the owners |
+| `.github/CODEOWNERS` (with `--codeowners`) | on every rule line, the owners in place of the placeholder team |
 
 ## Procedure
 
@@ -65,7 +79,17 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    before this skill writes anything, so a gate that fails here is a
    defect of the scaffold: stop with the cause pre-existing, name the
    gate, and change nothing.
-3. Record the product's first decisions, one ADR each, in the shape of
+3. Tell whether Docker runs: `docker info` exits 0 when it does. When
+   it runs, settle the local stack's host ports before any stack
+   starts. They are knobs, `<NAME>_<SERVICE>_PORT`, and `.env.example`
+   lists them with the URL knobs that name them. Check each with
+   `lsof -i :<port>`. For each that is taken, set a free one in `.env`,
+   with every URL knob that names it, and never stop what holds it.
+   When Docker does not run, the database targets of this skill and of
+   the skills it follows (`make infra-up`, `make migrate`,
+   `make migrate-check`, `make test-integration`) are skipped, and the
+   output names each one skipped; every other gate runs.
+4. Record the product's first decisions, one ADR each, in the shape of
    the copy's own ADRs:
    - the product on the core: what an org, a member, and an operator
      are in the product, which of the core's pieces it uses (files,
@@ -77,25 +101,32 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
      namespace that needs them.
 
    Then write the opening of `README.md` and the summary of `llms.txt`.
-4. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
-   follow it with the first namespace, and its entity when one is given.
-5. Run `make openapi` when a route was added, then `make check`. When
-   Docker runs, the integration suite follows, as CI runs it on a copy.
-   The local stack's host ports are knobs, `<NAME>_<SERVICE>_PORT`, and
-   `.env.example` lists them with the URL knobs that name them. Check
-   each with `lsof -i :<port>`. For each that is taken, set a free one
-   in `.env`, with every URL knob that names it, and never stop what
-   holds it. Then `make infra-up`, `make migrate`, `make migrate-check`,
-   and `make test-integration`.
+   With `--codeowners`, write the owners into `.github/CODEOWNERS`: on
+   every line that is not a comment, the owners, each with a leading
+   `@` (`acme` gives `@acme`, `acme/infra` gives `@acme/infra`) and
+   separated by a space, take the place of the copy's placeholder team.
+   The paths stay as they are.
+5. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
+   follow it with the first namespace, its entity, and the entity's
+   fields.
+6. Run `make openapi`, since the entity added routes, then `make check`.
+   When Docker runs, the integration suite follows, as CI runs it on a
+   copy: `make infra-up`, `make migrate`, `make migrate-check`, and
+   `make test-integration`.
 
-A gate of steps 4 and 5 that fails on what this skill wrote is fixed,
+A gate of steps 5 and 6 that fails on what this skill wrote is fixed,
 and its step runs again from its first command, as After writing
 states: the first run plus at most 3 reruns.
 
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
-with the name and where it came from first, the ADRs by number after
-the files, and then `The tree is uncommitted, and the first commit is
-the person's.` A `Stopped:` line, when there is one, still closes the
-output.
+with these differences. The name and where it came from come first.
+The copy is one line, the one `new.py` printed (its file count, the
+folder, the name, and the pin), in place of its files: nothing is
+committed, so `git status` names every copied file. After it, each file
+this skill and the skills it followed wrote or changed, one per line,
+as they wrote them; then the ADRs by number, and the database gates
+skipped when Docker did not run. Then `The tree is uncommitted, and the
+first commit is the person's.` A `Stopped:` line, when there is one,
+still closes the output.

@@ -29,7 +29,7 @@
         "period": 60,
         "yAxis": { "left": { "min": 0 } },
         "metrics": [
-          [ { "expression": "SEARCH('{Acme,OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "rps" } ]
+          [ { "expression": "SEARCH('{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "rps" } ]
         ]
       }
     },
@@ -82,7 +82,7 @@
         "period": 60,
         "yAxis": { "left": { "min": 0 } },
         "metrics": [
-          [ { "expression": "SEARCH('{Acme,OTelLib,environment,outcome,service,subsystem} MetricName=\"acme_outcomes_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "outcomes" } ]
+          [ { "expression": "SEARCH('{\"Acme\",OTelLib,environment,outcome,service,subsystem} MetricName=\"acme_outcomes_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "outcomes" } ]
         ]
       }
     },

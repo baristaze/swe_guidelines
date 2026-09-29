@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -186,3 +187,61 @@ def test_a_copy_of_the_scaffold_names_the_placeholder_nowhere(tmp_path, name):
         ):
             left.append(rel)
     assert left == []
+
+
+def test_a_two_word_copy_quotes_its_namespace_in_every_dashboard_search(tmp_path):
+    """CloudWatch's SEARCH needs a namespace with a space in double quotes, so
+    a two-word product's request and outcome widgets draw on its first deploy."""
+    dest = tmp_path / "free_press"
+    assert new.main([str(dest)]) == 0
+    dashboard = dest / "deployment" / "terraform" / "modules" / "dashboard"
+    template = (dashboard / "dashboard.json.tftpl").read_text(encoding="utf-8")
+    module = (dashboard / "main.tf").read_text(encoding="utf-8")
+    quoted = "SEARCH('{" + '\\"Free Press\\"' + ",OTelLib,"
+    assert template.count(quoted) == 2
+    assert module.count(quoted) == 1
+    assert "SEARCH('{Free" not in template + module
+
+
+def test_a_name_past_the_bound_is_refused_and_the_refusal_says_the_bound():
+    assert new.MAX_NAME_LENGTH == 17
+    assert new.refusal("independent_press") is None  # exactly at the bound
+    refused = new.refusal("independent_presss")
+    assert refused is not None and "17 characters" in refused
+    assert "independent-presss-production-api" in refused and "32" in refused
+
+
+def test_the_bound_is_the_tightest_name_the_scaffold_builds():
+    """The target group is `<name>-<environment>-api`, the environments are
+    staging and production, and AWS holds a target group to 32 characters."""
+    terraform = SCAFFOLD / "acme_root" / "deployment" / "terraform"
+    balancer = (terraform / "modules" / "load_balancer" / "main.tf").read_text(encoding="utf-8")
+    assert 'name        = "acme-${var.environment}-api"' in balancer
+    environments = sorted(p.name for p in (terraform / "environments").iterdir() if p.is_dir())
+    assert environments == ["prod", "staging"]
+    assert new.TIGHTEST_NAME.format(name="acme") == "acme-production-api"
+
+
+def copy_lint(dest: Path) -> subprocess.CompletedProcess[str]:
+    """The copy's own line rule, at the ruff its lock names, over the Python
+    `make setup` formats first."""
+    lock = (dest / "uv.lock").read_text(encoding="utf-8")
+    found = re.search(r'name = "ruff"\nversion = "([^"]+)"', lock)
+    assert found, "the copy's lock names no ruff"
+    ruff = ["uvx", f"ruff@{found.group(1)}"]
+    subprocess.run([*ruff, "format", "--quiet", "."], cwd=dest, check=True)
+    return subprocess.run(
+        [*ruff, "check", "--select", "E501", "--output-format", "concise", "."],
+        cwd=dest,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.skipif(shutil.which("uvx") is None, reason="needs uvx, which CI has")
+@pytest.mark.parametrize("name", ["independent_press", "free_journalism"])
+def test_a_copy_under_a_long_name_keeps_every_line_within_its_lint(tmp_path, name):
+    dest = tmp_path / name
+    assert new.main([str(dest)]) == 0
+    linted = copy_lint(dest)
+    assert linted.returncode == 0, linted.stdout

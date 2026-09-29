@@ -28,9 +28,11 @@ copy.
    the output as "`<version>`, or a later snapshot of main".
 2. Read the sections of `architecture.md` the skill names, then the
    sibling files its steps name.
-3. Check every path the skill creates. One that exists is a collision:
-   stop and say so, and never overwrite. A migration stamp already used
-   in its role's folder takes the next minute.
+3. Check every path the skill creates. A file that exists, or a folder
+   that holds anything, is a collision: stop and say so, and never
+   overwrite. An empty folder is no collision; the skill writes into
+   it. A migration stamp already used in its role's folder takes the
+   next minute.
 4. Ask for everything the input lacks in one message, then proceed.
 
 ## Names
@@ -142,8 +144,10 @@ workspace. Nothing is reordered or removed.
    `make infra-up` and `make migrate` when a table was added,
    `make openapi` when a route was added, `make check`, and
    `make migrate-check` when a table was added. The database targets
-   run only against the local compose stack. A tool runs through the
-   workspace (`uv run`, `pnpm run`), never a global install.
+   run only against the local compose stack, and only when Docker runs
+   (`docker info` exits 0). When it does not, they are skipped, and the
+   output names each one skipped. A tool runs through the workspace
+   (`uv run`, `pnpm run`), never a global install.
 
    A gate that fails on what the scaffold wrote is fixed, and the
    commands of its step run again from the first: the first run plus at
@@ -158,9 +162,10 @@ workspace. Nothing is reordered or removed.
    conformance test. That fix is the person's decision, recorded as an
    ADR.
 2. Print the guideline version, then every file created or changed,
-   one per line, from `git status --porcelain --untracked-files=all`,
-   then each command run, once, with the outcome of its last run. A stop
-   closes the output with
+   one per line, from `git status --porcelain --untracked-files=all`
+   (in a tree with no commit yet, which it lists whole, as the skill
+   wrote them), then each command run, once, with the outcome of its
+   last run. A stop closes the output with
    `Stopped: <command>: <what went wrong>; <cause>`, the cause one of:
    the count ran out, pre-existing, the machine, needs an exception.
 

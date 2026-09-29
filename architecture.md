@@ -380,7 +380,11 @@ behind. It is time-ordered, and that buys index locality: an insert
 lands at the tail of its B-tree, and a list in id order pages by id. An
 id is not a clock, though. Two processes mint with two clocks, so its
 time is near the truth and never the truth. When a record's time
-matters, it is a field of its own, such as `created_at`.
+matters, it is a field of its own, such as `created_at`. The one place
+an id's time is read, on purpose, is the lease of a pending idempotency
+record: it runs from the attempt's `attempt_id`, a `uuid_v7`, and a
+lease needs no more than near the truth
+([`attempt.py`](scaffold/acme_root/om/src/acme/om/idempotency/types/attempt.py)).
 
 Whoever constructs the entity mints its id, above the storage layer,
 with `new_id()`. The database never assigns one, and nothing reads one
@@ -393,7 +397,8 @@ item the platform claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
-> `new_id()`. The order is for the index; the time is a field.
+> `new_id()`. The order is for the index; the time is a field, save
+> for the one lease that reads an attempt's id.
 
 ## Namespaces as Swimlanes
 
@@ -725,7 +730,9 @@ The row and the outbox rows that announce it land in one storage call.
 Relaying them at once is optional, and never raises: the write has
 committed, so a failure is left to the sweep.
 
-A create receives the entity whole, its id from `new_id()`. A create
+A create receives the entity whole, its id from `new_id()`. The id
+stays as constructed, and the manager's copy stamps the times, the
+actor, and the fields that are its own to decide. A create
 whose id is already written returns the row as stored, because the only
 way to present an id twice is a retry.
 
@@ -754,8 +761,6 @@ mismatch is `PreconditionFailed`.
 -->
 
 ### Parameters
-
-`style`
 
 Parameters run from the broadest scope to the narrowest. A storage
 method starts with `org_id`, then `user_id` where the scope is personal.
@@ -1522,10 +1527,12 @@ the request and the app.
 The stream is a stream of hints: a frame names the change, and its
 `version` when the entity has one, and nothing else of it, so a client
 reads the entity through the authorized read. By default there is one
-stream per tenant, travelling whole, and a socket is subscribed to it
-when it opens. A product where a record's existence is itself
-restricted keeps a stream per visibility scope, and a client names the
-scopes it may see with a `subscribe` frame.
+stream per tenant, travelling whole. A socket opens with no
+subscription: the client subscribes to the topics it reads with a
+`subscribe` frame, as the portal does on every open, and the socket
+confirms each. A product where a record's existence is itself restricted
+keeps a stream per visibility scope, which a client subscribes to by
+name.
 
 Replay from storage is the durability. A socket's send buffer is
 bounded, and a burst drops the oldest hint, never a control frame: the

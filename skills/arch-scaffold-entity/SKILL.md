@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-entity
 description: "Add one entity to an object-model namespace: the frozen type, the table and its migration with its policy, storage in Postgres and memory, manager operations, wire types, routes, a portal screen, and tests, in the shape of the scaffold's own. Python and TypeScript."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(docker info:*), Bash(uv run:*), Bash(git status:*)
 ---
 
 # arch-scaffold-entity
