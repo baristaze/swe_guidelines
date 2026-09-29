@@ -564,8 +564,8 @@ def test_a_name_a_loaded_file_bears_and_a_broken_file_s_stem_shares_fails(repo, 
     assert "alpha is the name of beta.json and the stem of alpha.json, which does not load, so none says where it runs" in out
 
 
-def a_zip(repo, name, members):
-    path = repo.root / "benchmark" / "runs" / "alpha" / name / "artifacts" / "0" / "output.zip"
+def a_zip(repo, name, members, at="artifacts/0"):
+    path = repo.root / "benchmark" / "runs" / "alpha" / name / at / "output.zip"
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for member, data in members.items():
@@ -583,11 +583,11 @@ def a_vm_run(repo, *names):
 
 def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
     a_vm_run(repo, ONE_A, TWO_A)
-    a_zip(repo, ONE_A, {"README.md": "clean\n", "app/.env": "KEY=sk-ant-api03-" + "a1B2" * 12 + "\n"})
+    a_zip(repo, ONE_A, {"README.md": "clean\n", "app/settings.py": "KEY = 'sk-ant-api03-" + "a1B2" * 12 + "'\n"})
     a_zip(repo, TWO_A, {"README.md": "clean\n"})
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/alpha/{ONE_A}/artifacts/0/output.zip: app/.env holds a string shaped like a key" in out
+    assert f"benchmark/runs/alpha/{ONE_A}/artifacts/0/output.zip: app/settings.py holds a string shaped like a key" in out
     assert "1 run index mismatch(es)" in out  # the clean zip passes
 
 
@@ -613,6 +613,65 @@ def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
     a_zip(repo, ONE_A, {"bundle.zip": inner.getvalue()})
     assert runs.main() == 1
     assert "output.zip: bundle.zip!.env holds a string shaped like a key" in capsys.readouterr().out
+
+
+UNTRACKED = "is a path a repository does not track"
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        "pkg/__pycache__/m.cpython-314.pyc",
+        ".env",
+        "services/api/prod.env",
+        "apps/portal/.env.local",
+        "apps/portal/node_modules/react/index.js",
+        "apps/portal/dist/index.html",
+        "om/src/acme.egg-info/PKG-INFO",
+        "deployment/terraform/.terraform/providers/aws",
+        "deployment/terraform/terraform.tfstate",
+        ".data/postgres/PG_VERSION",
+        "logs/api.log",
+        "app.sqlite3",
+        ".coverage",
+        "apps/portal/test-results/report.json",
+        ".DS_Store",
+        ".vscode/settings.json",
+    ],
+)
+@pytest.mark.parametrize("at", ["artifacts/0", "artifacts/0/milestones/scaffold"], ids=["output", "milestone"])
+def test_an_output_s_zip_that_tracks_a_cache_or_an_env_file_fails_naming_the_path(member, at, repo, runs, capsys):
+    a_vm_run(repo, ONE_A)
+    # As `git archive` writes it: each folder has an entry of its own, and a folder is named once, by its file.
+    folders = {member[: i + 1]: "" for i, char in enumerate(member) if char == "/"}
+    a_zip(repo, ONE_A, {"README.md": "clean\n", "pkg/m.py": "x = 1\n", **folders, member: "KEY=value\n"}, at=at)
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/alpha/{ONE_A}/{at}/output.zip: {member} {UNTRACKED}" in out
+    assert "1 run index mismatch(es)" in out  # the source beside it passes
+
+
+def test_an_output_s_zip_of_source_and_what_a_repository_tracks_on_purpose_passes(repo, runs, capsys):
+    a_vm_run(repo, ONE_A)
+    tracked = [
+        ".env.example",
+        "src/distribution.py",
+        "builder/steps.py",
+        "om/src/acme/om/cache/memory.py",
+        "apps/portal/src/queries/taskCache.ts",
+        "deployment/terraform/.terraform.lock.hcl",
+        "deployment/terraform/prod/terraform.tfvars",
+        "uv.lock",
+        "pnpm-lock.yaml",
+        "apps/portal/openapi.json",
+        ".coveragerc",
+        "docs/CHANGELOG.md",
+        "src/environment.py",
+    ]
+    a_zip(repo, ONE_A, dict.fromkeys(tracked, "x\n"))
+    a_zip(repo, ONE_A, {".env.example": "ACME_KEY=\n", "pkg/m.py": "x = 1\n"}, at="artifacts/0/milestones/scaffold")
+    assert runs.main() == 0
+    assert "no untracked path in an output's zip" in capsys.readouterr().out
 
 
 def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_fails(repo, runs, capsys):
@@ -642,13 +701,13 @@ def test_an_organization_id_in_any_file_plain_or_compressed_fails_until_it_is_re
     (folder / "judgements").mkdir()
     (folder / "judgements" / "0-openai.jsonl").write_text(json.dumps({"error": said}) + "\n", encoding="utf-8")
     (folder / "judgements" / "0-openai.jsonl.gz").write_bytes(gzip.compress(said.encode()))
-    a_zip(repo, ONE_A, {"logs/judge.log": said})
+    a_zip(repo, ONE_A, {"notes/judge.md": said})
     # A limit's figures alone fail too: they are the account's quota.
     (folder / "report.md").write_text("# Benchmark run\n\nLimit 30000, Used 28172, Requested 4096.\n", encoding="utf-8")
     assert runs.main() == 1
     out = capsys.readouterr().out
     shown = f"benchmark/runs/alpha/{ONE_A}"
-    places = ("judgements/0-openai.jsonl", "judgements/0-openai.jsonl.gz", "artifacts/0/output.zip: logs/judge.log", "report.md")
+    places = ("judgements/0-openai.jsonl", "judgements/0-openai.jsonl.gz", "artifacts/0/output.zip: notes/judge.md", "report.md")
     found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
     for where in places:
         assert f"{shown}/{where} holds {found}" in out
@@ -666,11 +725,11 @@ def test_the_account_the_other_judges_errors_name_fails_in_any_file_until_it_is_
     (folder / "judgements").mkdir()
     (folder / "judgements" / "0-judge.jsonl").write_text(json.dumps({"error": said}) + "\n", encoding="utf-8")
     (folder / "judgements" / "0-judge.jsonl.gz").write_bytes(gzip.compress(said.encode()))
-    a_zip(repo, ONE_A, {"logs/judge.log": said})
+    a_zip(repo, ONE_A, {"notes/judge.md": said})
     assert runs.main() == 1
     out = capsys.readouterr().out
     shown = f"benchmark/runs/alpha/{ONE_A}"
-    for where in ("judgements/0-judge.jsonl", "judgements/0-judge.jsonl.gz", "artifacts/0/output.zip: logs/judge.log"):
+    for where in ("judgements/0-judge.jsonl", "judgements/0-judge.jsonl.gz", "artifacts/0/output.zip: notes/judge.md"):
         assert f"{shown}/{where} holds a string shaped like a key, or an account id" in out
     assert "3 run index mismatch(es)" in out
     assert len(runs.X.redact_folder(folder, set())) == 3

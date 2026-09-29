@@ -62,7 +62,16 @@ it resumes onto it. This holds them together:
   bytes. A compressed form the scan cannot read, a part of one it cannot
   unpack, and a `.zip` that does not open fail too, since no one can say
   they hold no key. So does a `.git` folder in a run folder: its objects
-  are compressed, and the output's zip is the record of the output.
+  are compressed, and the output's zip is the record of the output;
+- no output's zip, a repeat's `output.zip` or a phase's milestone, holds
+  a path a repository does not track: a cache, a dependency or a build
+  output, local state, an env file with values, a test report or
+  coverage output, or an editor's or the OS's file. A checkpoint commits
+  the subject's tree with `git add -A`, so the zip holds whatever the
+  subject's `.gitignore` let through, and a run folder is public once
+  checked in. A path is matched by its whole segments, so
+  `distribution.py` is not `dist/`, and a template such as
+  `.env.example` passes.
 
 A row is a body line of a table whose header's first cell is `Run`, and
 its run is the folder its first cell's `](<folder>/report.md)` link
@@ -78,8 +87,10 @@ library only; a YAML scenario needs pyyaml, which `make runs` brings.
 
 from __future__ import annotations
 
+import io
 import re
 import sys
+import zipfile
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -91,6 +102,7 @@ from _common import ROOT, parser, unfenced
 # here are the ones run.py admits, and a chain as run.py records it.
 if str(ROOT / "benchmark") not in sys.path:
     sys.path.insert(0, str(ROOT / "benchmark"))
+from harness import archive as A
 from harness import chain as CH
 from harness import redact as X
 from harness import scenario as S
@@ -275,8 +287,38 @@ def unclean(folder: Path) -> str | None:
     return f"ran on changes no commit holds ({paths})"
 
 
+# A path a repository does not track, matched by whole segments, so `distribution.py` and `builder/` never match. A
+# template, a lock file, and a generated file pass: `.env.example`, `.terraform.lock.hcl`, `uv.lock`, `openapi.json`.
+UNTRACKED = re.compile(
+    r"""(?:^|/)(?:
+    # a cache
+    __pycache__|[^/]*\.py[co]|\.pytest_cache|\.ruff_cache|\.mypy_cache|\.hypothesis|\.tox|\.nox|\.eslintcache
+    # a dependency or a build output
+    |node_modules|\.venv|\.pnpm-store|dist|build|[^/]*\.tsbuildinfo|[^/]*\.egg-info
+    # local state: a data folder, a Terraform working folder or state, a log, a database file
+    |\.data|\.terraform|[^/]*\.tfstate(?:\.[^/]+)?|[^/]*\.log|[^/]*\.(?:db|sqlite3?)(?:-journal|-wal|-shm)?
+    # an env file with values: `.env`, `<name>.env`, and `.env.<name>`, but not a template
+    |[^/]*\.env|\.env\.(?!(?:example|sample|template)(?:/|$))[^/]+
+    # a test report or coverage output
+    |\.coverage(?:\.[^/]+)?|coverage\.xml|lcov\.info|htmlcov|\.nyc_output|junit\.xml|test-results|playwright-report
+    # an editor's or the OS's file
+    |\.DS_Store|\.idea|\.vscode
+    )(?:/|$)""",
+    re.VERBOSE,
+)
+
+
+def untracked(data: bytes) -> list[str]:
+    """Each file of an output's zip at a path a repository does not track, in the zip's order."""
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return [name for name in zf.namelist() if not name.endswith("/") and UNTRACKED.search(name)]
+
+
 def packed_keys(folder: Path) -> list[str]:
-    """Why a run folder's files fail: a key or an id, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
+    """Why a run folder's files fail: a key or an id, a part the scan cannot read, a `.zip` that does not open, a `.git`.
+
+    An output's zip fails too for each file it holds at a path a repository does not track.
+    """
     out = []
     for path in sorted(folder.rglob("*")):
         where = shown(path)
@@ -292,6 +334,7 @@ def packed_keys(folder: Path) -> list[str]:
                 out.append(f"{where}: does not open as a zip, so no one can say it holds no key")
                 continue
             places = X.keys_in(data)
+            stray = untracked(data) if path.name == A.ZIP else []
         except (*X.READ_ERRORS, MemoryError) as exc:
             out.append(f"{where}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
             continue
@@ -302,6 +345,8 @@ def packed_keys(folder: Path) -> list[str]:
                 at = f"{where}: {place}" if place else where
                 found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
                 out.append(f"{at} holds {found}; run `run.py redact`")
+        for name in stray:
+            out.append(f"{where}: {name} is a path a repository does not track, and a run folder is public once checked in")
     return out
 
 
@@ -437,7 +482,8 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
-        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file"
+        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file, "
+        "no untracked path in an output's zip"
     )
     return 0
 
