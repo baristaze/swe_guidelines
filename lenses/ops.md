@@ -301,6 +301,8 @@ them.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/.claude/skills`
+
 **Check.** `arch-check` decides that the thirteen skills exist; the
 rest is judged.
 
@@ -367,6 +369,10 @@ production; a panel present in one twin and not the other; no test
 that holds the titles equal.
 
 **Severity.** medium
+
+**Shape.**
+`scaffold/acme_root/deployment/terraform/modules/dashboard`,
+`scaffold/acme_root/deployment/local/grafana/dashboards/acme-overview.json`
 
 ## OPS-15 A default alarm set goes to one topic per environment
 
@@ -523,6 +529,8 @@ a report an operator cannot read against the dashboard.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/ops/src/acme/ops/traffic.py`
+
 **Check.** `arch-check` decides a second load tool among the
 dependencies; the rest is judged.
 
@@ -650,6 +658,8 @@ carries every detail itself.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/README.md`
+
 **Check.** `arch-check` decides a README per namespace and a command in
 `om/README.md`; the rest is judged.
 
@@ -675,6 +685,8 @@ not a listing; a link with no line, or a section with prose instead of
 links; one document that is a folder's worth of subjects.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/llms.txt`
 
 **Check.** `arch-check` decides the shape of `llms.txt` and that each
 link resolves; the rest is judged.

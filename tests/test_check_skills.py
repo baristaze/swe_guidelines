@@ -2,8 +2,6 @@
 
 import pytest
 
-from conftest import SCAFFOLD
-
 
 @pytest.fixture
 def skills(repo):
@@ -24,8 +22,17 @@ def operational_skills(repo, roles: dict[str, str], ranked: str = RANKED) -> Non
     )
 
 
+COPIED = "scaffold/acme_root/.claude/skills"
+"""Where the scaffold keeps the skills a new tree copies and runs."""
+
+
+def copied(name: str) -> str:
+    """The path of one skill of the scaffold."""
+    return f"{COPIED}/{name}/SKILL.md"
+
+
 def audit(name: str, role: str = "None", ranked: str = RANKED) -> str:
-    """An audit template with a role section and a step that ranks its fixes."""
+    """An audit skill of the scaffold, with a role section and a step that ranks its fixes."""
     return (
         f'---\nname: {name}\ndescription: "Audit {name}."\nallowed-tools: Read, Grep\n---\n\n# {name}\n\n'
         f"## Role and credential\n\n{role}, local only. It holds no credential.\n\n"
@@ -312,28 +319,28 @@ def test_a_single_allowed_tools_entry_with_a_space_in_its_rule_passes(repo, skil
     assert "allowed-tools must be comma-separated" in capsys.readouterr().out
 
 
-def test_an_optional_audit_template_is_held_like_the_others(repo, skills, capsys):
+def test_an_optional_audit_skill_is_held_like_the_others(repo, skills, capsys):
     name = "audit-provider-calls"
     good = audit(name).replace("allowed-tools: Read, Grep", "allowed-tools: Read, Grep, Bash(git:*)")
     operational_skills(repo, {name: "none"})
-    repo.write(f"skills/_shared/ops-skills/{name}.md", good)
+    repo.write(copied(name), good)
     assert skills.main() == 0
-    assert "1 ops-skill templates" in capsys.readouterr().out
-    repo.write(f"skills/_shared/ops-skills/{name}.md", good.replace("Bash(git:*)", "Bash"))
+    assert "1 scaffold skills" in capsys.readouterr().out
+    repo.write(copied(name), good.replace("Bash(git:*)", "Bash"))
     assert skills.main() == 1
     assert "a bare Bash is refused" in capsys.readouterr().out
 
 
-def test_an_ops_skill_template_is_held_to_the_skill_frontmatter(repo, skills, capsys):
+def test_a_scaffold_skill_is_held_to_the_skill_frontmatter(repo, skills, capsys):
     good = '---\nname: ops-watch\ndescription: "Watch an environment."\nallowed-tools: Read, Bash(aws:*)\n---\n\n# ops-watch\n'
-    repo.write("skills/_shared/ops-skills/ops-watch.md", good)
+    repo.write(copied("ops-watch"), good)
     assert skills.main() == 0
-    assert "1 ops-skill templates" in capsys.readouterr().out
+    assert "1 scaffold skills" in capsys.readouterr().out
     bad = "---\nname: ops-wach\ndescription: Watch an environment.\nallowed-tools: Read Bash\n---\n"
-    repo.write("skills/_shared/ops-skills/ops-watch.md", bad)
+    repo.write(copied("ops-watch"), bad)
     assert skills.main() == 1
     out = capsys.readouterr().out
-    assert "differs from the file name 'ops-watch'" in out
+    assert "differs from its folder 'ops-watch'" in out
     assert "description must be one double-quoted string" in out
     assert "allowed-tools must be comma-separated" in out
 
@@ -385,11 +392,11 @@ def test_a_skill_without_allowed_tools_fails(repo, skills, capsys, line):
     assert "skills/arch-review-full/SKILL.md: no allowed-tools; a skill names the tools it runs" in capsys.readouterr().out
 
 
-def test_an_ops_skill_template_without_allowed_tools_fails(repo, skills, capsys):
+def test_a_scaffold_skill_without_allowed_tools_fails(repo, skills, capsys):
     template = '---\nname: ops-watch\ndescription: "Watch an environment."\n---\n\n# ops-watch\n'
-    repo.write("skills/_shared/ops-skills/ops-watch.md", template)
+    repo.write(copied("ops-watch"), template)
     assert skills.main() == 1
-    assert "skills/_shared/ops-skills/ops-watch.md: no allowed-tools" in capsys.readouterr().out
+    assert f"{copied('ops-watch')}: no allowed-tools" in capsys.readouterr().out
 
 
 def test_a_reference_file_a_step_names_passes_and_its_own_references_resolve(repo, skills, capsys):
@@ -440,33 +447,30 @@ def test_a_body_over_the_word_bound_fails(repo, skills, capsys):
 
 def test_an_audit_states_the_role_the_operational_skills_table_gives_it(repo, skills, capsys):
     operational_skills(repo, {"audit-database-calls": "none", "audit-retention": "investigator"})
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
-    repo.write("skills/_shared/ops-skills/audit-retention.md", audit("audit-retention", role="Investigator, read-only"))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls"))
+    repo.write(copied("audit-retention"), audit("audit-retention", role="Investigator, read-only"))
     assert skills.main() == 0
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls", role="Investigator"))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls", role="Investigator"))
     assert skills.main() == 1
     assert (
-        "skills/_shared/ops-skills/audit-database-calls.md: Role and credential opens with the role 'investigator'; "
+        f"{copied('audit-database-calls')}: Role and credential opens with the role 'investigator'; "
         "the Operational Skills table gives 'none'" in capsys.readouterr().out
     )
 
 
 def test_an_audit_missing_from_either_side_fails(repo, skills, capsys):
     operational_skills(repo, {"audit-retention": "investigator"})
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls"))
     assert skills.main() == 1
     out = capsys.readouterr().out
-    assert "architecture.md: the Operational Skills table lists audit-retention, which has no template" in out
-    assert (
-        "skills/_shared/ops-skills/audit-database-calls.md: the Operational Skills table of architecture.md gives it no role"
-        in out
-    )
+    assert "architecture.md: the Operational Skills table lists audit-retention, which the scaffold has no skill for" in out
+    assert f"{copied('audit-database-calls')}: the Operational Skills table of architecture.md gives it no role" in out
 
 
 def test_an_audit_with_no_operational_skills_section_fails(repo, skills, capsys):
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls"))
     assert skills.main() == 1
-    assert "architecture.md: no Operational Skills section to hold the audit templates to" in capsys.readouterr().out
+    assert "architecture.md: no Operational Skills section to hold the audit skills to" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -478,10 +482,10 @@ def test_an_audit_with_no_operational_skills_section_fails(repo, skills, capsys)
 )
 def test_an_audit_that_ranks_parallel_calls_out_of_order_fails(repo, skills, capsys, ranked):
     operational_skills(repo, {"audit-database-calls": "none"})
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls", ranked=ranked))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls", ranked=ranked))
     assert skills.main() == 1
     assert (
-        "skills/_shared/ops-skills/audit-database-calls.md: names parallel calls without ranking "
+        f"{copied('audit-database-calls')}: names parallel calls without ranking "
         "remove, fold, defer, cache, parallel first, in that order" in capsys.readouterr().out
     )
 
@@ -491,7 +495,7 @@ def test_a_numbered_step_is_read_on_its_own_so_a_folder_is_no_fold(repo, skills)
     template = audit("audit-database-calls").replace(
         "1. Make the evidence folder.", "1. Make the evidence folder and\n   write in it."
     )
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", template)
+    repo.write(copied("audit-database-calls"), template)
     assert skills.main() == 0
 
 
@@ -499,7 +503,7 @@ def test_the_operational_skills_text_is_held_to_the_same_order(repo, skills, cap
     operational_skills(
         repo, {"audit-database-calls": "none"}, ranked="remove, fold, and defer a call before running calls in parallel"
     )
-    repo.write("skills/_shared/ops-skills/audit-database-calls.md", audit("audit-database-calls"))
+    repo.write(copied("audit-database-calls"), audit("audit-database-calls"))
     assert skills.main() == 1
     assert "architecture.md: Operational Skills names parallel calls without ranking" in capsys.readouterr().out
 
@@ -507,34 +511,53 @@ def test_the_operational_skills_text_is_held_to_the_same_order(repo, skills, cap
 RULE = "A work row is done once its\nitem is queued."
 
 
-def test_the_work_row_rule_is_said_in_the_text_the_lens_and_both_scaffolds(repo, skills, capsys):
+RELAY = "scaffold/acme_root/om/src/acme/om/outbox/relay.py"
+
+
+def test_the_work_row_rule_is_said_in_the_text_the_lens_and_the_scaffolds_relay(repo, skills, capsys):
     repo.edit("architecture.md", "One table per entity.\n", f"One table per entity.\n\n{RULE}\n")
     assert skills.main() == 0  # no `work.<kind>` row in the guideline, so no rule to hold the others to
     repo.edit("architecture.md", RULE, f"A `work.<kind>` row starts work. {RULE}")
     assert skills.main() == 1
     out = capsys.readouterr().out
-    for rel in (
-        "lenses/storage.md",
-        "skills/arch-scaffold-worker/SKILL.md",
-        "skills/arch-scaffold-new/references/object-model.md",
-    ):
+    for rel in ("lenses/storage.md", RELAY):
         assert f"{rel}: does not say 'a work row is done once its item is queued'" in out
     repo.write("lenses/storage.md", f"## STO-20 A handoff\n\n{RULE}\n")
-    for name, reference in (("arch-scaffold-worker", ""), ("arch-scaffold-new", "references/object-model.md")):
-        body = SCAFFOLD.replace("arch-scaffold-thing", name)
-        if reference:
-            repo.write(f"skills/{name}/{reference}", f"# The relay\n\n- {RULE}\n")
-            body = body.replace("1. Write the thing.", f"1. Read `${{CLAUDE_SKILL_DIR}}/{reference}`, then write it.")
-        else:
-            body = body.replace("One line.\n", f"One line.\n\n- {RULE}\n")
-        repo.write(f"skills/{name}/SKILL.md", body)
+    repo.write(RELAY, f'class OutboxRelayInterface:\n    """The row is then marked done.\n    {RULE}"""\n')
     assert skills.main() == 0
-    repo.edit("skills/arch-scaffold-new/references/object-model.md", "once its\nitem is queued", "once its wake is taken")
+    repo.edit(RELAY, "once its\nitem is queued", "once its wake is taken")
     assert skills.main() == 1
     assert (
-        "skills/arch-scaffold-new/references/object-model.md: does not say 'a work row is done once its item is queued'; "
-        "the text, STO-20, and the relay's two scaffolds must each say it" in capsys.readouterr().out
+        f"{RELAY}: does not say 'a work row is done once its item is queued'; "
+        "the text, STO-20, and the scaffold's relay must each say it" in capsys.readouterr().out
     )
+
+
+def test_a_scaffold_skill_may_name_a_connectors_tool_in_any_case(repo, skills, capsys):
+    good = (
+        '---\nname: tickets-triage\ndescription: "Triage the tickets."\n'
+        "allowed-tools: Read, mcp__claude_ai_Tracker__list_issues, mcp__tracker-2__get_issue\n---\n\n# tickets-triage\n"
+    )
+    repo.write(copied("tickets-triage"), good)
+    assert skills.main() == 0
+    repo.write(copied("tickets-triage"), good.replace("mcp__tracker-2__get_issue", "mcp__tracker get_issue"))
+    assert skills.main() == 1
+    assert "allowed-tools must be comma-separated" in capsys.readouterr().out
+
+
+def test_the_scaffolds_shared_text_is_no_skill_and_is_held_to_the_bound(repo, skills, capsys):
+    repo.write(f"{COPIED}/_shared/ops-preamble.md", "# The preamble\n\nRead it once.\n")
+    assert skills.main() == 0
+    assert "0 scaffold skills" in capsys.readouterr().out
+    repo.write(f"{COPIED}/_shared/ops-preamble.md", "# The preamble\n\n1. Run `make check` and fix what it reports.\n")
+    assert skills.main() == 1
+    assert f"{COPIED}/_shared/ops-preamble.md: a step fixes and runs again with no count bound" in capsys.readouterr().out
+
+
+def test_a_scaffold_skill_folder_with_no_skill_fails(repo, skills, capsys):
+    repo.write(f"{COPIED}/ops-watch/references/notes.md", "# Notes\n")
+    assert skills.main() == 1
+    assert f"{COPIED}/ops-watch: no SKILL.md" in capsys.readouterr().out
 
 
 CONVENTIONS = "skills/_shared/scaffold-conventions.md"

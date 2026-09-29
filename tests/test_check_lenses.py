@@ -176,7 +176,52 @@ def test_check_comes_after_severity(repo, lenses, capsys):
     repo.edit("lenses/om.md", "**Severity.** high", "**Check.** `arch-check` decides it.\n\n**Severity.** high")
     repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
     assert lenses.main() == 1
-    assert "optionally followed by Check" in capsys.readouterr().out
+    assert "optionally followed by Shape, then Check" in capsys.readouterr().out
+
+
+SHAPE = "scaffold/acme_root/om/src/acme/om/root.py"
+
+
+def test_a_shape_names_scaffold_files_that_exist(repo, lenses, capsys):
+    repo.write(SHAPE, "class Managers: ...\n")
+    repo.write("scaffold/acme_root/om/src/acme/om/media/manager.py", "class MediaManagerInterface: ...\n")
+    repo.edit("lenses/om.md", "**Severity.** high", f"**Severity.** high\n\n**Shape.** `{SHAPE}`")
+    assert lenses.main() == 0
+    repo.edit(
+        "lenses/om.md",
+        f"**Shape.** `{SHAPE}`",
+        f"**Shape.**\n`{SHAPE}`,\n`scaffold/acme_root/om/src/acme/om/media`",
+    )
+    assert lenses.main() == 0  # a folder stands for the files under it
+
+
+@pytest.mark.parametrize(
+    "value, problem",
+    [
+        ("`scaffold/acme_root/om/gone.py`", "names `scaffold/acme_root/om/gone.py`, which does not exist"),
+        ("`architecture.md`", "names `architecture.md`, which is not under scaffold/acme_root/"),
+        ("`scaffold/acme_root/../../architecture.md`", "which is not under scaffold/acme_root/"),
+        (f"`{SHAPE}`, `{SHAPE}`, `{SHAPE}`", "it names one or two paths under scaffold/acme_root/, each in backticks"),
+        (f"the root, `{SHAPE}`", "it names one or two paths under scaffold/acme_root/, each in backticks"),
+        (SHAPE, "it names one or two paths under scaffold/acme_root/, each in backticks"),
+    ],
+)
+def test_a_shape_that_names_no_scaffold_file_fails(repo, lenses, capsys, value, problem):
+    repo.write(SHAPE, "class Managers: ...\n")
+    repo.edit("lenses/om.md", "**Severity.** high", f"**Severity.** high\n\n**Shape.** {value}")
+    assert lenses.main() == 1
+    assert problem in capsys.readouterr().out
+
+
+def test_a_shape_comes_after_severity_and_before_check(repo, lenses, capsys):
+    repo.write(SHAPE, "class Managers: ...\n")
+    repo.write("checkers/src/arch_check/rules/om.py", RULE.format(coverage="full"))
+    shape, check = f"**Shape.** `{SHAPE}`", "**Check.** `arch-check` decides it."
+    repo.edit("lenses/om.md", "**Severity.** high", f"**Severity.** high\n\n{shape}\n\n{check}")
+    assert lenses.main() == 0
+    repo.edit("lenses/om.md", f"{shape}\n\n{check}", f"{check}\n\n{shape}")
+    assert lenses.main() == 1
+    assert "optionally followed by Shape, then Check" in capsys.readouterr().out
 
 
 def test_an_id_repeated_in_another_file_fails(repo, lenses, capsys):

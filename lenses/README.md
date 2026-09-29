@@ -42,6 +42,8 @@ other in parentheses, and the lens it names carries the severity.
 
 **Severity.** high | medium | low
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/base.py`
+
 **Check.** `arch-check` decides it.
 ```
 
@@ -60,12 +62,17 @@ Ids are the group prefix and two digits: `OM`, `CON`, `CTX`, `STO`,
   cross-role breach. `medium` bends a shape the guideline relies on, and
   `low` is a convention. A lens that cites only `style` sections is
   `low`.
+- **Shape** is optional. It names one or two files or folders of the
+  scaffold, `scaffold/acme_root/<path>` in backticks, that show the rule
+  as code. A review reads the file and compares the code with it. A lens
+  has one only where a scaffold file shows its rule plainly.
 - **Check** is optional. "`arch-check` decides it." means the checker
   decides the whole lens. "`arch-check` decides `<the part>`; the rest is
   judged." means the review judges what the checker leaves. A lens with
   no Check line is judged by the review alone.
 
 `make lenses` holds the format, a width of 80 columns, the citations,
-the Check line against the checker's rules, and every identifier a lens
-quotes to the section it cites. That a lens stays inside its rule, stricter and
-never contrary, is held by review, not by a program.
+each Shape path, the Check line against the checker's rules, and every
+identifier a lens quotes to the section it cites. That a lens stays
+inside its rule, stricter and never contrary, is held by review, not by
+a program.

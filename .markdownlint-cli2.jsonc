@@ -22,6 +22,7 @@
     // A Makefile snippet in a code block needs its tabs.
     "MD010": { "code_blocks": false }
   },
-  // The same files scripts/_common.py leaves out of the repository's Markdown.
-  "ignores": ["**/node_modules/**", ".git/**", "**/.claude/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/*/*/**"]
+  // The same files scripts/_common.py leaves out of the repository's Markdown:
+  // Claude Code's own folder, but not the scaffold's, which holds its skills.
+  "ignores": ["**/node_modules/**", ".git/**", ".claude/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/*/*/**"]
 }

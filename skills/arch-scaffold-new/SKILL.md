@@ -1,261 +1,101 @@
 ---
 name: arch-scaffold-new
-description: "Bootstrap a whole new system in the guideline's shape into an empty folder: the monorepo skeleton, the first API, a worker, a portal, deployment, CI, then the first namespace and entity."
-allowed-tools: Read, Grep, Glob, Write, Edit, Agent, Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make infra-reset), Bash(make migrate), Bash(make migrate-check), Bash(make seed), Bash(make test-integration), Bash(make openapi), Bash(make devx-up), Bash(make test-telemetry), Bash(make traffic PROFILE=light DURATION=30), Bash(uv sync:*), Bash(uv run:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(git init:*), Bash(git status:*), Bash(git rev-parse:*), Bash(python3:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+description: "Start a new system in the guideline's shape: pick its name, copy the scaffold's domain-agnostic core under it, run its gates, record the product's first decisions, then add the first namespace."
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration), Bash(uv run:*), Bash(uv sync:*), Bash(pnpm install:*), Bash(pnpm run:*), Bash(git status:*), Bash(git rev-parse:*), Bash(lsof:*)
 ---
 
 # arch-scaffold-new
 
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
-Entities, Namespaces as Swimlanes, OpContext (Stages, Scopes, The
-Operator Context), The Business Layer (Operations Without a Principal,
-Shape of an Operation), The Storage
-Layer (Namespace Shape, Storage Root, Defining ORM Classes,
-Translation, A Storage Impl, Database Roles, The Second Fence,
-Migrations), Infrastructure (InfraInterface Root, Cache, Buckets,
-Topics, Queues, Secrets, Idempotency), The Network Layer
-(The Gateway; Auth: the Gateway Verifies, the Tenancy Domain Owns;
-Realtime at the Edge), Deployment (Cloud: AWS, Infrastructure as Code,
-Local: Docker Compose, Twins for External Services, What a Process
-Refuses), Operations (Operator Credentials, Operational Skills,
-Dashboards and Alarms as Code, Traffic and Stress, The Telemetry Round
-Trip), Monorepo Folder Structure (Layout Conventions),
-Documentation as Code (A README at Every Level), Telemetry,
-Cross-Cutting Conventions
-(Exceptions, Configuration, Records of Decisions, Tests), Technology
-Choices and How to Override Them (Versions, Overriding a Choice).
+Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Monorepo
+Folder Structure, Deployment (Local: Docker Compose, Twins for External
+Services), Cross-Cutting Conventions (Records of Decisions).
+
+The scaffold, `${CLAUDE_SKILL_DIR}/../../scaffold/acme_root/`, is the
+domain-agnostic core of a system in the guideline's shape, whole and
+green. This skill copies it under the product's name, then adds the
+product: its first decisions and its first namespace. It writes no part
+of the core by hand.
 
 ## Input
 
-`<target-dir> <root-package> [--first <namespace> <Entity> [field:type ...]] [--codeowners <owner,...>] [--no-portal] [--no-worker]`
+`[<name>] [--first <namespace> [<Entity> [field:type ...]]] [--codeowners <owner,...>]`,
+and the product: the path of its spec, or a description, in the
+arguments or in the conversation.
 
-Example: `./acme acme --first inventory Warehouse address:str`. Both
-positional arguments are required; ask for them when missing.
-`<target-dir>` must not exist, or must be empty, or be a fresh
-repository holding nothing but `.git`, `README.md`, `LICENSE`, and
-`.gitignore` (the shape a hosting service creates); refuse otherwise.
-In the fresh-repository case `README.md` and `.gitignore` are replaced,
-`LICENSE` is kept, and the `git init` of step 1 is skipped. Those two
-replacements are the one exception to the collision rule of the
-conventions; any other path that exists is a collision. Refuse when a `.git`
-directory exists in a parent of `<target-dir>` (`git rev-parse
---show-toplevel` from it names one), because `git init` never runs
-inside an existing repository.
-`<root-package>` must not shadow a standard-library module. In this
-skill `<root>` is `<root-package>`, and `<root-slug>` its kebab-case
-slug, as the conventions' Naming derives it (`acme_corp` gives
-`acme-corp`). `--codeowners` names the owners `.github/CODEOWNERS`
-lists, the repository's owner by default (the account or organization
-in the `origin` URL of `.git/config`; ask when there is none).
+Example: `free_journalism --first journalists Journalist display_name:str`.
+
+- `<name>` is the project's code name, its Python package, and its
+  folder at once: one or two snake_case words, never a standard-library
+  module, a Python keyword, or `acme`. With no name given, take it from
+  the product's own name in the spec or the description, in at most two
+  words, leaving out a word any product could carry, such as platform,
+  app, or system (`Free Journalism Platform` gives `free_journalism`).
+  Ask only when the product names nothing.
+- The folder is `<name>` in the current directory. It must not exist,
+  or must be empty. Refuse when the current directory is inside a git
+  repository (`git rev-parse --show-toplevel` answers there), since the
+  copy starts a repository of its own.
+- With no `--first`, the first namespace is the noun the product's
+  first loop acts on, in the plural, with no entity.
+- `--codeowners` names the owners `.github/CODEOWNERS` lists. Without
+  it, the file keeps the copy's placeholder team, and the output says
+  so.
 
 ## Created
 
-Everything the references below list is under `<target-dir>/`. Those
-lists are long, so each one lives beside this file and is read by the
-step that names it, when that step runs and not before.
-
-| Reference                                          | Holds                                                                                                                                                                                                                   | Read by |
-|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
-| `${CLAUDE_SKILL_DIR}/references/skeleton.md`       | the workspace and tool config, the `Makefile`, the README, the docs, the two ADRs and the runbooks, the local compose stack, the Terraform modules and roots with the environments' file, the two cloud scripts, the six workflows, and the fifteen built-in skills | step 1  |
-| `${CLAUDE_SKILL_DIR}/references/object-model.md`   | the OM distribution under `om/`: the base module, the context stages and scopes, the exceptions, the storage layer with its roles, tables, translation, impls, and migrations, and the `tenancy`, `events`, `audit`, `outbox`, and `idempotency` namespaces with their tests | step 1  |
-| `${CLAUDE_SKILL_DIR}/references/infrastructure.md` | the infra distribution under `infra/`: the cache, buckets, topics, queues, and secrets capabilities, observability and the trust store, and the configured and local roots                                                   | step 1  |
-| `${CLAUDE_SKILL_DIR}/references/ops-package.md`    | `clients/python/`, the Python client generated from the API's document, and `ops/`, the `<root>-ops` member with the traffic generator, the stress runner, the signals interface, and the telemetry round trip, and the audit tools under `ops/audit/` | step 3  |
-| `${CLAUDE_SKILL_DIR}/references/api-sweep.md`      | the API process's own sweep, `services/api/.../sweep.py`, the loop of `arch-scaffold-worker` without the queue, written only when the tree has no worker                                                                    | step 4, with `--no-worker` |
-
-A reference file is detail. These are the lines a run must never miss,
-so they stay here:
-
-- The guideline release is pinned once. `specs/architecture.md` names
-  the tag the conventions found before writing, and the `Makefile`'s
-  `arch-check` runs that same tag.
-- Three logins reach the database, as the conventions state. The local
-  compose file's init script creates them under the names every
-  environment uses, `<root>_migration`, `<root>_runtime`, and
-  `<root>_system`, since a policy spells the system login's name.
-- Every table declares its role and its tenancy scope, and the
-  migration that creates the table creates its policy, as the
-  conventions state. A chain's first migration also creates its role's
-  schema and grants the runtime and system logins on it.
-- No secret value in Terraform state or a plan. Every password comes
-  from an ephemeral generator through a write-only attribute, and no
-  URL secret is computed as an output.
-- Every health check, the target group's and each task definition's
-  own, is on `/healthz`, never `/readyz`.
-- A durable effect never rides a topic alone. What must happen after a
-  write rides an outbox row or a work item, and a topic, at most once,
-  carries hints only (`ENTITY_CHANGED`, `WORK_AVAILABLE`), so a lost
-  message delays an effect and never drops it.
-- An event, an audit entry's payload of ids, an outbox row, and a
-  socket frame carry ids only, never a personal field's value.
-- Every settings knob is documented. A unit test holds every field of
-  `StorageSettings`, of `InfraSettings`, and of each process's own
-  settings to `.env.example` under its prefix.
+| File | Holds |
+|------|-------|
+| `<name>/` | the scaffold, copied by `new.py` under the name in each of its forms, pinned at this plugin's release, in a new git repository with nothing staged |
+| `<name>/docs/adr/<n>-*.md` | the product's first decisions, numbered from one above the highest ADR there |
+| the first namespace | as `arch-scaffold-namespace` creates it |
 
 ## Changed
 
 | File | Change |
 |------|--------|
-| (none) | The tree is new; every later step appends to the files the references name. |
+| `README.md`, `llms.txt` | the opening and the summary say what the product is, in place of the core's description |
+| `.github/CODEOWNERS` (with `--codeowners`) | the owners |
 
 ## Procedure
 
-1. `git init` in `<target-dir>`, nothing staged (skipped when the
-   target was a fresh repository). It comes first so that every step
-   after it, and every skill this one follows, lists its files from
-   `git status`. Then write the skeleton, reading
-   `${CLAUDE_SKILL_DIR}/references/skeleton.md` before it (leaving
-   `clients/python/` and `ops/` with its `README.md` to step 3); then
-   the OM distribution, reading
-   `${CLAUDE_SKILL_DIR}/references/object-model.md` before it; then the
-   infra distribution, reading
-   `${CLAUDE_SKILL_DIR}/references/infrastructure.md` before it; then
-   run `make setup`. The fast gate runs from
-   step 2 on. The fifteen built-in skills are part of the skeleton:
-   copy each template under `${CLAUDE_SKILL_DIR}/../_shared/ops-skills/` to
-   `.claude/skills/<name>/SKILL.md` with `acme` substituted, as the
-   skeleton reference states, and change nothing else in them.
-2. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-service/SKILL.md` and
-   follow its Created, Changed, and Procedure with these arguments:
-   `api --realtime --container` (omit `--realtime` with `--no-portal`).
-   The operator plane's routes arrive with it.
-3. Read `${CLAUDE_SKILL_DIR}/references/ops-package.md`, then
-   `make openapi` and write `clients/python/` generated from the
-   document it emitted, whether or not `--no-portal`; then write
-   `ops/` and `ops/README.md` over that client, add both members to
-   the workspace, and run `uv sync`. The ops package rides the client
-   and the operator plane, so it is written after both exist.
-4. Unless `--no-worker`, read
-   `${CLAUDE_SKILL_DIR}/../arch-scaffold-worker/SKILL.md` and follow
-   it with `maintenance NOOP --container`: a worker whose only work is
-   the maintenance sweep, ready for real kinds. With `--no-worker`,
-   the sweep moves into the API process's lifespan, so outbox rows a
-   crash left behind are still relayed: read
-   `${CLAUDE_SKILL_DIR}/references/api-sweep.md` and write
-   `services/api/src/<root>/services/api/sweep.py` from it. Whichever
-   path ran, the sweep sets the gauge under the one name the
-   outbox-lag alarm and the copied `ops-investigate` skill read,
-   `<root>_outbox_lag_seconds`, so a tree with no worker is watched
-   like a tree with one. Every API replica runs the sweep, which is
-   safe because every step is idempotent and each purge is bounded by
-   a batch size.
-5. Unless `--no-portal`, read
-   `${CLAUDE_SKILL_DIR}/../arch-scaffold-app/SKILL.md` and follow it
-   with `portal --kind portal`, including its Terraform and deploy
-   rows: the portal's bucket and distribution exist in every
-   environment before this step is done. Its Python client row is
-   skipped, since step 3 wrote the client.
-6. With `--first`, read
-   `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and follow
-   it with `<namespace> <Entity> <field:type ...>`.
-7. `make check` and `make openapi`, so the portal's generated types
-   and the Python client carry the routes of step 6; then, when Docker
-   is available, `make infra-up`, `make migrate`, `make migrate-check`,
-   `make seed` twice (the second run changes nothing, and leaves
-   `local.env` as the first wrote it), and `make test-integration`,
-   only against the
-   compose stack of step 1: refuse when any database URL `StorageSettings`
-   resolves (the three shared URLs and every per-role URL, from the
-   environment, `.env`, or the settings default) is not a local
-   address.
-8. When Docker is available, run the negative control of
-   Cross-Cutting Conventions (Tests) once. Take the tenant predicate
-   out of one query of a storage impl over Postgres (the first
-   entity's list with `--first`, else a tenancy list). Run one: run
-   `make test-integration` with the table's policy in place. It stays
-   green, the second fence holding. A failure in run one is fixed
-   without putting the predicate back, since it stays out until run
-   three. A failure of that method's cross-tenant case is fixed in the
-   migration that writes the table's policy, never in the database
-   alone, and takes the reset every migration fix takes (below) before
-   run one runs again. Run two:
-   turn the policy off for that table (`ALTER TABLE ... NO FORCE ROW
-   LEVEL SECURITY` and `DISABLE ROW LEVEL SECURITY`, through `uv run`
-   over the local migration login's URL, since only the owner alters a
-   table), and run `make test-integration` again. It fails, and its
-   failures name both the cross-tenant case of that method and the
-   policy check. Run three: put the predicate back, turn the policy on
-   again the same way (`ENABLE` and `FORCE ROW LEVEL SECURITY`), and
-   run `make test-integration` green. Runs one and three each have
-   their own count, the first run plus at most 3 reruns; run two runs
-   once and is never fixed. A run-three failure that outlasts its
-   count is a defect of this skill, one that run two's change to the
-   database caused included.
+1. Settle the name and the folder, and refuse as the Input states.
+2. Copy: `python3 ${CLAUDE_SKILL_DIR}/../../scaffold/new.py <name>`.
+   Then, in the folder, `make setup` and `make check`. The copy is green
+   before this skill writes anything, so a gate that fails here is a
+   defect of the scaffold: stop with the cause pre-existing, name the
+   gate, and change nothing.
+3. Record the product's first decisions, one ADR each, in the shape of
+   the copy's own ADRs:
+   - the product on the core: what an org, a member, and an operator
+     are in the product, which of the core's pieces it uses (files,
+     orchestrations, the work queue), and its first namespaces;
+   - the outside providers: each one the product names beyond the
+     identity provider the core has, the integration under
+     `integrations/` that will reach it, and the twin that stands in
+     wherever no account is configured. The integrations come with the
+     namespace that needs them.
 
-   Once run two has run, stop or not, record the last attempt of run
-   one and run two in `docs/runbooks/tenant-isolation.md`: the query,
-   the table, and what the suite reported each time, with every
-   failure of run two besides the cross-tenant case and the policy
-   check named there. A run two that stays green, or whose failures do
-   not name both of those, is a defect of the suite, and the skill
-   stops. Before any stop in this step, put the predicate back and
-   turn the policy on again, as run three does, and end the stop line
-   with `; predicate and policy restored`.
-9. When Docker is available, `make devx-up`, then
-   `make test-telemetry`: the round trip starts the API as a real
-   process, drives one session, and reads the counter, the trace, the
-   error event, and the log line back by request id through the
-   `devx` twins. Then `make traffic PROFILE=light DURATION=30`, the
-   thirty-second light run, the same one CI's integration job runs.
-   Both are a wiring check of the edge, the
-   client, the generator, and the signals, and never a stress test;
-   a stress test has a scenario and a target, and is the platform
-   developer's to run.
-10. Before the review, sweep the tree for the four misses a fresh
-    scaffold makes most, and fix each: a setting the Terraform root
-    does not pass to the service, a mutating manager operation whose
-    first line is not `ctx.require(...)` or `octx.require(...)`,
-    leaving out the operations the conventions exempt (the request
-    stage, the identity stage, and the outbox handoff), a socket route mounted
-    outside the gateway, a route that writes a durable row (201 or 202)
-    without the `Idempotency-Key` dependency. Then read
-    `${CLAUDE_SKILL_DIR}/../arch-review-full/SKILL.md`
-    and run it over the whole tree, once: it does not run again after
-    the fixes below. The checker run and the git reads it takes are in
-    this skill's tools for that step. A group it reports as "not
-    reviewed" (its reviewer failed twice, a stop at the agent's turn
-    cap counting as a failure) is named in the output as not reviewed,
-    with its error, and is not run again here. Close every high
-    finding, within what After writing lets a fix change, then run
-    step 7's commands again and, when Docker is available, step 9's,
-    in order, under the same bound: the first run plus at most 3
-    reruns. A high finding is closed once they pass after its fix.
-    One whose fix would need an exception is not fixed and stays
-    open, and the step goes on in place of the stop After writing
-    orders. List the rest of the findings in the output for the
-    person. A high
-    finding on a fresh tree is a defect of this skill: name it in the
-    output so it can be closed at the source.
+   Then write the opening of `README.md` and the summary of `llms.txt`.
+4. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
+   follow it with the first namespace, and its entity when one is given.
+5. Run `make openapi` when a route was added, then `make check`. When
+   Docker runs, the integration suite follows, as CI runs it on a copy.
+   The local stack's host ports are knobs, `<NAME>_<SERVICE>_PORT`, and
+   `.env.example` lists them with the URL knobs that name them. Check
+   each with `lsof -i :<port>`. For each that is taken, set a free one
+   in `.env`, with every URL knob that names it, and never stop what
+   holds it. Then `make infra-up`, `make migrate`, `make migrate-check`,
+   and `make test-integration`.
 
-A gate in these steps that fails on what this skill wrote is fixed,
-and its step's commands run again from the first, in order, as After
-writing states: the first run plus at most 3 reruns, within what it
-lets a fix change. Step 8 is the exception: a rerun there repeats
-only the run that failed. A fix that edits a migration takes a reset
-before its rerun, since `make migrate` does not apply an applied
-migration again: `make infra-reset`, `make migrate`, and `make seed`,
-then the operator's and the provisioner's tokens again
-(`uv run <root>-ops token --env local --identity operator`, and the
-same with `provisioner`). `make seed` keeps an env file that exists,
-and the reset removed the sessions its tokens name. The tree is new,
-so the reset loses nothing. The skill stops at the
-first stop After writing or step 8 orders. Nothing in a new tree is
-pre-existing, and a gate that still fails when its count runs out is
-a defect of this skill.
+A gate of steps 4 and 5 that fails on what this skill wrote is fixed,
+and its step runs again from its first command, as After writing
+states: the first run plus at most 3 reruns.
 
 ## Output
 
 As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
-with these lines after the commands, in this order:
-
-- `High finding: <lens id> <path>:<line>: <closed | open>; a defect of this skill`, one per high finding of step 10;
-- `Finding: <lens id> <severity> <path>:<line>: <what breaks the rule>`, one per other finding of step 10;
-- `Not reviewed: <group>: <error>`, one per group step 10 could not review;
-- `The tree is uncommitted, and the first commit is the user's.`
-
-A stop closes the output with this skill's line in place of the
-conventions' `Stopped:` line:
-`Stopped at step <n>: <command>: <what went wrong>; <cause>`. The
-cause is one of the conventions' causes, with "the count ran out"
-written as "a defect of this skill", or "a defect of the suite" from
-step 8.
+with the name and where it came from first, the ADRs by number after
+the files, and then `The tree is uncommitted, and the first commit is
+the person's.` A `Stopped:` line, when there is one, still closes the
+output.

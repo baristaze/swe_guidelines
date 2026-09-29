@@ -43,17 +43,21 @@ cites the changed text changes with it.
   gates, with arch-check from `checkers/`.
 - `lenses/<group>.md` holds one group of lenses in the format
   `lenses/README.md` defines. `make lenses` holds the format, the
-  citations, and every identifier a lens quotes to the section it cites.
+  citations, every identifier a lens quotes to the section it cites, and
+  every scaffold path a `Shape` line names.
 - `skills/arch-review-<group>/SKILL.md` is generated from
   `skills/_template/review.SKILL.md`: edit the template or the lenses,
   and run `make gen-skills`. The other skills are hand-written. The six
-  scaffold skills share `skills/_shared/scaffold-conventions.md`.
-  `skills/_shared/ops-skills/` holds the fifteen project-local skills
-  as flat templates, one file each, with `acme` for the product;
-  `arch-scaffold-new` copies them into a new tree, so
-  `scripts/check_skills.py` reads their frontmatter as a skill's.
+  scaffold skills share `skills/_shared/scaffold-conventions.md`. Each
+  names the files of the tree whose shape it follows, and
+  `arch-scaffold-new` copies the scaffold with `scaffold/new.py`.
   `skills/arch-new-aspect` is the one skill that edits this repository:
   it adds an aspect to the guideline and cascades it.
+- `scaffold/acme_root/.claude/skills/` holds the skills a new tree runs
+  as its own: the operational skills, the audits, and the ticket
+  triage. They are not skills of this plugin. `make leaks`, `make
+  links`, and `make lint` read them, and `scripts/check_skills.py`
+  holds their frontmatter and their count bounds as a skill's.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
   to. `scripts/check_agents.py` holds it to the review template and to
   its `maxTurns`. Every review skill repeats "Never edit, stage, or
@@ -85,8 +89,8 @@ cites the changed text changes with it.
   named as agents.
 - "X, never Y" names the near miss a rule rules out. It is part of the
   rule, not history.
-- Every skill's `name` equals its folder name and starts with `arch-`,
-  and its `allowed-tools` names only what its body runs.
+- Every plugin skill's `name` equals its folder name and starts with
+  `arch-`, and its `allowed-tools` names only what its body runs.
   `scripts/check_skills.py` holds the frontmatter; the git, uv, and pnpm
   entries are held by hand.
 - A scaffold skill has the sections Input, Created, Changed, Procedure,

@@ -62,6 +62,8 @@ object.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/root.py`
+
 **Check.** `arch-check` decides the root's getters, `start`, `close`,
 and which modules import an impl; the rest is judged.
 
@@ -218,6 +220,8 @@ broker-assigned id; a subscription with no way to unsubscribe; a
 consumer name missing from `subscribe`.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/topics/__init__.py`
 
 **Check.** `arch-check` decides the enum, the payload map, the payload
 base, and the `publish` and `subscribe` signatures; the rest is judged.
@@ -386,6 +390,8 @@ tenant finds nothing.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/work/types/work_item.py`
+
 **Check.** `arch-check` decides the work item's fields, `WORK_PAYLOADS`,
 and the unique key; the rest is judged.
 
@@ -409,6 +415,9 @@ renewal task at all, so long work loses its lease; a handler with no
 bound but the process's life.
 
 **Severity.** high
+
+**Shape.**
+`scaffold/acme_root/workers/maintenance/src/acme/workers/maintenance/loop.py`
 
 ## ASY-18 Shutdown hands work back first and goes offline last
 

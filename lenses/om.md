@@ -99,6 +99,8 @@ stamp on the event, or with a `created_by`.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/base.py`
+
 **Check.** `arch-check` decides the fields of the root, the mixins, and
 `OutboxRow`, a redeclared mixin field, where the base helpers and
 `PROVENANCE_FIELDS` live, and a local clock; the rest is judged.
@@ -363,6 +365,8 @@ interface named after an aggregate in a namespace that has only one.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/media`
+
 **Check.** `arch-check` decides the folder shape of each namespace, the
 re-export of its interface, and an entity next to the impl; the rest is
 judged.
@@ -389,6 +393,8 @@ impl aggregating with different arithmetic; a rules function calling
 pricing rule duplicated in a manager and a report builder.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/media/rules.py`
 
 **Check.** `arch-check` decides the imports, the calls, and the async
 functions of a rules module; the rest is judged.
