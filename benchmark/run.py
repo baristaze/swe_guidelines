@@ -837,12 +837,16 @@ def run_skill(
                 {k: earlier_usage.get(k, 0) + own_usage.get(k, 0) for k in {*earlier_usage, *own_usage}},
             )
         phase_cost = spent if spent is not None else estimated
-        plan.budget.spent += phase_cost
+        # A session with no result spent at least its estimate, which counts each message's output as the message
+        # starts, and up to its phase's cap, as Claude Code's --max-budget-usd let it. The run's cap counts the most.
+        counted = phase_cost if spent is not None else max(phase.max_usd, estimated)
+        plan.budget.spent += counted
         cost += phase_cost
         priced = priced or spent is not None
-        if spent is None and estimated:
+        if spent is None:
             notes.append(
-                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}"
+                f"repeat {index}: phase {phase.name} reported no cost; its spend is the harness's estimate, ${estimated:.4f}, "
+                f"a lower bound, and the run's spend cap counts it at ${counted:.4f}"
             )
         for name, value in (spent_usage or watch.usage()).items():
             usage[name] = usage.get(name, 0) + value
@@ -863,6 +867,9 @@ def run_skill(
             "estimated_usd": estimated,
             "wall_s": round(status.duration_s, 3),
         }
+        if spent is None:
+            # Its cost is the estimate, which reads low.
+            record["cost_lower_bound"] = True
         if by_model:
             # The models the session used and what each cost, so the run says what it measured.
             record["model_cost_usd"] = by_model
@@ -1099,8 +1106,9 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
     if summary["self_judged"]:
         print(f"note: {summary['self_judged']}")
     spent = data["spend"]
-    unpriced = f" (at least; no price for {', '.join(spent['unpriced'])})" if spent["unpriced"] else ""
-    print(f"spend      ${spent['total_usd']:.4f}{unpriced}")
+    why = [f"no price for {', '.join(spent['unpriced'])}"] if spent["unpriced"] else []
+    why += [f"{', '.join(spent['estimated'])} at the harness's estimate"] if spent.get("estimated") else []
+    print(f"spend      ${spent['total_usd']:.4f}" + (f" (at least; {'; '.join(why)})" if why else ""))
     for fallback in summary["fallbacks"]:
         print(f"{fallback['provider']:10} {fallback['to']} answered in place of {fallback['from']} {fallback['count']} time(s)")
 

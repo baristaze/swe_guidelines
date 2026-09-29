@@ -964,6 +964,32 @@ def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run
     assert second["status"] == "ok"
 
 
+def test_a_phase_its_timeout_stops_before_a_result_is_a_lower_bound_counted_at_its_cap(run_phases):
+    usage = {"input_tokens": 150_000, "output_tokens": 0}  # $0.60 at the matrix's price
+    stopped = {**TREE, "messages": [["m1", "claude-opus-5-5", usage]], "sleep": 30}
+    # Each phase may spend $1, so a repeat needs $2 of the run's $3.
+    scenario = phased(phase("scaffold", stopped, timeout_s=1), phase("mvp"))
+    code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "3")
+    assert code == 0
+    data = results(run_dir)
+    first, second = data["repeats"][0]["phases"]
+    assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
+    assert first["cost_usd"] is None and first["estimated_usd"] == 0.6 and first["cost_lower_bound"] is True
+    assert second["status"] == "ok" and second["cost_usd"] == 0.25 and "cost_lower_bound" not in second
+    note = "phase scaffold reported no cost; its spend is the harness's estimate, $0.6000, a lower bound, "
+    assert any(f"{note}and the run's spend cap counts it at $1.0000" in n for n in data["notes"])
+    # The cap counts scaffold at its $1 cap, not its $0.60 estimate: $1.75 is left, short of a repeat's $2.
+    assert len(data["repeats"]) == 1
+    assert any("repeat 1 and after did not run: $1.7500 of the run's $3 spend cap is left" in n for n in data["notes"])
+    # What the run publishes is the estimate, marked as a lower bound.
+    assert data["repeats"][0]["subject_cost_usd"] == pytest.approx(0.85)
+    assert data["spend"]["total_usd"] == 0.85 and data["spend"]["estimated"] == ["repeat 0, phase scaffold"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Total: at least $0.8500. No result from repeat 0, phase scaffold, so its cost is the harness's estimate" in report
+    assert "| subject | " in report and "| at least $0.8500 |" in report
+    assert "at least $0.6000 (estimated)" in report
+
+
 # The models a session used ---------------------------------------------------
 
 
