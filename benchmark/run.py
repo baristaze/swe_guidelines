@@ -188,6 +188,19 @@ def runs_folder(out: str | None, scenario: str, source: Path | None = None) -> P
     return source.parent if source is not None else DEFAULT_OUT / scenario
 
 
+def refuse_fork(source: Path) -> int | None:
+    """Exit 2, before anything is made or spent, when a run folder beside `source` already ran from it; None otherwise.
+
+    A chain has one line, so it is one row; a run resumes or judges again
+    from its newest folder (`harness.chain.fork`).
+    """
+    why = CH.fork(source)
+    if why is None:
+        return None
+    print(f"{why}. No run folder was made, and nothing was spent", file=sys.stderr)
+    return 2
+
+
 def chain_of(source: Path, run: R.RunResult) -> dict[str, Any]:
     """The chain a run that continues `source` ends: the folders of the source's chain, then this run (`harness.chain`)."""
     folders, broken = CH.lineage(source)
@@ -1943,6 +1956,8 @@ def command_judge(args: argparse.Namespace) -> int:
     if not isinstance(name, str) or ran_on not in RT.NAMES:
         print(f"{source} is not a run folder: it holds no run.json that names its scenario and its runtime", file=sys.stderr)
         return 2
+    if (code := refuse_fork(source)) is not None:
+        return code
     taken = [str(g) for g in groups] if isinstance(groups, list) else []
     try:
         base = S.load(S.find(name, SCENARIOS))
@@ -2453,6 +2468,8 @@ def command_resume(args: argparse.Namespace) -> int:
     if not isinstance(name, str) or not isinstance(runtime, dict) or ran_on not in RT.NAMES:
         print(f"{source} is not a run folder: it holds no run.json that names its scenario and its runtime", file=sys.stderr)
         return 2
+    if (code := refuse_fork(source)) is not None:
+        return code
     if ran.get("rehearsal"):
         print(
             f"{source} is a rehearsal, whose every bound was cut small; run the scenario rather than resume it", file=sys.stderr

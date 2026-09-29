@@ -66,6 +66,50 @@ def lineage(folder: Path) -> tuple[list[Path], str | None]:
     return chain, None
 
 
+def continued_by(folder: Path) -> list[Path]:
+    """The run folders beside `folder` that ran from it: each whose `results.json` names it as its source, in name order.
+
+    A dry run and a preflight write `run.json` alone and ran nothing from
+    it, so they do not count.
+    """
+    beside = [p for p in folder.parent.iterdir() if p.is_dir() and p != folder] if folder.parent.is_dir() else []
+    out = []
+    for path in sorted(beside):
+        source = record(path).get("source")
+        if isinstance(source, dict) and source.get("run_id") == folder.name:
+            out.append(path)
+    return out
+
+
+def newest(folder: Path) -> Path:
+    """The newest folder of the line `folder` is on: the folder that ran from it, and the one that ran from that, to the end."""
+    seen = {folder}
+    while (after := continued_by(folder)) and after[0] not in seen:
+        folder = after[0]
+        seen.add(folder)
+    return folder
+
+
+def one_line(source: Path, after: list[Path], latest: Path | None = None) -> str:
+    """Why no other run may continue `source`, which the folders `after` continue: a chain has one line.
+
+    A fork is two measurements on one row, so a run resumes or is judged
+    again from the chain's newest folder, `latest` when it is named.
+    """
+    names = " and ".join(p.name for p in after)
+    at = f", {latest.name}," if latest is not None else ","
+    return (
+        f"{source.name} is already the source of {names}, beside it. A chain has one line, so a run resumes or is judged "
+        f"again from the chain's newest folder{at} which carries every milestone before it"
+    )
+
+
+def fork(source: Path) -> str | None:
+    """Why a new run may not continue `source`: a run folder beside it already does; None when none does."""
+    after = continued_by(source)
+    return one_line(source, after, newest(source)) if after else None
+
+
 def ran_no_subject(data: dict[str, Any]) -> bool:
     """Whether a folder judged another run's output, again or in part, and ran no subject: its source names no phase."""
     source = data.get("source")

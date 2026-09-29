@@ -181,7 +181,7 @@ adds a run adds its row by hand; nothing generates the pages.
 its scenario's folder, when a scenario's folder has no `README.md`, and
 when the index does not name each scenario's folder once. It fails when
 a run folder is named by no row, or by two, as a row's run or as a part
-of its chain; when a row names a run that is not there, or whose chain
+of its chain; when a chain forks; when a row names a run that is not there, or whose chain
 breaks; when a row's cost is not its chain's total; and when a row sits
 above a run that started after it. It also fails on a run whose
 checkout was not clean (see Versions), on a run whose runtime its
@@ -1557,6 +1557,15 @@ one after another. The chain's total is what its folders spent, each
 its `spend.total_usd`. It is a lower bound, `at_least`, when a folder
 recorded no spend, a model had no price, or the chain breaks: a source
 that is not beside its folder.
+
+A chain has one line: resume or judge again from its newest folder,
+which carries every milestone before it. Two runs from one folder
+would fork the chain, and a fork cannot be one row. So `resume` and
+`judge` refuse a source that a run folder beside it already names as
+its `source`, with exit 2, before they make a run folder or spend
+anything, and name the chain's newest folder. A dry run, or a
+preflight, ran nothing from its source, so it does not count.
+`make runs` fails on a chain that forks, with the same pointer.
 
 A run that resumes or judges another writes its chain under `chain` in
 `results.json`: each folder from the first, with its start and what it

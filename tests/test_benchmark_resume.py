@@ -602,7 +602,7 @@ def no_runtime(*args, **kwargs):
 
 
 @needs_jsonschema
-def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_records_the_chain(bench, panel, tmp_path):
+def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_records_the_chain(bench, panel, tmp_path, capsys):
     # The scaffold ends with a helper unanswered, so the harness ends the repeat there, as the first run of a long one can.
     data = scenario(
         phase("scaffold", {"write": {"site/a.txt": "a"}, "agents": [["toolu_1", "helper", False]]}),
@@ -619,10 +619,9 @@ def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_re
     root = tmp_path / "benchmark" / "runs"
     code, first = bench.here("--scenario", "system", "--repeat", "1", "--subject-model", "claude-opus-5-5")
     assert code == 6 and first is not None and first.parent == root / "system"  # a run's folder is in its scenario's
-    # A resume, dry or not, lands beside its source, so the chain stays in one folder.
+    # A resume, dry or not, lands beside its source, so the chain stays in one folder. A dry run ran nothing from it.
     code, dry = bench.here("resume", "--source", str(first), "--dry-run")
     assert code == 0 and dry is not None and dry.parent == root / "system"
-    subprocess.run(["rm", "-rf", str(dry)], check=True)
     panel.answers["openai"] = "error"
     code, resumed = bench.here("resume", "--source", str(first))
     assert code == 0 and resumed is not None and resumed.parent == root / "system"
@@ -654,6 +653,18 @@ def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_re
     assert results(resumed)["chain"]["total_usd"] == 6.75 and "chain" not in results(first)
     report = (judged / "report.md").read_text(encoding="utf-8")
     assert "## Chain" in report and "Total: $8.2500." in report
+    # A chain has one line: a resume or a judge of a folder another already ran from is refused, before it spends.
+    made = sorted(root.glob("*/*"))
+    for argv in (["resume", "--source", str(first)], ["judge", "--source", str(first)], ["resume", "--source", str(resumed)]):
+        assert bench.here(*argv) == (2, None)
+        err = capsys.readouterr().err
+        continued = resumed if argv[-1] == str(first) else judged
+        assert (
+            f"{Path(argv[-1]).name} is already the source of {continued.name}, beside it. A chain has one line, so a run "
+            f"resumes or is judged again from the chain's newest folder, {judged.name}, which carries every milestone "
+            "before it. No run folder was made, and nothing was spent"
+        ) in err
+    assert sorted(root.glob("*/*")) == made and len(panel.calls) == 2
     assert f"| 0 | judges (openai) | `{judged.name}` | ok | $1.5000 | 0:00:01 |" in report
     assert f"| 0 | judges (anthropic, openai, gemini, xai) | `{resumed.name}` | missed: openai | $6.0000 | 0:00:01 |" in report
 

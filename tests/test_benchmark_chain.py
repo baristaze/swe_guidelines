@@ -132,6 +132,20 @@ def test_a_chain_breaks_on_a_source_not_beside_it_a_name_that_climbs_out_and_a_l
     )
 
 
+def test_the_folders_that_ran_from_a_folder_are_those_whose_results_name_it_and_a_dry_run_is_none(tmp_path):
+    made = folders(tmp_path / "one", RECORDS)
+    dry = tmp_path / "one" / "20260929-000000-create-full-system-dry"
+    dry.mkdir()
+    (dry / "run.json").write_text(json.dumps({"source": {"run_id": FIRST}}), encoding="utf-8")  # a dry run
+    assert CH.continued_by(made[FIRST]) == [made[RESUMED]] and CH.continued_by(made[JUDGED]) == []
+    assert CH.newest(made[FIRST]) == made[JUDGED] and CH.newest(made[JUDGED]) == made[JUDGED]
+    assert CH.fork(made[JUDGED]) is None
+    assert CH.fork(made[FIRST]) == (
+        f"{FIRST} is already the source of {RESUMED}, beside it. A chain has one line, so a run resumes or is judged "
+        f"again from the chain's newest folder, {JUDGED}, which carries every milestone before it"
+    )
+
+
 def test_a_folder_with_no_results_names_its_source_by_its_run_json(tmp_path):
     made = folders(tmp_path / "one", {FIRST: RECORDS[FIRST]})
     (tmp_path / "one" / RESUMED).mkdir()

@@ -279,6 +279,41 @@ def test_a_folder_no_row_and_no_chain_names_fails(repo, runs, capsys):
     assert f"no row names the run folder {ONE_A}" in out and "2 run index mismatch(es)" in out
 
 
+AGAIN = "20260104-000000-alpha-again"
+
+
+@pytest.mark.parametrize(
+    "named",
+    [
+        [(AGAIN, "$84.53")],  # the second resume alone: the first one is left over
+        [(AGAIN, "$84.53"), (RESUMED, "$170.29")],  # both: the run is named twice
+        [(RESUMED, "$170.29")],  # the first resume alone: the second one is left over
+    ],
+)
+def test_a_chain_that_forks_fails_with_one_line_to_resume_from(repo, runs, capsys, named):
+    chained(repo)
+    source = {"run_id": RUN, "path": "x", "after": "scaffold", "repeats": [0], "refused": [], "capped": []}
+    a_run(repo, AGAIN, "2026-01-04T08:00:00Z", spend=spend(2.0), source=source)  # a second resume of the run
+    shutil.rmtree(repo.root / "benchmark" / "runs" / "alpha" / JUDGED)
+    page(repo, "alpha", *(row(name, cost) for name, cost in named))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        f"benchmark/runs/alpha/{RUN}: {RUN} is already the source of {RESUMED} and {AGAIN}, beside it. A chain has one "
+        "line, so a run resumes or is judged again from the chain's newest folder, which carries every milestone before it"
+    ) in out
+    assert "is named by" not in out and "no row names" not in out and "1 run index mismatch(es)" in out
+
+
+def test_a_dry_run_beside_a_run_does_not_fork_its_chain(repo, runs, capsys):
+    chained(repo)
+    repo.write(f"benchmark/runs/alpha/{AGAIN}/run.json", json.dumps({"source": {"run_id": RUN}}) + "\n")
+    page(repo, "alpha", row(JUDGED, "$200.41"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"no row names the run folder {AGAIN}" in out and "is already the source of" not in out
+
+
 def test_a_chain_whose_source_is_not_beside_it_breaks(repo, runs, capsys):
     chained(repo)
     shutil.rmtree(repo.root / "benchmark" / "runs" / "alpha" / RUN)
