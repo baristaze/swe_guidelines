@@ -1,47 +1,39 @@
 # Working in this repository
 
-This repository holds one guideline (`architecture.md`), a lens
-catalog derived from it (`lenses/`), Claude Code skills that apply the
-lenses (`skills/`), and the checkers that keep the three consistent
-(`scripts/`, `Makefile`).
+This repository holds one guideline (`architecture.md`), the scaffold
+that shows its shape (`scaffold/`), the lenses and the skills that hold
+its detail (`lenses/`, `skills/`), the static checker (`checkers/`), the
+benchmark harness (`benchmark/`), and the scripts that keep them
+consistent (`scripts/`, `Makefile`). Each script's docstring states
+what it holds. Read it before you change what it checks.
+
+## The ladder
+
+The guideline tells the story and states every rule. A lens or a skill
+holds the checkable detail under a rule the guideline states. It is
+stricter than the story on purpose, never contrary to it, and it never
+adds a rule the guideline does not state. The checker and the gates are
+stricter still. When the guideline changes, every lens and skill that
+cites the changed text changes with it.
+
+## Writing
+
+- A person and an agent read `architecture.md`, the READMEs, and
+  `docs/`. They tell the story and point at the detail: short
+  sentences, one idea each, in the present tense, with no history.
+- Only agents read the lenses, the skills, and `agents/`. They may be
+  exact, and they name the scaffold file whose shape to follow.
+- Detail goes where it is held: code to the scaffold, checkable detail
+  to a lens, steps and edge cases to a skill. What only an agent needs
+  on a person's page goes in a short agents-only block, opened by
+  `<!-- agents-only` alone on its line; nothing inside may close it.
+  Tags follow How to Read This, in `architecture.md`.
 
 ## Layout
 
-- `architecture.md` is the source of truth. Every rule in a lens or a
-  skill restates a sentence in it; nothing adds a rule the guideline
-  does not state.
-- `lenses/<group>.md` holds one group of lenses in the format
-  `lenses/README.md` defines. Ids are `<PREFIX>-NN`; every lens cites
-  `Section title` or `Section title, Subsection`, by title and never
-  by number.
-- `skills/arch-review-<group>/SKILL.md` is generated from
-  `skills/_template/review.SKILL.md`; edit the template and run
-  `make gen-skills`. The other skills are hand-written. The six
-  scaffold skills share `skills/_shared/scaffold-conventions.md`; the
-  other hand-written skills do not. `skills/_shared/ops-skills/` holds
-  the fifteen project-local skills, the nine operational skills, the
-  four audits, and the two optional audits, as flat templates, one
-  file each, with `acme` for the product; `arch-scaffold-new` copies
-  them into a new tree, and `make leaks`, `make links`, and `make lint`
-  hold them. They are not skills of this plugin, but a new tree runs
-  them as skills, so `scripts/check_skills.py` reads their frontmatter.
-  It holds the same flat `key: value` lines a
-  skill's frontmatter has. The name equals the file name. The
-  description is one double-quoted string of at most 1024 characters,
-  outside the plugin's description budget. `allowed-tools` is
-  comma-separated, with no bare `Bash`, and each Bash entry is the
-  `Bash(cmd:*)` prefix form or an exact `Bash(make <target>)`. For an
-  audit it reads two things more, and holds each to Operations
-  (Operational Skills). Its `## Role and credential` section opens
-  with the role the section's table gives it. Its fixes rank remove,
-  fold, defer, cache, and only then parallel. The script also holds
-  one sentence the text states and three files restate, "a work row
-  is done once its item is queued": the text, STO-20, and the two
-  scaffolds that write the outbox relay each say it.
-  `skills/arch-new-aspect`
-  is the one skill that edits this repository itself: it incorporates
-  a new aspect into the guideline and cascades it through the lenses,
-  skills, and docs, and names the release level.
+- `architecture.md` is the source of truth. Its Contents block is
+  generated (`make gen-toc`) and checked (`make toc`). Headings are
+  unnumbered, and every cross-reference names a section by its title.
 - `scaffold/acme_root/` is the domain-agnostic core of a system in the
   guideline's shape: a whole monorepo named `acme`, with its own gates.
   `scaffold/new.py` copies it under a project's name, standard library
@@ -49,199 +41,86 @@ lenses (`skills/`), and the checkers that keep the three consistent
   and mypy read `new.py` alone; markdownlint, the links, and the leaks
   read the whole scaffold; CI's `scaffold` job runs a fresh copy's own
   gates, with arch-check from `checkers/`.
+- `lenses/<group>.md` holds one group of lenses in the format
+  `lenses/README.md` defines. `make lenses` holds the format, the
+  citations, and every identifier a lens quotes to the section it cites.
+- `skills/arch-review-<group>/SKILL.md` is generated from
+  `skills/_template/review.SKILL.md`: edit the template or the lenses,
+  and run `make gen-skills`. The other skills are hand-written. The six
+  scaffold skills share `skills/_shared/scaffold-conventions.md`.
+  `skills/_shared/ops-skills/` holds the fifteen project-local skills
+  as flat templates, one file each, with `acme` for the product;
+  `arch-scaffold-new` copies them into a new tree, so
+  `scripts/check_skills.py` reads their frontmatter as a skill's.
+  `skills/arch-new-aspect` is the one skill that edits this repository:
+  it adds an aspect to the guideline and cascades it.
 - `agents/arch-reviewer.md` is the subagent `arch-review-full` fans out
-  to. Its procedure and report shape mirror the review template, and
-  `scripts/check_agents.py` holds the two together: the four decision
-  words, the report block, and the count of procedure steps must
-  agree. It also holds the agent's `maxTurns`, the count of turns
-  after which the host stops it, since the host accepts the agent with
-  that key missing or misspelled. The sentence "Never edit, stage, or
-  commit" is repeated in every review skill on purpose.
-- `.claude-plugin/` holds the plugin and marketplace manifests. The
+  to. `scripts/check_agents.py` holds it to the review template and to
+  its `maxTurns`. Every review skill repeats "Never edit, stage, or
+  commit" on purpose.
+- `.claude-plugin/` holds the plugin and marketplace manifests; the
   repository root is the plugin. `plugin.json` carries the one release
-  version. `scripts/check_version.py` holds every copy to it: the
-  marketplace manifest, the changelog's latest release heading, the
-  pinned tags in `README.md`, `docs/adopting.md`, and
-  `checkers/README.md`, and the arch-check package's version in
-  `checkers/pyproject.toml` and `checkers/src/arch_check/__init__.py`.
-- `benchmark/` holds the harness that measures a subject against a
-  rubric (`.github/workflows/benchmark.yml` runs every scenario that
-  lists the container runtime on demand, never on push): `run.py` with
-  its inline dependencies, the `harness/` modules, the scenarios, the
-  result schema, and `serve.py`. A scenario lists the runtimes it runs
-  on, and `run.py` refuses any other. Every harness module
-  imports the standard library only at import time, so the tests at
-  `tests/test_benchmark_*.py` run with nothing installed; the provider
-  clients, `pyyaml`, `jsonschema`, and `websockets` are imported inside
-  the functions that use them. A run writes its folder into its
-  scenario's folder, `benchmark/runs/<scenario>/`, and a run folder is
-  checked in once `run.py redact` has scanned it for keys, and for the
-  account ids and limit figures that OpenAI's, Anthropic's, and xAI's
-  errors name. Each scenario's folder has a `README.md`: what the
-  scenario measures, and a table of its runs. A run and its resumes are
-  one row, whose cost is their chain's total
-  (`benchmark/harness/chain.py`), and `benchmark/runs/README.md`, the
-  index, names each scenario's folder once. The pull request that adds
-  a run folder adds its row by hand, and `scripts/check_runs.py` holds
-  every run folder to its scenario's folder and to one row, as its run
-  or a part of its chain, each row to its chain's cost, and every run
-  folder to a runtime its scenario lists, to no rehearsal, to no marked
-  repeat, to no key-shaped string, account id, or limit figure that
-  `run.py redact` replaces in any file it holds, plain or compressed,
-  and to no `.git`. It reads the scenarios, the chains, and the files
-  through the harness, so `make runs` brings `pyyaml`.
-  `make benchmark` runs the smoke scenario in a container, its image
-  built first, and is not part of `make check`, because a run calls
-  paid APIs.
-- `checkers/` holds `arch-check`, the static checker that decides the
-  mechanical lenses. It is its own Python package
-  (`checkers/src/arch_check/`, Python 3.11, standard library only).
-  A rule's id is the id of the lens it decides, and a rule is one
-  module under `rules/`; `checkers/README.md` says how to add one.
-  `checkers/src/arch_check/lenses.py` carries every lens id and
-  severity, and `tests/test_arch_check_framework.py` holds it equal
-  to `lenses/*.md`. The tests are `tests/test_arch_check_*.py`, on
-  trees built with `tests/arch_check_fixtures.py`; they skip on
-  Python 3.10.
-- `scripts/_common.py` holds what the scripts share, the heading
-  anchor rule above all: the generator that writes anchors and the
-  checker that resolves them use the same function. It also holds the
-  one list of the repository's Markdown (`markdown_files`), which
-  every script that scans Markdown reads, and the argument parser
-  every script uses, and the one fence rule
-  (`fenced_lines`) every script that skips code blocks uses.
-- `scripts/check_lenses.py` also holds every identifier a lens quotes
-  to the section the lens cites: a backticked name the guideline uses
-  must appear in that section. `CROSS_REFERENCES` lists the few
-  deliberate exceptions. `tests/` holds one
-  pytest module per script, each on a small fixture tree, with a pass
-  and a fail path per rule; `make test` runs them.
+  version, and `scripts/check_version.py` holds every copy to it.
+- `benchmark/` holds the harness that scores a subject against a
+  rubric. A harness module imports only the standard library at import
+  time, so its tests run with nothing installed. A run folder is checked
+  in under `benchmark/runs/<scenario>/` once `run.py redact` has scanned
+  it, with its row added by hand; `scripts/check_runs.py` holds the
+  rest. `make benchmark` calls paid APIs and is not part of `make check`.
+- `checkers/` holds `arch-check`, its own package
+  (`checkers/src/arch_check/`, Python 3.11, standard library only). A
+  rule is one module under `rules/`, and its id is the id of the lens it
+  decides. `lenses.py` carries every lens id and severity, and
+  `tests/test_arch_check_framework.py` holds it equal to `lenses/*.md`.
+- `scripts/_common.py` holds what the scripts share: the heading anchor
+  rule, the one list of the repository's Markdown (`markdown_files`),
+  the argument parser, and the fence rule (`fenced_lines`).
+- `tests/` holds one pytest module per script, with a pass and a fail
+  path per rule; `make test` runs them.
 
 ## Invariants
 
-- No product or hardware vocabulary in the guideline, the lenses, the
-  skills, the docs, the agents, the scaffold, the `.github/` templates, or
-  this file
-  (`scripts/check_leaks.py` lists the terms). The product list is a regression guard for the
-  vocabulary of the one origin the guideline was extracted from, not a
-  general check: it catches that vocabulary flowing back in, and a
-  fork replaces it with its own. Agents are named as agents.
-  `scripts/check_leaks.py` also reads the YAML and JSON under
-  `.github/`, `.claude-plugin/`, `skills/`, `agents/`, and `benchmark/`,
-  and the docstrings under `scripts/`, `checkers/`, and `benchmark/`.
-- No history in the guideline: it states what we do, in the present
-  tense, with no changelog phrasing and no survey of the alternatives
-  weighed. Naming the near miss a rule rules out ("X, never Y") is
-  part of the rule and stays.
-- No section numbers anywhere: headings are unnumbered, and every
-  cross-reference (in the guideline, the lenses, the skills, the docs)
-  names the section by title; inside the guideline it is a named
-  anchor link. Numbers shift when a section is inserted; titles do not.
-- The guideline's Contents block is generated (`make gen-toc`) and
-  checked (`make toc`).
-- Every lens cites a section and subsection that exist.
-- Every skill's `name` equals its folder name and starts with `arch-`;
-  every `${CLAUDE_SKILL_DIR}/...` reference resolves; frontmatter is
-  flat `key: value` lines; descriptions are one complete double-quoted
-  string; `allowed-tools` is comma-separated and never empty, in every
-  skill and ops-skill template. `scripts/check_skills.py`
-  refuses a bare `Bash`, a trailing space inside the parentheses, and
-  the `Bash(cmd *)` spelling; it accepts both the prefix form and an
-  exact `Bash(make <target>)`: the exact form for a Makefile target,
-  the prefix form `Bash(cmd:*)` for a tool that takes arguments.
-  `allowed-tools` names only what the body runs, and
-  `scripts/check_skills.py` holds the make targets to that: every
-  `Bash(make <target>)` has `make <target>` in a backticked span of the
-  body, or of `skills/_shared/scaffold-conventions.md` when the body
-  references it. A description in prose is not a run. The git, uv, and
-  pnpm entries are held to it by hand. `Bash(uv run:*)` and
-  `Bash(pnpm run:*)` are a shell in practice: either runs whatever the
-  workspace holds. They stay listed because a scaffold has to run the
-  project's own tools through the workspace, and naming them says so
-  in the frontmatter instead of hiding it behind a bare `Bash`.
-  `Bash(python3:*)` in the review skills is the same kind of entry: it
-  is there to run `arch-check`, and it could run anything, so a review
-  skill's promise never to edit rests on its text, not its tools.
-- Scaffold skills have the five sections Input, Created, Changed,
-  Procedure, Output, in that order (`scripts/check_skills.py` holds
-  them to it).
-- A skill keeps its spine and names its detail. An invariant that must
-  never be missed stays inline in the skill body, because a referenced
-  file is a promise and an inlined line is a guarantee; long reference
-  material moves into `skills/<name>/references/<file>.md` and is named
-  by the step that reads it, which reads it when that step runs and not
-  before. `scripts/check_skills.py` holds both ends: a reference file no
-  step names is an orphan and an error, and a skill body past the word
-  bound is an error whose fix is to move reference material into a
-  step's file.
-- A step that fixes and runs again states its count bound. A skill
-  run by a strong model fixes and reruns until something stops it,
-  and with no count only its session's turns or wall time would. For
-  a gate the wording is one: the first run plus at most 3 reruns,
-  then stop and say which gate fails and why. A step with a smaller
-  unit (a dependency row, an audit's own flows file) states its own
-  count in the same shape and says what happens past it.
-  `scripts/check_skills.py` holds a paragraph or list item under
-  `skills/` that says fix beside a rerun, or beside a `make <target>`
-  it runs, to an `at most <n> reruns` in the same paragraph or item.
-  A rerun is `rerun`, or `run` with `again` anywhere after it: the
-  span is the whole paragraph or item, so a block that says fix, run,
-  and again without a loop is reworded so it does not. It pairs a fix
-  and a rerun only inside one paragraph or item, so a fix in a step
-  with its rerun in a nested bullet is not paired. That loop, and a
-  loop said in other words, is held by hand.
-- The release version is written once, in `.claude-plugin/plugin.json`;
-  every other copy is checked against it.
-- Scaffold skills share `skills/_shared/scaffold-conventions.md`.
-- Exactly one review skill per lens group; `arch-review-full` names all
-  of them.
+- No product or hardware vocabulary anywhere the leaks check reads
+  (`scripts/check_leaks.py` lists the terms and the files). Agents are
+  named as agents.
+- "X, never Y" names the near miss a rule rules out. It is part of the
+  rule, not history.
+- Every skill's `name` equals its folder name and starts with `arch-`,
+  and its `allowed-tools` names only what its body runs.
+  `scripts/check_skills.py` holds the frontmatter; the git, uv, and pnpm
+  entries are held by hand.
+- A scaffold skill has the sections Input, Created, Changed, Procedure,
+  and Output, in that order.
+- A skill keeps its spine inline and moves long reference material into
+  `skills/<name>/references/`, named by the step that reads it.
+- A step that fixes and runs again states its bound: the first run plus
+  at most 3 reruns, then stop and say which gate fails and why.
+- Exactly one review skill per lens group, and `arch-review-full` names
+  all of them.
 
 ## Validate
 
 ```bash
-make check                       # everything CI runs
-make checkers-dist               # builds the arch-check wheel and runs its entry point
+make check                          # everything CI runs
+make checkers-dist                  # builds the arch-check wheel and runs its entry point
 claude plugin validate . --strict   # manifests, skills, agents (when claude is installed)
 ```
 
-CI runs `make test` and `make checkers-dist` on Python 3.11,
-arch-check's floor. `.github/pins/` holds every tool version
-(`requirements.txt` for uv and the Python tools, `package.json` for the
-npm tools); the Makefile and the workflows read them there, and
+CI also runs `make test` and `make checkers-dist` on Python 3.11,
+arch-check's floor. `.github/pins/` holds every tool version, and
 dependabot updates them.
 
 ## Conventions
 
-- Readability outranks density. A sentence a senior reader has to
-  parse twice has failed, however well it is built.
-- Short sentences, one idea each. A chain of clauses joined by commas
-  is the thing to break up.
-- A paragraph has no cap and an em-dash is allowed. Paragraph length
-  is not the problem; sentence length is.
-- A longer document is the right trade for a document that gets read.
-- Wrap prose at about 72 columns in the guideline and the lenses.
-- A concept the guideline uses before the section that defines it
-  carries a named anchor link to that section at its first mention.
-- A code snippet that shows a root with "one getter per X" shows two
-  getters and a `# ...` line, so the pattern reads at a glance.
-- When a fix is applied to one instance, search the repository for
-  its siblings and fix them in the same change.
-- When the guideline renames an identifier or changes a shape, grep
-  every scaffold skill and `agents/` for the old spelling and fix them
-  in the same change; no checker does this yet.
-- Commit messages: a specific subject line, a short body naming the
+- Prose wraps at about 72 columns. A concept the guideline uses before
+  the section that defines it links that section at its first mention.
+- A fix applied to one instance is searched for its siblings, and they
+  are fixed in the same change.
+- When the guideline renames an identifier or changes a shape, grep the
+  scaffold skills and `agents/` for the old spelling; no checker does.
+- A commit message has a specific subject and a short body naming the
   rule that changed and why.
-- A change that removes or reverses a rule is a major release; one
-  that adds or sharpens a rule is a minor release; before 1.0.0 a
-  removed or reversed rule bumps the minor number, as semver reads
-  0.x, and the changelog entry names the reversal (`CONTRIBUTING.md`,
-  Versioning).
-- A change never edits `CHANGELOG.md`. The changelog is written once
-  per release, in the release pull request, from the squash commits
-  since the last tag. A pull request that edited it put every other
-  open pull request in conflict. So the pull request description
-  carries what the release section needs: what changed, in the
-  guideline's voice, the level, and a reversal named as one.
-  `scripts/check_changelog.py`, run by `.github/workflows/changelog.yml`,
-  refuses a pull request that edits `CHANGELOG.md` unless its title is
-  `Release X.Y.Z: ...` or its branch is `release-X-Y-Z`.
+- A change never edits `CHANGELOG.md` (`scripts/check_changelog.py`).
+  Its pull request description carries what the release needs: what
+  changed, the level `CONTRIBUTING.md` (Versioning) gives it, and a
+  reversal named as one.
