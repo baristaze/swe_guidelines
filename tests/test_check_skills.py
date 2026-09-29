@@ -220,7 +220,7 @@ def test_skill_dir_reference_must_exist(repo, skills, capsys):
 
 
 def test_every_group_has_one_review_skill_named_by_full(repo, skills, capsys):
-    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `context.md` | OpContext: tenancy |\n")
+    repo.edit("lenses/README.md", "principles  |\n", "principles  |\n| `ctx` | `context.md` | TenantContext: tenancy |\n")
     assert skills.main() == 1
     out = capsys.readouterr().out
     assert "no arch-review-ctx skill for lens group 'ctx'" in out

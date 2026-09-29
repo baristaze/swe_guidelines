@@ -10,7 +10,7 @@ allowed to call each other: interfaces and their impls, constructor
 injection, the roots that assemble everything at boot, the shape of a
 manager operation, and the direction calls may flow across layers. It
 leaves the shape of entities and mixins to `om`, everything about
-`OpContext`, authorization, and tenancy to `context`, the internals of
+`TenantContext`, authorization, and tenancy to `context`, the internals of
 tables, translation, and migrations to `storage`, the semantics of each
 infra capability to `async`, the gateway, public types, and realtime
 channel to `network`, and settings objects and environment reads to
@@ -465,7 +465,7 @@ never arrives on a context, nor a request id, an actor, or a tenant
 through a constructor. When an operation depends on what the request
 established, its stage is in the signature.
 
-**Source.** Interfaces, Injectability; OpContext, Scopes.
+**Source.** Interfaces, Injectability; TenantContext, Scopes.
 
 **Look for.** Constructor parameters that name a request, a user, or a
 tenant; context or scope members that name a manager, a storage, or

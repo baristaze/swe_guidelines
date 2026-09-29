@@ -14,7 +14,7 @@ a lens in this file does not name. The guideline itself is at
 source read in full. If either file is missing, stop and say the
 installation is incomplete.
 
-This pass covers OpContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles, Telemetry (Correlation Across a Handoff), Cross-Cutting Conventions (Tests): stages, scopes, OperatorContext, authorization, tenancy, provenance.
+This pass covers TenantContext (Stages, Scopes, The Operator Context), Separation of Layers, The Business Layer, The Storage Layer, Infrastructure, The Network Layer, Worker Roles, Telemetry (Correlation Across a Handoff), Cross-Cutting Conventions (Tests): stages, scopes, OperatorContext, authorization, tenancy, provenance.
 
 ## Input
 

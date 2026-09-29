@@ -42,7 +42,7 @@ Rules:
   citation of `<Section>, <Subsection>` cites the section. An identifier
   is a backticked name written as code: it holds an underscore, a
   lower-case letter before a capital, a dot, or a closing `()`
-  (`org_id`, `OpContext`, `ctx.user_id`, `get_cache()`); a file name
+  (`org_id`, `TenantContext`, `ctx.user_id`, `get_cache()`); a file name
   (`base.py`) is not one. Every identifier in a Principle is held to the
   cited sections, because the Principle restates them. An identifier in
   Look for or Violation is held to them when the guideline names it
