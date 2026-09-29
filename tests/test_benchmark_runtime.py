@@ -93,8 +93,17 @@ def test_a_child_that_outlives_a_clean_exit_is_stopped(tmp_path):
 
 def test_the_sandbox_holds_only_the_payload_and_goes_at_teardown(tmp_path):
     root = tmp_path / "checkout"
-    for name in ("skills/a", "lenses", "benchmark/fixtures", "docs"):
+    for name in (
+        "skills/a",
+        "lenses",
+        "benchmark/fixtures",
+        "docs",
+        "scaffold/acme_root/node_modules/x",
+        "scaffold/acme_root/.venv",
+    ):
         (root / name).mkdir(parents=True)
+    (root / "scaffold" / "new.py").write_text("print()", encoding="utf-8")
+    (root / "scaffold" / "acme_root" / "Makefile").write_text("check:", encoding="utf-8")
     (root / "architecture.md").write_text("g", encoding="utf-8")
     (root / "CLAUDE.md").write_text("c", encoding="utf-8")
     (root / "benchmark" / "fixtures" / "x.expected.yaml").write_text("k", encoding="utf-8")
@@ -109,6 +118,10 @@ def test_the_sandbox_holds_only_the_payload_and_goes_at_teardown(tmp_path):
     staged = Path(plugin_path)
     assert staged.is_relative_to(sandbox) and (staged / "skills" / "a").is_dir() and (staged / "architecture.md").exists()
     assert not (staged / "benchmark").exists() and not (staged / "CLAUDE.md").exists() and not (staged / "docs").exists()
+    # The scaffold is staged for a subject to copy, without what an install left in it.
+    assert (staged / "scaffold" / "new.py").exists() and (staged / "scaffold" / "acme_root" / "Makefile").exists()
+    assert not (staged / "scaffold" / "acme_root" / "node_modules").exists()
+    assert not (staged / "scaffold" / "acme_root" / ".venv").exists()
     staged_target = Path(target_path)
     assert (staged_target / "a.py").exists() and not list(staged_target.parent.glob("*.expected.yaml"))
     rt.teardown()

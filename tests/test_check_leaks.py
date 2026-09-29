@@ -230,3 +230,36 @@ def test_python_code_and_the_tests_are_not_scanned_for_product_terms(repo, leaks
     repo.write("tests/test_tool.py", '"""The firmware case."""\n')
     repo.write("scripts/broken.py", "def (:\n")
     assert leaks.main() == 0
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "scaffold/acme_root/README.md",
+        "scaffold/acme_root/om/src/acme/om/README.md",
+        "scaffold/acme_root/deployment/local/docker-compose.yml",
+        "scaffold/acme_root/apps/portal/openapi.json",
+    ],
+)
+def test_the_scaffold_is_scanned_for_product_terms(repo, leaks, capsys, rel):
+    repo.write(rel, "name: acme\n# drives the firmware\n")
+    assert leaks.main() == 1
+    assert f"{rel}:2: product term 'firmware'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "rel",
+    ["scaffold/acme_root/.claude/skills/ops-watch/SKILL.md", "scaffold/acme_root/om/src/acme/om/base.py"],
+)
+def test_reference_name_fails_anywhere_in_the_scaffold_its_skills_included(repo, leaks, capsys, rel):
+    repo.write(rel, "# built like the reference\n")
+    assert leaks.main() == 0
+    repo.write(rel, "# built like Tadas\n")
+    assert leaks.main() == 1
+    assert f"{rel}:1: reference term 'Tadas'" in capsys.readouterr().out
+
+
+def test_what_a_tool_leaves_in_the_scaffold_is_not_scanned(repo, leaks):
+    repo.write("scaffold/acme_root/node_modules/pkg/README.md", "# Tadas and its firmware\n")
+    repo.write("scaffold/acme_root/.venv/lib/site.py", "# Tadas\n")
+    assert leaks.main() == 0
