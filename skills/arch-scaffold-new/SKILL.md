@@ -32,13 +32,12 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
   keeps `<name-kebab>-production-api`, the API's target group, within
   the 32 characters AWS allows, so the name survives the first cloud
   deploy; `new.py` refuses a longer name and says the bound. With no
-  name given, take it from the product's own name in the spec or the
-  description, in at most two words, leaving out a word any product
-  could carry, such as platform, app, or system (`Free Journalism
-  Platform` gives `free_journalism`). When that name passes the bound,
-  take a shorter one the product gives: its short name, one of its two
-  words, or an abbreviation of them. Ask only when the product names
-  nothing.
+  name given, take the product's own short name when the spec or the
+  description gives one. Else take the word of the product's name that
+  says what the product is about, leaving out a word any product could
+  carry, such as independent, platform, app, or system (`Independent
+  Journalism Platform` gives `journalism`); two words only when one
+  cannot say it. Ask only when the product names nothing.
 - The folder is `<name>` in the current directory. It must not exist,
   or must be empty: an empty folder of that name is no collision, and
   the copy goes into it. Refuse when the current directory is inside a
@@ -80,25 +79,29 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    defect of the scaffold: stop with the cause pre-existing, name the
    gate, and change nothing.
 3. Tell whether Docker runs: `docker info` exits 0 when it does. When
-   it runs, settle the local stack's host ports before any stack
-   starts. They are knobs, `<NAME>_<SERVICE>_PORT`, and `.env.example`
-   lists them with the URL knobs that name them. Check each with
-   `lsof -i :<port>`. For each that is taken, set a free one in `.env`,
-   with every URL knob that names it, and never stop what holds it.
+   it runs, settle the local ports before any stack starts. Copy
+   `.env.example` whole to `.env`, as `make up` does. Then check every
+   port knob in it with `lsof -i :<port>`: the compose stack's
+   (`<NAME>_POSTGRES_PORT` and the rest) and the host processes'
+   (`<NAME>_PORT`, `<NAME>_METRICS_PORT`, `<NAME>_COLLECTOR_SCRAPE_PORT`,
+   and any other `_PORT` knob the file holds). For each that is taken,
+   set a free one in `.env`, with every URL knob that names it, and
+   never stop what holds it. The compose project is the product's name;
+   `COMPOSE_PROJECT_NAME` in `.env` sets another.
    When Docker does not run, the database targets of this skill and of
    the skills it follows (`make infra-up`, `make migrate`,
    `make migrate-check`, `make test-integration`) are skipped, and the
    output names each one skipped; every other gate runs.
-4. Record the product's first decisions, one ADR each, in the shape of
-   the copy's own ADRs:
-   - the product on the core: what an org, a member, and an operator
-     are in the product, which of the core's pieces it uses (files,
-     orchestrations, the work queue), and its first namespaces;
-   - the outside providers: each one the product names beyond the
-     identity provider the core has, the integration under
-     `integrations/` that will reach it, and the twin that stands in
-     wherever no account is configured. The integrations come with the
-     namespace that needs them.
+4. Record the product's first decisions as ADRs, in the shape of the
+   copy's own:
+   - one for the product on the core: what an org, a member, and an
+     operator are in the product, which of the core's pieces it uses
+     (files, orchestrations, the work queue), and its first namespaces;
+   - one per outside provider the product names beyond the identity
+     provider the core has: the integration under `integrations/` that
+     will reach it, and the twin that stands in wherever no account is
+     configured. The integrations come with the namespace that needs
+     them.
 
    Then write the opening of `README.md` and the summary of `llms.txt`.
    With `--codeowners`, write the owners into `.github/CODEOWNERS`: on
@@ -108,11 +111,12 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    The paths stay as they are.
 5. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
    follow it with the first namespace, its entity, and the entity's
-   fields.
-6. Run `make openapi`, since the entity added routes, then `make check`.
-   When Docker runs, the integration suite follows, as CI runs it on a
-   copy: `make infra-up`, `make migrate`, `make migrate-check`, and
-   `make test-integration`.
+   fields. Their gates are not run there: step 6 runs them once, for
+   all three skills.
+6. Run the gates once, in the order the conventions' After writing
+   gives, then `make test-integration` when Docker runs, as CI runs it
+   on a copy. `make openapi` runs once in all: the entity skill runs it
+   before its screen, so it does not run again here.
 
 A gate of steps 5 and 6 that fails on what this skill wrote is fixed,
 and its step runs again from its first command, as After writing

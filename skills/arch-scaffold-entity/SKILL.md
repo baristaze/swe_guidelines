@@ -21,7 +21,8 @@ Conventions (Exceptions). A section is read with its own introduction.
 
 Example: `inventory Warehouse address:str timezone:str`. The role
 defaults to `core`, the scope to `org`. Ask in one message for the
-fields not given, and for:
+fields not given and their types, and for the list below; with no one
+to answer, decide them as the conventions' step 4 says:
 
 - the mixins: `Named`? `Trackable`? `SoftDeletable`? A mixin is
   composed only when an operation exercises it: `Trackable` needs an
@@ -47,7 +48,7 @@ The shape of each file is its sibling for the `File` entity of the
 | `om/src/<name>/om/<ns>/storage/tables/<entities>.py` | the table over the matching mixins; the sibling by scope is below |
 | `om/migrations/sql/<role>/<stamp>_<entities>.up.sql`, `.down.sql` | the table with its mixin header first, then its policy with `ENABLE` and `FORCE ROW LEVEL SECURITY`; the down drops the policy and the table |
 | `om/migrations/versions/<role>/<stamp>_<entities>.py` | `revision = "<stamp>"`, `down_revision` the role's current head, `run_sql(DatabaseRole.<ROLE>, ...)` |
-| `om/tests/contracts/<entity>_storage.py` | the storage contract cases, shape `om/tests/contracts/media_storage.py` |
+| `om/tests/contracts/<entity>_storage.py` | the storage contract cases and their `CROSS_TENANT_CASES` set, shape `om/tests/contracts/media_storage.py` |
 | `om/tests/unit/test_<entity>_storage.py`, `om/tests/integration/test_<entity>_storage_postgres.py` | those cases over memory, and over Postgres under the `integration` marker |
 | `om/tests/unit/test_<entity>_manager.py` | every operation over the memory storage |
 | `services/api/tests/test_<ns>_<entity>_api.py` (unless `--no-api`) | the routes over the in-process app, shape `services/api/tests/test_media_api.py` |
@@ -67,15 +68,19 @@ table's sibling by scope, with its policy in its role's first migration:
 
 | File | Change |
 |------|--------|
-| `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope |
-| `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, and `purge_tenant(ctx)` when the namespace gains its first table |
+| `om/src/<name>/om/<ns>/storage/__init__.py`, `impl/postgres.py`, `impl/memory.py` | the storage operations of the conventions' Names, each with its tenant first by the scope, and `purge_tenant(org_id, limit)` when the namespace gains its first table, as the orchestrations storage has it |
+| `om/src/<name>/om/<ns>/manager.py`, `impl/manager.py` | the manager operations, and `purge_tenant(ctx)` over the storage's, its batch from the namespace's options, as `OrchestrationsOptions` carries it |
+| `om/src/<name>/om/root.py`, `workers/maintenance/src/<name>/workers/maintenance/container.py` (first table) | the namespace's options taken by `build_managers`, and the worker's purge batch passed in them, as `orchestrations_options` is |
+| `om/tests/unit/test_storage_exceptions.py` | the storage interface in `CROSS_TENANT_CASES`, with the contract module's set |
+| `om/tests/unit/test_session_scope.py` (when `<ns>` is new) | the Postgres impl in `IMPL_INTERFACES` |
 | `om/src/<name>/om/storage/roles.py`, `scopes.py` | the table in `TABLE_ROLES` and in `TABLE_SCOPES` |
 | `om/src/<name>/om/<ns>/README.md` | the noun, what can happen to it, the rules that hold |
 | `om/src/<name>/om/exceptions.py` (when a leaf is needed) | `<Ns>Exception(PlatformException)` once, then leaves that multiply-inherit a shape (`NotFound`, `Conflict`) |
 | `workers/maintenance/src/<name>/workers/maintenance/main.py` | the namespace in `purges`, and, for a `SoftDeletable` entity, its purge past retention in `across`, as `media` is |
 | `services/api/src/<name>/services/api/types/<ns>.py`, `services/<ns>.py`, `services/impl/<ns>.py`, `routers/<ns>.py` (unless `--no-api`) | the views and requests, the service interface, its impl, and the routes, shape `media` |
 | `services/api/src/<name>/services/api/services/__init__.py`, `services/impl/root.py`, `gateway/resolve.py`, `routers/__init__.py` (when `<ns>` is new to the API) | the service getter, its impl built over the managers, its `<Ns>Service` alias, and its router in `HOSTED` |
-| `apps/portal/src/api/types.ts`, `queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts` (with the portal screen) | the facade type, a key whose first element is `<entity>`, the query hooks, the route, and `<entity>` in `PUSHED_ENTITIES` |
+| `apps/portal/src/api/types.ts`, `queries/keys.ts`, `queries/<ns>.ts`, `app/routes.tsx`, `realtime/router.ts`, `realtime/router.test.ts` (with the portal screen) | the facade type, a key whose first element is `<entity>`, the query hooks, the route, `<entity>` in `PUSHED_ENTITIES`, and its kinds in `SERVER_KINDS` |
+| `apps/portal/src/app/AppNav.tsx` or `features/home/HomePage.tsx` (with the portal screen) | a link to the new screen, where the portal links its screens |
 
 ## Procedure
 

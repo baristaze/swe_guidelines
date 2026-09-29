@@ -34,6 +34,9 @@ copy.
    it. A migration stamp already used in its role's folder takes the
    next minute.
 4. Ask for everything the input lacks in one message, then proceed.
+   When no one answers, as in an unattended run, decide each from the
+   product's spec or description and the sibling files, name each
+   choice in the output after the files, and go on.
 
 ## Names
 
@@ -140,9 +143,15 @@ workspace. Nothing is reordered or removed.
 
 ## After writing
 
+Before the first gate, format what was written with the tree's
+formatter, `uv run ruff check --fix .` and then `uv run ruff format .`,
+the two the setup target ends with. A formatter run is no gate run,
+and no count holds it.
+
 1. Run these, in order, and stop at the first that fails:
    `make infra-up` and `make migrate` when a table was added,
-   `make openapi` when a route was added, `make check`, and
+   `make openapi` when a route was added and no step ran it since,
+   `make check`, and
    `make migrate-check` when a table was added. The database targets
    run only against the local compose stack, and only when Docker runs
    (`docker info` exits 0). When it does not, they are skipped, and the
