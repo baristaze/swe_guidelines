@@ -21,7 +21,7 @@ repository: `architecture.md`, `.claude-plugin/plugin.json`,
 `benchmark/run.py`, and `benchmark/README.md` all present. Check with
 `ls` before anything else. Otherwise stop and say so: the benchmark
 measures the checkout it runs from, and writes its run folders under
-that checkout's `benchmark/runs/`. The copy under
+that checkout's `benchmark/runs/<scenario>/`. The copy under
 `${CLAUDE_SKILL_DIR}/../..` is the installed plugin, not a checkout;
 never run the harness from there.
 

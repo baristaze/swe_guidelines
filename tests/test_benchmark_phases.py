@@ -69,7 +69,7 @@ def run_phases(tmp_path, monkeypatch):
         out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
         argv = ["--scenario", str(path), "--out", str(out), "--claude", fake_claude(tmp_path)]
         code = run.main([*argv, "--subject-model", "claude-opus-5-5", *(extra or ("--repeat", "1"))])
-        (run_dir,) = out.iterdir()
+        (run_dir,) = out.glob("*/*")
         return code, run_dir
 
     return go
@@ -292,7 +292,7 @@ def test_a_dry_run_resolves_the_phases_and_runs_nothing(tmp_path, monkeypatch):
     path.write_text(json.dumps(scenario), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run", "--max-spend-usd", "20"]
     assert run.main(argv) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     scaffold, mvp, review = resolved["phases"]
     assert [p["name"] for p in (scaffold, mvp, review)] == ["scaffold", "mvp", "review"]
@@ -761,7 +761,7 @@ def test_a_run_s_spend_cap_is_the_sum_of_the_caps_of_the_phases_it_runs_unless_a
     path = tmp_path / "scenario.json"
     path.write_text(json.dumps(dict(grouped(), repeat=1)), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run", *flags]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"] == cap
 
 
@@ -773,7 +773,7 @@ def test_the_scenario_s_own_spend_cap_holds_only_on_the_path_that_takes_no_group
     for flags in ((), ("--with", "extras")):
         out = tmp_path / "runs" / str(len(caps))
         assert run.main(["--scenario", str(path), "--out", str(out), "--dry-run", *flags]) == 0
-        (run_dir,) = out.iterdir()
+        (run_dir,) = out.glob("*/*")
         caps.append(json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["max_spend_usd"])
     assert caps == [0.5, 2.0]
 

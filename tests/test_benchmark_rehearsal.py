@@ -145,7 +145,7 @@ def rehearse(tmp_path, monkeypatch):
         out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
         argv = ["--scenario", str(path), "--out", str(out), "--claude", phase_claude(tmp_path), "--rehearsal", *extra]
         code = run.main(argv)
-        folders = list(out.iterdir()) if out.exists() else []
+        folders = list(out.glob("*/*")) if out.exists() else []
         assert len(folders) <= 1
         return code, folders[0] if folders else out, judged
 
@@ -216,7 +216,7 @@ def test_a_rehearsal_skips_the_checkout_check_and_a_preflight_of_the_real_run_do
     assert not (run_dir / "streams" / "cli.jsonl").exists()  # a preflight of a rehearsal runs nothing either
     path = run_dir.parent / "real.json"
     path.write_text(json.dumps(dict(phased(phase("scaffold")), max_spend_usd=5)), encoding="utf-8")
-    assert run.main(["--scenario", str(path), "--out", str(run_dir.parent), "--preflight"]) == run.PREFLIGHT_FAILED
+    assert run.main(["--scenario", str(path), "--out", str(run_dir.parent.parent), "--preflight"]) == run.PREFLIGHT_FAILED
 
 
 def test_a_rehearsal_the_run_s_spend_cap_cuts_short_ends_capped_and_exits_9(rehearse, capsys):

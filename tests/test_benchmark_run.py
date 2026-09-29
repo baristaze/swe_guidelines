@@ -155,12 +155,27 @@ def test_a_runtime_the_scenario_does_not_list_is_refused_before_anything_starts(
     assert not (tmp_path / "runs").exists()  # no run folder, no runtime, nothing spent
 
 
+def test_a_run_folder_goes_in_its_scenario_s_folder_under_the_runs_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    path = tmp_path / "one.json"
+    path.write_text(json.dumps(SKILL), encoding="utf-8")
+    assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
+    name = SKILL["name"]
+    assert run_dir.parent == tmp_path / "runs" / name and run_dir.name.split("-", 2)[2].startswith(f"{name}-")
+    # With no --out, the runs root is benchmark/runs.
+    monkeypatch.setattr(run, "DEFAULT_OUT", tmp_path / "benchmark" / "runs")
+    assert run.main(["--scenario", str(path), "--dry-run"]) == 0
+    (run_dir,) = (tmp_path / "benchmark" / "runs").glob("*/*")
+    assert run_dir.parent == tmp_path / "benchmark" / "runs" / name
+
+
 def test_a_run_that_names_no_runtime_takes_the_scenario_s_first(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     path = tmp_path / "two.json"
     path.write_text(json.dumps(dict(SKILL, runtimes=["container", "host"])), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["runtime"]["name"] == "container"
 
 
@@ -190,7 +205,7 @@ def test_a_qa_subject_in_a_container_builds_no_image(tmp_path, monkeypatch):
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--providers", "1", "--build"]
     assert run.main(argv) == 0
     assert asked == []  # no engine is asked to build or name an image no subject runs in
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["versions"]["image"] is None
     assert not any("image" in note for note in results["notes"])
@@ -368,7 +383,7 @@ def test_every_repeat_starts_empty_and_keeps_its_files_at_their_paths(tmp_path, 
     path.write_text(json.dumps(scenario), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     assert run.main(["--scenario", str(path), "--out", "runs", "--repeat", "2"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     for index in (0, 1):
         art = run_dir / "artifacts" / str(index)
@@ -413,7 +428,7 @@ def test_a_collected_file_is_kept_as_its_bytes_and_a_binary_one_is_not_shown_to_
     path = tmp_path / "bytes.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     kept = run_dir / "artifacts" / "0" / "workspace"
     assert (kept / "shot.png").read_bytes() == image
     assert (kept / "notes.md").read_bytes() == b"caf\xc3\xa9 \xff"  # as written, not decoded and written again
@@ -456,7 +471,7 @@ def test_the_subject_reaches_no_answer_key_and_no_checkout(tmp_path, monkeypatch
     path.write_text(json.dumps(scenario), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     run.main(["--scenario", str(path), "--out", "runs"])
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
     assert "skills" in answer and "no skills" not in answer
     assert "target" in answer and "no target" not in answer
@@ -508,7 +523,7 @@ def test_the_subject_holds_its_own_key_and_no_judge_key(tmp_path, monkeypatch, r
 
         argv += ["--runtime", "vm", "--runtime-config", str(config)]
     assert run.main(argv) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
     assert answer == "[('ANTHROPIC_API_KEY', 'subject-key')]\n"
 
@@ -537,12 +552,12 @@ def test_the_container_names_only_the_subject_key(tmp_path, monkeypatch):
     path.write_text(json.dumps(SKILL), encoding="utf-8")
     argv = ["--scenario", str(path), "--providers", "15", "--runtime", "container", "--dry-run"]
     assert run.main([*argv, "--out", str(tmp_path / "runs")]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["runtime"]["config"]["keys"] == ["ANTHROPIC_API_KEY"]
     monkeypatch.delenv("SUBJECT_ANTHROPIC_API_KEY")
     assert run.main([*argv, "--out", str(tmp_path / "later")]) == 0
-    (later,) = (tmp_path / "later").iterdir()
+    (later,) = (tmp_path / "later").glob("*/*")
     assert json.loads((later / "run.json").read_text(encoding="utf-8"))["runtime"]["config"]["keys"] == []
 
 
@@ -568,7 +583,7 @@ def test_a_failed_subject_is_never_judged_and_fails_the_run(tmp_path, monkeypatc
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2"]) == 6
     assert judged == []
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
     assert all(r["judgements"] == [] for r in results["repeats"])
@@ -587,7 +602,7 @@ def test_a_run_repeats_three_times_unless_told_otherwise(tmp_path, monkeypatch):
         path.write_text(json.dumps(scenario), encoding="utf-8")
         out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
         assert run.main(["--scenario", str(path), "--out", str(out), "--dry-run", *flags]) == 0
-        (run_dir,) = out.iterdir()
+        (run_dir,) = out.glob("*/*")
         resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
         return {"repeat": resolved["repeat"], "max_spend_usd": resolved["max_spend_usd"]}
 
@@ -637,7 +652,7 @@ def test_two_runs_in_the_same_second_get_two_folders(tmp_path, monkeypatch):
     out = str(tmp_path / "runs")
     assert run.main(["--scenario", str(path), "--out", out]) == 0
     assert run.main(["--scenario", str(path), "--out", out]) == 0
-    first, second = sorted((tmp_path / "runs").iterdir())
+    first, second = sorted((tmp_path / "runs").glob("*/*"))
     answers = [(d / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") for d in (first, second)]
     assert answers[0] != answers[1] and answers[0].count("\n") == answers[1].count("\n") == 1
     for folder in (first, second):
@@ -659,7 +674,7 @@ def test_an_answer_with_a_unicode_line_separator_is_kept_whole(tmp_path, monkeyp
     path = tmp_path / "sep.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--providers", "1"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8") == "one\u2028two\u2029three\n"
 
 
@@ -701,7 +716,7 @@ def test_the_judges_read_the_target_the_subject_saw(tmp_path, monkeypatch):
     path = tmp_path / "seen.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs")]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     answer = (run_dir / "artifacts" / "0" / "answer.md").read_text(encoding="utf-8")
     assert answer == "['src/a.py', 'tests/test_a.py']\n"  # the subject saw the tests
     assert "### Source: tests/test_a.py" in prompts[0] and "### Source: src/a.py" in prompts[0]
@@ -883,7 +898,7 @@ def test_an_envelope_that_reports_an_error_fails_the_repeat(tmp_path, monkeypatc
     path = envelope_scenario(tmp_path, {"type": "result", "is_error": True, "result": "API Error: 401"})
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 6
     assert judged == []
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["repeats"][0]["exit_status"]["code"] == 0
     assert results["repeats"][0]["exit_status"]["is_error"] is True
@@ -896,7 +911,7 @@ def test_the_model_the_envelope_reports_is_recorded_beside_the_pin(tmp_path, mon
     path = envelope_scenario(tmp_path, envelope)
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--subject-model", "claude-opus-5"]
     assert run.main(argv) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["subject_model"] == "claude-opus-5"
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["subject"]["model"] == "claude-opus-5"
@@ -916,17 +931,28 @@ def test_the_workflow_redacts_the_run_folders_before_it_shows_or_uploads_them():
         assert "steps.redact.outcome == 'success'" in step
 
 
+def test_the_workflow_reaches_the_run_folders_in_each_scenario_s_folder():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    summary = workflow.index("      - name: write the summary")
+    upload = workflow.index("      - name: keep every run as evidence")
+    assert "for report in benchmark/runs/*/*/report.md; do" in workflow[summary:upload]
+    for left_out in ("home", "tmp", "workspace"):
+        assert f"!benchmark/runs/*/*/{left_out}\n" in workflow[upload:]
+    assert "benchmark/runs/*/report.md" not in workflow and "!benchmark/runs/*/home" not in workflow
+
+
 def test_the_workflow_runs_behind_the_benchmark_environment():
     assert "    environment: benchmark\n" in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_the_redact_command_scrubs_a_runs_folder(tmp_path, monkeypatch, capsys):
+def test_the_redact_command_scrubs_every_run_folder_under_a_runs_root(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPENAI_API_KEY", "judge-openai-value")
-    (tmp_path / "one").mkdir()
-    (tmp_path / "one" / "answer.md").write_text("judge-openai-value\n", encoding="utf-8")
+    answer = tmp_path / "one" / "20260101-000000-one-aa" / "artifacts" / "0" / "answer.md"
+    answer.parent.mkdir(parents=True)
+    answer.write_text("judge-openai-value\n", encoding="utf-8")
     assert run.main(["redact", "--out", str(tmp_path)]) == 0
-    assert (tmp_path / "one" / "answer.md").read_text(encoding="utf-8") == "[redacted]\n"
-    assert "answer.md" in capsys.readouterr().out
+    assert answer.read_text(encoding="utf-8") == "[redacted]\n"
+    assert "redacted 1 string(s) in one/20260101-000000-one-aa/artifacts/0/answer.md" in capsys.readouterr().out
 
 
 # OpenAI's 429 in the words a run recorded it, with an organization id and figures of the same shape.
@@ -1058,7 +1084,7 @@ def test_a_run_records_the_checkout_the_target_and_the_answers_by_reference(tmp_
     path = tmp_path / "versions.json"
     path.write_text(json.dumps(scenario), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     versions = resolved["versions"]
@@ -1106,7 +1132,7 @@ def test_a_skill_run_records_the_claude_code_its_runtime_answers(tmp_path, monke
     claude = fake_claude(tmp_path, "9.9.9 (Claude Code)")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
     assert run.main([*argv, "--subject-model", "claude-opus-5"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["versions"]["claude_code"] == "9.9.9 (Claude Code)"
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["versions"]["claude_code"] == "9.9.9 (Claude Code)"
@@ -1121,7 +1147,7 @@ def test_a_claude_code_that_does_not_answer_is_named_in_the_notes(tmp_path, monk
     claude = fake_claude(tmp_path, "broken", exit_code=1)
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", "--claude", claude]
     assert run.main([*argv, "--subject-model", "claude-opus-5"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert results["versions"]["claude_code"] is None
     assert any("--version` answered nothing in the host runtime" in note for note in results["notes"])
@@ -1134,7 +1160,7 @@ def test_a_dry_run_records_the_checkout_and_asks_the_runtime_nothing(tmp_path, m
     path = tmp_path / "one.json"
     path.write_text(json.dumps(SKILL), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     versions = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["versions"]
     assert versions["checkout"]["commit"] == run.git_sha(run.ROOT)
     assert versions["claude_code"] is None and asked == []
@@ -1163,7 +1189,7 @@ def run_vm(tmp_path, scenario, config, *extra):
     config_path.write_text(json.dumps(config), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1", *extra]
     assert run.main([*argv, "--runtime", "vm", "--runtime-config", str(config_path)]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     return run_dir
 
 
@@ -1229,7 +1255,7 @@ def test_a_vm_run_removes_what_each_repeats_docker_made_and_records_it(tmp_path,
     config.write_text(json.dumps(vm_config(tmp_path)), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2", "--runtime-config", str(config)]
     assert run.main(argv) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     for index in (0, 1):  # each repeat's subject starts beside none of an earlier one's stack
         assert (run_dir / "artifacts" / str(index) / "answer.md").read_text(encoding="utf-8") == "container c-kept kept-1\n"
     notes = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))["notes"]
@@ -1249,7 +1275,7 @@ def test_a_vm_run_on_a_machine_that_does_not_answer_still_writes_its_results(tmp
     config.write_text(json.dumps(vm_config(tmp_path, exec_prefix=[str(tmp_path / "no-such-prefix")])), encoding="utf-8")
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "2"]
     assert run.main([*argv, "--runtime", "vm", "--runtime-config", str(config)]) == 6  # every repeat failed
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
     assert [r["exit_status"]["code"] for r in results["repeats"]] == [127, 127]
     assert not any("was not removed there" in note for note in results["notes"])  # it made nothing there
@@ -1267,7 +1293,7 @@ def test_a_vm_config_that_reaches_no_machine_is_refused_before_the_run_starts(tm
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime", "vm", "--runtime-config", str(config)]
     assert run.main(argv) == 2
     assert "needs exec_prefix" in capsys.readouterr().err
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert list(run_dir.iterdir()) == []  # refused before run.json, as a missing copy is
 
 
@@ -1295,7 +1321,7 @@ def test_a_vm_dry_run_names_the_copies_there_and_touches_nothing(tmp_path, monke
     config = run.BENCHMARK / "runtime" / "lima" / "runtime-config.yaml"
     argv = ["--scenario", str(path), "--out", str(tmp_path / "runs"), "--runtime-config", str(config)]
     assert run.main([*argv, "--dry-run"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["runtime"]["name"] == "vm"
     subject = resolved["subject_argv"]
@@ -1314,7 +1340,7 @@ def test_a_shipped_scenario_s_run_names_no_path_of_the_checkout(tmp_path, monkey
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
     argv = ["--scenario", scenario, "--out", str(tmp_path / "runs"), "--runtime", runtime, "--dry-run"]
     assert run.main(argv) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     text = (run_dir / "run.json").read_text(encoding="utf-8")
     resolved = json.loads(text)
     assert resolved["scenario"]["path"] == f"benchmark/scenarios/{scenario}.yaml"
@@ -1326,7 +1352,7 @@ def test_a_scenario_outside_the_checkout_keeps_its_path(tmp_path, monkeypatch):
     path = tmp_path / "one.json"
     path.write_text(json.dumps(SKILL), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["scenario"]["path"] == str(path.resolve())
 
 
@@ -1404,7 +1430,7 @@ def test_a_dry_run_resolves_the_references_and_calls_no_judge(tmp_path, monkeypa
     path = tmp_path / "agentic.json"
     path.write_text(json.dumps(agentic_scenario(["true"])), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--dry-run"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert fetched == [("https://github.com/acme/acme-system", "v1.0.0")] and called == []
     judges = resolved["scenario"]["judges"]
@@ -1454,7 +1480,7 @@ def test_an_agentic_run_judges_the_output_against_each_reference_and_weighs_the_
     path = tmp_path / "agentic.json"
     path.write_text(json.dumps(agentic_scenario([sys.executable, "-c", script])), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     # The judge read the subject's answer and file, this checkout's lens catalog, and the repository at its tag.
     results_back = [text for _, text in sent_results("anthropic", fake.requests[1])]
     assert "planned" in results_back[0] and "A plan." in results_back[1]
@@ -1499,7 +1525,7 @@ def test_a_judge_that_submits_on_its_last_turn_at_its_input_tokens_is_scored(tmp
     path = tmp_path / "agentic.json"
     path.write_text(json.dumps(agentic_scenario(["echo", "planned"], budget={"input_tokens": 2500})), encoding="utf-8")
     assert run.main(["--scenario", str(path), "--out", str(tmp_path / "runs"), "--repeat", "1"]) == 0
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     [(_, told)] = sent_results("anthropic", fake.requests[2])
     assert told.startswith("read_file was not run. No budget left for reads (input tokens: 2000 of 2500 spent")
     results = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
@@ -1549,7 +1575,7 @@ def preflight_host(tmp_path, monkeypatch):
 
 
 def preflight_of(tmp_path) -> dict:
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     return json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["preflight"]
 
 
@@ -1581,7 +1607,7 @@ def test_a_preflight_reads_the_dirty_checkout_the_run_records(tmp_path, prefligh
     dirty = dict(CLEAN, dirty=True, dirty_paths=["skills/arch-review-om/SKILL.md"])
     monkeypatch.setattr(run.V, "checkout", lambda root, scope: dict(dirty))
     assert run.main(argv) == run.PREFLIGHT_FAILED
-    (run_dir,) = (tmp_path / "runs").iterdir()
+    (run_dir,) = (tmp_path / "runs").glob("*/*")
     resolved = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert resolved["preflight"]["failed"] == "checkout"
     assert resolved["preflight"]["checks"][-1]["facts"]["dirty_paths"] == resolved["versions"]["checkout"]["dirty_paths"]
@@ -1872,7 +1898,7 @@ def test_judge_tells_a_repeat_s_judges_only_the_groups_whose_phases_all_ran_in_i
     assert run.main(["judge", "--source", str(src), "--out", str(out / "dry"), "--dry-run"]) == 0
     assert run.main(["judge", "--source", str(src), "--out", str(out / "run")]) == 0
     resolved, judged, report = only_run(out / "run")
-    (made,) = (out / "run").iterdir()
+    (made,) = (out / "run").glob("*/*")
     prompts = [(made / "artifacts" / str(i) / "judge-prompt.md").read_text(encoding="utf-8") for i in range(4)]
     sentence, review, closed = "After the build, a review read the tree.", "Review acme.", "Close the findings."
     # Every phase of the group ran: the sentence and both phases. None of them ran: no word of the group.
@@ -1890,7 +1916,7 @@ def test_judge_tells_a_repeat_s_judges_only_the_groups_whose_phases_all_ran_in_i
         {"repeat": 3, "groups": ["extras"]},
     ]
     assert judged["source"]["rubric_groups"] == took and resolved["source"]["rubric_groups"] == took
-    (dry,) = (out / "dry").iterdir()
+    (dry,) = (out / "dry").glob("*/*")
     assert json.loads((dry / "run.json").read_text(encoding="utf-8"))["source"]["rubric_groups"] == took
     assert "Groups the rubric of repeat 2 took, those whose every phase ran in it: none." in report
     assert "Groups the rubric of repeat 0 took, those whose every phase ran in it: `extras`." in report
@@ -1911,10 +1937,10 @@ def test_a_judge_of_a_judge_s_folder_tells_its_judges_what_the_first_source_ran(
     judges(monkeypatch)
     out = tmp_path / "judged"
     assert run.main(["judge", "--source", str(src), "--out", str(out / "first")]) == 0
-    (first,) = (out / "first").iterdir()
+    (first,) = (out / "first").glob("*/*")
     assert run.main(["judge", "--source", str(first), "--out", str(out / "second")]) == 0
     resolved, judged, _ = only_run(out / "second")
-    (second,) = (out / "second").iterdir()
+    (second,) = (out / "second").glob("*/*")
     prompts = [(second / "artifacts" / str(i) / "judge-prompt.md").read_text(encoding="utf-8") for i in range(2)]
     sentence, review = "After the build, a review read the tree.", "Review acme."
     # The first judge's folder keeps each repeat's phases as they ran in its source, so the second tells the same.
@@ -1945,9 +1971,9 @@ def test_judge_caps_its_spend_at_the_judges_budgets_over_the_repeats_it_judges(t
     base = ["judge", "--source", str(src), "--providers", "anthropic,openai", "--out", str(out)]
 
     def cap_of(*flags: str) -> float:
-        before = set(out.iterdir()) if out.exists() else set()
+        before = set(out.glob("*/*")) if out.exists() else set()
         assert run.main([*base, *flags, "--dry-run"]) == 0
-        (made,) = set(out.iterdir()) - before
+        (made,) = set(out.glob("*/*")) - before
         return json.loads((made / "run.json").read_text(encoding="utf-8"))["max_spend_usd"]
 
     # Two judges at $5 each over the two repeats it judges: no phase's cap ($150 a repeat), not the scenario's $999.
@@ -1957,7 +1983,7 @@ def test_judge_caps_its_spend_at_the_judges_budgets_over_the_repeats_it_judges(t
 
 def only_run(folder: Path) -> tuple[dict, dict, str]:
     """The run.json, the results.json, and the report of the one run folder under `folder`."""
-    (made,) = folder.iterdir()
+    (made,) = folder.glob("*/*")
     read = [json.loads((made / name).read_text(encoding="utf-8")) for name in ("run.json", "results.json")]
     return read[0], read[1], (made / "report.md").read_text(encoding="utf-8")
 
@@ -2000,7 +2026,7 @@ def test_judge_judges_a_rehearsal_s_output_within_a_rehearsal_s_bounds(tmp_path,
     # Two judges at the stub's $0.50 over six repeats is $6, and a rehearsal's cap is $5.
     both = ["--providers", "anthropic,openai"]
     assert run.main(["judge", "--source", str(src), *both, "--out", str(out / "dry"), "--dry-run"]) == 0
-    (dry,) = (out / "dry").iterdir()  # a dry run writes run.json alone
+    (dry,) = (out / "dry").glob("*/*")  # a dry run writes run.json alone
     resolved = json.loads((dry / "run.json").read_text(encoding="utf-8"))
     assert resolved["max_spend_usd"] == 5 and resolved["rehearsal"] is True
     assert {k: resolved["scenario"]["judges"]["budget"][k] for k in ("max_usd", "wall_s", "submits")} == {

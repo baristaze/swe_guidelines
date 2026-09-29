@@ -66,17 +66,23 @@ lenses (`skills/`), and the checkers that keep the three consistent
   imports the standard library only at import time, so the tests at
   `tests/test_benchmark_*.py` run with nothing installed; the provider
   clients, `pyyaml`, `jsonschema`, and `websockets` are imported inside
-  the functions that use them. A run writes into `benchmark/runs/`,
-  and a run folder is checked in once `run.py redact` has scanned it
-  for keys, and for the account ids and limit figures that OpenAI's,
-  Anthropic's, and xAI's errors name. The pull request that adds one
-  adds its row to `benchmark/runs/README.md`, the index, by hand, and
-  `scripts/check_runs.py` holds every run folder to one row, to a
-  runtime its scenario lists, to no rehearsal, to no marked repeat, to
-  no key-shaped string, account id, or limit figure that `run.py redact`
-  replaces in any file it holds, plain or compressed, and to no `.git`.
-  It reads the scenarios and scans the files through the harness, so
-  `make runs` brings `pyyaml`.
+  the functions that use them. A run writes its folder into its
+  scenario's folder, `benchmark/runs/<scenario>/`, and a run folder is
+  checked in once `run.py redact` has scanned it for keys, and for the
+  account ids and limit figures that OpenAI's, Anthropic's, and xAI's
+  errors name. Each scenario's folder has a `README.md`: what the
+  scenario measures, and a table of its runs. A run and its resumes are
+  one row, whose cost is their chain's total
+  (`benchmark/harness/chain.py`), and `benchmark/runs/README.md`, the
+  index, names each scenario's folder once. The pull request that adds
+  a run folder adds its row by hand, and `scripts/check_runs.py` holds
+  every run folder to its scenario's folder and to one row, as its run
+  or a part of its chain, each row to its chain's cost, and every run
+  folder to a runtime its scenario lists, to no rehearsal, to no marked
+  repeat, to no key-shaped string, account id, or limit figure that
+  `run.py redact` replaces in any file it holds, plain or compressed,
+  and to no `.git`. It reads the scenarios, the chains, and the files
+  through the harness, so `make runs` brings `pyyaml`.
   `make benchmark` runs the smoke scenario in a container, its image
   built first, and is not part of `make check`, because a run calls
   paid APIs.

@@ -50,6 +50,9 @@ def bench(tmp_path, monkeypatch):
     folder.mkdir()
     monkeypatch.setattr(run, "SCENARIOS", folder)
     monkeypatch.setattr(run, "MODELS", tmp_path / "models.yaml")
+    # The runs root a run writes under when no --out names one: this test's, never the checkout's.
+    root = tmp_path / "benchmark" / "runs"
+    monkeypatch.setattr(run, "DEFAULT_OUT", root)
     for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY", "GROK_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     judged: list[str] = []
@@ -77,7 +80,15 @@ def bench(tmp_path, monkeypatch):
             """`run.py` with these words, the fake Claude Code, and a folder of its own; its exit and its run folder."""
             out = tmp_path / "runs" / str(len(list((tmp_path / "runs").glob("*"))) if (tmp_path / "runs").exists() else 0)
             code = run.main([*argv, "--out", str(out), "--claude", claude])
-            made = sorted(out.iterdir()) if out.exists() else []
+            made = sorted(out.glob("*/*")) if out.exists() else []
+            return code, made[0] if made else None
+
+        @staticmethod
+        def here(*argv: str) -> tuple[int, Path | None]:
+            """`run.py` with these words and the fake Claude Code, and no --out; its exit and the run folder it made."""
+            before = set(root.glob("*/*"))
+            code = run.main([*argv, "--claude", claude])
+            made = sorted(set(root.glob("*/*")) - before)
             return code, made[0] if made else None
 
         @staticmethod
@@ -191,9 +202,8 @@ def test_resume_restores_a_milestone_runs_only_the_phases_after_it_and_carries_t
     source = record["source"]
     assert source["run_id"] == src.name and source["after"] == "mvp" and source["repeats"] == [0]
     assert source["refused"] == [] and source["capped"] == []
-    assert source["milestones"] == [
-        {"repeat": 0, "path": "artifacts/0/milestones/mvp/output.zip", "sha256": restored["sha256"], "commit": restored["commit"]}
-    ]
+    mvp = {"path": "artifacts/0/milestones/mvp/output.zip", "sha256": restored["sha256"], "commit": restored["commit"]}
+    assert source["milestones"] == [{"repeat": 0, "run_id": src.name, **mvp}]
     assert source["checkout"] == resolved(src)["versions"]["checkout"]
     assert record["versions"]["checkout"]["commit"] == source["checkout"]["commit"]  # one checkout here; both are named
     assert [p["name"] for p in resolved(run_dir)["phases"]] == ["review", "close"]
@@ -257,7 +267,7 @@ def test_a_source_whose_archive_is_not_its_last_checkpoint_or_not_the_one_record
     kept = json.dumps(record)
     record["repeats"][0]["archive"]["commit"] = "f" * 40
     (src / "results.json").write_text(json.dumps(record), encoding="utf-8")
-    runs = sorted(src.parent.parent.glob("*/*"))
+    runs = sorted(src.parent.parent.parent.glob("*/*/*"))
     assert bench.run("resume", "--source", str(src)) == (2, None)
     assert "its archive holds the commit ffffffffff" in capsys.readouterr().err
     # The recorded commit is right, and the zip is not the one the source recorded.
@@ -267,7 +277,7 @@ def test_a_source_whose_archive_is_not_its_last_checkpoint_or_not_the_one_record
     assert bench.run("resume", "--source", str(src)) == (2, None)
     err = capsys.readouterr().err
     assert "repeat 0 is not resumed: its milestone's SHA-256 is " in err and "no run folder was made and no phase started" in err
-    assert sorted(src.parent.parent.glob("*/*")) == runs  # no run folder, and no session
+    assert sorted(src.parent.parent.parent.glob("*/*/*")) == runs  # no run folder, and no session
 
 
 def test_a_milestone_that_is_not_the_one_recorded_is_refused(bench, capsys):
@@ -494,7 +504,7 @@ def test_resume_refuses_what_its_source_decides_and_a_source_it_cannot_continue(
         )
     )
     src = bench.source()
-    before = sorted(src.parent.parent.glob("*/*"))
+    before = sorted(src.parent.parent.parent.glob("*/*/*"))
     assert bench.run("resume", "--source", str(src), "--with", "extras", "--subject-model", "m") == (2, None)
     assert "--with, --subject-model is not for it" in capsys.readouterr().err
     assert bench.run("--scenario", "system", "--after", "scaffold") == (2, None)
@@ -516,7 +526,7 @@ def test_resume_refuses_what_its_source_decides_and_a_source_it_cannot_continue(
     (src / "run.json").write_text(json.dumps(marked), encoding="utf-8")
     assert bench.run("resume", "--source", str(src), "--after", "scaffold") == (2, None)
     assert "is a rehearsal" in capsys.readouterr().err
-    assert sorted(src.parent.parent.glob("*/*")) == before  # no run folder was made
+    assert sorted(src.parent.parent.parent.glob("*/*/*")) == before  # no run folder was made
 
 
 # Resuming the judges ------------------------------------------------------------------
@@ -587,6 +597,128 @@ def no_runtime(*args, **kwargs):
     raise AssertionError("a resume of the judges made a runtime")
 
 
+# A run and its resumes -----------------------------------------------------------------
+
+
+@needs_jsonschema
+def test_a_run_and_its_resumes_land_in_their_scenario_s_folder_and_the_newest_records_the_chain(bench, panel, tmp_path, capsys):
+    # The scaffold ends with a helper unanswered, so the harness ends the repeat there, as the first run of a long one can.
+    data = scenario(
+        phase("scaffold", {"write": {"site/a.txt": "a"}, "agents": [["toolu_1", "helper", False]]}),
+        phase("mvp", {"tree": "site", "write": {"site/b.txt": "b"}}),
+        phase("review", {"tree": "site"}),
+        judges={
+            "providers": "15",
+            "mode": "agentic",
+            "budget": {"max_usd": 5},
+            "references": four_judges()["judges"]["references"],
+        },
+    )
+    bench.write(data)
+    root = tmp_path / "benchmark" / "runs"
+    code, first = bench.here("--scenario", "system", "--repeat", "1", "--subject-model", "claude-opus-5-5")
+    assert code == 6 and first is not None and first.parent == root / "system"  # a run's folder is in its scenario's
+    # A resume, dry or not, lands beside its source, so the chain stays in one folder. A dry run ran nothing from it.
+    code, dry = bench.here("resume", "--source", str(first), "--dry-run")
+    assert code == 0 and dry is not None and dry.parent == root / "system"
+    panel.answers["openai"] = "error"
+    code, resumed = bench.here("resume", "--source", str(first))
+    assert code == 0 and resumed is not None and resumed.parent == root / "system"
+    panel.answers.clear()
+    code, judged = bench.here("resume", "--source", str(resumed))
+    assert code == 0 and judged is not None and judged.parent == root / "system"
+    assert [c["names"] for c in panel.calls] == [ALL_FOUR, ["openai"]]
+    # The newest folder records the chain: each folder from the first, each stage with the folder that ran it, the total.
+    spent = [results(f)["spend"]["total_usd"] for f in (first, resumed, judged)]
+    assert spent == [0.25, 6.5, 1.5]
+    chain = results(judged)["chain"]
+    assert [(f["run_id"], f["total_usd"]) for f in chain["folders"]] == [
+        (first.name, 0.25),
+        (resumed.name, 6.5),
+        (judged.name, 1.5),
+    ]
+    assert chain["total_usd"] == round(sum(spent), 4) == 8.25 and chain["at_least"] is False
+    stages = [(s["stage"], s["run_id"], s["status"], s["cost_usd"]) for s in chain["stages"]]
+    assert stages == [
+        ("scaffold", first.name, "incomplete", 0.25),
+        ("mvp", resumed.name, "ok", 0.25),
+        ("review", resumed.name, "ok", 0.25),
+        ("judges", resumed.name, "missed", 6.0),
+        ("judges", judged.name, "ok", 1.5),
+    ]
+    assert chain["stages"][3]["missed"] == ["openai"] and chain["stages"][4]["judges"] == ["openai"]
+    assert all(s["time_s"] is not None for s in chain["stages"]) and chain["stages"][3]["time_s"] == 1.0
+    # The resume in between records the chain as it stood, and the first run, which continues none, records none.
+    assert results(resumed)["chain"]["total_usd"] == 6.75 and "chain" not in results(first)
+    report = (judged / "report.md").read_text(encoding="utf-8")
+    assert "## Chain" in report and "Total: $8.2500." in report
+    # A chain has one line: a resume or a judge of a folder another already ran from is refused, before it spends.
+    made = sorted(root.glob("*/*"))
+    for argv in (["resume", "--source", str(first)], ["judge", "--source", str(first)], ["resume", "--source", str(resumed)]):
+        assert bench.here(*argv) == (2, None)
+        err = capsys.readouterr().err
+        continued = resumed if argv[-1] == str(first) else judged
+        assert (
+            f"{Path(argv[-1]).name} is already the source of {continued.name}, beside it. A chain has one line, so a run "
+            f"resumes or is judged again from the chain's newest folder, {judged.name}, which reaches every milestone "
+            "before it. No run folder was made, and nothing was spent"
+        ) in err
+    assert sorted(root.glob("*/*")) == made and len(panel.calls) == 2
+    assert f"| 0 | judges (openai) | `{judged.name}` | ok | $1.5000 | 0:00:01 |" in report
+    assert f"| 0 | judges (anthropic, openai, gemini, xai) | `{resumed.name}` | missed: openai | $6.0000 | 0:00:01 |" in report
+
+
+def test_the_newest_folder_reaches_an_earlier_phase_s_milestone_in_the_folder_of_its_chain_that_kept_it(bench, capsys):
+    bench.write(FOUR)
+    code, first = bench.here("--scenario", "system", "--repeat", "1")
+    assert code == 0 and first is not None
+    kept = {p["name"]: p["milestone"] for p in results(first)["repeats"][0]["phases"]}
+    assert {"scaffold", "mvp"} <= set(kept)  # the first run keeps the scaffold's and the mvp's milestones
+    code, resumed = bench.here("resume", "--source", str(first), "--after", "mvp")
+    assert code == 0 and resumed is not None
+    carried = {p["name"]: p.get("milestone") for p in results(resumed)["repeats"][0]["phases"] if p.get("carried")}
+    assert carried["scaffold"] is None and carried["mvp"] is not None  # a resume copies only the milestone it restored
+    # No folder of the chain kept a scaffold milestone: the message is the one a source with none gives.
+    record = (first / "results.json").read_text(encoding="utf-8")
+    edited = json.loads(record)
+    edited["repeats"][0]["phases"][0].pop("milestone")
+    (first / "results.json").write_text(json.dumps(edited), encoding="utf-8")
+    assert bench.here("resume", "--source", str(resumed), "--after", "scaffold") == (2, None)
+    assert "repeat 0 is not resumed: the source run kept no milestone after scaffold" in capsys.readouterr().err
+    (first / "results.json").write_text(record, encoding="utf-8")
+    # The first run kept it: a resume of the newest folder after the scaffold restores that milestone, from the first run.
+    code, again = bench.here("resume", "--source", str(resumed), "--after", "scaffold")
+    assert code == 0 and again is not None and again.parent == resumed.parent
+    assert len(seen(again)) == 3  # mvp, review, and close ran again
+    source = results(again)["source"]
+    assert source["run_id"] == resumed.name and source["after"] == "scaffold"  # the source is the folder named
+    (restored,) = source["milestones"]
+    assert restored == {
+        "repeat": 0,
+        "run_id": first.name,
+        "path": kept["scaffold"]["path"],
+        "sha256": kept["scaffold"]["sha256"],
+        "commit": kept["scaffold"]["commit"],
+    }
+    copy = results(again)["repeats"][0]["phases"][0]
+    assert copy["name"] == "scaffold" and copy["carried"] is True
+    assert copy["milestone"]["sha256"] == kept["scaffold"]["sha256"] == A.digest(again / copy["milestone"]["path"])
+    assert zipped(again / copy["milestone"]["path"]) == {"a.txt": "a"}  # the tree the scaffold left, not the mvp's
+    report = (again / "report.md").read_text(encoding="utf-8")
+    assert f"Repeat 0 started from the milestone that `{first.name}` kept, the nearest folder of that run's chain" in report
+    # The chain reads all three folders, and the fork refusal still points at the newest one.
+    assert [f["run_id"] for f in results(again)["chain"]["folders"]] == [first.name, resumed.name, again.name]
+
+
+def test_a_resume_with_out_lands_in_the_scenario_s_folder_under_that_root(bench, tmp_path):
+    bench.write(FOUR)
+    src = bench.source()
+    elsewhere = tmp_path / "elsewhere"
+    assert run.main(["resume", "--source", str(src), "--after", "mvp", "--dry-run", "--out", str(elsewhere)]) == 0
+    (made,) = elsewhere.glob("*/*")
+    assert made.parent == elsewhere / "system"
+
+
 @needs_jsonschema
 def test_a_resume_of_a_run_whose_phases_all_ran_runs_only_the_judges_named_and_carries_the_rest(bench, panel, monkeypatch):
     bench.write(four_judges())
@@ -641,20 +773,20 @@ def test_a_resume_of_the_judges_runs_by_default_those_that_did_not_answer_and_no
     assert [j["status"] for j in record["repeats"][0]["judgements"]] == ["ok"] * 4
     assert record["summary"]["overall_mean"] == 75 and record["spend"]["total_usd"] == 3
     # Every judge of the resumed run answered: nothing is left to resume, no judge starts, and no run folder is made.
-    runs = sorted(run_dir.parent.parent.glob("*/*"))
+    runs = sorted(run_dir.parent.parent.parent.glob("*/*/*"))
     assert bench.run("resume", "--source", str(run_dir)) == (2, None)
     err = capsys.readouterr().err
     assert (
         "every judge answered in it, so no judge is left to run" in err and "No run folder was made and no judge started" in err
     )
-    assert len(panel.calls) == 2 and sorted(run_dir.parent.parent.glob("*/*")) == runs
+    assert len(panel.calls) == 2 and sorted(run_dir.parent.parent.parent.glob("*/*/*")) == runs
 
 
 def test_a_judgement_is_carried_only_from_the_same_archive_judged_with_the_same_task(bench, panel, capsys):
     bench.write(four_judges())
     panel.answers["openai"] = "error"
     src = bench.source("--with", "extras")
-    runs = sorted(src.parent.parent.glob("*/*"))
+    runs = sorted(src.parent.parent.parent.glob("*/*/*"))
     kept = (src / "results.json").read_text(encoding="utf-8")
     prompt = src / "artifacts" / "0" / "judge-prompt.md"
     told = prompt.read_text(encoding="utf-8")
@@ -664,7 +796,7 @@ def test_a_judgement_is_carried_only_from_the_same_archive_judged_with_the_same_
         assert bench.run("resume", "--source", str(src), "--judges", "openai") == (2, None)
         err = capsys.readouterr().err
         assert f"repeat 0 is not resumed: {why}" in err and "No run folder was made and no judge started" in err
-        assert len(panel.calls) == 1 and sorted(src.parent.parent.glob("*/*")) == runs
+        assert len(panel.calls) == 1 and sorted(src.parent.parent.parent.glob("*/*/*")) == runs
         return err
 
     # The source's judges were told of no group, and this run's judges take the group the source ran whole.

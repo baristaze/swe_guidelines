@@ -14,6 +14,8 @@ summary also carries each reference's scores and its gaps by severity,
 and its report shows the scores per reference, the gaps, and where each
 judge's transcript is. A judgement carried from the run this one resumed
 counts in every mean, and in no spend: the run that made it paid for it.
+A run that continues another also records the chain it ends, and its
+report shows it (`harness.chain`).
 
 Paths in the report are written as code spans, never as links: a run
 folder is served, uploaded, and checked in, and a link out of it would
@@ -130,6 +132,9 @@ class RunResult:
     # and the repeats its spend cap kept from starting. A run that judges another run's output again has it,
     # and so does a run that resumes another after a phase, with that phase; None for a run from its start.
     source: dict[str, Any] | None = None
+    # The chain this run ends, from `harness.chain`: its folders from the first, each stage with the folder that ran
+    # it, and what they spent in all; None for a run that continues none.
+    chain: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -152,6 +157,8 @@ class RunResult:
             out["rehearsal"] = dict(self.rehearsal)
         if self.source is not None:
             out["source"] = dict(self.source)
+        if self.chain is not None:
+            out["chain"] = dict(self.chain)
         return out
 
 
@@ -714,6 +721,13 @@ def source_lines(source: dict[str, Any]) -> list[str]:
         commit = (source.get("checkout") or {}).get("commit")
         if commit:
             lines += [f"That run's checkout, `{commit}`, ran the carried phases; this run's checkout ran the rest.", ""]
+        for kept in source.get("milestones", []):
+            if kept.get("run_id") not in (None, source["run_id"]):
+                lines += [
+                    f"Repeat {kept['repeat']} started from the milestone that `{kept['run_id']}` kept, the nearest folder "
+                    f"of that run's chain that kept it: `{kept['path']}`, sha256 `{kept['sha256']}`.",
+                    "",
+                ]
         verb, covered = "resumed", "their phases' caps and their judges' budgets"
     elif "judges" in source:
         lines = [
@@ -742,6 +756,47 @@ def source_lines(source: dict[str, Any]) -> list[str]:
     for entry in source.get("rubric_groups", []):
         taken = ", ".join(f"`{g}`" for g in entry["groups"]) or "none"
         lines += [f"Groups the rubric of repeat {entry['repeat']} took, those whose every phase ran in it: {taken}.", ""]
+    return lines
+
+
+def clock(seconds: float | None) -> str:
+    """A stage's time as hours, minutes, and seconds; "-" when it recorded none."""
+    if seconds is None:
+        return "-"
+    whole = int(half_up(seconds))
+    return f"{whole // 3600}:{whole % 3600 // 60:02d}:{whole % 60:02d}"
+
+
+def chain_lines(chain: dict[str, Any]) -> list[str]:
+    """The report's section on the chain this run ends: its folders, each stage, and the total they spent."""
+    lines = [
+        "## Chain",
+        "",
+        "This run and the runs it continues are one measurement. Each folder counts only what it ran, never a",
+        "carried phase or judgement, so the total counts each stage once.",
+        "",
+        _row(["Folder", "Started (UTC)", "Cost (USD)"]),
+        _row(["---"] * 3),
+    ]
+    for folder in chain["folders"]:
+        spent = folder["total_usd"]
+        lines.append(_row([f"`{folder['run_id']}`", str(folder["started_at"] or "-"), "-" if spent is None else _usd(spent)]))
+    lines += ["", _row(["Repeat", "Stage", "Folder", "Status", "Cost (USD)", "Time"]), _row(["---"] * 6)]
+    for stage in chain["stages"]:
+        name = stage["stage"]
+        if name == "judges":
+            name = f"judges ({', '.join(stage['judges'])})"
+        status = stage["status"]
+        if stage.get("missed") and status != "ok":
+            status = f"{status}: {', '.join(stage['missed'])}"
+        cost = "-" if stage["cost_usd"] is None else _usd(stage["cost_usd"])
+        if stage.get("estimated"):
+            cost += " (estimated)"
+        lines.append(_row([str(stage["repeat"]), name, f"`{stage['run_id']}`", status, cost, clock(stage["time_s"])]))
+    total = _usd(chain["total_usd"])
+    lines += ["", f"Total: at least {total}." if chain["at_least"] else f"Total: {total}.", ""]
+    if chain.get("broken"):
+        lines += [f"The chain breaks: {sentence(chain['broken'])} Its total holds the folders it reached.", ""]
     return lines
 
 
@@ -852,6 +907,8 @@ def report_text(run: RunResult) -> str:
         lines += [f"- `{m['provider']}`: {m['count']} judgement(s) missed, first: {m['reason']}" for m in summary["missed"]]
         lines += [""]
     lines += spend_lines(data["spend"])
+    if run.chain is not None:
+        lines += chain_lines(run.chain)
     lines += phase_lines(run.repeats)
     checked = [(r.index, r.expected) for r in run.repeats if r.expected is not None]
     if checked:

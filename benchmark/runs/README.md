@@ -1,21 +1,36 @@
 # Benchmark runs
 
-Every run checked in here, one section per scenario, in name order, as
-`uv run benchmark/run.py list` prints the scenarios. Runs of one
-scenario compare with each other, and runs of two scenarios do not. So
-each scenario has a table of its own, with the newest run at the top
-and the oldest at the bottom, and only the columns that scenario
-records.
+Every run checked in here, in the folder of its scenario. Runs of one
+scenario compare with each other, and runs of two scenarios do not, so
+each scenario has a folder and a page of its own: what the subject is
+asked to do, what it is given, how it is scored, and its runs.
 
-The pull request that adds a run folder adds its row by hand, in the
-section of the run's scenario. The first run of a scenario adds the
-section too: `## <scenario>`, one line on what the scenario measures,
-and the table. Nothing generates this file.
+- [explain-tenancy](explain-tenancy/README.md): the `arch-explain`
+  skill answering one question about the tenant fence.
+- [review-om](review-om/README.md): the `arch-review-om` skill
+  reviewing a checkout with eight planted defects.
+- [support-turn](support-turn/README.md): a model answering an on-call
+  question directly, with no skill.
 
-Each row links to the run's report and copies the run's
-`results.json`:
+## A scenario's page
 
-- Started (UTC): when the run started (`started_at`).
+Each page has one table of its runs, the newest at the top and the
+oldest at the bottom, with only the columns that scenario records. A
+run and its resumes are one row: a run the harness stopped, and the
+runs that resumed it or its judges, are one measurement, however many
+run folders it took. The row links the newest folder's report, and its
+scores are that folder's.
+
+The pull request that adds a run folder adds its row by hand, or moves
+the row of the run it resumes onto it. The first run of a scenario adds
+the scenario's folder, its page, and its line here. Nothing generates
+these pages, and `make runs` holds them to the run folders.
+
+The columns copy the newest folder's `results.json`, except where one
+says it reads every folder of the run's chain:
+
+- Started (UTC): when the run started, as its first folder records it
+  (`started_at`).
 - Subject: the subject's model.
 - Effort: the judges' effort.
 - Repeats: how many times the subject ran.
@@ -23,48 +38,27 @@ Each row links to the run's report and copies the run's
 - Overall: the mean of the judges' means.
 - Planted named: for a scenario that plants findings, how many of them
   the artifact named in each repeat.
-- Cost (USD): what the run spent in all, the subject included
-  (`spend.total_usd`). A total that leaves out an unpriced model reads
+- Cost (USD): what the run spent in all, the subject included: the sum
+  of each of its folders' `spend.total_usd`. A total that leaves out an
+  unpriced model, or counts a phase at the harness's estimate, reads
   "at least".
 - Commit: the commit the run ran from, short
-  (`versions.checkout.commit`).
+  (`versions.checkout.commit`). The row of a run and its resumes names
+  each distinct commit of its folders, oldest first.
 - Claude Code: the version of Claude Code that ran the subject. The
-  cell shows the version number from `versions.claude_code`. A scenario
-  that runs no skill (`qa`, `command`) records no Claude Code, so its
-  table has no such column.
+  cell shows the version number from `versions.claude_code`. The row of
+  a run and its resumes names each distinct version of the folders that
+  ran a phase of the subject; a carried phase, and a folder that ran
+  only judges, do not count. A scenario that runs no skill (`qa`,
+  `command`) records no Claude Code, so its table has no such column.
 
 "—" marks what a run does not record. A run recorded before the
 harness kept its spend or its versions has none to show.
 
+Under the table, a run in phases has its stage table, under a heading
+of its row's name. It copies the chain in the newest folder's report:
+each stage, a phase or a repeat's judges, with the run folder that ran
+it, its status, its cost, and its time, and the total.
+
 Judges: `claude-opus-5-5`, `gpt-6-sol`, `gemini-3.1-pro-preview`, and
 `grok-4.7`, unless a row says otherwise.
-
-## explain-tenancy
-
-It measures the `arch-explain` skill on one question about the tenant fence.
-
-| Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Cost (USD) | Commit | Claude Code |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| [explain-tenancy-a13cc441](20260927-083630-explain-tenancy-a13cc441/report.md) | 2026-09-27 15:36 | `claude-opus-5-5` | high | 1 | 88.0 | 94.0 | 100.0 | 96.0 | **94.5** | $0.29 | `012ac97` | 2.1.283 |
-| [explain-tenancy-cb44b4aa](20260927-064736-explain-tenancy-cb44b4aa/report.md) | 2026-09-27 13:47 | `claude-opus-5-5` | high | 1 | 85.0 | 93.0 | 100.0 | 96.0 | **93.5** | $0.31 | — | — |
-| [explain-tenancy-35595007](20260927-055257-explain-tenancy-35595007/report.md) | 2026-09-27 12:52 | `claude-opus-5-5` | high | 3 | 86.0 | 95.7 | 100.0 | 95.3 | **94.3** | — | — | — |
-
-## review-om
-
-It measures the `arch-review-om` skill over a checkout with eight planted defects.
-
-| Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Planted named | Cost (USD) | Commit | Claude Code |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| [review-om-27d470ec](20260927-083632-review-om-27d470ec/report.md) | 2026-09-27 15:36 | `claude-opus-5-5` | high | 1 | 85.0 | 82.0 | 60.0 | 70.0 | **74.3** | 8/8 | $0.56 | `012ac97` | 2.1.283 |
-| [review-om-d56672be](20260927-064736-review-om-d56672be/report.md) | 2026-09-27 13:47 | `claude-opus-5-5` | high | 1 | 86.0 | 78.0 | 80.0 | 75.0 | **79.8** | 8/8 | $0.52 | — | — |
-| [review-om-ac618e8a](20260927-055257-review-om-ac618e8a/report.md) | 2026-09-27 12:52 | `claude-opus-5-5` | high | 3 | 82.3 | 79.3 | 67.3 | 68.3 | **74.3** | 8/8, 8/8, 8/8 | — | — | — |
-
-## support-turn
-
-It measures a model answering an on-call question directly, with no skill.
-
-| Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Cost (USD) | Commit |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| [support-turn-f6a3fe89](20260927-083628-support-turn-f6a3fe89/report.md) | 2026-09-27 15:36 | `claude-opus-5-5` | high | 1 | 72.0 | 80.0 | 75.0 | 84.0 | **77.8** | $0.18 | `012ac97` |
-| [support-turn-b935612d](20260927-064736-support-turn-b935612d/report.md) | 2026-09-27 13:47 | `claude-opus-5-5` | high | 1 | 76.0 | 78.0 | 75.0 | 80.0 | **77.3** | $0.17 | — |
-| [support-turn-3b66f5e5](20260927-053907-support-turn-3b66f5e5/report.md) | 2026-09-27 12:39 | `claude-opus-5-5` | high | 3 | 72.7 | 84.0 | 85.0 | 80.0 | **80.4** | — | — |
