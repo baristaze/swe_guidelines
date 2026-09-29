@@ -7,19 +7,19 @@ allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git sho
 # arch-review-om
 
 Judge the code from one perspective only: the lenses in
-`${CLAUDE_SKILL_DIR}/../../lenses/om.md`. Other perspectives have
-their own skills; do not borrow their rules, and do not flag anything
-a lens in this file does not name. The guideline itself is at
-`${CLAUDE_SKILL_DIR}/../../architecture.md` when a lens needs its
-source read in full. If either file is missing, stop and say the
-installation is incomplete.
+`../../lenses/om.md`. Other perspectives have their own skills; do
+not borrow their rules, and do not flag anything a lens in this file
+does not name. The guideline itself is at `../../architecture.md` when
+a lens needs its source read in full. A path that starts with `../` is
+read from this skill's folder. If either file is missing, stop and say
+the installation is incomplete.
 
 This pass covers The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules.
 
 ## Input
 
-`$ARGUMENTS` names what to review. Read it as the first of these that
-matches:
+The arguments name what to review. Read them as the first of these
+that matches:
 
 1. Empty: the current branch's change. The default branch is
    `origin/HEAD` when set, else `main`, else `master`. The scope is
@@ -60,9 +60,9 @@ of a changed signature.
 1. Read the lens file end to end before looking at any code.
 2. Establish the scope and list the files in it.
 3. When the scope reads the working tree, run the checker that
-   shipped with this lens file, from the root of the repository under
-   review:
-   `python3 "${CLAUDE_SKILL_DIR}/../../checkers/arch_check.py" --group om --format json`.
+   shipped with this lens file, `../../checkers/arch_check.py`, by its
+   absolute path, from the root of the repository under review:
+   `python3 <arch_check.py> --group om --format json`.
    The checker reads the working tree only. For a range or a commit it
    is not run: say so in the Scope line and judge every lens in step 4.
    Otherwise read its output:
@@ -104,9 +104,8 @@ of a changed signature.
    nothing in scope is not applicable, whatever the checker read. Keep
    the "Look for" and "Violation" text of the lens in front of you
    while deciding. When the lens has a `Shape` line, open the scaffold
-   file or folder it names, `${CLAUDE_SKILL_DIR}/../../<path>`, and
-   compare the code with it: it is the rule as code, so a difference
-   shows where to look. The decision still rests on the lens's
+   file or folder it names, `../../<path>`, and compare the code with
+   it: it is the rule as code, so a difference shows where to look. The decision still rests on the lens's
    Violation, never on a difference alone.
 5. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.

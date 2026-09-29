@@ -139,8 +139,8 @@ allowed-tools: Read, Grep, Bash(git diff:*)
 
 # arch-review-{group}
 
-Read `${CLAUDE_SKILL_DIR}/../../lenses/{group}.md` and the guideline at
-`${CLAUDE_SKILL_DIR}/../../architecture.md`. Take the scope from
+Read `../../lenses/{group}.md` and the guideline at
+`../../architecture.md`. Take the scope from
 `git diff`. Never edit, stage, or commit.
 """
 

@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-
 
 # arch-scaffold-namespace
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Namespaces as
+A path that starts with `../` is read from this skill's folder.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: Namespaces as
 Swimlanes, Interfaces (Injectability), The Business Layer
 (Cross-Manager Dependencies), The Storage Layer (Namespace Shape,
 Storage Root, Cross-Storage Dependencies), Documentation as Code (A
@@ -57,10 +58,10 @@ The shape is the `media` namespace, `om/src/<name>/om/media/`. Under
    callee first.
 2. The namespace reaches the API with its first entity, whose skill
    adds the service, its impl, and its router.
-3. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-entity/SKILL.md` and
+3. Read `../arch-scaffold-entity/SKILL.md` and
    follow it with `<namespace> <FirstEntity> <field:type ...> --role
    <role> --scope <scope>`, before the gates run.
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make chec
 
 # arch-scaffold-app
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Network
+A path that starts with `../` is read from this skill's folder.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls), Apps (Apps Are
 Dumb, Push-First Apps), Client App Architecture (Stack; State and Data;
 Views, View-Models, Models; API Access; One Tenant at a Time; Realtime:
@@ -79,4 +80,4 @@ portal.
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

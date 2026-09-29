@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-
 
 # arch-scaffold-entity
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Naming
+A path that starts with `../` is read from this skill's folder.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: Naming
 Entities (Identifiers), The Business Layer (Shape of an Operation), The
 Storage Layer (Namespace Shape, Defining ORM Classes, Translation, A
 Storage Impl, Database Roles, The Second Fence, Migrations), The Network
@@ -140,4 +141,4 @@ table's sibling by scope, with its policy in its role's first migration:
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

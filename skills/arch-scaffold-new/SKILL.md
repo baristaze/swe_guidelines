@@ -6,12 +6,13 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup),
 
 # arch-scaffold-new
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Monorepo
+A path that starts with `../` is read from this skill's folder.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: Monorepo
 Folder Structure, Deployment (Local: Docker Compose, Twins for External
 Services), Cross-Cutting Conventions (Records of Decisions).
 
-The scaffold, `${CLAUDE_SKILL_DIR}/../../scaffold/acme_root/`, is the
+The scaffold, `../../scaffold/acme_root/`, is the
 domain-agnostic core of a system in the guideline's shape, whole and
 green. This skill copies it under the product's name, then adds the
 product: its first decisions and its first namespace. It writes no part
@@ -73,7 +74,8 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 ## Procedure
 
 1. Settle the name and the folder, and refuse as the Input states.
-2. Copy: `python3 ${CLAUDE_SKILL_DIR}/../../scaffold/new.py <name>`.
+2. Copy: `python3 <new.py> <name>`, where `<new.py>` is the absolute
+   path of `../../scaffold/new.py`.
    Then, in the folder, `make setup` and `make check`. The copy is green
    before this skill writes anything, so a gate that fails here is a
    defect of the scaffold: stop with the cause pre-existing, name the
@@ -109,7 +111,7 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    `@` (`acme` gives `@acme`, `acme/infra` gives `@acme/infra`) and
    separated by a space, take the place of the copy's placeholder team.
    The paths stay as they are.
-5. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
+5. Read `../arch-scaffold-namespace/SKILL.md` and
    follow it with the first namespace, its entity, and the entity's
    fields. Their gates are not run there: step 6 runs them once, for
    all three skills.
@@ -124,7 +126,7 @@ states: the first run plus at most 3 reruns.
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states,
+As `../_shared/scaffold-conventions.md` states,
 with these differences. The name and where it came from come first.
 The copy is one line, the one `new.py` printed (its file count, the
 folder, the name, and the pin), in place of its files: nothing is

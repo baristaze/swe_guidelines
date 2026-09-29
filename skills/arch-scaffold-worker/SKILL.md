@@ -6,8 +6,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-
 
 # arch-scaffold-worker
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: The Business
+A path that starts with `../` is read from this skill's folder.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: The Business
 Layer (Operations Without a Principal), The Storage Layer (Database
 Roles), Infrastructure (Topics, Idempotency), The Network Layer
 (Long-Running Orchestrations), Worker Roles (The Work Queue, Shape of a
@@ -75,4 +76,4 @@ carry.
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

@@ -9,8 +9,8 @@ steps that differ.
 Every file a scaffold writes has a sibling that shows its shape. In a
 tree copied from the scaffold, the sibling is the tree's own file at the
 path the skill names. When the tree has no such file, it is the
-plugin's copy, `${CLAUDE_SKILL_DIR}/../../scaffold/acme_root/<path>`,
-with `acme` read as the tree's name. Read the sibling, its imports, and
+plugin's copy, `../../scaffold/acme_root/<path>` from the skill's
+folder, with `acme` read as the tree's name. Read the sibling, its imports, and
 its test before writing. Copy its shape, not its domain. A skill states
 only what an agent gets wrong from the files alone.
 
@@ -23,9 +23,8 @@ copy.
 
 ## Before writing anything
 
-1. Read `version` in
-   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and name it in
-   the output as "`<version>`, or a later snapshot of main".
+1. Read `version` in `../../.claude-plugin/plugin.json`, from the
+   skill's folder, and name it in the output as "`<version>`, or a later snapshot of main".
 2. Read the sections of `architecture.md` the skill names, then the
    sibling files its steps name.
 3. Check every path the skill creates. A file that exists, or a folder
