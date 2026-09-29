@@ -8,9 +8,11 @@ says the session cost, and, when a bound stopped it, which bound. A
 result's `subtype` is `success`, or it names the bound: `error_max_turns`
 or `error_max_budget_usd`.
 
-A phase is bounded by count and by spend. Claude Code holds the turn cap
-(`--max-turns`) and the spend cap (`--max-budget-usd`) itself. `Watch`
-reads the stream as it is written and holds two bounds of its own:
+A phase is bounded by money and time, and by its gate reruns. A turn
+count is no bound. Claude Code holds the spend cap (`--max-budget-usd`)
+itself, and a turn cap (`--max-turns`) only when the phase names one.
+The runtime holds the timeout. `Watch` reads the stream as it is written
+and holds two bounds of its own:
 
 - the spend, priced from the usage of every assistant message the stream
   carries, the helpers' included. The price is the model's in the matrix.

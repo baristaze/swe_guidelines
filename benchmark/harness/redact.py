@@ -4,8 +4,8 @@ A run folder holds what a subject printed and wrote, and a subject can
 print anything it can read. So before a run folder is shown or uploaded,
 every file in it is scanned as bytes, frames included, and two things
 are replaced with `[redacted]`: the value of every provider key the
-harness knows by name, and anything shaped like a provider key, whether
-the harness holds that key or not.
+harness knows by name, and anything shaped like a provider's, GitHub's,
+or AWS's key, whether the harness holds that key or not.
 
 A judge's error can name the account behind its key, and every failed
 judge call is recorded: in the judge's transcript, and in `results.json`
