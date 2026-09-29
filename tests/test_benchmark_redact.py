@@ -12,6 +12,27 @@ OPENAI = "sk-proj-" + "Zy9x" * 12
 GEMINI = "AIza" + "Sy" * 18
 XAI = "xai-" + "Q7w" * 12
 GITHUB = "ghp_" + "k" * 36
+# The other judges' 429s that name the account behind the key, in the words their APIs give them, with made-up ids
+# and figures: Anthropic's limit per minute, with its organization id and without, and xAI's credit spent.
+ANTHROPIC_ORGANIZATION = "3f6c1a2e-7b4d-4e8f-9a0b-1c2d3e4f5a6b"
+ANTHROPIC_429 = (
+    "claude-opus-4-7: RateLimitError: Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', "
+    f"'message': 'This request would exceed the rate limit for your organization ({ANTHROPIC_ORGANIZATION}) of 80,000 "
+    "output tokens per minute. For details, refer to: https://docs.anthropic.com/en/api/rate-limits. You can see the "
+    "response headers for current usage.'}}"
+)
+ANTHROPIC_429_REDACTED = ANTHROPIC_429.replace(ANTHROPIC_ORGANIZATION, "[redacted]").replace("of 80,000", "of [redacted]")
+ANTHROPIC_429_WITHOUT_ID = (
+    "This request would exceed the rate limit for your organization of 90,000 input tokens per minute. Please reduce "
+    "the prompt length or the maximum tokens requested, or try again later."
+)
+XAI_TEAM = "9d8c7b6a-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+XAI_429 = (
+    "grok-4.7: RateLimitError: Error code: 429 - {'code': 'Some resource has been exhausted', 'error': "
+    f"'Your team {XAI_TEAM} has either used all available credits or reached its monthly spending limit. To "
+    "continue making API requests, please purchase more credits or raise your spending limit.'}"
+)
+XAI_429_REDACTED = XAI_429.replace(XAI_TEAM, "[redacted]")
 
 
 def test_every_key_value_and_everything_shaped_like_a_key_is_redacted(tmp_path):
@@ -255,3 +276,11 @@ def test_a_file_redaction_cannot_read_is_named_and_the_rest_are_redacted(tmp_pat
     failed: dict = {}
     assert X.redact_folder(tmp_path / "runs", set(), failed) == {folder / "b.md": 1}
     assert failed == {folder / "a.md": "PermissionError: denied"}
+
+
+def test_anthropic_s_limit_figure_goes_where_its_429_names_no_id_and_a_uuid_elsewhere_stays():
+    said = ANTHROPIC_429_WITHOUT_ID.encode()
+    assert X.redact_bytes(said, set()) == (said.replace(b"of 90,000", b"of [redacted]"), 1)
+    # A UUID the harness writes, such as a run's id, is no account: only the words around an account id find it.
+    for kept in (f'{{"run": "{ANTHROPIC_ORGANIZATION}"}}', f"the {XAI_TEAM} (session)"):
+        assert X.redact_bytes(kept.encode(), set()) == (kept.encode(), 0)

@@ -7,13 +7,19 @@ are replaced with `[redacted]`: the value of every provider key the
 harness knows by name, and anything shaped like a provider key, whether
 the harness holds that key or not.
 
-A provider's error can name the account behind a key. OpenAI's 429
-names its organization id and the figures of the limit it hit, and a
-judge that waits out a limit records that message in its transcript.
-An id is not a key, but it names the account, and a run folder once
-checked in is public for good. So the scan also replaces an OpenAI
-organization id with `[redacted]`, wherever it stands, and each figure
-of a limit's `Limit ..., Used ..., Requested ...`.
+A judge's error can name the account behind its key, and every failed
+judge call is recorded: in the judge's transcript, and in `results.json`
+and `report.md` when the judge gives up. An id is not a key, but it
+names the account, and a run folder once checked in is public for good.
+So the scan also replaces, with `[redacted]`, the account ids and limit
+figures that three providers' errors name:
+- OpenAI's organization id (`org-...`), wherever it stands, and the
+  figures of the limit its 429 hit (`Limit ..., Used ..., Requested ...`);
+- Anthropic's organization id and the figure of its per-minute limit, as
+  its 429 names them (`the rate limit for your organization (<uuid>) of
+  N ... per minute`), and that figure where the 429 names no id;
+- xAI's team id, as its out-of-credit 429 names it (`Your team <uuid>
+  has either used all available credits ...`).
 
 A compressed file does not hold its text as bytes a scan could see. So
 the scan unpacks the forms the standard library reads: a zip, member by
@@ -91,15 +97,35 @@ KEY_SHAPES = re.compile(
     rb"|github_pat_[A-Za-z0-9_]{20,}"
     rb"|AKIA[0-9A-Z]{16}"
 )
-# An OpenAI organization id: `org-` and 24 letters and digits, taken from 20
-# on. A word such as `org-level` is far shorter. No boundary is required
-# before it: in JSON text, an id at the start of a line follows the `n` of `\n`.
-ORGANIZATION = re.compile(rb"org-[A-Za-z0-9]{20,}")
-# The figures of a rate limit, as OpenAI's 429 gives them after the limit's
-# name: "Limit 30000, Used 28172, Requested 4096".
+UUID = rb"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
 FIGURE = rb"\d+(?:[.,]\d+)*"
-LIMIT_FIGURES = re.compile(rb"Limit " + FIGURE + rb", Used " + FIGURE + rb", Requested " + FIGURE)
-REDACTED_FIGURES = b"Limit " + REDACTED + b", Used " + REDACTED + b", Requested " + REDACTED
+# What a judge's error says about the account behind its key, each with what
+# it becomes, in the order they are replaced.
+ACCOUNT = (
+    # OpenAI's organization id: `org-` and 24 letters and digits, taken from 20
+    # on. A word such as `org-level` is far shorter. No boundary is required
+    # before it: in JSON text, an id at the start of a line follows the `n` of `\n`.
+    (re.compile(rb"org-[A-Za-z0-9]{20,}"), REDACTED),
+    # The figures of the limit OpenAI's 429 hit: "Limit 30000, Used 28172, Requested 4096".
+    (
+        re.compile(rb"Limit " + FIGURE + rb", Used " + FIGURE + rb", Requested " + FIGURE),
+        b"Limit " + REDACTED + b", Used " + REDACTED + b", Requested " + REDACTED,
+    ),
+    # Anthropic's organization id, in the parentheses its per-minute 429 puts
+    # it in: "the rate limit for your organization (<uuid>) of 80,000 output
+    # tokens per minute".
+    (re.compile(rb"(?<=organization \()" + UUID + rb"(?=\))"), REDACTED),
+    # The figure of that limit, after the id or where the 429 names none.
+    (
+        re.compile(
+            rb"(rate limit for your organization(?: \([^()\s]{1,40}\))? of )" + FIGURE + rb"(?= [A-Za-z ]{1,40}? per minute)"
+        ),
+        rb"\1" + REDACTED,
+    ),
+    # xAI's team id, after the word its out-of-credit 429 puts it after: "Your
+    # team <uuid> has either used all available credits".
+    (re.compile(rb"(?<=[Tt]eam )" + UUID), REDACTED),
+)
 
 
 def key_values(env: dict[str, str] | None = None) -> set[str]:
@@ -110,7 +136,7 @@ def key_values(env: dict[str, str] | None = None) -> set[str]:
 
 
 def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
-    """The data with every value, key shape, organization id, and limit's figures replaced, and how many were.
+    """The data with every value, key shape, account id, and limit's figures replaced, and how many were.
 
     No placeholder holds a quote or a backslash, so a JSON file stays
     JSON, and none has a shape the scan replaces, so a second pass
@@ -123,9 +149,11 @@ def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
         count += data.count(raw)
         data = data.replace(raw, REDACTED)
     data, shaped = KEY_SHAPES.subn(REDACTED, data)
-    data, ids = ORGANIZATION.subn(REDACTED, data)
-    data, figures = LIMIT_FIGURES.subn(REDACTED_FIGURES, data)
-    return data, count + shaped + ids + figures
+    count += shaped
+    for pattern, placeholder in ACCOUNT:
+        data, found = pattern.subn(placeholder, data)
+        count += found
+    return data, count
 
 
 def _text(value: str, values: set[str]) -> tuple[str, int]:
@@ -302,7 +330,7 @@ def keys_in(data: bytes) -> list[str]:
     """Where bytes hold what the scan replaces, or a part it cannot read, as `redact_blob` names them.
 
     With no key value given, the scan replaces a string shaped like a key,
-    an organization id, and a limit's figures.
+    and the account ids and limit figures a provider's error names.
     """
     return redact_blob(data, set())[2]
 

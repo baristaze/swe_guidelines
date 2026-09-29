@@ -16,7 +16,15 @@ from harness import scenario as S
 from test_benchmark_agentic import FAKES, sent_results
 from test_benchmark_agentic import step as turn
 from test_benchmark_judge import FakeSdks
-from test_benchmark_redact import a_zipped_run
+from test_benchmark_redact import (
+    ANTHROPIC_429,
+    ANTHROPIC_429_REDACTED,
+    ANTHROPIC_ORGANIZATION,
+    XAI_429,
+    XAI_429_REDACTED,
+    XAI_TEAM,
+    a_zipped_run,
+)
 from test_benchmark_references import acme_repository, git
 from test_benchmark_runtime import DOCKER_OWN, docker_holds, docker_removals, docker_stand_in
 
@@ -927,6 +935,49 @@ def test_the_redact_command_takes_an_organization_id_and_a_limit_s_figures_out_o
     with zipfile.ZipFile(zipped) as zf:
         assert zf.read("logs/judge.log").decode("utf-8") == REDACTED_429 + "\n"
     assert unpacked(folder / "report.md") == f"- `openai`: {REDACTED_429}\n\n{kept}"
+    # A second pass finds nothing and changes nothing.
+    before = {path: path.read_bytes() for path in files}
+    assert run.main(["redact", "--out", str(tmp_path / "runs")]) == 0
+    assert "redacted 0 string(s) in 0 file(s)" in capsys.readouterr().out
+    assert {path: path.read_bytes() for path in files} == before
+
+
+@pytest.mark.parametrize(
+    "provider, said, redacted, taken",
+    [
+        ("anthropic", ANTHROPIC_429, ANTHROPIC_429_REDACTED, (ANTHROPIC_ORGANIZATION, "80,000")),
+        ("xai", XAI_429, XAI_429_REDACTED, (XAI_TEAM,)),
+    ],
+    ids=["anthropic", "xai"],
+)
+def test_the_redact_command_takes_the_account_the_other_judges_errors_name_out_of_every_file(
+    provider, said, redacted, taken, tmp_path, capsys
+):
+    folder, zipped = a_zipped_run(tmp_path, {"logs/judge.log": said + "\n"})
+    results = json.loads((folder / "results.json").read_text(encoding="utf-8"))
+    results["repeats"][0]["judgements"] = [{"provider": provider, "error": said}]
+    (folder / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+    line = json.dumps({"t": 1.0, "provider": provider, "kind": "error", "error": said}) + "\n"
+    (folder / "judgements").mkdir()
+    jsonl = folder / "judgements" / f"0-{provider}.jsonl"
+    jsonl.write_text(line * 2, encoding="utf-8")
+    packed = jsonl.with_name(jsonl.name + ".gz")
+    packed.write_bytes(gzip.compress(line.encode()))
+    (folder / "report.md").write_text(f"- `{provider}`: {said}\n", encoding="utf-8")
+    assert run.main(["redact", "--out", str(tmp_path / "runs")]) == 0
+    assert f"redacted {6 * len(taken)} string(s) in 5 file(s)" in capsys.readouterr().out
+    files = sorted(p for p in folder.rglob("*") if p.is_file())
+    for path in files:
+        text = unpacked(path)
+        assert not any(part in text for part in taken), path
+    # Every JSON file is JSON still, and holds the message with its placeholders.
+    recorded = json.loads((folder / "results.json").read_text(encoding="utf-8"))
+    assert recorded["repeats"][0]["judgements"][0]["error"] == redacted
+    assert [json.loads(one)["error"] for one in unpacked(jsonl).splitlines()] == [redacted] * 2
+    assert [json.loads(one)["error"] for one in unpacked(packed).splitlines()] == [redacted]
+    with zipfile.ZipFile(zipped) as zf:
+        assert zf.read("logs/judge.log").decode("utf-8") == redacted + "\n"
+    assert unpacked(folder / "report.md") == f"- `{provider}`: {redacted}\n"
     # A second pass finds nothing and changes nothing.
     before = {path: path.read_bytes() for path in files}
     assert run.main(["redact", "--out", str(tmp_path / "runs")]) == 0
