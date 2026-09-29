@@ -412,8 +412,8 @@ def test_the_estimate_prices_each_model_s_cache_hits_at_the_matrix_s_price():
     assert watch.cost("claude-sonnet-5", sonnet) == pytest.approx(23.910912, rel=0.01)
 
 
-# A review session of create-full-system that ran eight helper agents: every assistant line it wrote with
-# the flags the harness passes, and its result, trimmed to their figures, the ids renumbered.
+# The session of create-full-system's third phase, which ran eight helper agents: every assistant line it
+# wrote with the flags the harness passes, and its result, trimmed to their figures, the ids renumbered.
 WITH_HELPERS = Path(__file__).resolve().parent / "benchmark_stream_with_helpers.jsonl"
 
 
