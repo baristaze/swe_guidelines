@@ -169,7 +169,7 @@ of its own from `.claude/skills/` into `.agents/skills/`, and makes
 
 ```bash
 if [ -d .claude/skills ] && [ ! -L .claude/skills ]; then
-  for s in .claude/skills/*/; do [ -e "$s" ] && mv -n "$s" .agents/skills/; done
+  for s in .claude/skills/*/; do [ -e "$s" ] && mv -n "${s%/}" .agents/skills/; done
   rmdir .claude/skills
 fi
 [ -e .claude/skills ] || { mkdir -p .claude && ln -s ../.agents/skills .claude/skills; }
