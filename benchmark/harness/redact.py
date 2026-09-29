@@ -1,4 +1,4 @@
-"""No key leaves a run folder: every file is scanned and redacted in place.
+"""No key and no provider account leaves a run folder: every file is scanned and redacted in place.
 
 A run folder holds what a subject printed and wrote, and a subject can
 print anything it can read. So before a run folder is shown or uploaded,
@@ -6,6 +6,14 @@ every file in it is scanned as bytes, frames included, and two things
 are replaced with `[redacted]`: the value of every provider key the
 harness knows by name, and anything shaped like a provider key, whether
 the harness holds that key or not.
+
+A provider's error can name the account behind a key. OpenAI's 429
+names its organization id and the figures of the limit it hit, and a
+judge that waits out a limit records that message in its transcript.
+An id is not a key, but it names the account, and a run folder once
+checked in is public for good. So the scan also replaces an OpenAI
+organization id with `[redacted]`, wherever it stands, and each figure
+of a limit's `Limit ..., Used ..., Requested ...`.
 
 A compressed file does not hold its text as bytes a scan could see. So
 the scan unpacks the forms the standard library reads: a zip, member by
@@ -83,6 +91,15 @@ KEY_SHAPES = re.compile(
     rb"|github_pat_[A-Za-z0-9_]{20,}"
     rb"|AKIA[0-9A-Z]{16}"
 )
+# An OpenAI organization id: `org-` and 24 letters and digits, taken from 20
+# on. A word such as `org-level` is far shorter. No boundary is required
+# before it: in JSON text, an id at the start of a line follows the `n` of `\n`.
+ORGANIZATION = re.compile(rb"org-[A-Za-z0-9]{20,}")
+# The figures of a rate limit, as OpenAI's 429 gives them after the limit's
+# name: "Limit 30000, Used 28172, Requested 4096".
+FIGURE = rb"\d+(?:[.,]\d+)*"
+LIMIT_FIGURES = re.compile(rb"Limit " + FIGURE + rb", Used " + FIGURE + rb", Requested " + FIGURE)
+REDACTED_FIGURES = b"Limit " + REDACTED + b", Used " + REDACTED + b", Requested " + REDACTED
 
 
 def key_values(env: dict[str, str] | None = None) -> set[str]:
@@ -93,7 +110,12 @@ def key_values(env: dict[str, str] | None = None) -> set[str]:
 
 
 def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
-    """The data with every value and every key shape replaced, and how many were."""
+    """The data with every value, key shape, organization id, and limit's figures replaced, and how many were.
+
+    No placeholder holds a quote or a backslash, so a JSON file stays
+    JSON, and none has a shape the scan replaces, so a second pass
+    changes nothing.
+    """
     count = 0
     # The longest value first, so a value inside another never leaves a tail.
     for value in sorted(values, key=len, reverse=True):
@@ -101,7 +123,9 @@ def redact_bytes(data: bytes, values: set[str]) -> tuple[bytes, int]:
         count += data.count(raw)
         data = data.replace(raw, REDACTED)
     data, shaped = KEY_SHAPES.subn(REDACTED, data)
-    return data, count + shaped
+    data, ids = ORGANIZATION.subn(REDACTED, data)
+    data, figures = LIMIT_FIGURES.subn(REDACTED_FIGURES, data)
+    return data, count + shaped + ids + figures
 
 
 def _text(value: str, values: set[str]) -> tuple[str, int]:
@@ -264,7 +288,7 @@ UNPACK = {"zip": _zip, "tar": _tar, "gzip": _stream("gzip"), "bzip2": _stream("b
 
 
 def redact_file(path: str | Path, values: set[str]) -> tuple[int, list[str]]:
-    """Redact a file in place, as `redact_blob` does; return how many keys it held and where."""
+    """Redact a file in place, as `redact_blob` does; return how many strings it replaced and where."""
     path = Path(path)
     clean, count, places = redact_blob(path.read_bytes(), values)
     if count:
@@ -275,12 +299,16 @@ def redact_file(path: str | Path, values: set[str]) -> tuple[int, list[str]]:
 
 
 def keys_in(data: bytes) -> list[str]:
-    """Where bytes hold a string shaped like a key, or a part the scan cannot read, as `redact_blob` names them."""
+    """Where bytes hold what the scan replaces, or a part it cannot read, as `redact_blob` names them.
+
+    With no key value given, the scan replaces a string shaped like a key,
+    an organization id, and a limit's figures.
+    """
     return redact_blob(data, set())[2]
 
 
 def redact_folder(folder: str | Path, values: set[str], failed: dict[Path, str] | None = None) -> dict[Path, int]:
-    """Redact every file under the folder in place; return the files changed and how many keys each held.
+    """Redact every file under the folder in place; return the files changed and how many strings each had replaced.
 
     A symlink is not followed: it could point out of the folder, and the
     upload does not follow it either. A zip that changed has its manifest
