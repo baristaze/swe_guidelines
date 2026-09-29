@@ -1002,8 +1002,12 @@ Analytics across tenants reads a mirror, never a role the application
 writes. Every database is backed up and its restore rehearsed, and a
 role restored behind its siblings is reconciled from the outbox, whose
 done rows outlive the backup window. Purge, after retention, is the one
-hard delete. Payloads carry ids, never a personal value, so erasure
-redacts audit entries and nothing else.
+hard delete, save one. A person who deletes their account is gone at
+once: one atomic write deletes their identity and every user,
+membership, and credential it holds, outside the sweep, since a soft
+delete would keep the very fields they asked to lose. What they made in
+a team org stays the org's, under their id. Payloads carry ids, never a
+personal value, so erasure redacts audit entries and nothing else.
 
 <!-- agents-only
 When `activity` or `queue` comes back to an earlier point than `core`,

@@ -855,17 +855,22 @@ backup schedule.
 
 **Principle.** A soft-deleted row is purged by the maintenance sweep
 after its entity's retention period, and the purge is the one hard
-delete. Personal data lives in named fields, so erasing a person is a
-sweep over a list, not a hunt.
+delete, save a person's own account: its deletion removes their
+identity and every user, membership, and credential it holds at once,
+in one atomic write. Personal data lives in named fields, so erasing a
+person is a sweep over a list, not a hunt.
 
 **Source.** The Storage Layer, Database Roles.
 
 **Look for.** The retention period per entity that the purge reads;
-every hard delete and where it runs; the fields that hold personal
-data.
+every hard delete and where it runs; the account deletion's one atomic
+write, what it removes, and what a team org keeps under the person's
+id; the fields that hold personal data.
 
 **Violation.** A soft-deletable entity with no retention period; a hard
-delete outside the purge; personal data spread over unnamed fields, so
+delete outside the purge and the account deletion; an account deletion
+spread over several commits, or one that soft-deletes the person's
+fields for a retention; personal data spread over unnamed fields, so
 erasing a person is a hunt.
 
 **Severity.** medium

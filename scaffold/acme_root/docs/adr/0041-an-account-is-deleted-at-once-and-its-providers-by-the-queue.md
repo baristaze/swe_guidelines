@@ -18,12 +18,12 @@ A person asks to delete their account. What that means is decided:
 - Their user at the identity provider goes too, or a sign-in there
   would carry on as if nothing happened.
 
-STO-32 (The Storage Layer, Database Roles) says otherwise: "A
-soft-deleted row is purged by the maintenance sweep after its entity's
-retention period, and the purge is the one hard delete. Personal data
-lives in named fields, so erasing a person is a sweep over a list, not
-a hunt." A soft delete keeps a user row's email and name for the
-retention, which is the one thing the person asked not to happen.
+STO-32 (The Storage Layer, Database Roles) makes the sweep's purge the
+one hard delete, save this one: a person's account deletion removes
+their identity and every user, membership, and credential it holds at
+once, in one atomic write. A soft delete would keep a user row's email
+and name for the retention, which is the one thing the person asked not
+to happen.
 
 ## Decision
 
@@ -42,7 +42,7 @@ under a row lock, the owners of each team org the person owns, and
 refuses when one would be left with none, so two owners who leave at
 once cannot both go.
 
-This is the deviation from STO-32: a hard delete outside the sweep. The
+It is the one hard delete outside the sweep that STO-32 names. The
 personal fields are the named ones the guideline asks for, so the
 delete is still a list, not a hunt.
 
