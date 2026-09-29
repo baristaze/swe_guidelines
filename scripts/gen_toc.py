@@ -4,9 +4,11 @@
 The table sits between `<!-- toc -->` and `<!-- /toc -->` under the
 `## Contents` heading: one entry per section (`##`) with its subsections
 (`###`) nested under it, each a link to the heading's anchor. Headings
-inside fenced code are ignored. Anchors come from `scripts/_common.py`,
-the same rule `check_links.py` resolves them with, so every link the
-table emits is one that checker accepts, a repeated heading included.
+inside fenced code or an HTML comment, an agents-only block among them,
+are ignored: a rendered page shows neither. Anchors come from
+`scripts/_common.py`, the same rule `check_links.py` resolves them with,
+so every link the table emits is one that checker accepts, a repeated
+heading included.
 
 `--check` exits non-zero when the table on disk differs from what the
 headings produce, and never writes. Any other argument is refused with
