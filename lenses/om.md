@@ -426,7 +426,8 @@ kinds that mark one.
 
 **Violation.** User and organization classes in `base.py` or a `utils`
 module; audit rows written by a helper function with no storage
-interface, or kept anywhere but the event stream; credential handling
+interface, or kept anywhere but the event stream while it is still a
+kind of event; credential handling
 spread across services with no owning namespace; audit that has a
 screen or an export of its own, or must be kept longer than the stream,
 while it is still a kind of event.
