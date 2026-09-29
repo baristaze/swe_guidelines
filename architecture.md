@@ -303,16 +303,17 @@ does.
 | `Trackable`     | its lifecycle is recorded, by whom and when |
 | `SoftDeletable` | it can be hidden without being purged       |
 
-An append-only record, an audit entry or a ledger line, is
-`Identifiable` and `Created`: never updated, so no `updated_at`, and
-never hidden, so no `deleted_at`. Its time is its `created_at`. The one
+An append-only record, an event or a ledger line, is `Identifiable`
+and carries its time in a field of its own: `created_at` from `Created`,
+or a name of its own, as an event's `produced_at`. It is never updated,
+so it has no `updated_at`, and never hidden, so no `deleted_at`. The one
 write it takes after its birth is erasure, which redacts a person's
 fields in place.
 
 A row the platform writes for its own bookkeeping composes `Created`,
 since no person made it. Two are touched by every namespace, and each is
 declared once, in its own namespace: the `OutboxRow` that announces a
-write and the `IdempotencyMarker` that owns a retry. A work item looks
+write and the `IdempotencyRecord` that owns a retry. A work item looks
 like bookkeeping and is `Trackable`: the person who enqueued it is its
 attribution, and the platform signs its later writes with `EMPTY_UUID`.
 
@@ -374,12 +375,12 @@ mutate. They never leave the storage impl.
 
 `core`
 
-Every id is a `uuid_v7`: a millisecond timestamp in front and
-randomness behind. It is time-ordered, and that buys index locality: an
-insert lands at the tail of its B-tree, and a list in id order pages by
-id. An id is not a clock, though. Two processes mint with two clocks,
-so its time is near the truth and never the truth. When a record's time
-matters, it is `created_at`.
+Every id is a `uuid_v7`: a millisecond timestamp in front and randomness
+behind. It is time-ordered, and that buys index locality: an insert
+lands at the tail of its B-tree, and a list in id order pages by id. An
+id is not a clock, though. Two processes mint with two clocks, so its
+time is near the truth and never the truth. When a record's time
+matters, it is a field of its own, such as `created_at`.
 
 Whoever constructs the entity mints its id, above the storage layer,
 with `new_id()`. The database never assigns one, and nothing reads one
@@ -392,7 +393,7 @@ item the platform claimed. A reference that is genuinely optional is
 `None`.
 
 > **Principle:** Every id is `uuid_v7`, minted above storage with
-> `new_id()`. The order is for the index; the time is `created_at`.
+> `new_id()`. The order is for the index; the time is a field.
 
 ## Namespaces as Swimlanes
 
@@ -568,14 +569,16 @@ class SecurityContext(Platform):
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
-    credential_kind: CredentialKind
-    credential_id: UUID
+        credential_kind: CredentialKind
+    credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
 
 class RequestContext(Platform):
     request_id: UUID
     app: AppContext
+    trace_id: str | None = None
     traceparent: str | None = None
     caused_by_request_id: UUID | None = None
+    deadline: datetime | None = None  # when this request's time runs out
 
 class OpContext(RequestContext):
     security: SecurityContext  # org_id, user_id as properties; require(), in_team()
@@ -631,12 +634,13 @@ what it needs and never checks it again, and the type checker refuses a
 caller holding less. A sign-in route cannot reach a tenant manager.
 
 A stage lives as long as what minted it. A socket holds its `OpContext`
-and closes when the evidence goes: at the session's expiry, on a
-`SESSION_REVOKED` message, and on a recheck every
-`session_recheck_interval` that finds the session or the membership
-ended or the role changed. The recheck is not activity and never moves
-`last_seen_at`. The server does not cap a connection's life, since the
-recheck bounds its trust, and closing a socket never ends its session.
+and closes when the evidence goes: at the session's expiry, on a change
+on the bus that ends it, such as `tenancy.session.revoked`, and on a
+recheck every `session_recheck_interval` that finds the session or the
+membership ended or the role changed. The recheck is not activity and
+never moves `last_seen_at`. The server does not cap a connection's life,
+since the recheck bounds its trust, and closing a socket never ends its
+session.
 
 > **Principle:** A context stage is evidence. Only a transition
 > produces it, its type is the proof, and an operation takes the
@@ -703,14 +707,18 @@ once and you can read every manager
 ``` python
 async def confirm_file(self, ctx: OpContext, file_id: UUID) -> File:
     ctx.require(Permission.WRITE)             # authorize
-    file = await self.get_file(ctx, file_id)  # verify: exists, in this tenant
+    file = await self.get_file(ctx, file_id)  # verify: it exists, in this tenant
+    ...                                       # and its object has arrived
     stored = file.model_copy(                 # copy
         update={"status": FileStatus.STORED, "updated_at": utcnow(), "updated_by": ctx.user_id}
     )
-    rows = (outbox_row(ctx, "media.file.updated", stored.id, {}),)
-    await self._storage.write_file(ctx.org_id, stored, rows)  # write, with its outbox rows
-    await self._relay.relay_all(ctx.org_id, rows)              # or leave it to the sweep
+    await self._write(ctx, stored, "updated")  # write
     return stored
+
+async def _write(self, ctx: OpContext, file: File, action: str) -> None:
+    rows = (outbox_row(ctx, f"media.file.{action}", file.id, {}),)
+    await self._storage.write_file(ctx.org_id, file, rows)  # the row and its outbox rows, one call
+    await self._relay.relay_all(ctx.org_id, rows)
 ```
 
 The row and the outbox rows that announce it land in one storage call.
@@ -739,7 +747,7 @@ mismatch is `PreconditionFailed`.
 <!-- agents-only
 - A create that issues a secret stores its digest and shows the secret
   once. Its rerun under the same idempotency key re-mints the secret on
-  the row it finds, guarded by the marker's attempt token, and a replay
+  the row it finds, guarded by the record's `attempt_id`, and a replay
   returns the row with the secret absent (NET-25, NET-31).
 - A `PATCH` on a versioned entity with neither `If-Match` nor
   `expected_version` is `ValidationFailed`.
@@ -834,16 +842,25 @@ class OutboxRow(Identifiable, Created):
     actor_id: UUID  # the write's principal; EMPTY_UUID for the platform
     request_id: UUID
     traceparent: str | None = None
-    app: str
+        app: str
     done_at: datetime | None = None
+    attempts: int = 0
+    next_attempt_at: datetime | None = None
+    last_error: str | None = None
+    failed_at: datetime | None = None
 ```
+
+A row the relay cannot carry keeps its error and waits a growing delay,
+so it stops nothing behind it, and past its last attempt it is failed, a
+dead letter that an audit event names.
 
 A few tables hold no tenant's rows. A global table's methods take no
 tenant, an identity table's take `identity_id`, a cross-tenant sweep
 returns `(org_id, entity)` pairs, and the lookups before an identity is
-known name no one. [The Second Fence](#the-second-fence) lists these by
-name, and `arch-check` holds the code to the list. A signature only
-offers the tenant, so every storage method arrives with a case that
+known name no one. The project names each of them in one list, which
+`arch-check` holds the code to
+([`pyproject.toml`](scaffold/acme_root/pyproject.toml)). A signature
+only offers the tenant, so every storage method arrives with a case that
 presents another tenant's identifier and finds nothing.
 
 ### Storage Root
@@ -858,13 +875,15 @@ namespace impl and wires their dependencies
 
 Table classes mirror the OM mixins
 ([`base.py`](scaffold/acme_root/om/src/acme/om/storage/tables/base.py)).
-`IdentifiableMixin` carries `id` and the storage-only `org_id`;
-`IdentityScopedMixin` carries `identity_id` instead;
-`GlobalIdentifiableMixin` carries `id` alone; `FeedIdentifiableMixin`
-leaves `org_id` to the feed's compound index. `TrackableMixin` carries
-`created_at`, `updated_at`, `created_by`, and `updated_by`, and
-`SoftDeletableMixin` carries `deleted_at` and `deleted_by`, in the OM's
-order. Every datetime column carries its time zone.
+`IdentifiableMixin` carries `id` and the storage-only `org_id`, indexed
+on its own unless the table sets `__org_id_index__ = False` because
+`org_id` already leads one of its compound indexes.
+`GlobalIdentifiableMixin` carries `id` alone, for a global table, and a
+table whose rows belong to an identity declares its identity column,
+which the scope map names. `TrackableMixin` carries `created_at`,
+`updated_at`, `created_by`, and `updated_by`, and `SoftDeletableMixin`
+carries `deleted_at` and `deleted_by`, in the OM's order. Every datetime
+column carries its time zone.
 
 Tables carry `org_id`; tenant entities do not, save one whose reader
 has no tenant, such as the outbox row. Row classes are mutable and never
@@ -991,21 +1010,28 @@ A table's **tenancy scope** says whose rows it holds, declared once per
 table beside the role map
 ([`scopes.py`](scaffold/acme_root/om/src/acme/om/storage/scopes.py)):
 `system` (no policy), `org`, `identity`, or `both`, which narrows the
-`org` policy by a person column when the transaction names a person. The
-map names the column each policy rests on. The funnel sets the call's
-scope as transaction-local settings, so a pooled connection hands
-nothing on, and each table carries the policy on them, forced on its
-owner too ([`om/migrations/`](scaffold/acme_root/om/migrations/)):
+`org` policy by a person column, or by an identity column, when the
+transaction names one. The map names the column each policy rests on.
+The funnel sets the call's scope as transaction-local settings, so a
+pooled connection hands nothing on
+([`pg_base.py`](scaffold/acme_root/om/src/acme/om/storage/impl/pg_base.py)),
+and each table carries the policy on them, forced on its owner too
+([`the_core_role.up.sql`](scaffold/acme_root/om/migrations/sql/core/202609280000_the_core_role.up.sql)):
 
 ``` sql
 SELECT set_config('app.org_id', :org_id, true);
 
-CREATE POLICY tenant_fence ON core.warehouses FOR ALL
-  USING (org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
-         OR (current_setting('app.org_id', true) = '<EMPTY_UUID>'
-             AND current_user = '<system_login>'))
-  WITH CHECK (<the same>);
-ALTER TABLE core.warehouses FORCE ROW LEVEL SECURITY;
+ALTER TABLE core.orgs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.orgs FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_fence ON core.orgs
+    USING (
+        org_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+        OR (
+            current_setting('app.org_id', true) = '00000000-0000-0000-0000-000000000000'
+            AND current_user = 'acme_system'
+        )
+    )
+    WITH CHECK (...);  -- the same
 ```
 
 A transaction that names no tenant fails closed. The system scope,
@@ -1021,21 +1047,23 @@ system-scope methods. Tests assert each fact on a live connection, and
 read `pg_class` and `pg_policies` to hold the policies to the scope map.
 
 <!-- agents-only
-The methods that pass the system scope, and no others:
+The methods that take no tenant are listed by name in the project's
+`pyproject.toml`, under `[tool.arch-check.options.CTX-12]`, and no
+others take none ([`pyproject.toml`](scaffold/acme_root/pyproject.toml)).
+Among them:
 
-- sweeps and the queue's bookkeeping: `claim_next`, `fail_orphaned`,
-  `read_gauges`, `read_pending`, `read_oldest_pending`, `purge_done`,
-  `purge_items`, `purge_markers`, `purge_socket_tickets`,
-  `purge_sessions`;
+- the sweeps' claims and purges across tenants, such as `claim_next`,
+  `purge_items`, `purge_done`, and `purge_records`;
 - the five lookups before an identity is known:
   `read_identity_by_email_digest`, `read_identity_by_issuer_subject`,
-  `read_api_key_by_digest`, `read_session_by_digest`,
+  `read_api_key_by_digest`, `read_session_by_digest`, and
   `redeem_socket_ticket`;
-- the operator plane's idempotency-marker methods, keyed under
-  `EMPTY_UUID` with the operator's identity id as the user, and its
-  size read, which counts users and rows across tenants.
+- the reads and writes of the global tables, the operator's size read
+  among them.
 
-A new cross-tenant sweep joins the list by name. A table whose
+The operator plane's idempotency records take `org_id` like any other,
+keyed under `EMPTY_UUID` with the operator's identity id as the user. A
+new cross-tenant sweep joins the list by name. A table whose
 system-scope statement plans badly may carry one policy per login, kept
 only where a measurement in its migration shows it (STO-28).
 -->
@@ -1303,15 +1331,15 @@ budget for reads and one for writes, and refuses past either at once.
 That is self-defense, and it fails closed.
 
 **Edge idempotency.** A creating `POST` accepts an `Idempotency-Key`,
-and an `IdempotencyMarker` owns the retry
+and an `IdempotencyRecord`, the marker, owns the retry
 ([`record.py`](scaffold/acme_root/om/src/acme/om/idempotency/types/record.py)).
 `begin` writes it pending, per tenant and principal, with the request's
-digest, the id the create will use, and an attempt token; `finish`
-stores the outcome, which a retry replays, saying so in a header.
-Another digest under the key is refused. A `4xx` is stored, while a
-`5xx` or a `429` releases the marker, and the retry reruns on the same
-id. A stale attempt's lease lets a retry take over, and `finish`
-conditions on the attempt token.
+digest, the id the create will use, and an `attempt_id`; `finish` stores
+the outcome, which a retry replays, saying so in a header. Another
+digest under the key is refused. A `4xx` is stored, while a `5xx` or a
+`429` releases the marker, and the retry reruns on the same id. A stale
+attempt's lease lets a retry take over, and `finish` conditions on the
+`attempt_id`.
 
 **Health.** `/healthz` answers liveness with no I/O. `/readyz` checks
 storage under a deadline shorter than its poller's. `/metrics` is for
@@ -1511,9 +1539,12 @@ and ping; commands go over REST.
 - A dropped stream frame is logged. The control lane has a small bound
   of its own, and its overflow is logged as such, since it means the
   socket produces state faster than it can be written.
-- `SESSION_REVOKED` names the session as its `target_id` and the
-  identity as its `actor_id`, and carries no `seq`. A process never
-  forwards it as a frame: it closes the session's sockets.
+- A change that ends a socket's evidence rides the stream like any
+  other: `tenancy.session.revoked` and `tenancy.api_key.deleted` name the
+  credential, `tenancy.user.deleted` the user,
+  `tenancy.membership.updated` the membership, and `tenancy.org.deleted`
+  the org, and each closes every socket it names
+  ([`realtime.py`](scaffold/acme_root/services/api/src/acme/services/api/services/impl/realtime.py)).
 -->
 
 ### Wait-for-Response vs Fire-and-Forget

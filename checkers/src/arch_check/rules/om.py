@@ -264,7 +264,7 @@ def mixins_declare_exactly_their_fields(project: Project) -> Iterator[Violation]
     defined there and `PROVENANCE_FIELDS` nowhere else. No class on the
     chain declares a field a mixin it composes declares. `OutboxRow`
     declares `actor_id`, `request_id`, `traceparent`, and `app`, and has no
-    `created_by`; it and `IdempotencyMarker` are each declared once. Above
+    `created_by`; it and `IdempotencyRecord` are each declared once. Above
     storage, no code calls `datetime.now` or `datetime.utcnow` outside the
     base module. Whether a new trait belongs in a new mixin is judged."""
     idx = index(project)
@@ -329,7 +329,7 @@ def mixins_declare_exactly_their_fields(project: Project) -> Iterator[Violation]
                 )
     seen: dict[str, ClassInfo] = {}
     for info in idx.chain(project.sub("om")):
-        if info.node.name not in ("OutboxRow", "IdempotencyMarker"):
+        if info.node.name not in ("OutboxRow", "IdempotencyRecord"):
             continue
         if info.node.name in seen:
             first = seen[info.node.name]

@@ -565,14 +565,14 @@ a new request field in the release that first accepts it.
 
 **Severity.** medium
 
-## NET-24 The pending marker's attempt token fences finish and release
+## NET-24 The pending marker's attempt id fences finish and release
 
 **Principle.** The pending marker carries the request digest, the
-create's id, and an attempt token. The lease runs from the attempt's
-`uuid_v7` token, never from the marker's age; an attempt past it is
-taken over by a conditional write stamping a new token, and rerun on
-the marker's id. `finish`, the release, and a rerun's re-mint are
-conditional on the token.
+create's id, and an `attempt_id`. The lease runs from the attempt id,
+a `uuid_v7`, never from the marker's age; an attempt past it is taken
+over by a conditional write stamping a new attempt id, and rerun on the
+marker's id. `finish`, the release, and a rerun's re-mint are
+conditional on the attempt id.
 
 **Source.** The Network Layer, The Gateway (Edge idempotency).
 
@@ -585,7 +585,7 @@ release clears (the attempt) and keeps (the digest and the id); what
 the losing attempt's `finish` returns, since it can neither finish the
 marker with its own outcome nor release the one the retry holds.
 
-**Violation.** A marker with no attempt token, so two attempts can
+**Violation.** A marker with no attempt id, so two attempts can
 finish it; a lease measured from the marker's age, so a marker handed
 on once is takeable again at once and two attempts run side by side;
 a take-over that overwrites the marker without a condition;

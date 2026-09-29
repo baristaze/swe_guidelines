@@ -73,7 +73,7 @@ fields the guideline lists: `Identifiable` (`id`), `Named` (`name`),
 `MANAGER_OWNED_FIELDS`, a tuple, even when empty, and the copy on
 update excludes `set(PROVENANCE_FIELDS) |
 set(<Entity>.MANAGER_OWNED_FIELDS)`. `OutboxRow` and
-`IdempotencyMarker` are declared once, each in its namespace.
+`IdempotencyRecord` are declared once, each in its namespace.
 
 **Source.** Naming Entities; The Storage Layer, Namespace Shape.
 
@@ -152,12 +152,13 @@ CON-17.)
 **Check.** `arch-check` decides methods on the root and the mixins and
 entity-to-entity inheritance; the rest is judged.
 
-## OM-06 Append-only records carry identity and a birth time
+## OM-06 Append-only records carry identity and a time of their own
 
 **Principle.** A record that is never updated and never hidden (an
-audit entry, a ledger line, an event) is `Identifiable` and `Created`
-and nothing else: no `updated_at`, no `deleted_at`. Its time is its
-`created_at`, never one read out of its id.
+audit entry, a ledger line, an event) is `Identifiable` and carries
+its time in a field of its own, `created_at` or a name of its own such
+as `produced_at`: no `updated_at`, no `deleted_at`. Its time is never
+read out of its id.
 
 **Source.** Naming Entities.
 

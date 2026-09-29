@@ -272,16 +272,15 @@ technology is not last.
 only what is specific to its entity. The common mixins live in the
 shared `tables/` package, with one storage-only addition: `org_id`
 rides on `IdentifiableMixin`. A global table composes
-`GlobalIdentifiableMixin`, a feed table `FeedIdentifiableMixin`
-(STO-14). A concrete table composes the mixins its entity has, in the
-OM's house-style order.
+`GlobalIdentifiableMixin`; a table whose `org_id` leads a compound
+index sets `__org_id_index__ = False` (STO-14). A concrete table
+composes the mixins its entity has, in the OM's house-style order.
 
 **Source.** The Storage Layer, Defining ORM Classes.
 
 **Look for.** Table classes composing `IdentifiableMixin` (or
-`GlobalIdentifiableMixin` for a global table, `FeedIdentifiableMixin`
-for a feed), `NamedMixin`, `TrackableMixin`, `SoftDeletableMixin` in
-the OM order, with the
+`GlobalIdentifiableMixin` for a global table), `NamedMixin`,
+`TrackableMixin`, `SoftDeletableMixin` in the OM order, with the
 declarative base last. A table's mixin set matching its entity's mixin
 set, so an append-only entity's table has no tracking or soft-delete
 columns. `id`, `org_id`, `name`, `created_at`, `updated_at`,
@@ -348,11 +347,11 @@ and concrete tables setting none; the rest is judged.
 
 ## STO-14 The first three index rules
 
-**Principle.** A feed gets a compound index on `(org_id, id)`, which
-keeps it in id order, and ids are v7, so an insert lands at the tail; a
-descending index is never needed. A column that leads a compound index
-gets no single-column index of its own, so a feed table composes
-`FeedIdentifiableMixin`, whose `org_id` carries none. Index what the
+**Principle.** A feed gets a compound index that leads with `org_id`
+and ends with the order it pages in: `id`, whose v7 insert lands at the
+tail, or a stream's `seq`; a descending index is never needed. A column
+that leads a compound index gets no single-column index of its own, so
+the table sets `__org_id_index__ = False`. Index what the
 SQL filters on, never what Python filters afterwards.
 
 **Source.** The Storage Layer, Defining ORM Classes; Naming Entities,
