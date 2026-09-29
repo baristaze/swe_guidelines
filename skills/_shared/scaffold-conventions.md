@@ -140,6 +140,11 @@ workspace. Nothing is reordered or removed.
 
 ## After writing
 
+Before the first gate, format what was written with the tree's
+formatter, `uv run ruff check --fix .` and then `uv run ruff format .`,
+the two the setup target ends with. A formatter run is no gate run,
+and no count holds it.
+
 1. Run these, in order, and stop at the first that fails:
    `make infra-up` and `make migrate` when a table was added,
    `make openapi` when a route was added, `make check`, and
