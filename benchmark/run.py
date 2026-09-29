@@ -409,6 +409,14 @@ def read_envelope(stdout: str) -> tuple[str, list[str], bool]:
 
 
 ENVELOPE_TOKENS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+# Each model's figures under a result's `modelUsage`, by the name its usage gives the same count.
+MODEL_TOKENS = {
+    "inputTokens": "input_tokens",
+    "cacheCreationInputTokens": "cache_creation_input_tokens",
+    "cacheReadInputTokens": "cache_read_input_tokens",
+    "outputTokens": "output_tokens",
+    "thinkingTokens": "thinking_tokens",
+}
 
 
 def token_count(value: Any) -> int | None:
@@ -434,23 +442,47 @@ def envelope_thinking(usage: Any, models: Any) -> int | None:
     return sum(found) if found else None
 
 
+def model_usage_tokens(models: Any) -> dict[str, int]:
+    """The tokens a result reports under `modelUsage`, summed over its models, by the names its usage gives them.
+
+    Each model's figures count every agent of the session that ran on
+    it, as its `costUSD` does. A count a model does not report is left
+    out, and a result whose models report none gives nothing.
+    """
+    sums: dict[str, int] = {}
+    for figures in (models if isinstance(models, dict) else {}).values():
+        for key, name in MODEL_TOKENS.items():
+            count = token_count(figures.get(key)) if isinstance(figures, dict) else None
+            if count is not None:
+                sums[name] = sums.get(name, 0) + count
+    return sums
+
+
 def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
     """The tokens and the cost in US dollars of a `claude -p` session's result.
 
     Claude Code prices its own run, caching included, as `total_cost_usd`;
-    that figure is the subject's cost. `input_tokens` is every input token,
-    cached or not, with the cached ones also named on their own.
-    `output_tokens` already counts the thinking, and `reasoning_tokens`
-    names it: `usage.output_tokens_details.thinking_tokens`, else the sum of
-    `thinkingTokens` over `modelUsage`, and no key when the result reports
-    neither. Output with no result spent nothing the run can see: no
-    tokens, cost None.
+    that figure is the subject's cost. The tokens are the ones it prices:
+    each model's under `modelUsage`, summed, which count the session's
+    helper agents as well as its main agent. The result's `usage` counts
+    the main agent alone, so it is read only when no model reports a
+    count. `input_tokens` is every input token, cached or not, with the
+    cached ones also named on their own. `output_tokens` already counts
+    the thinking, and `reasoning_tokens` names it, from the same figures:
+    the sum of `thinkingTokens`; or, when `usage` is read, its
+    `output_tokens_details.thinking_tokens`, else that sum. It has no key
+    when the result reports neither. Output with no result spent nothing
+    the run can see: no tokens, cost None.
     """
     data = envelope(stdout)
     if data is None:
         return {}, None
-    raw = data.get("usage")
-    counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if isinstance(v, int) and not isinstance(v, bool)}
+    counts = model_usage_tokens(data.get("modelUsage"))
+    thinking = counts.pop("thinking_tokens", None)
+    if not counts:
+        raw = data.get("usage")
+        counts = {k: v for k, v in (raw if isinstance(raw, dict) else {}).items() if token_count(v) is not None}
+        thinking = envelope_thinking(raw, data.get("modelUsage"))
     usage: dict[str, int] = {}
     if counts:
         usage = {
@@ -459,7 +491,6 @@ def read_envelope_spend(stdout: str) -> tuple[dict[str, int], float | None]:
             "cache_read_input_tokens": counts.get("cache_read_input_tokens", 0),
             "cache_creation_input_tokens": counts.get("cache_creation_input_tokens", 0),
         }
-        thinking = envelope_thinking(raw, data.get("modelUsage"))
         if thinking is not None:
             usage["reasoning_tokens"] = thinking
     cost = data.get("total_cost_usd")

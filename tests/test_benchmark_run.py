@@ -772,6 +772,56 @@ def test_the_envelope_gives_the_subject_tokens_and_claude_code_s_own_cost():
     assert run.read_envelope("plain text\n") == ("plain text\n", [], False)
 
 
+# The result a scaffold session of create-full-system wrote, trimmed to its figures. Its three
+# helper agents ran on the main agent's model, so `modelUsage` names one model.
+SCAFFOLD_RESULT = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "total_cost_usd": 82.52809299999997,
+    "usage": {
+        "input_tokens": 748,
+        "cache_creation_input_tokens": 2485360,
+        "cache_read_input_tokens": 173655175,
+        "output_tokens": 592170,
+        "output_tokens_details": {"thinking_tokens": 101447},
+    },
+    "modelUsage": {
+        "claude-opus-5-5": {
+            "inputTokens": 950244,
+            "outputTokens": 975048,
+            "cacheReadInputTokens": 201427435,
+            "cacheCreationInputTokens": 3788134,
+            "thinkingTokens": 211233,
+            "costUSD": 82.52809299999997,
+        }
+    },
+}
+
+
+def test_the_subject_s_tokens_are_every_agent_s_as_its_result_prices_them():
+    usage, cost = run.read_envelope_spend(json.dumps(SCAFFOLD_RESULT))
+    # modelUsage, not the main agent's usage: 950,244 + 201,427,435 read + 3,788,134 written.
+    assert usage == {
+        "input_tokens": 206_165_813,
+        "output_tokens": 975_048,
+        "cache_read_input_tokens": 201_427_435,
+        "cache_creation_input_tokens": 3_788_134,
+        "reasoning_tokens": 211_233,
+    }
+    assert cost == 82.528093
+    # Helpers on another model are summed with the main agent's.
+    figures = {"inputTokens": 1, "outputTokens": 20, "cacheReadInputTokens": 300, "cacheCreationInputTokens": 4000}
+    two = {"type": "result", "modelUsage": {"claude-opus-5-5": figures, "claude-sonnet-5": {**figures, "thinkingTokens": 7}}}
+    assert run.read_envelope_spend(json.dumps(two))[0] == {
+        "input_tokens": 8602,
+        "output_tokens": 40,
+        "cache_read_input_tokens": 600,
+        "cache_creation_input_tokens": 8000,
+        "reasoning_tokens": 7,
+    }
+
+
 def test_the_envelope_s_thinking_tokens_are_the_subject_s_reasoning():
     usage = {"input_tokens": 14, "output_tokens": 6281, "output_tokens_details": {"thinking_tokens": 2854}}
     envelope = {"type": "result", "result": "a", "total_cost_usd": 0.27, "usage": usage}
