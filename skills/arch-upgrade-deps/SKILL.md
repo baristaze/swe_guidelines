@@ -10,10 +10,10 @@ The guideline keeps every dependency on its latest stable release, the
 current active LTS line where the technology publishes one (Technology
 Choices and How to Override Them, Versions, in `../../architecture.md`;
 lens `DEL-26` in `../../lenses/delivery.md`; paths from this skill's
-folder, through its link when it is one). Releases keep coming, so a
-project drifts unless something moves it. This skill moves it in one
-change, proves the change with the repository's own gates, and leaves
-the working tree for a person to review.
+folder as `realpath` resolves it). Releases keep coming, so a project
+drifts unless something moves it. This skill moves it in one change,
+proves the change with the repository's own gates, and leaves the
+working tree for a person to review.
 
 ## Input
 

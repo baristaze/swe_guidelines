@@ -6,8 +6,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup),
 
 # arch-scaffold-new
 
-A path that starts with `../` is read from this skill's folder,
-through its link when it is one.
+A path that starts with `../` is read from this skill's folder
+as `realpath` resolves it.
 Conventions: `../_shared/scaffold-conventions.md`.
 Sections of `../../architecture.md`: Monorepo
 Folder Structure, Deployment (Local: Docker Compose, Twins for External

@@ -24,8 +24,8 @@ copy.
 ## Before writing anything
 
 1. Read `version` in `../../.claude-plugin/plugin.json`, from the
-   skill's folder, through its link when it is one, and name it in the
-   output as "`<version>`, or a later snapshot of main".
+   skill's folder as `realpath` resolves it, and name it in the output
+   as "`<version>`, or a later snapshot of main".
 2. Read the sections of `architecture.md` the skill names, then the
    sibling files its steps name.
 3. Check every path the skill creates. A file that exists, or a folder

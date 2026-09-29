@@ -11,8 +11,8 @@ Ask four products the same question and keep the answers with their
 proof. The prompt, contract, size map, and schema live at
 `../../benchmark/browser/` and
 `../../benchmark/schema/browser-session.schema.json`, paths from this
-skill's folder, through its link when it is one. If any is missing, stop
-and say the installation is incomplete.
+skill's folder as `realpath` resolves it. If any is missing, stop and
+say the installation is incomplete.
 
 ## Input
 

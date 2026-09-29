@@ -11,8 +11,8 @@ Judge the code from one perspective only: the lenses in
 not borrow their rules, and do not flag anything a lens in this file
 does not name. The guideline itself is at `../../architecture.md` when a
 lens needs its source read in full. A path that starts with `../` is
-read from this skill's folder, through its link when it is one. If
-either file is missing, stop and say the installation is incomplete.
+read from this skill's folder as `realpath` resolves it. If either file
+is missing, stop and say the installation is incomplete.
 
 This pass covers The Domain as the Source of Truth, Naming Entities, Namespaces as Swimlanes: source of truth, mixins, immutability, identifiers, namespaces, pure rules.
 

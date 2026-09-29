@@ -20,8 +20,9 @@ The current working directory must be a checkout of the guideline
 repository: `architecture.md`, `lenses/README.md`, `AGENTS.md`, and a
 `Makefile` with the `gen-toc`, `gen-skills`, and `check` targets all
 present. Otherwise stop and say so. The copy at `../..`, from this
-skill's folder, is the installed plugin, not the checkout being
-changed; read and edit the checkout's files, never the plugin's.
+skill's folder as `realpath` resolves it, is the installed plugin, not
+the checkout being changed; read and edit the checkout's files, never
+the plugin's.
 
 ## Input
 

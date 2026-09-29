@@ -6,8 +6,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make chec
 
 # arch-scaffold-app
 
-A path that starts with `../` is read from this skill's folder,
-through its link when it is one.
+A path that starts with `../` is read from this skill's folder
+as `realpath` resolves it.
 Conventions: `../_shared/scaffold-conventions.md`.
 Sections of `../../architecture.md`: The Network
 Layer (Clients Live in One Place, Direction of Calls), Apps (Apps Are

@@ -30,8 +30,8 @@ has a condition for ending.
 ## Procedure
 
 1. Resolve the rule: find the lens in `../../lenses/` and the section in
-   `../../architecture.md`, paths from this skill's folder, through its
-   link when it is one. Quote the principle verbatim.
+   `../../architecture.md`, paths from this skill's folder as `realpath`
+   resolves it. Quote the principle verbatim.
 2. The ADR goes under `docs/adr/`, created when it does not exist:
    `arch-check` refuses a deviation whose `adr` is anywhere else. Number
    the new record as one more than the highest numeric prefix present
