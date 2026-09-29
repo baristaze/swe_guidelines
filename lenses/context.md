@@ -690,9 +690,9 @@ the socket and the process closes it at that instant; a revocation or
 a membership's end travels on the topic bus as a change of its own
 kind, `tenancy.session.revoked` among them, and every process holding a
 socket it names closes it on the change. The bus is at most once, so
-every socket also rechecks its session and membership on
-`session_recheck_interval`, five minutes by default, without moving
-`last_seen_at`. A connection's lifetime is
+every socket also rechecks its session and membership every
+`realtime_recheck_seconds`, a setting of the realtime service, five
+minutes by default, without moving `last_seen_at`. A connection's lifetime is
 apart from the session's, and closing or pausing one never ends the
 session.
 

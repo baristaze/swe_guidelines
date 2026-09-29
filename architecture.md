@@ -654,8 +654,9 @@ caller holding less. A sign-in route cannot reach a tenant manager.
 A stage lives as long as what minted it. A socket holds its `TenantContext`
 and closes when the evidence goes: at the session's expiry, on a change
 on the bus that ends it, such as `tenancy.session.revoked`, and on a
-recheck every `session_recheck_interval` that finds the session or the
-membership ended or the role changed. The recheck is not activity and
+recheck that finds the session or the membership ended or the role
+changed. The recheck runs every `realtime_recheck_seconds`, a setting of
+the realtime service beside its other bounds. It is not activity and
 never moves `last_seen_at`. The server does not cap a connection's life,
 since the recheck bounds its trust, and closing a socket never ends its
 session.
