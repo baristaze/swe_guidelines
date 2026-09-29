@@ -35,7 +35,7 @@ image first (see Where a scenario runs).
 | `--runtime` | `host`, `container`, or `vm`: one of the scenario's `runtimes`, its first by default |
 | `--runtime-config` | a JSON or YAML file with the runtime's settings |
 | `--target` | a checkout the subject works on, in place of the scenario's own |
-| `--out` | where run folders go; `benchmark/runs/` by default |
+| `--out` | the runs root: a run folder goes in `<out>/<scenario>/`; `benchmark/runs/` by default. `judge` and `resume` write beside the source when it is not given |
 | `--claude` | the Claude Code binary a skill subject runs; `$CLAUDE_BIN`, else `claude` |
 | `--subject-model` | the model the subject runs on; the scenario's `subject.model`, else the first Anthropic model in `models.yaml` |
 | `--max-spend-usd` | once the run has spent this many US dollars, on the subject and the judges together, it starts no further repeat or phase; what is running finishes. When not given: the scenario's `max_spend_usd` on the path that takes no group; else, for a subject in phases, the sum of the caps of the phases that run and of the agentic judges' dollar budgets; else no cap |
@@ -111,7 +111,7 @@ Runtimes).
 ## What a run leaves behind
 
 ```text
-runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
+runs/<scenario>/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   run.json                 the resolved scenario, runtime, models, argv, and versions
   streams/cli.jsonl        one JSON line per output line, written as it happens:
                            a skill subject's every turn
@@ -135,10 +135,11 @@ runs/<YYYYMMDD-HHMMSS>-<scenario>-<random>/
   report.md                the same run for a person
 ```
 
-The random part of the name tells apart two runs of one scenario
-started in the same second. A run folder is created only when it is
-not there yet, and a stream file likewise, so no run writes into
-another's.
+A run folder goes in the folder of its scenario under the runs root,
+`benchmark/runs/` unless `--out` names another. The random part of its
+name tells apart two runs of one scenario started in the same second.
+A run folder is created only when it is not there yet, and a stream
+file likewise, so no run writes into another's.
 
 The subject never works in the run folder. It lives in a sandbox
 outside the checkout, a fresh temporary folder per run:
@@ -166,19 +167,28 @@ sandbox is removed when the run ends, however it ends. Every repeat
 starts in an empty workspace of its own, so no repeat sees what an
 earlier one wrote.
 
-A run folder under `benchmark/runs/` is checked in, and only after
-`uv run benchmark/run.py redact --out benchmark/runs` has scanned it
-for keys (see The workflow). `runs/README.md` is the index: one row per
-run, newest first, linking to its report. The pull request that adds a
-run adds its row by hand; nothing generates it. `make runs`, part of
-`make check`, fails when a run folder has no row, has two, or a row
-names a run that is not there, and when a row sits above a run that
-started after it. It also fails on a run whose checkout was not clean
-(see Versions), on a run whose runtime its scenario does not list
-(see Where a scenario runs), on a rehearsal (see Rehearsal), and on a
-compressed file in a run folder that holds a string shaped like a key,
-or that the scan cannot read, on a `.zip` that does not open, and on a
-`.git` folder (see The workflow).
+A run folder under `benchmark/runs/<scenario>/` is checked in, and
+only after `uv run benchmark/run.py redact --out benchmark/runs` has
+scanned it for keys (see The workflow). Each scenario's folder has a
+`README.md`: a paragraph on what the subject is asked to do, what it is
+given, and how it is scored, then one row per run, newest first,
+linking to its report. A run and its resumes are one row (see A run and
+its resumes). `runs/README.md` is the index: one line per scenario,
+linking its page, and the key to the columns. The pull request that
+adds a run adds its row by hand; nothing generates the pages.
+
+`make runs`, part of `make check`, fails when a run folder sits outside
+its scenario's folder, when a scenario's folder has no `README.md`, and
+when the index does not name each scenario's folder once. It fails when
+a run folder is named by no row, or by two, as a row's run or as a part
+of its chain; when a row names a run that is not there, or whose chain
+breaks; when a row's cost is not its chain's total; and when a row sits
+above a run that started after it. It also fails on a run whose
+checkout was not clean (see Versions), on a run whose runtime its
+scenario does not list (see Where a scenario runs), on a rehearsal (see
+Rehearsal), and on a compressed file in a run folder that holds a
+string shaped like a key, or that the scan cannot read, on a `.zip` that
+does not open, and on a `.git` folder (see The workflow).
 
 ## Versions
 
@@ -1272,8 +1282,8 @@ these should cost the build again. `judge` judges an earlier run's
 archived output again, and runs no subject:
 
 ```bash
-uv run benchmark/run.py judge --source benchmark/runs/<run folder> --dry-run
-uv run benchmark/run.py judge --source benchmark/runs/<run folder>
+uv run benchmark/run.py judge --source benchmark/runs/<scenario>/<run folder> --dry-run
+uv run benchmark/run.py judge --source benchmark/runs/<scenario>/<run folder>
 ```
 
 It reads three things from the source run's `run.json`: the scenario's
@@ -1310,7 +1320,8 @@ the source's `results.json` lists no phases for is judged as the source
 run took it, with every phase and every group.
 
 **Where it goes.** The judgement lands in a new run folder beside the
-source, or under `--out`. Each repeat judged gets the source's
+source, or in the scenario's folder under the root `--out` names. Each
+repeat judged gets the source's
 artifacts, all but its judge prompt: the archive, its manifest, the
 answer, and the collected files. The judges read the archive's tree, as
 a run's judges do, and the repeat's `judge-prompt.md` is this run's
@@ -1367,8 +1378,8 @@ harness, has paid for the phases before. `resume` starts a new run from
 the milestone one of them left, and pays for none of them again:
 
 ```bash
-uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold --dry-run
-uv run benchmark/run.py resume --source benchmark/runs/<run folder> --after scaffold
+uv run benchmark/run.py resume --source benchmark/runs/<scenario>/<run folder> --after scaffold --dry-run
+uv run benchmark/run.py resume --source benchmark/runs/<scenario>/<run folder> --after scaffold
 ```
 
 It reads from the source run's `run.json` the scenario's name, the
@@ -1417,8 +1428,8 @@ phase's checkpoint, and `artifacts/<repeat>/output.zip` is restored with
 the collected files beside it. Such a run kept no handoff note, so none
 is restored. An archive of another commit is refused.
 
-**What it records.** The new run lands beside the source, or under
-`--out`. Each repeat keeps the number it had in the source. Its phases
+**What it records.** The new run lands beside the source, or in the
+scenario's folder under the root `--out` names. Each repeat keeps the number it had in the source. Its phases
 start with the source's records of the phases up to the milestone, each
 marked `carried`, and then those it ran. The milestone it restored is
 copied into its own `milestones/`, and the carried record of that phase
@@ -1458,8 +1469,8 @@ output again pays for every judge. A `resume` of a run whose phases all
 ran runs only the judges that need it, and carries the others:
 
 ```bash
-uv run benchmark/run.py resume --source benchmark/runs/<run folder> --judges openai --dry-run
-uv run benchmark/run.py resume --source benchmark/runs/<run folder>
+uv run benchmark/run.py resume --source benchmark/runs/<scenario>/<run folder> --judges openai --dry-run
+uv run benchmark/run.py resume --source benchmark/runs/<scenario>/<run folder>
 ```
 
 Such a run has no phase after its last, so `resume` resumes its judges:
@@ -1497,10 +1508,10 @@ another copy of a reference is never mixed into a mean. A repeat
 refused for its task is judged whole by `judge`. A source with no
 repeat to resume makes no run folder, and exits 2.
 
-**What it records.** The new run lands beside the source, or under
-`--out`, as a folder `judge` writes: each repeat's artifacts, its
-archive, and the phases its source's repeat ran, with no subject spend.
-Each repeat keeps the source's judge prompt, which is the one its
+**What it records.** The new run lands beside the source, or in the
+scenario's folder under the root `--out` names, as a folder `judge`
+writes: each repeat's artifacts, its archive, and the phases its
+source's repeat ran, with no subject spend. Each repeat keeps the source's judge prompt, which is the one its
 judges get. Its judgements are the ones it ran and the carried ones, in
 the flag's order. A carried one keeps its answer under `judgements/`,
 and its transcript is copied there. `results.json` and `run.json` name
@@ -1524,6 +1535,38 @@ are refused with exit 2. So is `--providers`, since the run's judges
 are the source's. Only agentic judgements are carried, so a scenario
 whose judges are one-shot is refused.
 
+## A run and its resumes
+
+A run the harness stopped, and the runs that resumed it or its judges,
+are one measurement, however many run folders it took. Each folder
+names the one before it under `source`, so the folders form a chain,
+followed by `source.run_id` to the folder of that name beside it. A run
+that judges another's output again continues that run's chain too.
+`harness/chain.py` reads the chain from each folder's own records, so a
+folder recorded before chains were is read too.
+
+The chain's stages are what each folder ran, repeat by repeat: each
+phase, or a subject's one session, and the judges. A carried phase and
+a carried judgement are the folder's that ran them, so each stage is
+counted once. A phase's cost and time are its record's `cost_usd`, or
+the harness's estimate when it reported none, and `wall_s`. The judges'
+stage names the judges the folder ran and those that did not answer.
+Its cost is theirs, and its time is the longest judgement's for agentic
+judges, which run at once, and the sum for one-shot judges, which run
+one after another. The chain's total is what its folders spent, each
+its `spend.total_usd`. It is a lower bound, `at_least`, when a folder
+recorded no spend, a model had no price, or the chain breaks: a source
+that is not beside its folder.
+
+A run that resumes or judges another writes its chain under `chain` in
+`results.json`: each folder from the first, with its start and what it
+spent, each stage with the folder that ran it, its status, cost, and
+time, and the total. Its report's Chain section shows the same. On a
+scenario's page, the chain is one row. It links the newest folder's
+report, its scores are that folder's, and its cost is the chain's
+total, which `make runs` holds it to. Under the table, a run in phases
+has its stage table, as the report gives it.
+
 ## Streams
 
 `streams/cli.jsonl` holds one record per output line,
@@ -1538,8 +1581,10 @@ Frame folders hold `NNNNNN.jpg` files and an `index.jsonl` of
 `{"t", "frame"}`; `CdpScreencast` fills one from a headless Chrome's
 DevTools endpoint.
 
-`serve.py` reads those files and nothing else: `GET /runs` lists the
-runs, `/runs/<id>/report.md`, `/results.json`, and `/run.json` serve
+`serve.py` reads those files and nothing else. It serves a runs root,
+the run folders in each scenario's folder, and names a run by its
+folder's name. `GET /runs` lists the runs, each with its scenario,
+`/runs/<id>/report.md`, `/results.json`, and `/run.json` serve
 the files, as does any path under `/runs/<id>/artifacts/`,
 `/judgements/`, or `/streams/`, `/runs/<id>/streams/cli` is an event
 stream tailing the JSON lines, and `/runs/<id>/streams/browser.mjpeg`
