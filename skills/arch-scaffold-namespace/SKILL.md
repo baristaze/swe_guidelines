@@ -1,6 +1,6 @@
 ---
 name: arch-scaffold-namespace
-description: "Create an object-model namespace (a swimlane): the manager interface and impl, storage in Postgres and memory, its README, and the wiring into both roots, in the shape of the scaffold's own namespaces. Python."
+description: "Create an object-model namespace (a swimlane) with its first entity: the manager interface and impl, storage in Postgres and memory, its README, and the wiring into both roots, in the shape of the scaffold's own namespaces. Python."
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make openapi), Bash(uv run:*), Bash(git status:*)
 ---
 
@@ -15,12 +15,13 @@ README at Every Level).
 
 ## Input
 
-`<namespace> [<FirstEntity> [field:type ...]] [--role core|activity|queue|admin] [--scope system|org|identity|both]`
+`<namespace> <FirstEntity> [field:type ...] [--role core|activity|queue|admin] [--scope system|org|identity|both]`
 
-Example: `inventory Warehouse address:str timezone:str`. `<namespace>`
-is required; ask for it when missing. With a first entity, the entity
-arguments, the role, and the scope go to `arch-scaffold-entity` in
-step 3. Without one, the namespace is created empty and ready.
+Example: `inventory Warehouse address:str timezone:str`. Both are
+required; ask for them when missing. A namespace arrives with its first
+entity, since `om/tests/unit/test_interfaces.py` refuses an interface
+that declares no method. The entity arguments, the role, and the scope
+go to `arch-scaffold-entity` in step 3.
 
 ## Created
 
@@ -55,12 +56,10 @@ The shape is the `media` namespace, `om/src/<name>/om/media/`. Under
    parameter typed by its interface, and `build_managers` builds the
    callee first.
 2. The namespace reaches the API with its first entity, whose skill
-   adds the service, its impl, and its router. A namespace with no
-   entity has no route.
-3. With a first entity, read
-   `${CLAUDE_SKILL_DIR}/../arch-scaffold-entity/SKILL.md` and follow it
-   with `<namespace> <FirstEntity> <field:type ...> --role <role>
-   --scope <scope>`.
+   adds the service, its impl, and its router.
+3. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-entity/SKILL.md` and
+   follow it with `<namespace> <FirstEntity> <field:type ...> --role
+   <role> --scope <scope>`, before the gates run.
 
 ## Output
 
