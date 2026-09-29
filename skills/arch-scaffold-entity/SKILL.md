@@ -25,9 +25,11 @@ fields not given, and for:
 
 - the mixins: `Named`? `Trackable`? `SoftDeletable`? A mixin is
   composed only when an operation exercises it: `Trackable` needs an
-  update, `SoftDeletable` a delete. "Append-only" means neither, the
-  mixins Naming Entities gives such a record, and, unless `--role` says
-  otherwise, the `activity` role;
+  update, `SoftDeletable` a delete. "Append-only" means neither: the
+  record is `Identifiable` and carries its time in a field of its own,
+  `created_at` or a name of its own like the event's `produced_at`
+  (`om/src/<name>/om/events/types/event.py`), never read out of its id.
+  Unless `--role` says otherwise, its role is `activity`;
 - whether concurrent edits of a `Trackable` entity matter. When they
   do, the entity carries a `version`;
 - the fields the manager owns and a caller never writes (a status its
