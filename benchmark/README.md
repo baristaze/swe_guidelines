@@ -1638,8 +1638,9 @@ Its cost is theirs, and its time is the longest judgement's for agentic
 judges, which run at once, and the sum for one-shot judges, which run
 one after another. The chain's total is what its folders spent, each
 its `spend.total_usd`. It is a lower bound, `at_least`, when a folder
-recorded no spend, a model had no price, or the chain breaks: a source
-that is not beside its folder.
+recorded no spend, a model had no price, a folder counted a phase at
+the harness's estimate (`spend.estimated`), or the chain breaks: a
+source that is not beside its folder.
 
 A chain has one line: resume or judge again from its newest folder,
 which reaches every milestone before it. Two runs from one folder

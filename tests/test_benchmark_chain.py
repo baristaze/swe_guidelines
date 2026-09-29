@@ -215,6 +215,12 @@ def test_a_chain_s_cost_reads_as_its_row_s_cell(spent, text):
     assert CH.cost_text(CH.chain(records)) == text
 
 
+def test_a_folder_that_counted_a_phase_at_its_estimate_makes_the_total_a_lower_bound():
+    record = {"spend": {"total_usd": 2.0, "unpriced": [], "estimated": ["repeat 0, phase mvp"]}}
+    found = CH.chain([("one", {"spend": {"total_usd": 1.0, "unpriced": []}}), ("two", record)])
+    assert found["total_usd"] == 3.0 and found["at_least"] is True and CH.cost_text(found) == "at least $3.00"
+
+
 def test_a_model_with_no_price_makes_the_total_a_lower_bound():
     found = CH.chain([("one", {"spend": {"total_usd": 1.0, "unpriced": ["unknown-model"]}})])
     assert found["unpriced"] == ["unknown-model"] and found["at_least"] is True and CH.cost_text(found) == "at least $1.00"

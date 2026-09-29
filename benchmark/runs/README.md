@@ -40,7 +40,8 @@ says it reads every folder of the run's chain:
   the artifact named in each repeat.
 - Cost (USD): what the run spent in all, the subject included: the sum
   of each of its folders' `spend.total_usd`. A total that leaves out an
-  unpriced model reads "at least".
+  unpriced model, or counts a phase at the harness's estimate, reads
+  "at least".
 - Commit: the commit the run ran from, short
   (`versions.checkout.commit`). The row of a run and its resumes names
   each distinct commit of its folders, oldest first.

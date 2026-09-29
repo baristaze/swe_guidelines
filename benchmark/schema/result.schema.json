@@ -197,7 +197,7 @@
       }
     },
     "chain": {
-      "description": "For a run that continues another, by resuming it or judging its output again: the chain it ends. Its run folders from the first, each with its start and what it spent; each stage a folder ran, per repeat (a phase, a subject's one session, or the judges), with that folder, its status, its cost, and its time; and the folders' total. The total is a lower bound, at_least, when a folder recorded no spend, a model had no price, or the chain breaks before its first folder, which broken then says.",
+      "description": "For a run that continues another, by resuming it or judging its output again: the chain it ends. Its run folders from the first, each with its start and what it spent; each stage a folder ran, per repeat (a phase, a subject's one session, or the judges), with that folder, its status, its cost, and its time; and the folders' total. The total is a lower bound, at_least, when a folder recorded no spend, a model had no price, a folder counted a phase at the harness's estimate (its spend.estimated), or the chain breaks before its first folder, which broken then says.",
       "type": "object",
       "required": ["folders", "stages", "total_usd", "unpriced", "at_least"],
       "additionalProperties": false,
