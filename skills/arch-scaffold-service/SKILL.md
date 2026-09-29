@@ -11,9 +11,9 @@ Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Interfaces
 (Composition by decoration), The Network Layer (How It Starts and Where
 It Goes, Web Services as Scalability Units, Domain Services vs
 App-Specific Services, Service Interfaces and Impls, The Gateway,
-Intra-Service Communication, Direction of Calls), Deployment (Cloud,
-Infrastructure as Code), Cross-Cutting Conventions (Configuration, The
-App Container).
+Intra-Service Communication, Direction of Calls), Deployment (Cloud:
+AWS, Infrastructure as Code), Cross-Cutting Conventions (Configuration,
+The App Container).
 
 ## Input
 

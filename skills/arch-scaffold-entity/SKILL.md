@@ -80,7 +80,10 @@ table's sibling by scope, with its policy in its role's first migration:
 1. Write the type, the table and its migration, storage, the manager,
    then the wire types and the routes, so each step has what it needs.
 2. The migration grants nothing: the role's first migration grants
-   every later table by default privilege. A unique key on a
+   every later table by default privilege. A table whose reads all lead
+   with `org_id` declares its compound indexes and sets
+   `__org_id_index__ = False`, as `files.py` does; a feed's is
+   `(org_id, id)`. A unique key on a
    `SoftDeletable` entity is a partial unique index
    `WHERE deleted_at IS NULL`, and the memory impl refuses a duplicate
    only among the living rows.

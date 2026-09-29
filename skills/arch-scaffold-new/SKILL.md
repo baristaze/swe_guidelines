@@ -8,8 +8,8 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(python3:*), Bash(make setup),
 
 Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
 Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Monorepo
-Folder Structure, Deployment (Local, Twins for External Services),
-Cross-Cutting Conventions (Records of Decisions).
+Folder Structure, Deployment (Local: Docker Compose, Twins for External
+Services), Cross-Cutting Conventions (Records of Decisions).
 
 The scaffold, `${CLAUDE_SKILL_DIR}/../../scaffold/acme_root/`, is the
 domain-agnostic core of a system in the guideline's shape, whole and
