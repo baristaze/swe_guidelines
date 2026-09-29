@@ -1,5 +1,7 @@
 """scripts/check_lenses.py: lens format and citations."""
 
+from pathlib import Path
+
 import pytest
 
 
@@ -309,3 +311,120 @@ def test_a_breach_the_guideline_never_names_and_words_that_are_no_identifier_pas
         "**Violation.** An id from `uuid4()` or `os.environ`,\nin `base.py`, marked `high`.",
     )
     assert lenses.main() == 0, capsys.readouterr().out
+
+
+# --- agents-only blocks and the scaffold count as the section's text; other comments do not
+
+
+def test_an_identifier_in_the_cited_sections_agents_only_block_passes(repo, lenses, capsys):
+    repo.edit(
+        "architecture.md", "One table per entity.\n", "One table per entity.\n\n<!-- agents-only\nKeyed by `row_key`.\n-->\n"
+    )
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** One table per `row_key`.")
+    assert lenses.main() == 0, capsys.readouterr().out
+
+
+def test_an_identifier_in_any_other_comment_is_not_held(repo, lenses, capsys):
+    repo.edit("architecture.md", "One table per entity.\n", "One table per entity.\n\n<!-- a note: `row_key` -->\n")
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** One table per `row_key`.")
+    assert lenses.main() == 1
+    assert "OM-02 quotes `row_key`, which The Storage Layer does not hold" in capsys.readouterr().out
+
+
+def test_a_heading_inside_a_comment_is_no_section_to_cite(repo, lenses, capsys):
+    repo.edit("architecture.md", "One table per entity.\n", "One table per entity.\n\n<!-- agents-only\n### Rows\n-->\n")
+    repo.edit("lenses/om.md", "**Source.** The Storage Layer, Tables; Principles.", "**Source.** The Storage Layer, Rows.")
+    assert lenses.main() == 1
+    assert "'The Storage Layer' has no subsection 'Rows'" in capsys.readouterr().out
+
+
+SCAFFOLD_BASE = "scaffold/acme_root/om/src/acme/om/base.py"
+
+
+@pytest.fixture
+def scaffolded(repo):
+    """The Storage Layer links one scaffold file and one scaffold folder; the lens quotes what only they hold."""
+    repo.write(SCAFFOLD_BASE, "def new_id() -> UUID:\n    return uuid7()\n")
+    repo.write("scaffold/acme_root/om/src/acme/om/storage/roles.py", "ROLE_OF_TABLE = {}\n")
+    repo.write("scaffold/acme_root/om/src/acme/om/storage/README.md", "`readme_only_name`\n")
+    repo.edit(
+        "architecture.md",
+        "One table per entity.\n",
+        f"One table per entity ([`base.py`]({SCAFFOLD_BASE}), [`storage/`](scaffold/acme_root/om/src/acme/om/storage/)).\n",
+    )
+
+
+def test_an_identifier_a_linked_scaffold_file_holds_passes(repo, lenses, scaffolded, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** Ids come from `new_id()`.")
+    repo.edit("lenses/om.md", "**Look for.** Tables holding two entities.", "**Look for.** The `ROLE_OF_TABLE` map.")
+    assert lenses.main() == 0, capsys.readouterr().out
+
+
+def test_a_renamed_identifier_in_a_scaffold_file_fails(repo, lenses, scaffolded, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** Ids come from `new_id()`.")
+    repo.edit(SCAFFOLD_BASE, "def new_id()", "def mint_id()")
+    assert lenses.main() == 1
+    assert "OM-02 quotes `new_id()`, which The Storage Layer does not hold" in capsys.readouterr().out
+
+
+def test_scaffold_prose_and_an_unlinked_section_hold_nothing(repo, lenses, scaffolded, capsys):
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** Named `readme_only_name`.")
+    repo.edit(
+        "lenses/om.md",
+        "**Principle.** Every layer talks to the next through an interface.",
+        "**Principle.** Ids come from `new_id()`.",
+    )
+    assert lenses.main() == 1
+    out = capsys.readouterr().out
+    assert "OM-02 quotes `readme_only_name`, which The Storage Layer does not hold" in out
+    assert "OM-01 quotes `new_id()`, which Interfaces does not hold" in out
+
+
+# --- tags
+
+
+def tag(repo, heading: str, word: str) -> None:
+    repo.edit("architecture.md", f"{heading}\n\n", f"{heading}\n\n`{word}`\n\n")
+
+
+def test_a_lens_above_low_on_style_sections_alone_fails(repo, lenses, capsys):
+    tag(repo, "### Tables", "style")
+    repo.edit("lenses/om.md", "**Source.** The Storage Layer, Tables; Principles.", "**Source.** The Storage Layer, Tables.")
+    assert lenses.main() == 1
+    assert "OM-02 is medium, and every section it cites is tagged `style`" in capsys.readouterr().out
+
+
+def test_a_style_lens_that_is_low_passes(repo, lenses, capsys):
+    tag(repo, "### Tables", "style")
+    repo.edit("lenses/om.md", "**Source.** The Storage Layer, Tables; Principles.", "**Source.** The Storage Layer, Tables.")
+    repo.edit("lenses/om.md", "**Severity.** medium", "**Severity.** low")
+    assert lenses.main() == 0, capsys.readouterr().out
+
+
+def test_a_lens_citing_a_style_section_and_a_rule_keeps_its_severity(repo, lenses, capsys):
+    tag(repo, "### Tables", "style")
+    tag(repo, "## Interfaces", "core")
+    assert lenses.main() == 0, capsys.readouterr().out
+    assert lenses.tags() == {("The Storage Layer", "Tables"): "style", ("Interfaces", None): "core"}
+
+
+def test_a_word_under_a_heading_that_is_no_tag_fails(repo, lenses, capsys):
+    tag(repo, "### Tables", "preferred")
+    assert lenses.main() == 1
+    assert "`preferred` is no tag; a tag is one of core, default, optional, style" in capsys.readouterr().out
+
+
+REAL_BASE = Path(__file__).resolve().parent.parent / SCAFFOLD_BASE
+
+
+def test_a_rename_in_the_real_scaffold_base_module_fails_the_lens_that_quotes_it(repo, lenses, capsys):
+    """The scaffold's own `base.py`, linked from the section a lens cites, holds `PROVENANCE_FIELDS` for it."""
+    real = REAL_BASE.read_text(encoding="utf-8")
+    assert "PROVENANCE_FIELDS = frozenset(" in real
+    repo.write(SCAFFOLD_BASE, real)
+    repo.edit("architecture.md", "One table per entity.\n", f"One table per entity ([`base.py`]({SCAFFOLD_BASE})).\n")
+    repo.edit("lenses/om.md", "**Principle.** One table per entity.", "**Principle.** No caller writes `PROVENANCE_FIELDS`.")
+    assert lenses.main() == 0, capsys.readouterr().out
+    repo.write(SCAFFOLD_BASE, real.replace("PROVENANCE_FIELDS", "BIRTH_FIELDS"))
+    assert lenses.main() == 1
+    assert "OM-02 quotes `PROVENANCE_FIELDS`, which The Storage Layer does not hold" in capsys.readouterr().out

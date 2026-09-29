@@ -2,7 +2,7 @@
 
 import pytest
 
-from _common import anchors, fenced_lines, headings, markdown_files, slug
+from _common import anchors, commented_lines, fenced_lines, headings, markdown_files, slug
 
 SCRIPTS = [
     "check_agents",
@@ -153,3 +153,24 @@ def test_a_repeat_skips_a_numbered_anchor_an_earlier_heading_took():
 def test_fenced_lines_mark_every_line_of_a_fence_of_either_kind():
     text = "a\n~~~\nb\n~~~\nc\n````md\n```\nd\n````\ne"
     assert fenced_lines(text) == [False, True, True, True, False, True, True, True, True, False]
+
+
+def test_a_heading_inside_an_html_comment_is_not_a_heading():
+    text = "## A\n\n<!-- agents-only\n## hidden\n-->\n\n<!-- one line -->\n## B\n\n<!--\n### also hidden -->\n"
+    assert headings(text) == [(2, "A"), (2, "B")]
+
+
+def test_commented_lines_tell_an_agents_only_block_from_any_other_comment():
+    text = "a\n<!-- agents-only\nb\n-->\nc\n<!-- toc -->\n```\n<!-- code, not a comment\n```\nd"
+    assert commented_lines(text) == [
+        None,
+        "agents-only",
+        "agents-only",
+        "agents-only",
+        None,
+        "comment",
+        None,
+        None,
+        None,
+        None,
+    ]
