@@ -166,13 +166,15 @@ wait.
    regular-resolution metric. The watch rounds both bounds it passes,
    `--start-time` and `--end-time`, down to whole minutes, so
    consecutive batches split the minutes with no overlap and each
-   datapoint is read once, when its minute is complete; a 30-second
-   batch whose rounded bounds are equal reads none. Locally the range
-   query is `increase(<metric>[1m])` from the rounded start plus 60
-   seconds to the rounded end, at a 60-second step. A batch's count is
-   the sum of its datapoints, and its p95 the highest among them. A
-   burst is a count in the batch, never a line per event: the batch's
-   lines over `--cap` are counted by level and dropped.
+   datapoint is read once, when its minute is complete. A 30-second
+   batch whose rounded bounds are equal makes no metric call, in the
+   cloud or locally, and writes its metrics as read in the next batch,
+   never as a zero. Locally the range query is
+   `increase(<metric>[1m])` from the rounded start plus 60 seconds to
+   the rounded end, at a 60-second step. A batch's count is the sum of
+   its datapoints, and its p95 the highest among them. A burst is a
+   count in the batch, never a line per event: the batch's lines over
+   `--cap` are counted by level and dropped.
 6. The first responder rule. In production every alarm transition is
    an escalation. Outside production it is read against the size of
    step 2, and it is suppressed only when the traffic is the team's
@@ -219,7 +221,7 @@ wait.
 
 ## Batches
 
-- <start of batch>: <requests> requests, <5xx> 5xx, p95 <ms>, <failures> worker failures; <lines> lines shown, <dropped> over the cap (<by level>)
+- <start of batch>: <<requests> requests, <5xx> 5xx, p95 <ms>, <failures> worker failures | metrics read in the next batch>; <lines> lines shown, <dropped> over the cap (<by level>)
   - <line>
   - <line>
 

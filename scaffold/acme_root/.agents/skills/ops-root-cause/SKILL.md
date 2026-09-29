@@ -29,12 +29,12 @@ error tracker. `--since` is the window, a day by default.
 A run follows at most 5 request ids, one pass each: the first five
 given, in the order given, or without `--request-id`, the five newest
 failing requests tied to the symptom (the Y of "tenant X sees Y"),
-never the newest failures of any kind. The symptom is the one the
-prompt or the investigation's report names; when neither names one,
-ask for it, as for `--env`. A pass that finds no cause reports "not
-found" for its id. After the fifth pass the skill stops and writes the
-report. It lists every id past the fifth as not followed, for a second
-run to take.
+never the newest failures of any kind. Without `--request-id`, the
+symptom is the one the prompt or the investigation's report names;
+when neither names one, ask for it, as for `--env`. A pass that finds
+no cause reports "not found" for its id. After the fifth pass the
+skill stops and writes the report. It lists every id past the fifth
+as not followed, for a second run to take.
 
 `local` reads the compose stack and its twins; no cloud is needed.
 
