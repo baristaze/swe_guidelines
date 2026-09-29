@@ -162,9 +162,14 @@ async def test_the_error_event_is_the_one_tagged_with_the_id_in_this_environment
     assert stores.requests[0].url.params["query"] == f"environment:local request_id:{RID}"
     assert await reader(stores, []).error_event("missing") is None
     assert "Prometheus http://prom" in reader(stores, []).describe()
-    assert (
-        "GlitchTip http://glitchtip org acme project acme by environment local and tag request_id"
-    ) in reader(stores, []).describe()
+    glitchtip = " ".join(
+        [
+            "GlitchTip http://glitchtip",
+            "org acme project acme",
+            "by environment local and tag request_id",
+        ]
+    )
+    assert glitchtip in reader(stores, []).describe()
 
 
 async def test_a_local_run_passes_over_an_event_of_another_environment() -> None:
