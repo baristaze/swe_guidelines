@@ -1,7 +1,7 @@
 ---
 name: ops-investigate
 description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*), Bash(sleep:*)
 ---
 
 # ops-investigate
@@ -255,6 +255,13 @@ and their handling is in `/acme/<env>/maintenance`.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
+   Poll `get-query-results` at most 10 times, each poll after
+   `sleep 5` in the same command, so ten polls cover about a minute.
+   When the status is still `Scheduled` or `Running` after the tenth,
+   stop polling: the report reads the logs as "not read: the query did
+   not finish in 10 polls", with the query id, and the next step
+   starts.
+
    Local: `docker compose -f deployment/local/docker-compose.yml -f
    deployment/local/docker-compose.full.yml logs --since <since> api
    maintenance` from the repository root when the processes
@@ -285,6 +292,10 @@ and their handling is in `/acme/<env>/maintenance`.
      --start-time <start> --end-time <end> \
      --query-string 'fields @timestamp, @log, @message | filter @message like /identity provider|WorkOS application|WorkOS credential check|ACME_WORKOS_WEBHOOK_SECRET|webhooks\/identity (400|503)|identity delivery/ | sort @timestamp desc | limit 50'
    ```
+
+   Its results are read with `get-query-results` and polled as step 7
+   polls, at most 10 times: a query still running after the tenth is
+   "not read", with its query id.
 
    What each line means, and the secret it points to:
 
@@ -371,7 +382,10 @@ and their handling is in `/acme/<env>/maintenance`.
     org id when one tenant's rows explain it, `ops-watch` when the
     signal is still moving, `ops-infra-as-code` when the fix is a
     resource, and, for a failed work item whose cause is fixed, the
-    requeue command of step 7 for a person to run.
+    requeue command of step 7 for a person to run. A session follows at
+    most 2 hops of Next. The skill it starts with is hop zero; the
+    report of the second hop still names its next skill, and the
+    session stops there and reports.
 
 ## What it never does
 
@@ -386,6 +400,7 @@ and their handling is in `/acme/<env>/maintenance`.
 - No `terraform apply`, no console clicks, no scaling by hand.
 - No re-reading a wider window than asked; a longer look is a second
   run with a longer `--since`.
+- No unbounded poll: never more than 10 polls of a query.
 
 ## Output
 
