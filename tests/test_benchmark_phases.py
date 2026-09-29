@@ -1085,14 +1085,13 @@ def test_an_agent_call_stays_pending_to_the_end_of_the_session_only_when_its_res
 # What a subject is handed of this repository -------------------------------------
 
 ROOT = Path(__file__).resolve().parent.parent
-SKELETON = ROOT / "skills" / "arch-scaffold-new" / "references" / "skeleton.md"
+SCAFFOLD_MAKEFILE = ROOT / "scaffold" / "acme_root" / "Makefile"
 
 
 def scaffold_line() -> str:
-    """The Makefile line the scaffold writes for arch-check, at this checkout's release."""
-    (line,) = re.findall(r"`(ARCH_CHECK \?= [^`]+)`", SKELETON.read_text(encoding="utf-8"))
-    version = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
-    return line.replace("<version>", version)
+    """The Makefile line a copy of the scaffold carries for arch-check, pinned at a release."""
+    (line,) = re.findall(r"^ARCH_CHECK \?= .+$", SCAFFOLD_MAKEFILE.read_text(encoding="utf-8"), re.MULTILINE)
+    return line
 
 
 def make_n(folder: Path, arch_check: str | None) -> str:

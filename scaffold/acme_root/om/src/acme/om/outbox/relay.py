@@ -25,9 +25,9 @@ class OutboxRelayInterface(ABC):
         ENTITY_CHANGED with (kind, target_id, seq); a row of kind `work.<kind>`
         enqueues the work item it names, under the row's id as the item's
         idempotency key, and publishes WORK_AVAILABLE. The row is then marked
-        done: an entity change once the bus took its message, a work row once
-        it is enqueued, since the queue is its truth and the workers poll
-        (ADR 0062). Returns False, and never raises, when a step failed or
+        done: an entity change once the bus took its message, and a work row
+        is done once its item is queued, since the queue is its truth and the
+        workers poll (ADR 0062). Returns False, and never raises, when a step failed or
         the bus dropped the message: the row is durable, stays pending, and
         the sweep relays it again."""
         ...

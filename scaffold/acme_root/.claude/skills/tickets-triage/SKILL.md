@@ -47,7 +47,7 @@ is the person's to allow.
 3. Find the evidence for each. What the ticket asks for, looked up in
    the code on `main` (the file and line that does it, or still does not).
    The pull requests that name it: the ids live in pull request bodies
-   ("Closes ACME-<n>"), not in the squashed commits, and GitHub's search
+   (`Closes ACME-<n>`), not in the squashed commits, and GitHub's search
    is fuzzy, so match exactly:
    `gh pr list --state all --limit 300 --json number,title,state,body --jq
    '.[] | select(.title + .body | test("ACME-<n>\\b")) | [.number, .state, .title]'`.

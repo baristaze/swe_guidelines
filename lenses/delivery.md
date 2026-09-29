@@ -266,6 +266,8 @@ without a healthcheck; an install that ignores the lock file.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/deployment/docker/api.Dockerfile`
+
 **Check.** `arch-check` decides where each Dockerfile lives, its stages,
 its user, its healthcheck, and its locked install; the rest is judged.
 
@@ -370,6 +372,8 @@ screen with no model module and untested decision logic in the hook.
 
 **Severity.** low
 
+**Shape.** `scaffold/acme_root/apps/portal/src/features/settings`
+
 ## DEL-15 Generated types behind a facade; one transport client
 
 **Principle.** Types are generated from the committed OpenAPI document
@@ -390,6 +394,8 @@ response types that duplicate generated ones; `fetch` outside the
 client.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/apps/portal/src/api`
 
 ## DEL-16 The operator console shares the stack, never the security context
 
@@ -530,6 +536,8 @@ knob missing from `.env.example`; a second prefix; backend selection
 performed outside the settings and boot path.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/services/api/src/acme/services/api/settings.py`
 
 ## DEL-22 Product variation is a modelled entity, not a flag
 

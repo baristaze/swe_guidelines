@@ -61,6 +61,8 @@ it holds.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/media/manager.py`
+
 **Check.** `arch-check` decides the ABC base and the abstract, empty
 interface methods; the rest is judged.
 
@@ -233,6 +235,8 @@ mutable container or a dict; wiring is spread across request handlers.
 
 **Severity.** medium
 
+**Shape.** `scaffold/acme_root/om/src/acme/om/root.py`
+
 **Check.** `arch-check` decides the frozen business root and the
 interface types of the root getters; the rest is judged.
 
@@ -379,6 +383,10 @@ on its own.
 
 **Severity.** medium
 
+**Shape.**
+`scaffold/acme_root/services/api/src/acme/services/api/routers/media.py`,
+`scaffold/acme_root/services/api/src/acme/services/api/services/impl/media.py`
+
 **Check.** `arch-check` decides the one-call route body and the manager
 or storage parameter; the rest is judged.
 
@@ -402,6 +410,8 @@ tears down in construction order or skips a member; the test suite
 boots a different assembly than production.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/services/api/src/acme/services/api/container.py`
 
 **Check.** `arch-check` decides the container with start and close in
 every process; the rest is judged.
@@ -443,6 +453,8 @@ the one row the guideline exempts: every write after its enqueue signs
 actor off the outbox row (OM-13, CTX-16, ASY-25).
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/om/src/acme/om/media/impl/manager.py`
 
 ## CON-18 Constructors take structure, contexts take operation state
 
@@ -588,6 +600,8 @@ where its interface says a failure is an answer; a failure bound or a
 cool-down hard-coded instead of read from settings.
 
 **Severity.** medium
+
+**Shape.** `scaffold/acme_root/infra/src/acme/infra/breaker.py`
 
 **Check.** `arch-check` decides the breaker in the OM and the literal
 bound; the rest is judged.

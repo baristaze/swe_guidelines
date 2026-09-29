@@ -103,7 +103,11 @@ of a changed signature.
    name what would decide it). A partial lens whose judged part touches
    nothing in scope is not applicable, whatever the checker read. Keep
    the "Look for" and "Violation" text of the lens in front of you
-   while deciding.
+   while deciding. When the lens has a `Shape` line, open the scaffold
+   file or folder it names, `${CLAUDE_SKILL_DIR}/../../<path>`, and
+   compare the code with it: it is the rule as code, so a difference
+   shows where to look. The decision still rests on the lens's
+   Violation, never on a difference alone.
 5. Verify every finding against the real source: open the file, confirm
    the line, confirm the surrounding code does not already handle it.
    Drop a finding you cannot point at. Verify a **pass** on a `high`

@@ -93,7 +93,7 @@ and drops. It holds no cloud credential and reads no environment.
 7. Test each fix on the same data before proposing it. The before is
    step 4's plan. Create the
    candidate index on the run's database, measure the statements it
-   serves again from a file of their own, and drop it before the next
+   serves from a file of their own, and drop it before the next
    candidate, so each after is measured against the migrations' indexes
    plus that one:
 

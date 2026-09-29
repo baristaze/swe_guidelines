@@ -348,14 +348,14 @@ and their handling is in `/acme/<env>/maintenance`.
    cloud and the `acme.request_id` attribute locally instead.
 10. Cost, cloud only. The month to date against the budget:
 
-   ```bash
-   aws ce get-cost-and-usage --profile acme-<env>-investigate \
-     --time-period Start=<first of month>,End=<today> \
-     --granularity MONTHLY --metrics UnblendedCost \
-     --filter '{"Tags":{"Key":"environment","Values":["<env>"]}}'
-   aws budgets describe-budgets --account-id <account> \
-     --profile acme-<env>-investigate
-   ```
+    ```bash
+    aws ce get-cost-and-usage --profile acme-<env>-investigate \
+      --time-period Start=<first of month>,End=<today> \
+      --granularity MONTHLY --metrics UnblendedCost \
+      --filter '{"Tags":{"Key":"environment","Values":["<env>"]}}'
+    aws budgets describe-budgets --account-id <account> \
+      --profile acme-<env>-investigate
+    ```
 
 11. The first responder rule. In production nothing is suppressed:
     a new production's one tenant is its first customer, so every

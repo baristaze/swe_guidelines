@@ -1,467 +1,181 @@
 # Scaffold conventions
 
-Every `arch-scaffold-*` skill follows these conventions. A skill's own
-file says only what is specific to what it builds: its input, the files
-it creates, the files it changes, and the steps that differ.
+Every `arch-scaffold-*` skill follows these. A skill's own file says
+what it adds: its input, the files it creates and changes, and the
+steps that differ.
 
-## Shape of a scaffold skill
+## The shape is a file
 
-Every scaffold skill has the same sections, in this order: `## Input`
-(the `$ARGUMENTS` grammar as `<positional> [--flag value]`, required
-flags stated in prose, what to ask when something is missing),
-`## Created` (what the skill creates), `## Changed` (a
-table, columns `File` and `Change`), `## Procedure` (numbered, only the
-steps that differ from this file), `## Output` (one line pointing here).
-Sections are cited by title, as `Title (Subsection, Subsection)`, in
-the order the guideline presents them, never by number.
+Every file a scaffold writes has a sibling that shows its shape. In a
+tree copied from the scaffold, the sibling is the tree's own file at the
+path the skill names. When the tree has no such file, it is the
+plugin's copy, `${CLAUDE_SKILL_DIR}/../../scaffold/acme_root/<path>`,
+with `acme` read as the tree's name. Read the sibling, its imports, and
+its test before writing. Copy its shape, not its domain. A skill states
+only what an agent gets wrong from the files alone.
 
-A skill keeps its spine and names its detail. The spine is the
-frontmatter, the input, the procedure as an ordered list a reader can
-hold in their head, the output, and every invariant that must never be
-missed, stated inline and short, because a referenced file is a promise
-and an inlined line is a guarantee. Long per-step reference material, a
-file-by-file list above all, moves into `references/<name>.md` under the
-skill's own folder, and the step that needs it says to read it. A
-reference file is read when its step runs, and not before. `## Created`
-then names its references and carries the invariants; a scaffold whose
-list is short keeps it inline, as a table with the columns `File` and
-`Holds`.
+`<name>` is the tree's name, the folder under `om/src/`. Its forms are
+snake case for the package, the logins, and the paths (`free_press`),
+kebab case for distributions, cloud resources, and domains
+(`free-press`), the upper snake prefix for the environment
+(`FREE_PRESS_`), and Title case for prose. Never assume `acme` in a
+copy.
 
 ## Before writing anything
 
-0. Find the guideline version. Read `version` in
-   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json`. That is the
-   last release in this copy. A copy installed from `main` can carry
-   changes made after it, because the version moves only when a
-   release is cut. Name the version in the output as "`<version>`, or a
-   later snapshot of main", and pin that release.
-1. Find the root package. Read `om/pyproject.toml`; the import root is
-   the folder under `om/src/`. Call it `<root>` below. When
-   bootstrapping a system, `<root>` is the argument the user gave.
-   Never assume `platform`.
-2. Find the house style. Open one existing namespace, one storage impl,
-   one router, and one test, and match their naming, import order, and
-   docstring habits. The guideline decides the shape; the repository
-   decides the spelling. When bootstrapping there is nothing to open;
-   the guideline's snippets are the house style.
-3. Read the sections of `architecture.md` the skill names, in full. A
-   reference file cites sections of its own; those are read at the step
-   that reads the file, and the skill names them among its sections
-   too, so the list at the top is the whole of what a run reads.
-4. Check every path in the skill's `Created` table. A path that exists
-   is a collision: stop and say so; never overwrite. A migration stamp
-   that already exists in the role's folder takes the next minute or
-   a suffix, as Migrations states.
-5. Ask for anything the input lacks in one message, then proceed.
+1. Read `version` in
+   `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and name it in
+   the output as "`<version>`, or a later snapshot of main".
+2. Read the sections of `architecture.md` the skill names, then the
+   sibling files its steps name.
+3. Check every path the skill creates. A file that exists, or a folder
+   that holds anything, is a collision: stop and say so, and never
+   overwrite. An empty folder is no collision; the skill writes into
+   it. A migration stamp already used in its role's folder takes the
+   next minute.
+4. Ask for everything the input lacks in one message, then proceed.
+   When no one answers, as in an unattended run, decide each from the
+   product's spec or description and the sibling files, name each
+   choice in the output after the files, and go on.
 
-## Naming
+## Names
 
-- One naming rule: interfaces and getters are named after the
-  namespace in the singular, operations after the entity, handlers
-  after the work kind. Manager and storage interfaces read
-  `InventoryManagerInterface`, `InventoryStorageInterface`,
-  `InventoryStoragePostgresImpl`, `InventoryStorageMemoryImpl`; the
-  storage root has one getter per namespace storage,
-  `get_inventory_storage()`, `get_order_storage()`. A namespace with
-  several aggregates may add one storage interface per aggregate,
-  named after the aggregate. The manager impl is `impl/manager.py`.
-  The storage roots are `StoragePostgresImpl` and
-  `StorageMemoryImpl`, named like every other impl.
-- Manager operations read `get_<entities>`, `get_<entity>`,
-  `create_<entity>`, `update_<entity>` (only when the entity is
-  `Trackable`), `delete_<entity>` (only when it is `SoftDeletable`); an
-  append-only entity has neither.
-- Storage operations read `read_<entities>`, `read_<entity>`,
-  `create_<entity>`, `write_<entity>`, and, on an append-only entity,
-  `append_<entity>` in place of the last two.
-- Wire types read `<Entity>View`, `Add<Entity>Request`, and, only when
-  the manager has `update_<entity>`, `Update<Entity>Request`, on the
-  `View` and `RequestBody` bases.
-- Where the root package names a cloud resource whose name takes no
-  underscore (an S3 bucket, an IAM role or policy, a DNS label), it
-  is `<root-slug>`, the root in kebab case: `acme_corp` gives
-  `acme-corp`. Every resource name the Terraform and the scripts
-  derive from the root uses the slug (`<root-slug>-state-<account
-  id>`, `<root-slug>-investigate-<env>`, `<root-slug>-<env>-alarms`),
-  so one spelling holds in every account; a Python name, a database
-  login, and an environment variable keep `<root>` and its upper
-  case.
-- The production environment is named `production`, and `<env>`
-  reads `production` in every name a process, a role, a profile, a
-  resource, the environments' file, or the repository host reads:
-  `<root-slug>-production-alarms`, `<root-slug>-production-investigate`.
-  Its folders alone are `prod/`: `bootstrap/prod/` and
-  `environments/prod/` under `deployment/terraform/`, and the state
-  key under `environments/prod/` that mirrors the folder.
-- The one handler interface for background work is
-  `WorkHandlerInterface`; impls are `<Kind>HandlerImpl`, `<Kind>` the
-  work kind in CamelCase (`NOTIFY_SHIPMENT` gives
+- A namespace `<ns>` (plural, snake case) has a singular: `<Ns>` in
+  CamelCase and `<ns_singular>` in snake case (`orders` gives `Order`
+  and `order`). Ask when the singular is not a plain one. Its
+  interfaces are `<Ns>ManagerInterface` and `<Ns>StorageInterface`, its
+  impls `<Ns>ManagerImpl`, `<Ns>StoragePostgresImpl`, and
+  `<Ns>StorageMemoryImpl`, and its getters `get_<ns_singular>_storage()`
+  and `get_<ns_singular>_service()`. The field on `Managers` is `<ns>`.
+- An entity `<Entity>` has `<entity>` and `<entities>` in snake case.
+  Manager operations are `get_<entities>`, `get_<entity>`,
+  `create_<entity>`, `update_<entity>` (only on a `Trackable` entity),
+  and `delete_<entity>` (only on a `SoftDeletable` one). Storage
+  operations are `read_<entities>`, `read_<entity>`, `create_<entity>`,
+  and `write_<entity>`, and an append-only record has `append_<entity>`
+  in place of the last two. Wire types are `<Entity>View`,
+  `Add<Entity>Request`, and `Update<Entity>Request` (only beside
+  `update_<entity>`).
+- A work kind is upper snake case, and its handler is
+  `<Kind>HandlerImpl` (`NOTIFY_SHIPMENT` gives
   `NotifyShipmentHandlerImpl`).
+- A cloud resource takes the kebab form of the name. The production
+  environment is `production` in every name a process, a role, a
+  profile, or a resource reads; only its Terraform folders are `prod/`.
 
-## While writing
+## What the files do not say
 
-- Every entity is frozen and composes the mixins it needs in
-  house-style order (`Identifiable`, `Named`, `Created` or
-  `Trackable`, `SoftDeletable`), each an independent opt-in that a
-  manager operation exercises; an append-only record is `Identifiable`
-  alone; a row the platform writes for itself (the outbox row, the
-  marker, the socket ticket) is `Created`, its later stamp a field
-  named for what happened. A table scoped to an identity composes
-  `IdentityScopedMixin` from `storage/tables/base.py`, which carries `id` and `identity_id` and no
-  `org_id`. Ids come from `new_id()`, timestamps from
-  `utcnow()`. Entity fields are tuples and frozen models, never `list`
-  or `dict`; a mapping field is the base module's `FrozenMapping`,
-  whose validator descends, wrapping a nested mapping and turning a
-  nested list into a tuple, its
-  empty default `Field(default_factory=dict, validate_default=True)`.
-  A copy that carries a dump, the caller's fields above all, is
-  rebuilt from a dict, `model_validate({**current.model_dump(),
-  **changes})`; `model_copy(update=...)` is only for values
-  constructed of the field's own type, because it does not validate
-  and leaves a dumped value object a dict.
-- Every manager and service operation takes a context first: `ctx:
-  OpContext` for a tenant operation, `rctx: RequestContext` for the
-  transitions that produce a stronger stage (sign-up, sign-in, claim,
-  sweep), `ictx: IdentityContext` for the operations of an identity
-  before any tenant (the memberships read, the exchange, and the
-  sign-out), the stage it refines for every other transition (the
-  operator admission takes `ictx` because it refines it, not because
-  it acts for the identity),
-  `OperatorContext` for an operation on the operator plane,
-  a scope (`ProvenanceScope`, `ActorScope`, `TenantScope`,
-  `CredentialScope`) for a helper or an edge concern that needs less.
-  Every storage call takes `org_id: UUID` first. The exceptions are the
-  ones The Business Layer and The Storage Layer name (the outbox
-  handoff that takes `(org_id, row)`, global tables, cross-tenant
-  sweeps (the work queue's `purge_items` among them), the five
-  lookups that run before an identity is known, and
-  the operator plane's size read),
-  each documented in its docstring and listed as `Class.method` under
-  `[tool.arch-check.options.CTX-12] tenantless` in the root
-  `pyproject.toml`, which `arch-check` holds both ways. The manager
-  methods that take the request stage are listed in the repository's
-  request-stage test. Both read signatures; what says the tenant is
-  used is the cross-tenant case beside each method, below.
-- The predicate in the query is the fence, and the database policy is
-  the second fence, taken by default. Every table declares its tenancy
-  scope (`system`, `org`, `identity`, `both`) in one map,
-  `TABLE_SCOPES`, beside the role map, `TABLE_ROLES` (the names
-  `arch-check` reads by default); the migration that creates the
-  table creates its policy, with `ENABLE` and `FORCE ROW LEVEL
-  SECURITY`, the `org` and `identity` expressions each carrying the
-  one system-login clause, `OR (current_setting('app.org_id', true) =
-  '<EMPTY_UUID>' AND current_user = '<system_login>')`; and the
-  Postgres base
-  opens every session through one funnel, `_session_for(stmt, *,
-  org_id=None, user_id=None, identity_id=None)`, which takes the scope
-  of the call by keyword and sets `app.org_id`, `app.user_id`, and
-  `app.identity_id` with `set_config(..., true)`, so the settings die
-  with the transaction and a setting the call does not name stays
-  unset. The base's `_upsert` and `_insert` take the same keyword-only
-  scope arguments. `EMPTY_UUID` as the `org_id` is the system scope,
-  passed explicitly and never a default, by the enumerated
-  system-scope methods of The Storage Layer (The Second Fence), and by
-  nothing else. They are the cross-tenant sweeps, the purges of ended
-  sessions and of redeemed or expired socket tickets among them; the
-  five lookups that run before an identity is known,
-  `read_identity_by_email_digest`, `read_identity_by_issuer_subject`
-  (the external provider's find-or-create), `read_api_key_by_digest`,
-  `read_session_by_digest`, and `redeem_socket_ticket`; and the
-  operator plane's marker calls and its size read. Everything after such a lookup runs
-  under the scope it found. Nothing in a manager or an impl assumes the
-  policy is there.
-- Three logins reach the database, as The Storage Layer (The Second
-  Fence) names them, and each has its own URL in settings, in the
-  local compose file, and among the Terraform secrets: the migration
-  login, which owns the schema and runs the migrations and nothing
-  else; the runtime login, which every request's connection uses and
-  which holds `SELECT`, `INSERT`, `UPDATE`, and `DELETE` and owns
-  nothing; and the system login, the runtime login's twin for the
-  system scope, which the `org` and `identity` policies admit to the
-  system scope and nothing else does. The funnel selects the system
-  login's engine when the call names the system scope, and the
-  runtime login's engine otherwise; no caller picks an engine. None of
-  the three is a superuser or carries `BYPASSRLS`. An integration
-  test asserts that on each live connection, and that the runtime
-  login owns no table and reads nothing when it names the system
-  scope, beside the test that reads `pg_class` and `pg_policies` for
-  every table in the scope map.
-- A data migration (a backfill, a rewrite of rows) runs as the
-  migration login, which owns the tables, and `FORCE ROW LEVEL
-  SECURITY` binds the owner too, so its `UPDATE` would touch nothing.
-  Its SQL file lifts the force for the one table and puts it back in
-  the same transaction, and it counts: the rows it touched must equal
-  the rows it meant to touch, or the migration fails.
+Each of these holds in every file a scaffold writes, and each is where
+a copy of the shape still goes wrong.
 
-  ``` sql
-  ALTER TABLE <role>.<table> NO FORCE ROW LEVEL SECURITY;
-  DO $$
-  DECLARE expected bigint; touched bigint;
-  BEGIN
-    SELECT count(*) INTO expected FROM <role>.<table> WHERE <predicate>;
-    UPDATE <role>.<table> SET <column> = <value> WHERE <predicate>;
-    GET DIAGNOSTICS touched = ROW_COUNT;
-    IF touched <> expected THEN
-      RAISE EXCEPTION 'backfill touched % rows, expected %', touched, expected;
-    END IF;
-  END $$;
-  ALTER TABLE <role>.<table> FORCE ROW LEVEL SECURITY;
-  ```
-
-  The count alone does not catch a missing `NO FORCE`: under `FORCE`
-  the count and the update both see zero rows, and zero equals zero.
-  So its integration test seeds rows of two tenants, runs the
-  migration, and asserts that every row of both tenants was touched,
-  and that test is what fails a backfill the policy silently narrowed
-  to nothing. `run_sql(role, file)` runs the file as one transaction
-  and never splits it on `;`.
-- Every interface is an `ABC` whose methods are `@abstractmethod` with
-  `...` bodies; every impl subclasses it; every dependency is a
-  constructor parameter typed by interface.
-- Two storage impls always: relational and memory. The contract cases
-  live in one module under `tests/contracts/`; a module under
-  `tests/unit/` runs them against the memory impl and one under
-  `tests/integration/` runs the same cases against Postgres under the
-  `integration` marker. Both impls sort by the `UUID` value, never by
-  its string. Every storage method gets a case that passes another
-  tenant's identifier and asserts that nothing is found and nothing
-  changes: reads and writes, the list and the page, the bulk write,
-  and the paths that return early or raise. A method added later
-  arrives with its case, as The Storage Layer (Namespace Shape) and
-  Cross-Cutting Conventions (Tests) state.
-- One manager impl. The memory storage root under it is its twin. A
-  namespace that fronts something a caller cannot conjure (a payment
-  processor, a carrier, a model provider) reaches it through a
-  provider client with a real impl and a deterministic twin under
-  `integrations/`, so the one manager impl, wired over the twin, runs
-  with no account and no network, and needs no memory impl of its
-  own.
-- Tests are counted in cases, not files: one contract case per storage
-  method (the read after the write, the filter, the tenant that sees
-  nothing), one race per named atomic method (two callers at once,
-  exactly one wins, the same case over memory and over Postgres), one
-  refusal per authorization rule a manager states, one test per
-  rate-limited route, one per exit code of a command, one per
-  capability of the infra root over its local impl, and one
-  build-once test per root. Every site that builds a stage above the
-  request stage is listed under `[tool.arch-check.options.CTX-26]
-  sites`, and `arch-check` fails on a site the list does not name. A test
-  file with one round trip is a placeholder.
-- Every write follows authorize, verify, copy (an update starts from
-  the stored row: the caller's entity supplies the fields a caller may
-  change, `model_dump(exclude=set(PROVENANCE_FIELDS) |
-  set(<Entity>.MANAGER_OWNED_FIELDS))`, the copy is `model_validate`
-  over the two dumps and sets `updated_at` and `updated_by`, so no
-  caller rewrites who made a row, brings a deleted one back, or sets
-  a field the manager owns; every entity declares
-  `MANAGER_OWNED_FIELDS: ClassVar[tuple[str, ...]]`, even when
-  empty, naming the fields the manager sets and a caller never
-  writes (a `credential_ref`, a status its transitions own, a
-  position); an entity whose concurrent edits matter carries a
-  `version`, which is manager-owned, the expected version comes from the caller (an
-  `If-Match` header on the `PATCH`, or an `expected_version` field)
-  and is never re-read inside the update, the write is a
-  compare-and-set against it, and a mismatch raises
-  `PreconditionFailed` (412, code `precondition_failed`); a create sets
-  what the manager
-  decides, the actor from the context and the initial state, and
-  leaves the id and the timestamps as constructed), write, and
-  returns the copy it wrote. Authorize is
-  `ctx.require(<permission>)` as the first line of every mutating
-  manager operation, before any read, the ones a worker calls
-  included (complete, fail, defer, release, extend the lease), as The
-  Business Layer (Shape of an Operation) states. An operator operation
-  opens with `octx.require(...)` the same way. The one exemption is an
-  operation whose stage carries no permissions: one on the request
-  stage (`sign_up`, `grant_operator`, `disable_operator`,
-  `grant_operator_token`,
-  the sweep's purges), one on the identity stage (the exchange, the
-  sign-out), and the outbox handoff that takes `(org_id, row)`
-  (`enqueue_relayed`). Its authority is the stage it takes, and the
-  request-stage test names each one on the request stage, so it opens
-  with no `require`. A `core`-role write
-  lands the core row and its `OutboxRow`s in one storage method,
-  `outbox_rows: tuple[OutboxRow, ...]`, and the manager relays each at
-  once. A relay in the request path never raises: the write has
-  committed by then, so a failure to relay is logged and left to the
-  sweep, and the request answers as the success it was, as The Storage
-  Layer (Database Roles) states. A tenant write's row comes from
-  `outbox_row(ctx, kind, target_id, payload)`, its payload ids only
-  and never a personal field's value (`{}` for an entity change), so
-  it carries the
-  actor, the request id, the trace context, and the app of the write.
-  An operator write's row never does: the operator managers stamp it
-  from the identity id and the request id their stage carries, through
-  a helper of the operator plane, as Stages and Scopes states. An
-  operator route's idempotency marker fills the marker's own fields:
-  its `org_id` is `EMPTY_UUID`, since `OperatorContext` carries none,
-  and its `user_id` is the operator's identity id, so its storage
-  calls run under the system scope, on the system login, among the
-  enumerated system-scope methods. The caller constructs the entity
-  whole and hands it to `create_<entity>`. A create that can collide on more than one key
-  (the id and a unique key the table declares) returns an
-  `InsertOutcome`, `INSERTED`, `ID_EXISTS`, or `KEY_EXISTS`, and the
-  manager reads the row back by the key that collided; a create with
-  the id as its only key returns `bool`, `True` when the base's
-  `_insert`, which always reports an `InsertOutcome`, answered
-  `INSERTED`. The one exception to the
-  whole entity is an entity that carries a
-  server-minted secret (an API key), whose `create_` takes the fields
-  and returns an `Issued...` shape once, and whose rerun finds the
-  row, re-mints the secret on it in the same named atomic write, its
-  guard the attempt the idempotency marker holds, and
-  returns a fresh `Issued...` with the same id.
-- Feeds get a compound index on `(org_id, id)` and no single-column
-  index on a column that already leads a compound one.
-- A namespace's exception family, when one is needed, is
-  `class <Ns>Exception(PlatformException): ...` with no attributes;
-  leaves multiply-inherit a shape (`NotFound`, `Conflict`, ...) so the
-  status and code come from the shape.
-- Wire types are hand-written; a router declares its route and its
-  dependencies, calls one operation of the service impl, and returns
-  what it returns; the impl translates and never decides; list routes
-  take a server-clamped `limit`. A partial update is the impl's
-  translation: it reads the current entity through the manager's
-  `get_<entity>`, copies the request's set fields onto it, an absent
-  field unchanged and an explicit null cleared where the field is
-  optional, and hands the whole entity to the manager; the request
-  type states that policy, and no manager sees a partial.
-- Every creating route declares the gateway's `Idempotency-Key`
-  dependency, in every namespace, so a retried create returns the
-  stored response, as The Network Layer (The Gateway) states for a
-  creating `POST`. Creating is what the request leaves behind, not
-  what it answers with: a `POST` that writes a durable row declares
-  the dependency whether it answers 201 with the row or 202 with the
-  id of work now running.
-- A workspace member that depends on another declares it under
-  `[tool.uv.sources] <root>-om = { workspace = true }` and is listed in
-  the root's `[tool.uv.workspace] members`.
-- A runtime, tool, image, or library a scaffold adds is at its latest
-  stable release, the current active LTS line where one exists, as
-  Technology Choices and How to Override Them (Versions) states. That
-  release is one a patch release already sits behind, never one
-  published today, so a scaffold run on a `.0` day pins what
-  `arch-upgrade-deps` would keep and not what it would roll back. A
-  version the scaffold cannot confirm is named in its output.
-- No placeholder files (a module exists when it has content), no
-  `TODO` left behind, no dead imports.
-- Every folder that is an abstraction level carries a README at that
-  level, in that level's language: `om/README.md` names the nouns and
-  how they relate, for a reader with no code, and carries no
-  developer instruction and no operator instruction;
-  `om/src/<root>/om/<ns>/README.md` one level down, one per namespace,
-  saying what its nouns are, what can happen to them, and which rules
-  hold, which the namespace scaffold writes and the entity scaffold
-  extends; `deployment/README.md` says how it runs;
-  `ops/README.md` says how it is operated. `llms.txt` at the root
-  lists what each audience is served, one section per audience, one
-  link per document; a document is exposed by being listed, never by
-  its folder.
-- The ops package is a workspace member like any other, `<root>-ops`,
-  package `<root>.ops`, binary `<root>-ops`. It rides
-  `clients/python/` and the operator plane and drives the edge, never
-  a manager, so it is written after the client exists. The signals it reads back go through one interface with
-  a local impl over the `devx` twins and a cloud impl over the
-  cloud's own APIs, so a run against `local` proves the same path
-  the cloud runs. The fifteen project-local skills under
-  `.claude/skills/` are copied from
-  `skills/_shared/ops-skills/` with the product's name substituted:
-  `acme-ops`, the binary, becomes `<root>-ops`; every other `acme`
-  in a hyphenated name (`acme-<env>-investigate`, `acme-api`) or a
-  log group (`/acme/<env>/api`) becomes `<root-slug>`; every other `acme` becomes `<root>`, `ACME` its upper
-  case, and `Acme` its CamelCase form.
-  Every operational skill takes `--env staging|production`, and every
-  one but create and nuke also takes `local`, reading the `devx`
-  stand-ins. Of the four audits, the three of the database run on the
-  local stack alone, in a database each makes and drops with the tools
-  under `ops/audit/`; `audit-retention` also reads a cloud's retention
-  settings, and `audit-deploy-time` takes `--env staging|production`.
-  The two optional audits read the checkout alone and hold no
-  credential. Each holds the
-  credential of the role Operations (Operational Skills) gives it.
-  The investigator and supporter skills hold the read-only
-  investigate profile of their environment and read the owner-only
-  env file `~/.config/<root>/ops/<env>.env`, except
-  `ops-infra-as-code`, which plans against the cloud and reads no env
-  file. `make seed` writes `local.env`. An agent or a pipeline never
-  signs in with a password. The env file holds operator tokens and
-  never a password or a TOTP secret: `<ROOT>_OPERATOR_TOKEN`, a
-  `read` token for the investigator and the supporter, and
-  `<ROOT>_PROVISIONER_TOKEN`, the provisioner's `write` token for
-  the traffic generator. An operator token is minted by an operator
-  signed in with the second factor (`<root>-ops token`, which the
-  person runs in their own terminal and which asks there for the
-  password and the code), or by the grant job for the provisioner
-  and the smoke identity. It carries one operator permission,
-  expires within one hour, is stored as its digest, and is shown
-  once. `admit_operator` admits it as the one named exception to "a
-  password alone never admits". A person still signs in with a
-  password and a TOTP code. No template and no repository file holds
-  a secret's value, and no skill reads the env file into its
-  context: a command that needs a value from it sources the file and
-  makes the call in the same command, since shell state does not
-  persist between calls. Create and nuke hold the
-  environment's administrator profile alone, the one
-  `deployment/cloud/environments.json` names beside its account id. The traffic and stress skills have no
-  role: `ops-simulate-traffic` and `stress-test-run` read the env
-  file for the provisioner's token, and hold the investigate profile
-  only to read the signals back from a cloud environment;
-  `stress-test-create-or-update` writes a file and holds no profile
-  and no env file.
+- **The context comes first.** A manager or service operation takes its
+  stage first: `ctx: OpContext` for a tenant, `rctx` on the request
+  stage for a transition or the sweep, `ictx` for an identity before a
+  tenant, and `octx` on the operator plane. A storage method takes
+  `org_id: UUID` first. A method that takes no tenant says why in its
+  docstring and is listed under `[tool.arch-check.options.CTX-12]
+  tenantless` in the root `pyproject.toml` and in
+  `om/tests/unit/test_storage_exceptions.py`. A site that builds a
+  stage above the request stage is listed under
+  `[tool.arch-check.options.CTX-26] sites` and in
+  `om/tests/unit/test_stage_construction.py`.
+- **Authorize first.** A mutating manager operation opens with
+  `ctx.require(<permission>)`, or `octx.require(...)`, before any read,
+  the ones a worker calls included. Only an operation on a stage with no
+  permissions (the request stage, the identity stage) and the outbox
+  handoff open without one.
+- **An update copies onto the stored row.** It reads the row, takes the
+  caller's fields less `PROVENANCE_FIELDS` and the entity's
+  `MANAGER_OWNED_FIELDS`, and builds the copy with
+  `model_validate({**current.model_dump(), **changes})`, never
+  `model_copy(update=...)` over a dump, which skips validation. Every
+  entity declares `MANAGER_OWNED_FIELDS`, even when it is empty.
+- **The outbox rows ride the write.** A `core`-role write lands its row
+  and its `OutboxRow`s in one storage call, and the manager relays them
+  at once. A relay that fails is logged and left to the sweep, never
+  raised, since the write has committed. Work that follows a write is a
+  second row, of kind `work_row_kind(<kind>)`, in the same call, never
+  an enqueue the manager makes. A payload, an event, and a socket frame
+  carry ids, never a personal field's value.
+- **Two fences.** The `org_id` in the query is the fence, and the
+  table's row-level security policy is the second. Every table is in
+  `TABLE_ROLES` (`om/src/<name>/om/storage/roles.py`) and
+  `TABLE_SCOPES` (`storage/scopes.py`), and the migration that creates
+  it creates its policy, with `ENABLE` and `FORCE ROW LEVEL SECURITY`.
+  Every Postgres statement opens through the base's `_session_for`,
+  with the call's scope by keyword. `EMPTY_UUID` is passed only by a
+  method on the tenantless list.
+- **A backfill lifts the force.** A data migration runs as the
+  migration login, which `FORCE ROW LEVEL SECURITY` binds, so its
+  `UPDATE` would touch nothing. Its SQL lifts the force for the one
+  table and puts it back in the same transaction, and raises when the
+  rows it touched are not the rows it meant to touch. Its integration
+  test seeds two tenants and sees both touched.
+- **A cross-tenant case per storage method.** The contract module under
+  `om/tests/contracts/` has, for every storage method, a case that
+  passes another tenant's id and finds nothing and changes nothing. The
+  unit module runs it over memory, the integration module over
+  Postgres. Both impls order by the `UUID`, never its string.
+- **Two storage impls, one manager impl.** A namespace that fronts an
+  outside provider reaches it through a client under `integrations/`,
+  with a real impl and a deterministic twin, and the setting that picks
+  one.
+- **Creates are idempotent.** A route that writes a durable row takes
+  the gateway's `Idem` dependency and runs under it, whether it answers
+  201 with the row or 202 with the id of work.
+- **Every setting is documented and deployed.** A field of a process's
+  settings is in `.env.example` under the prefix, and every environment
+  under `deployment/terraform/environments/` sets it or wires it as a
+  secret. The settings tests hold both.
+- **Versions are current.** A library, image, or tool a scaffold adds is
+  at its latest stable release that a patch release already follows,
+  as Technology Choices and How to Override Them (Versions) states. A
+  version the scaffold cannot confirm is named in the output.
+- **No placeholder.** No empty module, no `TODO`, no dead import. A
+  namespace's `README.md`, and `om/README.md` above it, speak the
+  product's language to a reader with no code.
 
 ## Changing existing files
 
-A file in the `Changed` table is edited by appending or by inserting
-one entry in an existing list (a getter on a root, a field on the
-managers object, a router in `all_routers()`, a row in the role map, a
-member in the workspace). Nothing is reordered or removed. Roots that
-every scaffold touches: the storage root and both of its impls, the
-business root, the routers list, the role map, the workspace members,
-`scripts/dev.sh`, and the local compose file when a process needs a
-container.
+A changed file gains an entry: a getter on a root, a field on
+`Managers`, a router in `HOSTED`, a row in a map, a member in the
+workspace. Nothing is reordered or removed.
 
 ## After writing
 
-1. Run these commands, in this order: `make infra-up` and
-   `make migrate` when a table was added; `make openapi` when a route
-   was added, so the committed contract and the consuming apps'
-   generated types carry it; the repository's fast gate (`make check`
-   or its equivalent); and `make migrate-check` when a table was
-   added, which compares the ORM metadata with the migrated schema per
-   role and needs Postgres. A single tool runs through the workspace
-   (`uv run`, `pnpm run`), never through a global install. A run of
-   these commands stops at the first one that fails.
+Before the first gate, format what was written with the tree's
+formatter, `uv run ruff check --fix .` and then `uv run ruff format .`,
+the two the setup target ends with. A formatter run is no gate run,
+and no count holds it.
 
-   When a gate fails on what the scaffold wrote, fix it, then run the
-   step's commands again from the first, in order: a fix made for one
-   gate can break another. The step is the numbered step whose command
-   failed, this one or one of the skill's Procedure, and each step has
-   its own count: the first run plus at most 3 reruns. When the count
-   runs out, stop, and leave the tree as the last run left it, fixes
-   kept. This bound holds for every gate a scaffold runs, the steps of
-   `arch-scaffold-new` included. A fix edits only files the scaffold
-   created or changed.
+1. Run these, in order, and stop at the first that fails:
+   `make infra-up` and `make migrate` when a table was added,
+   `make openapi` when a route was added and no step ran it since,
+   `make check`, and
+   `make migrate-check` when a table was added. The database targets
+   run only against the local compose stack, and only when Docker runs
+   (`docker info` exits 0). When it does not, they are skipped, and the
+   output names each one skipped. A tool runs through the workspace
+   (`uv run`, `pnpm run`), never a global install.
 
-   Three other failures stop at once, with no fix and no retry: a
-   pre-existing failure, reported and left alone; a command
-   that fails on the machine (no network, a port in use, Docker
-   stopped); and a gate whose fix would take an exception to a rule the
-   guideline states, or remove, skip, or suppress a conformance test.
-   That fix is a decision that constrains future work, recorded as an
-   ADR (Cross-Cutting Conventions, Records of Decisions), and the
-   decision is the person's.
-2. Print the guideline version the skill ran from (the release, or a
-   later snapshot of main), then the list of files created and
-   changed, one per line, followed by each command that was run, once,
-   with the outcome of its last run. A stop closes the output with one
-   line, `Stopped: <command>: <what went wrong>; <cause>`, the cause
-   one of: the count ran out, pre-existing, the machine, needs an
-   exception.
-   Nothing else. The list comes from
-   `git status --porcelain --untracked-files=all`, which names every
-   new file rather than the folder that holds it. Every scaffold runs
-   in a repository: the others in a project that is one already, and
-   `arch-scaffold-new` initializes one before it writes anything.
+   A gate that fails on what the scaffold wrote is fixed, and the
+   commands of its step run again from the first: the first run plus at
+   most 3 reruns. When the count runs out, stop, and leave the tree as
+   the last run left it. A fix edits only files the scaffold created or
+   changed.
 
-Never commit. Scaffolding produces a working tree for a person to
-review.
+   Three failures stop at once, with no fix: one that was there before
+   the scaffold ran; one of the machine (no network, Docker stopped, a
+   port that cannot be moved); and one whose fix takes an exception to
+   a rule the guideline states, or removes, skips, or suppresses a
+   conformance test. That fix is the person's decision, recorded as an
+   ADR.
+2. Print the guideline version, then every file created or changed,
+   one per line, from `git status --porcelain --untracked-files=all`
+   (in a tree with no commit yet, which it lists whole, as the skill
+   wrote them), then each command run, once, with the outcome of its
+   last run. A stop closes the output with
+   `Stopped: <command>: <what went wrong>; <cause>`, the cause one of:
+   the count ran out, pre-existing, the machine, needs an exception.
+
+Never commit. A scaffold leaves a working tree for a person to review.
