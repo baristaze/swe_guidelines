@@ -22,7 +22,8 @@
 # therefore every combination, labelled by its values; "by status" is one sum
 # per status code, listed below. The exporter adds one dimension of its own,
 # `OTelLib` (the receiver's name), and a SEARCH schema names every dimension
-# a series has or matches nothing, so each schema carries it.
+# a series has or matches nothing, so each schema carries it. The namespace
+# is in double quotes, which a name with a space needs.
 #
 # Latency is the one panel that differs. The exporter writes a histogram as
 # a statistic set (count, sum, minimum, maximum), from which CloudWatch
@@ -44,7 +45,7 @@ locals {
   responses_by_status = [
     for status in var.http_statuses :
     [{
-      expression = "SUM(SEARCH('{Acme,OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"${var.environment}\" status=\"${status}\"', 'Sum', 60)) / 60"
+      expression = "SUM(SEARCH('{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"${var.environment}\" status=\"${status}\"', 'Sum', 60)) / 60"
       label      = tostring(status)
       id         = "s${status}"
     }]

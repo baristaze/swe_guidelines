@@ -40,12 +40,14 @@ run "every_metric_row_is_an_array" {
   }
 
   # The exporter adds `OTelLib` to every series, and a SEARCH schema that
-  # leaves out a dimension the series has matches nothing.
+  # leaves out a dimension the series has matches nothing. The namespace is
+  # in double quotes, which a name with a space needs; the body is JSON, so
+  # each quote reads as an escaped one.
   assert {
     condition = alltrue([
-      for schema in regexall("SEARCH\\('\\{Acme,[^}]*\\}", aws_cloudwatch_dashboard.this.dashboard_body) :
-      startswith(schema, "SEARCH('{Acme,OTelLib,")
-    ]) && length(regexall("SEARCH\\('\\{Acme,", aws_cloudwatch_dashboard.this.dashboard_body)) > 0
-    error_message = "Every SEARCH over the Acme namespace names the OTelLib dimension."
+      for schema in regexall("SEARCH\\('\\{[^}]*\\}", aws_cloudwatch_dashboard.this.dashboard_body) :
+      startswith(schema, "SEARCH('{\\\"Acme\\\",OTelLib,")
+    ]) && length(regexall("SEARCH\\('\\{", aws_cloudwatch_dashboard.this.dashboard_body)) > 0
+    error_message = "Every SEARCH names the Acme namespace in double quotes and the OTelLib dimension."
   }
 }

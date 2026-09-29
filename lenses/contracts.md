@@ -419,14 +419,13 @@ every process; the rest is judged.
 ## CON-17 Every write authorizes, verifies, copies, writes
 
 **Principle.** Every write follows four steps: authorize, verify,
-copy, write. The caller constructs the entity whole (`id=new_id()`,
-timestamps) and hands it to `create_*`; the manager's copy sets the
-actor from the context and its own fields, and leaves the id and
-timestamps as constructed. Updates and deletes are stamped by the
-copy. The update copy starts from the stored row and excludes
-`PROVENANCE_FIELDS` and `MANAGER_OWNED_FIELDS` alike, so a caller
-never writes a field the manager owns. A mutating method returns the
-entity it wrote.
+copy, write. The caller constructs the entity whole (`id=new_id()`)
+and hands it to `create_*`; the id stays as constructed, and the
+manager's copy stamps the times, the actor from the context, and its
+own fields. Updates and deletes are stamped by the copy. The update
+copy starts from the stored row and excludes `PROVENANCE_FIELDS` and
+`MANAGER_OWNED_FIELDS` alike, so a caller never writes a field the
+manager owns. A mutating method returns the entity it wrote.
 
 **Source.** The Business Layer, Shape of an Operation.
 
@@ -439,19 +438,19 @@ that constructs the entity handed to `create_*`; each entity's
 `MANAGER_OWNED_FIELDS`.
 
 **Violation.** An update writes without first reading the entity back
-through the manager's own `get_*`; on a create, a manager fills in `id`
-or a timestamp the originating caller left unset, resets one the caller
-constructed, or writes the actor the caller sent instead of the
-context's; on an update or a delete, `updated_at`, `updated_by`, or
-`deleted_at` is set by the caller or by storage instead of by the
-manager, or an update stamps the time and leaves `updated_by` as the
-creator; an update copy that takes a provenance field or a
-manager-owned field, such as a status its transitions own, from the
-caller's entity; a mutating method returns `None` or a different
-snapshot than the one written. The work item is the one row the
-guideline exempts: every write after its enqueue signs `updated_by`
-with `EMPTY_UUID`, and the relayed enqueue takes the actor off the
-outbox row (OM-13, CTX-16, ASY-25).
+through the manager's own `get_*`; on a create, a manager fills in or
+replaces the `id` the originating caller constructed, keeps the times
+the caller sent instead of stamping its own, or writes the actor the
+caller sent instead of the context's; on an update or a delete,
+`updated_at`, `updated_by`, or `deleted_at` is set by the caller or by
+storage instead of by the manager, or an update stamps the time and
+leaves `updated_by` as the creator; an update copy that takes a
+provenance field or a manager-owned field, such as a status its
+transitions own, from the caller's entity; a mutating method returns
+`None` or a different snapshot than the one written. The work item is
+the one row the guideline exempts: every write after its enqueue signs
+`updated_by` with `EMPTY_UUID`, and the relayed enqueue takes the
+actor off the outbox row (OM-13, CTX-16, ASY-25).
 
 **Severity.** medium
 
