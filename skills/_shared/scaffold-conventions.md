@@ -147,7 +147,8 @@ and no count holds it.
 
 1. Run these, in order, and stop at the first that fails:
    `make infra-up` and `make migrate` when a table was added,
-   `make openapi` when a route was added, `make check`, and
+   `make openapi` when a route was added and no step ran it since,
+   `make check`, and
    `make migrate-check` when a table was added. The database targets
    run only against the local compose stack, and only when Docker runs
    (`docker info` exits 0). When it does not, they are skipped, and the

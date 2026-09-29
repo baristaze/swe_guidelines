@@ -112,11 +112,12 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    The paths stay as they are.
 5. Read `${CLAUDE_SKILL_DIR}/../arch-scaffold-namespace/SKILL.md` and
    follow it with the first namespace, its entity, and the entity's
-   fields.
-6. Run `make openapi`, since the entity added routes, then `make check`.
-   When Docker runs, the integration suite follows, as CI runs it on a
-   copy: `make infra-up`, `make migrate`, `make migrate-check`, and
-   `make test-integration`.
+   fields. Their gates are not run there: step 6 runs them once, for
+   all three skills.
+6. Run the gates once, in the order the conventions' After writing
+   gives, then `make test-integration` when Docker runs, as CI runs it
+   on a copy. `make openapi` runs once in all: the entity skill runs it
+   before its screen, so it does not run again here.
 
 A gate of steps 5 and 6 that fails on what this skill wrote is fixed,
 and its step runs again from its first command, as After writing
