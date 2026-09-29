@@ -223,15 +223,24 @@ def spend(total, unpriced=()):
     return {"judges": {}, "subject": {}, "total_usd": total, "unpriced": list(unpriced)}
 
 
+def versions(commit, claude=None):
+    checkout = {"commit": commit * 40, "plugin_version": "1.0.0", "dirty": False, "dirty_paths": [], "dirty_sha256": None}
+    return {"checkout": checkout} | ({"claude_code": f"{claude} (Claude Code)"} if claude else {})
+
+
 def chained(repo, first_spend=None):
-    """A run, its resume after a phase, and a resume of its judges, chained by `source`, as the harness records them."""
-    a_run(repo, RUN, "2026-01-01T08:00:00Z", spend=first_spend or spend(82.5281))
+    """A run, its resume after a phase, and a resume of its judges, chained by `source`, as the harness records them.
+
+    The first two ran the subject on Claude Code 2.1.283, from two commits; the last ran only judges, from a third.
+    """
+    a_run(repo, RUN, "2026-01-01T08:00:00Z", spend=first_spend or spend(82.5281), versions=versions("a", "2.1.283"))
     a_run(
         repo,
         RESUMED,
         "2026-01-02T08:00:00Z",
         spend=spend(87.7648),
         source={"run_id": RUN, "path": f"benchmark/runs/{RUN}", "after": "scaffold", "repeats": [0], "refused": [], "capped": []},
+        versions=versions("b", "2.1.283"),
     )
     judges = [{"repeat": 0, "run": ["openai"], "carried": ["anthropic"]}]
     a_run(
@@ -240,13 +249,20 @@ def chained(repo, first_spend=None):
         "2026-01-03T08:00:00Z",
         spend=spend(30.1202),
         source={"run_id": RESUMED, "path": "x", "repeats": [0], "refused": [], "capped": [], "judges": judges},
+        versions=versions("c"),
     )
     index(repo, "alpha")
 
 
+CHAIN_HEAD = "| Run | Started (UTC) | Cost (USD) | Commit | Claude Code |\n|---|---|---|---|---|\n"
+
+
 def test_a_run_and_its_resumes_are_one_row_whose_cost_is_the_chain_s_total(repo, runs, capsys):
     chained(repo)
-    page(repo, "alpha", row(JUDGED, "$200.41"))
+    # The row's Commit names each commit of the chain's folders, oldest first, and its Claude Code the one that ran
+    # the subject: the resume of the judges ran none.
+    chain_row = f"| [{JUDGED}]({JUDGED}/report.md) | 2026-01-01 08:00 | $200.41 | `aaaaaaa`, `bbbbbbb`, `ccccccc` | 2.1.283 |\n"
+    page(repo, "alpha", chain_row, head=CHAIN_HEAD)
     assert runs.main() == 0
     assert "runs ok: 3 run folder(s)" in capsys.readouterr().out
 

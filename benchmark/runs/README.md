@@ -26,7 +26,8 @@ the row of the run it resumes onto it. The first run of a scenario adds
 the scenario's folder, its page, and its line here. Nothing generates
 these pages, and `make runs` holds them to the run folders.
 
-The columns copy the newest folder's `results.json`:
+The columns copy the newest folder's `results.json`, except where one
+says it reads every folder of the run's chain:
 
 - Started (UTC): when the run started, as its first folder records it
   (`started_at`).
@@ -41,11 +42,14 @@ The columns copy the newest folder's `results.json`:
   of each of its folders' `spend.total_usd`. A total that leaves out an
   unpriced model reads "at least".
 - Commit: the commit the run ran from, short
-  (`versions.checkout.commit`).
+  (`versions.checkout.commit`). The row of a run and its resumes names
+  each distinct commit of its folders, oldest first.
 - Claude Code: the version of Claude Code that ran the subject. The
-  cell shows the version number from `versions.claude_code`. A scenario
-  that runs no skill (`qa`, `command`) records no Claude Code, so its
-  table has no such column.
+  cell shows the version number from `versions.claude_code`. The row of
+  a run and its resumes names each distinct version of the folders that
+  ran a phase of the subject; a carried phase, and a folder that ran
+  only judges, do not count. A scenario that runs no skill (`qa`,
+  `command`) records no Claude Code, so its table has no such column.
 
 "—" marks what a run does not record. A run recorded before the
 harness kept its spend or its versions has none to show.

@@ -1573,7 +1573,9 @@ spent, each stage with the folder that ran it, its status, cost, and
 time, and the total. Its report's Chain section shows the same. On a
 scenario's page, the chain is one row. It links the newest folder's
 report, its scores are that folder's, and its cost is the chain's
-total, which `make runs` holds it to. Under the table, a run in phases
+total, which `make runs` holds it to. Its Commit names each distinct
+commit of the chain's folders, and its Claude Code each version that
+ran a phase of the subject. Under the table, a run in phases
 has its stage table, as the report gives it.
 
 ## Streams
