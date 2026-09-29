@@ -26,12 +26,18 @@ arguments or in the conversation.
 Example: `free_journalism --first journalists Journalist display_name:str`.
 
 - `<name>` is the project's code name, its Python package, and its
-  folder at once: one or two snake_case words, never a standard-library
-  module, a Python keyword, or `acme`. With no name given, take it from
-  the product's own name in the spec or the description, in at most two
-  words, leaving out a word any product could carry, such as platform,
-  app, or system (`Free Journalism Platform` gives `free_journalism`).
-  Ask only when the product names nothing.
+  folder at once: one or two snake_case words of at most 17 characters,
+  never a standard-library module, a Python keyword, or `acme`. The
+  bound keeps `<name-kebab>-production-api`, the longest load balancer
+  target group name the copy's Terraform makes, within AWS's 32
+  characters, so the name survives the first cloud deploy. With no name
+  given, take it from the product's own name in the spec or the
+  description, in at most two words, leaving out a word any product
+  could carry, such as platform, app, or system (`Free Journalism
+  Platform` gives `free_journalism`). When that name is longer than 17
+  characters, take a shorter one the product gives: its short name, one
+  of its two words, or an abbreviation of them. Ask only when the
+  product names nothing.
 - The folder is `<name>` in the current directory. It must not exist,
   or must be empty. Refuse when the current directory is inside a git
   repository (`git rev-parse --show-toplevel` answers there), since the
