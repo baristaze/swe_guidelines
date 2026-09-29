@@ -56,9 +56,9 @@ def test_a_yaml_key_shifted_under_a_scalar_fails(repo, snippets, capsys):
 
 
 def test_a_block_is_found_in_every_markdown_file_the_scripts_read(repo, snippets, capsys):
-    repo.write("scaffold/acme_root/.claude/skills/x/SKILL.md", "# x\n\n```python\nif True:\npass\n```\n")
+    repo.write("scaffold/acme_root/.agents/skills/x/SKILL.md", "# x\n\n```python\nif True:\npass\n```\n")
     assert snippets.main([]) == 1
-    assert "scaffold/acme_root/.claude/skills/x/SKILL.md:5: this python block does not parse" in capsys.readouterr().out
+    assert "scaffold/acme_root/.agents/skills/x/SKILL.md:5: this python block does not parse" in capsys.readouterr().out
 
 
 def test_an_unknown_argument_exits_2(snippets):
