@@ -30,20 +30,21 @@ From a checkout of this repository:
 python3 scaffold/new.py ~/code/pressroom
 ```
 
-The copy carries the pointer, the checker, the record of
-substitutions, and the operational skills, pinned at this release. It
-runs as it is, and the project builds its own domain on top.
-`/swe-guidelines:arch-scaffold-new` does the same from the plugin, then
-records the product's first decisions and adds its first namespace.
+The last part of the path is the name: one or two snake_case words, at
+most 17 characters. The copy carries all four, and the operational
+skills, pinned at this release. It runs as it is, and the project
+builds its own domain on top. `/swe-guidelines:arch-scaffold-new` does
+the same from the plugin, then records the product's first decisions
+and adds its first namespace with its entity.
 
 ## An existing codebase
 
-An existing codebase adds what a copy carries, in this order: the
-checker in its gate, the pointer in `specs/`, the record of its
-substitutions, and an ADR for each deviation it keeps. Then it writes
-the tests for what the checker cannot read: a rule that needs the built
-system or a migrated database, such as tenant isolation. The scaffold's
-[`om/tests/`](../scaffold/acme_root/om/tests/) shows them.
+An existing codebase adds the four, in this order: the checker, the
+pointer, the record of substitutions, and an ADR for each deviation it
+keeps. Then it writes the tests for what the checker cannot read: a
+rule that needs the built system or a migrated database, such as tenant
+isolation. The scaffold's [`om/tests/`](../scaffold/acme_root/om/tests/)
+shows them.
 
 ## Install the skills
 
