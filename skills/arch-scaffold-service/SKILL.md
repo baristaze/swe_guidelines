@@ -6,8 +6,10 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make check), Bash(make openap
 
 # arch-scaffold-service
 
-Conventions: `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md`.
-Sections of `${CLAUDE_SKILL_DIR}/../../architecture.md`: Interfaces
+A path that starts with `../` is read from this skill's folder
+as `realpath` resolves it.
+Conventions: `../_shared/scaffold-conventions.md`.
+Sections of `../../architecture.md`: Interfaces
 (Composition by decoration), The Network Layer (How It Starts and Where
 It Goes, Web Services as Scalability Units, Domain Services vs
 App-Specific Services, Service Interfaces and Impls, The Gateway,
@@ -87,4 +89,4 @@ The shape is the API, `services/api/`. Under `services/<service-name>/`:
 
 ## Output
 
-As `${CLAUDE_SKILL_DIR}/../_shared/scaffold-conventions.md` states.
+As `../_shared/scaffold-conventions.md` states.

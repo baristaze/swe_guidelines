@@ -3,24 +3,46 @@
 
 Rules:
 - every skills/<name>/SKILL.md has YAML frontmatter with `name` equal to the
-  folder name, matching ^arch-[a-z0-9-]+$, and a non-empty `description`
+  folder name, `arch-` then lowercase words joined by one hyphen each, and
+  a non-empty `description`
   of at most 500 characters, written as one double-quoted string; the
   descriptions together stay under 6000 characters. Each description is
   listed in a budget the host shares across every installed skill. The
   host truncates one entry at 1,536 characters, and when the listing
   overflows it drops the descriptions of the least-used skills. So this
   plugin keeps its share small;
-- the frontmatter holds only keys the host reads (`name`, `description`,
-  `allowed-tools`, `argument-hint`, `model`, `disable-model-invocation`), so
-  a misspelled key, `allowed_tools` for one, is an error and never a skill
-  that silently runs with no tool limits;
+- the frontmatter holds only the fields of the Agent Skills standard
+  (https://agentskills.io/specification: `name`, `description`,
+  `license`, `compatibility`, `metadata`, `allowed-tools`), plus
+  `disable-model-invocation`, Claude Code's key, which VS Code, Cursor,
+  and Factory also read: a person starts the skill by name, and the
+  model never does. The standard's validator refuses that key, so only a
+  skill that must never start on its own carries it. Any other key is an
+  error: a misspelled key, `allowed_tools` for one, would otherwise be a
+  skill that silently runs with no tool limits. A `compatibility` holds
+  at most 500 characters, as the standard says;
+- a skill that says `disable-model-invocation: true` carries Codex's
+  switch too, `agents/openai.yaml` in its folder with
+  `policy.allow_implicit_invocation: false`, and a skill whose
+  `agents/openai.yaml` turns implicit invocation off says the key: in
+  both agents a person starts it, never the model;
 - every arch-scaffold-* skill references `skills/_shared/scaffold-conventions.md`
   when that file exists;
-- every `${CLAUDE_SKILL_DIR}/...` reference in a skill body resolves to a file
-  or directory that exists inside this repository; a reference inside
+- a skill names its own files by a path from its own folder, as the
+  standard says, and never through a substitution one agent makes
+  (`${CLAUDE_SKILL_DIR}`, `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PROJECT_DIR}`):
+  an agent without it reads a wrong path. Nor does a skill or an agent
+  file name its arguments as `$ARGUMENTS`, for the same reason. A path from the folder is one
+  that climbs out of it (`../`) or one under its `references/`; every
+  such path in a skill body resolves to a file or directory that exists
+  inside this repository. A path inside
   `skills/_shared/scaffold-conventions.md` is resolved from the folder of
   every skill whose body references that file, since that is the skill
-  the reader runs;
+  the reader runs. A plugin skill, or that file, that names a path
+  climbing out of the folder (`../`) says to read it as `realpath`
+  resolves the folder: the clone route links each skill folder, and an
+  agent that shortens `../` from the link's own path reads a file that
+  is not there;
 - there is exactly one arch-review-<group> skill per lens group and none for
   a group that does not exist;
 - arch-review-full names every group's review skill;
@@ -53,18 +75,24 @@ Rules:
   `## Created`, `## Changed`, `## Procedure`, `## Output`, in that order;
   a heading inside fenced code is not a section, and a fence of backticks
   or tildes is read by the one rule in `_common.py`;
-- every skill of the scaffold, `scaffold/acme_root/.claude/skills/<name>/SKILL.md`,
+- every skill of the scaffold, `scaffold/acme_root/.agents/skills/<name>/SKILL.md`,
   which a copy of the scaffold runs as a real skill, has the frontmatter a
-  skill has: its name is its folder's name, its description one
-  double-quoted string, and its allowed-tools entries each a Name or a
-  `Bash(cmd:*)` prefix, comma-separated;
+  skill has: only the standard's keys and `disable-model-invocation`, a
+  name that is its folder's and the standard's (lowercase words joined by
+  one hyphen each, at most 64 characters), a description of at most 1024
+  characters in one double-quoted string, and allowed-tools entries each a
+  Name or a `Bash(cmd:*)` prefix, comma-separated. Every path it names
+  from its folder resolves inside `scaffold/acme_root/`, the tree a copy
+  carries. `.agents/skills/` is the folder every agent that reads the
+  standard shares, and `scaffold/acme_root/.claude/skills` is a link to
+  it, `../.agents/skills`, for Claude Code, which reads only its own;
 - a skill keeps its spine and names its detail. Every Markdown file under a
   skill's folder other than its `SKILL.md` is reference material, and at
-  least one numbered step of that skill's `## Procedure` names it as
-  `${CLAUDE_SKILL_DIR}/<path>`, so the step that reads it says so. A
-  reference file no step names is an orphan: nothing opens it, so it is an
-  error. A `${CLAUDE_SKILL_DIR}/...` reference inside a reference file
-  resolves from the skill's folder, the same way the body's does;
+  least one numbered step of that skill's `## Procedure` names it by its
+  path from the skill's folder (`references/<file>`), so the step that
+  reads it says so. A reference file no step names is an orphan: nothing
+  opens it, so it is an error. A path inside a reference file resolves
+  from the skill's folder, the same way the body's does;
 - every audit skill of the scaffold (`audit-*`) agrees with Operations
   (Operational Skills) of architecture.md: the first words of its `## Role
   and credential` section, up to a comma or a period, are the role the
@@ -82,7 +110,7 @@ Rules:
   fix a failure names is the split: move the long per-step material into the
   file a step reads;
 - a step that fixes and runs again states its count bound. In every Markdown
-  file under skills/ and under the scaffold's `.claude/skills/`, a paragraph
+  file under skills/ and under the scaffold's `.agents/skills/`, a paragraph
   or list item that says fix beside a rerun
   (`rerun`, or `run` with `again` anywhere after it) or beside a backticked
   `make <target>` says `at most <n> reruns` in the same paragraph or item.
@@ -99,6 +127,7 @@ Exit status is non-zero on any failure. Standard library only.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -109,9 +138,18 @@ from _common import arguments, fenced_lines, headings, unfenced
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "skills"
 LENSES = ROOT / "lenses"
-NAME = re.compile(r"^arch-[a-z0-9-]+$")
+NAME = re.compile(r"^arch-[a-z0-9]+(?:-[a-z0-9]+)*$")
+STANDARD_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+"""The standard's name: lowercase letters and digits, one hyphen between words, none at either end."""
+NAME_LIMIT = 64
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
-REF = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
+REF = re.compile(r"(?<![\w./-])((?:\.\./)+[\w.-][^\s`'\")]*|references/[^\s`'\")]+)")
+"""A path from a skill's own folder: one that climbs out of it (`../`), or one under its `references/`.
+
+Any other path a skill names is the tree's, read from its root.
+"""
+SUBSTITUTION = re.compile(r"\$\{CLAUDE_(?:SKILL_DIR|PLUGIN_ROOT|PLUGIN_DATA|PROJECT_DIR)\}|\$ARGUMENTS\b")
+"""A path or the arguments, as one agent substitutes them and the others read them: as text."""
 TABLE_ROW = re.compile(r"^\|\s*`([a-z]+)`\s*\|")
 TOOL = re.compile(r"^(?:[A-Za-z]+|mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+)(\([^()]*\))?$")
 """A tool: a Name, or an MCP tool, `mcp__<server>__<tool>`, whose server a connector may name in any case."""
@@ -127,7 +165,18 @@ CODE_SPAN = re.compile(r"`([^`\n]+)`")
 CONVENTIONS = "_shared/scaffold-conventions.md"
 DESCRIPTION_LIMIT = 500
 DESCRIPTIONS_TOTAL = 6000
-KNOWN_KEYS = frozenset({"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation"})
+STANDARD_KEYS = frozenset({"name", "description", "license", "compatibility", "metadata", "allowed-tools"})
+"""The frontmatter fields of the Agent Skills standard."""
+KNOWN_KEYS = STANDARD_KEYS | {"disable-model-invocation"}
+"""The standard's fields, and Claude Code's key that keeps the model from starting a skill."""
+OPENAI_SETTINGS = "agents/openai.yaml"
+"""Codex's file of a skill's own settings, in the skill's folder."""
+IMPLICIT_OFF = re.compile(r"^[ \t]+allow_implicit_invocation:[ \t]*false[ \t]*(?:#.*)?$")
+REALPATH = "`realpath`"
+NO_REALPATH = "names a path out of {whose} folder (../) and never says to read it as `realpath` resolves the folder"
+"""How a skill that climbs out of its folder says to resolve the folder first, when it is a link."""
+COMPATIBILITY_LIMIT = 500
+DESCRIPTION_STANDARD_LIMIT = 1024
 KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 ESCAPES = '0abtnvfre "/\\N_LP\t'  # single-character escapes YAML defines after a backslash
 HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
@@ -217,6 +266,63 @@ def body_of(text: str) -> str:
     return text[m.end() :] if m else text
 
 
+def references(text: str) -> list[str]:
+    """Every path from a skill's folder that `text` names, a sentence's closing punctuation left off (`../..` keeps its dots)."""
+    return [re.sub(r"(?<!\.)[.,;:]+$", "", ref) for ref in REF.findall(text)]
+
+
+def check_keys(fm: dict[str, str], rel: str, errors: list[str]) -> None:
+    """The frontmatter holds only KNOWN_KEYS, and a `compatibility` within the standard's limit."""
+    for key in sorted(set(fm) - KNOWN_KEYS):
+        errors.append(
+            f"{rel}: frontmatter key {key!r} is neither a field of the Agent Skills standard nor "
+            f"disable-model-invocation ({', '.join(sorted(KNOWN_KEYS))})"
+        )
+    size = len(fm.get("compatibility", "x"))
+    if not 0 < size <= COMPATIBILITY_LIMIT:
+        errors.append(f"{rel}: compatibility is {size} characters; the standard allows 1 to {COMPATIBILITY_LIMIT}")
+
+
+def implicit_off(settings: Path) -> bool:
+    """Whether Codex's `agents/openai.yaml` sets `allow_implicit_invocation: false` under `policy:`."""
+    if not settings.is_file():
+        return False
+    inside = False
+    for line in settings.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line[0].isspace():
+            inside = line.split("#", 1)[0].strip() == "policy:"
+        elif inside and IMPLICIT_OFF.match(line):
+            return True
+    return False
+
+
+def check_invocation(folder: Path, fm: dict[str, str], rel: str, errors: list[str]) -> None:
+    """Claude Code's `disable-model-invocation: true` and Codex's `policy.allow_implicit_invocation: false` agree."""
+    manual = fm.get("disable-model-invocation", "").strip().lower() == "true"
+    settings = folder / OPENAI_SETTINGS
+    off = implicit_off(settings)
+    where = settings.relative_to(ROOT).as_posix()
+    if manual and not off:
+        errors.append(
+            f"{rel}: disable-model-invocation is true, but {where} does not set "
+            "policy.allow_implicit_invocation: false, so Codex's model may start the skill"
+        )
+    elif off and not manual:
+        errors.append(f"{rel}: {where} turns implicit invocation off; say disable-model-invocation: true too")
+
+
+def check_reference(folder: Path, ref: str, within: Path, where: str, errors: list[str]) -> None:
+    """A path from `folder` resolves to something that exists, inside `within`; a placeholder such as `<path>` is left alone."""
+    if "<" in ref:
+        return
+    target = (folder / ref).resolve()
+    if not target.is_relative_to(within.resolve()):
+        place = "the repository" if within == ROOT else within.relative_to(ROOT).as_posix()
+        errors.append(f"{where}: reference {ref} resolves outside {place}")
+    elif not target.exists():
+        errors.append(f"{where}: reference {ref} does not exist")
+
+
 SECTION = re.compile(r"^##\s+(.+?)\s*$")
 
 
@@ -285,8 +391,13 @@ def lens_groups() -> set[str]:
 NO_TOOLS = "no allowed-tools; a skill names the tools it runs"
 """A skill with no allowed-tools runs with every tool the session has, so the key is required."""
 
-SCAFFOLD_SKILLS = ROOT / "scaffold" / "acme_root" / ".claude" / "skills"
+SCAFFOLD_ROOT = ROOT / "scaffold" / "acme_root"
+"""The tree a copy of the scaffold carries: a scaffold skill's paths stay inside it."""
+SCAFFOLD_SKILLS = ROOT / "scaffold" / "acme_root" / ".agents" / "skills"
 """The skills of the scaffold: a new tree copies them with the rest, and runs them as its own."""
+SCAFFOLD_LINK = ROOT / "scaffold" / "acme_root" / ".claude" / "skills"
+"""Claude Code reads only `.claude/skills/`, so the scaffold's is a link to its `.agents/skills/`."""
+LINK_TARGET = "../.agents/skills"
 
 
 def scaffold_skills() -> list[Path]:
@@ -297,8 +408,9 @@ def scaffold_skills() -> list[Path]:
 
 
 def check_scaffold_skill(path: Path, errors: list[str]) -> None:
-    """A scaffold skill's frontmatter holds to the rules a skill's does: the name is its folder's, the
-    description one double-quoted string, and every allowed-tools entry a Name or a Bash(cmd:*) prefix."""
+    """A scaffold skill's frontmatter holds to the rules a skill's does: the standard's keys, a name that is its
+    folder's and the standard's, the description one double-quoted string, and every allowed-tools entry a Name or
+    a Bash(cmd:*) prefix. Every path it names from its folder resolves inside the tree a copy carries."""
     rel = path.relative_to(ROOT)
     if not path.exists():
         errors.append(f"{rel.parent}: no SKILL.md")
@@ -308,14 +420,23 @@ def check_scaffold_skill(path: Path, errors: list[str]) -> None:
     if not fm:
         errors.append(f"{rel}: missing frontmatter")
         return
-    if fm.get("name", "") != path.parent.name:
-        errors.append(f"{rel}: name '{fm.get('name', '')}' differs from its folder '{path.parent.name}'")
+    check_keys(fm, str(rel), errors)
+    check_invocation(path.parent, fm, str(rel), errors)
+    name = fm.get("name", "")
+    if name != path.parent.name:
+        errors.append(f"{rel}: name '{name}' differs from its folder '{path.parent.name}'")
+    if not STANDARD_NAME.match(name) or len(name) > NAME_LIMIT:
+        errors.append(f"{rel}: name '{name}' is not lowercase words joined by one hyphen each, at most {NAME_LIMIT} characters")
+    for file in sorted(path.parent.rglob("*.md")):
+        where = str(file.relative_to(ROOT))
+        for ref in references(body_of(file.read_text(encoding="utf-8"))):
+            check_reference(path.parent, ref, SCAFFOLD_ROOT, where, errors)
     desc = fm.get("description", "")
     head = FRONTMATTER.match(text)
     if not desc:
         errors.append(f"{rel}: empty description")
-    elif len(desc) > 1024:
-        errors.append(f"{rel}: description is {len(desc)} characters, limit 1024")
+    elif len(desc) > DESCRIPTION_STANDARD_LIMIT:
+        errors.append(f"{rel}: description is {len(desc)} characters, limit {DESCRIPTION_STANDARD_LIMIT}")
     elif head and not QUOTED_DESCRIPTION.search(head.group(1)):
         errors.append(f"{rel}: description must be one double-quoted string")
     tools = fm.get("allowed-tools", "")
@@ -332,6 +453,34 @@ def check_scaffold_skill(path: Path, errors: list[str]) -> None:
             rule = tool[len("Bash(") : -1]
             if " *" in rule or not (PREFIX_RULE.match(rule.strip()) or EXACT_MAKE.match(rule.strip())):
                 errors.append(f"{rel}: {tool!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)")
+
+
+def check_scaffold_link(errors: list[str]) -> None:
+    """The scaffold's `.claude/skills` is a link to LINK_TARGET, so Claude Code and every other agent find the same
+    files; a copy carries the link."""
+    if not SCAFFOLD_SKILLS.is_dir():
+        return
+    rel = SCAFFOLD_LINK.relative_to(ROOT)
+    if not SCAFFOLD_LINK.is_symlink():
+        errors.append(f"{rel}: not a link; Claude Code reads the scaffold's skills through a link to {LINK_TARGET}")
+    elif os.readlink(SCAFFOLD_LINK) != LINK_TARGET:
+        errors.append(f"{rel}: links to {os.readlink(SCAFFOLD_LINK)!r}; it links to {LINK_TARGET!r}")
+
+
+AGENTS = ROOT / "agents"
+
+
+def check_substitutions(errors: list[str]) -> None:
+    """No skill, reference file, or agent file names a path, or its arguments, through a substitution one agent
+    makes."""
+    files = [*SKILLS.rglob("*.md"), *(AGENTS.glob("*.md") if AGENTS.is_dir() else [])]
+    files += sorted(SCAFFOLD_SKILLS.rglob("*.md")) if SCAFFOLD_SKILLS.is_dir() else []
+    for path in sorted(files):
+        for found in sorted(set(SUBSTITUTION.findall(path.read_text(encoding="utf-8")))):
+            errors.append(
+                f"{path.relative_to(ROOT)}: names {found}, a substitution one agent makes and the others read as text; "
+                "name a file by its path from the skill's folder, and the arguments as the arguments"
+            )
 
 
 GUIDELINE = ROOT / "architecture.md"
@@ -511,10 +660,10 @@ def main(argv: Sequence[str] = ()) -> int:
         name = fm.get("name", "")
         if name != folder.name:
             errors.append(f"{rel}: name '{name}' differs from folder '{folder.name}'")
-        if not NAME.match(name):
-            errors.append(f"{rel}: name '{name}' must match {NAME.pattern}")
-        for key in sorted(set(fm) - KNOWN_KEYS):
-            errors.append(f"{rel}: frontmatter key {key!r} is not one the host reads ({', '.join(sorted(KNOWN_KEYS))})")
+        if not NAME.match(name) or len(name) > NAME_LIMIT:
+            errors.append(f"{rel}: name '{name}' must match {NAME.pattern}, at most {NAME_LIMIT} characters")
+        check_keys(fm, str(rel), errors)
+        check_invocation(folder, fm, str(rel), errors)
         desc = fm.get("description", "")
         total += len(desc)
         if not desc:
@@ -564,30 +713,23 @@ def main(argv: Sequence[str] = ()) -> int:
                 f"move the long per-step material into skills/{folder.name}/references/ "
                 "and have the step that reads it name the file"
             )
-        refs = [(ref, str(rel)) for ref in REF.findall(text)]
+        refs = [(ref, str(rel)) for ref in references(body_of(text))]
         named = steps(body_of(text))
         for reference in sorted(p for p in folder.rglob("*.md") if p != skill):
             at = str(reference.relative_to(ROOT))
             inside = reference.relative_to(folder).as_posix()
-            if not any(f"${{CLAUDE_SKILL_DIR}}/{inside}" in step for step in named):
-                errors.append(
-                    f"{at}: no step of {rel} names ${{CLAUDE_SKILL_DIR}}/{inside}; "
-                    "a reference file is read by the step that names it"
-                )
-            refs += [(ref, at) for ref in REF.findall(reference.read_text(encoding="utf-8"))]
+            if not any(inside in references(step) for step in named):
+                errors.append(f"{at}: no step of {rel} names {inside}; a reference file is read by the step that names it")
+            refs += [(ref, at) for ref in references(reference.read_text(encoding="utf-8"))]
         conventions = SKILLS / CONVENTIONS
         if CONVENTIONS in body_of(text) and conventions.exists():
             # the conventions file is read on this skill's behalf, from this skill's folder
             shared = conventions.read_text(encoding="utf-8")
-            refs += [(ref, f"{rel} (via skills/{CONVENTIONS})") for ref in REF.findall(shared)]
+            refs += [(ref, f"{rel} (via skills/{CONVENTIONS})") for ref in references(shared)]
         for ref, where in refs:
-            if "<" in ref:
-                continue  # a placeholder such as arch-review-<group>
-            target = (folder / ref).resolve()
-            if not target.is_relative_to(ROOT.resolve()):
-                errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} resolves outside the repository")
-            elif not target.exists():
-                errors.append(f"{where}: reference ${{CLAUDE_SKILL_DIR}}/{ref} does not exist")
+            check_reference(folder, ref, ROOT, where, errors)
+        if any(ref.startswith("../") for ref in references(body_of(text))) and REALPATH not in body_of(text):
+            errors.append(f"{rel}: {NO_REALPATH.format(whose='its')}")
         if name.startswith("arch-scaffold-") and (SKILLS / CONVENTIONS).exists() and CONVENTIONS not in body_of(text):
             errors.append(f"{rel}: a scaffold skill references skills/{CONVENTIONS}")
         if name.startswith("arch-scaffold-"):
@@ -608,6 +750,14 @@ def main(argv: Sequence[str] = ()) -> int:
     copied = scaffold_skills()
     for skill in copied:
         check_scaffold_skill(skill, errors)
+    check_scaffold_link(errors)
+    check_substitutions(errors)
+    conventions_file = SKILLS / CONVENTIONS
+    if conventions_file.exists():
+        said = conventions_file.read_text(encoding="utf-8")
+        if any(ref.startswith("../") for ref in references(said)) and REALPATH not in said:
+            whose = "the skill's"
+            errors.append(f"skills/{CONVENTIONS}: {NO_REALPATH.format(whose=whose)}")
     check_audits(copied, errors)
     check_work_row(errors)
     check_bounds(errors)

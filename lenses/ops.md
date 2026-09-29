@@ -301,7 +301,7 @@ them.
 
 **Severity.** medium
 
-**Shape.** `scaffold/acme_root/.claude/skills`
+**Shape.** `scaffold/acme_root/.agents/skills`
 
 **Check.** `arch-check` decides that the thirteen skills exist; the
 rest is judged.

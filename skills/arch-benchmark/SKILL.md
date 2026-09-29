@@ -21,13 +21,13 @@ repository: `architecture.md`, `.claude-plugin/plugin.json`,
 `benchmark/run.py`, and `benchmark/README.md` all present. Check with
 `ls` before anything else. Otherwise stop and say so: the benchmark
 measures the checkout it runs from, and writes its run folders under
-that checkout's `benchmark/runs/<scenario>/`. The copy under
-`${CLAUDE_SKILL_DIR}/../..` is the installed plugin, not a checkout;
-never run the harness from there.
+that checkout's `benchmark/runs/<scenario>/`. The copy at `../..`, from
+this skill's folder as `realpath` resolves it, is the installed plugin,
+not a checkout; never run the harness from there.
 
 ## Input
 
-`$ARGUMENTS` is one of:
+The arguments are one of:
 
 - a scenario name, with or without flags ("explain-tenancy",
   "review-om with all four judges", "rehearse create-full-system",

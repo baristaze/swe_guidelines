@@ -1,15 +1,17 @@
 """The ops skills share one preamble, and keep their invariants inline.
 
 The operational detail a reader needs once, and not in every skill, lives
-in `.claude/skills/_shared/ops-preamble.md`: the profiles, the account
+in `.agents/skills/_shared/ops-preamble.md`: the profiles, the account
 check, the env file's fields, and the way back when a token expires. A
-skill that reaches a cloud environment names that file.
+skill that reaches a cloud environment names that file, by its path from
+the skill's own folder, as every agent that reads a skill resolves it.
 
 A rule that must never be missed does not travel by reference, so the
 lines that stop a secret leaking stay written in each skill that could
 break them, and this test holds them there.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -17,10 +19,10 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILLS = ROOT / ".claude" / "skills"
+SKILLS = ROOT / ".agents" / "skills"
 PREAMBLE = SKILLS / "_shared" / "ops-preamble.md"
 README = ROOT / "ops" / "README.md"
-REFERENCE = ".claude/skills/_shared/ops-preamble.md"
+REFERENCE = "../_shared/ops-preamble.md"
 
 # Every skill that can reach an environment, and so holds a credential.
 READERS = [
@@ -64,7 +66,17 @@ DATABASE_AUDITS = [
     "audit-query-indexes",
     "audit-retention",
 ]
-SKILL_DIR = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/([^\s`'\")]+)")
+# A path from the skill's own folder: one that climbs out of it (`../`),
+# or one under its `references/`. Any other path is the tree's, from its root.
+SKILL_PATH = re.compile(r"(?<![\w./-])((?:\.\./)+[\w.-][^\s`'\")]*|references/[^\s`'\")]+)")
+
+
+def _own(pattern: str = "*") -> list[str]:
+    """The tree's own skills, by folder name: a skill folder that is a link
+    belongs to what it links to, such as a clone of the guideline's
+    skills, and is held there."""
+    found = SKILLS.glob(f"{pattern}/SKILL.md")
+    return sorted(p.parent.name for p in found if not p.parent.is_symlink())
 
 
 def _skill(name: str) -> str:
@@ -103,11 +115,7 @@ def test_the_skills_that_hold_a_credential_are_the_ones_that_can_call_aws() -> N
     """A new ops skill that reaches the cloud joins the list above, or this
     fails: the preamble is not optional for a skill that holds a
     credential."""
-    reaches_the_cloud = sorted(
-        path.parent.name
-        for path in SKILLS.glob("*/SKILL.md")
-        if "Bash(aws:*)" in _allowed_tools(path.parent.name)
-    )
+    reaches_the_cloud = sorted(name for name in _own() if "Bash(aws:*)" in _allowed_tools(name))
     assert reaches_the_cloud == sorted(READERS)
 
 
@@ -135,7 +143,7 @@ def test_the_refusal_of_anything_but_the_administrator_stays_inline(name: str) -
 
 
 def test_the_audits_are_the_skills_named_for_one() -> None:
-    assert sorted(p.parent.name for p in SKILLS.glob("audit-*/SKILL.md")) == AUDITS
+    assert _own("audit-*") == AUDITS
 
 
 @pytest.mark.parametrize("name", [*AUDITS, "tickets-triage"])
@@ -190,17 +198,37 @@ def test_triage_closes_nothing_without_the_persons_word() -> None:
     assert "Never closes a ticket without `--apply` and the person's word in this session" in text
 
 
-@pytest.mark.parametrize("name", sorted(p.parent.name for p in SKILLS.glob("*/SKILL.md")))
+@pytest.mark.parametrize("name", _own())
 def test_every_reference_resolves_and_every_reference_file_is_named_by_a_step(name: str) -> None:
     """A skill keeps its spine and names its detail: a file beside SKILL.md
-    is read by the step that names it, so one no step names is an orphan."""
+    is read by the step that names it, so one no step names is an orphan. A
+    path is read from the skill's folder and stays in the tree."""
     folder = SKILLS / name
     body = _skill(name)
-    for ref in SKILL_DIR.findall(body):
-        assert (folder / ref).resolve().exists(), f"{name}: {ref} does not exist"
+    for ref in SKILL_PATH.findall(body):
+        target = (folder / ref.rstrip(".,;:")).resolve()
+        assert target.exists(), f"{name}: {ref} does not exist"
+        assert target.is_relative_to(ROOT.resolve()), f"{name}: {ref} resolves outside the tree"
     procedure = body.split("## Procedure", 1)[-1].split("\n## ", 1)[0]
     for extra in folder.rglob("*.md"):
         if extra.name == "SKILL.md":
             continue
         relative = extra.relative_to(folder).as_posix()
-        assert f"${{CLAUDE_SKILL_DIR}}/{relative}" in procedure, f"{name}: no step names {relative}"
+        assert relative in SKILL_PATH.findall(procedure), f"{name}: no step names {relative}"
+
+
+def test_the_watch_hands_its_sub_agent_the_preamble_from_the_repository_root() -> None:
+    """A sub-agent gets the skill's text without its folder, so a path from
+    that folder does not resolve for it; the path from the root does."""
+    root_path = PREAMBLE.relative_to(ROOT).as_posix()
+    assert root_path == ".agents/skills/_shared/ops-preamble.md"
+    assert f"`{root_path}`" in _prose("ops-watch")
+
+
+def test_claude_code_finds_the_same_skills_through_a_link() -> None:
+    """Every agent that reads the Agent Skills standard finds the skills in
+    `.agents/skills/`; Claude Code reads `.claude/skills/`, a link to it."""
+    link = ROOT / ".claude" / "skills"
+    assert link.is_symlink(), ".claude/skills is not a link"
+    assert os.readlink(link) == "../.agents/skills"
+    assert link.resolve() == SKILLS.resolve()

@@ -79,7 +79,7 @@ def test_caches_and_benchmark_runs_are_not_scanned(repo, links):
 
 
 def test_the_scaffolds_skills_are_scanned(repo, links, capsys):
-    rel = "scaffold/acme_root/.claude/skills/ops-watch/SKILL.md"
+    rel = "scaffold/acme_root/.agents/skills/ops-watch/SKILL.md"
     repo.write(rel, "# ops-watch\n\nSee [the runbook](../../../docs/runbooks/operate.md).\n")
     assert links.main() == 1
     assert f"{rel}:3: missing file ../../../docs/runbooks/operate.md" in capsys.readouterr().out

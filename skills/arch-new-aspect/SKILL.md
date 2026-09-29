@@ -19,13 +19,14 @@ result rather than chasing the cascade by hand.
 The current working directory must be a checkout of the guideline
 repository: `architecture.md`, `lenses/README.md`, `AGENTS.md`, and a
 `Makefile` with the `gen-toc`, `gen-skills`, and `check` targets all
-present. Otherwise stop and say so. The copy under
-`${CLAUDE_SKILL_DIR}/../..` is the installed plugin, not the checkout
-being changed; read and edit the checkout's files, never the plugin's.
+present. Otherwise stop and say so. The copy at `../..`, from this
+skill's folder as `realpath` resolves it, is the installed plugin, not
+the checkout being changed; read and edit the checkout's files, never
+the plugin's.
 
 ## Input
 
-`$ARGUMENTS` describes the aspect in a sentence or a paragraph:
+The arguments describe the aspect in a sentence or a paragraph:
 optionally a proposed title, a proposed place, and the questions it
 should answer. Examples: "Why have we named specific technologies?
 How does a project override one? Clarify and guide." or "Add a
@@ -105,7 +106,7 @@ for the aspect in one message and stop.
        renames.
      - `skills/_shared/scaffold-conventions.md`, which every scaffold
        follows, and `scaffold/acme_root/`, the core a new tree copies:
-       its code, and its operational skills under `.claude/skills/`.
+       its code, and its operational skills under `.agents/skills/`.
        A rule that changes what the core holds, what a scaffold
        writes, or what an operator runs lands there too.
      - `docs/adopting.md`, when an adopter must do something or gains

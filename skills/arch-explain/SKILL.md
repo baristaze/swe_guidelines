@@ -8,13 +8,13 @@ allowed-tools: Read, Grep, Glob
 
 Answer a question about the architecture with the guideline as the
 source of truth, not with general opinion. The guideline is at
-`${CLAUDE_SKILL_DIR}/../../architecture.md` and the lens catalog at
-`${CLAUDE_SKILL_DIR}/../../lenses/`. If either is missing, stop and
-say the installation is incomplete.
+`../../architecture.md` and the lens catalog at `../../lenses/`, paths
+from this skill's folder as `realpath` resolves it. If either is
+missing, stop and say the installation is incomplete.
 
 ## Input
 
-`$ARGUMENTS` is one of:
+The arguments are one of:
 
 - a question ("where does rate limiting live?", "can a manager call a
   service?");
@@ -35,7 +35,7 @@ groups in one line each.
    answer the question directly.
 3. Find the lenses that a reviewer would apply. Name them by id. When
    a lens has a `Shape` line, name the scaffold file it points to,
-   `${CLAUDE_SKILL_DIR}/../../<path>`, and read it: it shows the rule as
+   `../../<path>`, and read it: it shows the rule as
    code, and pointing at it beats describing it.
 4. When the input is a path, open the code and say, for each rule that
    applies, whether the code follows it, in one line each. Do not run

@@ -23,6 +23,7 @@
     "MD010": { "code_blocks": false }
   },
   // The same files scripts/_common.py leaves out of the repository's Markdown:
-  // Claude Code's own folder, but not the scaffold's, which holds its skills.
-  "ignores": ["**/node_modules/**", ".git/**", ".claude/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/*/*/**"]
+  // every `.claude/` folder. The scaffold's skills sit in its `.agents/skills/`,
+  // and its `.claude/skills` is a link to them, so they are linted once.
+  "ignores": ["**/node_modules/**", ".git/**", "**/.claude/**", "**/.venv/**", "**/.pytest_cache/**", "benchmark/runs/*/*/**"]
 }
