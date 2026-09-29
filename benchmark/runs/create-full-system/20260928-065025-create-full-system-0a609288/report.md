@@ -44,7 +44,7 @@ Note: a Claude subject is judged by a panel that includes Claude (anthropic); re
 
 ### Not answered
 
-- `openai`: gpt-6-sol: RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-6-sol in organization [redacted] on tokens per min (TPM): Limit 500000, Used 351145, Requested 149984. Please try again in 135ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}
+- `openai`: gpt-6-sol: RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-6-sol in organization [redacted] on tokens per min (TPM): Limit [redacted], Used [redacted], Requested [redacted]. Please try again in 135ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}
 
 ## Spend
 
