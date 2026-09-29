@@ -249,7 +249,12 @@
         "judges": { "type": "object", "additionalProperties": { "$ref": "#/$defs/spent" } },
         "subject": { "$ref": "#/$defs/spent" },
         "total_usd": { "type": "number", "minimum": 0 },
-        "unpriced": { "type": "array", "items": { "type": "string" } }
+        "unpriced": { "type": "array", "items": { "type": "string" } },
+        "estimated": {
+          "description": "Each phase whose session wrote no result, as repeat and phase: the subject's cost counts it at the harness's estimate, a lower bound. Absent when there is none.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "subject": {
@@ -689,6 +694,10 @@
           "description": "What the harness priced the session's stream at, the figure it holds the spend cap by.",
           "type": "number",
           "minimum": 0
+        },
+        "cost_lower_bound": {
+          "description": "The session wrote no result, so its cost is estimated_usd, a lower bound: the estimate counts each message's output as the message starts.",
+          "const": true
         },
         "model_cost_usd": {
           "description": "Each model the session used and its cost in US dollars, from Claude Code's modelUsage; for a resumed session, what each added. Absent when the result reports none.",

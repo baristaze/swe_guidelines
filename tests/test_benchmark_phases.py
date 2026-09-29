@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from harness import archive as A
+from harness import judge as J
 from harness import phases as PH
 from harness import scenario as S
 from harness.capture import CliStream
@@ -392,6 +393,54 @@ def test_the_estimate_prices_cache_reads_and_writes_and_counts_a_message_once():
         "cache_creation_input_tokens": 2000,
     }
     assert not watch.stop.is_set() and watch.capped is None
+
+
+def test_the_estimate_prices_each_model_s_cache_hits_at_the_matrix_s_price():
+    pytest.importorskip("yaml")
+    prices = run.subject_prices(J.load_matrix(run.MODELS))
+    assert prices["claude-opus-5-5"] == {"input": 4.0, "output": 20.0, "cache_read": 0.2}
+    assert "cache_read" not in prices["claude-sonnet-5"]
+    watch = PH.Watch(None, prices)
+    # The scaffold session's tokens, as its result's modelUsage gives them, against its total_cost_usd.
+    opus = {
+        "input_tokens": 950_244,
+        "cache_read_input_tokens": 201_427_435,
+        "cache_creation_input_tokens": 3_788_134,
+        "output_tokens": 975_048,
+    }
+    assert watch.cost("claude-opus-5-5", opus) == pytest.approx(82.528093, rel=0.01)
+    # A model with no cache_read of its own: its cache hits cost a tenth of its input, as a helper's on Sonnet 5 did.
+    sonnet = {
+        "input_tokens": 884,
+        "cache_read_input_tokens": 84_991_044,
+        "cache_creation_input_tokens": 1_135_902,
+        "output_tokens": 407_118,
+    }
+    assert watch.cost("claude-sonnet-5", sonnet) == pytest.approx(23.910912, rel=0.01)
+
+
+# The session of create-full-system's third phase, which ran eight helper agents: every assistant line it
+# wrote with the flags the harness passes, and its result, trimmed to their figures, the ids renumbered.
+WITH_HELPERS = Path(__file__).resolve().parent / "benchmark_stream_with_helpers.jsonl"
+
+
+def test_the_estimate_of_a_session_with_helpers_counts_every_agent_s_input_and_output_as_each_message_starts():
+    lines = WITH_HELPERS.read_text(encoding="utf-8").splitlines()
+    assert sum(1 for text in lines if (PH.parse(text) or {}).get("parent_tool_use_id")) > len(lines) / 2
+    watch = PH.Watch(None, run.subject_prices(J.DEFAULT_MATRIX))
+    for text in lines:
+        watch.feed("out", text)
+    result = PH.final_result(lines)
+    assert result is not None
+    figures = result["modelUsage"]["claude-opus-5-5"]
+    counted = watch.usage()["output_tokens"]
+    # Every agent's input and cache tokens at the matrix's price: what the result's cost gives them, within 3%.
+    estimated_input = watch.estimated_usd - counted * 20 / 1e6
+    assert estimated_input == pytest.approx(result["total_cost_usd"] - figures["outputTokens"] * 20 / 1e6, rel=0.03)
+    # Each line carries its message's output as the message starts, and no line its final count.
+    assert counted < 0.02 * figures["outputTokens"]
+    # The run records the tokens of every agent, from the same stream's result.
+    assert run.read_envelope_spend("\n".join(lines))[0]["input_tokens"] == 838 + 46_505_964 + 1_354_174
 
 
 def test_a_model_the_matrix_does_not_price_is_priced_at_its_dearest():
@@ -921,6 +970,32 @@ def test_a_phase_its_timeout_stops_is_capped_by_time_and_the_next_phase_runs(run
     first, second = results(run_dir)["repeats"][0]["phases"]
     assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
     assert second["status"] == "ok"
+
+
+def test_a_phase_its_timeout_stops_before_a_result_is_a_lower_bound_counted_at_its_cap(run_phases):
+    usage = {"input_tokens": 150_000, "output_tokens": 0}  # $0.60 at the matrix's price
+    stopped = {**TREE, "messages": [["m1", "claude-opus-5-5", usage]], "sleep": 30}
+    # Each phase may spend $1, so a repeat needs $2 of the run's $3.
+    scenario = phased(phase("scaffold", stopped, timeout_s=1), phase("mvp"))
+    code, run_dir = run_phases(scenario, "--repeat", "2", "--max-spend-usd", "3")
+    assert code == 0
+    data = results(run_dir)
+    first, second = data["repeats"][0]["phases"]
+    assert (first["status"], first["capped"], first["exit_status"]["timed_out"]) == ("capped", "time", True)
+    assert first["cost_usd"] is None and first["estimated_usd"] == 0.6 and first["cost_lower_bound"] is True
+    assert second["status"] == "ok" and second["cost_usd"] == 0.25 and "cost_lower_bound" not in second
+    note = "phase scaffold reported no cost; its spend is the harness's estimate, $0.6000, a lower bound, "
+    assert any(f"{note}and the run's spend cap counts it at $1.0000" in n for n in data["notes"])
+    # The cap counts scaffold at its $1 cap, not its $0.60 estimate: $1.75 is left, short of a repeat's $2.
+    assert len(data["repeats"]) == 1
+    assert any("repeat 1 and after did not run: $1.7500 of the run's $3 spend cap is left" in n for n in data["notes"])
+    # What the run publishes is the estimate, marked as a lower bound.
+    assert data["repeats"][0]["subject_cost_usd"] == pytest.approx(0.85)
+    assert data["spend"]["total_usd"] == 0.85 and data["spend"]["estimated"] == ["repeat 0, phase scaffold"]
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Total: at least $0.8500. No result from repeat 0, phase scaffold, so its cost is the harness's estimate" in report
+    assert "| subject | " in report and "| at least $0.8500 |" in report
+    assert "at least $0.6000 (estimated)" in report
 
 
 # The models a session used ---------------------------------------------------

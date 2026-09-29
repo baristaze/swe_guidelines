@@ -367,7 +367,9 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
     paid for by the run that made it, so it counts here for nothing. A call whose model has
     no price adds its tokens and is named under `unpriced`, so `cost_usd` is
     what the priced calls cost, and a total with anything unpriced is a
-    lower bound, never a guess.
+    lower bound, never a guess. A phase whose session wrote no result is
+    counted at the harness's estimate, which reads low, and is named under
+    `estimated`, so a total with any is a lower bound too.
     """
     judges: dict[str, dict[str, Any]] = {}
     subject = _total()
@@ -380,12 +382,21 @@ def spend(repeats: list[RepeatResult]) -> dict[str, Any]:
     everything = [*judges.values(), subject]
     for total in everything:
         total["cost_usd"] = round(total["cost_usd"], 4)
-    return {
+    out: dict[str, Any] = {
         "judges": dict(sorted(judges.items())),
         "subject": subject,
         "total_usd": round(sum(t["cost_usd"] for t in everything), 4),
         "unpriced": sorted({m for t in everything for m in t["unpriced"]}),
     }
+    estimated = [
+        f"repeat {repeat.index}, phase {phase['name']}"
+        for repeat in repeats
+        for phase in repeat.phases or []
+        if phase.get("cost_lower_bound") and not phase.get("carried")
+    ]
+    if estimated:
+        out["estimated"] = estimated
+    return out
 
 
 def findings_by_severity(repeats: list[RepeatResult]) -> list[dict[str, Any]]:
@@ -457,21 +468,30 @@ def spend_lines(spent: dict[str, Any]) -> list[str]:
         _row(["---"] * 5),
     ]
     rows = [(f"judge `{p}`", t) for p, t in spent["judges"].items()] + [("subject", spent["subject"])]
+    estimated = spent.get("estimated") or []
     for who, t in rows:
-        cost = _usd(t["cost_usd"]) + (" + unpriced" if t["unpriced"] else "")
+        cost = ("at least " if who == "subject" and estimated else "") + _usd(t["cost_usd"])
+        cost += " + unpriced" if t["unpriced"] else ""
         lines.append(_row([who, f"{t['input_tokens']:,}", f"{t['output_tokens']:,}", f"{t['reasoning_tokens']:,}", cost]))
     total = _usd(spent["total_usd"])
+    why: list[str] = []
     if spent["unpriced"]:
         unpriced = ", ".join(f"`{m}`" for m in spent["unpriced"])
-        lines += ["", f"Total: at least {total}. No price for {unpriced}, so its tokens are counted and its cost is not.", ""]
-    else:
-        lines += ["", f"Total: {total}.", ""]
+        why.append(f"No price for {unpriced}, so its tokens are counted and its cost is not.")
+    if estimated:
+        why.append(
+            f"No result from {', '.join(estimated)}, so its cost is the harness's estimate, which counts each "
+            "message's output as the message starts and reads low."
+        )
+    lines += ["", f"Total: at least {total}. {' '.join(why)}" if why else f"Total: {total}.", ""]
     return lines
 
 
 def _cost(phase: dict[str, Any]) -> str:
     if phase.get("cost_usd") is not None:
         return _usd(phase["cost_usd"])
+    if phase.get("cost_lower_bound"):
+        return f"at least {_usd(phase.get('estimated_usd') or 0.0)} (estimated)"
     return f"{_usd(phase['estimated_usd'])} (estimated)" if phase.get("estimated_usd") else "-"
 
 

@@ -53,14 +53,16 @@ it resumes onto it. This holds them together:
   stands behind. A run of a scenario no file there names, or whose file
   does not load, or that two files name, fails too, since nothing says
   where it runs;
-- no compressed file in a run folder holds a string shaped like a key:
-  a zip, a tar, and a gzip, bzip2, or xz stream are read the way
-  `run.py redact` reads them, member by member and down the levels, since
-  a compressed member hides its text from a scan of the bytes. A
-  compressed form the scan cannot read, a part of one it cannot unpack,
-  and a `.zip` that does not open fail too, since no one can say they
-  hold no key. So does a `.git` folder in a run folder: its objects are
-  compressed, and the output's zip is the record of the output.
+- no file in a run folder, plain or compressed, holds a string shaped
+  like a key, or an account id or a limit's figures that a provider's
+  error names: the strings `run.py redact` replaces by their shape. A
+  plain file is scanned as bytes. A zip, a tar, and a gzip, bzip2, or xz stream are
+  read the way `run.py redact` reads them, member by member and down the
+  levels, since a compressed member hides its text from a scan of the
+  bytes. A compressed form the scan cannot read, a part of one it cannot
+  unpack, and a `.zip` that does not open fail too, since no one can say
+  they hold no key. So does a `.git` folder in a run folder: its objects
+  are compressed, and the output's zip is the record of the output.
 
 A row is a body line of a table whose header's first cell is `Run`, and
 its run is the folder its first cell's `](<folder>/report.md)` link
@@ -274,7 +276,7 @@ def unclean(folder: Path) -> str | None:
 
 
 def packed_keys(folder: Path) -> list[str]:
-    """Why a run folder's compressed files fail: a key, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
+    """Why a run folder's files fail: a key or an id, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
     out = []
     for path in sorted(folder.rglob("*")):
         where = shown(path)
@@ -289,7 +291,7 @@ def packed_keys(folder: Path) -> list[str]:
             if path.suffix == ".zip" and kind != "zip":
                 out.append(f"{where}: does not open as a zip, so no one can say it holds no key")
                 continue
-            places = X.keys_in(data) if kind else []
+            places = X.keys_in(data)
         except (*X.READ_ERRORS, MemoryError) as exc:
             out.append(f"{where}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
             continue
@@ -298,7 +300,8 @@ def packed_keys(folder: Path) -> list[str]:
                 out.append(f"{where}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
             else:
                 at = f"{where}: {place}" if place else where
-                out.append(f"{at} holds a string shaped like a key; run `run.py redact`")
+                found = "a string shaped like a key, or an account id or a limit's figures from a provider's error"
+                out.append(f"{at} holds {found}; run `run.py redact`")
     return out
 
 
@@ -434,7 +437,7 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
-        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key in a compressed file"
+        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file"
     )
     return 0
 
