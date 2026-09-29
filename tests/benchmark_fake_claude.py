@@ -12,6 +12,7 @@ Its prompt carries what it does, as `DO {json}` on the first line:
 - `note`: text for the handoff note, at the path the hint names;
 - `messages`: assistant messages as `[id, model, usage]`, each written twice, as a stream can;
 - `bash`: Bash calls as `[command, failed]`, each a tool use and its result;
+- `tools`: tool calls as `[name, input]`, each a tool use and its result;
 - `agents`: Agent calls as `[id, description, answered]`, each a tool use, and its result only when answered;
 - `launched`: Agent calls as `[id, description]` that start their subagent in the background, as Claude Code
   writes them: the call with `run_in_background` set to "true", the launch notice as its result, then the
@@ -100,6 +101,11 @@ for number, (command, failed) in enumerate(todo.get("bash", [])):
     call = {"type": "tool_use", "id": f"toolu_{number}", "name": "Bash", "input": {"command": command}}
     emit({"type": "assistant", "message": {"id": f"msg_bash_{number}", "content": [call]}, "session_id": session})
     answer = {"type": "tool_result", "tool_use_id": f"toolu_{number}", "content": "out", "is_error": failed}
+    emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
+for number, (name, given) in enumerate(todo.get("tools", [])):
+    call = {"type": "tool_use", "id": f"toolu_tool_{number}", "name": name, "input": given}
+    emit({"type": "assistant", "message": {"id": f"msg_tool_{number}", "content": [call]}, "session_id": session})
+    answer = {"type": "tool_result", "tool_use_id": f"toolu_tool_{number}", "content": "out"}
     emit({"type": "user", "message": {"role": "user", "content": [answer]}, "session_id": session})
 for call_id, description, answered in todo.get("agents", []):
     call = {"type": "tool_use", "id": call_id, "name": "Agent", "input": {"description": description, "prompt": "p"}}

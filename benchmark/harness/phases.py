@@ -50,6 +50,13 @@ hold. What the call's input asks decides nothing: with background tasks
 off, a call whose `run_in_background` is true runs in the foreground,
 and its one result is the subagent's hand-back, which answers it.
 
+After a phase, the harness reads its stream for the tool calls that name
+the benchmark's run folders (`runs_named`): every finished tree of a
+scenario, the judges' gaps, and the review's report. A call names them
+when a string anywhere in its input holds `benchmark/runs` as whole path
+segments: a Read, Grep, or Glob path, a Bash command, a WebFetch URL, a
+subagent's prompt. A subagent's calls count as the main agent's do.
+
 Between phases the harness runs short commands where the subject runs,
 in its workspace: a checkpoint commit in the output folder after every
 phase, that checkpoint's archive, the phase's milestone, which the
@@ -167,6 +174,57 @@ def parse(line: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+# The benchmark's run folders as a path or a URL names them: `benchmark/runs`
+# as whole segments, so `swe-benchmark/runs` and `benchmark/runs-old` are not them.
+RUNS = re.compile(r"(?<![\w.-])benchmark/runs(?![\w.-])")
+# The most of a value a record keeps when it names a call.
+NAMED_CHARS = 300
+
+
+def runs_named(lines: list[str]) -> list[dict[str, str]]:
+    """Each tool call of a stream whose input names the benchmark's run folders, in order.
+
+    A call is its tool, its id, the key of its input that names them, and
+    that value, cut to `NAMED_CHARS`. The input is read as the message
+    shows it and as the line's `wire_tool_inputs` gives it, the call as
+    sent, which can hold more: a leading `cd` the message leaves out. A
+    call a stream carries in several lines counts once.
+    """
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for event in events(lines):
+        message = event.get("message")
+        if event.get("type") != "assistant" or not isinstance(message, dict):
+            continue
+        wire = event.get("wire_tool_inputs")
+        sent: dict[str, Any] = wire if isinstance(wire, dict) else {}
+        for block in _content(message):
+            if block.get("type") != "tool_use":
+                continue
+            ident = str(block.get("id") or "")
+            if ident and ident in seen:
+                continue
+            strings = [*_strings(block.get("input"), ""), *_strings(sent.get(ident), "")]
+            found = next((kv for kv in strings if RUNS.search(kv[1])), None)
+            if found is None:
+                continue
+            seen.add(ident)
+            key, value = found
+            out.append({"tool": str(block.get("name") or ""), "id": ident, "key": key, "value": value[:NAMED_CHARS]})
+    return out
+
+
+def _strings(value: Any, key: str) -> list[tuple[str, str]]:
+    """Every string in a tool call's input, each with its key: `command`, `edits.0.new_string`."""
+    if isinstance(value, str):
+        return [(key, value)]
+    if isinstance(value, dict):
+        return [s for k, v in value.items() for s in _strings(v, f"{key}.{k}" if key else str(k))]
+    if isinstance(value, list):
+        return [s for at, v in enumerate(value) for s in _strings(v, f"{key}.{at}" if key else str(at))]
+    return []
 
 
 def final_result(lines: list[str]) -> dict[str, Any] | None:

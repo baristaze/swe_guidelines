@@ -155,6 +155,38 @@ def test_a_rehearsal_is_never_checked_in(repo, runs, capsys, file, marker):
     assert f"benchmark/runs/{name}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in" in out
 
 
+EARLIER = "/tmp/swe_guidelines/benchmark/runs/20260927-204817-create-full-system-f263cfa8/report.md"
+
+
+@pytest.mark.parametrize("where", ["repeat", "phase"])
+def test_a_run_whose_subject_named_the_run_folders_is_never_checked_in(repo, runs, capsys, where):
+    name = "20260101-000000-one-aa"
+    a_versioned_run(repo, name, False)
+    path = repo.root / "benchmark" / "runs" / name / "results.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    read = {"tool": "Read", "id": "toolu_1", "key": "file_path", "value": EARLIER}
+    phases = [{"name": "scaffold"}, {"name": "review", "read_runs": [read]}]
+    repeat = {"index": 0, "phases": phases} | ({"read_runs": [{"phase": "review", **read}]} if where == "repeat" else {})
+    repo.write(f"benchmark/runs/{name}/results.json", json.dumps({**data, "repeats": [repeat]}) + "\n")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert (
+        f"benchmark/runs/{name}: repeat 0, Read with file_path {EARLIER!r} named the benchmark's run folders, "
+        "so its subject had an earlier run's answers in reach; a marked run is never checked in"
+    ) in out
+
+
+def test_a_run_whose_repeats_name_no_run_folder_passes(repo, runs, capsys):
+    name = "20260101-000000-one-aa"
+    a_versioned_run(repo, name, False)
+    path = repo.root / "benchmark" / "runs" / name / "results.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    repeat = {"index": 0, "phases": [{"name": "scaffold"}, {"name": "review"}]}
+    repo.write(f"benchmark/runs/{name}/results.json", json.dumps({**data, "repeats": [repeat]}) + "\n")
+    assert runs.main() == 0
+    assert "no rehearsal, no marked repeat" in capsys.readouterr().out
+
+
 ONE_A = "20260101-000000-alpha-aa"
 TWO_A = "20260102-000000-alpha-bb"
 ONE_B = "20260101-000000-beta-cc"

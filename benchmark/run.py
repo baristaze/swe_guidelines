@@ -109,6 +109,10 @@ PREFLIGHT_FAILED = 8
 # The exit status of a rehearsal that did not prove the pipeline to its end:
 # the run's spend cap cut it short, or a step it exists to prove did not happen.
 REHEARSAL_UNPROVEN = 9
+# The exit status of a run a repeat of which is marked: its subject named
+# the benchmark's run folders in a tool call. The record is written, and a
+# marked run folder is never checked in.
+READ_RUNS = 10
 # How long a command the harness runs where the subject runs may take: a
 # checkpoint, the archive.
 HELPER_TIMEOUT_S = 600
@@ -864,6 +868,15 @@ def run_skill(
             record["pending_agents"] = list(watch.pending)
         if watch.unpriced:
             record["unpriced"] = sorted(watch.unpriced)
+        if read := PH.runs_named(lines):
+            # The subject named an earlier run's answers: the repeat is marked, and its run is never checked in.
+            record["read_runs"] = read
+            first = read[0]
+            notes.append(
+                f"repeat {index}: phase {phase.name} made {len(read)} tool call(s) naming the benchmark's run folders, "
+                f"the first {first['tool']} with {first['key']} {first['value']!r}; the repeat is marked, "
+                "and the run is never checked in"
+            )
         holds: bool | None = None
         if folder and harness is not None:
             made, why, holds = checkpoint(rt, harness, plan, folder, number, f"after {phase.name}, {outcome}")
@@ -1092,6 +1105,21 @@ def write_record(run: R.RunResult, run_dir: Path) -> tuple[dict[str, Any], list[
         print(RH.says(run.rehearsal))
     print(f"report: {run_dir / 'report.md'}")
     return data, problems
+
+
+def marked(run: R.RunResult) -> int | None:
+    """`READ_RUNS` when a repeat's subject named the benchmark's run folders, each such repeat said; None otherwise."""
+    found = [r for r in run.repeats if r.read_runs()]
+    if not found:
+        return None
+    for repeat in found:
+        first = repeat.read_runs()[0]
+        print(
+            f"repeat {repeat.index} is marked: phase {first['phase']} named the benchmark's run folders, "
+            f"{first['tool']} with {first['key']} {first['value']!r}; this run is never checked in",
+            file=sys.stderr,
+        )
+    return READ_RUNS
 
 
 def said(j: R.AnyJudgement) -> str:
@@ -1797,6 +1825,8 @@ def execute(args, scn, rt, run_dir, run_id, target, own_target, config, flags, e
     summary = data["summary"]
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if failed_subjects:
         print(f"the subject failed in {len(failed_subjects)} of {len(run.repeats)} repeat(s)", file=sys.stderr)
         return 6
@@ -1848,8 +1878,9 @@ class SourceRepeat:
         return [p["name"] for p in self.phases] if self.phases else None
 
 
-# What a run that judges another run's output again keeps of each phase its source's repeat ran.
-PHASE_KEPT = ("name", "session", "status", "capped")
+# What a run that judges another run's output again keeps of each phase its source's repeat ran. A phase's
+# tool calls that named the benchmark's run folders are kept, so the output a marked subject made stays marked.
+PHASE_KEPT = ("name", "session", "status", "capped", "read_runs")
 
 
 def read_record(path: Path) -> dict[str, Any] | None:
@@ -2173,6 +2204,8 @@ def judge_again(
     data, problems = write_record(run, run_dir)
     if problems:
         return 5
+    if (code := marked(run)) is not None:
+        return code
     if args.strict and data["summary"]["skipped"]:
         return 3
     return 0
