@@ -188,7 +188,8 @@ class ApiSettings(StorageSettings, InfraSettings, IntegrationsSettings):
         https address and nowhere else. Each refusal names the setting."""
         if self.dev_sign_in_enabled and self.environment not in DEV_SIGN_IN_ENVIRONMENTS:
             raise ValueError(
-                f"ACME_DEV_SIGN_IN_ENABLED=true is refused when ACME_ENVIRONMENT={self.environment}"
+                "ACME_DEV_SIGN_IN_ENABLED=true is refused when "
+                + f"ACME_ENVIRONMENT={self.environment}"
             )
         if self.environment in CLOUD_ENVIRONMENTS:
             for setting, uris, what in (

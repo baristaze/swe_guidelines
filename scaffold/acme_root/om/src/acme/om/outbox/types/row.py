@@ -1,13 +1,15 @@
-"""One row per handoff: the record that changed, how, its snapshot, and the
-principal and request that produced it, so the event the relay appends
-carries the same provenance the core write did."""
+"""One row per handoff: the record that changed, how, a payload of ids and
+values that are not personal, and the principal and request that produced
+it, so the event the relay appends carries the same provenance the core
+write did. A payload never carries a person's field (an address, a name):
+the stream keeps it, and an erasure cannot rewrite the stream."""
 
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from acme.om.base import Created, FrozenMapping, Identifiable, new_id, utcnow
 from acme.om.opcontext import ProvenanceScope
@@ -19,7 +21,7 @@ class OutboxRow(Identifiable, Created):
     target_id: UUID  # the record that changed
     payload: FrozenMapping = Field(
         default_factory=dict, validate_default=True
-    )  # the record's snapshot
+    )  # ids, and values that are not personal; never a person's field
     actor_id: UUID  # the user whose request produced it
     request_id: UUID  # the request that produced it
     # The trace context of that request, as the W3C header spells it and not
@@ -65,9 +67,3 @@ def versioned_row(ctx: ProvenanceScope, kind: str, target_id: UUID, version: int
     push carries it, so a client that already holds the record at that
     version, the one whose own write it is, reads nothing (ADR 0061)."""
     return outbox_row(ctx, kind, target_id, {"version": version})
-
-
-def snapshot(entity: BaseModel, *, exclude: frozenset[str] = frozenset()) -> Mapping[str, Any]:
-    """The JSON-mode dump of an entity, minus the fields named; the payload of
-    a `<namespace>.<entity>.<action>` row is the entity's snapshot."""
-    return entity.model_dump(mode="json", exclude=set(exclude))

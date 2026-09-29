@@ -14,6 +14,9 @@ from acme.om.events.types.event import Event
 from acme.om.exceptions import TenantMismatch
 from contracts.racing import race
 
+IDENTITY = "0195f1a2-7b3c-7d4e-8f00-00000000d1d1"
+"""The identity a user row names: a payload carries ids, never a person's field."""
+
 CROSS_TENANT_CASES: frozenset[str] = frozenset(
     {"append_events", "purge_tenant", "read_after", "read_floor", "read_head", "read_page"}
 )
@@ -43,7 +46,7 @@ def make_event(
         org_id=org_id,
         kind=kind,
         target_id=new_id(),
-        payload={"display_name": "t"},
+        payload={"identity_id": IDENTITY},
         produced_at=produced_at or utcnow(),
         actor_id=new_id(),
         request_id=new_id(),
@@ -84,7 +87,7 @@ class EventStorageContract:
                 "request_id": first.request_id,
             }
         )
-        assert first.payload == {"display_name": "t"}
+        assert first.payload == {"identity_id": IDENTITY}
         assert await storage.read_after(org_a, 0, 10) == appended
         assert await storage.read_after(org_a, 2, 10) == appended[2:]
         assert await storage.read_after(org_a, 3, 10) == []

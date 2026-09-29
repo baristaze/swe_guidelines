@@ -20,9 +20,10 @@ from acme.om.events.types.event import Event
 from acme.om.opcontext import AppContext, AppType, OpContext, RequestContext
 from acme.om.outbox.impl.relay import DEAD_LETTER_KIND, OutboxOptions, OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
-from acme.om.outbox.types.row import OutboxRow, outbox_row, snapshot, versioned_row
+from acme.om.outbox.types.row import OutboxRow, outbox_row, versioned_row
 from acme.om.root import Managers, build_managers
 from acme.om.storage.impl.memory import StorageMemoryImpl
+from acme.om.tenancy.impl.creates import user_payload
 from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.work.types.work_item import WorkKind, work_row_kind
@@ -61,9 +62,11 @@ async def test_the_row_carries_the_trace_context_its_stage_carries(
     user = a_user()
     tracer = TracerProvider().get_tracer("acme.om.tests")
     with tracer.start_as_current_span("POST /orgs/{org_id}/members") as span:
-        assert outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user)).traceparent is None
+        assert (
+            outbox_row(ctx, "tenancy.user.created", user.id, user_payload(user)).traceparent is None
+        )
         traced = ctx.model_copy(update={"traceparent": current_traceparent()})
-    row = outbox_row(traced, "tenancy.user.created", user.id, snapshot(user))
+    row = outbox_row(traced, "tenancy.user.created", user.id, user_payload(user))
     assert row.request_id == ctx.request_id
     assert row.traceparent is not None and row.traceparent == traced.traceparent
     assert f"{span.get_span_context().trace_id:032x}" in row.traceparent
@@ -183,7 +186,7 @@ async def test_a_write_that_also_starts_work_rides_a_second_row_the_relay_enqueu
     tracer = TracerProvider().get_tracer("acme.om.tests")
     with tracer.start_as_current_span("POST /orgs/{org_id}/members"):
         ctx = ctx.model_copy(update={"traceparent": current_traceparent()})
-    change = outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user))
+    change = outbox_row(ctx, "tenancy.user.created", user.id, user_payload(user))
     asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), user.id, {})
     await storage.get_tenancy_storage().write_user(ctx.org_id, user, (change, asked))
     # One statement, two rows: the entity's change and the work it starts.
@@ -360,7 +363,7 @@ async def test_a_work_row_is_done_once_enqueued_though_its_wake_up_is_dropped(
     managers = build_managers(storage, infra, TenancyOptions(dev_sign_in=True))
     ctx = await sign_in(managers)
     user = a_user()
-    change = outbox_row(ctx, "tenancy.user.created", user.id, snapshot(user))
+    change = outbox_row(ctx, "tenancy.user.created", user.id, user_payload(user))
     asked = outbox_row(ctx, work_row_kind(WorkKind.NOOP), user.id, {})
     await storage.get_tenancy_storage().write_user(ctx.org_id, user, (change, asked))
 

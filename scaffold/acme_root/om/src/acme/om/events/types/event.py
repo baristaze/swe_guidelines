@@ -22,6 +22,6 @@ class Event(Identifiable):
     request_id: UUID  # the request that produced it, from the context
     app: str  # the AppType value of the app the request came from
     # Fixed per kind: a "<namespace>.<entity>.<action>" event carries the
-    # entity's snapshot (the outbox row's payload); an audit kind carries the
-    # facts its producer names.
+    # outbox row's payload, ids and values that are not personal; an audit
+    # kind carries the facts its producer names, never a person's field.
     payload: FrozenMapping = Field(default_factory=dict, validate_default=True)

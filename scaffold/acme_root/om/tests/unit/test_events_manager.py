@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from contracts.event_storage import make_event
+from contracts.event_storage import IDENTITY, make_event
 
 from acme.om.base import new_id, utcnow
 from acme.om.events.impl.manager import EventsManagerImpl, EventsOptions
@@ -65,7 +65,7 @@ async def test_append_sequences_per_tenant_and_reads_back_by_seq(
     second = await manager.append_event(ann, make_event(ann.org_id, "tenancy.user.updated"))
     elsewhere = await manager.append_event(bob, make_event(bob.org_id))
     assert (first.seq, second.seq, elsewhere.seq) == (1, 2, 1)
-    assert first.kind == "tenancy.user.created" and first.payload == {"display_name": "t"}
+    assert first.kind == "tenancy.user.created" and first.payload == {"identity_id": IDENTITY}
     assert await manager.get_events(ann, after_seq=1, limit=10) == [second]
     assert await manager.get_events(bob, after_seq=0, limit=10) == [elsewhere]
 
