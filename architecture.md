@@ -1557,6 +1557,16 @@ socket cannot hide a loss, and a reconnect asks for everything after
 the last contiguous `seq`. A socket takes only subscribe, unsubscribe,
 and ping; commands go over REST.
 
+Replay reaches back as far as the stream is kept. The stream's
+retention is a setting of the worker that trims it, longer than the
+backups and the outbox keep theirs, so a restore never needs a trimmed
+event. The trim deletes the oldest run of events past the retention
+and, in the same transaction, moves the tenant's floor to the last
+`seq` it deleted. The stream is gapless above the floor. A read below
+the floor is `410 stream_truncated`, naming the floor and the head.
+Asking again never succeeds, so the client reads afresh what it shows
+and goes on from the head.
+
 <!-- agents-only
 - A dropped stream frame is logged. The control lane has a small bound
   of its own, and its overflow is logged as such, since it means the
@@ -2270,8 +2280,11 @@ The shapes cover almost every case: `NotFound` (404), `Conflict` (409),
 `PreconditionFailed` (412), `ValidationFailed` (422), `NotAuthenticated`
 (401), `NotAuthorized` (403), and `Unavailable` (503), for what cannot
 be reached right now, each with its name in snake case as its code. A
-namespace's exception inherits a shape. A boundary catches both roots
-and translates them in one place; managers never format HTTP.
+namespace's exception inherits a shape. One that no shape fits sets a
+status and a code of its own under the root, as a read of the event
+stream below its floor is `410 stream_truncated`. A boundary catches
+both roots and translates them in one place; managers never format
+HTTP.
 
 ### Configuration
 

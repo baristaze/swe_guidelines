@@ -442,8 +442,9 @@ ignores the OS's.
 `PlatformException`, which carries `http_status` and a stable `code`.
 Shape exceptions (`NotFound`, `Conflict`, `ValidationFailed`,
 `NotAuthenticated`, `NotAuthorized`, `Unavailable`) cover most cases;
-a namespace family multiply-inherits a shape. Translation to HTTP
-happens once, at the boundary. Managers never format HTTP.
+a namespace family multiply-inherits a shape, and one no shape fits
+sets a status and a code of its own. Translation to HTTP happens once,
+at the boundary. Managers never format HTTP.
 
 **Source.** Cross-Cutting Conventions, Exceptions.
 

@@ -9,15 +9,16 @@ a living org's stream grows for ever, and so does the operator's count
 of the last day's events.
 
 A plain trim is not safe. The guideline makes the stream gapless: "a
-client treats a gap as a loss and replays" ("Realtime at the Edge").
-Take a client whose cursor sits below a trimmed stretch. Every page it
-asks for starts above the gap, so every push and every pong replays the
-same page, and the cursor never moves.
+client reads a gap as a loss" ("Realtime at the Edge"). Take a client
+whose cursor sits below a trimmed stretch. Every page it asks for
+starts above the gap, so every push and every pong replays the same
+page, and the cursor never moves.
 
-The guideline gives the shape of the answer. "The stream is a stream
-of hints", and "Replay from storage is the durability mechanism", so a
-client that cannot replay reads the records instead. It names no
-retention for the stream.
+The guideline gives the shape of the answer ("Realtime at the Edge").
+The stream is kept for a retention, the trim moves a floor, and a read
+below the floor is `410 stream_truncated`, so a client that cannot
+replay reads the records instead. It leaves the numbers, the batch, and
+the client's resync to the system.
 
 ## Decision
 
