@@ -32,13 +32,12 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
   keeps `<name-kebab>-production-api`, the API's target group, within
   the 32 characters AWS allows, so the name survives the first cloud
   deploy; `new.py` refuses a longer name and says the bound. With no
-  name given, take it from the product's own name in the spec or the
-  description, in at most two words, leaving out a word any product
-  could carry, such as platform, app, or system (`Free Journalism
-  Platform` gives `free_journalism`). When that name passes the bound,
-  take a shorter one the product gives: its short name, one of its two
-  words, or an abbreviation of them. Ask only when the product names
-  nothing.
+  name given, take the product's own short name when the spec or the
+  description gives one. Else take the word of the product's name that
+  says what the product is about, leaving out a word any product could
+  carry, such as independent, platform, app, or system (`Independent
+  Journalism Platform` gives `journalism`); two words only when one
+  cannot say it. Ask only when the product names nothing.
 - The folder is `<name>` in the current directory. It must not exist,
   or must be empty: an empty folder of that name is no collision, and
   the copy goes into it. Refuse when the current directory is inside a
@@ -93,16 +92,16 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
    the skills it follows (`make infra-up`, `make migrate`,
    `make migrate-check`, `make test-integration`) are skipped, and the
    output names each one skipped; every other gate runs.
-4. Record the product's first decisions, one ADR each, in the shape of
-   the copy's own ADRs:
-   - the product on the core: what an org, a member, and an operator
-     are in the product, which of the core's pieces it uses (files,
-     orchestrations, the work queue), and its first namespaces;
-   - the outside providers: each one the product names beyond the
-     identity provider the core has, the integration under
-     `integrations/` that will reach it, and the twin that stands in
-     wherever no account is configured. The integrations come with the
-     namespace that needs them.
+4. Record the product's first decisions as ADRs, in the shape of the
+   copy's own:
+   - one for the product on the core: what an org, a member, and an
+     operator are in the product, which of the core's pieces it uses
+     (files, orchestrations, the work queue), and its first namespaces;
+   - one per outside provider the product names beyond the identity
+     provider the core has: the integration under `integrations/` that
+     will reach it, and the twin that stands in wherever no account is
+     configured. The integrations come with the namespace that needs
+     them.
 
    Then write the opening of `README.md` and the summary of `llms.txt`.
    With `--codeowners`, write the owners into `.github/CODEOWNERS`: on
