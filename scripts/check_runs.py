@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
-"""Check that the index of the benchmark runs names every run folder once, in its scenario's section.
+"""Check that every checked-in benchmark run sits in its scenario's folder and is named by one row, and what it holds.
 
-`benchmark/runs/README.md` is written by hand: the pull request that adds
-a run folder adds its row. The index has one section per scenario, a
-`## <scenario>` heading over that scenario's table. This holds the index
-and the run folders together:
-- every run folder, a folder directly under `benchmark/runs/`, has
-  exactly one row in the index;
-- every row links to a run folder that is there, with its `report.md`;
-- every row sits in the section of its run's scenario. The scenario is
-  the one the run's `results.json` records, or its `run.json` when that
-  records none;
-- every scenario a run folder ran has a section, and no section heading
-  is there twice;
-- within a section, the rows run from the newest run at the top to the
-  oldest at the bottom, by the `started_at` each run's `results.json`
-  records. The folder names carry the local time of the machine that
-  ran them, so they do not order runs from two machines. A row of
-  another scenario's run is named as out of place, and it is left out
-  of the order of the section it sits in;
+`benchmark/runs/` holds a folder per scenario, and each scenario's folder
+holds its run folders and its `README.md`, whose table has one row per
+run. A run and its resumes are one run: run folders chained by
+`source.run_id` (`benchmark/harness/chain.py`), and one row names the
+newest of them. `benchmark/runs/README.md` is the index: one line per
+scenario, linking its README. Every README is written by hand: the pull
+request that adds a run folder adds its row, or moves the row of the run
+it resumes onto it. This holds them together:
+- every run folder sits in the folder of the scenario it ran. A folder
+  directly under `benchmark/runs/` that holds a `run.json`, a
+  `results.json`, or a `report.md` is a run folder out of place. The
+  scenario is the one the run's `results.json` records, or its
+  `run.json` when that records none;
+- every scenario's folder has a `README.md`, and the index links each
+  scenario's folder once, as `<scenario>/README.md`, and no folder that
+  is not there;
+- every row names a run folder of its scenario's folder that holds its
+  `report.md`, and that folder's chain is whole: each folder's source is
+  beside it;
+- every run folder is named by exactly one row, as that row's run or as
+  a part of its chain. So a folder of a chain with a row of its own
+  fails, and so does a folder no row and no chain names;
+- every row's Cost (USD) is its chain's total: what the chain's folders
+  spent, each its `spend.total_usd`, to the cent. It reads "—" when no
+  folder of the chain recorded a spend, and "at least" when one did not
+  or a model had no price;
+- within a README, the rows run from the newest run at the top to the
+  oldest at the bottom, by the `started_at` the first folder of each
+  chain records. The folder names carry the local time of the machine
+  that ran them, so they do not order runs from two machines;
 - every run that records its versions ran on a clean checkout. The
   skills are staged from the working tree, so a run on uncommitted
   changes names a commit that does not hold what ran. A run recorded
@@ -43,104 +55,125 @@ and the run folders together:
   hold no key. So does a `.git` folder in a run folder: its objects are
   compressed, and the output's zip is the record of the output.
 
-A row is a table line of the index, and its run is the folder its
-`](<folder>/report.md)` link names. Its section is the nearest `## `
-heading above it, and a closing sequence of `#` is not part of the
-heading's name. A line of fenced code is neither a row nor a heading. A
-run that records no scenario is held to one row but to no section, and
-a run that records no start is left out of the order. With no run
-folder and no index there is nothing to check.
+A row is a body line of a table whose header's first cell is `Run`, and
+its run is the folder its first cell's `](<folder>/report.md)` link
+names. A stage table, whose first column is the stage, holds no row. A
+line of fenced code is neither a row nor a link of the index. A run
+that records no start is left out of the order. With no scenario folder
+and no index there is nothing to check.
 
-Exit status is non-zero on any mismatch. The scenarios are read through
-the benchmark harness, which imports the standard library only; a YAML
-scenario needs pyyaml, which `make runs` brings.
+Exit status is non-zero on any mismatch. The scenarios and the chains
+are read through the benchmark harness, which imports the standard
+library only; a YAML scenario needs pyyaml, which `make runs` brings.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
-from _common import CLOSING, HEADING, ROOT, parser, unfenced
+from _common import ROOT, parser, unfenced
 
 # The harness reads a scenario as a run reads it, so the runtimes checked
-# here are the ones run.py admits.
+# here are the ones run.py admits, and a chain as run.py records it.
 if str(ROOT / "benchmark") not in sys.path:
     sys.path.insert(0, str(ROOT / "benchmark"))
+from harness import chain as CH
 from harness import redact as X
 from harness import scenario as S
 
 RUNS = ROOT / "benchmark" / "runs"
 SCENARIOS = ROOT / "benchmark" / "scenarios"
 INDEX = RUNS / "README.md"
+README = "README.md"
 ROW_LINK = re.compile(r"\]\(([^()/\s]+)/report\.md\)")
+SCENARIO_LINK = re.compile(r"\]\(([^()/\s]+)/README\.md\)")
+DELIMITER = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
+# What only a run folder holds: `run.py` writes `run.json` first, then `results.json` and `report.md`.
+RUN_FILES = ("run.json", "results.json", "report.md")
+COST = "Cost (USD)"
 
 
-def section_name(line: str) -> str | None:
-    """The name a `## ` heading line gives its section, less a closing `#` sequence; None for any other line."""
-    m = HEADING.match(line)
-    if not m or len(m.group(1)) != 2:
-        return None
-    return CLOSING.sub("", m.group(2)) or None
+def shown(path: Path) -> str:
+    """A path as a message names it: from the repository's root."""
+    return path.relative_to(ROOT).as_posix()
 
 
-def sections(text: str) -> list[tuple[int, str]]:
-    """The line number and the name of every section heading outside fenced code, in order."""
-    lines = enumerate(unfenced(text).splitlines(), start=1)
-    return [(ln, name) for ln, line in lines if (name := section_name(line))]
+def cells(line: str) -> list[str]:
+    """The cells of a table line, stripped, without the outer pipes."""
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    return [c.strip() for c in text.split("|")]
 
 
-def rows(text: str) -> list[tuple[int, str, str]]:
-    """The line number, the run folder, and the section of every row outside fenced code, in order.
+@dataclass
+class Row:
+    """A row of a scenario's table: its line, the run folder it names, and its Cost (USD) cell, None when its table has none."""
 
-    The section is empty above the first heading.
-    """
-    out = []
-    section = ""
-    for ln, line in enumerate(unfenced(text).splitlines(), start=1):
-        name = section_name(line)
-        if name:
-            section = name
-        elif line.lstrip().startswith("|"):
-            out += [(ln, m.group(1), section) for m in ROW_LINK.finditer(line)]
+    line: int
+    run: str
+    cost: str | None
+
+
+def rows(text: str) -> list[Row]:
+    """Every row of the tables of runs outside fenced code, in order."""
+    lines = unfenced(text).splitlines()
+    out: list[Row] = []
+    header: list[str] | None = None
+    for at, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            header = None
+            continue
+        if DELIMITER.match(line):
+            continue
+        if at + 1 < len(lines) and DELIMITER.match(lines[at + 1]):
+            header = cells(line)
+            continue
+        if header is None or header[0] != "Run":
+            continue
+        row = cells(line)
+        found = ROW_LINK.search(row[0])
+        if not found:
+            continue
+        cost = row[header.index(COST)] if COST in header and header.index(COST) < len(row) else None
+        out.append(Row(at + 1, found.group(1), cost))
     return out
 
 
-def record(name: str, file: str = "results.json") -> dict:
+def record(folder: Path, file: str = "results.json") -> dict:
     """A JSON file of a run folder, `results.json` by default, or an empty record when it has none that reads."""
-    path = RUNS / name / file
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return CH.record(folder, file)
 
 
-def started_at(name: str) -> str:
+def started_at(folder: Path) -> str:
     """When a run started, as its `results.json` records it in UTC; empty when it records nothing."""
-    return str(record(name).get("started_at") or "")
+    return str(record(folder).get("started_at") or "")
 
 
-def scenario(name: str) -> str:
+def scenario(folder: Path) -> str:
     """The scenario a run ran, from its `results.json`, else its `run.json`; empty when neither records one."""
-    recorded = record(name).get("scenario")
+    recorded = record(folder).get("scenario")
     if isinstance(recorded, str) and recorded:
         return recorded
-    resolved = record(name, "run.json").get("scenario")
+    resolved = record(folder, "run.json").get("scenario")
     if isinstance(resolved, dict):
         resolved = resolved.get("name")
     return resolved if isinstance(resolved, str) else ""
 
 
-def runtime(name: str) -> str:
+def runtime(folder: Path) -> str:
     """The runtime a run ran on, from its `results.json`, else its `run.json`; empty when neither records one."""
-    recorded = record(name).get("runtime")
+    recorded = record(folder).get("runtime")
     if isinstance(recorded, str) and recorded:
         return recorded
-    resolved = record(name, "run.json").get("runtime")
+    resolved = record(folder, "run.json").get("runtime")
     if isinstance(resolved, dict):
         resolved = resolved.get("name")
     return resolved if isinstance(resolved, str) else ""
@@ -180,19 +213,19 @@ def declared() -> dict[str, list[str] | str]:
     return out
 
 
-def rehearsed(name: str) -> bool:
+def rehearsed(folder: Path) -> bool:
     """Whether a run folder is a rehearsal: its `results.json` or its `run.json` is marked `rehearsal`."""
-    return bool(record(name).get("rehearsal") or record(name, "run.json").get("rehearsal"))
+    return bool(record(folder).get("rehearsal") or record(folder, "run.json").get("rehearsal"))
 
 
-def unlisted(name: str, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
+def unlisted(folder: Path, scenario_name: str, scenarios: dict[str, list[str] | str]) -> str | None:
     """Why a run's runtime is not one its scenario lists, or None when it is or the run records no runtime or no scenario."""
-    ran_on = runtime(name)
+    ran_on = runtime(folder)
     if not ran_on or not scenario_name:
         return None
     listed = scenarios.get(scenario_name)
     if listed is None:
-        return f"no scenario named {scenario_name} in {SCENARIOS.relative_to(ROOT)} says where it runs"
+        return f"no scenario named {scenario_name} in {shown(SCENARIOS)} says where it runs"
     if isinstance(listed, str):
         return listed
     if ran_on in listed:
@@ -200,9 +233,9 @@ def unlisted(name: str, scenario_name: str, scenarios: dict[str, list[str] | str
     return f"ran on {ran_on}, and {scenario_name} runs on {', '.join(listed)}; a checked-in run ran where its scenario runs"
 
 
-def unclean(name: str) -> str | None:
+def unclean(folder: Path) -> str | None:
     """Why a run's checkout was not clean, or None when it was or the run records no versions."""
-    versions = record(name).get("versions")
+    versions = record(folder).get("versions")
     if not isinstance(versions, dict) or not versions:
         return None
     checkout = versions.get("checkout")
@@ -216,13 +249,13 @@ def unclean(name: str) -> str | None:
     return f"ran on changes no commit holds ({paths})"
 
 
-def packed_keys(name: str) -> list[str]:
+def packed_keys(folder: Path) -> list[str]:
     """Why a run folder's compressed files fail: a key, a part the scan cannot read, a `.zip` that does not open, a `.git`."""
     out = []
-    for path in sorted((RUNS / name).rglob("*")):
-        shown = path.relative_to(ROOT)
+    for path in sorted(folder.rglob("*")):
+        where = shown(path)
         if path.name == ".git":
-            out.append(f"{shown}: a run folder holds no .git; its objects are compressed, and the output's zip is the record")
+            out.append(f"{where}: a run folder holds no .git; its objects are compressed, and the output's zip is the record")
             continue
         if path.is_symlink() or not path.is_file():
             continue
@@ -230,86 +263,128 @@ def packed_keys(name: str) -> list[str]:
             data = path.read_bytes()
             kind = X.form(data)
             if path.suffix == ".zip" and kind != "zip":
-                out.append(f"{shown}: does not open as a zip, so no one can say it holds no key")
+                out.append(f"{where}: does not open as a zip, so no one can say it holds no key")
                 continue
             places = X.keys_in(data) if kind else []
         except (*X.READ_ERRORS, MemoryError) as exc:
-            out.append(f"{shown}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
+            out.append(f"{where}: could not be read, so no one can say it holds no key ({type(exc).__name__}: {exc})")
             continue
         for place in places:
             if "(not scanned:" in place:
-                out.append(f"{shown}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
+                out.append(f"{where}: {place}; no one can say it holds no key, and `run.py redact` replaces it")
             else:
-                where = f"{shown}: {place}" if place else str(shown)
-                out.append(f"{where} holds a string shaped like a key; run `run.py redact`")
+                at = f"{where}: {place}" if place else where
+                out.append(f"{at} holds a string shaped like a key; run `run.py redact`")
     return out
+
+
+def is_run(folder: Path) -> bool:
+    """Whether a folder is a run folder: it holds what only `run.py` writes into one."""
+    return any((folder / name).is_file() for name in RUN_FILES)
+
+
+def check_index(folders: list[Path], errors: list[str]) -> None:
+    """The index links each scenario's folder once, as `<scenario>/README.md`, and links no folder that is not there."""
+    index = shown(INDEX)
+    if not INDEX.is_file():
+        if folders:
+            errors.append(f"{index}: missing, so no scenario's folder is named: {', '.join(f.name for f in folders)}")
+        return
+    linked: dict[str, list[int]] = defaultdict(list)
+    for ln, line in enumerate(unfenced(INDEX.read_text(encoding="utf-8")).splitlines(), start=1):
+        for found in SCENARIO_LINK.finditer(line):
+            linked[found.group(1)].append(ln)
+    for folder in folders:
+        lines = linked.get(folder.name, [])
+        if not lines:
+            errors.append(f"{index}: no line names the scenario folder {folder.name}; add one that links {folder.name}/README.md")
+        elif len(lines) > 1:
+            errors.append(
+                f"{index}: links {folder.name}/README.md on lines {', '.join(map(str, lines))}; "
+                "it names each scenario folder once"
+            )
+    names = {f.name for f in folders}
+    for name, lines in sorted(linked.items()):
+        if name not in names:
+            errors.append(f"{index}:{lines[0]}: links {name}/README.md, and benchmark/runs holds no such scenario folder")
+
+
+def check_scenario(folder: Path, errors: list[str]) -> list[Path]:
+    """Hold one scenario's folder: its README, its rows, the chain each names, and each row's cost; return its run folders."""
+    runs = sorted(p for p in folder.iterdir() if p.is_dir())
+    readme = folder / README
+    where = shown(readme)
+    for run in runs:
+        ran = scenario(run)
+        if ran and ran != folder.name:
+            errors.append(f"{shown(run)}: is a run of {ran}, and sits in {folder.name}; it goes in benchmark/runs/{ran}/")
+    if not readme.is_file():
+        held = f", so no run folder of it has a row: {', '.join(p.name for p in runs)}" if runs else ""
+        errors.append(f"{where}: missing{held}; a scenario's folder has a README that says what it measures")
+        return runs
+    named: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    above: tuple[str, str] | None = None
+    for row in rows(readme.read_text(encoding="utf-8")):
+        path = folder / row.run
+        if not (path / "report.md").is_file():
+            errors.append(f"{where}:{row.line}: links {row.run}/report.md, and {folder.name} holds no such run")
+            continue
+        chain, broken = CH.lineage(path)
+        if broken:
+            errors.append(f"{where}:{row.line}: the chain of {row.run} breaks: {broken}")
+        for part in chain:
+            named[part.name].append((row.line, "its run" if part == path else f"a part of the chain of {row.run}"))
+        found = CH.chain([(f.name, record(f)) for f in chain], broken)
+        expected = CH.cost_text(found)
+        if row.cost is None:
+            errors.append(f"{where}:{row.line}: the table of {row.run} has no {COST} column; a row names its run's cost")
+        elif row.cost.replace("**", "").strip() != expected:
+            parts = ", ".join(f"{f['run_id']} {'—' if f['total_usd'] is None else f['total_usd']}" for f in found["folders"])
+            errors.append(
+                f"{where}:{row.line}: {row.run} costs {row.cost}, and its chain spent {expected} ({parts}); "
+                "a row's cost is its chain's total"
+            )
+        started = started_at(chain[0])
+        if started and above is not None and started > above[1]:
+            errors.append(
+                f"{where}:{row.line}: {row.run} started {started}, after {above[0]} above it; the newest run comes first"
+            )
+        if started:
+            above = (row.run, started)
+    for run in runs:
+        roles = named.get(run.name, [])
+        if not roles:
+            errors.append(f"{where}: no row names the run folder {run.name}, as its run or as a part of its chain")
+        elif len(roles) > 1:
+            said = "; ".join(f"line {ln}, as {role}" for ln, role in roles)
+            errors.append(f"{where}: {run.name} is named by {len(roles)} rows ({said}); a run and its resumes are one row")
+    return runs
 
 
 def check(errors: list[str]) -> int:
     """Add every mismatch to `errors` and return the number of run folders."""
-    folders = sorted(p.name for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
-    index = INDEX.relative_to(ROOT)
-    if not INDEX.is_file():
-        if folders:
-            errors.append(f"{index}: missing, so no run folder has a row: {', '.join(folders)}")
-        return len(folders)
-    text = INDEX.read_text(encoding="utf-8")
-    found = rows(text)
-    counts = Counter(name for _, name, _ in found)
-    ran = {name: scenario(name) for name in folders}
-    headed: set[str] = set()
-    for ln, heading in sections(text):
-        if heading in headed:
-            errors.append(f"{index}:{ln}: a second section for {heading}; a scenario has one")
-        headed.add(heading)
-    unheaded: dict[str, list[str]] = defaultdict(list)
-    scenarios = declared() if folders else {}
-    for name in folders:
-        if counts[name] == 0:
-            errors.append(f"{index}: no row for the run folder {name}")
-        if rehearsed(name):
-            errors.append(
-                f"{RUNS.relative_to(ROOT)}/{name}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in"
-            )
-        reason = unclean(name)
+    entries = sorted(p for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
+    folders: list[Path] = []
+    for entry in entries:
+        if is_run(entry):
+            ran = scenario(entry) or "<scenario>"
+            errors.append(f"{shown(entry)}: a run folder sits in its scenario's folder; move it to benchmark/runs/{ran}/")
+        else:
+            folders.append(entry)
+    check_index(folders, errors)
+    runs = [run for folder in folders for run in check_scenario(folder, errors)]
+    scenarios = declared() if runs else {}
+    for run in runs:
+        if rehearsed(run):
+            errors.append(f"{shown(run)}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in")
+        reason = unclean(run)
         if reason:
-            errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}; a checked-in run names a commit that holds what ran")
-        reason = unlisted(name, ran[name], scenarios)
+            errors.append(f"{shown(run)}: {reason}; a checked-in run names a commit that holds what ran")
+        reason = unlisted(run, scenario(run), scenarios)
         if reason:
-            errors.append(f"{RUNS.relative_to(ROOT)}/{name}: {reason}")
-        errors.extend(packed_keys(name))
-        if ran[name] and ran[name] not in headed:
-            unheaded[ran[name]].append(name)
-    for missing in sorted(unheaded):
-        errors.append(
-            f"{index}: no section for the scenario {missing}, which {', '.join(unheaded[missing])} ran; "
-            f"add `## {missing}` with one line on what it measures, and put its rows there"
-        )
-    reported: set[str] = set()
-    above: dict[str, tuple[str, str]] = {}
-    for ln, name, section in found:
-        if not (RUNS / name / "report.md").is_file():
-            errors.append(f"{index}:{ln}: links {name}/report.md, and there is no such run")
-        elif counts[name] > 1 and name not in reported:
-            reported.add(name)
-            errors.append(f"{index}:{ln}: {name} has {counts[name]} rows; a run has one")
-        scenario_of = ran.get(name, "")
-        if scenario_of and scenario_of != section:
-            if scenario_of in headed:
-                where = f"under `## {section}`" if section else "above every section"
-                errors.append(
-                    f"{index}:{ln}: {name} is a run of {scenario_of}, and its row sits {where}; it goes under `## {scenario_of}`"
-                )
-            continue
-        started = started_at(name)
-        if started and section in above and started > above[section][1]:
-            errors.append(
-                f"{index}:{ln}: {name} started {started}, after {above[section][0]} above it; "
-                "the newest run of a section comes first"
-            )
-        if started:
-            above[section] = (name, started)
-    return len(folders)
+            errors.append(f"{shown(run)}: {reason}")
+        errors.extend(packed_keys(run))
+    return len(runs)
 
 
 def main(argv: Sequence[str] = ()) -> int:
@@ -321,8 +396,8 @@ def main(argv: Sequence[str] = ()) -> int:
         print(f"\n{len(errors)} run index mismatch(es)")
         return 1
     print(
-        f"runs ok: {count} run folder(s), one row each, in its scenario's section, on a runtime it lists, "
-        "no rehearsal, no key in a compressed file"
+        f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
+        "total, on a runtime its scenario lists, no rehearsal, no key in a compressed file"
     )
     return 0
 

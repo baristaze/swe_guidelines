@@ -1,31 +1,39 @@
-"""scripts/check_runs.py: the index of the benchmark runs names every run folder once, in its scenario's section."""
+"""scripts/check_runs.py: each run folder sits in its scenario's folder, and one row names it, as its run or in its chain."""
 
 import io
 import json
+import shutil
 import zipfile
 
 import pytest
 
-HEAD = "| Run | Scenario |\n|---|---|\n"
+HEAD = "| Run | Started (UTC) | Cost (USD) |\n|---|---|---|\n"
+ONE_A = "20260101-000000-alpha-aa"
+TWO_A = "20260102-000000-alpha-bb"
+ONE_B = "20260101-000000-beta-cc"
 
 
-def row(name):
-    return f"| [{name}]({name}/report.md) | one |\n"
+def row(name, cost="—"):
+    return f"| [{name}]({name}/report.md) | one | {cost} |\n"
 
 
-def section(scenario, *names):
-    return f"\n## {scenario}\n\nIt measures {scenario}.\n\n" + HEAD + "".join(row(name) for name in names)
+def page(repo, scenario, *rows, head=HEAD, above=""):
+    """A scenario's README: a paragraph, then its table of runs with these rows."""
+    text = f"# {scenario}\n\nIt measures {scenario}.\n{above}\n" + head + "".join(rows)
+    repo.write(f"benchmark/runs/{scenario}/README.md", text)
 
 
-@pytest.fixture
-def runs(repo):
-    return repo.script("check_runs")
+def index(repo, *scenarios):
+    lines = "".join(f"- [{s}]({s}/README.md): what {s} measures.\n" for s in scenarios)
+    repo.write("benchmark/runs/README.md", "# Runs\n\n" + lines)
 
 
-def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario=None, runtime=None):
-    repo.write(f"benchmark/runs/{name}/report.md", "# Benchmark run\n")
-    results = {"started_at": started} | ({"scenario": scenario} if scenario else {}) | ({"runtime": runtime} if runtime else {})
-    repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
+def a_run(repo, name, started="2026-01-01T00:00:00Z", scenario="alpha", runtime=None, folder=None, **recorded):
+    """A run folder in its scenario's folder, or in `folder`: its report, and its results.json with what it records."""
+    where = f"benchmark/runs/{folder or scenario}/{name}"
+    repo.write(f"{where}/report.md", "# Benchmark run\n")
+    results = {"started_at": started, "scenario": scenario} | ({"runtime": runtime} if runtime else {}) | recorded
+    repo.write(f"{where}/results.json", json.dumps(results) + "\n")
 
 
 def a_scenario(repo, name, runtimes, file=None):
@@ -33,313 +41,395 @@ def a_scenario(repo, name, runtimes, file=None):
     repo.write(f"benchmark/scenarios/{file or name}.json", json.dumps(scenario) + "\n")
 
 
+@pytest.fixture
+def runs(repo):
+    return repo.script("check_runs")
+
+
 def test_no_runs_and_no_index_pass(runs, capsys):
     assert runs.main() == 0
     assert "runs ok: 0 run folder(s)" in capsys.readouterr().out
 
 
-def test_every_run_with_one_row_passes(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
-    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
-    repo.write("benchmark/runs/README.md", "# Runs\n\n" + HEAD + row("20260102-000000-two-bb") + row("20260101-000000-one-aa"))
+def test_every_run_in_its_scenario_s_folder_with_one_row_passes(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z")
+    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
+    page(repo, "alpha", row(TWO_A), row(ONE_A))
+    page(repo, "beta", row(ONE_B))
+    index(repo, "alpha", "beta")
     assert runs.main() == 0
-    assert "runs ok: 2 run folder(s), one row each" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert (
+        "runs ok: 3 run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's total" in out
+    )
 
 
 def test_a_run_without_a_row_fails(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa")
-    a_run(repo, "20260102-000000-two-bb")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa"))
+    a_run(repo, ONE_A)
+    a_run(repo, TWO_A)
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
-    assert "benchmark/runs/README.md: no row for the run folder 20260102-000000-two-bb" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/alpha/README.md: no row names the run folder {TWO_A}, as its run or as a part of its chain" in out
 
 
 def test_a_row_without_its_run_fails(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260103-000000-gone-cc"))
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A), row("20260103-000000-alpha-gone"))
+    index(repo, "alpha")
     assert runs.main() == 1
-    assert "README.md:4: links 20260103-000000-gone-cc/report.md, and there is no such run" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "alpha/README.md:8: links 20260103-000000-alpha-gone/report.md, and alpha holds no such run" in out
 
 
 def test_a_run_with_two_rows_fails(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260101-000000-one-aa"))
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A), row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
-    assert "20260101-000000-one-aa has 2 rows; a run has one" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"{ONE_A} is named by 2 rows (line 7, as its run; line 8, as its run); a run and its resumes are one row" in out
 
 
-def test_runs_without_an_index_fail(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa")
+def test_a_run_folder_directly_under_the_runs_folder_fails(repo, runs, capsys):
+    repo.write(f"benchmark/runs/{ONE_A}/report.md", "# Benchmark run\n")
+    repo.write(f"benchmark/runs/{ONE_A}/results.json", json.dumps({"scenario": "alpha"}) + "\n")
+    repo.write("benchmark/runs/README.md", "# Runs\n")
     assert runs.main() == 1
-    assert "benchmark/runs/README.md: missing, so no run folder has a row: 20260101-000000-one-aa" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/{ONE_A}: a run folder sits in its scenario's folder; move it to benchmark/runs/alpha/" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_run_in_another_scenario_s_folder_fails(repo, runs, capsys):
+    a_run(repo, ONE_B, scenario="beta", folder="alpha")
+    page(repo, "alpha", row(ONE_B))
+    index(repo, "alpha")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/alpha/{ONE_B}: is a run of beta, and sits in alpha; it goes in benchmark/runs/beta/" in out
+    assert "1 run index mismatch(es)" in out
+
+
+def test_a_run_without_results_is_held_to_the_scenario_its_run_json_names(repo, runs, capsys):
+    repo.write(f"benchmark/runs/alpha/{ONE_A}/report.md", "# Benchmark run\n")
+    repo.write(f"benchmark/runs/alpha/{ONE_A}/run.json", json.dumps({"scenario": {"name": "beta"}}) + "\n")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
+    assert runs.main() == 1
+    assert f"alpha/{ONE_A}: is a run of beta, and sits in alpha" in capsys.readouterr().out
+
+
+def test_a_scenario_folder_without_a_readme_fails(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    index(repo, "alpha")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/alpha/README.md: missing, so no run folder of it has a row: {ONE_A}" in out
+
+
+def test_scenario_folders_without_an_index_fail(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A))
+    assert runs.main() == 1
+    assert "benchmark/runs/README.md: missing, so no scenario's folder is named: alpha" in capsys.readouterr().out
+
+
+def test_the_index_names_each_scenario_folder_once_and_no_other(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    a_run(repo, ONE_B, scenario="beta")
+    page(repo, "alpha", row(ONE_A))
+    page(repo, "beta", row(ONE_B))
+    index(repo, "alpha", "alpha", "gamma")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert "benchmark/runs/README.md: links alpha/README.md on lines 3, 4; it names each scenario folder once" in out
+    assert "benchmark/runs/README.md: no line names the scenario folder beta; add one that links beta/README.md" in out
+    assert "benchmark/runs/README.md:5: links gamma/README.md, and benchmark/runs holds no such scenario folder" in out
+    assert "3 run index mismatch(es)" in out
 
 
 def test_a_link_outside_a_table_is_not_a_row(repo, runs):
-    a_run(repo, "20260101-000000-one-aa")
-    repo.write(
-        "benchmark/runs/README.md",
-        "See [the first run](20260101-000000-one-aa/report.md).\n\n" + HEAD + row("20260101-000000-one-aa"),
-    )
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A), above=f"\nSee [the first run]({ONE_A}/report.md).\n")
+    index(repo, "alpha")
     assert runs.main() == 0
 
 
-def test_an_older_run_above_a_newer_one_fails(repo, runs, capsys):
-    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
-    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260102-000000-two-bb"))
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert "README.md:4: 20260102-000000-two-bb started 2026-01-02T08:00:00Z, after 20260101-000000-one-aa above it" in out
-
-
-def test_runs_that_started_together_keep_either_order(repo, runs):
-    a_run(repo, "20260101-000000-one-aa", "2026-01-01T08:00:00Z")
-    a_run(repo, "20260101-000000-two-bb", "2026-01-01T08:00:00Z")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa") + row("20260101-000000-two-bb"))
+def test_a_stage_table_holds_no_row(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    a_run(repo, TWO_A, "2026-01-02T00:00:00Z")
+    stages = f"\n### alpha-bb\n\n| Stage | Folder | Cost (USD) |\n|---|---|---|\n| mvp | [{ONE_A}]({ONE_A}/report.md) | $1.00 |\n"
+    page(repo, "alpha", row(TWO_A), row(ONE_A) + stages)
+    index(repo, "alpha")
     assert runs.main() == 0
-
-
-def test_a_run_that_records_less_is_listed_and_left_out_of_the_order(repo, runs):
-    a_run(repo, "20260102-000000-two-bb", "2026-01-02T08:00:00Z")
-    repo.write("benchmark/runs/20260101-000000-old-aa/report.md", "# Benchmark run\n")
-    repo.write("benchmark/runs/20260103-000000-bare-cc/report.md", "# Benchmark run\n")
-    repo.write("benchmark/runs/20260103-000000-bare-cc/results.json", "{}\n")
-    repo.write(
-        "benchmark/runs/README.md",
-        HEAD + row("20260101-000000-old-aa") + row("20260102-000000-two-bb") + row("20260103-000000-bare-cc"),
-    )
-    assert runs.main() == 0
-
-
-def a_versioned_run(repo, name, dirty, paths=()):
-    a_run(repo, name)
-    checkout = {"commit": "c" * 40, "plugin_version": "1.0.0", "dirty": dirty, "dirty_paths": list(paths), "dirty_sha256": None}
-    results = {"started_at": "2026-01-01T00:00:00Z", "versions": {"checkout": checkout}}
-    repo.write(f"benchmark/runs/{name}/results.json", json.dumps(results) + "\n")
-    repo.write("benchmark/runs/README.md", HEAD + row(name))
-
-
-def test_a_run_on_a_clean_checkout_passes(repo, runs):
-    a_versioned_run(repo, "20260101-000000-one-aa", False)
-    assert runs.main() == 0
-
-
-def test_a_run_on_changes_no_commit_holds_fails(repo, runs, capsys):
-    a_versioned_run(repo, "20260101-000000-one-aa", True, ["skills/one/SKILL.md"])
+    page(repo, "alpha", row(TWO_A) + stages)
     assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert "benchmark/runs/20260101-000000-one-aa: ran on changes no commit holds (skills/one/SKILL.md)" in out
-
-
-def test_a_run_on_no_git_checkout_fails(repo, runs, capsys):
-    a_versioned_run(repo, "20260101-000000-one-aa", None)
-    assert runs.main() == 1
-    assert "ran on no git checkout" in capsys.readouterr().out
-
-
-def test_a_run_recorded_before_versions_has_none_to_check(repo, runs):
-    a_run(repo, "20260101-000000-one-aa")
-    repo.write("benchmark/runs/README.md", HEAD + row("20260101-000000-one-aa"))
-    assert runs.main() == 0
-
-
-@pytest.mark.parametrize(("file", "marker"), [("results.json", {"status": "completed"}), ("run.json", True)])
-def test_a_rehearsal_is_never_checked_in(repo, runs, capsys, file, marker):
-    name = "20260101-000000-one-aa"
-    a_versioned_run(repo, name, False)
-    path = repo.root / "benchmark" / "runs" / name / file
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    repo.write(f"benchmark/runs/{name}/{file}", json.dumps({**data, "rehearsal": marker}) + "\n")
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert f"benchmark/runs/{name}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in" in out
-
-
-ONE_A = "20260101-000000-alpha-aa"
-TWO_A = "20260102-000000-alpha-bb"
-ONE_B = "20260101-000000-beta-cc"
-TWO_B = "20260102-000000-beta-dd"
-
-
-def test_every_row_in_its_scenarios_section_passes(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A) + section("beta", ONE_B))
-    assert runs.main() == 0
-    assert "runs ok: 2 run folder(s), one row each, in its scenario's section" in capsys.readouterr().out
-
-
-def test_the_newest_run_comes_first_within_a_section_not_across_the_file(repo, runs):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
-    a_run(repo, TWO_B, "2026-01-02T09:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", TWO_A, ONE_A) + section("beta", TWO_B))
-    assert runs.main() == 0
-
-
-def test_an_older_run_above_a_newer_one_in_a_section_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
-    a_run(repo, TWO_B, "2026-01-02T09:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, TWO_A) + section("beta", TWO_B))
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert f"README.md:10: {TWO_A} started 2026-01-02T08:00:00Z, after {ONE_A} above it" in out
-    assert "the newest run of a section comes first" in out
-    assert "1 run index mismatch(es)" in out
-
-
-def test_a_row_under_another_scenarios_section_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha") + section("beta", ONE_A, ONE_B))
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert f"README.md:16: {ONE_A} is a run of alpha, and its row sits under `## beta`; it goes under `## alpha`" in out
-    assert "1 run index mismatch(es)" in out
-
-
-def test_a_row_above_every_section_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    repo.write("benchmark/runs/README.md", "# Runs\n\n" + HEAD + row(ONE_A) + section("alpha"))
-    assert runs.main() == 1
-    assert f"README.md:5: {ONE_A} is a run of alpha, and its row sits above every section" in capsys.readouterr().out
-
-
-def test_a_run_whose_scenario_has_no_section_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, ONE_B))
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert f"benchmark/runs/README.md: no section for the scenario beta, which {ONE_B} ran" in out
-    assert "add `## beta` with one line on what it measures, and put its rows there" in out
-    assert "1 run index mismatch(es)" in out
-
-
-def test_a_second_section_for_a_scenario_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", TWO_A) + section("alpha", ONE_A))
-    assert runs.main() == 1
-    assert "README.md:11: a second section for alpha; a scenario has one" in capsys.readouterr().out
-
-
-def index_with_one_row(heading, name):
-    """An index with a section for alpha and one for beta, the one row under `heading`."""
-    other = "beta" if heading == "alpha" else "alpha"
-    return "# Runs\n" + section(heading, name) + section(other)
-
-
-@pytest.mark.parametrize(("heading", "status"), [("alpha", 0), ("beta", 1)])
-def test_a_run_without_results_is_held_to_the_scenario_its_run_json_names(repo, runs, capsys, heading, status):
-    repo.write(f"benchmark/runs/{ONE_A}/report.md", "# Benchmark run\n")
-    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "alpha"}}) + "\n")
-    repo.write("benchmark/runs/README.md", index_with_one_row(heading, ONE_A))
-    assert runs.main() == status
-    refused = f"{ONE_A} is a run of alpha, and its row sits under `## beta`"
-    assert (refused in capsys.readouterr().out) == bool(status)
-
-
-@pytest.mark.parametrize(("heading", "status"), [("alpha", 0), ("beta", 1)])
-def test_the_scenario_results_json_records_decides_over_run_json(repo, runs, capsys, heading, status):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "beta"}}) + "\n")
-    repo.write("benchmark/runs/README.md", index_with_one_row(heading, ONE_A))
-    assert runs.main() == status
-    refused = f"{ONE_A} is a run of alpha, and its row sits under `## beta`"
-    assert (refused in capsys.readouterr().out) == bool(status)
+    assert f"no row names the run folder {ONE_A}" in capsys.readouterr().out
 
 
 def fenced(text):
     return "\n```markdown\n" + text + "```\n"
 
 
-def test_a_heading_and_a_row_in_fenced_code_are_neither(repo, runs):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    example = fenced("## alpha\n\n" + HEAD + row(ONE_A))
-    repo.write("benchmark/runs/README.md", "# Runs\n" + example + section("alpha", ONE_A))
+def test_a_row_and_an_index_link_in_fenced_code_are_neither(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A), above=fenced(HEAD + row(ONE_A)))
+    repo.write("benchmark/runs/README.md", "# Runs\n" + fenced("- [alpha](alpha/README.md)\n") + "- [alpha](alpha/README.md)\n")
+    assert runs.main() == 0
+    repo.write("benchmark/runs/README.md", "# Runs\n" + fenced("- [alpha](alpha/README.md)\n"))
+    assert runs.main() == 1
+    assert "no line names the scenario folder alpha" in capsys.readouterr().out
+
+
+def test_an_older_run_above_a_newer_one_fails(repo, runs, capsys):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z")
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z")
+    page(repo, "alpha", row(ONE_A), row(TWO_A))
+    index(repo, "alpha")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"alpha/README.md:8: {TWO_A} started 2026-01-02T08:00:00Z, after {ONE_A} above it; the newest run comes first" in out
+
+
+def test_runs_that_started_together_keep_either_order(repo, runs):
+    a_run(repo, ONE_A, "2026-01-01T08:00:00Z")
+    a_run(repo, TWO_A, "2026-01-01T08:00:00Z")
+    page(repo, "alpha", row(ONE_A), row(TWO_A))
+    index(repo, "alpha")
     assert runs.main() == 0
 
 
-def test_a_heading_in_fenced_code_opens_no_section(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + fenced("## alpha\n") + section("beta", ONE_A))
-    assert runs.main() == 1
-    out = capsys.readouterr().out
-    assert f"no section for the scenario alpha, which {ONE_A} ran" in out
-    assert "1 run index mismatch(es)" in out
-
-
-def test_a_closing_sequence_is_not_part_of_a_sections_name(repo, runs):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta")
-    index = "# Runs\n\n## alpha ##\n\n" + HEAD + row(ONE_A) + "\n## beta #\n\n" + HEAD + row(ONE_B)
-    repo.write("benchmark/runs/README.md", index)
+def test_a_run_that_records_less_is_named_and_left_out_of_the_order(repo, runs):
+    a_run(repo, TWO_A, "2026-01-02T08:00:00Z")
+    repo.write("benchmark/runs/alpha/20260101-000000-alpha-old/report.md", "# Benchmark run\n")
+    repo.write("benchmark/runs/alpha/20260103-000000-alpha-bare/report.md", "# Benchmark run\n")
+    repo.write("benchmark/runs/alpha/20260103-000000-alpha-bare/results.json", "{}\n")
+    page(repo, "alpha", row("20260101-000000-alpha-old"), row(TWO_A), row("20260103-000000-alpha-bare"))
+    index(repo, "alpha")
     assert runs.main() == 0
 
 
-def test_a_row_under_a_heading_with_a_closing_sequence_is_held_to_its_name(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    repo.write("benchmark/runs/README.md", "# Runs\n\n## alpha ##\n\n## beta ##\n\n" + HEAD + row(ONE_A))
-    assert runs.main() == 1
-    assert f"{ONE_A} is a run of alpha, and its row sits under `## beta`; it goes under `## alpha`" in capsys.readouterr().out
+# A run and its resumes ----------------------------------------------------------
+
+RUN = "20260101-000000-alpha-run"
+RESUMED = "20260102-000000-alpha-resumed"
+JUDGED = "20260103-000000-alpha-judged"
 
 
-def test_a_row_of_another_scenario_is_left_out_of_the_sections_order(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha")
-    a_run(repo, TWO_A, "2026-01-02T08:00:00Z", "alpha")
-    a_run(repo, ONE_B, "2026-01-01T09:00:00Z", "beta")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_B, TWO_A, ONE_A) + section("beta"))
+def spend(total, unpriced=()):
+    return {"judges": {}, "subject": {}, "total_usd": total, "unpriced": list(unpriced)}
+
+
+def chained(repo, first_spend=None):
+    """A run, its resume after a phase, and a resume of its judges, chained by `source`, as the harness records them."""
+    a_run(repo, RUN, "2026-01-01T08:00:00Z", spend=first_spend or spend(82.5281))
+    a_run(
+        repo,
+        RESUMED,
+        "2026-01-02T08:00:00Z",
+        spend=spend(87.7648),
+        source={"run_id": RUN, "path": f"benchmark/runs/{RUN}", "after": "scaffold", "repeats": [0], "refused": [], "capped": []},
+    )
+    judges = [{"repeat": 0, "run": ["openai"], "carried": ["anthropic"]}]
+    a_run(
+        repo,
+        JUDGED,
+        "2026-01-03T08:00:00Z",
+        spend=spend(30.1202),
+        source={"run_id": RESUMED, "path": "x", "repeats": [0], "refused": [], "capped": [], "judges": judges},
+    )
+    index(repo, "alpha")
+
+
+def test_a_run_and_its_resumes_are_one_row_whose_cost_is_the_chain_s_total(repo, runs, capsys):
+    chained(repo)
+    page(repo, "alpha", row(JUDGED, "$200.41"))
+    assert runs.main() == 0
+    assert "runs ok: 3 run folder(s)" in capsys.readouterr().out
+
+
+def test_a_row_whose_cost_is_not_its_chain_s_total_fails(repo, runs, capsys):
+    chained(repo)
+    page(repo, "alpha", row(JUDGED, "$30.12"))
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"{ONE_B} is a run of beta, and its row sits under `## alpha`; it goes under `## beta`" in out
-    assert TWO_A not in out
+    assert f"alpha/README.md:7: {JUDGED} costs $30.12, and its chain spent $200.41 ({RUN} 82.5281, " in out
+    assert "a row's cost is its chain's total" in out and "1 run index mismatch(es)" in out
+
+
+def test_a_folder_of_a_chain_with_a_row_of_its_own_fails(repo, runs, capsys):
+    chained(repo)
+    page(repo, "alpha", row(JUDGED, "$200.41"), row(RUN, "$82.53"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"{RUN} is named by 2 rows (line 7, as a part of the chain of {JUDGED}; line 8, as its run)" in out
     assert "1 run index mismatch(es)" in out
+
+
+def test_a_folder_no_row_and_no_chain_names_fails(repo, runs, capsys):
+    chained(repo)
+    a_run(repo, ONE_A, "2025-12-01T08:00:00Z")
+    page(repo, "alpha", row(RESUMED, "$170.29"))
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"no row names the run folder {JUDGED}, as its run or as a part of its chain" in out
+    assert f"no row names the run folder {ONE_A}" in out and "2 run index mismatch(es)" in out
+
+
+def test_a_chain_whose_source_is_not_beside_it_breaks(repo, runs, capsys):
+    chained(repo)
+    shutil.rmtree(repo.root / "benchmark" / "runs" / "alpha" / RUN)
+    page(repo, "alpha", row(JUDGED, "at least $117.89"))  # what the folders it reaches spent
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"the chain of {JUDGED} breaks: {RESUMED} names {RUN} as its source, and alpha holds no such run folder" in out
+    assert "1 run index mismatch(es)" in out
+
+
+@pytest.mark.parametrize(
+    ("first", "cost"),
+    [
+        (None, "at least $117.89"),  # the first folder recorded no spend
+        (spend(82.5281, ["unknown-model"]), "at least $200.41"),  # a model with no price
+    ],
+)
+def test_a_chain_s_total_reads_at_least_when_it_is_a_lower_bound(repo, runs, capsys, first, cost):
+    chained(repo, first)
+    if first is None:
+        a_run(repo, RUN, "2026-01-01T08:00:00Z")
+    page(repo, "alpha", row(JUDGED, "$200.41"))
+    assert runs.main() == 1
+    assert f"its chain spent {cost}" in capsys.readouterr().out
+    page(repo, "alpha", row(JUDGED, cost))
+    assert runs.main() == 0
+
+
+def test_a_row_of_runs_that_recorded_no_spend_reads_a_dash(repo, runs):
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A, "—"))
+    index(repo, "alpha")
+    assert runs.main() == 0
+    page(repo, "alpha", row(ONE_A, "$0.00"))
+    assert runs.main() == 1
+
+
+def test_a_table_of_runs_without_a_cost_column_fails(repo, runs, capsys):
+    a_run(repo, ONE_A)
+    page(repo, "alpha", f"| [{ONE_A}]({ONE_A}/report.md) | one |\n", head="| Run | Started (UTC) |\n|---|---|\n")
+    index(repo, "alpha")
+    assert runs.main() == 1
+    assert f"the table of {ONE_A} has no Cost (USD) column" in capsys.readouterr().out
+
+
+def test_a_chain_is_ordered_by_when_its_first_folder_started(repo, runs, capsys):
+    chained(repo)
+    a_run(repo, ONE_A, "2026-01-01T12:00:00Z")  # after the chain's first folder, before its newest
+    page(repo, "alpha", row(ONE_A), row(JUDGED, "$200.41"))
+    assert runs.main() == 0
+    page(repo, "alpha", row(JUDGED, "$200.41"), row(ONE_A))
+    assert runs.main() == 1
+    assert f"{ONE_A} started 2026-01-01T12:00:00Z, after {JUDGED} above it" in capsys.readouterr().out
+
+
+# What a run folder holds ----------------------------------------------------------
+
+
+def a_versioned_run(repo, name, dirty, paths=()):
+    checkout = {"commit": "c" * 40, "plugin_version": "1.0.0", "dirty": dirty, "dirty_paths": list(paths), "dirty_sha256": None}
+    a_run(repo, name, versions={"checkout": checkout})
+    page(repo, "alpha", row(name))
+    index(repo, "alpha")
+
+
+def test_a_run_on_a_clean_checkout_passes(repo, runs):
+    a_versioned_run(repo, ONE_A, False)
+    assert runs.main() == 0
+
+
+def test_a_run_on_changes_no_commit_holds_fails(repo, runs, capsys):
+    a_versioned_run(repo, ONE_A, True, ["skills/one/SKILL.md"])
+    assert runs.main() == 1
+    assert f"benchmark/runs/alpha/{ONE_A}: ran on changes no commit holds (skills/one/SKILL.md)" in capsys.readouterr().out
+
+
+def test_a_run_on_no_git_checkout_fails(repo, runs, capsys):
+    a_versioned_run(repo, ONE_A, None)
+    assert runs.main() == 1
+    assert "ran on no git checkout" in capsys.readouterr().out
+
+
+def test_a_run_recorded_before_versions_has_none_to_check(repo, runs):
+    a_run(repo, ONE_A)
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
+    assert runs.main() == 0
+
+
+@pytest.mark.parametrize(("file", "marker"), [("results.json", {"status": "completed"}), ("run.json", True)])
+def test_a_rehearsal_is_never_checked_in(repo, runs, capsys, file, marker):
+    a_versioned_run(repo, ONE_A, False)
+    path = repo.root / "benchmark" / "runs" / "alpha" / ONE_A / file
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    repo.write(f"benchmark/runs/alpha/{ONE_A}/{file}", json.dumps({**data, "rehearsal": marker}) + "\n")
+    assert runs.main() == 1
+    out = capsys.readouterr().out
+    assert f"benchmark/runs/alpha/{ONE_A}: is a rehearsal, whose scores mean nothing; a rehearsal is never checked in" in out
 
 
 def test_a_run_on_a_runtime_its_scenario_lists_passes(repo, runs, capsys):
     a_scenario(repo, "alpha", ["host", "container"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="container")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 0
-    assert "on a runtime it lists" in capsys.readouterr().out
+    assert "on a runtime its scenario lists" in capsys.readouterr().out
 
 
 def test_a_run_on_a_runtime_its_scenario_does_not_list_fails(repo, runs, capsys):
     a_scenario(repo, "alpha", ["container"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "host")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="host")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert (
-        f"benchmark/runs/{ONE_A}: ran on host, and alpha runs on container; a checked-in run ran where its scenario runs" in out
+    expected = (
+        f"benchmark/runs/alpha/{ONE_A}: ran on host, and alpha runs on container; a checked-in run ran where its scenario runs"
     )
+    assert expected in out
     assert "1 run index mismatch(es)" in out
 
 
 def test_the_runtime_run_json_records_counts_when_results_json_records_none(repo, runs, capsys):
     a_scenario(repo, "alpha", ["container"])
-    repo.write(f"benchmark/runs/{ONE_A}/report.md", "# Benchmark run\n")
-    repo.write(f"benchmark/runs/{ONE_A}/run.json", json.dumps({"scenario": {"name": "alpha"}, "runtime": {"name": "vm"}}) + "\n")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    repo.write(f"benchmark/runs/alpha/{ONE_A}/report.md", "# Benchmark run\n")
+    repo.write(
+        f"benchmark/runs/alpha/{ONE_A}/run.json", json.dumps({"scenario": {"name": "alpha"}, "runtime": {"name": "vm"}}) + "\n"
+    )
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
     assert f"{ONE_A}: ran on vm, and alpha runs on container" in capsys.readouterr().out
 
 
 def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, runs, capsys):
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
-    a_run(repo, ONE_B, "2026-01-01T08:00:00Z", "beta", "container")
-    a_run(repo, "20260101-000000-gamma-ee", "2026-01-01T08:00:00Z", "gamma", "container")
+    gamma = "20260101-000000-gamma-ee"
+    a_run(repo, ONE_A, runtime="container")
+    a_run(repo, ONE_B, scenario="beta", runtime="container")
+    a_run(repo, gamma, scenario="gamma", runtime="container")
     repo.write("benchmark/scenarios/beta.json", json.dumps({"name": "beta", "kind": "qa", "subject": {"prompt": "?"}}) + "\n")
     repo.write("benchmark/scenarios/gamma.json", '{"name": "gamma",\n')  # does not parse
-    index = section("alpha", ONE_A) + section("beta", ONE_B) + section("gamma", "20260101-000000-gamma-ee")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + index)
+    page(repo, "alpha", row(ONE_A))
+    page(repo, "beta", row(ONE_B))
+    page(repo, "gamma", row(gamma))
+    index(repo, "alpha", "beta", "gamma")
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/{ONE_A}: no scenario named alpha in benchmark/scenarios says where it runs" in out
-    assert f"benchmark/runs/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
-    assert "benchmark/runs/20260101-000000-gamma-ee: its scenario does not load" in out
+    assert f"benchmark/runs/alpha/{ONE_A}: no scenario named alpha in benchmark/scenarios says where it runs" in out
+    assert f"benchmark/runs/beta/{ONE_B}: its scenario does not load, so nothing says where it runs: scenario beta:" in out
+    assert f"benchmark/runs/gamma/{gamma}: its scenario does not load" in out
     assert "gamma.json: does not parse as JSON" in out
     assert "3 run index mismatch(es)" in out
 
@@ -347,11 +437,14 @@ def test_a_run_whose_scenario_has_no_file_or_one_that_does_not_load_fails(repo, 
 def test_a_run_s_scenario_is_the_file_that_bears_its_name_not_its_stem(repo, runs, capsys):
     a_scenario(repo, "alpha", ["container"], file="first")  # named alpha, in first.json
     a_scenario(repo, "first", ["host"], file="second")  # named first, in second.json
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="container")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 0
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "first", "container")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("first", ONE_A))
+    shutil.rmtree(repo.root / "benchmark" / "runs" / "alpha")
+    a_run(repo, ONE_A, scenario="first", runtime="container")
+    page(repo, "first", row(ONE_A))
+    index(repo, "first")
     assert runs.main() == 1
     assert f"{ONE_A}: ran on container, and first runs on host" in capsys.readouterr().out
 
@@ -359,33 +452,36 @@ def test_a_run_s_scenario_is_the_file_that_bears_its_name_not_its_stem(repo, run
 def test_a_run_of_a_name_two_scenario_files_bear_fails(repo, runs, capsys):
     a_scenario(repo, "alpha", ["container"], file="one")
     a_scenario(repo, "alpha", ["container"], file="two")
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="container")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
     assert "the scenario files one.json, two.json are all named alpha, so none says where it runs" in capsys.readouterr().out
 
 
-def test_a_scenario_file_no_run_names_is_not_held_to_loading(repo, runs, capsys):
+def test_a_scenario_file_no_run_names_is_not_held_to_loading(repo, runs):
     a_scenario(repo, "alpha", ["container"])
     bad = {"name": "beta", "kind": "qa", "subject": {"prompt": "?", "timeout_s": "900s"}, "rubric": "r", "runtimes": ["host"]}
     repo.write("benchmark/scenarios/beta.json", json.dumps(bad) + "\n")
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "container")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="container")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 0  # beta does not load, and no run is held to it
 
 
 def test_a_name_a_loaded_file_bears_and_a_broken_file_s_stem_shares_fails(repo, runs, capsys):
     repo.write("benchmark/scenarios/alpha.json", '{"name": "alpha",\n')  # does not parse
     a_scenario(repo, "alpha", ["host"], file="beta")  # named alpha, in beta.json
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "host")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
+    a_run(repo, ONE_A, runtime="host")
+    page(repo, "alpha", row(ONE_A))
+    index(repo, "alpha")
     assert runs.main() == 1
     out = capsys.readouterr().out
     assert "alpha is the name of beta.json and the stem of alpha.json, which does not load, so none says where it runs" in out
 
 
 def a_zip(repo, name, members):
-    path = repo.root / "benchmark" / "runs" / name / "artifacts" / "0" / "output.zip"
+    path = repo.root / "benchmark" / "runs" / "alpha" / name / "artifacts" / "0" / "output.zip"
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for member, data in members.items():
@@ -393,33 +489,34 @@ def a_zip(repo, name, members):
     return path
 
 
-def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
+def a_vm_run(repo, *names):
     a_scenario(repo, "alpha", ["vm"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
-    a_run(repo, ONE_B, "2026-01-01T07:00:00Z", "alpha", "vm")
+    for name in names:
+        a_run(repo, name, runtime="vm")
+    page(repo, "alpha", *(row(name) for name in names))
+    index(repo, "alpha")
+
+
+def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
+    a_vm_run(repo, ONE_A, TWO_A)
     a_zip(repo, ONE_A, {"README.md": "clean\n", "app/.env": "KEY=sk-ant-api03-" + "a1B2" * 12 + "\n"})
-    a_zip(repo, ONE_B, {"README.md": "clean\n"})
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A, ONE_B))
+    a_zip(repo, TWO_A, {"README.md": "clean\n"})
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/{ONE_A}/artifacts/0/output.zip: app/.env holds a string shaped like a key" in out
+    assert f"benchmark/runs/alpha/{ONE_A}/artifacts/0/output.zip: app/.env holds a string shaped like a key" in out
     assert "1 run index mismatch(es)" in out  # the clean zip passes
 
 
 def test_a_checked_in_zip_that_does_not_open_fails(repo, runs, capsys):
-    a_scenario(repo, "alpha", ["vm"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_vm_run(repo, ONE_A)
     a_zip(repo, ONE_A, {"README.md": "clean\n"}).write_bytes(b"not a zip")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     assert "output.zip: does not open as a zip, so no one can say it holds no key" in capsys.readouterr().out
 
 
 def test_a_clean_checked_in_zip_passes(repo, runs, capsys):
-    a_scenario(repo, "alpha", ["vm"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_vm_run(repo, ONE_A)
     a_zip(repo, ONE_A, {"README.md": "clean\n"})
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 0
     assert "no key in a compressed file" in capsys.readouterr().out
 
@@ -428,10 +525,8 @@ def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
     inner = io.BytesIO()
     with zipfile.ZipFile(inner, "w") as zf:
         zf.writestr(".env", "KEY=ghp_" + "k" * 36)
-    a_scenario(repo, "alpha", ["vm"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
+    a_vm_run(repo, ONE_A)
     a_zip(repo, ONE_A, {"bundle.zip": inner.getvalue()})
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     assert "output.zip: bundle.zip!.env holds a string shaped like a key" in capsys.readouterr().out
 
@@ -439,18 +534,16 @@ def test_a_key_in_a_zip_inside_a_checked_in_zip_fails(repo, runs, capsys):
 def test_a_git_folder_or_a_compressed_file_the_scan_cannot_read_in_a_run_folder_fails(repo, runs, capsys):
     import gzip
 
-    a_scenario(repo, "alpha", ["vm"])
-    a_run(repo, ONE_A, "2026-01-01T08:00:00Z", "alpha", "vm")
-    folder = repo.root / "benchmark" / "runs" / ONE_A / "artifacts" / "0" / "workspace"
+    a_vm_run(repo, ONE_A)
+    folder = repo.root / "benchmark" / "runs" / "alpha" / ONE_A / "artifacts" / "0" / "workspace"
     (folder / "site" / ".git" / "objects").mkdir(parents=True)
     (folder / "site" / ".git" / "objects" / "ab").write_bytes(b"x")
     (folder / "env.json.gz").write_bytes(gzip.compress(b'{"key": "sk-ant-api03-' + b"a1B2" * 12 + b'"}'))
     (folder / "bundle.zst").write_bytes(b"\x28\xb5\x2f\xfd" + b"frame")
     (folder / "notes.md").write_text("plain text is redact's to scan\n", encoding="utf-8")
-    repo.write("benchmark/runs/README.md", "# Runs\n" + section("alpha", ONE_A))
     assert runs.main() == 1
     out = capsys.readouterr().out
-    workspace = f"benchmark/runs/{ONE_A}/artifacts/0/workspace"
+    workspace = f"benchmark/runs/alpha/{ONE_A}/artifacts/0/workspace"
     assert f"{workspace}/site/.git: a run folder holds no .git" in out
     assert f"{workspace}/env.json.gz holds a string shaped like a key" in out
     assert f"{workspace}/bundle.zst: (not scanned: a compressed form the scan cannot read)" in out
