@@ -1,6 +1,6 @@
 # Acme
 
-> A multi-tenant to-do application for teams of people and the agents that work alongside them, built as the reference implementation of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a Python client at the edge.
+> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a Python client at the edge. A product renames it and builds its domain on top.
 
 This file is the knowledge map. Each section lists the documents one
 audience is served; a document not listed under an audience is not
@@ -8,74 +8,53 @@ served to it. Exposure is by listing, never by folder.
 
 ## Platform developers
 
-- [README](README.md): what Acme is, the quick start, how to set up, run, check, deploy, and operate it, and the layout
-- [As built](docs/architecture.md): every namespace, process, and check as it exists in this repository
-- [Decisions](docs/adr/): the architecture decision records, one file per decision
+- [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
+- [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
-- [Tenancy](om/src/acme/om/tenancy/README.md): orgs (every person's one personal org, and the team orgs they make), identities, users, memberships, sessions, API keys, socket tickets, the role ladder, sign-in through the identity provider (a first sign-in is the sign-up; the device sign-in; the local sign-in), the sign-out that ends any credential it is given and the provider's session too, operator tokens listed and revoked one at a time, invitations, single sign-on, the switch between orgs, and deleting my account
-- [Tasks](om/src/acme/om/tasks/README.md): the to-do items, the rank a move writes one task by, the sweep's respace, the version every write names, and a task's attachments
-- [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records (the import of tasks from a CSV file, the daily cleanup of old done tasks), the step that lands its effect and its cursor in one commit, the park on the plan and its wake, and the bound that fails
-- [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, the confirm, the purpose (an attachment, a dictation, an import), the storage used, and the sweep
-- [Tasks](om/src/acme/om/tasks/README.md): the to-do items, the rank a move writes one task by, the version every write names, and the due date and its one reminder
-- [Slack](om/src/acme/om/slack/README.md): the app an org installs into its workspace, its bot token kept as the org's own secret and renewed, the install's one-time state, the channel `/acme connect` binds, and the record of every post
-- [Billing](om/src/acme/om/billing/README.md): plans, their bounds as levers, the org's account at the payment processor, deliveries applied once, and grants
-- [Events](om/src/acme/om/events/README.md): the org's diary and its gapless sequence
-- [Work items](om/src/acme/om/work/README.md): background jobs, the claim, and the lease
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, sessions, API keys, socket tickets, the operator plane, and deletion
+- [Events](om/src/acme/om/events/README.md): the org's stream, its gapless sequence above a floor, and audit entries
+- [Outbox rows](om/src/acme/om/outbox/README.md): the note written beside every change, and its relay
 - [Idempotency records](om/src/acme/om/idempotency/README.md): the outcome of a request that may arrive twice
-- [Outbox rows](om/src/acme/om/outbox/README.md): the note written beside every change
+- [Work items](om/src/acme/om/work/README.md): background jobs, the claim, the lease, and the dead letter
+- [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
+- [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
 - [Infrastructure](infra/README.md): cache, buckets, topics, queues, secrets, observability; what each promises and which twin runs where
-- [Integrations](integrations/README.md): the third-party providers, each an interface, a real client, and a twin: Slack (its install, its signed calls in, its tokens), the identity provider (WorkOS), and the payment processor (Stripe); the errors a caller decides on; what a provider that hangs costs a call, and the request's deadline its calls share
+- [Integrations](integrations/README.md): the identity provider, its twin, the absent provider, and the webhook check
 - [The API process](services/api/README.md): the routes by area, the gateway's guarantees, the subcommands
-- [The maintenance worker](workers/maintenance/README.md): claim, handle, complete; reminders and Slack posts; a deleted account's providers; what Slack sends; the sweep and its count of the platform's size; liveness
-- [Deployment](deployment/README.md): the two twins and the branch convention
+- [The maintenance worker](workers/maintenance/README.md): the work queue's loop, the provider deliveries, and the sweep
+- [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention
 - [The local stack](deployment/local/README.md): every URL and port, one service at a time
-- [Terraform](deployment/terraform/modules/README.md): the roots, the modules, the state, the credentials, and the portal's CDN, which serves the API's paths too
-- [Cloud cost](deployment/cloud/README.md): the five sizes, each environment's size, the postures and their budgets
-- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, the first responder
-- [Audit tools](ops/audit/README.md): what the audit skills run: a database of the run's own, the heavy seed, the plans, the database and provider call counter, and the deploy timeline
+- [Terraform](deployment/terraform/modules/README.md): the roots, the modules, the state, and the credentials
+- [Cloud cost](deployment/cloud/README.md): the sizes, each environment's size, and the budgets
+- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits
+- [Audit tools](ops/audit/README.md): what the audit skills run
 - [Stress tests](ops/stress/README.md): what a good one is and the scenario file
 - [Runbooks](docs/runbooks/README.md): one file per operational procedure
-- [Deploy runbook](docs/runbooks/deploy.md): cutting a release, approving a plan, rolling back
-- [Operate runbook](docs/runbooks/operate.md): reading an environment under the investigate profile
-- [Scale runbook](docs/runbooks/scale.md): the one variable that turns autoscaling on
-- [Stripe runbook](docs/runbooks/providers/stripe.md): the payment processor for a newcomer: its levels, the sandbox and the live account, the two restricted keys (runtime and bootstrap) and their permissions, the bootstrap, the webhook secret, local deliveries, rotation, and what breaks
-- [WorkOS runbook](docs/runbooks/providers/workos.md): the sign-in provider for a newcomer: its environments, the Acme App application, its own API key (never the environment's) and its Redirects tab (the callbacks and the sign-out URIs), the bootstrap, rotation, and what breaks
-- [Slack runbook](docs/runbooks/providers/slack.md): the Slack app for a newcomer: one app per environment from its committed manifest, the signing secret and the client secret, the install per org, the channel, local development with the twin, rotation, and what breaks
-- [Support runbook](docs/runbooks/support.md): how a support investigation runs
-- [Tenant isolation runbook](docs/runbooks/tenant-isolation.md): the cross-tenant cases and what they catch
-- [The portal](apps/portal/README.md): the browser app, which calls the API on its own origin
-- [The company site](apps/site/README.md): the static marketing page, its build per environment, and where it is served
+- [The portal](apps/portal/README.md): the browser app shell
+- [The company site](apps/site/README.md): the static page and where it is served
 - [The command line](apps/cli/README.md): the terminal client and its exit codes
 - [The Python client](clients/python/README.md): the one client every Python caller goes through
 
 ## Platform operators
 
-- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, the first responder, what an operator never does
-- [Audit tools](ops/audit/README.md): what the audit skills run: a database of the run's own, the heavy seed, the plans, the database and provider call counter, and the deploy timeline
+- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, what an operator never does
+- [Audit tools](ops/audit/README.md): what the audit skills run
 - [Stress tests](ops/stress/README.md): what a good one is and the scenario file
 - [Runbooks](docs/runbooks/README.md): one file per operational procedure
-- [Deploy runbook](docs/runbooks/deploy.md): cutting a release, approving a plan, rolling back
+- [Deploy runbook](docs/runbooks/deploy.md): creating an environment, cutting a release, approving a plan, rolling back
 - [Operate runbook](docs/runbooks/operate.md): reading an environment under the investigate profile
+- [Operator runbook](docs/runbooks/operator.md): the grant, the second factor, and the operator token
 - [Scale runbook](docs/runbooks/scale.md): the one variable that turns autoscaling on
-- [Stripe runbook](docs/runbooks/providers/stripe.md): the payment processor for a newcomer: its levels, the sandbox and the live account, the two restricted keys (runtime and bootstrap) and their permissions, the bootstrap, the webhook secret, local deliveries, rotation, and what breaks
-- [WorkOS runbook](docs/runbooks/providers/workos.md): the sign-in provider for a newcomer: its environments, the Acme App application, its own API key (never the environment's) and its Redirects tab (the callbacks and the sign-out URIs), the bootstrap, rotation, and what breaks
-- [Slack runbook](docs/runbooks/providers/slack.md): the Slack app for a newcomer: one app per environment from its committed manifest, the signing secret and the client secret, the install per org, the channel, local development with the twin, rotation, and what breaks
+- [Restore runbook](docs/runbooks/restore.md): what is backed up, and a restore to a new instance
 - [Support runbook](docs/runbooks/support.md): how a support investigation runs
 - [Tenant isolation runbook](docs/runbooks/tenant-isolation.md): the cross-tenant cases and what they catch
+- [WorkOS runbook](docs/runbooks/providers/workos.md): the identity provider for a newcomer: its environments, the application and its key, the redirects, the webhook, the bootstrap, and rotation
 - [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention
 
 ## Tenant users and admins
 
 - [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
-- [Tenancy](om/src/acme/om/tenancy/README.md): orgs (your personal org and the team orgs), people, roles, invitations, single sign-on, credentials, deleting a team org you own, and deleting your account
-- [Tasks](om/src/acme/om/tasks/README.md): the to-do items and their rules
-- [Orchestrations](om/src/acme/om/orchestrations/README.md): importing tasks from a file, and the archive of old done tasks
-- [Files](om/src/acme/om/media/README.md): the files kept with the work, their bounds, and the storage used
-- [Tasks](om/src/acme/om/tasks/README.md): the to-do items and their rules, due dates among them
-- [Slack](om/src/acme/om/slack/README.md): adding Acme to Slack, picking its channel, what it posts, `/acme`, `/acme team`, and `/acme add`
-- [Billing](om/src/acme/om/billing/README.md): the plans, what each allows, and how an org pays
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, people, roles, invitations, single sign-on, credentials, deleting a team org you own, and deleting your account
+- [Files](om/src/acme/om/media/README.md): the files an org keeps, their bounds, and the storage used
 - [Events](om/src/acme/om/events/README.md): the org's diary
-- [Work items](om/src/acme/om/work/README.md): background jobs
-- [Idempotency records](om/src/acme/om/idempotency/README.md): why a repeated request does one thing
-- [Outbox rows](om/src/acme/om/outbox/README.md): why every change is announced
 - [The command line](apps/cli/README.md): the terminal client and its exit codes

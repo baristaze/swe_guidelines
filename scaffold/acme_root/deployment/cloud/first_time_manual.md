@@ -2,7 +2,7 @@
 
 This is the bootstrap pattern used for Acme. The goal is to keep projects and environments isolated, avoid daily root usage, and use temporary SSO credentials instead of long-lived AWS access keys.
 
-## 1. Target structure
+## Target structure
 
 ```text
 AWS Organization
@@ -20,7 +20,7 @@ AWS Organization
 
 The AWS account is the main isolation boundary. Staging and production should therefore be separate AWS accounts.
 
-## 2. Root account
+## Root account
 
 Use the AWS root account only for initial bootstrap and operations that explicitly require root.
 
@@ -31,7 +31,7 @@ Do:
 - Do not use root for normal AWS work.
 - Keep application resources out of the management account.
 
-## 3. Create AWS Organization
+## Create AWS Organization
 
 From the original AWS account:
 
@@ -41,7 +41,7 @@ From the original AWS account:
 
 The original account becomes the **management account**.
 
-## 4. Enable IAM Identity Center
+## Enable IAM Identity Center
 
 1. Open **IAM Identity Center**.
 2. Enable an **Organization instance**.
@@ -57,7 +57,7 @@ Record the region Identity Center is in:
 This does not determine the region where application infrastructure runs;
 `deployment/cloud/environments.json` names that one.
 
-## 5. Create the normal human user
+## Create the normal human user
 
 Create an IAM Identity Center user such as:
 
@@ -71,7 +71,7 @@ Do not encode roles or projects in the username.
 
 Require MFA for every Identity Center sign-in: **Settings / Authentication / Multi-factor authentication**, set to prompt on every sign-in, and register an authenticator for the user. The admin permission sets are only as strong as that sign-in.
 
-## 6. Create organization admin access
+## Create organization admin access
 
 Create group:
 
@@ -101,7 +101,7 @@ Management account
 
 After this works through the AWS Access Portal, stop using root for normal administration.
 
-## 7. Create Acme accounts
+## Create Acme accounts
 
 Create an OU:
 
@@ -131,7 +131,7 @@ Keep the default Organizations access role name:
 OrganizationAccountAccessRole
 ```
 
-## 8. Centralize member-account root management
+## Centralize member-account root management
 
 In AWS Organizations / IAM, enable:
 
@@ -140,7 +140,7 @@ In AWS Organizations / IAM, enable:
 
 A delegated administrator is not necessary for this small setup.
 
-## 8a. Turn on Cost Explorer and Budgets for the member accounts
+## Turn on Cost Explorer and Budgets for the member accounts
 
 A member account can make neither a budget nor an anomaly monitor until the management account turns cost management on for the organization. Do this before the first `scripts/cloud_create.sh`, signed in to the **management account** (not a Acme account):
 
@@ -167,7 +167,7 @@ The budget is required: `scripts/cloud_create.sh` asks Budgets before it applies
 
 A first apply that stopped part way leaves its state in `deployment/terraform/bootstrap/<staging|prod>/terraform.tfstate`. Keep that file: it is the only record of what that apply made, and the next run of the script applies against it and then moves it into the state bucket.
 
-## 9. Create Acme access groups
+## Create Acme access groups
 
 Create Identity Center groups:
 
@@ -179,7 +179,7 @@ AcmeBootstrapAdmins
 
 Add `<your.name>` to all three during initial setup.
 
-## 10. Create permission sets
+## Create permission sets
 
 Normal development access:
 
@@ -221,7 +221,7 @@ Create it as a predefined permission set, then add the inline policy:
 
 3. Save, and accept the prompt to re-provision the accounts the set is assigned to.
 
-The page under **IAM** → **Policies** → `ReadOnlyAccess` is the AWS managed policy the set attaches. It is not editable and is not where the inline policy goes. The inline policy grants one thing: assuming the investigate roles, which themselves change nothing. Section 16 checks that it arrived.
+The page under **IAM** → **Policies** → `ReadOnlyAccess` is the AWS managed policy the set attaches. It is not editable and is not where the inline policy goes. The inline policy grants one thing: assuming the investigate roles, which themselves change nothing. [Verify profiles](#verify-profiles) checks that it arrived.
 
 Temporary bootstrap access:
 
@@ -233,7 +233,7 @@ Session duration: 1 hour
 
 `PowerUserAccess` is insufficient for some initial IAM operations, which is why the temporary bootstrap permission exists.
 
-## 11. Assign access to Acme accounts
+## Assign access to Acme accounts
 
 Assign to `acme-staging`:
 
@@ -274,7 +274,7 @@ OrgAdmins
 
 Do not assign `AcmePowerUsers` to the management account.
 
-## 12. Expected AWS Access Portal
+## Expected AWS Access Portal
 
 The user should see approximately:
 
@@ -293,7 +293,7 @@ acme-prod
   AcmeBootstrapAdmin
 ```
 
-## 13. Install AWS CLI
+## Install AWS CLI
 
 On macOS with Homebrew:
 
@@ -302,7 +302,7 @@ brew install awscli
 aws --version
 ```
 
-## 14. Configure AWS CLI with SSO
+## Configure AWS CLI with SSO
 
 Do not manually create or copy long-lived access keys.
 
@@ -330,7 +330,7 @@ Role: AcmeBootstrapAdmin
 Profile: acme-staging-admin
 ```
 
-## 15. Recommended local profiles
+## Recommended local profiles
 
 Create these six profiles, all sharing the same `acme` SSO session:
 
@@ -369,7 +369,7 @@ Default workload region:
 us-west-2
 ```
 
-## 16. Verify profiles
+## Verify profiles
 
 ```bash
 aws sts get-caller-identity --profile acme-staging
@@ -396,9 +396,9 @@ aws iam list-roles --profile acme-prod \
 aws iam list-role-policies --profile acme-prod --role-name <that role>
 ```
 
-The second command lists `AwsSSOInlinePolicy` once the inline policy of section 10 is on the permission set. An empty list means the investigate profile cannot chain yet.
+The second command lists `AwsSSOInlinePolicy` once the inline policy of [Create permission sets](#create-permission-sets) is on the permission set. An empty list means the investigate profile cannot chain yet.
 
-## 17. Rules for agents and automation
+## Rules for agents and automation
 
 Use explicit profiles. Do not rely on a global/default AWS profile.
 
@@ -434,7 +434,7 @@ Rules:
 - Use GitHub Actions OIDC for CI/CD instead of static AWS secrets.
 - Use bootstrap admin only when normal PowerUser access cannot perform the required IAM/bootstrap operation.
 
-## 18. Desired steady state
+## Desired steady state
 
 Human interactive access:
 
@@ -469,7 +469,7 @@ Permanent AWS_SECRET_ACCESS_KEY
 
 If the shell profile exports either, remove the export. Terraform prefers exported keys to `--profile`, so an exported key silently decides which account a command reaches. The create and nuke scripts clear them for their own run and say so.
 
-## 18a. Cloudflare token for the delegation and the site's records
+## Cloudflare token for the delegation and the site's records
 
 The domain `environments.json` names, `<domain>` below, is registered at Cloudflare, and its zone stays there. The create run writes into it with an API token: create one with **Zone / DNS / Edit** on the `<domain>` zone only, and pass it as an environment variable for the run:
 
@@ -496,11 +496,11 @@ So the site takes two create runs, and a deploy between them. When the site come
 3. That deploy, once green, has made the site's distribution and published the site.
 4. The create run again: step 3c writes the site's CNAME, and the site answers at its name.
 
-For production the same four happen around releases: the change is already released, then the create run (`scripts/cloud_create.sh production` under `acme-prod-admin`), then a release, then the create run again. Production's run also lets staging's replication write the site's builds into production's artifacts bucket, so that release takes a commit staging built after it, the same rule as the first release. A new environment follows its first-time order (section 19) and runs the create run once more after its first green deploy, for the CNAME.
+For production the same four happen around releases: the change is already released, then the create run (`scripts/cloud_create.sh production` under `acme-prod-admin`), then a release, then the create run again. Production's run also lets staging's replication write the site's builds into production's artifacts bucket, so that release takes a commit staging built after it, the same rule as the first release. A new environment follows its first-time order ([Bootstrap, then hand the admin back](#bootstrap-then-hand-the-admin-back)) and runs the create run once more after its first green deploy, for the CNAME.
 
 The records the Terraform does not hold stay at Cloudflare when an environment is destroyed; the nuke lists them.
 
-## 19. Bootstrap, then hand the admin back
+## Bootstrap, then hand the admin back
 
 The bootstrap is the `ops-cloud-deployment-create` skill, which runs `scripts/cloud_create.sh`, one account at a time, dry run first:
 
@@ -514,7 +514,7 @@ After the deploy roles work, remove `<your.name>` from `AcmeBootstrapAdmins`, so
 
 A bootstrap root is applied by a person before the change that needs it merges. When a pull request changes `deployment/terraform/bootstrap/`, for example to let the deployer read a new secret, apply that root from the pull request's branch under `acme-<env>-admin` (for production, `acme-prod-admin`), then merge. A merge whose deploy needs a permission the bootstrap has not granted stops half applied.
 
-## 19a. The providers: WorkOS and the error tracker
+## The providers: WorkOS and the error tracker
 
 Two providers sit outside AWS: WorkOS signs people in, and a
 Sentry-compatible error tracker receives the errors. Each is set up by
@@ -538,16 +538,16 @@ is made by the deploy:
    in its logs what is off.
 2. A person writes each value under their own sign-in, `acme-staging`
    for staging (in production `acme-prod-power`, when authorized),
-   with `AWS_ACCESS_KEY_ID` and its siblings unset, as section 18
+   with `AWS_ACCESS_KEY_ID` and its siblings unset, as [Desired steady state](#desired-steady-state)
    says.
 3. The next deploy, or a forced new deployment of the service, starts
    tasks that read the new values. A task reads its secrets only at
    start.
 
-Do WorkOS before section 20: the first operator signs up through it,
+Do WorkOS before [The first operator](#the-first-operator): the first operator signs up through it,
 and without its key every sign-in answers `503`.
 
-## 20. The first operator
+## The first operator
 
 A deployed environment starts with no operator: a grant marks an identity, it does not make one. After the environment's first green deploy, follow `docs/runbooks/operator.md`, which is the same walk-through for every operator: sign in, grant, enrol the second factor, check the fence, and write the token into the ops env file. `docs/runbooks/deploy.md` (Grant an operator) is the reference for the workflow itself.
 

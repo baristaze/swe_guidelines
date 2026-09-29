@@ -1,77 +1,68 @@
 # ADR 0013: Each environment has its own deploy credential, and production has two
 
-**Status**: accepted (2026-09-20), amended by [ADR 0021](0021-each-environment-has-an-aws-account-of-its-own.md)
-(2026-09-21): the three roles and their subjects stand. Staging's role
-lives in staging's account and production's two in production's, each
-declared by that account's bootstrap root instead of `shared`. The
-three repository variables became one `AWS_ROLE_ARN` per GitHub
-environment.
-
+**Status**: accepted (2026-09-28)
 ## Context
 
-DEL-38 and "Cloud: AWS" put the environment protection on the apply:
+DEL-38 and Cloud: AWS put the environment protection on the apply:
 production waits for a person to approve the plan, and the approval
-holds the apply. The guideline says every cloud resource, IAM included,
-is declared in Terraform, and it says nothing about how a deploy
-credential is scoped; a threat model and supply-chain rules are named
-as outside its scope.
+holds the apply. The guideline declares every cloud resource in
+Terraform, IAM included. It says nothing about how a deploy credential
+is scoped.
 
-Acme read that literally and took the weakest shape it allows. One
-role, `acme-deploy`, carried `AdministratorAccess`, and its trust
-matched three subjects at once with `StringLike`: staging's
-environment, production's, and the `release` branch. Both workflows
-assumed it through one repository variable. So a merge to `main`, which
-deploys staging with no approval by design, ran under a credential that
-owned production's state, its secrets and its database. And in
-`deploy-production.yml` the plan job declared no environment at all, so
-it held that credential with no gate: the approval held the apply step
-while the credential was already out.
-
-That is a privilege boundary, and a reviewer reading the guideline
-would not find it, because the guideline leaves it to the project.
+A merge to `main` deploys staging with no approval, by design. So the
+credential a staging job holds must reach nothing of production's. And
+the credential that writes production must be out of reach until the
+approval.
 
 ## Decision
 
-Three roles, declared in Terraform in the `shared` root, each trusted
-through `StringEquals` on one GitHub environment and one branch:
+Three roles, each declared by its account's bootstrap root
+([ADR 0021](0021-each-environment-has-an-aws-account-of-its-own.md)),
+each trusted through `StringEquals` on one GitHub environment, one
+branch, and the repository's and owner's ids:
 
-- `acme-deploy-staging`, the `staging` environment on `main`;
-- `acme-plan-production`, the `production-plan` environment on
-  `release`, read-only apart from its own lock and its own saved plan;
-- `acme-deploy-production`, the `production` environment on `release`,
-  which writes.
+| Role | Account | GitHub environment | Branch | May |
+|------|---------|--------------------|--------|-----|
+| `acme-deploy-staging` | staging | `staging` | `main` | apply staging |
+| `acme-plan-production` | production | `production-plan` | `release` | read production and plan it, writing only its own lock and saved plan |
+| `acme-deploy-production` | production | `production` | `release` | apply production |
 
-A job emits `repo:O/R:environment:<name>` only when it declares that
-environment, so the required reviewer on `production` gates the
-**credential**: a job that has not waited there cannot mint the subject
-the writing role trusts. Each role carries a permissions boundary that
-denies anything tagged with the other environment, the other's state
-prefix, any widening of the deploy credentials themselves, and the
-attachment of any policy but the graph's own, so the one thing a
-compromised deploy cannot do is grant itself more.
+A job presents `repo:<owner>@<owner id>/<name>@<repo id>:environment:<name>`
+only when it declares that environment. So the required reviewer on
+`production` gates the credential itself: a job that has not waited
+there cannot mint the subject the applying role trusts.
 
-Production takes two roles rather than one because the plan runs before
-the approval it is the subject of. With one role, production's
-credential would again be held outside the gate.
+Production takes two roles because the plan runs before the approval it
+asks for. With one role, the credential that writes production would be
+held before anyone approved anything.
+
+Each role's policy stops at what its environment owns: names beginning
+`acme-<environment>`, secrets under `acme/<environment>/`, log groups
+under `/acme/<environment>/`, and its own keys in the state bucket. It
+denies anything tagged as the other environment, what the bootstrap
+root owns, any widening of the deploy roles and their trust, a new user
+or access key, a role created without the `acme-task-boundary-<environment>`
+permissions boundary, and the attachment of any policy but the graph's
+own. So a compromised deploy cannot grant itself more.
+
+Each GitHub environment holds one `AWS_ROLE_ARN` and one
+`TF_STATE_BUCKET`, under the same names, with its own values.
 
 ## Consequences
 
-Three repository variables replace one, and `production-plan` is a
-GitHub environment that must exist and must carry no reviewer, because
-a reviewer there would hold the plan the reviewer is meant to read. The
-runbook says so.
+`production-plan` is a GitHub environment that exists and carries no
+reviewer: a reviewer there would hold the plan the reviewer is meant to
+read. The deploy runbook says so.
 
-The approval holds the write, not the read. `acme-plan-production`
-reads production's state, and the state holds the database master
-password in clear, so the pre-approval credential sees production's
-secrets. Closing that means encrypting values in state, which is its
-own piece of work, and this record does not claim otherwise.
+The approval holds the write, not the read. The state holds no secret
+value, but a refresh by `acme-plan-production` still reads production's
+secrets through the secret store before anyone approves.
 
-The policies have never been evaluated by AWS, because no account
-exists. The first real apply is expected to surface a missing action or
-two, as a plain `AccessDenied` naming the call; the fix is to add that
-action to the graph's policy, not to widen the role. `RegisterTaskDefinition`
-is the one write in the graph that cannot be fenced to an environment,
-and the code says so where it is granted: a revision registered in a
-foreign family is inert until something runs it, and running one is
-fenced.
+The first apply in a new account may meet a missing action as a plain
+`AccessDenied` naming the call. The fix is to add that action to the
+graph's policy, never to widen the role.
+
+`ecs:RegisterTaskDefinition` and `ecs:DeregisterTaskDefinition` are the
+two writes in the graph that cannot be fenced to an environment, and the
+policy says so where it grants them. A revision in a foreign family is
+inert until something runs it, and running one is fenced.

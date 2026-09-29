@@ -1,7 +1,6 @@
 # ADR 0071: A migration waits briefly for a lock
 
-**Status**: accepted (2026-09-26).
-
+**Status**: accepted (2026-09-28)
 ## Context
 
 The deploy migrates a live database. The migrate task runs inside the
@@ -11,23 +10,19 @@ contract keeps the old tasks correct over the new schema.
 
 A migration's DDL takes a lock on its table. `DROP INDEX` and most
 `ALTER TABLE` forms take `ACCESS EXCLUSIVE`, and `CREATE INDEX` takes
-`SHARE`. When a transaction of the serving tasks holds the table, the
-DDL waits for it. While it waits, it holds its place in the table's lock
+`SHARE`. When a transaction of the serving tasks holds the table, the DDL
+waits for it. While it waits, it holds its place in the table's lock
 queue. Every read and write of the table that arrives after it queues
 behind it, even one that does not conflict with the transaction that
 holds the table. So one long transaction and one waiting migration stop
 the whole table.
 
-The migrate command opened its connection with no bound on that wait.
-The pre-rollout task ran it once. A migration that waited only ended
-when the transaction in front of it did.
-
-Measured on the local stack, with the API serving and a transaction
-that had read `core.tasks` held open for 20 seconds: a migration step
-that drops an index on `core.tasks` waited 19.6 seconds and then went
-through. A `GET /v1/tasks` sent while it waited queued behind it and hit
-its own 10-second statement deadline. It answered 500 after 10.08
-seconds.
+Measured on the local stack, with the API serving and a transaction that
+read a table held open for 20 seconds: a migration step that drops an
+index on that table, with no bound on its wait, waits 19.6 seconds and
+then goes through. A request for the table sent while it waits queues
+behind it and hits its own 10-second statement deadline: it answers 500
+after 10.08 seconds.
 
 The guideline says every statement carries a deadline from settings. It
 says nothing about a migration's wait for a lock. So this is a choice.
@@ -49,35 +44,31 @@ left when the migration gives up. A migration that needs a lock held
 longer than that is behind a transaction that is too long for a live
 table anyway.
 
-**There is still no statement deadline.** A backfill may run long, and a
-lock it holds is one it was granted. The bound is on waiting, not on
-work.
+**There is no statement deadline.** A backfill may run long, and a lock
+it holds is one it was granted. The bound is on waiting, not on work.
 
 **A run that gave up asks to be run again.** The command prints which
 role gave up and exits 75, the temporary failure of sysexits. Nothing of
 that role was applied. The roles before it are at their heads, so a
-second run resumes where the first stopped. Every other failure exits as
-before.
+second run resumes where the first stopped. Every other failure exits 1.
 
 **The pre-rollout task runs again on 75, three runs in all.**
-`pre_rollout.sh` starts the same task again when the container exits
-75. The commands (`ensure-logins`, then `migrate --all`) are safe to
-repeat. The next task's cold start, about a minute, is the wait between
-runs, long enough for a serving transaction to end. A third 75 fails the
-apply with the old tasks still serving, as any failed migration does,
-and the next apply runs it again.
+`pre_rollout.sh` starts the same task again when the container exits 75.
+The commands (`ensure-logins`, then `migrate --all`) are safe to repeat.
+The next task's cold start, about a minute, is the wait between runs,
+long enough for a serving transaction to end. A third 75 fails the apply
+with the old tasks still serving, as any failed migration does, and the
+next apply runs it again.
 
 **One place opens a migration connection.** The Alembic environment
-(`om/migrations/env.py`) could also open an engine of its own, from a
-URL in its config, when no connection was handed to it. Nothing handed
-it one: every run goes through the runner. That path is gone. The
-environment now refuses to run without the runner's connection, as it
-refuses to run without a role, so no migration runs outside the bound.
+(`om/migrations/env.py`) refuses to run without the runner's connection,
+as it refuses to run without a role, so no migration runs outside the
+bound.
 
-After the change, the same run on the local stack, three times: the
-migration step gave up after 5.4 seconds and exited 75, having applied
-nothing. The `GET /v1/tasks` sent while it waited answered 200 in 4.94
-to 4.97 seconds.
+With the bound, the same run on the local stack, three times: the
+migration step gives up after 5.4 seconds and exits 75, having applied
+nothing. The request sent while it waits answers 200 in 4.94 to 4.97
+seconds.
 
 ## Alternatives
 
@@ -89,8 +80,8 @@ to 4.97 seconds.
   queue through each wait, and it hides the retries from the apply log.
   A rerun of the task is what the pre-rollout step already knows how to
   do, and the log says each time it happens.
-- **A longer bound.** Every second of it is a second the table stops
-  for everything behind the migration.
+- **A longer bound.** Every second of it is a second the table stops for
+  everything behind the migration.
 - **Build indexes `CONCURRENTLY`.** A role's chain runs in one
   transaction, where `CONCURRENTLY` is refused, and it bounds nothing
   for `ALTER TABLE` or `DROP INDEX`.
@@ -102,5 +93,5 @@ to 4.97 seconds.
 - A migration that needs a lock held for longer than three runs allow
   fails the apply. The fix is to find the long transaction, not to raise
   the bound.
-- `acme-api migrate` and `python -m acme.om.storage.migrate` have a
-  new exit code, 75, beside 0 and 1.
+- `acme-api migrate` and `python -m acme.om.storage.migrate` exit 0, 1,
+  or 75.

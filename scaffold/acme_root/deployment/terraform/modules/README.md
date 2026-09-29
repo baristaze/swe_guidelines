@@ -86,7 +86,7 @@ company site's name is a record in the Cloudflare zone, since the apex
 cannot be delegated; the create run writes it and its certificate's
 validation record. The site is optional: with no `site_domain_name` the
 rest plans and applies unchanged. The order of the runs is in
-[the first-time manual, 18a](../../cloud/first_time_manual.md).
+[the first-time manual](../../cloud/first_time_manual.md#cloudflare-token-for-the-delegation-and-the-sites-records).
 
 ## Secrets set by hand
 

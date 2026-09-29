@@ -1,12 +1,11 @@
-# Scale: one variable turns the environment's autoscaling on
+# Scale: one variable turns autoscaling on
 
-Scaling out is a deployment decision, and this is the one place it is
-made. Every service and worker declares its autoscaling with its
-deployment; one root variable per environment turns all of it on, and
-it is off by default because an unattended scale-out is a bill nobody
-approved.
+Scaling out is a deployment decision, made in one place. Every service
+declares its autoscaling, and one variable per environment turns all of
+it on. It is off by default, because an unattended scale-out is a bill
+nobody approved.
 
-## The one flip
+## The flip
 
 In `deployment/terraform/environments/<staging|prod>/main.tf`:
 
@@ -17,89 +16,66 @@ In `deployment/terraform/environments/<staging|prod>/main.tf`:
 ```
 
 A pull request that sets `autoscaling_enabled = true` scales the
-environment. Nothing else needs to change: every lever below the flip
-is declared on (`enabled = true` by default in each service's object),
-with its ceiling (`max`) and the CPU it tracks (`target_cpu`, 60
-percent by default). Production's ceilings are 3 for the API and 1 for
-the maintenance worker; staging's are 2 and 1. Each size in
-[../../deployment/cloud/README.md](../../deployment/cloud/README.md)
-names its ceilings and a pool that holds at them, so the flip is safe
-at every size. One service can stay
-out with `enabled = false` in its object; the flip still governs the
-rest.
-
-The floor is the desired count already in the root
-(`api_desired_count`, `maintenance_desired_count`), so turning the flip
-on changes nothing until load does.
+environment. Each service's object is on by default, with its ceiling
+(`max`) and the CPU it tracks (`target_cpu`, 60 percent). One service
+stays out with `enabled = false` in its object. The floor is the
+desired count already in the root (`api_desired_count`,
+`maintenance_desired_count`), so the flip changes nothing until load
+does. The sizes in
+[deployment/cloud/README.md](../../deployment/cloud/README.md) name a
+database pool that holds at every ceiling.
 
 ## What turns on
 
 Per service, in `deployment/terraform/modules/service`:
 
-- an Application Auto Scaling target on the ECS service's desired
-  count, `min = desired_count`, `max = <the ceiling>`;
-- a target-tracking policy `acme-<environment>-<service>-cpu` on
-  `ECSServiceAverageCPUUtilization` at `target_cpu`, scaling out after
-  a 60 second cooldown and in after 300, so a burst is answered in a
-  minute and a lull has to last five before a task is taken away.
+- a scaling target on the service's desired count, from the floor to the
+  ceiling;
+- a target-tracking policy, `acme-<environment>-<service>-cpu`, that
+  scales out after a 60-second cooldown and in after 300.
 
-With the flip off, neither exists: `terraform plan` on the flip shows
-exactly two resources added per service, and nothing changed.
+With the flip off, neither exists. The plan of the flip adds two
+resources per service and changes nothing else.
 
-The database's storage grows on its own from the first apply
-(`max_allocated_storage` is five times the allocation), flip or no
-flip: that is a ceiling on how full a disk gets, not a bill that scales
-with traffic, and a full disk is an outage.
+## An apply returns the count to the floor
 
-## A deploy resets the count to the floor
+`desired_count` stays out of `ignore_changes`, so every apply sets a
+scaled service back to its floor, and the policy raises it again within
+its cooldown while load lasts
+([ADR 0081](../adr/0081-the-desired-count-is-the-roots.md)). An
+environment that cannot afford the dip raises its floor in the same pull
+request.
 
-`desired_count` is not in the service's `ignore_changes`, on purpose.
-With the flip on, every apply sets the running count back to the
-floor, and the policy raises it again within its cooldown while load is
-still there. A deploy is already a roll, and a few minutes at the floor
-is the price of the root's number staying the truth: a change to
-`api_desired_count` applies, flip on or off, and nothing in the state
-disagrees with the file. An environment that cannot afford the dip
-raises its floor in the same pull request.
-
-## How to read that it happened
+## Read that it happened
 
 Under the investigate profile ([operate.md](operate.md)):
 
 ```bash
 export AWS_PROFILE=acme-staging-investigate
-
-# The target and the policy exist, with the floor and the ceiling.
 aws application-autoscaling describe-scalable-targets --service-namespace ecs \
   --resource-ids service/acme-staging/api service/acme-staging/maintenance \
   --query 'ScalableTargets[].{service:ResourceId,min:MinCapacity,max:MaxCapacity}' --output table
-aws application-autoscaling describe-scaling-policies --service-namespace ecs \
-  --resource-id service/acme-staging/api \
-  --query 'ScalingPolicies[].{name:PolicyName,target:TargetTrackingScalingPolicyConfiguration.TargetValue}'
-
-# What it did, most recent first: each activity names the alarm that
-# fired, the count before, and the count after.
 aws application-autoscaling describe-scaling-activities --service-namespace ecs \
   --resource-id service/acme-staging/api --max-results 10 \
   --query 'ScalingActivities[].{at:StartTime,what:Description,why:Cause}' --output table
-
-# Where the service is now.
 aws ecs describe-services --cluster acme-staging --services api \
   --query 'services[0].{desired:desiredCount,running:runningCount}'
 ```
 
-On the dashboard, "Targets up" and "Running tasks" show the count move;
-the CPU the policy tracks is in the ECS console's service metrics and
-in `aws cloudwatch get-metric-statistics --namespace AWS/ECS
---metric-name CPUUtilization --dimensions Name=ClusterName,Value=acme-staging
-Name=ServiceName,Value=api`. The `acme-staging-api-tasks-below-desired`
-alarm reads desired against running, so a scale-out (desired rises,
-running follows) reads the same as a deploy and does not fire on its
-own.
+On the dashboard, "Targets up" and "Running tasks" show the count move.
+The tasks-below-desired alarm compares desired with running, so a
+scale-out does not trip it.
 
 ## What it costs
 
-A scale-out is tasks, and tasks are the bill. The ceiling is the most
-an environment can spend on a service at once; its account's budget,
-declared by the bootstrap root, is the catch-all under it, and its 80 percent notification is the one
-to read when a flip has been on for a while.
+A scale-out is tasks, and tasks are the bill. The ceiling is the most an
+environment spends on a service at once. The account's budget is the
+catch-all under it: read its 80 percent notice when the flip has been on
+for a while.
+
+## When it fails
+
+- **No scaling target after the flip.** The service's object carries
+  `enabled = false`, or the apply did not run. Read the plan.
+- **The count never rises.** The CPU stays under `target_cpu`: the load
+  is elsewhere, often the database.

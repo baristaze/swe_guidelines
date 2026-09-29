@@ -1,128 +1,120 @@
 # ADR 0016: Row-level security is the second fence, taken by default
 
-**Status**: accepted (2026-09-20)
-
+**Status**: accepted (2026-09-28)
 ## Context
 
 Tenancy is a data boundary and lives in storage, and the fence is the
-predicate in the query. That fence has one failure mode, and it is the
-one an early team ships: a predicate goes missing. A new list, a new
-`WHERE` beside an old one, a helper reused where it does not fit, and
-one tenant reads another's rows with nothing to say so. This repository
-has met it. `read_done_tasks` carried a `WHERE` of its own, the suite
-had a case for the open list and none for the done list, and taking the
-tenant out of the done list alone left the suite green;
-`docs/runbooks/tenant-isolation.md` records that run.
+predicate in the query. That fence has one failure mode: a predicate
+goes missing. A new list, a new `WHERE` beside an old one, or a helper
+reused where it does not fit, and one tenant reads another's rows with
+nothing to say so.
 
 Postgres can hold the same boundary a second time, in the database,
-where a query cannot forget it. The guideline's earlier text named two
-costs and left row-level security out because of them. The first is
-that setting the tenant is the same discipline in a second place, so a
-policy is only as good as the discipline it was meant to replace. The
-second is that a policy with no tenant set reads as no rows, which is a
-silent answer where a refusal would be louder.
+where a query cannot forget it. It has two costs. Setting the tenant is
+the same discipline in a second place. And a policy with no tenant set
+reads as no rows, a silent answer where a refusal would be louder.
 
 ## Decision
 
 Row-level security is taken, by default, as the second fence. The
 predicate in the query stays the fence the business layer relies on:
 nothing in a manager or an impl assumes a policy exists, and the
-cross-tenant cases of the contract suites run unchanged over Postgres
-and stay green. That is the test of the sentence, not the sentence
-itself.
+cross-tenant cases of the contract suites run unchanged over Postgres.
 
-Four pieces answer the two costs with shape rather than discipline.
+Five pieces answer the costs with shape rather than discipline.
 
 **The scope map.** `om/src/acme/om/storage/scopes.py` declares
 `TABLE_SCOPES` beside `TABLE_ROLES`: every table to one of `system`,
-`org`, `identity`, or `both`, with the person column a `both` table is
-narrowed on. `scope_for` refuses an unlisted table the way `role_for`
-does, so a table arrives with a scope or not at all. The fast gate
-holds the map to the tables (a global table is `system` and nothing
-else is; an `org` or `both` table carries `org_id`; the declared person
-column exists) and to the migration chain, so a table added without a
-policy fails before a database is involved.
+`org`, `identity`, or `both`, with the column a `both` table is narrowed
+on. `scope_for` refuses an unlisted table, so a table arrives with a
+scope or not at all. The fast gate holds the map to the tables and to
+the migration chains, so a table added without a policy fails before a
+database is involved.
 
-**The funnel.** `PgStorageBase._session_for` is the one place a Postgres
-impl opens a session, and it now takes the scope of the call:
-`org_id` required, `user_id` optional, `identity_id` for an
-`identity`-scoped table. It writes the transaction settings
-(`app.org_id`, `app.user_id`, `app.identity_id`) with
-`set_config(name, value, true)` before anything else, so they are the
-first statement of the transaction and die with it. This is the answer
-to the first cost: the tenant is named once per transaction at a place
-every statement already passes, not once per query in a second place.
-`EMPTY_UUID` is the system scope, never a default, spelled at the call
-site, and `om/tests/unit/test_session_scope.py` walks the impl modules
-and fails on any method that passes it and is not in the enumerated
-exceptions of `test_storage_exceptions.py`.
+**The funnel.** `PgStorageBase._session_for` is the one place a
+Postgres impl opens a session, and it takes the scope of the call:
+`org_id` required, `user_id` or `identity_id` when the call names the
+person. It writes the settings `app.org_id`, `app.user_id`, and
+`app.identity_id` with `set_config(name, value, true)` before the first
+statement ([ADR 0053](0053-the-scope-rides-in-the-message-that-begins.md)),
+so they die with the transaction. The tenant is named once per
+transaction, at a place every statement already passes. `EMPTY_UUID` is
+the system scope, never a default, spelled at the call site.
+`om/tests/unit/test_session_scope.py` fails on any method that passes
+it and is not an enumerated exception.
 
-**The login.** A superuser walks past every policy, and so does a role
-with `BYPASSRLS`; behind either, a fence is a drawing. Locally the
-superuser is `postgres` and an init script under `deployment/local/`
-creates `acme` as `LOGIN NOSUPERUSER NOBYPASSRLS`, owning the
-database. `FORCE ROW LEVEL SECURITY` is on every fenced table, so the
-owner is held too. On RDS the master user is neither, which the
-Terraform module now says where the username is set.
-`test_the_login_is_no_superuser_and_cannot_bypass_rls` asserts it on
-the live connection, because every other assertion here would pass
-against a database that fences nothing.
+**Three logins, none above the fence.** A superuser walks past every
+policy, and so does a role with `BYPASSRLS`. No login of the platform
+is either, and `FORCE ROW LEVEL SECURITY` is on every fenced table, so
+the owner is held too.
 
-**The two-run control.** A control that only runs with the policy live
-proves nothing about the suite. The runbook's procedure now takes two
-runs: the predicate out of one query with the policy live, which must
-stay green, and the same breach with the policy disabled on that table,
-which must go red. Both runs are recorded, with the query, the command,
-and what the suite reported.
+| Login | Holds | Used by |
+|-------|-------|---------|
+| `acme_migration` | owns every role's schemas and tables | the migrations |
+| `acme_runtime` | DML only | every request's connection |
+| `acme_system` | DML only, on a pool of its own | the system scope |
+
+The master, `acme`, runs `migrate ensure-logins` and nothing else.
+Locally `deployment/local/postgres/initdb/10-acme-login.sql` makes it
+with neither attribute; on RDS the master user has neither.
+`test_no_login_is_a_superuser_or_bypasses_rls` asserts it on the live
+database, since every other assertion here would pass against a
+database that fences nothing.
+
+**The system scope is a login, not a setting.** Every `tenant_fence`
+policy admits a row when `org_id` matches the setting, or when the
+setting is the empty UUID and `current_user = 'acme_system'`. The
+runtime login naming the system scope reads nothing, so SQL injected
+past the first fence cannot lift the second with a `SET`. The queue's
+table carries one policy per login instead
+([ADR 0044](0044-the-queue-is-fenced-by-one-policy-per-login.md)).
+
+**The two-run control.** The tenant-isolation runbook's control takes
+two runs: the predicate out of one query with the policy live, which
+must stay green, and the same breach with the policy off on that table,
+which must go red. Both are recorded.
+
+Two choices sit on top of the guideline's shape.
+
+- **More tenant-less storage methods than the guideline lists
+  (CTX-12).** The Second Fence names the sweeps and the lookups before an
+  identity is known. The tree also takes no tenant where a method reads
+  or writes the two `system` tables (`identities`, `sign_in_delays`),
+  reads across tenants for the operator plane, steps from an identity to
+  its tenants, keeps the platform's size, or erases a person
+  ([ADR 0041](0041-an-account-is-deleted-at-once-and-its-providers-by-the-queue.md)).
+  Each says why in its docstring. `[tool.arch-check.options.CTX-12]` in
+  `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py` hold
+  the same list.
+- **Sessions, API keys, and socket tickets are `both` tables.** The
+  guideline's scaffold makes them `identity` tables. Here each belongs to
+  one person inside one org: a session is in one org at a time, and a
+  switch ends it. So their policy is on `org_id`, narrowed by the
+  person. An operator token is a session under the system scope, which
+  only the system login finds.
 
 ## Consequences
 
 A transaction that names no tenant reads nothing and writes nothing.
-The read going silently empty is the accepted price, and it is what the
-second cost names; the write is refused outright, and the negative
-control is what says the fence is live rather than merely enabled. The
-first thing this caught was a test: an integration case that reached
-around the impl to seed a cursor row was refused, and it now names the
-tenant the way every other transaction does.
+The silent empty read is the accepted price; the refused write, and the
+negative control, say the fence is live and not only enabled.
 
 A policy is invisible to `make migrate-check`, which compares tables,
 columns, and indexes. `om/tests/integration/test_row_level_security.py`
 reads `pg_class` and `pg_policies` for every table in the scope map and
-asserts the declared scope is what the migrated database holds, so the
-two halves of the schema are both checked, in different places.
+asserts the migrated database holds the declared scope.
 
-The policies compare against `NULLIF(current_setting(...), '')::uuid`
-and not the setting alone. A custom setting written with
-`set_config(..., true)` does not go back to NULL when the transaction
-ends; on that connection it goes back to the empty string, which casts
-to no uuid at all. Without `NULLIF`, the next transaction on a pooled
-connection that named no tenant would raise a cast error instead of
-reading nothing, which is not the answer a fence gives. The system
-scope is still spelled as the literal empty UUID in every policy, so
-every place the one deliberate bypass holds is found by reading the
-chain.
+The policies compare against `NULLIF(current_setting(...), '')::uuid`.
+A setting written with `set_config(..., true)` goes back to the empty
+string, not to NULL, when its transaction ends. Without `NULLIF`, the
+next transaction on that pooled connection that named no tenant would
+raise a cast error instead of reading nothing.
 
-Two storage reads ask a cross-tenant question and now say so. `_upsert`
-read another tenant's row to report `TenantMismatch`; under the policy
-that read returns nothing, so the insert that follows meets the primary
-key and a key the read did not see is a row this transaction may not
-see. The refusal is the same, from the key rather than from the column,
-and it holds with the policy and without it. `WorkStoragePostgresImpl.create_item`
-reads back the same way. `TasksStoragePostgresImpl._why_not`, which
-tells the caller which of three conditions the bulk update missed,
-cannot: narrowed to the tenant, "another tenant holds it" and "nobody
-does" are one empty answer, and they are different refusals. It takes
-the system scope in a session of its own, named in
-`test_session_scope.py` with that reason. It reads two columns of one
-id, which is what it read before the policy existed.
+`_upsert` refuses another tenant's row twice. The read names the tenant
+on the row. Under the policy that read returns nothing, so the insert
+meets the primary key, and a key the read did not see is a row this
+transaction may not see: the same `TenantMismatch`, from the key.
 
-`app.user_id` narrows a `both` table to one person when a call already
-names one: the idempotency markers, the session list, the key page, the
-membership read. Everywhere else the narrowing is absent and only the
-tenant holds, which is what the policy shape says. `users` declares
-`identity_id` as its person column, since the person behind a user row
-is the identity; no call site narrows that table today.
-
-Local development needs `make reset` once. The init script runs on an
-empty data directory, so a stack that was up before this change keeps
-the old superuser login and no policy would hold behind it.
+`app.user_id` narrows a `both` table to one person when a call names
+one: the idempotency markers, the session list, the key page, the
+membership read. Everywhere else only the tenant holds.
