@@ -160,14 +160,19 @@ wait.
    nothing more: the request count, the 5xx count, the p95, the
    worker failures, through `get-metric-data`, or the same as a
    Prometheus range query. The period of each `get-metric-data` query
-   (its `Period`, and the last argument of a `SEARCH` expression) is a
-   whole number of minutes whatever the batch interval: the interval
-   rounded down to a multiple of 60 seconds, and never under 60, since
-   CloudWatch refuses any other period for a regular-resolution
-   metric. A batch's count is the sum of its datapoints, and its p95
-   the highest among them. A burst is a count in the batch, never a
-   line per event: the batch's lines over `--cap` are counted by level
-   and dropped.
+   (its `Period`, and the last argument of a `SEARCH` expression) is
+   60 seconds whatever the batch interval, since CloudWatch refuses a
+   shorter one, or one that is not a whole number of minutes, for a
+   regular-resolution metric. The watch rounds both bounds it passes,
+   `--start-time` and `--end-time`, down to whole minutes, so
+   consecutive batches split the minutes with no overlap and each
+   datapoint is read once, when its minute is complete; a 30-second
+   batch whose rounded bounds are equal reads none. Locally the range
+   query is `increase(<metric>[1m])` from the rounded start plus 60
+   seconds to the rounded end, at a 60-second step. A batch's count is
+   the sum of its datapoints, and its p95 the highest among them. A
+   burst is a count in the batch, never a line per event: the batch's
+   lines over `--cap` are counted by level and dropped.
 6. The first responder rule. In production every alarm transition is
    an escalation. Outside production it is read against the size of
    step 2, and it is suppressed only when the traffic is the team's
