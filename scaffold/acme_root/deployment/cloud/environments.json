@@ -1,0 +1,31 @@
+{
+  "region": "us-west-2",
+  "domain": "acme.example",
+  "github_repository": "acme-org/acme",
+  "github_repository_id": "0",
+  "github_repository_owner_id": "0",
+  "environments": {
+    "staging": {
+      "account_id": "111111111111",
+      "admin_profile": "acme-staging-admin",
+      "sso_profile": "acme-staging",
+      "sso_role_name": "PowerUserAccess",
+      "bootstrap_root": "bootstrap/staging",
+      "environment_root": "environments/staging",
+      "api_domain_name": "api.staging.acme.example",
+      "app_domain_name": "app.staging.acme.example",
+      "site_domain_name": "staging.acme.example"
+    },
+    "production": {
+      "account_id": "222222222222",
+      "admin_profile": "acme-prod-admin",
+      "sso_profile": "acme-prod",
+      "sso_role_name": "ReadOnlyAccess",
+      "bootstrap_root": "bootstrap/prod",
+      "environment_root": "environments/prod",
+      "api_domain_name": "api.acme.example",
+      "app_domain_name": "app.acme.example",
+      "site_domain_name": "acme.example"
+    }
+  }
+}

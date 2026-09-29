@@ -1,0 +1,15 @@
+# Linux only; the Makefile adds this file when `uname -s` says Linux.
+#
+# On a Linux host, host.docker.internal is the Docker bridge gateway, and a
+# process bound to 127.0.0.1 never answers there. So the collector joins the
+# host's network: it scrapes the host processes on 127.0.0.1, where they
+# listen, and writes to the port Prometheus publishes on 127.0.0.1, host to
+# container, the way traces already reach Jaeger. It listens on nothing, so
+# the host's network gains no port.
+services:
+  otel-collector:
+    network_mode: host
+    extra_hosts: !reset []
+    environment:
+      ACME_COLLECTOR_SCRAPE_HOST: 127.0.0.1
+      ACME_COLLECTOR_WRITE_URL: http://127.0.0.1:${ACME_PROMETHEUS_PORT:-59090}/api/v1/write

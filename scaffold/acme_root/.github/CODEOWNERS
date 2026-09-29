@@ -1,0 +1,4 @@
+# What a merge to main applies to a cloud, and what holds the credentials.
+/deployment/        @acme-org/maintainers
+/.github/           @acme-org/maintainers
+/scripts/cloud_*.sh @acme-org/maintainers

@@ -1,0 +1,280 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Targets up",
+        "view": "singleValue",
+        "region": "${region}",
+        "period": 60,
+        "stat": "Minimum",
+        "metrics": ${running_tasks}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 0,
+      "width": 9,
+      "height": 6,
+      "properties": {
+        "title": "HTTP requests per second by route",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "yAxis": { "left": { "min": 0 } },
+        "metrics": [
+          [ { "expression": "SEARCH('{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "rps" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 15,
+      "y": 0,
+      "width": 9,
+      "height": 6,
+      "properties": {
+        "title": "HTTP responses per second by status",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "yAxis": { "left": { "min": 0 } },
+        "metrics": ${responses_by_status}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "HTTP latency p95, all routes, at the load balancer",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "p95",
+        "yAxis": { "left": { "min": 0, "label": "seconds" } },
+        "metrics": [
+          [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${load_balancer_arn_suffix}", { "label": "p95" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 6,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Outcomes per second (cache, queue, rate limit, idempotency, worker)",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "yAxis": { "left": { "min": 0 } },
+        "metrics": [
+          [ { "expression": "SEARCH('{\"Acme\",OTelLib,environment,outcome,service,subsystem} MetricName=\"acme_outcomes_total\" environment=\"${environment}\"', 'Sum', 60) / 60", "id": "outcomes" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Database CPU and connections",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Average",
+        "yAxis": { "left": { "min": 0, "max": 100, "label": "percent" }, "right": { "min": 0, "label": "connections" } },
+        "metrics": [
+          [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${database_identifier}", { "label": "CPU" } ],
+          [ "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${database_identifier}", { "label": "connections", "yAxis": "right" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 12,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Cache CPU",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Average",
+        "yAxis": { "left": { "min": 0, "max": 100, "label": "percent" } },
+        "metrics": ${cache_cpu}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 12,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Queue messages visible and dead",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0 } },
+        "metrics": ${queue_depths}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 18,
+      "y": 12,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Running tasks",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Minimum",
+        "yAxis": { "left": { "min": 0 } },
+        "metrics": ${running_tasks}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Read latency p95, the reads with an alarm",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "p95",
+        "yAxis": { "left": { "min": 0, "label": "milliseconds" } },
+        "metrics": ${read_latency}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Queue oldest message age",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "seconds" } },
+        "metrics": ${queue_ages}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 24,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Sweep pass duration, the longest per minute",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "milliseconds" } },
+        "metrics": [["Acme", "acme_sweep_duration_ms", { "label": "sweep pass" }]]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 30,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Work queue oldest ready item age",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "seconds" } },
+        "metrics": [["Acme", "acme_work_oldest_ready_seconds", { "label": "oldest ready" }]]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 30,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Work items failed in the last fifteen minutes",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "items" } },
+        "metrics": [["Acme", "acme_work_failed_recently", { "label": "failed" }]]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 30,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Outbox oldest pending row age",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "seconds" } },
+        "metrics": [["Acme", "acme_outbox_oldest_pending_seconds", { "label": "oldest pending" }]]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 18,
+      "y": 30,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "Outbox rows failed in the last fifteen minutes",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "${region}",
+        "period": 60,
+        "stat": "Maximum",
+        "yAxis": { "left": { "min": 0, "label": "rows" } },
+        "metrics": [["Acme", "acme_outbox_failed_recently", { "label": "failed" }]]
+      }
+    }
+  ]
+}

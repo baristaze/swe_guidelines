@@ -1,0 +1,60 @@
+# Acme
+
+> The domain-agnostic core of a multi-tenant system, in the shape of the Software Design and Architecture Guidelines: one object model at the center, one infrastructure toolkit, an API process and a maintenance worker around them, and a portal, a command line, and a Python client at the edge. A product renames it and builds its domain on top.
+
+This file is the knowledge map. Each section lists the documents one
+audience is served; a document not listed under an audience is not
+served to it. Exposure is by listing, never by folder.
+
+## Platform developers
+
+- [README](README.md): what Acme is, the quick start with the local URLs and sign-ins, set up and check, deploy and operate, and the layout
+- [Architecture](specs/architecture.md): the guideline's pin, the substitutions, and the deviations, each linking its decision record under docs/adr/
+- [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, identities, users, memberships, invitations, sessions, API keys, socket tickets, the operator plane, and deletion
+- [Events](om/src/acme/om/events/README.md): the org's stream, its gapless sequence above a floor, and audit entries
+- [Outbox rows](om/src/acme/om/outbox/README.md): the note written beside every change, and its relay
+- [Idempotency records](om/src/acme/om/idempotency/README.md): the outcome of a request that may arrive twice
+- [Work items](om/src/acme/om/work/README.md): background jobs, the claim, the lease, and the dead letter
+- [Orchestrations](om/src/acme/om/orchestrations/README.md): long-running records, a step at a time, that park or fail
+- [Files](om/src/acme/om/media/README.md): files as references, the bounded upload straight to the store, and the sweep
+- [Infrastructure](infra/README.md): cache, buckets, topics, queues, secrets, observability; what each promises and which twin runs where
+- [Integrations](integrations/README.md): the identity provider, its twin, the absent provider, and the webhook check
+- [The API process](services/api/README.md): the routes by area, the gateway's guarantees, the subcommands
+- [The maintenance worker](workers/maintenance/README.md): the work queue's loop, the provider deliveries, and the sweep
+- [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention
+- [The local stack](deployment/local/README.md): every URL and port, one service at a time
+- [Terraform](deployment/terraform/modules/README.md): the roots, the modules, the state, and the credentials
+- [Cloud cost](deployment/cloud/README.md): the sizes, each environment's size, and the budgets
+- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits
+- [Audit tools](ops/audit/README.md): what the audit skills run
+- [Stress tests](ops/stress/README.md): what a good one is and the scenario file
+- [Runbooks](docs/runbooks/README.md): one file per operational procedure
+- [The portal](apps/portal/README.md): the browser app shell
+- [The company site](apps/site/README.md): the static page and where it is served
+- [The command line](apps/cli/README.md): the terminal client and its exit codes
+- [The Python client](clients/python/README.md): the one client every Python caller goes through
+
+## Platform operators
+
+- [Operations](ops/README.md): roles, profiles, credentials, signals, the ops binary, the skills, the audits, what an operator never does
+- [Audit tools](ops/audit/README.md): what the audit skills run
+- [Stress tests](ops/stress/README.md): what a good one is and the scenario file
+- [Runbooks](docs/runbooks/README.md): one file per operational procedure
+- [Deploy runbook](docs/runbooks/deploy.md): creating an environment, cutting a release, approving a plan, rolling back
+- [Operate runbook](docs/runbooks/operate.md): reading an environment under the investigate profile
+- [Operator runbook](docs/runbooks/operator.md): the grant, the second factor, and the operator token
+- [Scale runbook](docs/runbooks/scale.md): the one variable that turns autoscaling on
+- [Restore runbook](docs/runbooks/restore.md): what is backed up, and a restore to a new instance
+- [Support runbook](docs/runbooks/support.md): how a support investigation runs
+- [Tenant isolation runbook](docs/runbooks/tenant-isolation.md): the cross-tenant cases and what they catch
+- [WorkOS runbook](docs/runbooks/providers/workos.md): the identity provider for a newcomer: its environments, the application and its key, the redirects, the webhook, the bootstrap, and rotation
+- [Deployment](deployment/README.md): what runs where, locally and in the cloud, and the branch convention
+
+## Tenant users and admins
+
+- [What Acme is made of](om/README.md): the nouns and how they relate, for a reader with no code
+- [Tenancy](om/src/acme/om/tenancy/README.md): orgs, people, roles, invitations, single sign-on, credentials, deleting a team org you own, and deleting your account
+- [Files](om/src/acme/om/media/README.md): the files an org keeps, their bounds, and the storage used
+- [Events](om/src/acme/om/events/README.md): the org's diary
+- [The command line](apps/cli/README.md): the terminal client and its exit codes

@@ -1,0 +1,24 @@
+# Local scrape targets: the processes as containers of the full compose
+# stack, and Prometheus itself. The same processes run on the host by
+# scripts/dev.sh arrive by remote write from the collector
+# (otel-collector/collector.yml), under the same job names with
+# runs_in: host. Whichever of the two is not running shows as down
+# (up == 0), which is expected.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: api
+    static_configs:
+      - targets: ["api:8000"]
+        labels: {runs_in: container}
+
+  - job_name: maintenance
+    static_configs:
+      - targets: ["maintenance:9464"]
+        labels: {runs_in: container}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

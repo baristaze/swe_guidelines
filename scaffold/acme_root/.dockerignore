@@ -1,0 +1,12 @@
+# Images copy named paths only; this keeps host installs, caches, and local
+# state out of the build context.
+.git
+.env
+.local
+.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+apps/*/dist
+**/.terraform
