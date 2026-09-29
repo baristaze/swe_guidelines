@@ -13,8 +13,9 @@ the preconditions and narrating. Production is protected twice: by a
 pull request that lifts deletion protection, merged before this skill
 runs, and by the name typed into the command.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

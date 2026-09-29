@@ -13,8 +13,9 @@ the members, rename the person, create an API key and revoke it, read
 the events, see one of its own changes arrive on the socket, sign out.
 The profiles differ by tenants, members, concurrency, and think time.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

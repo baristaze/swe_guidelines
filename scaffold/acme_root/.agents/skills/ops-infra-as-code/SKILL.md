@@ -12,8 +12,9 @@ writes the change, proves it with a plan that cannot write, and opens
 the pull request. The apply is the deployer role's, through the
 workflow, after review.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

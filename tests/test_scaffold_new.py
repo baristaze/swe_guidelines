@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -116,6 +117,30 @@ def test_the_copy_renames_paths_and_text_and_keeps_binary_files(tmp_path, capsys
     assert (dest / "scripts/dev.sh").stat().st_mode & 0o111
     out = capsys.readouterr().out
     assert "pinned at guideline v9.8.7" in out and "make setup && make check" in out
+
+
+def test_a_link_stays_a_link_with_its_target_renamed(tmp_path):
+    source, plugin = fixture(tmp_path)
+    (source / ".agents/skills/acme-watch").mkdir(parents=True)
+    (source / ".agents/skills/acme-watch/SKILL.md").write_text("# acme-watch\n", encoding="utf-8")
+    (source / ".claude").mkdir()
+    (source / ".claude/skills").symlink_to("../.agents/skills")
+    (source / "docs/acme.md").symlink_to("../.agents/skills/acme-watch/SKILL.md")
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    link = dest / ".claude/skills"
+    assert link.is_symlink() and os.readlink(link) == "../.agents/skills"
+    assert (link / "pressroom-watch" / "SKILL.md").read_text() == "# pressroom-watch\n"
+    assert os.readlink(dest / "docs/pressroom.md") == "../.agents/skills/pressroom-watch/SKILL.md"
+
+
+def test_a_copy_of_the_scaffold_reads_its_skills_from_agents_skills_and_links_claude_skills_to_it(tmp_path):
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)]) == 0
+    link = dest / ".claude" / "skills"
+    assert link.is_symlink() and os.readlink(link) == "../.agents/skills"
+    skills = sorted(p.parent.name for p in (dest / ".agents" / "skills").glob("*/SKILL.md"))
+    assert "ops-investigate" in skills and sorted(p.parent.name for p in link.glob("*/SKILL.md")) == skills
 
 
 def test_the_copy_pins_the_release_this_checkout_carries(tmp_path):

@@ -19,8 +19,9 @@ every read is a bounded query over one closed interval, and the wait
 between two is a `sleep` of the interval, which is capped well under
 the time cap.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

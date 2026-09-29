@@ -11,8 +11,9 @@ skill opens tenant X, and only tenant X, through the operator plane,
 and follows one request id across every signal until the cause is a
 line of code, a row, or a resource.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

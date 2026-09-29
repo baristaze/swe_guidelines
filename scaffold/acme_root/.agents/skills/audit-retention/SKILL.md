@@ -11,8 +11,9 @@ purge still works when the table is large. The answer comes from the code,
 checked against plans on a seeded database of the run's own, and against
 the retention settings staging actually runs with.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step: the
-profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 
@@ -79,8 +80,8 @@ holds. It reads no env file and no token: it calls no route.
    event cursor) or one for the platform (its size), or as a person's
    until they are erased (the identity), or it is live data (a living
    org's members and files); say which.
-   `${CLAUDE_SKILL_DIR}/references/purges.md` lists the purges the sweep
-   runs; a purge the code has and that list misses is read all the same.
+   `references/purges.md`, in this skill's folder, lists the purges the
+   sweep runs; a purge the code has and that list misses is read all the same.
 4. Measure the purges. Make and seed the run's database:
 
    ```bash
@@ -91,7 +92,7 @@ holds. It reads no env file and no token: it calls no route.
 
    Write each purge's statement into
    `~/Downloads/acme_retention_<yyyy-mm-dd>/purges.sql`, in the file
-   format `${CLAUDE_SKILL_DIR}/references/purges.md` gives (read it before writing
+   format `references/purges.md` gives (read it before writing
    the file: it says how to get the exact SQL and the ids a statement
    binds), and run:
 

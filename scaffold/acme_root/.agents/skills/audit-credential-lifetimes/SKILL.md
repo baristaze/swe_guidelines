@@ -132,8 +132,8 @@ file.
    operator token on an operator route, whose mint takes an
    `Idempotency-Key`; a sign-in with its second factor; an API key warm)
    goes in a flows file of the run's own, written as
-   `.claude/skills/audit-database-calls/references/flows.md` shows (read
-   it before writing one). Use the warm round trips, and say so. A cost
+   `../audit-database-calls/references/flows.md`, a path from this
+   skill's folder, shows (read it before writing one). Use the warm round trips, and say so. A cost
    the counter cannot reach (a check made only in the cache) is read
    from the code and marked as read.
 6. Drop the run's database, whatever happened before, and check it is

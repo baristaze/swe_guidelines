@@ -104,8 +104,8 @@ calls no real provider.
    calls a provider and that no built-in flow reaches (a device
    sign-in, the SSO link, a delivery to the identity webhook and its
    consumer) then goes in a flows file of the run's own, written as
-   `.claude/skills/audit-database-calls/references/flows.md` shows
-   (read it before writing one), run on the same database with `--only
+   `../audit-database-calls/references/flows.md`, a path from this
+   skill's folder, shows (read it before writing one), run on the same database with `--only
    seed` into `calls_2.json`. A flow that fails is named, the rest run,
    and `run` exits 1; fix it in its own file and run that the same way
    (`calls_3.json`), or report it as not measured. Keep the counter's

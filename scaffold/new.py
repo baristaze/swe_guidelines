@@ -10,9 +10,10 @@ text file from `acme` to the name, in each of its forms: the Python package
 and the database logins take the snake form (`free_press`), the
 distributions, the domains, and the cloud resources the kebab form
 (`free-press`), the environment the UPPER prefix (`FREE_PRESS_`), and prose
-the Title (`Free Press`). Binary files are copied as they are. The copy pins
-the guideline release this checkout carries, starts a git repository with
-nothing staged, and prints the next step.
+the Title (`Free Press`). Binary files are copied as they are, and a link
+stays a link: `.claude/skills` points at `.agents/skills` in the copy as it
+does here. The copy pins the guideline release this checkout carries, starts
+a git repository with nothing staged, and prints the next step.
 
 Standard library only, so it runs before anything is installed.
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import json
 import keyword
+import os
 import re
 import shutil
 import subprocess
@@ -168,9 +170,15 @@ def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
         rel = path.relative_to(source)
         if any(part in SKIPPED or part.endswith(".pyc") for part in rel.parts):
             continue
+        out = dest.joinpath(*(rename(part, names) for part in rel.parts))
+        if path.is_symlink():
+            # a link is copied as a link, its target renamed like a path, so the copy wires what the scaffold wires
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.symlink_to(rename(os.readlink(path), names))
+            count += 1
+            continue
         if not path.is_file():
             continue
-        out = dest.joinpath(*(rename(part, names) for part in rel.parts))
         out.parent.mkdir(parents=True, exist_ok=True)
         data = path.read_bytes()
         if is_text(data):

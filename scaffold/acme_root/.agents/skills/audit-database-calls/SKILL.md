@@ -51,7 +51,8 @@ holds no cloud credential and reads no environment.
    the sweep's steps (that folder's `loop.py`, `_sweep_once`). Compare the list with the calls the built-in flows make
    (`ops/audit/dbcalls_flows.py`): a route or a flow they do not reach is
    written into a flows file of the run's own, as
-   `${CLAUDE_SKILL_DIR}/references/flows.md` shows (read it before writing one).
+   `references/flows.md` in this skill's folder shows (read it before
+   writing one).
    Add a second call wherever a size changes the count: one id and a
    hundred, an org of one and of many, a list of one row and a full page.
    A route that needs a provider's setup the twins cannot give in a flow

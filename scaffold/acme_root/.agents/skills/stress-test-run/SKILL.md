@@ -11,8 +11,9 @@ then the signals, then a verdict. The target is the scenario's unless
 the run states its own; either way it is stated before the run, and
 the verdict names it and where it came from.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step:
-the profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 

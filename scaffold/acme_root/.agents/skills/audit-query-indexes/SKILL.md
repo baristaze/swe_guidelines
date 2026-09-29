@@ -63,7 +63,8 @@ and drops. It holds no cloud credential and reads no environment.
 
 4. Measure every statement. Write them into
    `~/Downloads/acme_query_indexes_<yyyy-mm-dd>/statements.sql` in the
-   format and with the cases `${CLAUDE_SKILL_DIR}/references/statements.md` gives
+   format and with the cases `references/statements.md` in this
+   skill's folder gives
    (read it before writing the file), then run (each statement opens its
    own connection, so a file may hold any number of generic plans):
 
@@ -80,7 +81,7 @@ and drops. It holds no cloud credential and reads no environment.
    plans and from the frequency of step 2. A per-tenant cost times the
    number of tenants is the sweep's; a lock held across round trips (the
    event cursor) caps a tenant's write rate. With `--contention`, measure those locks with the
-   storage impls as `${CLAUDE_SKILL_DIR}/references/statements.md` shows; without
+   storage impls as `references/statements.md` shows; without
    it, say they were not measured.
 6. Read the inventory now, before any candidate adds scans: an index
    with no scans after step 4 serves no statement the audit measured;
@@ -106,7 +107,7 @@ and drops. It holds no cloud credential and reads no environment.
    Say the before and the after, and whether the generic plan picks the
    index too (a partial index whose predicate names a bound value is
    one a generic plan cannot use). A candidate that does not help is a
-   finding too: say why, as `${CLAUDE_SKILL_DIR}/references/statements.md` explains
+   finding too: say why, as `references/statements.md` explains
    for a filter row-level security keeps out of the index condition.
 8. Drop the run's database, whatever happened before:
 

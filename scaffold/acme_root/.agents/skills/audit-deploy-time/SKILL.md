@@ -10,8 +10,9 @@ One deploy, or the last few, taken apart into phases: what each took,
 what it waited on, and which setting or step would shorten it. Every
 number comes from what the pipeline and the cluster already record.
 
-Read `.claude/skills/_shared/ops-preamble.md` before the first step: the
-profiles, the account check, and the env file are there.
+Read `../_shared/ops-preamble.md`, a path from this skill's folder,
+before the first step: the profiles, the account check, and the env
+file are there.
 
 ## Input
 
