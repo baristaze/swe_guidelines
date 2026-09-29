@@ -574,7 +574,7 @@ class SecurityContext(Platform):
     role: Role
     permissions: tuple[Permission, ...]
     teams: tuple[UUID, ...] = ()
-        credential_kind: CredentialKind
+    credential_kind: CredentialKind
     credential_id: UUID = EMPTY_UUID  # the session or key; EMPTY_UUID for internal contexts
 
 class RequestContext(Platform):
@@ -847,7 +847,7 @@ class OutboxRow(Identifiable, Created):
     actor_id: UUID  # the write's principal; EMPTY_UUID for the platform
     request_id: UUID
     traceparent: str | None = None
-        app: str
+    app: str
     done_at: datetime | None = None
     attempts: int = 0
     next_attempt_at: datetime | None = None
