@@ -48,11 +48,12 @@ def copied(name: str) -> str:
 
 
 def audit(name: str, role: str = "None", ranked: str = RANKED) -> str:
-    """An audit skill of the scaffold, with a role section and a step that ranks its fixes."""
+    """An audit skill of the scaffold, with a role section, a step that ranks its fixes, and one that bounds a rerun."""
     return (
         f'---\nname: {name}\ndescription: "Audit {name}."\nallowed-tools: Read, Grep\n---\n\n# {name}\n\n'
         f"## Role and credential\n\n{role}, local only. It holds no credential.\n\n"
         f"## Procedure\n\n1. Make the evidence folder.\n2. Rank each fix: {ranked}.\n"
+        "3. Count the calls: the first run plus at most 1 rerun.\n"
     )
 
 
@@ -693,11 +694,13 @@ def test_fenced_code_a_table_row_or_a_fix_in_another_paragraph_is_no_loop(repo, 
 
 
 def looping(name: str, procedure: str) -> str:
-    """A scaffold skill of `name` whose procedure is `procedure`."""
-    return f'---\nname: {name}\ndescription: "Run {name}."\nallowed-tools: Read\n---\n\n# {name}\n\n## Procedure\n\n{procedure}\n'
+    """A scaffold skill of `name` whose procedure is `procedure`, with the role section an audit has."""
+    head = f'---\nname: {name}\ndescription: "Run {name}."\nallowed-tools: Read\n---\n\n# {name}\n\n'
+    return f"{head}## Role and credential\n\nNone, local only.\n\n## Procedure\n\n{procedure}\n"
 
 
 def test_each_loop_bound_of_an_ops_skill_is_held_and_named_when_dropped(repo, skills, capsys):
+    operational_skills(repo, {name: "none" for name in skills.LOOP_BOUNDS if name.startswith("audit-")})
     for name, bounds in skills.LOOP_BOUNDS.items():
         repo.write(copied(name), looping(name, "\n".join(f"{i}. It says {bound}." for i, bound in enumerate(bounds, 1))))
     assert skills.main() == 0

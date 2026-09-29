@@ -126,9 +126,10 @@ Rules:
   outside fenced code: a watch's batches, its shortest interval, and the
   calls a batch makes; the request ids a search follows, one pass each,
   and the feed read from the window's first `seq`; a Logs Insights
-  query's polls; and the hops of Next a session follows, or a Next that
-  is the person's to run. A skill the scaffold does not have is not
-  read. Each batch, poll, and hand-off spends tokens and, in the cloud,
+  query's polls; the hops of Next a session follows, or a Next that is
+  the person's to run; and an audit's rerun of a failed flow, which
+  names no rerun the pairing above reads. A skill the scaffold does not
+  have is not read. Each batch, poll, and hand-off spends tokens and, in the cloud,
   a billed call, and a rewrite that drops a count passes every other
   gate.
 
@@ -659,6 +660,7 @@ LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
     "stress-test-run": (HOPS,),
     "ops-cloud-deployment-create": (PERSONS_NEXT,),
     "stress-test-create-or-update": (PERSONS_NEXT,),
+    "audit-database-calls": ("the first run plus at most 1 rerun",),
 }
 """The count each loop of an ops skill of the scaffold stops at, in the words its skill says it.
 
