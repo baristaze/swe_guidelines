@@ -63,6 +63,28 @@ def test_a_missing_or_malformed_signature_is_refused(header: str | None) -> None
         verified(event("organization.updated", {"id": ORG}), header, SECRET)
 
 
+@pytest.mark.parametrize(
+    "digest",
+    ["\u00e9" * 64, "\uff11" * 64, "abc\udcff"],
+    ids=["a byte past ASCII", "digits of another script", "a lone surrogate"],
+)
+def test_a_signature_outside_its_alphabet_is_a_bad_signature(digest: str) -> None:
+    """A header's bytes reach the check as text, one character each, so a
+    byte past ASCII is a character the compare refuses to take: it is a bad
+    signature like any other, never an exception."""
+    body = event("organization.updated", {"id": ORG})
+    header = f"t={int(time.time() * 1000)}, v1={digest}"
+    with pytest.raises(DeliveryRefused, match="did not check out"):
+        verified(body, header, SECRET)
+
+
+def test_a_timestamp_of_any_length_is_outside_the_window() -> None:
+    body = event("organization.updated", {"id": ORG})
+    for far in (int("9" * 400), -int("9" * 400)):
+        with pytest.raises(DeliveryRefused, match="window"):
+            verified(body, sign(body, SECRET, far), SECRET)
+
+
 def test_a_body_changed_after_signing_is_refused() -> None:
     body = event("organization.updated", {"id": ORG})
     header = sign(body, SECRET)

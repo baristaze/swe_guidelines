@@ -93,7 +93,8 @@ class TenancyOptions(Platform):
 
     login_ttl: timedelta = timedelta(minutes=10)
     session_ttl: timedelta = timedelta(days=30)
-    """A session's absolute lifetime, from its exchange."""
+    """A session's absolute lifetime, from the exchange of its sign-in. A
+    session made from another, by a switch, keeps that one's deadline."""
     session_idle_ttl: timedelta = timedelta(days=14)
     """A session not presented for this long has ended, whatever is left of
     its absolute lifetime. It ends at whichever passes first."""

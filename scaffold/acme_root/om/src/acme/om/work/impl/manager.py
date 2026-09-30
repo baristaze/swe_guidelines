@@ -15,6 +15,7 @@ from acme.om.events.manager import audit_event
 from acme.om.exceptions import (
     InvalidCredential,
     LeaseLost,
+    NotAuthorized,
     NotFound,
     UniqueKeyTaken,
     ValidationFailed,
@@ -25,6 +26,7 @@ from acme.om.work.manager import WorkManagerInterface
 from acme.om.work.rules import attempts_after_hand_back, is_exhausted, retry_delay
 from acme.om.work.storage import InsertOutcome, WorkStorageInterface
 from acme.om.work.types.work_item import (
+    WORK_ENQUEUE_PERMISSIONS,
     WORK_PAYLOADS,
     WORK_ROW_PREFIX,
     ScheduledPayload,
@@ -89,8 +91,14 @@ class WorkManagerImpl(WorkManagerInterface):
     async def enqueue(self, ctx: TenantContext, item: WorkItem) -> WorkItem:
         """The direct create, under a context: work a CLI, a sweep, or an app asks
         for on its own, which no core write announced. The actor is the
-        context's and the key is the caller's."""
-        ctx.require(Permission.WRITE)
+        context's and the key is the caller's. The caller authorizes the whole
+        run, which has the service role, so it holds the permission the kind
+        is asked for with; a kind the table does not name is asked for by
+        nobody."""
+        asking = WORK_ENQUEUE_PERMISSIONS.get(item.kind)
+        if asking is None:
+            raise NotAuthorized(f"no permission asks for work of kind {item.kind.value}")
+        ctx.require(asking)
         now = utcnow()
         queued = item.model_copy(
             update={

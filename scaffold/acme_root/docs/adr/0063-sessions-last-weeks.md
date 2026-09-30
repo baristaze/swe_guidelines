@@ -39,6 +39,14 @@ recheck calls `resume` with `record_use=False`
 so an open tab never keeps a session alive by itself. A tab left open
 for 14 days with no request is signed out at its next recheck.
 
+**Nothing moves the deadline.** Only the exchange of a sign-in starts
+the 30 days. A session presented to the exchange is a switch: it ends,
+and the new session keeps its deadline, in another org or in the same
+one. The session an owner lands on after deleting a team org keeps it
+too. So a session never renews itself, and no chain of switches
+outlives its sign-in. When the setting gives less than the deadline
+leaves, the new session takes the shorter of the two.
+
 **WorkOS's session mirrors ours.** A sign-in through AuthKit leaves an
 AuthKit session in the browser, and while it lives, the next sign-in
 there has no prompt. The portal keeps its session in the tab, so a new
@@ -66,9 +74,10 @@ its session id, and never refreshes it.
 ## Consequences
 
 - A person signs in about once a month, and after two weeks away.
-- A stolen session token works for longer: up to 30 days, or until the
-  person signs out, a member is removed, or the session is revoked. A
-  revocation takes effect at the next request.
+- A stolen session token works for longer: up to 30 days from its
+  sign-in, or until the person signs out, a member is removed, or the
+  session is revoked. A switch made with it buys no time. A revocation
+  takes effect at the next request.
 - A session row goes once its expiry is past the retention, thirty days.
   A revoked session waits for its expiry, and so does one that ended
   idle, so a dead session stays up to 60 days. It is refused at every

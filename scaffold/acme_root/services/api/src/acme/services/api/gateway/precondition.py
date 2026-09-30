@@ -21,14 +21,21 @@ IfMatchHeader = Annotated[
 def if_match_version(if_match: IfMatchHeader = None) -> int | None:
     """The version the header names, quoted as an entity tag or bare; None
     with no header. A weak tag, a list, or a star names no one version, and
-    a write compares with exactly one, so each is refused."""
+    a write compares with exactly one, so each is refused. A version is
+    written in ASCII digits alone: `isdigit` admits the digits of every
+    script, some of which `int` refuses, and `int` reads a number only up to
+    its digit limit."""
     if if_match is None:
         return None
     tag = if_match.strip()
     tag = tag[1:-1] if len(tag) >= 2 and tag[0] == tag[-1] == '"' else tag
-    if not tag.isdigit() or int(tag) < 1:
+    try:
+        version = int(tag) if tag.isascii() and tag.isdigit() else 0
+    except ValueError:
+        version = 0
+    if version < 1:
         raise ValidationFailed(f"If-Match names no version: {if_match!r}")
-    return int(tag)
+    return version
 
 
 IfMatch = Annotated[int | None, Depends(if_match_version)]
