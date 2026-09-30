@@ -918,7 +918,9 @@ attempt for that email is checked, up to a cap. An attempt inside the
 delay is refused `429` before its password is checked, and a success
 resets it. An unknown email is delayed like a known one. Every
 session has an idle and an absolute lifetime, both settings, and every
-API key an expiry.
+API key an expiry. Only a sign-in starts the absolute lifetime: a
+session made from another, as a switch of tenant makes it, keeps the
+deadline of the one it ends.
 
 **Source.** The Network Layer, Auth: the Gateway Verifies, the Tenancy
 Domain Owns.
@@ -926,7 +928,8 @@ Domain Owns.
 **Look for.** The sign-in transition and where it records a failure;
 what the count is keyed on, the delay it applies, its base and cap,
 and whether the refusal comes before the password check; the session's idle and
-absolute lifetimes in settings and where each is checked; the expiry
+absolute lifetimes in settings and where each is checked; the deadline
+a session takes when a session was presented to make it; the expiry
 on an API key.
 
 **Violation.** A sign-in whose only defense is the per-address rate
@@ -935,7 +938,9 @@ cache instead of the tenancy manager's storage; a count keyed on the
 identity, so an unknown email answers faster than a known one; an
 attempt inside the delay whose password is still checked; a session
 with no idle
-or no absolute lifetime; an API key with no expiry.
+or no absolute lifetime; a switch that gives the new session a full
+lifetime, so a session renews itself with no sign-in; an API key with
+no expiry.
 
 **Severity.** high
 

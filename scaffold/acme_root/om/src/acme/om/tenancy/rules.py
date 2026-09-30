@@ -335,6 +335,15 @@ def sign_in_delay(
     return max(last_failed_at + wait - now, timedelta(0))
 
 
+def deadline_kept(presented: datetime, now: datetime, lifetime: timedelta) -> datetime:
+    """When a session made from another ends, by a switch or by the landing
+    after an org's deletion: when the one presented would have, or a full
+    `lifetime` from `now` where that comes first. Only the exchange of a
+    sign-in starts an absolute lifetime, so no session outlives its
+    sign-in's."""
+    return min(presented, now + lifetime)
+
+
 def confirms_deletion(email: str, typed: str) -> bool:
     """Whether what the person typed is the account's email: the one check
     that a deletion is meant. Surrounding space is forgiven, and letter case

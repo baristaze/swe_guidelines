@@ -52,6 +52,7 @@ from acme.om.tenancy.impl.shared import (
 from acme.om.tenancy.impl.totp import TotpSealer
 from acme.om.tenancy.rules import (
     check_email,
+    deadline_kept,
     email_digest,
     hash_token,
     is_platform_email,
@@ -538,6 +539,11 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
         if presented is None:
             raise InvalidCredential("the credential behind the exchange is gone")
         now = utcnow()
+        # A sign-in starts the absolute lifetime; a switch keeps the deadline
+        # of the session it ends, so a session never renews itself.
+        expires_at = now + self._options.session_ttl
+        if ictx.credential_kind is CredentialKind.SESSION_TOKEN:
+            expires_at = deadline_kept(presented[1].expires_at, now, self._options.session_ttl)
         token = mint_token(CredentialKind.SESSION_TOKEN)
         session = Session(
             id=new_id(),
@@ -549,7 +555,7 @@ class TenancySignInManagerImpl(TenancySignInManagerInterface):
             user_id=user.id,
             token_hash=hash_token(token),
             credential_kind=CredentialKind.SESSION_TOKEN,
-            expires_at=now + self._options.session_ttl,
+            expires_at=expires_at,
             provider_session_id=presented[1].provider_session_id,
         )
         if ictx.credential_kind is CredentialKind.SESSION_TOKEN:
