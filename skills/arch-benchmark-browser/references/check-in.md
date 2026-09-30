@@ -96,7 +96,10 @@ top. The cells, in the header's order, from the copied `results.json`:
 Run `make runs`. When it refuses, fix what it names in the files this
 step wrote and run `make runs` again: the first run plus at most 3
 reruns, then stop, leave the files as they are, and say which check
-fails and why.
+fails and why. When it refuses anything outside those files, such as
+another run's folder, or does not run at all, such as with `uv`
+missing, stop at once, leave the files as they are, and say what it
+printed.
 
 Stage nothing, commit nothing, and open no pull request: the person
 reads the diff and does. The output names the folder written, the row,
