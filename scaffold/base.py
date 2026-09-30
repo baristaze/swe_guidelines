@@ -2,7 +2,7 @@
 """Commit the scaffold at a ref of the guideline, under a copy's name, onto the
 copy's `scaffold` branch.
 
-    python3 scaffold/base.py v0.42.0
+    python3 scaffold/base.py v0.43.0
     python3 scaffold/base.py <commit> --repo ~/code/pressroom --name pressroom
 
 A copy of the scaffold keeps its base in git. Its `scaffold` branch holds the
