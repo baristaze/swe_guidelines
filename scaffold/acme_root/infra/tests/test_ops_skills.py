@@ -360,6 +360,18 @@ def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
     assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
 
 
+# What a run of the compaction does where two runs could do two things: each
+# is a sentence of the skill, so a rewrite that leaves the choice open fails.
+COMPACTION_DECIDES = [
+    "When either exists, both take the next free suffix (`_2`), so a run never overwrites another's.",
+]
+
+
+@pytest.mark.parametrize("sentence", COMPACTION_DECIDES)
+def test_the_compaction_leaves_no_choice_to_the_run(sentence: str) -> None:
+    assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
+
+
 # What `make openapi` writes: the API document and the two schemas made from it.
 GENERATED = [
     "clients/typescript/openapi.json",

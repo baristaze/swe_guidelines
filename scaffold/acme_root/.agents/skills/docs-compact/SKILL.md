@@ -66,8 +66,10 @@ left as it is, and the report names it under Kept.
    --quiet origin/<name>` prints a commit: add a suffix then (`-2`). On
    another branch, work there only when `git log
    --oneline origin/<main>..HEAD` prints nothing; otherwise refuse.
-   Make the evidence folder, `mkdir -p
-   ~/Downloads/acme_docs_compact_<yyyy-mm-dd>/`.
+   The evidence folder is `~/Downloads/acme_docs_compact_<yyyy-mm-dd>/`
+   and the report `~/Downloads/acme_docs_compact_<yyyy-mm-dd>.md`. When
+   either exists, both take the next free suffix (`_2`), so a run never
+   overwrites another's. Make the folder (`mkdir -p`).
 2. **Take the inventory**, and keep it for the report. Read nothing
    under `node_modules`, a lock file, a generated file
    (`clients/typescript/openapi.json` and the two schemas `make openapi`
@@ -243,8 +245,8 @@ left as it is, and the report names it under Kept.
 
 ## Output
 
-The work branch, one commit per category, and
-`~/Downloads/acme_docs_compact_<yyyy-mm-dd>.md`:
+The work branch, one commit per category, and the report, under the
+name step 1 gave it:
 
 ```markdown
 # Acme: documents compacted to what holds

@@ -10,8 +10,8 @@ place. A role whose chain is one revision is folded already.
 --env-file .env.example --env-file .env -f
 deployment/local/docker-compose.yml`, with `--env-file .env` left out
 when the tree has no `.env`. `<day>` is today's date in UTC,
-`yyyymmdd`, and `<evidence>` is
-`~/Downloads/acme_docs_compact_<yyyy-mm-dd>`.
+`yyyymmdd`, and `<evidence>` is the evidence folder the skill's step 1
+made.
 
 ## The precondition
 
