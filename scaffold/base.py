@@ -13,6 +13,10 @@ merged last is the merge base of the next move, and `git merge scaffold` brings
 in what the scaffold changed since, three ways, and keeps what the copy
 changed.
 
+The render's parent is the copy's last render: the newest of its `scaffold`
+branch, origin's, and the last render the checkout merged, so a stale branch
+never wins, and a base whose branch was never pushed is still found.
+
 The ref is a release tag, a branch, or a commit of the guideline on GitHub. The
 script fetches it as one tarball, never a clone, and reads only `scaffold/` and
 `.claude-plugin/` from it. The commit it writes names the guideline commit the
@@ -174,18 +178,37 @@ def trailers(message: str) -> dict[str, str]:
     return found
 
 
+RENDER = r"^Scaffold-Commit: [0-9a-f]{40}$"
+"""The trailer that marks a render in the copy's history."""
+
+
+def answer(repo: Path, *args: str) -> str | None:
+    """What a git query prints, or None when it answers nothing."""
+    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
 def base_of(repo: Path) -> str | None:
-    """The copy's last render: its `scaffold` branch, else origin's."""
-    for ref in (f"refs/heads/{BRANCH}", f"refs/remotes/origin/{BRANCH}"):
-        done = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if done.returncode == 0:
-            return done.stdout.strip()
-    return None
+    """The copy's last render: the newest of its `scaffold` branch, origin's,
+    and the last render its checkout merged. A stale branch never wins over a
+    newer render, and a base whose branch was never pushed is still found."""
+    found = [
+        answer(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{BRANCH}^{{commit}}"),
+        answer(repo, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{BRANCH}^{{commit}}"),
+        answer(repo, "log", "-1", "--no-merges", "-E", f"--grep={RENDER}", "--format=%H", "HEAD"),
+    ]
+    tip: str | None = None
+    for render in filter(None, found):
+        if tip is None or ancestor(repo, tip, render):
+            tip = render
+        elif not ancestor(repo, render, tip):
+            raise Refused(f"the renders {tip[:9]} and {render[:9]} are on two lines; keep one on {BRANCH}")
+    return tip
+
+
+def ancestor(repo: Path, older: str, newer: str) -> bool:
+    done = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", older, newer], check=False)
+    return done.returncode == 0
 
 
 def name_of(repo: Path, given: str | None, head: str | None) -> str:
@@ -261,7 +284,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     parent = f"on {head[:9]}" if head else "its first commit"
     print(f"{BRANCH} is {new[:9]}, {parent}: the scaffold at {args.ref} ({made.commit[:9]}), as {name}")
-    print(f"next: on a branch cut from the main branch, git merge {BRANCH}")
+    if head:
+        print(f"next: on a branch cut from the main branch, git merge {BRANCH}")
+    else:
+        print(f"next: when the copy holds this release already, graft it: git merge -s ours --allow-unrelated-histories {BRANCH}")
     return 0
 
 

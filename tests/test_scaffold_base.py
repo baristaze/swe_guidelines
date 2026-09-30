@@ -259,3 +259,63 @@ def test_a_file_that_is_not_a_tarball_is_refused(tmp_path, capsys):
     junk.write_bytes(b"<html>not found</html>")
     assert run(repo, junk, "--name", "pressroom") == 2
     assert "could not be read" in capsys.readouterr().err
+
+
+def test_a_base_the_copy_merged_is_found_without_its_branch(tmp_path, capsys):
+    source = guideline(tmp_path)
+    one, _ = tarball(source, tmp_path / "one.tar.gz")
+    repo = copy(tmp_path)
+    assert run(repo, one, "--name", "pressroom") == 0
+    first = git(repo, "rev-parse", "scaffold")
+    assert "git merge -s ours --allow-unrelated-histories scaffold" in capsys.readouterr().out
+    git(repo, "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "scaffold", "-m", "graft")
+    git(repo, "branch", "-D", "scaffold")
+    (source / "scaffold/acme_root/README.md").write_text("# Acme\n\nMore.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "two")
+    two, _ = tarball(source, tmp_path / "two.tar.gz")
+    assert run(repo, two, ref="v0.2.0") == 0
+    assert git(repo, "rev-parse", "scaffold^") == first
+    assert "next: on a branch cut from the main branch, git merge scaffold" in capsys.readouterr().out
+
+
+def test_a_stale_branch_gives_way_to_the_newer_render(tmp_path):
+    source = guideline(tmp_path)
+    one, _ = tarball(source, tmp_path / "one.tar.gz")
+    upstream = copy(tmp_path)
+    assert run(upstream, one, "--name", "pressroom") == 0
+    first = git(upstream, "rev-parse", "scaffold")
+    (source / "scaffold/acme_root/README.md").write_text("# Acme\n\nMore.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "two")
+    two, _ = tarball(source, tmp_path / "two.tar.gz")
+    assert run(upstream, two, ref="v0.2.0") == 0
+    second = git(upstream, "rev-parse", "scaffold")
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(upstream), str(clone)], check=True)
+    git(clone, "branch", "scaffold", first)
+    (source / "scaffold/acme_root/README.md").write_text("# Acme\n\nMore still.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "three")
+    three, _ = tarball(source, tmp_path / "three.tar.gz")
+    assert run(clone, three, ref="v0.3.0") == 0
+    assert git(clone, "rev-parse", "scaffold^") == second
+
+
+def test_renders_on_two_lines_are_refused(tmp_path, capsys):
+    source = guideline(tmp_path)
+    one, _ = tarball(source, tmp_path / "one.tar.gz")
+    upstream = copy(tmp_path)
+    assert run(upstream, one, "--name", "pressroom") == 0
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(upstream), str(clone)], check=True)
+    (source / "scaffold/acme_root/README.md").write_text("# Acme\n\nMore.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "two")
+    two, _ = tarball(source, tmp_path / "two.tar.gz")
+    assert run(upstream, two, ref="v0.2.0") == 0
+    (source / "scaffold/acme_root/README.md").write_text("# Acme\n\nOther.\n", encoding="utf-8")
+    git(source, "commit", "-q", "-am", "three")
+    three, _ = tarball(source, tmp_path / "three.tar.gz")
+    assert run(clone, three, ref="v0.3.0") == 0
+    git(clone, "fetch", "-q", "origin")
+    head = git(clone, "rev-parse", "scaffold")
+    assert run(clone, two, ref="v0.2.0") == 2
+    assert "are on two lines" in capsys.readouterr().err
+    assert git(clone, "rev-parse", "scaffold") == head
