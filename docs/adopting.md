@@ -60,10 +60,10 @@ names, so a team that pins versions installs from a tag. The plugin
 adds the marketplace from it:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.41.0
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.42.0
 ```
 
-The clone checks it out: `git -C ../swe_guidelines checkout v0.41.0`.
+The clone checks it out: `git -C ../swe_guidelines checkout v0.42.0`.
 
 ## Run the checker
 
@@ -71,7 +71,7 @@ The clone checks it out: `git -C ../swe_guidelines checkout v0.41.0`.
 any CI. Pin it at the project's guideline release, in the fast gate:
 
 ```make
-ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.41.0\#subdirectory=checkers" arch-check
+ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.42.0\#subdirectory=checkers" arch-check
 
 arch-check: ## the guideline's static checks
 	$(ARCH_CHECK)
@@ -106,8 +106,8 @@ substitution: a disable is a deviation, and a substitution is not.
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.41.0/architecture.md>
-(pinned at `v0.41.0`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.42.0/architecture.md>
+(pinned at `v0.42.0`).
 
 ## Substitutions
 
@@ -203,7 +203,7 @@ repository, the copy's first commit is the scaffold, on `scaffold` and
 the main branch. A later release takes two commands and no clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baristaze/swe_guidelines/v0.41.0/scaffold/base.py | python3 - v0.41.0
+curl -fsSL https://raw.githubusercontent.com/baristaze/swe_guidelines/v0.42.0/scaffold/base.py | python3 - v0.42.0
 git switch -c scaffold-v0-40-0 && git merge scaffold
 ```
 
@@ -228,7 +228,7 @@ A project that wants the text in its tree without the plugin fetches it
 at a pinned tag into a folder it never edits:
 
 ```makefile
-GUIDELINE_TAG ?= v0.41.0
+GUIDELINE_TAG ?= v0.42.0
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/

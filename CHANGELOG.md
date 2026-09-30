@@ -5,64 +5,42 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.41.0 (2026-09-30)
+## 0.42.0 (2026-09-30)
 
-A copy of the scaffold keeps the scaffold as its base and takes a later
-release by merging it, and the scaffold's docs say what its code does.
-Minor: a skill is added and a lens is sharpened, and one reversal is
-named below.
+The scaffold's ops skills read the series the app exports, and ask the
+error tracker for a window it takes. Minor: the two skills gain the
+cloud call of each signal they report, and a test holds their schemas.
+Nothing is reversed.
 
 ### Added
 
-- A copy keeps its base in git. `scaffold/new.py`, from a clean
-  checkout, commits the copy as its base, on the branch `scaffold` and
-  the main branch. `scaffold/base.py` commits the scaffold at a later
-  ref onto that branch, fetched as one tarball and renamed by that
-  commit's own `new.py`.
-- `arch-upgrade-scaffold` moves a copy one release forward: it grafts a
-  copy with no base at the release it pins, merges the target's render
-  three ways, resolves what the merge leaves, keeping the copy's ADRs
-  and migrations its own, and runs the gates. The move merges with a
-  merge commit. The adopting page gains "Upgrade a copy of the
-  scaffold".
-- The browser benchmark has a page of its runs,
-  `benchmark/runs/browser-judge-swe/`, text only and redacted, and
-  `arch-benchmark-browser` checks each run in with its row. `make runs`
-  holds a browser run.
-- The scaffold's API page lists its routes by area, what the gateway
-  guarantees, and its subcommands. Its operations page says what an
-  operator never does, and its integrations page what a provider that
-  hangs costs a call.
-- The scaffold's cloud page itemizes the fixed monthly cost, and gives
-  the unit prices behind the sizes, `max_connections` at L and XL, and
-  four savings that need a Terraform change.
-- The scaffold's tests pin each loop count its ops skills state, the
-  paths only one agent resolves, and Codex's switch beside
-  `disable-model-invocation`.
+- `ops-watch` step 5 gives one cloud call that prints a batch's four
+  numbers: the requests, the 5xx, the p95, and the worker's failures.
+  Step 2 reads the load balancer's ARN once, for the p95.
+- `ops-investigate` gives the cloud call of each signal it reports:
+  step 4 the request count, the counts by status and route, and the
+  load balancer's p95; step 5 the outcomes and the database's
+  connections.
+- The scaffold's tests hold every `SEARCH` schema the two skills write
+  to the ones its dashboard module writes, and pin the tracker's
+  dialect, the reading of an empty batch, and the cloud p95's unit.
 
 ### Changed
 
-- Reversed: ASY-25 no longer holds that the manager's copy keeps an
-  enqueue's timestamps. The copy keeps the id as constructed and stamps
-  the times, as CON-17 says of every create since 0.39.0.
-- `ops-watch` step 5 says how a batch reads whole minutes in plain
-  sentences, names both places a query holds its period, and gives the
-  local p95 query. `ops-investigate` bounds its polls for each query.
-- The scaffold's workflows set up uv with `astral-sh/setup-uv` v10.2.0.
+- A watch batch whose cloud `requests` is 0 read nothing, since the
+  load balancer's health checks are requests: the batch writes "metrics
+  not read", never a zero.
+- The cloud p95 is one number for every route together, written in
+  milliseconds, or `none` when no request crossed the load balancer.
+  The cloud has no p95 by route.
 
 ### Fixed
 
-- A copy's `pnpm-lock.yaml` lists each importer's dependencies in
-  pnpm's order under the copy's name: `scaffold/new.py` orders them
-  after the rename.
-- The scaffold's prose puts no article before its name, which the
-  rename left wrong for most names, and its local TOTP key holds no
-  name, which the rename could not reach inside base64.
-- Three of the scaffold's ADRs name paths that exist, and ADRs 0041,
-  0045, and 0056 say what its deletion and its purges do. Its README
-  lists `make migrate-check` and says an exported variable wins over
-  `.env`; its runbooks say the repository issues GitHub's immutable
-  OIDC subject and that the database's storage grows on its own.
-- Three docstrings: `Created` is the base of a row the platform writes
-  for itself, a manager operation takes `TenantContext`, and no
-  heartbeat thread runs beside the event loop.
+- `ops-investigate` step 4 searches the schema the app's series carry,
+  with `OTelLib`. The schema it wrote before matched nothing, so the
+  request query read zero.
+- `ops-investigate` step 6 asks the tracker for its window as the search
+  term `lastSeen:-<since>`, only of Sentry's own host, and keeps the
+  issues by their `lastSeen` field. It sends no `statsPeriod`, which the
+  tracker takes only as `24h` or `14d` and answered with a 400 for the
+  default hour.
