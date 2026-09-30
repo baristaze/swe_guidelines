@@ -93,9 +93,8 @@ Prometheus queries of step 4 run as one command, as do those of
 step 5. A retry counts as a call. A read that would be the 21st call
 is not made: the batch stops there, writes that read as not read, and
 the watch goes on to the next batch. The first credential check and
-the size read of step 2 come before the first batch, and are not
-counted in it; the first batch still makes its own check after its
-wait.
+the reads of step 2 come before the first batch, and are not counted
+in it; the first batch still makes its own check after its wait.
 
 1. Verify the credential as Role and credential states. A chained
    session lasts an hour at most, so every interval reads the profile
@@ -115,6 +114,18 @@ wait.
    Keep the numbers and how long ago the worker counted them; the
    first responder rule of step 6 reads them. The worker counts every
    five minutes, so a count older than ten minutes is itself a finding.
+
+   In the cloud, read the load balancer's ARN once too; step 5 reads
+   the p95 from it:
+
+   ```bash
+   aws elbv2 describe-load-balancers --names acme-<env> \
+     --query 'LoadBalancers[0].LoadBalancerArn' --output text \
+     --profile acme-<env>-investigate
+   ```
+
+   `<load balancer>` in step 5 is what follows `loadbalancer/` in that
+   ARN, `app/acme-<env>/<id>`.
 3. Each interval, wait for it to close, then read its lines. The
    wait:
 
@@ -172,12 +183,43 @@ wait.
    minute, 60 seconds, whatever the batch interval: CloudWatch refuses
    a period that is not a multiple of 60 for a regular-resolution
    metric, and a longer one would reach past the batch's rounded end
-   into the next batch's minutes. Locally, a count is
-   `increase(<metric>[1m])` and the p95 is
+   into the next batch's minutes.
+
+   Cloud, one call reads the four, between the two rounded bounds in
+   epoch seconds:
+
+   ```bash
+   aws cloudwatch get-metric-data --profile acme-<env>-investigate \
+     --start-time <rounded start> --end-time <rounded end> \
+     --query "{requests: sum(MetricDataResults[?Id=='req'].Values[]), server_errors: sum(MetricDataResults[?Id=='by' && starts_with(Label, '5')].Values[]), p95_seconds: max(MetricDataResults[?Id=='p95'].Values[]), worker_failures: sum(MetricDataResults[?Id=='fail'].Values[])}" \
+     --metric-data-queries '[
+       {"Id":"req","Period":60,"Expression":"SUM(SEARCH('"'"'{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60))"},
+       {"Id":"by","Period":60,"Label":"${PROP('"'"'Dim.status'"'"')}","Expression":"SEARCH('"'"'{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60)"},
+       {"Id":"p95","Label":"p95","MetricStat":{"Metric":{"Namespace":"AWS/ApplicationELB","MetricName":"TargetResponseTime","Dimensions":[{"Name":"LoadBalancer","Value":"<load balancer>"}]},"Period":60,"Stat":"p95"}},
+       {"Id":"fail","Period":60,"Expression":"SUM(SEARCH('"'"'{\"Acme\",OTelLib,environment,outcome,service,subsystem} MetricName=\"acme_outcomes_total\" environment=\"<env>\" subsystem=\"worker\" (outcome=\"failed\" OR outcome=\"refused\")'"'"', '"'"'Sum'"'"', 60))"}
+     ]'
+   ```
+
+   It prints the four numbers of the batch. `requests` is every series
+   of the app's request counter, and `server_errors` the ones whose
+   status starts with `5`. `p95_seconds` is the load balancer's target
+   response time over every route, at its highest minute, and `null`
+   when no request crossed it. `worker_failures` counts the worker's
+   `failed` and `refused` outcomes: an attempt a handler failed, and
+   an item it refused for good. The two schemas are the dashboard's
+   own (`deployment/terraform/modules/dashboard/`): one that leaves
+   out a dimension the series carry, `OTelLib` among them, matches
+   nothing and reads as a zero, so keep them as written.
+
+   Locally, a count is `increase(<metric>[1m])` and the p95 is
    `histogram_quantile(0.95, sum by (le) (increase(acme_http_request_seconds_bucket[1m])))`,
    each a range query from the rounded start plus 60 seconds to the
    rounded end, at a 60-second `step`: each point is one complete
-   minute of the batch. A batch's count is the sum of its datapoints,
+   minute of the batch. The three counts are the cloud's, each summed
+   over its series: `acme_http_requests_total`, the same with
+   `status=~"5.."`, and
+   `acme_outcomes_total{subsystem="worker",outcome=~"failed|refused"}`.
+   A batch's count is the sum of its datapoints,
    and its p95 the highest among them. A burst is a count in the
    batch, never a line per event: the batch's lines over `--cap` are
    counted by level and dropped.
