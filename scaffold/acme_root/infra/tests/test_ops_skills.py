@@ -365,6 +365,8 @@ def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
 COMPACTION_DECIDES = [
     "When either exists, both take the next free suffix (`_2`), so a run never overwrites another's.",
     "A migration's revision id or file name that it cites stays as it is: only a fold moves one",
+    "a field's `description`, which is the wire's document",
+    "A name in code is code, a test's name included",
 ]
 
 

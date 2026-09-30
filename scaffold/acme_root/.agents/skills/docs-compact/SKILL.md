@@ -188,8 +188,13 @@ left as it is, and the report names it under Kept.
      the comment says why the code is there, and whoever removes the
      code removes both. Its ADR is rewritten as any other is, and what
      it says of the contract's steps goes, as a past.
-   - Only text changes: a comment, a docstring, a document. A name in
-     code is code.
+   - Only text changes: a comment, a docstring, a document, and the
+     `reason` of a checker exception in `pyproject.toml`, which is prose
+     the checker only repeats. A name in code is code, a test's name
+     included: it is the test's identity. So is a string a statement
+     carries: an assert's message, and a field's `description`, which
+     is the wire's document. A client reads it in the API document, so
+     it changes with the API, never with a compaction.
    Commit.
 7. **With `--migrations`, fold each chain.** Read `references/fold.md`
    first, and follow it: the precondition and how each part of it is
