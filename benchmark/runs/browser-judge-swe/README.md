@@ -28,7 +28,9 @@ earlier run, or says what an earlier run scored, read the earlier
 scores: it is a set of its own, and its note says which site read them.
 
 Each run's folder holds its `results.json` and one answer per session,
-as the product wrote it, redacted. `[redacted]` marks each place a
+redacted. An answer is the product's own Markdown, from the copy
+button under it, and its note says so where it is page text instead.
+`[redacted]` marks each place a
 conversation's address, a device or account name, or the name of the
 guideline's reference implementation stood. No screenshot is checked
 in. When `arch-benchmark-browser` runs in a checkout of this

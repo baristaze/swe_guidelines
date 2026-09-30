@@ -32,7 +32,7 @@ waits, and saves the answer with its proof.
 
 ```text
 results.json          the run, in the schema: the prompt and contract as typed, sizes, the repository's head, each session's URL, labels, times, score, the version it read
-chatgpt.com.md        the answer as the page showed it, under a header with the URL and the labels
+chatgpt.com.md        the answer as the product's copy button gave it, in Markdown, under a header with the URL and the labels
 claude.ai.md
 gemini.google.com.md
 grok.com.md
