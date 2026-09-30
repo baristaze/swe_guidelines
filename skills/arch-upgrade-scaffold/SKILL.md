@@ -45,17 +45,19 @@ absolute path of `../../scaffold/base.py`.
    branch is the one `git symbolic-ref --short refs/remotes/origin/HEAD`
    names. Work on a branch cut from it as it is on origin: when the
    checkout is on the main branch, cut one,
-   `git switch -c scaffold-<target> origin/<main>`, with the target's
-   dots as hyphens (`scaffold-v0-41-0`).
-2. **Find the base.** `git rev-parse --verify --quiet scaffold`, else
-   `origin/scaffold`. When one answers, the copy has a base, and its
-   message names the guideline commit it took (`Scaffold-Commit`) and
-   the name (`Scaffold-Name`): `git log -1 --format=%B <it>`. Then
-   `git merge-base HEAD <it>` must answer. When it does not, the main
-   branch never merged the base (a move squashed, or one never merged):
-   stop and say so. The person merges the branch head with
-   `git merge -s ours <it>`, which records it and changes no file, then
-   runs this skill again.
+   `git switch --no-track -c scaffold-<target> origin/<main>`, with the
+   target's dots as hyphens (`scaffold-v0-41-0`), so that a push never
+   lands on the main branch.
+2. **Find the base**: the last render the branch holds,
+   `git log -1 --no-merges -E --grep='^Scaffold-Commit: [0-9a-f]{40}$' --format=%H HEAD`.
+   When it answers, the copy has a base, and its message names the
+   guideline commit it took (`Scaffold-Commit`) and the name
+   (`Scaffold-Name`). When it answers nothing but `scaffold` or
+   `origin/scaffold` exists, the main branch never merged its base (a
+   move squashed, or one never merged): stop and say so. The person
+   merges that branch's head with `git merge -s ours <it>`, which
+   records it and changes no file, then runs this skill again. When
+   nothing answers, the copy has no base.
 3. **Graft, only when there is no base.** The copy was made before its
    base was recorded, so the base is the release it pins: the version in
    `pinned at release` in `specs/architecture.md`. Render it,
@@ -66,8 +68,9 @@ absolute path of `../../scaffold/base.py`.
    copy is: the scaffold at its pin, and what the copy changed since.
    From here on, every difference between the two is the copy's own,
    and the next merge keeps it. When `base.py` refuses because the
-   release has no `scaffold/acme_root/`, stop: the copy first adopts a
-   release that has the scaffold, as `../../docs/adopting.md` says. When
+   release has no `scaffold/acme_root/`, stop: that release predates the
+   scaffold, so the copy was not made from it, and this skill does not
+   apply. When
    the pin is the target, the graft is the whole move: go to step 8.
 4. **Render the target.** `python3 <base.py> <ref>`. It prints the new
    head of `scaffold` and the guideline commit it holds. When it prints
@@ -90,24 +93,29 @@ absolute path of `../../scaffold/base.py`.
 
    | Where | Resolution |
    |-------|------------|
-   | A line both sides changed | The scaffold's change to the core, and the copy's product around it. When the scaffold's change undoes a deviation the copy records (its Deviations table names the ADR), keep the copy's line. |
+   | A line both sides changed | The scaffold's change to the core, and the copy's product around it. When both changed it to the same effect in other words, keep the copy's line: its own tests may hold its wording. When the scaffold's change undoes a deviation the copy records (its Deviations table names the ADR), keep the copy's line. |
    | A file the copy deleted and the scaffold changed | It stays deleted (`git rm`). When the copy keeps its own file for the same thing, such as a screen its product replaced, carry into that file what the scaffold's change alters in behaviour. |
    | A file the scaffold deleted and the copy changed | Deleted, unless the copy's own code still imports or runs it. |
-   | `docs/adr/` | The copy's record of its own decisions. The scaffold's text never replaces the copy's ADR; a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
+   | `docs/adr/` | The copy's record of its own decisions. An ADR the copy never changed takes the scaffold's change, as any file does. Into one the copy changed, no scaffold text comes, by a conflict or by a clean merge; only a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
    | A migration | History the copy's databases applied: never edited. A scaffold migration that is not in the copy's chain stays out. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. |
    | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). |
    | What `make openapi` writes | Take either side, then run `make openapi`. |
    | The pin | Every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. |
 
 7. **Carry what the releases ask** (step 5). A deviation whose rule now
-   holds leaves the Deviations table, and its ADR's status says the
+   holds leaves the Deviations table, and a row that deviates in part
+   keeps only that part. Where the merge brought the scaffold's own
+   change to that ADR, the ADR is done; otherwise its status says the
    release that retired it. Record the move itself the way the copy
    records a pin move: when its ADRs keep one for each release adopted,
    write the next one. Commit this apart from the merge.
 8. **Run the gates.** `make setup`, then `make check`. When
    `docker info` exits 0, also `make infra-up`, `make migrate`,
    `make migrate-check`, and `make test-integration`; otherwise the
-   output names each one skipped. A gate that fails is fixed, and the
+   output names each one skipped. `make setup` formats the Python, and
+   what it changes is part of the move: commit it. When the merge
+   changed a file under `services/`, also run `make openapi` and commit
+   what it regenerates. A gate that fails is fixed, and the
    fix is its own commit. The gate then runs again from its first
    command: the first run plus at most 3 reruns, then stop and say which
    gate fails and why.
@@ -122,6 +130,9 @@ absolute path of `../../scaffold/base.py`.
 - What the releases asked (step 5), and what step 7 did about each.
 - The gates and their results, and those skipped.
 - The next step: push `scaffold` and the work branch, then open the pull
-  request and merge it with a merge commit, never a squash. After the
+  request and merge it with a merge commit, never a squash. A branch
+  under `scaffold/` on origin refuses the push of `scaffold`; whoever
+  may removes or renames it first. The pull request carries the renders
+  either way. After the
   merge, run `arch-review-full all` on the main branch, as
   `../../docs/adopting.md` asks of a pin move.
