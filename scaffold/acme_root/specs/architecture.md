@@ -16,7 +16,7 @@ adopts every other technology the guideline names.
 
 | ADR | Rule | Summary |
 |-----|------|---------|
-| [0030](../docs/adr/0030-the-company-site-is-html-and-css-not-react.md) | DEL-12, Client App Architecture, Stack | The company site is HTML and CSS on Vite, with no script and no React. |
+| [0002](../docs/adr/0002-technology-choices.md) | DEL-12, Client App Architecture, Stack | The company site is HTML and CSS on Vite, with no script and no React. |
 
 ## Deviations
 
