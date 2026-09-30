@@ -12,6 +12,7 @@ break them, and this test holds them there.
 """
 
 import itertools
+import json
 import os
 import re
 import shlex
@@ -193,6 +194,204 @@ def test_the_root_cause_reads_of_a_tenant_keep_no_text_the_tenant_wrote() -> Non
     assert "Bash(jq:*)" in _allowed_tools("ops-root-cause")
     assert "never run either read without its `jq`" in _prose("ops-root-cause")
     assert "**Tenant.** <kind> org" in _skill("ops-root-cause")
+
+
+# Every read of the operator plane a skill writes: a `curl` of a route under
+# `/v1/admin/`, and the `jq` it is piped through on the next line. A read with
+# no filter prints whatever the answer holds, and a read each run writes its
+# own way reads something else on each run.
+OPERATOR_READ = re.compile(
+    r'^ *curl [^\n]*"\$ACME_API_URL/v1/admin/(?P<route>[^"]*)"'
+    r"(?P<piped> \\\n +\| jq (?:-c )?'(?P<kept>[^'\n]*)'$)?",
+    re.MULTILINE,
+)
+ROOT_CAUSE_READS = [
+    "me",
+    "orgs/<org_id>",
+    "orgs/<org_id>/members",
+    "orgs/<org_id>/members?cursor=<next_cursor>",
+    "orgs/<org_id>/events?after_seq=<n>&limit=1",
+    "orgs/<org_id>/events?after_seq=<seq>&limit=200",
+]
+
+
+@pytest.mark.parametrize("name", _own())
+def test_every_read_of_the_operator_plane_goes_through_jq(name: str) -> None:
+    for read in OPERATOR_READ.finditer(_skill(name)):
+        assert read["piped"], f"{name} prints a read of the operator plane whole: {read[0]}"
+
+
+def test_the_root_cause_writes_each_read_it_makes() -> None:
+    """The operator, the tenant, its members and their next page, a probe of
+    the feed, and a page of it: each is a command of the skill, so no run
+    writes its own."""
+    reads = [read["route"] for read in OPERATOR_READ.finditer(_skill("ops-root-cause"))]
+    assert reads == ROOT_CAUSE_READS
+
+
+def _jq(program: str, answer: object) -> object:
+    """What a read prints for an answer: one JSON value, never nothing."""
+    done = subprocess.run(
+        ["jq", "-c", program], input=json.dumps(answer), capture_output=True, text=True, check=True
+    )
+    (printed,) = done.stdout.splitlines()
+    return json.loads(printed)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not installed")
+def test_the_root_cause_reads_print_what_the_report_needs() -> None:
+    """Each filter runs here as the skill writes it. The operator's address
+    leaves as its domain alone, a probe that finds no event says so, a page
+    says how long it is and where the next one starts, and every read prints a
+    refusal as its code."""
+    kept = {
+        read["route"]: read["kept"] for read in OPERATOR_READ.finditer(_skill("ops-root-cause"))
+    }
+    me = {"identity_id": "0" * 32, "email": "sam@example.test", "operator_role": "read"}
+    assert _jq(kept["me"], me) == {
+        "operator_role": "read",
+        "email_domain": "example.test",
+        "error": None,
+    }
+    event = {
+        "seq": 7,
+        "kind": "tenancy.org.updated",
+        "target_id": "1" * 32,
+        "produced_at": "2026-01-01T00:00:00Z",
+        "actor_id": "2" * 32,
+        "request_id": "3" * 32,
+        "app": "portal",
+    }
+    probe = kept["orgs/<org_id>/events?after_seq=<n>&limit=1"]
+    assert _jq(probe, [event]) == {"seq": 7, "produced_at": "2026-01-01T00:00:00Z"}
+    assert _jq(probe, []) == {"seq": None, "produced_at": None}
+    page = kept["orgs/<org_id>/events?after_seq=<seq>&limit=200"]
+    assert _jq(page, [event]) == {"count": 1, "last_seq": 7, "events": [event]}
+    assert _jq(page, []) == {"count": 0, "last_seq": None, "events": []}
+    # A 401 prints as its code, which is how the run knows its token expired.
+    for code in ("not_found", "not_authenticated"):
+        refusal = {"error": {"code": code, "message": code, "request_id": "4" * 32}}
+        for route, program in kept.items():
+            printed = _jq(program, refusal)
+            assert isinstance(printed, dict) and printed["error"] == code, route
+
+
+# The two reads of the error tracker a pass makes: the issues of the request,
+# and the events of each issue. An issue's title and an event's exception carry
+# the exception's text, which can quote what the tenant sent.
+TRACKER_READ = re.compile(
+    r'^ +"\$ACME_ERROR_TRACKER_URL/api/0/(?P<route>[^"]*)"'
+    r"(?P<piped> \\\n +\| jq (?:-c )?'(?P<kept>[^'\n]*)'$)?",
+    re.MULTILINE,
+)
+ISSUES = "projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/"
+EVENTS = "issues/<issue id>/events/"
+
+
+def test_the_root_cause_reads_the_tracker_through_jq_for_this_request_alone() -> None:
+    reads = list(TRACKER_READ.finditer(_skill("ops-root-cause")))
+    assert [read["route"] for read in reads] == [ISSUES, EVENTS]
+    for read in reads:
+        assert read["piped"], f"a read of the tracker is printed whole: {read[0]}"
+    # Sentry answers a page of the issue's events: the two filters put this
+    # request's event on it, and `full=true` puts its stack in it.
+    assert (
+        '--data-urlencode "environment=<env>" --data-urlencode "query=request_id:<id>"'
+        in _skill("ops-root-cause")
+    )
+    assert '--data-urlencode "full=true"' in _skill("ops-root-cause")
+
+
+def _tracker_event(request_id: str, environment: str, said: str) -> dict[str, object]:
+    """An event as the tracker answers it with `full=true`: four frames of the
+    product's code under one of a library's, and the exception's text."""
+    frames = [
+        {"filename": f"app/{name}.py", "lineNo": line, "function": name, "inApp": True}
+        for line, name in enumerate("abcd", start=1)
+    ]
+    frames.append({"filename": "lib/e.py", "lineNo": 5, "function": "e", "inApp": False})
+    tags = {"request_id": request_id, "environment": environment, "release": "api@1"}
+    exception = {"type": "ValidationError", "value": said, "stacktrace": {"frames": frames}}
+    return {
+        "eventID": f"{request_id}-{environment}",
+        "dateCreated": "2026-01-01T00:00:00Z",
+        "tags": [{"key": key, "value": value} for key, value in tags.items()],
+        "entries": [{"type": "exception", "data": {"values": [exception]}}],
+    }
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not installed")
+def test_the_root_cause_tracker_reads_keep_no_text_of_the_exception() -> None:
+    """The issues keep their id, when they were last seen, and how often; the
+    events keep the one of this request in this environment, its type, and
+    the last three frames of the product's code. A refusal prints as itself."""
+    kept = {
+        read["route"]: read["kept"].replace("<id>", "r-1").replace("<env>", "local")
+        for read in TRACKER_READ.finditer(_skill("ops-root-cause"))
+    }
+    said = "1 validation error, input_value={'email': 'sam@example.test'}"
+    issue = {
+        "id": "7",
+        "title": f"ValidationError: {said}",
+        "culprit": said,
+        "metadata": {"value": said},
+        "lastSeen": "2026-01-01T00:00:00Z",
+        "count": "4",
+    }
+    assert _jq(kept[ISSUES], [issue]) == {
+        "issues": [{"id": "7", "lastSeen": "2026-01-01T00:00:00Z", "count": "4"}]
+    }
+    page = [
+        _tracker_event("r-1", "local", said),
+        _tracker_event("r-1", "production", said),
+        _tracker_event("r-2", "local", said),
+    ]
+    frames = [
+        {"filename": f"app/{name}.py", "lineNo": line, "function": name}
+        for line, name in enumerate("bcd", start=2)
+    ]
+    assert _jq(kept[EVENTS], page) == {
+        "events": [
+            {
+                "id": "r-1-local",
+                "at": "2026-01-01T00:00:00Z",
+                "release": "api@1",
+                "exception": [{"type": "ValidationError", "frames": frames}],
+            }
+        ]
+    }
+    assert _jq(kept[EVENTS], []) == {"events": []}
+    for program in kept.values():
+        assert _jq(program, {"detail": "Unauthorized"}) == {"error": "Unauthorized"}
+
+
+# Where two runs of the root cause could read two things or end two ways:
+# each is a sentence of the skill.
+ROOT_CAUSE_DECIDES = [
+    "The tracker holds no tenant",
+    "never an org id, so it is never read by the tenant or by a tag guessed for one",
+    "Without `--request-id`, when the window's events hold no request tied to the symptom, "
+    "the run makes no pass",
+    "so a run whose only such events are writes that landed still makes its passes",
+    "which a read through its `jq` prints as the error code `not_authenticated`",
+    'The pass writes its error leg as "not read", with which of the three it was, '
+    "and goes on to the logs",
+    "--since <start_at> --until <end_at> api maintenance",
+    "so `<n>` is the minutes from the window's `start` of step 3 to now, rounded up",
+    "with the request id the tenant saw as `--request-id`",
+    "The run never widens the window itself",
+    "The next page reads from the page's `last_seq`, until a page's `count` is under 200",
+    "The run goes on only on `operator_role: read`.",
+    "The window ends when this step starts and begins `--since` before it, both read once",
+    "carry the exception's text, which can quote what the tenant sent, "
+    "so the `jq` keeps the issue's `id`, `lastSeen`, and `count` alone",
+    "the last three frames of the product's code, never the exception's text",
+]
+
+
+@pytest.mark.parametrize("sentence", ROOT_CAUSE_DECIDES)
+def test_the_root_cause_leaves_no_read_to_the_run(sentence: str) -> None:
+    assert sentence in _prose("ops-root-cause"), f"ops-root-cause no longer says: {sentence}"
 
 
 def test_the_audits_are_the_skills_named_for_one() -> None:
