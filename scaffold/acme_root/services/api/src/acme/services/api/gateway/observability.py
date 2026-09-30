@@ -44,15 +44,18 @@ def request_id_of(scope: Scope) -> UUID:
     return scope["state"]["request_id"]
 
 
-class QueryStringRedactor(logging.Filter):
-    """uvicorn's own lines name a path with its query string, the socket's
-    single-use ticket among them; the filter keeps the path and drops the
-    rest. Installed on the logger uvicorn writes them to."""
+class TargetRedactor(logging.Filter):
+    """uvicorn's own lines name a request's target: its path, which is the
+    caller's own text, and its query string, the socket's single-use ticket
+    among them. They are written under the request's id, which a caller may
+    also choose, so the filter writes `-` in the target's place. The
+    middleware's line and the span name the route. Installed on the logger
+    uvicorn writes them to."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple):
             record.args = tuple(
-                arg.partition("?")[0] if isinstance(arg, str) else arg for arg in record.args
+                "-" if isinstance(arg, str) and arg.startswith("/") else arg for arg in record.args
             )
         return True
 

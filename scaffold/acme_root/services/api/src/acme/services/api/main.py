@@ -24,7 +24,7 @@ from acme.om.exceptions import Conflict
 from acme.om.storage import migrate
 from acme.services.api.app import create_app
 from acme.services.api.container import AppContainer, boot, memory_storage, postgres_storage
-from acme.services.api.gateway.observability import QueryStringRedactor
+from acme.services.api.gateway.observability import TargetRedactor
 from acme.services.api.realtime.timeouts import (
     SERVER_PING_INTERVAL_SECONDS,
     SERVER_PING_TIMEOUT_SECONDS,
@@ -46,8 +46,8 @@ def server_options(settings: ApiSettings) -> dict[str, Any]:
     only from the proxies settings name; with none named the peer is the
     client, so nothing outside the load balancer can choose its own address
     for the rate limit. uvicorn's access log is off: the observability
-    middleware writes the line, by route template, so the query string a
-    socket ticket rides in is never logged. The protocol ping on every
+    middleware writes the line, by route template, so neither a caller's
+    path nor the query string a socket ticket rides in is ever logged. The protocol ping on every
     socket is named here rather than left at uvicorn's default, because
     the interval and the timeout are pinned against the load balancer's
     idle timeout (`realtime/timeouts.py`)."""
@@ -63,11 +63,11 @@ def server_options(settings: ApiSettings) -> dict[str, Any]:
 
 def configure_server_logging() -> None:
     """uvicorn logs through the root handler boot configured (`log_config`
-    is None); the one thing changed is that its lines lose their query
-    strings."""
+    is None); the one thing changed is that its lines lose the request's
+    target, the path and the query string."""
     uvicorn_error = logging.getLogger("uvicorn.error")
-    if not any(isinstance(f, QueryStringRedactor) for f in uvicorn_error.filters):
-        uvicorn_error.addFilter(QueryStringRedactor())
+    if not any(isinstance(f, TargetRedactor) for f in uvicorn_error.filters):
+        uvicorn_error.addFilter(TargetRedactor())
 
 
 def serve(args: argparse.Namespace) -> int:
