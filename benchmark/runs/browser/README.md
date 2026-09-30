@@ -41,7 +41,7 @@ The columns:
 - chatgpt.com, claude.ai, gemini.google.com, and grok.com: the score,
   linking the answer, or the status where there is none; then the model
   and effort labels the site had checked, and the status when it is not
-  `ok`.
+  `ok`. A site asked twice in one run shows both, in order.
 - Set: the rows that compare share a letter.
 - Note: why a session is not `ok`, or why a run compares with none.
 
@@ -49,3 +49,4 @@ The columns:
 
 | Run | Started (UTC) | Head | Sizes | chatgpt.com | claude.ai | gemini.google.com | grok.com | Set | Note |
 |---|---|---|---|---|---|---|---|---|---|
+| [20260920-224602](20260920-224602/results.json) | 2026-09-20 22:46 | — | xl, xl | [87](20260920-224602/chatgpt.com.md) Latest, 6 Pro | [71](20260920-224602/claude.ai.md) Fable 5.1, Max | [refused](20260920-224602/gemini.google.com.md) Flash Extended, then [85](20260920-224602/gemini.google.com.retry.md) Pro (the picker entry 3.1 Pro) | — | A | The sizes, the prompt, and the contract differ from every other run's, so it compares with none; grok.com was not a site yet; gemini.google.com: the first attempt errored, and the retry scored |
