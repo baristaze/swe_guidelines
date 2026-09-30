@@ -255,12 +255,12 @@ and their handling is in `/acme/<env>/maintenance`.
    aws logs get-query-results --query-id <id> --profile acme-<env>-investigate
    ```
 
-   Poll `get-query-results` at most 10 times, each poll after
-   `sleep 5` in the same command, so ten polls cover about a minute.
-   When the status is still `Scheduled` or `Running` after the tenth,
-   stop polling: the report reads the logs as "not read: the query did
-   not finish in 10 polls", with the query id, and the next step
-   starts.
+   Poll `get-query-results` at most 10 times for one query, each poll
+   after `sleep 5` in the same command, so ten polls cover about a
+   minute. When the status is still `Scheduled` or `Running` after the
+   tenth, stop polling: the report reads that query's logs as "not
+   read: the query did not finish in 10 polls", with the query id, and
+   the next step starts. Step 8's query is polled the same way.
 
    Local: `docker compose -f deployment/local/docker-compose.yml -f
    deployment/local/docker-compose.full.yml logs --since <since> api
@@ -292,10 +292,6 @@ and their handling is in `/acme/<env>/maintenance`.
      --start-time <start> --end-time <end> \
      --query-string 'fields @timestamp, @log, @message | filter @message like /identity provider|WorkOS application|WorkOS credential check|ACME_WORKOS_WEBHOOK_SECRET|webhooks\/identity (400|503)|identity delivery/ | sort @timestamp desc | limit 50'
    ```
-
-   Its results are read with `get-query-results` and polled as step 7
-   polls, at most 10 times: a query still running after the tenth is
-   "not read", with its query id.
 
    What each line means, and the secret it points to:
 
