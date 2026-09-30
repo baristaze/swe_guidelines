@@ -10,8 +10,8 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
-dist/
-build/
+/dist/
+/build/
 
 # Node
 node_modules/
@@ -19,10 +19,10 @@ apps/*/dist/
 *.tsbuildinfo
 .vite/
 .eslintcache
-coverage/
+apps/*/coverage/
+clients/*/coverage/
 
 # Test and tool reports
-reports/
 junit*.xml
 *.log
 
