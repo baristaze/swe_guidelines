@@ -367,6 +367,8 @@ COMPACTION_DECIDES = [
     "When either exists, both take the next free suffix (`_2`), so a run never overwrites another's.",
     "A migration's revision id or file name that it cites stays as it is: only a fold moves one",
     "a field's `description`, which is the wire's document",
+    "A citation in a place the run never edits stays as it is",
+    "The ADR it cites is never removed, and keeps the part the citation is for",
     "A name in code is code, a test's name included",
 ]
 

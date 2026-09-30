@@ -148,12 +148,17 @@ left as it is, and the report names it under Kept.
      gone. `arch-check` fails on a number that code cites and no file
      has. A citation of a rewritten ADR for a part its text leaves out
      follows the same rule: it names the ADR or the file that states
-     the fact now, or it goes.
+     the fact now, or it goes. A citation in a place the run never
+     edits stays as it is: a file under `om/migrations/`, or a string a
+     statement carries. The ADR it cites is never removed, and keeps
+     the part the citation is for: one this step would remove stays as
+     the run found it, and the report lists it under Kept with each
+     such place.
    - An ADR that only restates a rule of the guideline, and decides
      nothing of the tree's own, constrains nothing. It is removed when
      no code or config cites its number, its links in Markdown going
      with it. While one does, it is kept, and listed. An ADR the test
-     leaves in doubt is kept and listed too. A kept ADR is rewritten in
+     leaves in doubt is kept and listed too. Either is rewritten in
      place as this step's first item says, its status one date.
    - A file under `docs/adr/` that is not an ADR, such as a picture,
      goes when no ADR links it. An ADR never goes for want of a link.
