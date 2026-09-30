@@ -284,3 +284,15 @@ def test_anthropic_s_limit_figure_goes_where_its_429_names_no_id_and_a_uuid_else
     # A UUID the harness writes, such as a run's id, is no account: only the words around an account id find it.
     for kept in (f'{{"run": "{ANTHROPIC_ORGANIZATION}"}}', f"the {XAI_TEAM} (session)"):
         assert X.redact_bytes(kept.encode(), set()) == (kept.encode(), 0)
+
+
+def test_a_stripe_key_is_redacted_and_a_short_placeholder_is_not():
+    # Made-up strings in Stripe's shapes, the kind a subject's payments tests hold.
+    keys = ("sk_test_" + "51Ab" * 6, "sk_live_" + "9zY" * 8, "rk_test_" + "Q1w" * 8, "rk_live_" + "e" * 24, "whsec_" + "Kq3/" * 8)
+    for key in keys:
+        said = f'API_KEY = "{key}"'.encode()
+        assert X.redact_bytes(said, set()) == (b'API_KEY = "[redacted]"', 1)
+        assert X.keys_in(said) == [""]
+    for placeholder in ("sk_test_x", "sk_test_secret", "rk_live_x", "whsec_test"):
+        said = f'API_KEY = "{placeholder}"'.encode()
+        assert X.redact_bytes(said, set()) == (said, 0)

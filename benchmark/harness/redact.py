@@ -5,7 +5,9 @@ print anything it can read. So before a run folder is shown or uploaded,
 every file in it is scanned as bytes, frames included, and two things
 are replaced with `[redacted]`: the value of every provider key the
 harness knows by name, and anything shaped like a provider's, GitHub's,
-or AWS's key, whether the harness holds that key or not.
+AWS's, or Stripe's key, whether the harness holds that key or not. A
+subject that builds a payments integration writes Stripe-shaped strings
+into its tests, and a push that holds one is refused.
 
 A judge's error can name the account behind its key, and every failed
 judge call is recorded: in the judge's transcript, and in `results.json`
@@ -87,7 +89,8 @@ READ_ERRORS = (
 )
 # Shorter than this is not a key, and replacing it would redact ordinary words.
 MIN_KEY_CHARS = 8
-# The shapes of the keys a run could meet: the four providers, GitHub, and AWS.
+# The shapes of the keys a run could meet: the four providers, GitHub, AWS, and Stripe's secret, restricted, and
+# webhook signing keys.
 KEY_SHAPES = re.compile(
     rb"sk-ant-[A-Za-z0-9_\-]{16,}"
     rb"|sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_\-]{20,}"
@@ -96,6 +99,8 @@ KEY_SHAPES = re.compile(
     rb"|gh[pousr]_[A-Za-z0-9]{30,}"
     rb"|github_pat_[A-Za-z0-9_]{20,}"
     rb"|AKIA[0-9A-Z]{16}"
+    rb"|[sr]k_(?:live|test)_[A-Za-z0-9]{20,}"
+    rb"|whsec_[A-Za-z0-9+/]{24,}"
 )
 UUID = rb"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
 FIGURE = rb"\d+(?:[.,]\d+)*"

@@ -594,6 +594,15 @@ def test_a_checked_in_zip_with_a_key_shaped_string_fails(repo, runs, capsys):
     assert "1 run index mismatch(es)" in out  # the clean zip passes
 
 
+def test_a_checked_in_stream_with_a_stripe_key_fails(repo, runs, capsys):
+    a_vm_run(repo, ONE_A)
+    stream = repo.root / "benchmark" / "runs" / "alpha" / ONE_A / "streams" / "cli.jsonl"
+    stream.parent.mkdir(parents=True, exist_ok=True)
+    stream.write_text('{"line": "API_KEY = \\"sk_test_' + "51Ab" * 6 + '\\""}\n', encoding="utf-8")
+    assert runs.main() == 1
+    assert f"benchmark/runs/alpha/{ONE_A}/streams/cli.jsonl holds a string shaped like a key" in capsys.readouterr().out
+
+
 def test_a_checked_in_zip_that_does_not_open_fails(repo, runs, capsys):
     a_vm_run(repo, ONE_A)
     a_zip(repo, ONE_A, {"README.md": "clean\n"}).write_bytes(b"not a zip")
