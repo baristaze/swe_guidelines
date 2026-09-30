@@ -85,10 +85,11 @@ the repository's environments and their variables.
 
 No env file is read. The script writes one, the file the preamble
 describes: `~/.config/acme/ops/<env>.env`, owner-only, with
-`ACME_API_URL` set and the lines `ACME_OPERATOR_TOKEN`,
-`ACME_PROVISIONER_TOKEN`, and the tracker's left empty, because no
-operator exists until `grant-operator.yml` has run and the operator
-has enrolled a second factor. The script prints the two tracker lines,
+`ACME_API_URL` set and the lines `ACME_OPERATOR_TOKEN` and the
+tracker's left empty, because no operator exists until
+`grant-operator.yml` has run and the operator has enrolled a second
+factor. It writes no provisioner's file: `acme-ops token --identity
+provisioner` makes that one when the person copies the token. The script prints the two tracker lines,
 `ACME_ERROR_TRACKER_URL` and `ACME_ERROR_TRACKER_TOKEN`, as the one
 part of the file a person fills by hand, once the product's project
 exists in the error tracker; it writes `ACME_ERROR_TRACKER_ORG` and

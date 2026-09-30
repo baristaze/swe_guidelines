@@ -41,10 +41,10 @@ states. Refuse any profile wider than the investigate role. Every
 
 The env file `~/.config/acme/ops/<env>.env` gives the API's URL, the
 `read` operator token, and the error tracker's URL, token, org, and
-project; the file's `ACME_PROVISIONER_TOKEN`, a `write` token,
-belongs to the traffic generator alone and is not used here. Never
-read the env file; a command that needs a value sources it in the same
-command, as every block below does. Never print a token. On a `401`
+project. It holds no `write` token: the traffic generator's has a file
+of its own, which this skill never sources. Never read the env file; a
+command that needs a value sources it in the same command, as every
+block below does. Never print a token. On a `401`
 the token has expired: stop, and name the refresh the preamble gives.
 
 ## Procedure

@@ -2,8 +2,8 @@
 
 Every ops skill that reaches a cloud environment reads this page
 before its first step. It says which credentials exist, how a skill
-checks the one it holds, what the env file keeps, and how a command
-uses a value from it without showing it.
+checks the one it holds, what the env file and the provisioner's file
+keep, and how a command uses a value from them without showing it.
 
 The rules that stop a secret leaking are stated in the skills
 themselves, one line each, because a skill must not need this page to
@@ -65,8 +65,6 @@ repository. It holds:
 
 - `ACME_API_URL`, the environment's edge.
 - `ACME_OPERATOR_TOKEN`, a `read` operator token.
-- `ACME_PROVISIONER_TOKEN`, the file's one `write` token, which
-  belongs to the traffic generator alone.
 - `ACME_ERROR_TRACKER_URL` and `ACME_ERROR_TRACKER_TOKEN`, left
   empty by an environment that names no tracker: nothing provisions
   one. A skill that finds them empty reports "not read", never "no
@@ -78,13 +76,28 @@ repository. It holds:
 
 `local.env` points at the compose stack and adds the twins,
 `ACME_PROMETHEUS_URL` and `ACME_JAEGER_URL`, on the ports `.env`
-names. `make seed` writes it when it is absent, with the tokens of the
-two local operators it makes. A local token that expired is the
-person's to refresh, like any other: `uv run acme-ops token --env
-local --identity operator|provisioner`.
+names. `make seed` writes it, and `local.provisioner.env` beside it,
+when each is absent, with the token of the local operator each holds.
+A local token that expired is the person's to refresh, like any other:
+`uv run acme-ops token --env local --identity operator|provisioner`.
 
 The file holds no password and no TOTP secret: an agent never signs in
-with a password.
+with a password. It holds no `write` token either: every skill that
+reads sources it.
+
+## The provisioner's file
+
+`~/.config/acme/ops/<env>.provisioner.env`, owner-only, beside the env
+file, holds `ACME_PROVISIONER_TOKEN` and nothing else: the provisioner's
+`write` token, which creates and removes a traffic run's own tenants.
+Only `acme-ops traffic` and `acme-ops stress` read it, from `--env`. No
+skill sources it, a skill that drives traffic included, so a session
+that reads never holds the write token.
+
+An env file that holds `ACME_PROVISIONER_TOKEN` is refused by every
+`acme-ops` command, which prints the line that moves the token into
+the provisioner's file without showing it. Stop, and give the
+person that line; moving it is theirs, as a token's refresh is.
 
 ## Using a value without showing it
 
@@ -119,7 +132,7 @@ The provisioner's: stop and ask the person to refresh it, in the cloud
 by dispatching `grant-operator.yml` with `mint_token: provisioner`,
 then running `uv run acme-ops token --env <env> --identity
 provisioner` in their own terminal, which copies the token the grant
-job wrote under their own sign-in (in production with `--profile
-acme-prod-power`), never under an investigate profile, which reads no
-secret. Locally, a run without a provisioner token in `local.env`
-takes `--orgs 0`.
+job wrote into the provisioner's file under their own sign-in (in
+production with `--profile acme-prod-power`), never under an
+investigate profile, which reads no secret. Locally, a run without a
+token in `local.provisioner.env` takes `--orgs 0`.

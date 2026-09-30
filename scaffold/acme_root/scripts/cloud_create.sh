@@ -540,9 +540,10 @@ if [ "$environment" = "staging" ]; then
 fi
 
 say "== 6. The operator's env file for $environment"
-# The two operator tokens are empty: no operator exists until the
+# The operator's token is empty: no operator exists until the
 # grant-operator workflow has run, and a token is minted, never typed. The
-# file never holds a password or a TOTP secret.
+# file never holds a password, a TOTP secret, or the provisioner's write
+# token, which has a file of its own that `acme-ops token` writes.
 api_url="https://$api_domain_name"
 ops_dir="$HOME/.config/acme/ops"
 ops_file="$ops_dir/$environment.env"
@@ -552,18 +553,18 @@ else
   say "+ write $ops_file (mode 600):"
   say "  ACME_API_URL=$api_url"
   say "  ACME_OPERATOR_TOKEN=         # read; uv run acme-ops token --env $environment --identity operator"
-  say "  ACME_PROVISIONER_TOKEN=      # write; uv run acme-ops token --env $environment --identity provisioner"
   say "  ACME_ERROR_TRACKER_URL="
   say "  ACME_ERROR_TRACKER_TOKEN="
   say "  ACME_ERROR_TRACKER_ORG=acme          # the product's one project, the same"
   say "  ACME_ERROR_TRACKER_PROJECT=acme      # in every environment; the read filters on environment:$environment"
   if ! $dry_run; then
     mkdir -p "$ops_dir"
-    (umask 077; printf 'ACME_API_URL=%s\nACME_OPERATOR_TOKEN=\nACME_PROVISIONER_TOKEN=\nACME_ERROR_TRACKER_URL=\nACME_ERROR_TRACKER_TOKEN=\nACME_ERROR_TRACKER_ORG=acme\nACME_ERROR_TRACKER_PROJECT=acme\n' "$api_url" > "$ops_file")
+    (umask 077; printf 'ACME_API_URL=%s\nACME_OPERATOR_TOKEN=\nACME_ERROR_TRACKER_URL=\nACME_ERROR_TRACKER_TOKEN=\nACME_ERROR_TRACKER_ORG=acme\nACME_ERROR_TRACKER_PROJECT=acme\n' "$api_url" > "$ops_file")
     chmod 600 "$ops_file"
   fi
 fi
 say "Filled by hand, once the product's project exists in the error tracker (one project for every environment): ACME_ERROR_TRACKER_URL and ACME_ERROR_TRACKER_TOKEN in $ops_file."
+say "The provisioner's write token goes in $ops_dir/$environment.provisioner.env, never in $ops_file, which every skill that reads sources: step 8's token command writes it there."
 
 say "== 7. The first deploy, through the pipeline like every other"
 case "$environment" in

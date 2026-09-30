@@ -51,6 +51,15 @@ TOKEN_HOLDERS = [
     "ops-watch",
     "stress-test-run",
 ]
+# The two that drive traffic, whose `acme-ops` command reads the provisioner's
+# file; every other token holder reads, and holds the read token alone.
+PROVISIONERS = ["ops-simulate-traffic", "stress-test-run"]
+READS = [name for name in TOKEN_HOLDERS if name not in PROVISIONERS]
+ENV_FILE = "~/.config/acme/ops/<env>.env"
+PROVISIONER_FILE = "~/.config/acme/ops/<env>.provisioner.env"
+# A file a shell command sources: `. <file>` or `source <file>`, first on its
+# line or after a `;`, `&&`, `|`, or `(`.
+SOURCED = re.compile(r"(?:^[ \t]*|[;&|(][ \t]*)(?:\.|source)[ \t]+([^\s;&|)]+)", re.MULTILINE)
 # The skills that read an environment under the investigate profile.
 INVESTIGATORS = [*TOKEN_HOLDERS, "ops-infra-as-code", "audit-deploy-time", "audit-retention"]
 # The skills that run under an account's administrator.
@@ -110,9 +119,40 @@ def test_the_shared_preamble_exists_and_holds_what_moved_into_it() -> None:
     text = PREAMBLE.read_text()
     assert "deployment/cloud/environments.json" in text
     assert "aws sts get-caller-identity" in text
-    assert "~/.config/acme/ops/<env>.env" in text
+    assert ENV_FILE in text
     assert "ACME_PROVISIONER_TOKEN" in text
+    assert PROVISIONER_FILE in text
     assert "acme-<env>-investigate" in text
+
+
+def test_no_skill_sources_the_provisioners_file() -> None:
+    """A command that sources a file puts every value in it into the shell.
+    The env file holds the read token, and the provisioner's `write` token
+    has a file of its own that `acme-ops` reads for traffic and stress: every
+    file a skill or the preamble sources is the env file, and the skills
+    that read an operator's rows source it."""
+    texts = {name: _skill(name) for name in _own()}
+    texts["_shared/ops-preamble.md"] = PREAMBLE.read_text()
+    sourced = {name: SOURCED.findall(text) for name, text in texts.items()}
+    assert {path for paths in sourced.values() for path in paths} == {ENV_FILE}
+    assert sourced["ops-investigate"] and sourced["ops-root-cause"]
+
+
+@pytest.mark.parametrize("name", READS)
+def test_a_skill_that_reads_names_no_write_token(name: str) -> None:
+    """The skills that read never name the provisioner's file or its key, so
+    none of their commands can reach the one `write` token."""
+    text = _skill(name)
+    assert ".provisioner.env" not in text
+    assert "ACME_PROVISIONER_TOKEN" not in text
+
+
+@pytest.mark.parametrize("name", PROVISIONERS)
+def test_a_skill_that_drives_traffic_leaves_the_provisioners_file_to_acme_ops(name: str) -> None:
+    text = _prose(name)
+    assert PROVISIONER_FILE in text
+    assert "Never read the env file or the provisioner's file, and never source" in text
+    assert "`acme-ops` reads both itself from `--env`." in text
 
 
 @pytest.mark.parametrize("name", READERS)

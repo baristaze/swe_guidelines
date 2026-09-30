@@ -153,10 +153,12 @@ migrate: ## Make the database logins, then apply every role's migration chain to
 # with two memberships, each under a different role.
 # Then the two local operators, the platform's own identities of
 # acme.ops.environments.LOCAL_OPERATORS: a read operator and the
-# provisioner, which writes. Their tokens go into the owner-only
-# ~/.config/acme/ops/local.env beside the local stack's addresses, when that
-# file is absent; `uv run acme-ops token --env local --identity
-# operator|provisioner` mints a fresh one into it, since each lasts an hour.
+# provisioner, which writes. The read operator's token goes into the
+# owner-only ~/.config/acme/ops/local.env beside the local stack's addresses,
+# and the provisioner's into local.provisioner.env beside it, which no skill
+# that reads sources, each when its file is absent; `uv run acme-ops token
+# --env local --identity operator|provisioner` mints a fresh one into it,
+# since each lasts an hour.
 seed: ## Create two local orgs with an owner, a member, and an admin of both to sign in as, and the two local operators; a no-op once they exist
 	uv run --package acme-api acme-api bootstrap --if-absent \
 		--org "$(SEED_ORG)" --slug "$(SEED_SLUG)" --name "$(SEED_NAME)" \
@@ -173,9 +175,13 @@ seed: ## Create two local orgs with an owner, a member, and an admin of both to 
 	uv run --package acme-api acme-api grant-operator --permission write \
 		--email provisioner@platform.acme.invalid
 	@if [ -e "$$HOME/.config/acme/ops/local.env" ]; then \
-		echo "~/.config/acme/ops/local.env is there already; \`uv run acme-ops token --env local --identity operator|provisioner\` writes a fresh token into it"; \
+		echo "~/.config/acme/ops/local.env is there already; \`uv run acme-ops token --env local --identity operator\` writes a fresh token into it"; \
 	else \
-		uv run --package acme-ops acme-ops token --env local --identity operator && \
+		uv run --package acme-ops acme-ops token --env local --identity operator; \
+	fi
+	@if [ -e "$$HOME/.config/acme/ops/local.provisioner.env" ]; then \
+		echo "~/.config/acme/ops/local.provisioner.env is there already; \`uv run acme-ops token --env local --identity provisioner\` writes a fresh token into it"; \
+	else \
 		uv run --package acme-ops acme-ops token --env local --identity provisioner; \
 	fi
 

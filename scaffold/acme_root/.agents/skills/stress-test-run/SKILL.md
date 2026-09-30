@@ -40,24 +40,28 @@ investigator's profile, under which the run reads its signals back in
 the cloud.
 
 `--env local` needs the compose stack with the `devx` profile up
-(`make devx-up`) and the env file below. No cloud credential.
+(`make devx-up`) and the two files below. No cloud credential.
 
 `--env staging` and `--env production` run under the investigate
 profile of that environment, `acme-<env>-investigate`, to read the
 signals back, checked with `sts get-caller-identity` before anything
 else as the preamble states. Refuse any profile wider than the
-investigate role. The env file gives the generator the provisioner's
-token (`ACME_PROVISIONER_TOKEN` against `ACME_API_URL`, the file's
-one `write` token, which creates the run's own tenants and removes
-them when the run ends), and the signals their URLs and token. In
-production the provisioner's entry is disabled between runs; the
-person enables it, with its token, and disables it again by
+investigate role. The provisioner's file,
+`~/.config/acme/ops/<env>.provisioner.env`, gives the generator the
+provisioner's token, `ACME_PROVISIONER_TOKEN`: the one `write` token,
+which creates the run's own tenants and removes them when the run
+ends, kept apart from the env file every skill that reads sources. The
+env file gives the generator `ACME_API_URL`, and the signals their URLs
+and token. In production the provisioner's entry is disabled between
+runs; the person enables it, with its token, and disables it again by
 dispatching `grant-operator.yml`, as `ops-simulate-traffic` states.
 
-Never read the env file; a command that needs a value sources it in
-the same command, and `acme-ops` reads it itself from `--env`. Never
+Never read the env file or the provisioner's file, and never source
+the provisioner's: `acme-ops` reads both itself from `--env`. Never
 print a token. When the generator reports the provisioner's token
 refused or expired, stop, and name the refresh the preamble gives.
+When `acme-ops` refuses the env file for holding the provisioner's
+token, stop, and give the person the line it printed.
 
 ## Procedure
 
@@ -67,8 +71,8 @@ refused or expired, stop, and name the refresh the preamble gives.
    the scenario's or the one the invocation gave, before running.
    Verify the credential as Role and
    credential states. Check the env file exists and is owner-only,
-   through `acme-ops`, which refuses a file that is not; never read
-   or print it.
+   through `acme-ops`, which refuses a file that is not, the
+   provisioner's included; never read or print either.
 2. Say what is about to happen and wait for the person: a real run
    is the platform developer's choice, because it costs money in the
    cloud, writes rows, and can trip the alarms it is meant to test.
@@ -90,7 +94,7 @@ refused or expired, stop, and name the refresh the preamble gives.
    ```
 
    `--orgs 0` drives the seeded org; without it the run provisions the
-   profile's tenants and needs a provisioner in the env file. The
+   profile's tenants and needs a token in the provisioner's file. The
    target flags go in only when the invocation gave them; the run
    prints the target it judged and where each half of it came from.
 
