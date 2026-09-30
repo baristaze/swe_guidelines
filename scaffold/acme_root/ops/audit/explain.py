@@ -135,8 +135,12 @@ async def plans(name: str, path: Path) -> None:
     values = urls(check_name(name))
     # A connection per statement: a prepared statement lives as long as its
     # connection, and a rollback does not take it away.
-    runtime = create_async_engine(values["ACME_DATABASE_URL"], poolclass=NullPool)
-    system = create_async_engine(values["ACME_DATABASE_SYSTEM_URL"], poolclass=NullPool)
+    runtime = create_async_engine(
+        values["ACME_DATABASE_URL"], poolclass=NullPool, hide_parameters=True
+    )
+    system = create_async_engine(
+        values["ACME_DATABASE_SYSTEM_URL"], poolclass=NullPool, hide_parameters=True
+    )
     try:
         for statement in statements:
             engine = system if statement.system else runtime
@@ -185,7 +189,7 @@ def megabytes(size: int) -> str:
 
 
 async def inventory(name: str) -> None:
-    engine = create_async_engine(superuser_on(check_name(name)))
+    engine = create_async_engine(superuser_on(check_name(name)), hide_parameters=True)
     try:
         async with engine.connect() as connection:
             rows = (await connection.exec_driver_sql(INVENTORY)).all()
@@ -199,7 +203,7 @@ async def inventory(name: str) -> None:
 
 
 async def reset(name: str) -> None:
-    engine = create_async_engine(superuser_on(check_name(name)))
+    engine = create_async_engine(superuser_on(check_name(name)), hide_parameters=True)
     try:
         async with engine.connect() as connection:
             await connection.exec_driver_sql("SELECT pg_stat_reset()")
@@ -221,7 +225,7 @@ def index_statement(sql: str) -> str:
 
 async def index(name: str, sql: str) -> None:
     statement = index_statement(sql)
-    engine = create_async_engine(superuser_on(check_name(name)))
+    engine = create_async_engine(superuser_on(check_name(name)), hide_parameters=True)
     try:
         async with engine.begin() as connection:
             await connection.exec_driver_sql(statement)
@@ -238,7 +242,7 @@ async def rows(name: str, sql: str) -> None:
     statement = sql.strip().rstrip(";")
     if not READ.match(statement) or ";" in statement:
         raise SystemExit("rows takes one SELECT")
-    engine = create_async_engine(superuser_on(check_name(name)))
+    engine = create_async_engine(superuser_on(check_name(name)), hide_parameters=True)
     try:
         async with engine.connect() as connection:
             transaction = await connection.begin()

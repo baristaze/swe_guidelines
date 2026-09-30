@@ -92,7 +92,9 @@ def master_login() -> str:
 
 async def _admin(sql: str) -> None:
     """One statement on the master's own database, outside a transaction."""
-    engine = create_async_engine(superuser_on("postgres"), isolation_level="AUTOCOMMIT")
+    engine = create_async_engine(
+        superuser_on("postgres"), isolation_level="AUTOCOMMIT", hide_parameters=True
+    )
     try:
         async with engine.connect() as connection:
             await connection.execute(text(sql))
@@ -101,7 +103,7 @@ async def _admin(sql: str) -> None:
 
 
 async def exists(name: str) -> bool:
-    engine = create_async_engine(superuser_on("postgres"))
+    engine = create_async_engine(superuser_on("postgres"), hide_parameters=True)
     try:
         async with engine.connect() as connection:
             found = await connection.execute(
@@ -150,7 +152,7 @@ def drop(name: str) -> None:
 
 
 async def audit_databases() -> list[str]:
-    engine = create_async_engine(superuser_on("postgres"))
+    engine = create_async_engine(superuser_on("postgres"), hide_parameters=True)
     try:
         async with engine.connect() as connection:
             found = await connection.execute(

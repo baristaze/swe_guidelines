@@ -68,9 +68,15 @@ def engine_for(url: str, pool: RolePool) -> AsyncEngine:
     anything on the path can drop it, and a connection the server closed anyway
     fails the message that begins the transaction and sets its scope, which
     writes nothing, so the storage funnel drops it and begins again on the
-    next connection (`pg_base.scoped_session`)."""
+    next connection (`pg_base.scoped_session`).
+
+    The engine hides its parameters: a statement that fails is an exception
+    whose text names the statement and never the values bound to it, which
+    are a tenant's words and a person's address, so no traceback in a log
+    line carries them."""
     return create_async_engine(
         url,
+        hide_parameters=True,
         pool_recycle=POOL_RECYCLE_SECONDS,
         pool_size=pool.size,
         max_overflow=0,

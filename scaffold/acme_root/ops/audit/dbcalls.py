@@ -348,7 +348,7 @@ class World:
         from auditdb import superuser_on
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        engine = create_async_engine(superuser_on(self.name))
+        engine = create_async_engine(superuser_on(self.name), hide_parameters=True)
         token = UNCOUNTED.set(True)
         try:
             async with engine.begin() as connection:
