@@ -723,9 +723,11 @@ a manager's interface passes what one reader holds, the manager keeps
 its core and delegates its other duties. A delegate is an interface and
 an impl of the same namespace, named after the namespace and the duty:
 `TenancyCredentialsManagerInterface`. The root builds each delegate and
-hands it to the manager, and a caller reaches it through the manager, as
-`managers.tenancy.credentials`
+hands it to the manager, and a caller outside the namespace reaches it
+through the manager, as `managers.tenancy.credentials`
 ([`manager.py`](scaffold/acme_root/om/src/acme/om/tenancy/manager.py)).
+Inside the namespace, the root may hand a delegate a sibling it calls,
+or a narrow callable for one operation of the manager.
 `arch-check` holds a manager interface to a bound on its operations,
 twenty unless the project sets its own.
 

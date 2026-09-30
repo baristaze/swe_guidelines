@@ -34,7 +34,7 @@ class TenancyManagerInterface(ABC):
     The manager keeps what every process calls: the seeding, the transitions
     with the socket tickets, the grant job, and the sweep. Its other duties
     are delegates, each an interface of its own that the root builds and a
-    caller reaches through the manager, as
+    caller outside the namespace reaches through the manager, as
     `tenancy.credentials.create_api_key`.
 
     The transitions come first. Each takes the weakest stage it needs and

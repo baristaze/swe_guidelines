@@ -58,8 +58,11 @@ def build_tenancy(
     identity_provider: IdentityProviderInterface,
 ) -> TenancyManagerInterface:
     """The tenancy manager with its delegates, each built here and handed to
-    it: a caller reaches a delegate through the manager, and no impl builds
-    another. `clock` is the one the second factor's time step is read from."""
+    it: a caller outside the namespace reaches a delegate through the
+    manager, and no impl builds another. A delegate that calls a sibling
+    takes it here, by its interface, and one that needs an operation of the
+    manager takes that one operation as a callable. `clock` is the one the
+    second factor's time step is read from."""
     sign_in = TenancySignInManagerImpl(
         storage, relay, options, clock, identity_provider=identity_provider
     )
