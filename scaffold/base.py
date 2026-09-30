@@ -30,6 +30,7 @@ Standard library only, as `new.py` is.
 from __future__ import annotations
 
 import argparse
+import http.client
 import os
 import re
 import subprocess
@@ -104,8 +105,8 @@ def download(url: str, ref: str, source: str) -> bytes:
         if error.code == 404:
             raise Refused(f"{ref!r} is not a tag, a branch, or a commit of {source}") from error
         raise Refused(f"{url} answered {error.code}") from error
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
-        raise Refused(f"{url} could not be fetched: {error}") from error
+    except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as error:
+        raise Refused(f"{url} could not be fetched: {error!r}") from error
 
 
 def unpack(tarball: Path, into: Path) -> str:
@@ -116,7 +117,7 @@ def unpack(tarball: Path, into: Path) -> str:
     try:
         with tarfile.open(tarball, mode="r:*") as archive:
             return unpack_archive(archive, into)
-    except (tarfile.TarError, OSError) as error:
+    except (tarfile.TarError, EOFError, OSError) as error:
         raise Refused(f"the tarball could not be read: {error}") from error
 
 

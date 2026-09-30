@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
@@ -200,6 +201,7 @@ def test_a_ref_that_is_not_one_is_refused(tmp_path, capsys, ref):
         (urllib.error.HTTPError("u", 404, "Not Found", Message(), io.BytesIO()), "is not a tag, a branch, or a commit of"),
         (urllib.error.HTTPError("u", 503, "Unavailable", Message(), io.BytesIO()), "answered 503"),
         (urllib.error.URLError("no route"), "could not be fetched"),
+        (http.client.IncompleteRead(b"partial", 100), "could not be fetched"),
     ],
 )
 def test_a_download_that_fails_is_refused(tmp_path, capsys, monkeypatch, error, reason):
@@ -319,3 +321,13 @@ def test_renders_on_two_lines_are_refused(tmp_path, capsys):
     assert run(clone, two, ref="v0.2.0") == 2
     assert "are on two lines" in capsys.readouterr().err
     assert git(clone, "rev-parse", "scaffold") == head
+
+
+def test_a_tarball_cut_short_is_refused(tmp_path, capsys):
+    whole, _ = tarball(guideline(tmp_path), tmp_path / "one.tar.gz")
+    cut = tmp_path / "cut.tar.gz"
+    cut.write_bytes(whole.read_bytes()[: whole.stat().st_size // 2])
+    repo = copy(tmp_path)
+    assert run(repo, cut, "--name", "pressroom") == 2
+    assert "could not be read" in capsys.readouterr().err
+    assert git(repo, "branch", "--list", "scaffold") == ""
