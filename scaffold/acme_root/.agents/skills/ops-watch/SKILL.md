@@ -204,12 +204,21 @@ in it; the first batch still makes its own check after its wait.
    of the app's request counter, and `server_errors` the ones whose
    status starts with `5`. `p95_seconds` is the load balancer's target
    response time over every route, at its highest minute, and `null`
-   when no request crossed it. `worker_failures` counts the worker's
+   when no request crossed it: the batch line's p95 is that number
+   times 1,000, in milliseconds, and a `null` writes `p95 none`.
+   `worker_failures` counts the worker's
    `failed` and `refused` outcomes: an attempt a handler failed, and
    an item it refused for good. The two schemas are the dashboard's
    own (`deployment/terraform/modules/dashboard/`): one that leaves
    out a dimension the series carry, `OTelLib` among them, matches
    nothing and reads as a zero, so keep them as written.
+
+   The load balancer's health checks are requests, so in the cloud a
+   batch whose `requests` is 0 read nothing: its minutes are not
+   ingested yet, or a collector is down. Such a batch writes "metrics
+   not read" in place of its numbers, never a zero, which would read
+   as traffic stopping. The watch goes on, and no later batch reads
+   those minutes.
 
    Locally, a count is `increase(<metric>[1m])` and the p95 is
    `histogram_quantile(0.95, sum by (le) (increase(acme_http_request_seconds_bucket[1m])))`,
@@ -269,7 +278,7 @@ in it; the first batch still makes its own check after its wait.
 
 ## Batches
 
-- <start of batch>: <<requests> requests, <5xx> 5xx, p95 <ms>, <failures> worker failures | metrics read in the next batch>; <lines> lines shown, <dropped> over the cap (<by level>)
+- <start of batch>: <<requests> requests, <5xx> 5xx, p95 <ms, or none>, <failures> worker failures | metrics read in the next batch | metrics not read>; <lines> lines shown, <dropped> over the cap (<by level>)
   - <line>
   - <line>
 
