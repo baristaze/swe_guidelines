@@ -318,6 +318,24 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "`diff` prints nothing, for every role." in fold
     assert "the first run plus at most 3 reruns" in fold
     assert "never drop a database this run did not make" in fold
+    assert "A test goes only when it pins a revision id the fold removes" in fold
+    assert "Every other test stays as it is" in fold
+    assert "the schema dump of the chain equals the fold's" in fold
+
+
+def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
+    """A deploy run's head is the branch's tip when it started, and its
+    title ends with the commit it deployed. The release workflow reads the
+    title of the newest run whose apply job succeeded, and the fold reads
+    it the same way, by the job's name as the deploy workflow has it."""
+    workflows = ROOT / ".github" / "workflows"
+    deploy = yaml.safe_load((workflows / "deploy-staging.yml").read_text())
+    apply_job = deploy["jobs"]["staging"]["name"]
+    fold = (SKILLS / "docs-compact" / "references" / "fold.md").read_text()
+    for text in (fold, (workflows / "release.yml").read_text()):
+        assert f'select(.name == "{apply_job}")' in text
+        assert "--json displayTitle" in text
+    assert "--json headSha" not in fold
 
 
 # A `SEARCH` schema names every dimension a series has, or it matches nothing

@@ -30,18 +30,35 @@ stays as it is, and the report says which part.
 3. Each environment `deployment/cloud/environments.json` names has
    deployed that commit or a later one. The deploy migrates before it
    rolls out, so its database is then at the head.
-   - Staging: `gh run list --workflow deploy-staging.yml --branch <main>
-     --status success --limit 1 --json headSha --jq '.[0].headSha'`.
+   - Staging: the commit of the newest `deploy-staging` run on the main
+     branch that succeeded and whose apply job succeeded, read as
+     `release.yml` reads it. A run's `headSha` is the branch's tip when
+     the run started, never the commit it deployed: that commit is the
+     last word of the run's title.
+
+     ```bash
+     gh run list --workflow deploy-staging.yml --branch <main> --status success --limit 30 --json databaseId --jq '.[].databaseId'
+     gh run view <run> --json jobs --jq '[.jobs[] | select(.name == "plan and apply staging, migrate, and publish") | .conclusion] | first // ""'
+     gh run view <run> --json displayTitle --jq '.displayTitle'
+     ```
+
+     Take the runs in the order the first command lists them, newest
+     first, at most 30. The first whose second command prints `success`
+     is the one; a run where the cloud was not configured succeeds with
+     that job skipped, and does not count. When none of the 30 has
+     applied and staging has deployed, as this part's last line reads
+     it, its commit cannot be read.
    - Production: the tip of `origin/release`, when `gh api
      repos/{owner}/{repo}/commits/<tip>/statuses --jq '[.[] |
      select(.context == "released/production")] | first | .state'`
      prints `success`.
    - For each: `git merge-base --is-ancestor <newest migration's commit>
      <deployed commit>` exits 0.
-   - An environment that never deployed has no database, and passes:
-     staging when `gh run list --workflow deploy-staging.yml --limit 1
-     --json databaseId --jq length` prints `0`, production when there
-     is no `origin/release`. A `gh` call that fails does not pass.
+   - An environment that never deployed has no database, and passes.
+     Staging never deployed when the same list without `--status
+     success` is empty, or the second command prints `skipped` for
+     every run in it. Production never deployed when there is no
+     `origin/release`. A `gh` call that fails does not pass.
 4. The local database: for every role, `make migrate` prints
    `<role>: upgraded to <head>`.
 
@@ -84,10 +101,10 @@ revision on the fold.
    - Every other file of the role's chain goes: `git rm`.
 3. **Move what named a step.** `git grep -n` each removed stamp and each
    removed file name.
-   - A test that pins a removed revision id, or tests a backfill that
-     left, goes with its step. Three stay: the head's downgrade and
-     upgrade, the ORM-against-schema check, and the test of `backfill`
-     over two tenants' rows, which the next data migration needs.
+   - A test goes only when it pins a revision id the fold removes, or
+     tests a backfill the fold removes. Every other test stays as it
+     is, the head's downgrade and upgrade, the ORM-against-schema check,
+     and the test of `backfill` over two tenants' rows among them.
    - An ADR, a comment, or a document that cites a removed revision or
      file names the fold's file, or drops the citation when it named a
      step and not the schema.
@@ -138,9 +155,11 @@ revision on the fold.
 7. **Commit the fold alone**: the subject `Each migration chain is one
    revision at its head`, and in the body, per role, the head id, the
    count of revisions folded, the backfills left out, the tests that
-   went, and the citations that moved. Note the commit before it: the
-   report names it as the last one whose chain reaches the head from an
-   older revision.
+   went, the citations that moved, and the line `<role>: the schema
+   dump of the chain equals the fold's`. The dumps stay in the evidence
+   folder, so the commit's body is where a review finds the comparison
+   (STO-24). Note the commit before it: the report names it as the last
+   one whose chain reaches the head from an older revision.
 
 ## What the report says of it
 
