@@ -97,9 +97,14 @@ of a changed signature.
      summary says which part the checker holds. A checker finding in
      scope makes the lens a finding whatever the rest shows. With no
      checker finding, the rest is judged, and the lens passes only
-     when that rest passes too. An entry under the rule's `to_judge`
-     is a place the checker names for that judgment: never a finding,
-     and dropped when its file is outside the scope.
+     when that rest passes too.
+   - An entry under a rule's `to_judge` is a place the checker names
+     and leaves to step 4. Judge each one in scope there, whether or
+     not the lens has a checker finding. The entry is no finding by
+     itself: what it names is a finding when it meets the lens's
+     Violation, and no breach when it does not, which the report says
+     on a line under Passed. Drop an entry on a file outside the
+     scope.
    - A lens absent from `rules_run` is judged whole in step 4.
    - When the checker cannot run (the command is refused, a Python
      older than 3.11, exit code 2, a project pinned to a newer Python
@@ -160,6 +165,8 @@ under review. This skill reads and reports.
 
 <LENS-ID>, <LENS-ID> (`<path>`), ...
 
+- **<LENS-ID>** `<path>:<line>` <a place read for a judgment and judged no breach: what it is, and why>.
+
 ## Unverified
 
 <LENS-ID> (<what would decide it, a few words>), ...
@@ -179,5 +186,10 @@ one line per breach, so a lens with two breaches has two lines and
 counts once in `<f>`. Every lens id in the lens file is decided once:
 it counts in exactly one of Findings, Passed, Unverified, and Not
 applicable. Deviations lines are not a decision and count nowhere.
+Neither is the line under Passed for a place step 4 read for a
+judgment and judged no breach: one the checker named under `to_judge`,
+or one the lens has a review find where the checker did not run. It is
+written whether its lens passes or has a finding, below the lens ids,
+and there is no such line when there is no such place.
 Applied is passed plus findings plus unverified, so applied plus not
 applicable is the number of lenses in the file.
