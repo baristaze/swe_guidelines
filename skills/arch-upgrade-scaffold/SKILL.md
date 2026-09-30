@@ -29,8 +29,13 @@ next move would merge against an older one.
 `[<ref>] [--name <name>]`
 
 - `<ref>`: the release, branch, or commit of this guideline to move to.
-  Without one, this plugin's release: `v` and the `version` in
-  `../../.claude-plugin/plugin.json`.
+  Without one, the release after the one the copy pins (`pinned at
+  release` in `specs/architecture.md`), by the headings of
+  `../../CHANGELOG.md`. A move takes one release, as the copy's pin
+  moves: when releases lie between the pin and a target named, the
+  target is the first of them, and each next one is a move of its own.
+  When the copy pins this plugin's release, stop: there is nothing
+  newer to take.
 - `--name`: the copy's name, as `new.py` took it. Without one,
   `base.py` reads the name the base recorded, else the `package` under
   `[tool.arch-check]` in the copy's root `pyproject.toml`.
@@ -47,17 +52,21 @@ absolute path of `../../scaffold/base.py`.
    checkout is on the main branch, cut one,
    `git switch --no-track -c scaffold-<target> origin/<main>`, with the
    target's dots as hyphens (`scaffold-v0-41-0`), so that a push never
-   lands on the main branch.
+   lands on the main branch. On another branch, work there only when
+   `git rev-list --count origin/<main>..HEAD` prints 0; otherwise
+   refuse, since the move's commits hold the move alone.
 2. **Find the base**: the last render the branch holds,
    `git log -1 --no-merges -E --grep='^Scaffold-Commit: [0-9a-f]{40}$' --format=%H HEAD`.
    When it answers, the copy has a base, and its message names the
    guideline commit it took (`Scaffold-Commit`) and the name
    (`Scaffold-Name`). When it answers nothing but `scaffold` or
-   `origin/scaffold` exists, the main branch never merged its base (a
-   move squashed, or one never merged): stop and say so. The person
-   merges that branch's head with `git merge -s ours <it>`, which
-   records it and changes no file, then runs this skill again. When
-   nothing answers, the copy has no base.
+   `origin/scaffold` exists, the main branch has not merged its base:
+   stop and say so. When a move's pull request is open, it merges
+   first. Otherwise a move was squashed or dropped, and the person
+   records the base the main branch holds: the render of the release it
+   pins, which `git log --format='%H %s' scaffold` names, merged with
+   `git merge -s ours <that render>`, which changes no file. Then the
+   skill runs again. When nothing answers, the copy has no base.
 3. **Graft, only when there is no base.** The copy was made before its
    base was recorded, so the base is the release it pins: the version in
    `pinned at release` in `specs/architecture.md`. Render it,
@@ -74,8 +83,12 @@ absolute path of `../../scaffold/base.py`.
    the pin is the target, the graft is the whole move: go to step 8.
 4. **Render the target.** `python3 <base.py> <ref>`. It prints the new
    head of `scaffold` and the guideline commit it holds. When it prints
-   that `scaffold` is unchanged, the base already is the target: stop,
-   with nothing to merge.
+   that `scaffold` is unchanged, the render is already there: when
+   `git merge-base --is-ancestor scaffold HEAD` exits 0, the branch
+   holds it, so stop, with nothing to merge; otherwise go on and merge
+   it. When it refuses because two renders are on two lines, stop and
+   say so: the person keeps on `scaffold` the one the main branch
+   merged or will merge.
 5. **Read what the releases ask.** The guideline's `CHANGELOG.md` at the
    target: `../../CHANGELOG.md` when the target is this plugin's release,
    else `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/CHANGELOG.md`
@@ -85,9 +98,11 @@ absolute path of `../../scaffold/base.py`.
    and each step an entry asks of a project. Step 7 carries them.
 6. **Merge.** `git merge --no-ff --no-commit scaffold`. List the
    conflicts, `git diff --name-only --diff-filter=U`, and resolve each
-   by the table below. Then read the paths the merge added,
-   `git diff --name-only --diff-filter=A HEAD`, against the same table:
-   a clean merge can still bring a file the copy must not take. Commit
+   by the table below. Then read against the same table the paths the
+   merge added, `git diff --name-only --diff-filter=A HEAD`, and every
+   path it changed under `docs/adr/` and the migrations,
+   `git diff --name-only HEAD -- docs/adr om/migrations`: a clean merge
+   can still bring a file, or a line, the copy must not take. Commit
    with the subject `The scaffold base moves to <ref>` and a body that
    lists each conflict and how it was resolved, one line each.
 
