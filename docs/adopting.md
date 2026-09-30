@@ -168,6 +168,12 @@ with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
 
+`/docs-compact` keeps the tree's documents to what holds: its ADRs, its
+changelog, the rows of `specs/architecture.md`, and its comments. With
+`--migrations` it also folds each role's migration chain into one
+revision under the head's revision id, once every database that exists
+is at that head. It works on a branch and pushes nothing.
+
 An existing tree copies the scaffold's `.agents/skills/` into its own
 and renames `acme` in them to its own name, in each form
 `scaffold/new.py` uses. Then, from the tree's root, it moves any skill

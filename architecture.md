@@ -2071,11 +2071,14 @@ standard shares, and `.claude/skills` links to it for Claude Code.
 | `audit-deploy-time`              | investigator  | where a deploy's minutes go                     |
 | `audit-credential-lifetimes`     | none          | optional: how long a credential outlives its revocation |
 | `audit-provider-calls`           | none          | optional: which external calls each flow makes  |
+| `docs-compact`                   | none          | optional: the documents, cut to what holds      |
 
 The provisioner is the traffic generator's operator identity, with no
 cloud role, and `none` holds no credential at all. Every skill but the
 administrator's two and the deploy audit runs against `local`. An audit
 reads, reports the answer first, and proposes tickets; it never fixes.
+`docs-compact` rewrites the tree's documents to what holds, and on a
+flag folds each migration chain, on a work branch it never pushes.
 An audit of calls ranks its fixes: remove a call, fold it into another,
 defer it, cache it, and only then run calls in parallel. The first
 responder to an alarm is an agent, which reads whose traffic raised it

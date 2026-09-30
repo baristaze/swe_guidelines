@@ -59,8 +59,9 @@ cites the changed text changes with it.
   `skills/arch-new-aspect` is the one skill that edits this repository:
   it adds an aspect to the guideline and cascades it.
 - `scaffold/acme_root/.agents/skills/` holds the skills a new tree runs
-  as its own: the operational skills, the audits, and the ticket
-  triage. They are not skills of this plugin. `.agents/skills/` is the
+  as its own: the operational skills, the audits, the ticket triage,
+  and the compaction of its documents. They are not skills of this
+  plugin. `.agents/skills/` is the
   folder every agent that reads the Agent Skills standard shares;
   `scaffold/acme_root/.claude/skills` is a link to it, for Claude Code,
   and `scaffold/new.py` copies the link as a link. `make leaks`, `make
