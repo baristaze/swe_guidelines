@@ -51,8 +51,8 @@ class TenancySignInManagerInterface(ABC):
         for: an issuer, a subject, and a verified
         email. The identity is found by the issuer and the subject; else by
         the email, and linked to the subject from then on (a person the
-        seeding, the operator plane, or an older release made); else made,
-        with their personal org, in one commit: a first sign-in is a sign-up.
+        seeding or the operator plane made); else made, with their personal
+        org, in one commit: a first sign-in is a sign-up.
         A sign-in that accepted an invitation lands the membership it names,
         and one through an org's single sign-on lands a membership when the
         person's address is in a domain the org verified (`sso_joins`). The

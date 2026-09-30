@@ -42,8 +42,10 @@ request stage with it, and every stage refines that one, so
 operational routes get none. Neither does a worker's stage: an item is
 bounded by its lease.
 
-**It is an instant, and it rides the context.** Calls made one after
-another share what is left instead of each starting a budget of its own.
+**It is one instant for the request, never a deadline per call, and it
+rides the context.** Calls made one after another share what is left:
+a deadline per call bounds one call and not three in turn, which is the
+case the table below shows.
 The guideline allows one context variable, the request id for the logs
 (CTX-07), so the deadline is a field of `RequestContext`, and a manager
 hands it to each call as an argument. A call that takes a deadline is
@@ -61,8 +63,10 @@ managers and the API's services for such a call without one.
   cap. Each attempt goes out with the smaller of the timeout and what is
   left. An answer whose `Retry-After` asks for longer than what is left
   ends the call at once. The SDK keeps its retries, its backoff, and its
-  idempotency keys. A thin transport under the process's own HTTP client
-  is what keeps to the deadline.
+  idempotency keys: a retry that fits in the deadline still helps, and
+  fewer of them leave a request that makes several calls unbounded. A
+  thin transport under the process's own HTTP client is what keeps to
+  the deadline.
 - AWS takes its timeout per client, not per call, so the cut at the
   deadline is what bounds the attempt in flight.
 
@@ -105,22 +109,6 @@ With every provider hanging, at the default timeouts:
 | `PUT` and `GET /v1/media/files/{id}/content`, `POST .../confirm` | S3 put, get, or head | 65 s | 20 s |
 
 Without the deadline, every one is past the 30 seconds a client waits.
-
-## Alternatives
-
-- **A deadline per call instead of per request.** It bounds one call and
-  not three in turn, which is the case the table shows.
-- **A context variable read by the clients.** It keeps every signature
-  as it is. The guideline allows one context variable, for the logs, and
-  `arch-check` holds to it.
-- **Cancel the handler at the deadline in the gateway.** It bounds the
-  request without a word from the clients, and it lands at any `await`,
-  a database statement or the step between a provider's side effect and
-  its row among them. Each wait outside the process is already a call
-  that can keep to the deadline itself.
-- **Fewer retries on the request path.** It shortens a hung call and
-  keeps a request unbounded when it makes several. A retry that fits in
-  the deadline still helps.
 
 ## Consequences
 

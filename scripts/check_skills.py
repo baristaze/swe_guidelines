@@ -127,8 +127,9 @@ Rules:
   calls a batch makes; the request ids a search follows, one pass each,
   and the feed read from the window's first `seq`; a Logs Insights
   query's polls; the hops of Next a session follows, or a Next that is
-  the person's to run; and an audit's rerun of a failed flow, which
-  names no rerun the pairing above reads. A skill the scaffold does not
+  the person's to run; an audit's rerun of a failed flow, which
+  names no rerun the pairing above reads; and a compaction's one pass
+  over the documents. A skill the scaffold does not
   have is not read. Each batch, poll, and hand-off spends tokens and, in the cloud,
   a billed call, and a rewrite that drops a count passes every other
   gate.
@@ -661,6 +662,7 @@ LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
     "ops-cloud-deployment-create": (PERSONS_NEXT,),
     "stress-test-create-or-update": (PERSONS_NEXT,),
     "audit-database-calls": ("the first run plus at most 1 rerun",),
+    "docs-compact": ("each document is rewritten once in a run", "the first run plus at most 3 reruns", PERSONS_NEXT),
 }
 """The count each loop of an ops skill of the scaffold stops at, in the words its skill says it.
 

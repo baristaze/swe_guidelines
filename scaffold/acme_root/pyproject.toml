@@ -98,7 +98,7 @@ reason = "the unique index is (org_id, idempotency_key), led by the tenant as th
 [[tool.arch-check.exception]]
 rule = "DEL-12"
 path = "apps/site/package.json"
-adr = "docs/adr/0030-the-company-site-is-html-and-css-not-react.md"
+adr = "docs/adr/0002-technology-choices.md"
 reason = "a static page with no script and no state; the portal and every app that calls the platform stay React on Vite"
 
 # The storage methods that take no tenant, the same list
