@@ -150,8 +150,17 @@ runs once, before the passes. It is not a pass.
    The feed reads only forward from `after_seq`, with no time filter,
    so the skill first finds the window's first `seq`, and never reads
    from `after_seq=0` unless the tenant's first event is inside the
-   window. An event's time is its `produced_at`. Probe with `limit=1`,
-   one read per probe:
+   window. An event's time is its `produced_at`. The window ends when
+   this step starts and begins `--since` before it, both read once,
+   here, and every later step reads the same two:
+
+   ```bash
+   jq -nc 'now | floor | {start: (. - <since in seconds>), end: .} | .start_at = (.start | todate) | .end_at = (.end | todate)'
+   ```
+
+   `start` and `end` are epoch seconds, for the cloud's reads;
+   `start_at` and `end_at` are RFC 3339. Probe with `limit=1`, one read
+   per probe:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
@@ -204,9 +213,19 @@ runs once, before the passes. It is not a pass.
 
    An issue the query returns can hold events of another environment
    too, so the event that answers is the one whose `request_id` tag is
-   the id **and** whose `environment` tag is `<env>`
-   (`/api/0/issues/<issue id>/events/`). An event of another
-   environment is never this environment's evidence.
+   the id **and** whose `environment` tag is `<env>`. An event of
+   another environment is never this environment's evidence. Read each
+   issue's events with `full=true`, without which Sentry answers no
+   stack, through a `jq` that keeps that event alone: its exception's
+   type and the last three frames of the product's code, never the
+   exception's text, which can quote what the tenant sent:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" \
+     "$ACME_ERROR_TRACKER_URL/api/0/issues/<issue id>/events/?full=true" \
+     | jq -c '.[] | (.tags | map({(.key): .value}) | add) as $tag | select($tag.request_id == "<id>" and $tag.environment == "<env>") | {id: (.eventID // .event_id), at: (.dateCreated // .date_created), release: $tag.release, exception: [.entries[]? | select(.type == "exception") | .data.values[]? | {type, frames: ([.stacktrace.frames[]? | select(.inApp) | {filename, lineNo, function}] | .[-3:])}]}'
+   ```
 
    The org's slug is what `GET /api/0/organizations/` lists (locally
    `acme`, the one the seed creates):

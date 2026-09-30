@@ -284,6 +284,8 @@ ROOT_CAUSE_DECIDES = [
     "The run never widens the window itself",
     "The next page reads from the page's `last_seq`, until a page's `count` is under 200",
     "The run goes on only on `operator_role: read`.",
+    "The window ends when this step starts and begins `--since` before it, both read once",
+    "never the exception's text, which can quote what the tenant sent",
 ]
 
 
