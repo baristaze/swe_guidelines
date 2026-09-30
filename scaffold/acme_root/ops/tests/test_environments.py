@@ -1,19 +1,28 @@
 """An environment from its file, the compose knobs under it for local, and
-the process environment over both."""
+the process environment over both. The provisioner's `write` token has a file
+of its own, which only traffic and stress read."""
 
 import json
 import re
+import subprocess
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
+from acme.ops import main as ops_main
 from acme.ops.environments import (
     CLOUD_REGION,
+    KEYS,
     LOCAL_API_URL,
     LOCAL_ERROR_TRACKER_TOKEN,
     LOCAL_OPERATORS,
+    PROVISIONER_KEY,
     load_environment,
+    move_command,
+    ops_file,
     parse_env_file,
+    provisioner_file,
     write_value,
 )
 
@@ -62,7 +71,7 @@ def test_a_cloud_file_names_everything_and_the_process_env_overrides(tmp_path: P
     file = owner_only(
         tmp_path / ".config" / "acme" / "ops" / "staging.env",
         "ACME_API_URL=https://api.staging.example.test\n"
-        "ACME_OPERATOR_TOKEN=opt_read\nACME_PROVISIONER_TOKEN=opt_write\n"
+        "ACME_OPERATOR_TOKEN=opt_read\n"
         "ACME_ERROR_TRACKER_URL=https://sentry.io\nACME_ERROR_TRACKER_TOKEN=tok\n"
         "ACME_ERROR_TRACKER_ORG=ajax\n",
     )
@@ -72,9 +81,143 @@ def test_a_cloud_file_names_everything_and_the_process_env_overrides(tmp_path: P
     assert env.is_cloud and env.api_url == "https://api.staging.example.test"
     assert env.aws_profile == "acme-staging-investigate" and env.aws_region == "eu-west-1"
     assert env.error_tracker_org == "ajax" and env.seed is None
-    assert env.operator_token == "opt_read" and env.provisioner_token == "opt_write"
+    assert env.operator_token == "opt_read" and env.provisioner_token is None
     assert file.stat().st_mode & 0o777 == 0o600
     assert env.prometheus_url is None and env.jaeger_url is None
+
+
+def both_files(home: Path, name: str = "staging") -> tuple[Path, Path]:
+    """The environment's file with the read token, and the provisioner's file
+    beside it with the write token."""
+    return (
+        owner_only(
+            ops_file(name, home),
+            "ACME_API_URL=https://api.staging.example.test\nACME_OPERATOR_TOKEN=opt_read\n",
+        ),
+        owner_only(provisioner_file(name, home), "ACME_PROVISIONER_TOKEN=opt_write\n"),
+    )
+
+
+def test_a_read_loads_no_provisioner_token_and_traffic_reads_it_from_its_own_file(
+    tmp_path: Path,
+) -> None:
+    """The file every read skill sources holds the read token alone. The
+    provisioner's token is read from its own file, with the process
+    environment over it, and only when a caller asks for it."""
+    file, own = both_files(tmp_path)
+    assert own == file.with_name("staging.provisioner.env")
+    assert PROVISIONER_KEY not in KEYS
+    process = {PROVISIONER_KEY: "opt_from_the_process"}
+    for given in ({}, process):
+        env = load_environment("staging", home=tmp_path, root=tmp_path, process_env=given)
+        assert env.operator_token == "opt_read" and env.provisioner_token is None
+    drives = load_environment("staging", provisioner=True, home=tmp_path, process_env={})
+    assert drives.operator_token == "opt_read" and drives.provisioner_token == "opt_write"
+    over = load_environment("staging", provisioner=True, home=tmp_path, process_env=process)
+    assert over.provisioner_token == "opt_from_the_process"
+    own.chmod(0o644)
+    with pytest.raises(ValueError, match="owner-only: chmod 600"):
+        load_environment("staging", provisioner=True, home=tmp_path, process_env={})
+
+
+@pytest.mark.parametrize(
+    ("argv", "reads_it"),
+    [
+        (["traffic", "--env", "staging", "--profile", "light"], True),
+        (["stress", "--scenario", "ops/stress/smoke.yaml", "--env", "staging"], True),
+        (["signals", "check", "--env", "staging", "--request-id", "req_1"], False),
+        (["size", "--env", "staging"], False),
+        (["token", "--env", "staging", "--list"], False),
+        (["token", "--env", "staging", "--identity", "operator"], False),
+        (
+            ["work", "requeue", "--env", "staging", "--org", str(UUID(int=1)), str(UUID(int=2))],
+            False,
+        ),
+    ],
+)
+def test_only_traffic_and_stress_are_handed_the_provisioner_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str], reads_it: bool
+) -> None:
+    """Each command's environment, as it is loaded, with both files in place:
+    every command but the two that drive traffic gets no `write` token."""
+    both_files(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in (*KEYS, PROVISIONER_KEY):
+        monkeypatch.delenv(key, raising=False)
+    loaded: list[str | None] = []
+    real = ops_main.load_environment
+
+    def stop_after_the_load(name: str, *, provisioner: bool = False) -> None:
+        loaded.append(real(name, provisioner=provisioner).provisioner_token)
+        raise ValueError("stopped after the load")
+
+    monkeypatch.setattr(ops_main, "load_environment", stop_after_the_load)
+    assert ops_main.main(argv) == 2
+    assert loaded == ["opt_write" if reads_it else None]
+
+
+OLD_FILE = (
+    "ACME_API_URL=https://api.staging.example.test\n",
+    "ACME_OPERATOR_TOKEN=opt_read\n",
+    "# the tracker\n",
+    "ACME_ERROR_TRACKER_ORG=acme\n",
+)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "ACME_PROVISIONER_TOKEN=opt_write\n",
+        'export ACME_PROVISIONER_TOKEN="opt_write"\n',
+        "  ACME_PROVISIONER_TOKEN = opt_write  # the generator's\n",
+    ],
+)
+def test_an_env_file_that_holds_both_tokens_is_refused_with_the_line_that_moves_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    line: str,
+) -> None:
+    """A copy that upgrades keeps the file its operator wrote, with the write
+    token in it. Every command refuses it, prints the line that moves the
+    token and never the token, and that line, run as printed, leaves the read
+    file with the read token alone and the provisioner's file with its own."""
+    file = owner_only(ops_file("staging", tmp_path), "".join((*OLD_FILE[:2], line, *OLD_FILE[2:])))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in (*KEYS, PROVISIONER_KEY):
+        monkeypatch.delenv(key, raising=False)
+    for argv in (["size", "--env", "staging"], ["traffic", "--env", "staging"]):
+        assert ops_main.main(argv) == 2
+        said = capsys.readouterr()
+        assert move_command(file) in said.err
+        assert "opt_write" not in said.out + said.err
+    with pytest.raises(
+        ValueError, match="uv run acme-ops token --env staging --identity provisioner"
+    ):
+        load_environment("staging", provisioner=True, home=tmp_path, process_env={})
+
+    moved = subprocess.run(
+        ["/bin/sh", "-c", move_command(file)], capture_output=True, text=True, check=False
+    )
+    assert moved.returncode == 0, moved.stderr
+    assert moved.stdout + moved.stderr == ""
+    own = provisioner_file("staging", tmp_path)
+    assert file.read_text() == "".join(OLD_FILE)
+    assert parse_env_file(own.read_text()) == {PROVISIONER_KEY: "opt_write"}
+    assert file.stat().st_mode & 0o777 == 0o600 and own.stat().st_mode & 0o777 == 0o600
+    env = load_environment("staging", home=tmp_path, process_env={})
+    assert env.operator_token == "opt_read" and env.provisioner_token is None
+    drives = load_environment("staging", provisioner=True, home=tmp_path, process_env={})
+    assert drives.provisioner_token == "opt_write"
+
+
+def test_an_empty_provisioner_line_holds_no_token_and_is_not_refused(tmp_path: Path) -> None:
+    owner_only(
+        ops_file("staging", tmp_path),
+        "ACME_API_URL=https://api.staging.example.test\nACME_PROVISIONER_TOKEN=\n",
+    )
+    env = load_environment("staging", provisioner=True, home=tmp_path, process_env={})
+    assert env.provisioner_token is None
 
 
 def test_the_cloud_region_is_the_one_the_environments_name() -> None:
@@ -110,17 +253,25 @@ def test_a_token_is_written_in_place_and_the_file_stays_owner_only(tmp_path: Pat
     ]
     file = owner_only(tmp_path / "staging.env", "\n".join(lines) + "\n")
     write_value(file, "ACME_OPERATOR_TOKEN", "opt_new")
-    write_value(file, "ACME_PROVISIONER_TOKEN", "opt_write")
+    write_value(file, "ACME_ERROR_TRACKER_TOKEN", "tok")
     assert file.read_text() == (
         "ACME_API_URL=https://api\nACME_OPERATOR_TOKEN=opt_new\n# the tracker\n"
-        "ACME_ERROR_TRACKER_URL=x\nACME_PROVISIONER_TOKEN=opt_write\n"
+        "ACME_ERROR_TRACKER_URL=x\nACME_ERROR_TRACKER_TOKEN=tok\n"
     )
     assert file.stat().st_mode & 0o777 == 0o600
-    fresh = tmp_path / "new" / "production.env"
-    write_value(fresh, "ACME_PROVISIONER_TOKEN", "opt_write")
+    fresh = tmp_path / "new" / "production.provisioner.env"
+    write_value(fresh, PROVISIONER_KEY, "opt_write")
+    assert fresh.read_text() == "ACME_PROVISIONER_TOKEN=opt_write\n"
     assert fresh.stat().st_mode & 0o777 == 0o600
+    assert fresh.parent.stat().st_mode & 0o777 == 0o700
     with pytest.raises(ValueError, match="not a key"):
         write_value(file, "ACME_OPERATOR_PASSWORD", "secret")
+    # The write token never goes into the file a read sources, and the
+    # provisioner's file holds nothing else.
+    with pytest.raises(ValueError, match=re.escape("not a key staging.env holds")):
+        write_value(file, PROVISIONER_KEY, "opt_write")
+    with pytest.raises(ValueError, match=re.escape("not a key production.provisioner.env holds")):
+        write_value(fresh, "ACME_OPERATOR_TOKEN", "opt_read")
 
 
 def test_the_seed_grants_the_local_operators_this_package_mints_for() -> None:

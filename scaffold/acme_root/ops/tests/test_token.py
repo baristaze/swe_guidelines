@@ -1,7 +1,9 @@
-"""`acme-ops token`: a token goes into the env file and nowhere else. The
-operator's is minted only in a person's own terminal, after a sign-in through
-the identity provider and the second factor; the provisioner's is copied from
-the secret the grant job wrote, in a cloud environment. On the local stack
+"""`acme-ops token`: a token goes into its file and nowhere else, the
+operator's into the env file and the provisioner's into the provisioner's file
+beside it. The operator's is minted only in a person's own terminal, after a
+sign-in through the identity provider and the second factor; the
+provisioner's is copied from the secret the grant job wrote, in a cloud
+environment. On the local stack
 each is the local operator's the seed made, minted by the grant command. The operator lists
 their own live tokens and ends one by its id. A requeue mints a `write` token
 for its one call, keeps it nowhere, and signs it out after."""
@@ -239,11 +241,14 @@ async def test_the_local_operators_tokens_are_minted_into_a_new_owner_only_file(
         "provisioner",
     ]
     file = tmp_path / ".config" / "acme" / "ops" / "local.env"
+    own = file.with_name("local.provisioner.env")
     assert file.stat().st_mode & 0o777 == 0o600
+    assert own.stat().st_mode & 0o777 == 0o600
     assert file.parent.stat().st_mode & 0o777 == 0o700
     written = parse_env_file(file.read_text())
     assert written["ACME_OPERATOR_TOKEN"] == "opr_operator_minted"
-    assert written["ACME_PROVISIONER_TOKEN"] == "opr_provisioner_minted"
+    assert "ACME_PROVISIONER_TOKEN" not in written
+    assert parse_env_file(own.read_text()) == {"ACME_PROVISIONER_TOKEN": "opr_provisioner_minted"}
     assert written["ACME_API_URL"] == "http://127.0.0.1:8000"
     for key in ("ACME_ERROR_TRACKER_URL", "ACME_PROMETHEUS_URL", "ACME_JAEGER_URL"):
         assert written[key].startswith("http://"), key
@@ -283,6 +288,29 @@ async def test_a_person_signs_in_for_the_operators_token_and_never_the_provision
         )
     )
     assert code == 2
+
+
+async def test_the_provisioners_token_is_copied_into_its_own_file_and_never_printed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = env_file(tmp_path, "staging")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    async def the_secret(env: object, profile: str | None = None) -> str:
+        return "opr_provisioner_copied"
+
+    monkeypatch.setattr(ops_main, "read_provisioner_token", the_secret)
+    code = await token_command(
+        argparse.Namespace(env="staging", identity="provisioner", profile="acme-staging")
+    )
+    assert code == 0
+    own = file.with_name("staging.provisioner.env")
+    assert parse_env_file(own.read_text()) == {"ACME_PROVISIONER_TOKEN": "opr_provisioner_copied"}
+    assert own.stat().st_mode & 0o777 == 0o600
+    assert file.read_text() == "ACME_API_URL=http://test\nACME_OPERATOR_TOKEN=\n"
+    captured = capsys.readouterr()
+    assert "opr_" not in captured.out + captured.err
+    assert str(own) in captured.out
 
 
 async def test_the_provisioner_token_is_never_read_under_an_investigate_profile(
