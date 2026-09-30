@@ -1,7 +1,7 @@
 ---
 name: docs-compact
 description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold each role's migration chain into one revision under the head's revision id, shown equal by a schema dump. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(git tag:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(git tag:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
 # docs-compact
@@ -86,25 +86,29 @@ left as it is, and the report names it under Kept.
      and does not read every file.
 3. **Compact the ADRs**, each once, then commit them alone.
    - **Rewrite in place** an ADR whose decision holds. Its status is
-     `**Status**: accepted (<date>)` and nothing more, with the latest
-     date the old status names: the day of the decision it now states.
-     It keeps Context, Decision, and Consequences, in that order, and
-     any section that states a present fact, such as a measurement. A
-     section named for a past (Amended, Closed, Alternatives, History)
-     goes: what still holds in it moves into the Decision or the
-     Consequences, and a rejected option goes through the test above.
-     The text states the decision as it stands, with no "since", "no
-     longer", or former value, and names no ticket, pull request, or
-     person.
+     `**Status**: accepted (<date>)` and nothing more, with the first
+     date the old status names, the day it was accepted. Every later
+     date in it goes. It keeps Context, Decision, and Consequences, in
+     that order, and any section that states a present fact, such as a
+     measurement. A section named for a past (Amended, Closed,
+     Alternatives, History) goes: what still holds in it moves into the
+     Decision or the Consequences, and a rejected option goes through
+     the test above. The text states the decision as it stands, with no
+     "since", "no longer", or former value, and names no ticket, pull
+     request, or person.
    - **Remove** an ADR that constrains nothing at the head: one replaced
      whole, one that is closed, one that records what a release asked or
      that a pin moved. A decision in it that still stands moves first,
      into the ADR that records that decision. When no ADR does, the
-     decision most cited stays in this file, rewritten, under its number.
-     Each other one gets a new ADR of its own, numbered in turn: the
-     first one above the highest the tree held when the run began, the
-     next one above that. A citation of the kept number that meant a
-     moved decision names the ADR that now holds it.
+     decision most cited stays in this file, rewritten, under its
+     number. The file then takes that decision's name (`git mv`, to
+     `NNNN-<the decision, as a slug>.md`), as any rewritten ADR does
+     whose name says another subject: the number stays, and every link
+     and every `adr =` path follows. Each other one gets a new ADR of
+     its own, numbered in turn: the first one above the highest the tree
+     held when the run began, the next one above that. A citation of the
+     kept number that meant a moved decision names the ADR that now
+     holds it.
    - **Fold** a substitution that has an ADR of its own into the one ADR
      that lists the substitutions, as one row and the sentences that row
      needs, and remove the ADR.
@@ -114,9 +118,11 @@ left as it is, and the report names it under Kept.
      that now holds the decision, or goes when what it explained is
      gone. `arch-check` fails on a number that code cites and no file
      has.
-   - **Keep, and list,** an ADR that only restates a rule of the
-     guideline while code cites its number, and any ADR the test leaves
-     in doubt.
+   - An ADR that only restates a rule of the guideline, and decides
+     nothing of the tree's own, constrains nothing. It is removed when
+     no code or config cites its number, its links in Markdown going
+     with it. While one does, it is kept, and listed. An ADR the test
+     leaves in doubt is kept and listed too.
    - A file under `docs/adr/` that is not an ADR, such as a picture,
      goes when no ADR links it. An ADR never goes for want of a link.
 4. **Cut the changelog** to its latest release: the lines above the
@@ -155,7 +161,9 @@ left as it is, and the report names it under Kept.
    read, the two dumps that prove the fold, what else a fold moves, and
    its commit. When the precondition does not hold, the chain stays as
    it is and the report says which part failed.
-8. **Run the gates.** `make check`. When `docker info` exits 0, also
+8. **Run the gates.** `make setup` first, which installs the tree and
+   formats its Python; commit what it changes, apart. Then `make
+   check`. When `docker info` exits 0, also
    `make infra-up`, `make migrate`, `make migrate-check`, and `make
    test-integration`; otherwise the report names each one skipped. A
    gate that fails is fixed in a commit of its own, and the gate runs
@@ -177,15 +185,18 @@ left as it is, and the report names it under Kept.
 - Never drops a deviation's end condition: "until an operator task
   needs a screen" is a trigger, not history.
 - Never trims an expand and contract in flight, as step 6 tells one:
-  its ADR, its comments, the column, the default, or the trigger it
-  keeps stay until the contract step lands.
+  its comments, the column, the default, or the trigger it keeps stay
+  until the contract step lands. Its ADR is rewritten as any other is,
+  to the present tense and one date, and keeps every fact of the
+  contract: what the release before still reads or writes, the piece
+  that serves it, and the step that ends it.
 - Never renumbers an ADR, and never gives a removed ADR's number to
   another: a removed ADR leaves a gap.
 - Never drops a reason that stops a plausible wrong change: it stays as
   a near miss.
 - Never changes a statement of code. A test changes only with
-  `--migrations`, and only one that pins a revision, or tests a
-  backfill, the fold removes.
+  `--migrations`, and only one that pins a revision the fold removes,
+  tests a backfill it removes, or steps down from the head.
 - Never opens `om/migrations/` without `--migrations`, and never edits
   an applied migration file: a fold replaces a chain whole.
 - Never writes to a shared database or to an environment: it logs in
