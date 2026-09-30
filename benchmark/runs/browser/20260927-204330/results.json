@@ -1,0 +1,61 @@
+{
+  "run_id": "20260927-204330",
+  "started_at": "2026-09-27T20:43:30Z",
+  "finished_at": "2026-09-27T21:02:55Z",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "sessions": [
+    {
+      "site": "chatgpt.com",
+      "url": "[redacted]",
+      "model_label": "Latest",
+      "effort_label": "High",
+      "started_at": "2026-09-27T20:44:57Z",
+      "finished_at": "2026-09-27T20:48:40Z",
+      "score": 94,
+      "response_path": "chatgpt.com.md",
+      "status": "ok",
+      "note": "the slider's stop labels are effort words (stop 2 Medium, stop 3 High), and the chip showed Medium before the pick; the answer was already done at the first poll, with Worked for 2m 5s, so finished_at is when the signal was seen, not when the answer ended"
+    },
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "Opus 5",
+      "effort_label": "High",
+      "started_at": "2026-09-27T20:45:48Z",
+      "finished_at": "2026-09-27T21:00:59Z",
+      "score": 84,
+      "response_path": "claude.ai.md",
+      "status": "ok",
+      "note": "a dialog promoting Opus 5.5 covered the page and was closed with Not now; the menu's top level lists Fable 5.1, Opus 5.5, Sonnet 5, and Haiku 4.5, and Opus 5 sits under More models; picking Opus 5 set the effort to High, its default, and High was clicked again; the page showed the owner's computer as connected, and the product cloned the repository, ran commands, and ran 2 agents"
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "Pro",
+      "effort_label": "none",
+      "started_at": "2026-09-27T20:46:25Z",
+      "finished_at": "2026-09-27T20:50:59Z",
+      "score": 85,
+      "response_path": "gemini.google.com.md",
+      "status": "ok",
+      "note": "the chip showed Flash before the composer was clicked; the list entry clicked was 3.1 Pro and the chip read Pro"
+    },
+    {
+      "site": "grok.com",
+      "url": "[redacted]",
+      "model_label": "Fast",
+      "effort_label": "none",
+      "started_at": "2026-09-27T20:47:29Z",
+      "finished_at": "2026-09-27T21:00:09Z",
+      "score": 89,
+      "response_path": "grok.com.md",
+      "status": "smaller-mode",
+      "note": "Expert needs a SuperGrok plan; the page wrote Worked for 18s above the answer, but the text kept revealing for about 13 minutes and advanced only while the tab was in front; the matching poll's page text carried one extra line, Add to chat, from a hover highlight, and the answer text and its last line were the same"
+    }
+  ]
+}

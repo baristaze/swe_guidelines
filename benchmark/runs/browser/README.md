@@ -49,4 +49,5 @@ The columns:
 
 | Run | Started (UTC) | Head | Sizes | chatgpt.com | claude.ai | gemini.google.com | grok.com | Set | Note |
 |---|---|---|---|---|---|---|---|---|---|
+| [20260927-204330](20260927-204330/results.json) | 2026-09-27 20:43 | — | m, m | [94](20260927-204330/chatgpt.com.md) Latest, High | [84](20260927-204330/claude.ai.md) Opus 5, High | [85](20260927-204330/gemini.google.com.md) Pro | [89](20260927-204330/grok.com.md) Fast; smaller-mode | B | grok.com: Expert needs a SuperGrok plan |
 | [20260920-224602](20260920-224602/results.json) | 2026-09-20 22:46 | — | xl, xl | [87](20260920-224602/chatgpt.com.md) Latest, 6 Pro | [71](20260920-224602/claude.ai.md) Fable 5.1, Max | [refused](20260920-224602/gemini.google.com.md) Flash Extended, then [85](20260920-224602/gemini.google.com.retry.md) Pro (the picker entry 3.1 Pro) | — | A | The sizes, the prompt, and the contract differ from every other run's, so it compares with none; grok.com was not a site yet; gemini.google.com: the first attempt errored, and the retry scored |
