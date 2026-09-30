@@ -75,6 +75,7 @@ def test_json_report_shape(tmp_path):
         "severity": "medium",
         "summary": registry.RULES["CON-10"].summary,
         "origin": "guideline",
+        "to_judge": [],
     }
     finding = report["findings"][0]
     assert list(finding) == ["rule", "group", "severity", "path", "line", "col", "message", "origin"]

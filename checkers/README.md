@@ -67,6 +67,11 @@ rule ships only when it is deterministic and rarely wrong on a tree in
 the guideline's shape. A rule that would have to guess stays with the
 review.
 
+A rule may name a place it leaves to the review, as CON-01 names a
+manager interface past twenty operations. That is no finding, and the
+exit status never reads it. The text report marks its line `to judge:`,
+and the JSON report lists it under the rule, as `to_judge`.
+
 ## Configuration
 
 The configuration is `[tool.arch-check]` in the root `pyproject.toml`.
@@ -92,8 +97,12 @@ name the guideline uses. A key the rule does not read exits 2:
 sites = ["om/src/acme/om/tenancy/impl/manager.py"]
 
 [tool.arch-check.options.CON-01]
-max_operations = 24   # the operations one manager interface declares at most; 20 by default
+review_threshold = 24   # a manager interface past this many operations is named for a review; 20 by default
 ```
+
+`review_threshold` is no limit: no count of operations is a finding.
+`max_operations` is another name of the same key, and a table sets one
+of the two.
 
 With no table at all, the checker still runs, on the one package under
 `om/src/`. So a review can run it on a project that never adopted it.
@@ -155,8 +164,9 @@ The registration refuses an id no lens has, and an id a shipped rule
 already decides. The group and the severity come from the lens. A rule
 that reads options names their keys in the registration,
 `@rule("STO-05", options=("sql_dir",), ...)`, and reads each with
-`project.option`. `Project` holds the parsed tree, and `project.py` the
-`ast` helpers.
+`project.option`. For a place it names and leaves to the review, a rule
+yields `ToJudge.at(...)`, with a violation's arguments. `Project` holds
+the parsed tree, and `project.py` the `ast` helpers.
 
 A rule comes with tests in `tests/test_arch_check_<group>.py`: a tree
 that passes and one that fails, built with

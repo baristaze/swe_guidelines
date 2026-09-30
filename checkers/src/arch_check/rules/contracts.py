@@ -16,7 +16,7 @@ import re
 from collections.abc import Iterator
 
 from arch_check.config import ConfigError
-from arch_check.model import Violation
+from arch_check.model import ToJudge, Violation
 from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last, methods
 from arch_check.registry import rule
 from arch_check.rules._contracts_util import (
@@ -61,16 +61,16 @@ def is_root(project: Project, cls: ast.ClassDef, names: set[str]) -> bool:
 # --- CON-01
 
 
-MAX_OPERATIONS = 20
-"""The operations one manager interface declares at most, before it delegates a duty."""
+REVIEW_THRESHOLD = 20
+"""The operations a manager interface declares before it is named for a review of a split. No count is a most."""
 
 
 @rule(
     "CON-01",
-    options=("sync_methods", "max_operations"),
+    options=("sync_methods", "review_threshold", "max_operations"),
     coverage="partial",
     summary="Every *Impl subclasses an interface; manager and storage interface operations are async; "
-    "a manager interface declares no more operations than the bound.",
+    "a manager interface past the review threshold is named under `to_judge`, and is no finding.",
 )
 def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
     """Every class named `*Impl` has a base named `*Interface` or `*Impl`.
@@ -79,21 +79,27 @@ def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
     `*StorageInterface` is `async`, except on the storage root
     `StorageInterface`, whose getters are plain.
 
-    No class named `*ManagerInterface` declares more public methods
-    than the bound: past it, the manager delegates a duty to an
-    interface of its own, which it carries as an attribute. A delegate
-    is a `*ManagerInterface` too, so the bound holds it as well.
+    A class named `*ManagerInterface` that declares more public methods
+    than the review threshold is named, with its count, for the review
+    to judge: it delegates a duty its callers use apart, or it stays
+    whole. It is no finding, whatever the count. A delegate is a
+    `*ManagerInterface` too, so it is named the same way.
 
     Options `[tool.arch-check.options.CON-01]`: `sync_methods`, a list
     of `Class.method` that may stay synchronous (default none);
-    `max_operations`, the bound, a whole number of one or more (default
-    20).
+    `review_threshold`, a whole number of one or more (default 20).
+    `max_operations` is another name of `review_threshold`, and a table
+    sets one of the two.
     """
-    keys = {"sync_methods", "max_operations"}
+    keys = {"sync_methods", "review_threshold", "max_operations"}
     allowed: set[str] = set(project.option("CON-01", "sync_methods", [], keys))
-    most: int = project.option("CON-01", "max_operations", MAX_OPERATIONS, keys)
-    if isinstance(most, bool) or most < 1:
-        raise ConfigError("[tool.arch-check.options.CON-01] `max_operations` must be a whole number of one or more")
+    named = [key for key in ("review_threshold", "max_operations") if key in project.config.options.get("CON-01", {})]
+    if len(named) > 1:
+        raise ConfigError("[tool.arch-check.options.CON-01] sets `review_threshold` and `max_operations`; they are one option")
+    key = named[0] if named else "review_threshold"
+    threshold: int = project.option("CON-01", key, REVIEW_THRESHOLD, keys)
+    if isinstance(threshold, bool) or threshold < 1:
+        raise ConfigError(f"[tool.arch-check.options.CON-01] `{key}` must be a whole number of one or more")
     for file, cls in classes_named(project, "Impl"):
         if not any(b.endswith(("Interface", "Impl")) for b in project.bases(cls)):
             yield Violation.at(file.rel, cls, f"{cls.name} subclasses no *Interface; an impl implements an interface")
@@ -106,12 +112,12 @@ def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
                     yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} is synchronous; an operation is an async method")
     for file, cls in classes_named(project, "ManagerInterface"):
         count = len(interface_methods(cls))
-        if count > most:
-            yield Violation.at(
+        if count > threshold:
+            yield ToJudge.at(
                 file.rel,
                 cls,
-                f"{cls.name} declares {count} operations, over the bound of {most}; "
-                "a manager past it delegates a duty to an interface of its own",
+                f"{cls.name} declares {count} operations, past {threshold}; "
+                "it delegates a duty its callers use apart, or stays whole as one duty",
             )
 
 

@@ -50,9 +50,11 @@ the tree.
    The checker reads the working tree only, so for a range or a commit
    it is not run: note that, and every reviewer judges every lens of
    its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to
-   its group (the rules run, the findings, and the `exceptions_applied`
-   entries whose rule is one of its lenses), so no reviewer runs it
-   again. The findings whose `group` is
+   its group, as the checker wrote it: each `rules_run` entry whose
+   rule is one of its lenses, whole, with its `to_judge` list, and the
+   findings and the `exceptions_applied` entries of those rules. So no
+   reviewer runs it again, and a place a rule names under `to_judge`
+   reaches the reviewer that judges it. The findings whose `group` is
    `framework` (`PARSE`, `IGNORE`) go to every reviewer, because a file
    that does not parse was read by no rule of any group; the merge
    keeps one copy of each. When the checker cannot run, or its command

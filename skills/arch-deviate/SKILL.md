@@ -31,7 +31,11 @@ has a condition for ending.
 
 1. Resolve the rule: find the lens in `../../lenses/` and the section in
    `../../architecture.md`, paths from this skill's folder as `realpath`
-   resolves it. Quote the principle verbatim.
+   resolves it. Quote the principle verbatim. When the rule itself
+   allows what the arguments describe, there is nothing to record: say
+   so, quote the words that allow it, and stop. A manager interface
+   kept whole past its count because its operations are one duty is
+   such a case (CON-01): a review's pass names it.
 2. The ADR goes under `docs/adr/`, created when it does not exist:
    `arch-check` refuses a deviation whose `adr` is anywhere else. Number
    the new record as one more than the highest numeric prefix present
@@ -42,11 +46,21 @@ has a condition for ending.
    Keep it under one page.
 5. When `specs/architecture.md` exists and has a `## Deviations` table,
    append one row: the ADR number, the rule, and a one-line summary.
-6. When the lens has a `Check` line naming `arch-check`, the ADR alone
-   does not pass the gate: the checker still fails on the code. Give
-   it the entry that names the ADR, in the shape `checkers/README.md`
-   in this plugin shows (`../../checkers/README.md`,
-   Exceptions); the rule id is the lens id. A whole rule turned off
+6. An `arch-check` entry goes only with a finding the checker
+   reports. The lens's `Check` line says which part that is: the whole
+   lens when it reads "decides it", and only the part it names when it
+   ends "the rest is judged". What the line says the checker names as
+   no finding, under `to_judge`, is judged too. A deviation in a
+   judged part, or under a lens with no `Check` line, gets no entry
+   and no inline comment: the checker reports nothing there, and an
+   entry that matches no finding is itself a finding that fails the
+   gate. The ADR, the Deviations row, and the citation beside the code
+   are its record. For a deviation in the part the checker decides,
+   the ADR alone does not pass the gate: the checker still fails on
+   the code. Give it the entry that names the ADR, in the shape
+   `checkers/README.md` in this plugin shows
+   (`../../checkers/README.md`, Exceptions); the rule id is the lens
+   id. A whole rule turned off
    is a `[[tool.arch-check.disable]]` entry with `rule`, `adr` (the
    ADR's path), and `reason`. A rule
    broken in some files is a `[[tool.arch-check.exception]]` entry
@@ -72,7 +86,8 @@ folder, the deviations table, and the `[tool.arch-check]` entry.
 
 The path of the new ADR, the row appended to the deviations table (or
 "no deviations table"), the `arch-check` entry written or printed (or
-"judged by review only" when the lens has no `Check` line), the
+"judged by review only" when the checker decides no part the deviation
+is in), the
 reminder to cite `ADR-NNNN` beside the code, and the one-line summary
 for the reviewer. Nothing else.
 
