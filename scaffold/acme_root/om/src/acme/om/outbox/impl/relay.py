@@ -173,7 +173,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
             try:
                 unpublished = await self._deliver_all(org_id, (row,))
             except Exception as error:
-                await self._failed(org_id, row, described(error)[:500], now)
+                await self._failed(org_id, row, described(error)[:500], now, error)
                 continue
             relayed += await self._settled(org_id, (row,), unpublished, now)
         return relayed
@@ -278,12 +278,20 @@ class OutboxRelayImpl(OutboxRelayInterface):
             raise RuntimeError("this relay was built without a work manager to enqueue into")
         await self._work().enqueue_relayed(org_id, row)
 
-    async def _failed(self, org_id: UUID, row: OutboxRow, error: str, now: datetime) -> None:
+    async def _failed(
+        self,
+        org_id: UUID,
+        row: OutboxRow,
+        error: str,
+        now: datetime,
+        raised: BaseException | None = None,
+    ) -> None:
         """One sweep attempt failed: the claim already set the next attempt, so
         the row keeps its error and waits, and nothing behind it waits with it.
         Once the attempts are spent the row is a dead letter: failed for good,
         counted, and named by an audit event in the tenant's stream, best
-        effort, since the stream may be what is failing."""
+        effort, since the stream may be what is failing. The line carries the
+        exception that failed the attempt, where one did, with its frames."""
         OUTCOMES.labels(subsystem="outbox", outcome="relay_failed").inc()
         if row.attempts < self._options.max_attempts:
             log.warning(
@@ -292,6 +300,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
                 row.kind,
                 row.attempts,
                 error,
+                exc_info=raised,
             )
             await self._storage.record_failure(org_id, row.id, error, None)
             return
@@ -301,6 +310,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
             row.kind,
             row.attempts,
             error,
+            exc_info=raised,
         )
         await self._storage.record_failure(org_id, row.id, error, now)
         OUTCOMES.labels(subsystem="outbox", outcome="dead_letter").inc()

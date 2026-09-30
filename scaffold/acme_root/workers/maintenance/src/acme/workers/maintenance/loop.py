@@ -180,7 +180,7 @@ class WorkerLoop:
                     strict=True,
                 ):
                     if isinstance(ended, Exception):
-                        log.error("%s ended with %r", timer.get_name(), ended)
+                        log.error("%s ended with %r", timer.get_name(), ended, exc_info=ended)
                 await self._mark_offline()
             finally:
                 self._drained.set()
@@ -263,7 +263,7 @@ class WorkerLoop:
         bounds how long a queue waits for a worker, not how fast one drains it."""
         self._running.pop(task, None)
         if not task.cancelled() and (error := task.exception()) is not None:
-            log.error("work task %s ended with %r", task.get_name(), error)
+            log.error("work task %s ended with %r", task.get_name(), error, exc_info=error)
         self._wake.set()
 
     # Running one item.
@@ -399,7 +399,7 @@ class WorkerLoop:
                     owner.cancel()
                 return
             except Exception as error:
-                log.warning("lease renewal failed on %s: %r", item.id, error)
+                log.warning("lease renewal failed on %s: %r", item.id, error, exc_info=error)
                 pause = min(retry, max(renewed_at + fence - clock(), 0))
 
     # Liveness.
@@ -433,7 +433,7 @@ class WorkerLoop:
                 await self._liveness.put(EMPTY_UUID, key, b"online", ttl)
                 stored = await self._liveness.get(EMPTY_UUID, key) is not None
         except Exception as error:
-            log.warning("heartbeat not published: %r", error)
+            log.warning("heartbeat not published: %r", error, exc_info=error)
             stored = False
         if stored and not self.online:
             log.info("heartbeat published")
@@ -448,7 +448,11 @@ class WorkerLoop:
             async with asyncio.timeout(self._options.heartbeat_interval.total_seconds()):
                 await self._liveness.invalidate(EMPTY_UUID, key)
         except Exception as error:
-            log.warning("could not mark offline; the liveness key expires on its own: %r", error)
+            log.warning(
+                "could not mark offline; the liveness key expires on its own: %r",
+                error,
+                exc_info=error,
+            )
         self.online = False
 
     # Maintenance.

@@ -2,6 +2,8 @@
 attempts are spent is a dead letter, failed for good, counted, and named by
 an audit event."""
 
+import json
+import logging
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -12,7 +14,7 @@ from contracts.outbox_storage import a_user, claim_all, make_row
 from opentelemetry.sdk.trace import TracerProvider
 
 from acme.infra.impl.local import InfraLocalImpl
-from acme.infra.observability import OUTCOMES, current_traceparent
+from acme.infra.observability import OUTCOMES, JsonFormatter, current_traceparent
 from acme.infra.topics import EntityChangedPayload, TopicPayload, Topics
 from acme.om.base import EMPTY_UUID, new_id, utcnow
 from acme.om.context import AppContext, AppType, RequestContext, TenantContext
@@ -74,6 +76,26 @@ async def test_the_row_carries_the_trace_context_its_stage_carries(
 
 def dead_letters() -> float:
     return OUTCOMES.labels(subsystem="outbox", outcome="dead_letter")._value.get()
+
+
+async def test_a_failed_relay_logs_its_exception_with_its_frames(
+    infra: InfraLocalImpl, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The row keeps the failure's type alone; the line carries the exception
+    itself, so it names the type and where it was raised."""
+    outbox = OutboxStorageMemoryImpl()
+    tenancy = TenancyStorageMemoryImpl(outbox)
+    org, user = new_id(), a_user()
+    row = make_row(org, user.id)
+    await tenancy.write_user(org, user, (row,))
+    relay = OutboxRelayImpl(outbox, PoisonedEvents(row.id), infra.get_topics(), options=NO_GRACE)
+    with caplog.at_level(logging.WARNING, logger=OutboxRelayImpl.__module__):
+        assert await relay.relay_pending(10) == 0
+    (record,) = [r for r in caplog.records if r.name == OutboxRelayImpl.__module__]
+    line = json.loads(JsonFormatter().format(record))
+    assert line["message"].endswith("failed on attempt 1: RuntimeError")
+    assert line["exception"].endswith("\nRuntimeError")
+    assert ", in append_events\n" in line["exception"]
 
 
 async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max_attempts(
