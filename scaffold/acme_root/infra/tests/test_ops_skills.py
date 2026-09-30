@@ -214,7 +214,8 @@ COUNT_BOUNDS = {
         "A batch makes at most 20 tool calls.",
         "A read that would be the 21st call is not made",
         "with `k` from 0 to at most 29",
-        "The `Period` passed to `get-metric-data` is a whole minute",
+        "The period of each `get-metric-data` query, its `Period` and the last argument "
+        "of a `SEARCH` expression, is a whole minute",
         "The sub-agent names its Next and never runs it",
         "A session follows at most 2 hops of Next.",
         "never more than 30 batches, never a batch shorter than 30 seconds, "
@@ -272,8 +273,8 @@ ONE_READ_A_MINUTE = [
     "the two bounds a batch passes are its start and its end, each rounded down to a whole minute",
     "no minute is read twice",
     "makes no metric read; the next batch reads that minute",
-    "The `Period` passed to `get-metric-data` is a whole minute, 60 seconds, "
-    "whatever the batch interval",
+    "The period of each `get-metric-data` query, its `Period` and the last argument of a "
+    "`SEARCH` expression, is a whole minute, 60 seconds, whatever the batch interval",
     "a count is `increase(<metric>[1m])`",
     "each a range query from the rounded start plus 60 seconds to the rounded end, "
     "at a 60-second `step`",

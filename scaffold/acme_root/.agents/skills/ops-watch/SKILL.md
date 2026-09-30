@@ -167,7 +167,8 @@ wait.
    (a 30-second batch can be) makes no metric read; the next batch
    reads that minute. Such a batch writes "metrics read in the next
    batch" in place of its numbers, never a zero, which would read as
-   traffic stopping. The `Period` passed to `get-metric-data` is a whole
+   traffic stopping. The period of each `get-metric-data` query, its
+   `Period` and the last argument of a `SEARCH` expression, is a whole
    minute, 60 seconds, whatever the batch interval: CloudWatch refuses
    a period that is not a multiple of 60 for a regular-resolution
    metric, and a longer one would reach past the batch's rounded end
