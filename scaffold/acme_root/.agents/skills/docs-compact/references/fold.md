@@ -48,17 +48,28 @@ stays as it is, and the report says which part.
      that job skipped, and does not count. When none of the 30 has
      applied and staging has deployed, as this part's last line reads
      it, its commit cannot be read.
-   - Production: the tip of `origin/release`, when `gh api
+   - Production, when it has deployed (this part's last line): the tip
+     of `origin/release`, when `gh api
      repos/{owner}/{repo}/commits/<tip>/statuses --jq '[.[] |
      select(.context == "released/production")] | first | .state'`
      prints `success`.
    - For each: `git merge-base --is-ancestor <newest migration's commit>
      <deployed commit>` exits 0.
    - An environment that never deployed has no database, and passes.
-     Staging never deployed when the same list without `--status
-     success` is empty, or the second command prints `skipped` for
-     every run in it. Production never deployed when there is no
-     `origin/release`. A `gh` call that fails does not pass.
+     It is read from the deploys, never from a branch: an
+     `origin/release` no deploy applied is no production. Staging never
+     deployed when the same list without `--status success` is empty,
+     or the second command prints `skipped` for every run in it.
+     Production never deployed when its list is empty, or its apply job
+     ran in none of its runs, the command printing `skipped` or
+     nothing:
+
+     ```bash
+     gh run list --workflow deploy-production.yml --limit 30 --json databaseId --jq '.[].databaseId'
+     gh run view <run> --json jobs --jq '[.jobs[] | select(.name == "apply the approved plan, migrate, and publish") | .conclusion] | first // ""'
+     ```
+
+     A `gh` call that fails does not pass.
 4. The local database: for every role, `make migrate` prints
    `<role>: upgraded to <head>`.
 
@@ -86,8 +97,11 @@ revision on the fold.
      files are: a comment that says what the role holds, every name
      schema-qualified, each table with its columns in the dump's order
      (a column a later step added sits where the dump has it), then its
-     constraints, indexes, policies, and grants, and each function or
-     trigger the head still has. No `SET`, no `OWNER TO`, and no
+     constraints, indexes, and policies, and each function or trigger
+     the head still has. It ends as the chain's first step does, with
+     the role-wide grants and default privileges of the serving logins
+     and the revoke on the role's `alembic_version`: the dump compares
+     them. No `SET`, no `OWNER TO`, and no `CREATE` of
      `alembic_version`: the runner makes that table.
    - No data statement: a backfill leaves with the step it belonged to,
      since a database at the head has run it and a new one has no row to
@@ -102,9 +116,19 @@ revision on the fold.
 3. **Move what named a step.** `git grep -n` each removed stamp and each
    removed file name.
    - A test goes only when it pins a revision id the fold removes, or
-     tests a backfill the fold removes. Every other test stays as it
-     is, the head's downgrade and upgrade, the ORM-against-schema check,
-     and the test of `backfill` over two tenants' rows among them.
+     tests a backfill the fold removes. Every other test stays, the
+     head's downgrade and upgrade, the ORM-against-schema check, and
+     the test of `backfill` over two tenants' rows among them.
+   - A test that goes may also assert what the head keeps: a trigger of
+     an expand and contract in flight, a constraint, a policy. Those
+     assertions stay, in a test that migrates to the head and names no
+     step; only the pin and the steps go.
+   - A test that steps down from the head (`downgrade` to `-1`) now
+     empties the role: the fold is the chain's one revision, so its
+     down file drops every table. Such a test stays when it upgrades to
+     the head again before it returns, on its failure path too. One
+     that leaves the role a step down for a fixture or a later test is
+     changed to upgrade first, or the suite fails after it.
    - An ADR, a comment, or a document that cites a removed revision or
      file names the fold's file, or drops the citation when it named a
      step and not the schema.

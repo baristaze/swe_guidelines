@@ -319,7 +319,9 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "the first run plus at most 3 reruns" in fold
     assert "never drop a database this run did not make" in fold
     assert "A test goes only when it pins a revision id the fold removes" in fold
-    assert "Every other test stays as it is" in fold
+    assert "Every other test stays" in fold
+    assert "Those assertions stay, in a test that migrates to the head" in fold
+    assert "upgrades to the head again before it returns" in fold
     assert "the schema dump of the chain equals the fold's" in fold
 
 
@@ -336,6 +338,9 @@ def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> Non
         assert f'select(.name == "{apply_job}")' in text
         assert "--json displayTitle" in text
     assert "--json headSha" not in fold
+    # Production's deploys are read by its own apply job, never by a branch.
+    production = yaml.safe_load((workflows / "deploy-production.yml").read_text())
+    assert f'select(.name == "{production["jobs"]["apply"]["name"]}")' in fold
 
 
 # A `SEARCH` schema names every dimension a series has, or it matches nothing
