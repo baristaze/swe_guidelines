@@ -23,18 +23,32 @@ file are there.
 `--env` and `--org` are required; ask for them when missing. `--user`
 narrows to one member of the tenant. `--request-id` starts from a
 request, and may be given more than once; without it the skill finds
-the failing requests of the window in the tenant's events and the
-error tracker. `--since` is the window, a day by default.
+the failing requests of the window in the tenant's events (step 3),
+the one signal read by tenant: the error tracker holds no tenant
+(step 4). `--since` is the window, a day by default.
 
 A run follows at most 5 request ids, one pass each: the first five
 given, in the order given, or without `--request-id`, the five newest
-failing requests tied to the symptom (the Y of "tenant X sees Y"),
-never the newest failures of any kind. Without `--request-id`, the
+requests whose events step 3 ties to the symptom (the Y of "tenant X
+sees Y"), never the newest failures of any kind. An event tied to the
+symptom is a failure the stream records or a write that landed, and
+either request is followed, so a run whose only such events are
+writes that landed still makes its passes: a request can land its
+write and fail its answer. Without `--request-id`, the
 symptom is the one the prompt or the investigation's report names;
 when neither names one, ask for it, as for `--env`. A pass that finds
 no cause reports "not found" for its id. After the fifth pass the
 skill stops and writes the report. It lists every id past the fifth
 as not followed, for a second run to take.
+
+Without `--request-id`, when the window's events hold no request tied
+to the symptom, the run makes no pass and writes the report. Its Requests line says none was
+found, and its Cause says "not found", with what the feed held. The
+report then names the second run that could find one: with the
+request id the tenant saw as `--request-id`, which every error answer
+carries as `error.request_id`, or with a longer `--since`. The run
+never widens the window itself, and never takes a failure the symptom
+does not name.
 
 `local` reads the compose stack and its twins; no cloud is needed.
 
@@ -55,8 +69,9 @@ URL. The credential for the plane is the env file's operator token,
 whose permission is `read`; a `write` token is refused by this skill
 even when the file holds one. Never read the env file; a command that
 needs a value sources it in the same command, as every block below
-does. Never print a token. On a `401` the token has expired: stop, and
-name the refresh the preamble gives.
+does. Never print a token. On a `401`, which a read through its `jq`
+prints as the error code `not_authenticated`, the token has expired:
+stop, and name the refresh the preamble gives.
 
 ## Procedure
 
@@ -66,16 +81,23 @@ lists them.
 Steps 4 to 8 are one pass, for one request id, and each id gets one
 pass. A pass reads each signal once: a signal that answers nothing is
 written as empty, never read a second time with a wider window or
-another filter. Without `--request-id`, the pick of ids in steps 3
-and 4 runs once, before the passes. It is not a pass, and its reads
-do not use up the first pass's one read of each signal.
+another filter. Without `--request-id`, the pick of ids in step 3
+runs once, before the passes. It is not a pass.
 
-1. Verify the credential as Role and credential states. Read
-   `GET /v1/admin/me` with the operator token, sourcing the env file
-   in the same command as Role and credential shows, and check the
-   answer names `operator_role: read`; stop on `write`. No sign-in
-   runs: the operator plane admits the token, and no tenant session
-   is exchanged.
+1. Verify the credential as Role and credential states, then read who
+   the operator plane admitted. The `jq` keeps the role and the domain
+   of the operator's address, never the address:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/me" \
+     | jq '{operator_role, email_domain: (.email // "" | split("@")[1]), error: .error.code}'
+   ```
+
+   The run goes on only on `operator_role: read`. A `write` stops it,
+   and so do an `error` and an answer that is empty or not JSON, as in
+   step 2. No sign-in runs: the operator plane admits the token, and
+   no tenant session is exchanged.
 2. Read the tenant, then its members, through the operator plane's
    read routes, every one under `/v1/admin/orgs/{org_id}/`:
 
@@ -123,51 +145,106 @@ do not use up the first pass's one read of each signal.
    read, and which of the two it was. The read is not made a second
    time.
 3. Read the tenant's activity of the window, the operator's events
-   feed:
-
-   ```bash
-   set -a; . ~/.config/acme/ops/<env>.env; set +a
-   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200"
-   ```
-
-   The feed answers a bare list of events, never an object that wraps
-   one. The operator's feed carries `request_id` and `app` beside the
-   actor, which the tenant's own feed leaves out, so it is the map from
-   what the tenant did to the requests that did it. The rows themselves
-   are the org and its members of step 2. Without `--request-id`, pick
-   the request ids of the window's failed or missing writes here and in
-   step 4, at most five, the newest first among those tied to the
-   symptom.
+   feed. The feed answers a bare list of events, never an object that
+   wraps one, and a refusal with the error object. The operator's feed
+   carries `request_id` and `app` beside the actor, which the tenant's
+   own feed leaves out, so it is the map from what the tenant did to
+   the requests that did it. The rows themselves are the org and its
+   members of step 2.
 
    The feed reads only forward from `after_seq`, with no time filter,
    so the skill first finds the window's first `seq`, and never reads
    from `after_seq=0` unless the tenant's first event is inside the
-   window. An event's time is its `produced_at`. Probe with `limit=1`:
-   `after_seq=0`, then 1, 2, 4, 8, doubling, until the event returned
-   is inside the window or none is returned. Then bisect between the
-   last probe before the window and the first one inside it or past
-   the last event, until the two are one apart. The probes take about
-   twice the base-2 log of the tenant's event count: about 28 calls
-   for 10,000 events, about 40 for a million. Read the feed forward
-   from `after_seq` at the later of the two, 200 events a page, until
-   a page comes back short: the window bounds the read, and no page
-   count cuts it.
-4. The error tracker, by request id or by tenant window. One project
-   holds the product's errors for every environment, so the read names
-   it and asks for this environment:
+   window. An event's time is its `produced_at`. The window ends when
+   this step starts and begins `--since` before it, both read once,
+   here, and every later step reads the same two:
+
+   ```bash
+   jq -nc 'now | floor | {start: (. - <since in seconds>), end: .} | .start_at = (.start | todate) | .end_at = (.end | todate)'
+   ```
+
+   `start` and `end` are epoch seconds, for the cloud's reads;
+   `start_at` and `end_at` are RFC 3339. Probe with `limit=1`, one read
+   per probe:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<n>&limit=1" \
+     | jq -c 'if type == "array" then {seq: .[0].seq, produced_at: .[0].produced_at} else {error: .error.code} end'
+   ```
+
+   A probe prints the event's `seq` and `produced_at`, both null when
+   none is returned. Probe `after_seq=0`, then 1, 2, 4, 8, doubling,
+   until the event returned is inside the window or none is returned.
+   Then bisect between the last probe before the window and the first
+   one inside it or past the last event, until the two are one apart.
+   The probes take about twice the base-2 log of the tenant's event
+   count: about 28 calls for 10,000 events, about 40 for a million.
+
+   Read the feed forward from `after_seq` at the later of the two, 200
+   events a page:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200" \
+     | jq -c 'if type == "array" then {count: length, last_seq: .[-1].seq, events: [.[] | {seq, produced_at, kind, target_id, actor_id, request_id, app}]} else {error: .error.code} end'
+   ```
+
+   The next page reads from the page's `last_seq`, until a page's
+   `count` is under 200: the window bounds the read, and no page count
+   cuts it. A read of this step that answers an `error`, or an answer
+   that is empty or not JSON, ends the run as in step 2.
+
+   Without `--request-id`, pick the request ids here, at most five, the
+   newest first among the events tied to the symptom. A failure the
+   stream records is `work.item.failed` or `outbox.row.failed`: a work
+   item or an outbox row that failed for good. Any other event tied to
+   the symptom is a write that landed, whose request is followed for
+   what it did next. When no event is tied to the symptom, the run
+   makes no pass, as Input says.
+4. The error tracker, by the pass's request id. The tracker holds no
+   tenant: an event's tags are `service`, `request_id`, and the SDK's
+   own (`environment`, `release`, `server_name`), never an org id, so
+   it is never read by the tenant or by a tag guessed for one. One
+   project holds the product's errors for every environment, so the
+   read names it and asks for this environment. An issue's `title`,
+   `culprit`, and `metadata` carry the exception's text, which can
+   quote what the tenant sent, so the `jq` keeps the issue's `id`,
+   `lastSeen`, and `count` alone:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
      --data-urlencode "query=environment:<env> request_id:<id>" \
-     "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/"
+     "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/" \
+     | jq -c 'if type == "array" then {issues: [.[] | {id, lastSeen, count}]} else {error: (.detail // "not a list")} end'
    ```
 
    An issue the query returns can hold events of another environment
    too, so the event that answers is the one whose `request_id` tag is
-   the id **and** whose `environment` tag is `<env>`
-   (`/api/0/issues/<issue id>/events/`). An event of another
-   environment is never this environment's evidence.
+   the id **and** whose `environment` tag is `<env>`. An event of
+   another environment is never this environment's evidence. Read each
+   issue's events for this environment and this id, with `full=true`,
+   without which Sentry answers no stack. A tracker that ignores the
+   two filters answers a page of the issue's events, and the `jq` keeps
+   the one event alone: its exception's type and the last three frames
+   of the product's code, never the exception's text:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
+     --data-urlencode "environment=<env>" --data-urlencode "query=request_id:<id>" \
+     --data-urlencode "full=true" \
+     "$ACME_ERROR_TRACKER_URL/api/0/issues/<issue id>/events/" \
+     | jq -c 'if type == "array" then {events: [.[] | (.tags | if type == "array" then map({(.key): .value}) | add else . end) as $tag | select($tag.request_id == "<id>" and $tag.environment == "<env>") | {id: (.eventID // .event_id), at: (.dateCreated // .date_created), release: $tag.release, exception: [.entries[]? | select(.type == "exception") | .data.values[]? | {type, frames: ([.stacktrace.frames[]? | select(.inApp) | {filename, lineNo, function}] | .[-3:])}]}]} else {error: (.detail // "not a list")} end'
+   ```
+
+   A tracker read that answers an `error`, or an answer that is empty
+   or not JSON, does not end the run, as a read of the operator plane
+   does in step 3: the tracker is one leg of the pass. The pass writes
+   its error leg as "not read", with which of the three it was, and
+   goes on to the logs; the read is not made a second time. An answer
+   with no issue, or no event of this id, is "no error event".
 
    The org's slug is what `GET /api/0/organizations/` lists (locally
    `acme`, the one the seed creates):
@@ -202,8 +279,9 @@ do not use up the first pass's one read of each signal.
    on to the trace.
 
    Local: `docker compose -f deployment/local/docker-compose.yml -f
-   deployment/local/docker-compose.full.yml logs --since <since> api
-   maintenance | grep <id>` from the repository root when the processes
+   deployment/local/docker-compose.full.yml logs --since <start_at>
+   --until <end_at> api maintenance | grep <id>`, the window's two
+   bounds of step 3, from the repository root when the processes
    run in containers. When they run on the host (`scripts/dev.sh`
    writes no file; it logs to its terminal), `grep` the file the
    process was started with, and say "not read" when there is none.
@@ -242,8 +320,11 @@ do not use up the first pass's one read of each signal.
      [--log-file <the process's log>] [--since-minutes <n>]
    ```
 
-   The local reader has no log store of its own: without `--log-file`
-   its log leg reports zero lines, which says nothing.
+   It reads back from now, so `<n>` is the minutes from the window's
+   `start` of step 3 to now, rounded up, and its read covers the
+   window: `jq -n '(now - <start>) / 60 | ceil'`. The local reader has
+   no log store of its own: without `--log-file` its log leg reports
+   zero lines, which says nothing.
 
 8. Correlate. One request id ties the event row (what the tenant
    asked), the log lines (what the process decided), the trace (where
@@ -282,7 +363,8 @@ do not use up the first pass's one read of each signal.
 
 **Credential.** <profile and Arn, or local>; operator <email domain only>, READ
 **Tenant.** <kind> org, <members> members, <n> events in the last <since>, from seq <seq> (<p> probes)
-**Requests.** <n> given or found, <m> followed (at most 5)
+**Requests.** <n> given or found, <m> followed (at most 5), or none
+found in the window's events
 
 - <request id>, <route>, <status>, <when>: <cause found | not found>
 - <request id>: not followed, past the fifth
@@ -299,7 +381,8 @@ do not use up the first pass's one read of each signal.
 
 <one paragraph: what happened, where, and why, with the line of code
 or the row or the resource that decided it; or "not found", with what
-each pass read>
+each pass read; or, with no pass, what the feed held and the second
+run that could find a request>
 
 ## Fix
 
