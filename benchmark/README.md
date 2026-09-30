@@ -472,7 +472,7 @@ a rehearsal, a marked run, and a file that still holds a key.
 A subject can print anything it can read. So `redact` scans every file
 as bytes, and inside every zip, tar, gzip, bzip2, and xz file. It
 replaces with `[redacted]` every key the harness knows, and anything
-shaped like a provider, GitHub, or AWS key. It also replaces the
+shaped like a provider, GitHub, AWS, or Stripe key. It also replaces the
 account ids and limit figures that OpenAI's, Anthropic's, and xAI's
 errors name. A file it cannot read is replaced by a line that says so.
 `harness/redact.py` holds the rest.

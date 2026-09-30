@@ -12,11 +12,13 @@ from opentelemetry.sdk.trace import Span, TracerProvider
 from worker_support import (
     RecordingHandler,
     build_container,
+    ended,
     fast_options,
     make_item,
     on_the_test_clock,
     request,
     sign_in,
+    until,
 )
 
 from acme.infra.cache import CacheInterface, CacheScope
@@ -400,17 +402,12 @@ async def claim_all(outbox: OutboxStorageInterface) -> list[OutboxRow]:
     return await outbox.claim_pending(100, utcnow(), zero, zero, zero)
 
 
-async def until(predicate: Callable[[], bool], within: float = 3.0) -> None:
-    deadline = asyncio.get_running_loop().time() + within
-    while not predicate():
-        assert asyncio.get_running_loop().time() < deadline, "condition not met in time"
-        await asyncio.sleep(0.01)
-
-
 # On the test clock the loop runs on its own defaults: a lease of a minute,
 # renewed every twenty seconds and fenced at thirty. A minute passes there in
 # no wall time, and the lease the storage stamps from the wall clock outlives
-# any stall of the process.
+# any stall of the process. So a test that holds a claimed item until it stops
+# the loop runs there: a stall during the drain neither expires the item nor
+# moves the bound on the stop.
 DEFAULTS = LoopOptions(worker_id="maintenance-test")
 
 
@@ -577,10 +574,13 @@ async def run_once(
         assert stored is not None
         return stored
 
-    deadline = asyncio.get_running_loop().time() + 3.0
-    while handler.runs == 0 or (await settled()).status is WorkStatus.CLAIMED:
-        assert asyncio.get_running_loop().time() < deadline, "the item did not settle"
+    # Polled as `until` polls: a count of turns, never the wall clock.
+    for _ in range(300):
+        if handler.runs and (await settled()).status is not WorkStatus.CLAIMED:
+            break
         await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("the item did not settle")
     loop.stop()
     await task
     assert handler.runs == 1
@@ -959,14 +959,15 @@ async def test_liveness_fails_once_the_heartbeat_stops(tmp_path: Path) -> None:
     heartbeat.cancel()
     await until(lambda: not loop.alive())
     loop.stop()
-    await asyncio.wait_for(task, 2.0)
+    await ended(task)
 
 
+@on_the_test_clock
 async def test_stop_drains_first_and_goes_offline_last(tmp_path: Path) -> None:
     container = build_container(tmp_path)
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
-    loop, task = start_loop(container, handler, fast_options())
+    loop, task = start_loop(container, handler, DEFAULTS)
     liveness = container.infra.get_cache(CacheScope.WORKER_LIVENESS)
     item = make_item(ctx)
     await container.managers.work.enqueue(ctx, item)
@@ -986,6 +987,7 @@ async def test_stop_drains_first_and_goes_offline_last(tmp_path: Path) -> None:
     assert loop.sweeps >= 1
 
 
+@on_the_test_clock
 async def test_stop_goes_offline_even_when_a_release_fails(tmp_path: Path) -> None:
     # The database is down at shutdown: returning the item fails with an error
     # that says nothing about the lease. The drain still awaits every item,
@@ -995,7 +997,7 @@ async def test_stop_goes_offline_even_when_a_release_fails(tmp_path: Path) -> No
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
     work = FailingReleaseWork(container.managers.work)
-    loop, task = start_loop(container, handler, fast_options(capacity=2), work=work)
+    loop, task = start_loop(container, handler, DEFAULTS, work=work)
     liveness = container.infra.get_cache(CacheScope.WORKER_LIVENESS)
     items = [make_item(ctx), make_item(ctx)]
     for item in items:
@@ -1105,6 +1107,7 @@ def aged_event(ctx: TenantContext, produced_at: datetime) -> Event:
     )
 
 
+@on_the_test_clock
 async def test_stop_during_a_claim_still_returns_the_item(tmp_path: Path) -> None:
     """`stop()` lands while the claim is on its way back: the loop exits before
     the task it created has taken a step. Cancelling a task that never ran
@@ -1115,7 +1118,7 @@ async def test_stop_during_a_claim_still_returns_the_item(tmp_path: Path) -> Non
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
     work = StopOnClaimWork(container.managers.work)
-    loop, task = start_loop(container, handler, fast_options(), work=work)
+    loop, task = start_loop(container, handler, DEFAULTS, work=work)
     work.stop = loop.stop
     item = make_item(ctx)
     await container.managers.work.enqueue(ctx, item)
@@ -1141,9 +1144,9 @@ async def test_an_announcement_during_a_claim_is_not_lost(tmp_path: Path) -> Non
     loop, task = start_loop(
         container, handler, fast_options(poll_interval=timedelta(hours=1)), work=work
     )
-    await until(lambda: handler.started == [item.id], within=2.0)
+    await until(lambda: handler.started == [item.id], polls=200)
     loop.stop()
-    await asyncio.wait_for(task, 3.0)
+    await ended(task)
 
 
 async def test_an_item_whose_wake_up_the_bus_dropped_is_claimed_on_the_poll(
@@ -1171,6 +1174,6 @@ async def test_an_item_whose_wake_up_the_bus_dropped_is_claimed_on_the_poll(
     item = make_item(ctx)
     await container.managers.work.enqueue(ctx, item)
     assert Topics.WORK_AVAILABLE in dropped, "the enqueue announced the item and the bus dropped it"
-    await until(lambda: handler.started == [item.id], within=3.0)
+    await until(lambda: handler.started == [item.id])
     loop.stop()
-    await asyncio.wait_for(task, 3.0)
+    await ended(task)

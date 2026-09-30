@@ -165,6 +165,26 @@ def fast_options(**overrides: object) -> LoopOptions:
     return LoopOptions.model_validate({**base, **overrides})
 
 
+async def until(predicate: Callable[[], bool], polls: int = 300) -> None:
+    """Returns once `predicate` holds, asked every hundredth of a second at
+    most `polls` times. The bound counts the test's own turns, never the wall
+    clock: a stall of the process, a collection or a busy runner, costs one
+    poll and leaves the rest, so only a condition the code never meets fails
+    the wait."""
+    for _ in range(polls):
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    assert predicate(), "condition not met in time"
+
+
+async def ended(task: asyncio.Task[None], polls: int = 300) -> None:
+    """Awaits `task`, which must end within `polls` turns, counted as `until`
+    counts them; what it raised is raised here."""
+    await until(task.done, polls)
+    await task
+
+
 # A real clock reads a little past the timer it woke for, never on it. The
 # test clock does too, by a microsecond, so a deadline is never met to the
 # instant, where a rounding error of the float decides which side it is on.
