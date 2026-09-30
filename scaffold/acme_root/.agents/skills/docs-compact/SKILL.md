@@ -140,11 +140,12 @@ left as it is, and the report names it under Kept.
      contract still in flight, stays, in the present tense: what the
      code tolerates, and what ends it. The test: find the commit that
      added the piece (`git log -S'<its name>' --format=%H -- <file>`,
-     the last line it prints), and count the release tags that hold it (`git tag --contains <commit>`). With fewer than
-     two, an environment may still run, or roll back to, the release the
-     piece serves: it is in flight. With two or more, it serves a
-     release long gone. In doubt, or in a tree that tags no release, it
-     is in flight.
+     the last line it prints), and count the release tags that hold it
+     (`git tag --contains <commit>`). With fewer than two, an
+     environment may still run, or roll back to, the release the piece
+     serves: it is in flight. With two or more, it serves a release
+     long gone. In doubt, or in a tree that tags no release, it is in
+     flight.
    - Only text changes: a comment, a docstring, a document. A name in
      code is code. Code that seems to serve a release long gone is
      listed in the report and left as it is.
