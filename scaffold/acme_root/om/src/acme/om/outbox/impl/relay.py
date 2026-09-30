@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from acme.infra.observability import OUTCOMES, failure_level
+from acme.infra.observability import OUTCOMES, described, failure_level
 from acme.infra.topics import EntityChangedPayload, Topics, TopicsInterface
 from acme.om.base import Platform, new_id, utcnow
 from acme.om.events.storage import EventStorageInterface
@@ -173,7 +173,7 @@ class OutboxRelayImpl(OutboxRelayInterface):
             try:
                 unpublished = await self._deliver_all(org_id, (row,))
             except Exception as error:
-                await self._failed(org_id, row, f"{type(error).__name__}: {error}"[:500], now)
+                await self._failed(org_id, row, described(error)[:500], now)
                 continue
             relayed += await self._settled(org_id, (row,), unpublished, now)
         return relayed

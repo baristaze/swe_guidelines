@@ -612,7 +612,7 @@ async def test_a_park_hands_the_item_back_and_spends_no_attempt(tmp_path: Path) 
 async def test_any_other_error_requeues_the_item_with_a_delay(tmp_path: Path) -> None:
     container, ctx, stored = await run_once(tmp_path, RuntimeError("boom"))
     assert stored.status is WorkStatus.QUEUED and stored.attempts == 1
-    assert stored.last_error == "RuntimeError: boom"
+    assert stored.last_error == "RuntimeError", "the type alone; its text is not the platform's"
     assert stored.available_at > utcnow()
     assert await container.managers.events.get_events(ctx, after_seq=0, limit=10) == []
 

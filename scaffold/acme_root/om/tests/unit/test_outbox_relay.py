@@ -96,7 +96,7 @@ async def test_a_poison_row_does_not_block_the_rows_behind_it_and_dies_after_max
     assert stored[fine_row.id].done_at is not None
     failed = stored[poison_row.id]
     assert failed.done_at is None and failed.failed_at is None and failed.attempts == 1
-    assert failed.last_error == "RuntimeError: cannot append this one"
+    assert failed.last_error == "RuntimeError"
     assert dead_letters() == counted
     assert await relay.failed_within(timedelta(minutes=15)) == 0, "a retry is no dead letter"
     assert [e.kind for e in await events.read_after(org, 0, 10)] == ["tenancy.user.created"]
@@ -348,7 +348,7 @@ async def test_the_sweep_relays_each_tenants_rows_together(infra: InfraLocalImpl
     stored = {r.id: r for _, r in outbox._rows.values()}
     poison = stored[ann_rows[1].id]
     assert poison.done_at is None and poison.attempts == 1
-    assert poison.last_error == "RuntimeError: cannot append this one"
+    assert poison.last_error == "RuntimeError"
     assert all(stored[row.id].done_at is not None for row in (*bob_rows, ann_rows[0], ann_rows[2]))
     assert len(await events.read_after(bob, 0, 10)) == 4
 
