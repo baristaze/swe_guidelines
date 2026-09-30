@@ -1,7 +1,7 @@
 ---
 name: docs-compact
 description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold each role's migration chain into one revision under the head's revision id, shown equal by a schema dump. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(git tag:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
 # docs-compact
@@ -56,8 +56,11 @@ left as it is, and the report names it under Kept.
 1. **Start clean, on a branch.** `git status --porcelain` prints
    nothing, or refuse. `git fetch origin`. The main branch is the one
    `git symbolic-ref --short refs/remotes/origin/HEAD` names. On it, cut
-   the work branch: `git switch --no-track -c docs-compact
-   origin/<main>`. On another branch, work there only when `git log
+   the work branch, named for the day: `git switch --no-track -c
+   docs-compact-<yyyy-mm-dd> origin/<main>`. The name is taken when
+   `git rev-parse --verify --quiet <name>` or `git rev-parse --verify
+   --quiet origin/<name>` prints a commit: add a suffix then (`-2`). On
+   another branch, work there only when `git log
    --oneline origin/<main>..HEAD` prints nothing; otherwise refuse.
    Make the evidence folder, `mkdir -p
    ~/Downloads/acme_docs_compact_<yyyy-mm-dd>/`.
@@ -97,9 +100,11 @@ left as it is, and the report names it under Kept.
      whole, one that is closed, one that records what a release asked or
      that a pin moved. A decision in it that still stands moves first,
      into the ADR that records that decision. When no ADR does, the
-     decision most cited stays in this file, rewritten, under its number,
-     and each other one gets a new ADR numbered one above the highest
-     the tree held when the run began.
+     decision most cited stays in this file, rewritten, under its number.
+     Each other one gets a new ADR of its own, numbered in turn: the
+     first one above the highest the tree held when the run began, the
+     next one above that. A citation of the kept number that meant a
+     moved decision names the ADR that now holds it.
    - **Fold** a substitution that has an ADR of its own into the one ADR
      that lists the substitutions, as one row and the sentences that row
      needs, and remove the ADR.
@@ -112,7 +117,8 @@ left as it is, and the report names it under Kept.
    - **Keep, and list,** an ADR that only restates a rule of the
      guideline while code cites its number, and any ADR the test leaves
      in doubt.
-   - A file under `docs/adr/` that no ADR links goes.
+   - A file under `docs/adr/` that is not an ADR, such as a picture,
+     goes when no ADR links it. An ADR never goes for want of a link.
 4. **Cut the changelog** to its latest release: the lines above the
    first release, that one section, and one line that says every
    release's notes stay on the repository host. Each older section goes
@@ -132,7 +138,13 @@ left as it is, and the report names it under Kept.
      breach.
    - A comment on code that serves the release before, in an expand and
      contract still in flight, stays, in the present tense: what the
-     code tolerates, and what ends it.
+     code tolerates, and what ends it. The test: find the commit that
+     added the piece (`git log -S'<its name>' --format=%H -- <file>`,
+     the last line it prints), and count the release tags that hold it (`git tag --contains <commit>`). With fewer than
+     two, an environment may still run, or roll back to, the release the
+     piece serves: it is in flight. With two or more, it serves a
+     release long gone. In doubt, or in a tree that tags no release, it
+     is in flight.
    - Only text changes: a comment, a docstring, a document. A name in
      code is code. Code that seems to serve a release long gone is
      listed in the report and left as it is.
@@ -163,9 +175,9 @@ left as it is, and the report names it under Kept.
 
 - Never drops a deviation's end condition: "until an operator task
   needs a screen" is a trigger, not history.
-- Never trims an expand and contract in flight: its ADR, its comments,
-  the column, the default, or the trigger it keeps stay until the
-  contract step lands.
+- Never trims an expand and contract in flight, as step 6 tells one:
+  its ADR, its comments, the column, the default, or the trigger it
+  keeps stay until the contract step lands.
 - Never renumbers an ADR, and never gives a removed ADR's number to
   another: a removed ADR leaves a gap.
 - Never drops a reason that stops a plausible wrong change: it stays as
