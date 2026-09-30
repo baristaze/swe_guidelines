@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from worker_support import build_container, sign_in
+from worker_support import build_container, ended, sign_in
 
 from acme.infra.queues import QueueMessage, Queues
 from acme.integrations.identity import ProvidedDelivery
@@ -156,6 +156,6 @@ async def test_the_consumer_runs_until_it_is_stopped(tmp_path: Path) -> None:
             break
         await asyncio.sleep(0.01)
     consumer.stop()
-    await asyncio.wait_for(running, timeout=5)
+    await ended(running)
     assert len(await received(container, ctx)) == 1
     assert await depth(container) == (0, 0)
