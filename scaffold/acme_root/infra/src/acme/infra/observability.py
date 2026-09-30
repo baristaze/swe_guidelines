@@ -11,6 +11,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import sentry_sdk
 from opentelemetry import trace
@@ -310,13 +311,36 @@ def outgoing_event(event: Any, hint: Any) -> Any:
     return event
 
 
+OUTBOUND_KEPT = ("http.method", "http.response.status_code")
+"""What the breadcrumb of an outbound request keeps beside its URL."""
+
+
 def outgoing_breadcrumb(crumb: Any, hint: Any) -> Any:
-    """The last word on a breadcrumb, which leaves with the next event: a log
-    line's message, as `message_of` writes it."""
+    """The last word on a breadcrumb, which leaves with the next event. A log
+    line's is its message, as `message_of` writes it. An outbound request's
+    is its method, its status, and its URL as a scheme, a host, and a path.
+    Its query and its fragment stay out: a query names what the call looked
+    up, an invitee's address among them."""
     record = hint.get("log_record") if isinstance(hint, dict) else None
     if isinstance(record, logging.LogRecord):
         crumb["message"] = message_of(record)
+    data = crumb.get("data")
+    if crumb.get("type") == "http" and isinstance(data, dict):
+        kept = {key: data[key] for key in OUTBOUND_KEPT if key in data}
+        url = data.get("url")
+        if isinstance(url, str) and (where := _where_to(url)):
+            kept["url"] = where
+        crumb["data"] = kept
     return crumb
+
+
+def _where_to(url: str) -> str | None:
+    """`url` without its credentials, its query, and its fragment."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    return urlunsplit((parts.scheme, parts.netloc.rpartition("@")[2], parts.path, "", ""))
 
 
 def configure_error_reporting(

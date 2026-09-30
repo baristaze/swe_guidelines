@@ -14,11 +14,13 @@ import logging
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import httpx
 import pytest
 import sentry_sdk
 from asyncpg.exceptions import PostgresError, UniqueViolationError
 from pydantic import BaseModel, Field, ValidationError
 from sentry_sdk.envelope import Envelope
+from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.transport import Transport
 from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
@@ -112,8 +114,8 @@ class Captured(Transport):
 
 @pytest.fixture
 def tracker(monkeypatch: pytest.MonkeyPatch) -> Iterator[Captured]:
-    """The SDK as `configure_error_reporting` sets it up, with the logging
-    integration alone and every event kept here."""
+    """The SDK as `configure_error_reporting` sets it up, with the logging and
+    the httpx integrations alone and every event kept here."""
     captured = Captured()
     init = sentry_sdk.init
 
@@ -124,7 +126,7 @@ def tracker(monkeypatch: pytest.MonkeyPatch) -> Iterator[Captured]:
             transport=captured,
             default_integrations=False,
             auto_enabling_integrations=False,
-            integrations=[LoggingIntegration()],
+            integrations=[LoggingIntegration(), HttpxIntegration()],
         )
 
     monkeypatch.setattr(sentry_sdk, "init", kept_here)
@@ -271,3 +273,25 @@ def test_an_exception_a_line_names_is_its_type(tracker: Captured, lines: io.Stri
     crumbs = [crumb["message"] for crumb in event["breadcrumbs"]["values"]]
     assert crumbs == ["lease renewal failed on item-1: 'ValueError'"]
     assert EMAIL not in json.dumps(event) and NAME not in json.dumps(event)
+
+
+def test_an_outbound_call_leaves_its_method_its_path_and_its_status(tracker: Captured) -> None:
+    """The SDK records each outbound request as a breadcrumb. A provider's
+    lookup names what it looks for in its query, an invitee's address among
+    them, so the breadcrumb keeps the URL without its query or fragment."""
+    answer = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": []}))
+    with httpx.Client(transport=answer) as provider:
+        provider.get(
+            "https://api.provider.example/user_management/invitations#top",
+            params={"organization_id": "org_1", "email": EMAIL},
+        )
+    log.error("the invitation could not be sent")
+
+    (event,) = tracker.events
+    (call,) = [crumb for crumb in event["breadcrumbs"]["values"] if crumb["type"] == "http"]
+    assert call["data"] == {
+        "http.method": "GET",
+        "http.response.status_code": 200,
+        "url": "https://api.provider.example/user_management/invitations",
+    }
+    assert "ada.lovelace" not in json.dumps(event) and "top" not in json.dumps(call)
