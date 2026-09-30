@@ -76,13 +76,20 @@ left as it is, and the report names it under Kept.
    writes), or a skill folder that is a link.
    - Every `docs/adr/NNNN-*.md`: its status line, its `##` headings, and
      who cites it, in the code, the config, and the Markdown. A citation
-     takes one of three forms: `ADR NNNN` in a sentence or a comment,
-     `adr/NNNN` in a path, and `NNNN-` where the file's name begins, as
-     in a link from the ADR beside it. The digits alone are no citation.
+     takes one of four forms. `ADR NNNN`, `ADR-NNNN`, or `ADRNNNN`, in a
+     sentence or a comment: the checker reads all three. `adr/NNNN` in
+     a path. `NNNN-` where the file's name begins, as in a link from
+     the ADR beside it. And `NNNN` at a line's start, under a line that
+     ends in `ADR`: a citation the margin wrapped. The digits alone are
+     no citation.
 
      ```bash
-     git grep -nE 'ADR NNNN|adr/NNNN|NNNN-[a-z]' -- . ':!docs/adr/NNNN-*'
+     git grep -nE 'ADR[- ]?NNNN|adr/NNNN|NNNN-[a-z]' -- . ':!docs/adr/NNNN-*'
+     git grep -nE -B1 '^[^[:alnum:]]*NNNN([^0-9]|$)' -- . ':!docs/adr/NNNN-*'
      ```
+
+     A hit of the second search is a citation when the line above it,
+     which the search prints, ends in `ADR`.
 
    - `CHANGELOG.md`: its release sections, when the tree has one.
    - The Substitutions and Deviations rows of `specs/architecture.md`.

@@ -11,6 +11,7 @@ lines that stop a secret leaking stay written in each skill that could
 break them, and this test holds them there.
 """
 
+import itertools
 import os
 import re
 import shlex
@@ -420,31 +421,55 @@ def test_the_sweep_lists_no_file_the_compaction_never_edits(tmp_path: Path) -> N
     assert sorted({line.split(":", 1)[0] for line in swept.stdout.splitlines()}) == SWEPT
 
 
-def test_the_citation_search_lists_the_three_forms_and_no_bare_number(tmp_path: Path) -> None:
-    """Who cites an ADR decides whether it goes and what is re-pointed, and
-    its four digits alone match a port, a build, and a stamp. The search runs
-    here as the skill writes it, for ADR 0007, its own file left out."""
+def test_the_citation_search_lists_every_form_and_no_bare_number(tmp_path: Path) -> None:
+    """Who cites an ADR decides whether it goes and what is re-pointed. The
+    checker reads `ADR NNNN`, `ADR-NNNN`, and `ADRNNNN`; a citation wraps
+    after `ADR` where the margin falls; and the four digits alone match a
+    port, a build, and a stamp. The two searches run here as the skill writes
+    them, for ADR 0007, its own file left out."""
     cited = {
         "om/src/acme/om/bound.py": "# The bound is a lock's (ADR 0007).\n",
+        "om/src/acme/om/lock.py": "held = 1  # arch-check: ignore[STO-26] ADR-0007 a lock bound\n",
+        "docs/runbooks/deploy.md": "The bound is ADR0007's.\n",
         "pyproject.toml": 'adr = "docs/adr/0007-a-lock-bound.md"\n',
         "docs/adr/0009-another.md": "See [the bound](0007-a-lock-bound.md).\n",
     }
+    wrapped = {
+        "om/src/acme/om/wait.py": "# A statement waits under the bound (ADR\n# 0007). No more.\n"
+    }
     uncited = {
         "om/src/acme/om/port.py": "PORT = 10007\n",
+        "om/src/acme/om/rows.py": "# The table holds\n# 0007 rows at most.\n",
         "README.md": "Build 0007 of 2026 holds 20260007 rows.\n",
         "docs/adr/0007-a-lock-bound.md": "# ADR 0007: A lock bound\n",
     }
-    for name, text in {**cited, **uncited}.items():
+    for name, text in {**cited, **wrapped, **uncited}.items():
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
     for command in (["git", "init", "--quiet"], ["git", "add", "--all"]):
         subprocess.run(command, cwd=tmp_path, check=True)
     lines = [line.strip() for line in _skill("docs-compact").splitlines()]
-    (search,) = [line for line in lines if line.startswith("git grep -nE 'ADR NNNN")]
-    command = shlex.split(search.replace("NNNN", "0007"))
-    found = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=True)
-    assert sorted({line.split(":", 1)[0] for line in found.stdout.splitlines()}) == sorted(cited)
+    one_line, line_start = [line for line in lines if line.startswith("git grep -nE ")]
+    assert "-B1" in shlex.split(line_start), "the second search prints the line above a hit"
+
+    def search(command: str) -> list[str]:
+        ran = shlex.split(command.replace("NNNN", "0007"))
+        return subprocess.run(
+            ran, cwd=tmp_path, capture_output=True, text=True, check=True
+        ).stdout.splitlines()
+
+    assert sorted({line.split(":", 1)[0] for line in search(one_line)}) == sorted(cited)
+    # A number at a line's start is listed with the line above it, and is a
+    # citation only when that line ends in `ADR`.
+    listed = search(line_start)
+    hits = {
+        line.split(":", 1)[0]: above
+        for above, line in itertools.pairwise(listed)
+        if re.match(r"[^:]+:\d+:", line)
+    }
+    assert sorted(hits) == sorted([*wrapped, "om/src/acme/om/rows.py"])
+    assert [name for name, above in hits.items() if above.endswith("ADR")] == list(wrapped)
 
 
 def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:
