@@ -1,0 +1,226 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 228.78,
+  "usage": {
+    "input_tokens": 1914011,
+    "output_tokens": 13582,
+    "reasoning_tokens": 4276
+  },
+  "cost_usd": 7.927684,
+  "error": null,
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": 69.6,
+    "references": {
+      "guideline": {
+        "weight": 0.4,
+        "score": 66,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The committed tree has no `om/src/free_journalism/om/reports/` package. The scaffold's `.gitignore` rule `reports/` (meant for test-tool reports) swallowed the whole namespace, yet `om/root.py`, `om/storage/root.py`, the memory and postgres storage roots, the API's reports service, router and types, and the maintenance container all import `free_journalism.om.reports`. A fresh clone cannot import the object model, so `make check` and `make test-integration` cannot pass on the tree as committed, even though HANDOFF says they were green in the working copy.",
+            "in_output": "om/src/free_journalism/om/root.py",
+            "in_reference": "architecture.md, Monorepo Folder Structure; lenses/delivery.md",
+            "lens": "DEL",
+            "fix": "Anchor the ignore rule to the root (`/reports/`), or rename the namespace to avoid the collision. Commit the reports manager, rules, storage, tables and types, then run the gates from a clean clone."
+          },
+          {
+            "severity": "high",
+            "what": "Three writes land rows in a desk's tenant directly from a weaker stage: `create_follow` and `create_support` from `IdentityContext`, and `send_report` and `send_follow_up` from `RequestContext`. They never produce the service `TenantContext` the guideline gives principal-less work that touches a tenant. ADR 0087 records the choice and the unit test enumerates the methods, but the shape still departs from 'a request-stage method that performs tenant work directly instead of returning a stage'.",
+            "in_output": "om/src/free_journalism/om/community/impl/manager.py",
+            "in_reference": "architecture.md, The Business Layer, Operations Without a Principal; lenses/context.md CTX-16, CTX-21",
+            "lens": "CTX-16",
+            "fix": "Add a transition (for example `visitor_context(rctx|ictx, org_id)`) that returns a service `TenantContext` for the named desk with `EMPTY_UUID` as user. Run the follow, support and delivery writes under it with a permission check, as the delivery consumer does with `org_of` and then `apply`."
+          },
+          {
+            "severity": "medium",
+            "what": "The sealed ciphertext sits in `sealed-reports` under `EMPTY_UUID`. The purge of a desk deletes its delivery rows but never deletes the object once no delivery names it, so tenant expiry leaves a system-scope blob behind with no retention path (HANDOFF lists this as left).",
+            "in_output": "infra/src/free_journalism/infra/buckets/__init__.py",
+            "in_reference": "lenses/storage.md (purge and retention); lenses/context.md CTX-13",
+            "lens": "STO",
+            "fix": "Have the reports purge count the remaining deliveries per report and delete the object when the last one goes, with a sweep for orphans and a contract case."
+          },
+          {
+            "severity": "low",
+            "what": "The Postmark/Resend, Twilio and scanner providers exist only as ADRs 0084–0086. No integration package or twin was built, although the run asked for every named provider to be reached through the twin.",
+            "in_output": "integrations/src/free_journalism/integrations",
+            "in_reference": "architecture.md, Infrastructure (external services and twins)",
+            "lens": "DEL",
+            "fix": "Scaffold each integration interface with its twin and absent impl, even if no MVP manager calls it yet."
+          },
+          {
+            "severity": "low",
+            "what": "`FREE_JOURNALISM_SUPPORT_RETURN_URL` in terraform points at `/supports`, but the only screen is the portal's `/supporters`. No reader-side return page exists.",
+            "in_output": "deployment/terraform/modules/environment/main.tf",
+            "in_reference": "lenses/ops.md (environments and configuration)",
+            "lens": "OPS",
+            "fix": "Point the return URL at a real reader route, or add that route."
+          }
+        ],
+        "strengths": [
+          "ADR 0087 records every non-obvious context and idempotency decision (visitor rows with an `EMPTY_UUID` actor, device-minted PUT ids, the follow-up secret compared by digest in constant time) where the guideline says decisions go.",
+          "`om/src/free_journalism/om/support/impl/manager.py` keeps authorization, compare-and-set on version, and outbox rows relayed after a commit in the manager, as the Business Layer requires.",
+          "Payments follow the prescribed integration shape (`integrations/.../payments/{stripe,twin,absent,deliveries}.py`). The twin is local-only, marks its ids with `twin_`, and signs deliveries with the real scheme.",
+          "Stripe webhooks are verified at `/webhooks/payments`, queued, and applied by `PaymentDeliveriesImpl` through the core's `DeliveryProviderInterface` in the maintenance worker.",
+          "The new tenantless storage reads are enumerated in `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py`, and each new namespace has contract suites with cross-tenant cases.",
+          "Each loop has a real end-to-end integration test in `services/api/tests/test_loop_*_integration.py` over compose Postgres and MinIO. The tests cover retries, cross-desk isolation, and failures to decrypt with the wrong key.",
+          "Per-tenant purges for journalists, community, support and reports are wired in `workers/maintenance/.../main.py`, and the new bucket is provisioned in the Makefile and terraform."
+        ]
+      },
+      "reference": {
+        "weight": 0.6,
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "In the reference every namespace package under `om/src/tadas/om/` (tasks, billing, slack) is committed and importable. The output's `reports` namespace is missing from the tree because of the `.gitignore` collision, which breaks every import of the object model root.",
+            "in_output": "om/src/free_journalism/om/root.py",
+            "in_reference": "om/src/tadas/om/tasks/",
+            "lens": "DEL",
+            "fix": "Commit `om/src/free_journalism/om/reports/` with its manager, rules, storage and types, laid out like `om/src/tadas/om/tasks/`, after fixing the ignore rule."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference's `StripeDeliveriesImpl` resolves the org through the billing manager (`org_of_delivery`), and its apply reads the processor's state again with an idempotency mark in the same commit. The output takes `org_id` straight from the delivery metadata and trusts the delivery's outcome, relying only on a version compare-and-set.",
+            "in_output": "workers/maintenance/src/free_journalism/workers/maintenance/payments.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/deliveries.py",
+            "lens": "ASY",
+            "fix": "Route `org_of` and `apply` through support-manager methods, and record the delivery's event id in the same commit as the support change."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference does every tenant write under a `TenantContext`, whether a member's or a service context from a transition. The output adds identity-stage and request-stage writes into a desk, a context shape the reference never uses.",
+            "in_output": "om/src/free_journalism/om/reports",
+            "in_reference": "om/src/tadas/om/billing/impl/manager.py",
+            "lens": "CTX-16",
+            "fix": "Mint a service `TenantContext` for the target desk through a named transition and run the visitor writes under it."
+          },
+          {
+            "severity": "low",
+            "what": "The payments integration puts its types in `__init__.py`. The reference splits them into `types.py` and `permissions.py`.",
+            "in_output": "integrations/src/free_journalism/integrations/payments/__init__.py",
+            "in_reference": "integrations/src/tadas/integrations/payments/types.py",
+            "lens": "DEL",
+            "fix": "Move the provider shapes into `payments/types.py` and keep only the interface in `__init__.py`."
+          }
+        ],
+        "strengths": [
+          "The namespace layout of `om/src/free_journalism/om/{community,support}` (manager, `impl/`, `rules.py`, `storage/{impl,tables}`, `types/`, README) mirrors `om/src/tadas/om/tasks/`.",
+          "`services/api/.../routers/webhooks.py` matches the reference's webhook router: unauthenticated, verified by signature, queued.",
+          "The payments twin in `integrations/.../payments/twin.py` follows the reference twin's pattern: in memory, local-only, signing with the real scheme, with `twin`-marked ids.",
+          "The outer layers match the reference: the API's service/impl/types split for each namespace, the portal screens under `apps/portal/src/features/`, and the regenerated clients."
+        ]
+      }
+    },
+    "rationale": "The design is careful and follows the guideline closely: namespaces are laid out like the reference's, the payments integration has its twin and runbook, webhook deliveries go through the core's delivery consumer, tenantless reads are enumerated, and each loop has a strong end-to-end integration test. The biggest defect is in delivery: the scaffold's `.gitignore` rule `reports/` left the whole `om/.../reports` namespace out of the commit, while the root, the storage roots, the API and the worker all import it. The committed tree therefore cannot pass the gates HANDOFF reports as green. The second defect is in context handling: follow, support and report writes land in a desk straight from `IdentityContext` or `RequestContext`, not under a service `TenantContext` from a transition. ADR 0087 records this and the test enumerates it, but it still departs from CTX-16. Smaller gaps: the system-scope ciphertext is never purged, the email, SMS and scanner providers have ADRs but no twin, and the Stripe delivery apply trusts the delivery's metadata more than the reference does.",
+    "tool_calls": 66,
+    "turns": 43,
+    "transcript": "judgements/0-anthropic.jsonl"
+  },
+  "answer": {
+    "references": {
+      "guideline": {
+        "score": 66,
+        "gaps": [
+          {
+            "severity": "high",
+            "lens": "DEL",
+            "what": "The committed tree has no `om/src/free_journalism/om/reports/` package. The scaffold's `.gitignore` rule `reports/` (meant for test-tool reports) swallowed the whole namespace, yet `om/root.py`, `om/storage/root.py`, the memory and postgres storage roots, the API's reports service, router and types, and the maintenance container all import `free_journalism.om.reports`. A fresh clone cannot import the object model, so `make check` and `make test-integration` cannot pass on the tree as committed, even though HANDOFF says they were green in the working copy.",
+            "in_output": "om/src/free_journalism/om/root.py",
+            "in_reference": "architecture.md, Monorepo Folder Structure; lenses/delivery.md",
+            "fix": "Anchor the ignore rule to the root (`/reports/`), or rename the namespace to avoid the collision. Commit the reports manager, rules, storage, tables and types, then run the gates from a clean clone."
+          },
+          {
+            "severity": "high",
+            "lens": "CTX-16",
+            "what": "Three writes land rows in a desk's tenant directly from a weaker stage: `create_follow` and `create_support` from `IdentityContext`, and `send_report` and `send_follow_up` from `RequestContext`. They never produce the service `TenantContext` the guideline gives principal-less work that touches a tenant. ADR 0087 records the choice and the unit test enumerates the methods, but the shape still departs from 'a request-stage method that performs tenant work directly instead of returning a stage'.",
+            "in_output": "om/src/free_journalism/om/community/impl/manager.py",
+            "in_reference": "architecture.md, The Business Layer, Operations Without a Principal; lenses/context.md CTX-16, CTX-21",
+            "fix": "Add a transition (for example `visitor_context(rctx|ictx, org_id)`) that returns a service `TenantContext` for the named desk with `EMPTY_UUID` as user. Run the follow, support and delivery writes under it with a permission check, as the delivery consumer does with `org_of` and then `apply`."
+          },
+          {
+            "severity": "medium",
+            "lens": "STO",
+            "what": "The sealed ciphertext sits in `sealed-reports` under `EMPTY_UUID`. The purge of a desk deletes its delivery rows but never deletes the object once no delivery names it, so tenant expiry leaves a system-scope blob behind with no retention path (HANDOFF lists this as left).",
+            "in_output": "infra/src/free_journalism/infra/buckets/__init__.py",
+            "in_reference": "lenses/storage.md (purge and retention); lenses/context.md CTX-13",
+            "fix": "Have the reports purge count the remaining deliveries per report and delete the object when the last one goes, with a sweep for orphans and a contract case."
+          },
+          {
+            "severity": "low",
+            "lens": "DEL",
+            "what": "The Postmark/Resend, Twilio and scanner providers exist only as ADRs 0084–0086. No integration package or twin was built, although the run asked for every named provider to be reached through the twin.",
+            "in_output": "integrations/src/free_journalism/integrations",
+            "in_reference": "architecture.md, Infrastructure (external services and twins)",
+            "fix": "Scaffold each integration interface with its twin and absent impl, even if no MVP manager calls it yet."
+          },
+          {
+            "severity": "low",
+            "lens": "OPS",
+            "what": "`FREE_JOURNALISM_SUPPORT_RETURN_URL` in terraform points at `/supports`, but the only screen is the portal's `/supporters`. No reader-side return page exists.",
+            "in_output": "deployment/terraform/modules/environment/main.tf",
+            "in_reference": "lenses/ops.md (environments and configuration)",
+            "fix": "Point the return URL at a real reader route, or add that route."
+          }
+        ],
+        "strengths": [
+          "ADR 0087 records every non-obvious context and idempotency decision (visitor rows with an `EMPTY_UUID` actor, device-minted PUT ids, the follow-up secret compared by digest in constant time) where the guideline says decisions go.",
+          "`om/src/free_journalism/om/support/impl/manager.py` keeps authorization, compare-and-set on version, and outbox rows relayed after a commit in the manager, as the Business Layer requires.",
+          "Payments follow the prescribed integration shape (`integrations/.../payments/{stripe,twin,absent,deliveries}.py`). The twin is local-only, marks its ids with `twin_`, and signs deliveries with the real scheme.",
+          "Stripe webhooks are verified at `/webhooks/payments`, queued, and applied by `PaymentDeliveriesImpl` through the core's `DeliveryProviderInterface` in the maintenance worker.",
+          "The new tenantless storage reads are enumerated in `pyproject.toml` and `om/tests/unit/test_storage_exceptions.py`, and each new namespace has contract suites with cross-tenant cases.",
+          "Each loop has a real end-to-end integration test in `services/api/tests/test_loop_*_integration.py` over compose Postgres and MinIO. The tests cover retries, cross-desk isolation, and failures to decrypt with the wrong key.",
+          "Per-tenant purges for journalists, community, support and reports are wired in `workers/maintenance/.../main.py`, and the new bucket is provisioned in the Makefile and terraform."
+        ]
+      },
+      "reference": {
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "lens": "DEL",
+            "what": "In the reference every namespace package under `om/src/tadas/om/` (tasks, billing, slack) is committed and importable. The output's `reports` namespace is missing from the tree because of the `.gitignore` collision, which breaks every import of the object model root.",
+            "in_output": "om/src/free_journalism/om/root.py",
+            "in_reference": "om/src/tadas/om/tasks/",
+            "fix": "Commit `om/src/free_journalism/om/reports/` with its manager, rules, storage and types, laid out like `om/src/tadas/om/tasks/`, after fixing the ignore rule."
+          },
+          {
+            "severity": "medium",
+            "lens": "ASY",
+            "what": "The reference's `StripeDeliveriesImpl` resolves the org through the billing manager (`org_of_delivery`), and its apply reads the processor's state again with an idempotency mark in the same commit. The output takes `org_id` straight from the delivery metadata and trusts the delivery's outcome, relying only on a version compare-and-set.",
+            "in_output": "workers/maintenance/src/free_journalism/workers/maintenance/payments.py",
+            "in_reference": "workers/maintenance/src/tadas/workers/maintenance/deliveries.py",
+            "fix": "Route `org_of` and `apply` through support-manager methods, and record the delivery's event id in the same commit as the support change."
+          },
+          {
+            "severity": "medium",
+            "lens": "CTX-16",
+            "what": "The reference does every tenant write under a `TenantContext`, whether a member's or a service context from a transition. The output adds identity-stage and request-stage writes into a desk, a context shape the reference never uses.",
+            "in_output": "om/src/free_journalism/om/reports",
+            "in_reference": "om/src/tadas/om/billing/impl/manager.py",
+            "fix": "Mint a service `TenantContext` for the target desk through a named transition and run the visitor writes under it."
+          },
+          {
+            "severity": "low",
+            "lens": "DEL",
+            "what": "The payments integration puts its types in `__init__.py`. The reference splits them into `types.py` and `permissions.py`.",
+            "in_output": "integrations/src/free_journalism/integrations/payments/__init__.py",
+            "in_reference": "integrations/src/tadas/integrations/payments/types.py",
+            "fix": "Move the provider shapes into `payments/types.py` and keep only the interface in `__init__.py`."
+          }
+        ],
+        "strengths": [
+          "The namespace layout of `om/src/free_journalism/om/{community,support}` (manager, `impl/`, `rules.py`, `storage/{impl,tables}`, `types/`, README) mirrors `om/src/tadas/om/tasks/`.",
+          "`services/api/.../routers/webhooks.py` matches the reference's webhook router: unauthenticated, verified by signature, queued.",
+          "The payments twin in `integrations/.../payments/twin.py` follows the reference twin's pattern: in memory, local-only, signing with the real scheme, with `twin`-marked ids.",
+          "The outer layers match the reference: the API's service/impl/types split for each namespace, the portal screens under `apps/portal/src/features/`, and the regenerated clients."
+        ]
+      }
+    },
+    "rationale": "The design is careful and follows the guideline closely: namespaces are laid out like the reference's, the payments integration has its twin and runbook, webhook deliveries go through the core's delivery consumer, tenantless reads are enumerated, and each loop has a strong end-to-end integration test. The biggest defect is in delivery: the scaffold's `.gitignore` rule `reports/` left the whole `om/.../reports` namespace out of the commit, while the root, the storage roots, the API and the worker all import it. The committed tree therefore cannot pass the gates HANDOFF reports as green. The second defect is in context handling: follow, support and report writes land in a desk straight from `IdentityContext` or `RequestContext`, not under a service `TenantContext` from a transition. ADR 0087 records this and the test enumerates it, but it still departs from CTX-16. Smaller gaps: the system-scope ciphertext is never purged, the email, SMS and scanner providers have ADRs but no twin, and the Stripe delivery apply trusts the delivery's metadata more than the reference does."
+  }
+}

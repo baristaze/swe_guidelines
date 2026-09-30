@@ -1,0 +1,21 @@
+{
+  "provider": "openai",
+  "model": "gpt-6-sol",
+  "effort": "high",
+  "status": "error",
+  "latency_s": 8.647,
+  "usage": {},
+  "cost_usd": null,
+  "error": "gpt-6-sol: RateLimitError: Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', 'type': 'insufficient_quota', 'param': None, 'code': 'credit_balance_exhausted'}}; gpt-5.5: RateLimitError: Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', 'type': 'insufficient_quota', 'param': None, 'code': 'credit_balance_exhausted'}}; gpt-5.4: RateLimitError: Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', 'type': 'insufficient_quota', 'param': None, 'code': 'credit_balance_exhausted'}}; gpt-5.1: RateLimitError: Error code: 429 - {'error': {'message': 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', 'type': 'insufficient_quota', 'param': None, 'code': 'credit_balance_exhausted'}}",
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": null,
+    "references": {},
+    "rationale": "",
+    "tool_calls": 0,
+    "turns": 0,
+    "transcript": "judgements/0-openai.jsonl"
+  },
+  "answer": null
+}
