@@ -13,7 +13,9 @@ Scopes are structural views (`Protocol`) over what a stage carries:
 `RequestScope`, `TenantScope`, `ActorScope`, `CredentialScope`, and the one
 named composition, `ProvenanceScope`. A function that reads only a few
 fields declares the scope it reads, and its callers keep passing the stage
-they hold.
+they hold. A manager operation is the exception: it takes `TenantContext`, which
+is its scope, and declares nothing narrower. A function that passes the
+context on keeps the stage its callee needs.
 
 Roles, permissions, credential kinds, and app types are declared here, so
 this module imports nothing above `base.py` and the tenancy namespace reads
