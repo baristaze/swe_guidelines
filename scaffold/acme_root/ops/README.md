@@ -74,3 +74,15 @@ these roles.
 
 `smoke` runs locally and `staging` against a deployed environment; see
 [stress/README.md](stress/README.md).
+
+## What an operator never does
+
+- Never writes to the cloud. A change is a pull request, and the
+  pipeline applies it.
+- Never logs in to a shared database. The operator plane answers what a
+  support case needs, and the role denies the connection. An audit logs
+  in only to the database it made on the local stack.
+- Never prints a secret. A skill verifies its identity and reads what
+  the read role allows; a secret's value is outside that.
+- Never reads telemetry by tenant. Telemetry carries no tenant id; a
+  tenant's view is a product screen over the org's own diary.
