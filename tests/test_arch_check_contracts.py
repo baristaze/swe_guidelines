@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("tomllib")
 
-from arch_check_fixtures import PYPROJECT, check, check_json, rules_found, write_project
+from arch_check_fixtures import ADR, PYPROJECT, check, check_json, rules_found, write_project
 
 OM = "om/src/acme/om"
 INFRA = "infra/src/acme/infra"
@@ -94,48 +94,108 @@ def manager_interface(operations: int) -> str:
     return f"from abc import ABC, abstractmethod\n\n\nclass TasksManagerInterface(ABC):\n{body}"
 
 
-def test_a_manager_interface_at_the_bound_passes_con_01(tmp_path):
-    code, found, _ = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": manager_interface(20)})
+def to_judge(tmp_path, files, pyproject=PYPROJECT):
+    """(exit status, findings, what CON-01 names for the review) of a run of CON-01 over `files`."""
+    write_project(tmp_path, files, pyproject=pyproject)
+    code, report = check_json(tmp_path, "--rule", "CON-01")
+    (con_01,) = report["rules_run"]
+    return code, rules_found(report), con_01["to_judge"]
+
+
+def test_a_manager_interface_of_twenty_operations_is_not_named_for_a_review(tmp_path):
+    assert to_judge(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(20)}) == (0, [], [])
+
+
+def test_a_manager_interface_of_twenty_one_operations_exits_0_and_is_named_with_its_count(tmp_path):
+    code, found, named = to_judge(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(21)})
     assert (code, found) == (0, [])
-
-
-def test_a_manager_interface_over_the_bound_is_con_01(tmp_path):
-    code, found, messages = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": manager_interface(21)})
-    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/manager.py", 4)])
-    assert messages == [
-        "TasksManagerInterface declares 21 operations, over the bound of 20; "
-        "a manager past it delegates a duty to an interface of its own"
+    assert named == [
+        {
+            "path": f"{OM}/tasks/manager.py",
+            "line": 4,
+            "col": 1,
+            "message": "TasksManagerInterface declares 21 operations, past 20; "
+            "it delegates a duty its callers use apart, or stays whole as one duty",
+        }
     ]
 
 
-def test_a_delegate_is_held_to_the_bound_and_its_attribute_is_no_operation_in_con_01(tmp_path):
+def test_the_text_report_names_the_interface_and_still_says_ok(tmp_path):
+    write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(21)})
+    code, out, err = check(tmp_path, "--rule", "CON-01")
+    assert (code, err) == (0, "")
+    first, blank, last = out.splitlines()
+    assert first.startswith(f"{OM}/tasks/manager.py:4:1: CON-01 to judge: TasksManagerInterface declares 21 operations, past 20;")
+    assert blank == ""
+    assert last.startswith("arch-check ok: 1 rule(s)")
+    assert last.endswith(", 1 left to a review")
+
+
+def test_no_count_is_a_finding_of_con_01(tmp_path):
+    code, found, named = to_judge(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(200)})
+    assert (code, found) == (0, [])
+    assert named[0]["message"].startswith("TasksManagerInterface declares 200 operations, past 20;")
+
+
+def test_a_delegate_is_named_the_same_way_and_its_attribute_is_no_operation_in_con_01(tmp_path):
     delegate = manager_interface(21).replace("TasksManagerInterface", "TasksKeysManagerInterface")
     manager = manager_interface(20).replace(
         "class TasksManagerInterface(ABC):\n", "class TasksManagerInterface(ABC):\n    keys: TasksKeysManagerInterface\n\n"
     )
-    files = {f"{OM}/tasks/manager.py": manager, f"{OM}/tasks/keys.py": delegate}
-    code, found, messages = run(tmp_path, "CON-01", files)
-    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/keys.py", 4)])
-    assert messages[0].startswith("TasksKeysManagerInterface declares 21 operations")
-
-
-def test_the_bound_is_an_option_of_con_01(tmp_path):
-    options = "\n[tool.arch-check.options.CON-01]\nmax_operations = {}\n"
-    files = {f"{OM}/tasks/manager.py": manager_interface(21)}
-    code, found, _ = run(tmp_path, "CON-01", files, pyproject=PYPROJECT + options.format(21))
+    code, found, named = to_judge(tmp_path, {f"{OM}/tasks/manager.py": manager, f"{OM}/tasks/keys.py": delegate})
     assert (code, found) == (0, [])
-    code, found, messages = run(tmp_path, "CON-01", files, pyproject=PYPROJECT + options.format(3))
-    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/manager.py", 4)])
-    assert "over the bound of 3" in messages[0]
+    assert [(n["path"], n["line"]) for n in named] == [(f"{OM}/tasks/keys.py", 4)]
+    assert named[0]["message"].startswith("TasksKeysManagerInterface declares 21 operations")
 
 
+@pytest.mark.parametrize("key", ["review_threshold", "max_operations"])
+def test_the_review_threshold_is_an_option_of_con_01_under_either_name(tmp_path, key):
+    def at(threshold: int, operations: int):
+        pyproject = PYPROJECT + f"\n[tool.arch-check.options.CON-01]\n{key} = {threshold}\n"
+        return to_judge(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(operations)}, pyproject=pyproject)
+
+    assert at(21, 21) == (0, [], [])
+    assert at(3, 3) == (0, [], [])
+    code, found, named = at(3, 4)
+    assert (code, found) == (0, [])
+    assert named[0]["message"].startswith("TasksManagerInterface declares 4 operations, past 3;")
+
+
+@pytest.mark.parametrize("key", ["review_threshold", "max_operations"])
 @pytest.mark.parametrize("value", ["0", "-1", "true", '"20"'])
-def test_a_bound_that_is_no_count_is_a_configuration_error(tmp_path, value):
-    pyproject = PYPROJECT + f"\n[tool.arch-check.options.CON-01]\nmax_operations = {value}\n"
+def test_a_review_threshold_that_is_no_count_is_a_configuration_error(tmp_path, key, value):
+    pyproject = PYPROJECT + f"\n[tool.arch-check.options.CON-01]\n{key} = {value}\n"
     write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(1)}, pyproject=pyproject)
     code, _, err = check(tmp_path, "--rule", "CON-01")
     assert code == 2
-    assert "max_operations" in err
+    assert key in err
+
+
+def test_a_table_that_sets_the_review_threshold_under_both_names_is_a_configuration_error(tmp_path):
+    pyproject = PYPROJECT + "\n[tool.arch-check.options.CON-01]\nreview_threshold = 24\nmax_operations = 20\n"
+    write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(1)}, pyproject=pyproject)
+    code, _, err = check(tmp_path, "--rule", "CON-01")
+    assert code == 2
+    assert "`review_threshold` and `max_operations`" in err
+
+
+def test_paths_limit_what_con_01_names_for_a_review(tmp_path):
+    write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(21)})
+    code, report = check_json(tmp_path, "--rule", "CON-01", str(tmp_path / OM / "tenancy"))
+    assert (code, report["rules_run"][0]["to_judge"]) == (0, [])
+    code, report = check_json(tmp_path, "--rule", "CON-01", str(tmp_path / OM / "tasks"))
+    assert (code, len(report["rules_run"][0]["to_judge"])) == (0, 1)
+
+
+def test_an_exception_for_an_interface_con_01_only_names_matches_no_finding(tmp_path):
+    exception = (
+        f'\n[[tool.arch-check.exception]]\nrule = "CON-01"\npath = "{OM}/tasks/manager.py"\nadr = "{ADR}"\nreason = "one duty"\n'
+    )
+    write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(21)}, pyproject=PYPROJECT + exception)
+    code, report = check_json(tmp_path, "--rule", "CON-01")
+    assert (code, rules_found(report)) == (1, [("IGNORE", "pyproject.toml", 1)])
+    assert "matches no finding" in report["findings"][0]["message"]
+    assert len(report["rules_run"][0]["to_judge"]) == 1
 
 
 # --- CON-02

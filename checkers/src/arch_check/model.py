@@ -57,6 +57,18 @@ class Violation:
         return cls(path, line, col, message)
 
 
+@dataclass(frozen=True)
+class ToJudge(Violation):
+    """One place a rule names and leaves to the review: a violation's fields, and no finding.
+
+    The report lists it under the rule that named it. No exception
+    reads it, and neither does the exit status.
+    """
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"path": self.path, "line": self.line, "col": self.col, "message": self.message}
+
+
 Check = Callable[["Project"], Iterable[Violation]]
 
 

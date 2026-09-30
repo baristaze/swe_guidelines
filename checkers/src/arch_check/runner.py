@@ -8,6 +8,10 @@ An exception that names a missing ADR, a rule that did not run, or a
 line with nothing to accept is itself an `IGNORE` finding, so an
 exception cannot outlive the code it excused.
 
+A place a rule names and leaves to the review (`ToJudge`) is no
+finding. It is kept beside the rule, no exception settles it, and the
+exit status never reads it.
+
 Each rule runs on its own. A rule that raises is an `ERROR` finding
 that names it, what it found before it raised is dropped, and the
 other rules still run; the command exits 2, because a rule that did
@@ -33,7 +37,7 @@ from dataclasses import dataclass, field
 
 from arch_check import __version__
 from arch_check.config import PYPROJECT, ConfigError, adr_by_number, glob_match
-from arch_check.model import FRAMEWORK, Applied, Finding, Rule
+from arch_check.model import FRAMEWORK, Applied, Finding, Origin, Rule, ToJudge
 from arch_check.project import MAX_DEPTH, Project
 
 PARSE = "PARSE"
@@ -55,6 +59,8 @@ class Result:
     files: int
     findings: list[Finding] = field(default_factory=list)
     applied: list[Applied] = field(default_factory=list)
+    to_judge: dict[tuple[str, Origin], list[ToJudge]] = field(default_factory=dict)
+    """What each rule named and left to the review, by the rule's id and origin."""
 
 
 @dataclass(frozen=True)
@@ -167,7 +173,12 @@ def run(
     under. Its findings are missing, so an ignore or an exception for
     one is never called stale.
     """
+
+    def reported(path: str) -> bool:
+        return not paths or any(path == p or path.startswith(p.rstrip("/") + "/") for p in paths)
+
     raw: list[Finding] = []
+    to_judge: dict[tuple[str, Origin], list[ToJudge]] = {}
     errors: list[Finding] = []
     failed: set[str] = set()
     limit = sys.getrecursionlimit()
@@ -176,9 +187,7 @@ def run(
         for r in rules:
             try:
                 with budget(BUDGET):
-                    found = [
-                        Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin) for v in r.check(project)
-                    ]
+                    found = list(r.check(project))
             except ConfigError:
                 raise
             except Exception as raised:  # MemoryError, RecursionError, and Overrun included: one rule never stops the others
@@ -190,7 +199,15 @@ def run(
                     framework(ERROR, PYPROJECT, 1, 1, f"{r.id} raised {type(raised).__name__}{detail}; its findings are missing")
                 )
             else:
-                raw.extend(found)
+                # what a rule leaves to the review is no finding: no exception settles it, and nothing fails by it
+                to_judge[r.id, r.origin] = sorted(
+                    (v for v in found if isinstance(v, ToJudge) and reported(v.path)), key=lambda v: (v.path, v.line, v.col)
+                )
+                raw.extend(
+                    Finding(r.id, r.group, r.severity, v.path, v.line, v.col, v.message, r.origin)
+                    for v in found
+                    if not isinstance(v, ToJudge)
+                )
         project.parse_all()
     finally:
         sys.setrecursionlimit(limit)
@@ -240,9 +257,7 @@ def run(
         if e.rule in ran and i not in used_exceptions:
             meta.append(framework(IGNORE, PYPROJECT, 1, 1, f"the exception for {e.rule} on {e.path} matches no finding"))
 
-    findings = kept + meta
-    if paths:
-        findings = [f for f in findings if any(f.path == p or f.path.startswith(p.rstrip("/") + "/") for p in paths)]
+    findings = [f for f in kept + meta if reported(f.path)]
     findings += errors
     findings.sort(key=lambda f: (f.path, f.line, f.col, f.rule, f.message))
     applied.sort(key=lambda a: (a.path, a.line, a.rule))
@@ -253,4 +268,5 @@ def run(
         files=len(project.python_files),
         findings=findings,
         applied=applied,
+        to_judge=to_judge,
     )
