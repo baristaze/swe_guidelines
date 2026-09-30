@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
@@ -19,8 +18,6 @@ from acme.om.tenancy.types.api_key import ApiKey
 from acme.om.tenancy.types.issued import IssuedApiKey
 from acme.om.tenancy.types.page import ApiKeyPage
 from acme.om.tenancy.types.session import Session
-
-log = logging.getLogger(__name__)
 
 
 class TenancyCredentialsManagerImpl(TenancyCredentialsManagerInterface):
