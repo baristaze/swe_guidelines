@@ -157,9 +157,9 @@ async def sign_in(managers: Managers) -> TenantContext:
         return RequestContext(request_id=new_id(), app=app)
 
     _, org = await tenancy.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await tenancy.dev_sign_in(request(), "ann@example.test")
+    login = await tenancy.sign_in.dev_sign_in(request(), "ann@example.test")
     identity = await tenancy.authenticate_login(request(), login.token)
-    issued = await tenancy.exchange_login(identity, org.id)
+    issued = await tenancy.sign_in.exchange_login(identity, org.id)
     return await tenancy.authenticate(request(), issued.token)
 
 

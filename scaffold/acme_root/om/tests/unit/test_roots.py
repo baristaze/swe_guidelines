@@ -17,7 +17,14 @@ from acme.om.storage.impl.memory import StorageMemoryImpl
 from acme.om.storage.impl.postgres import StoragePostgresImpl
 from acme.om.storage.roles import DatabaseRole
 from acme.om.storage.settings import StorageSettings
-from acme.om.tenancy import TenancyManagerInterface, TenancyOperatorManagerInterface
+from acme.om.tenancy import (
+    TenancyCredentialsManagerInterface,
+    TenancyManagerInterface,
+    TenancyMembersManagerInterface,
+    TenancyOperatorManagerInterface,
+    TenancyOrgManagerInterface,
+    TenancySignInManagerInterface,
+)
 from acme.om.tenancy.storage import TenancyStorageInterface
 from acme.om.work import WorkManagerInterface, WorkOperatorManagerInterface
 from acme.om.work.storage import WorkStorageInterface
@@ -95,6 +102,19 @@ def test_business_root_has_a_field_per_manager(tmp_path: Path) -> None:
     assert isinstance(managers.events, EventsManagerInterface)
     assert isinstance(managers.outbox, OutboxRelayInterface)
     assert isinstance(managers.orchestrations, OrchestrationsManagerInterface)
+
+
+def test_the_tenancy_manager_carries_each_delegate(tmp_path: Path) -> None:
+    """A delegate is built by the root and reached through its manager."""
+    tenancy = build_managers(
+        StorageMemoryImpl(),
+        InfraLocalImpl(tmp_path),
+        integrations=absent_integrations(),
+    ).tenancy
+    assert isinstance(tenancy.sign_in, TenancySignInManagerInterface)
+    assert isinstance(tenancy.org, TenancyOrgManagerInterface)
+    assert isinstance(tenancy.members, TenancyMembersManagerInterface)
+    assert isinstance(tenancy.credentials, TenancyCredentialsManagerInterface)
 
 
 def test_the_system_scope_is_the_same_value_on_both_sides() -> None:

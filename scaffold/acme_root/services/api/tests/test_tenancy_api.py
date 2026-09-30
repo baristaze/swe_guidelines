@@ -224,7 +224,7 @@ async def test_a_slow_attempt_never_re_mints_the_key_the_retry_returned(
     # goes on authenticating.
     manager = container.managers.idempotency
     monkeypatch.setattr(manager, "_options", IdempotencyOptions(pending_ttl=timedelta(0)))
-    original_create = container.managers.tenancy.create_api_key
+    original_create = container.managers.tenancy.credentials.create_api_key
     entered, release = asyncio.Event(), asyncio.Event()
     held = False
 
@@ -236,7 +236,7 @@ async def test_a_slow_attempt_never_re_mints_the_key_the_retry_returned(
             await release.wait()
         return await original_create(ctx, name, role, ttl, attempt)
 
-    monkeypatch.setattr(container.managers.tenancy, "create_api_key", slow_once)
+    monkeypatch.setattr(container.managers.tenancy.credentials, "create_api_key", slow_once)
     headers = {**owner, "Idempotency-Key": "key-slow-1"}
     body = {"name": "ci", "role": "member"}
     slow_call = asyncio.create_task(client.post("/v1/api-keys", headers=headers, json=body))
@@ -446,7 +446,7 @@ async def test_operators_delete_an_org(
         is None
     )
     # Its last step deletes the org; a delete after it finds nothing.
-    await container.managers.tenancy.delete_closed_org(work)
+    await container.managers.tenancy.org.delete_closed_org(work)
     assert (await client.delete(f"/v1/admin/orgs/{org_id}", headers=admin)).status_code == 404
 
 

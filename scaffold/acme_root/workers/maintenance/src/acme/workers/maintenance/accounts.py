@@ -50,7 +50,7 @@ class DeleteAccountHandlerImpl(WorkHandlerInterface):
         if user_id is not None:
             async with provider_calls():
                 await self._identity.delete_user(user_id)
-        await self._tenancy.delete_personal_org(ctx)
+        await self._tenancy.org.delete_personal_org(ctx)
         log.info("the personal org %s of a deleted account is deleted", ctx.org_id)
 
 
@@ -69,5 +69,5 @@ class DeleteOrgHandlerImpl(WorkHandlerInterface):
         if org_id is not None:
             async with provider_calls():
                 await self._identity.delete_organization(org_id)
-        await self._tenancy.delete_closed_org(ctx)
+        await self._tenancy.org.delete_closed_org(ctx)
         log.info("the closed team org %s is deleted", ctx.org_id)

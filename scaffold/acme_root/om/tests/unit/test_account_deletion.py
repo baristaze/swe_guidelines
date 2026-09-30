@@ -29,11 +29,12 @@ from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.relay import OutboxRelayInterface
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
 from acme.om.outbox.types.row import OutboxRow
+from acme.om.root import build_tenancy
+from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.manager import (
-    DELETED_PERSONAL_ORG_NAME,
-    TenancyManagerImpl,
     TenancyOptions,
 )
+from acme.om.tenancy.impl.org import DELETED_PERSONAL_ORG_NAME
 from acme.om.tenancy.rules import email_digest
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.work.types.work_item import WorkKind, asks_for_work, work_row_kind
@@ -110,9 +111,9 @@ def manager(
     relay: SpyRelay,
     twin: IdentityProviderTwinImpl,
     tmp_path: Path,
-) -> TenancyManagerImpl:
+) -> TenancyManagerInterface:
     infra = InfraLocalImpl(tmp_path)
-    return TenancyManagerImpl(
+    return build_tenancy(
         storage,
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
@@ -123,52 +124,54 @@ def manager(
     )
 
 
-async def enter(manager: TenancyManagerImpl, token: str, org_id: UUID) -> TenantContext:
-    issued = await manager.exchange_login(
+async def enter(manager: TenancyManagerInterface, token: str, org_id: UUID) -> TenantContext:
+    issued = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), token), org_id
     )
     return await manager.authenticate(request(), issued.token)
 
 
-async def dev(manager: TenancyManagerImpl, email: str, org_id: UUID | None = None) -> TenantContext:
+async def dev(
+    manager: TenancyManagerInterface, email: str, org_id: UUID | None = None
+) -> TenantContext:
     """A person signed in locally, in `org_id` or else their personal org."""
-    login = await manager.dev_sign_in(request(), email)
+    login = await manager.sign_in.dev_sign_in(request(), email)
     if org_id is None:
         org_id = next(m.org.id for m in login.memberships if m.org.personal)
     return await enter(manager, login.token, org_id)
 
 
 async def test_the_typed_email_must_be_the_accounts(
-    manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
     ann = await dev(manager, "ann@example.test")
     with pytest.raises(ValidationFailed):
-        await manager.delete_account(ann, "someone@example.test")
+        await manager.org.delete_account(ann, "someone@example.test")
     assert await storage.read_session(ann.org_id, ann.security.credential_id) is not None
     # Space and letter case are forgiven, as an address is read everywhere.
-    await manager.delete_account(ann, "  Ann@Example.TEST ")
+    await manager.org.delete_account(ann, "  Ann@Example.TEST ")
     assert await storage.read_session(ann.org_id, ann.security.credential_id) is None
     with pytest.raises(NotFound):
-        await manager.get_identity(ann)
+        await manager.org.get_identity(ann)
 
 
-async def test_an_api_key_never_deletes_its_person(manager: TenancyManagerImpl) -> None:
+async def test_an_api_key_never_deletes_its_person(manager: TenancyManagerInterface) -> None:
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     ann = await dev(manager, "ann@example.test", org.id)
-    key = await manager.create_api_key(ann, "ci", Role.MEMBER)
+    key = await manager.credentials.create_api_key(ann, "ci", Role.MEMBER)
     program = await manager.authenticate(request(), key.key)
     with pytest.raises(NotAuthorized):
-        await manager.delete_account(program, "ann@example.test")
+        await manager.org.delete_account(program, "ann@example.test")
 
 
 async def test_the_last_owner_of_a_team_org_is_refused_and_told_which(
-    manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     _, globex = await manager.bootstrap(request(), "Globex", "globex", "ann@example.test", "Ann")
     ann = await dev(manager, "ann@example.test", ajax.id)
     with pytest.raises(LastOwner) as refused:
-        await manager.delete_account(ann, "ann@example.test")
+        await manager.org.delete_account(ann, "ann@example.test")
     assert sorted(refused.value.orgs) == sorted(
         [(str(ajax.id), "Ajax", "ajax"), (str(globex.id), "Globex", "globex")]
     )
@@ -179,21 +182,21 @@ async def test_the_last_owner_of_a_team_org_is_refused_and_told_which(
     # Another owner in each, and the refusal is gone.
     for org in (ajax, globex):
         await manager.add_member(request(), org.slug, "bob@example.test", "Bob", Role.OWNER)
-    await manager.delete_account(ann, "ann@example.test")
+    await manager.org.delete_account(ann, "ann@example.test")
 
 
-async def test_an_operator_gives_up_the_role_first(manager: TenancyManagerImpl) -> None:
+async def test_an_operator_gives_up_the_role_first(manager: TenancyManagerInterface) -> None:
     ann = await dev(manager, "ann@example.test")
     await manager.grant_operator(request(), "ann@example.test", OperatorRole.READ)
     with pytest.raises(OperatorRoleHeld) as refused:
-        await manager.delete_account(ann, "ann@example.test")
+        await manager.org.delete_account(ann, "ann@example.test")
     assert refused.value.http_status == 403
     await manager.disable_operator(request(), "ann@example.test")
-    await manager.delete_account(ann, "ann@example.test")
+    await manager.org.delete_account(ann, "ann@example.test")
 
 
 async def test_the_account_goes_in_one_commit_and_asks_for_the_rest(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
     storage: TenancyStorageMemoryImpl,
     relay: SpyRelay,
     twin: IdentityProviderTwinImpl,
@@ -204,17 +207,17 @@ async def test_the_account_goes_in_one_commit_and_asks_for_the_rest(
     )
     # Bob signs in through the provider: it knows him by a subject.
     code = twin.issue_code("bob@example.test")
-    login = await manager.sign_in_with_code(request(), code)
+    login = await manager.sign_in.sign_in_with_code(request(), code)
     bob = await enter(manager, login.token, ajax.id)
-    identity = await manager.get_identity(bob)
+    identity = await manager.org.get_identity(bob)
     assert identity.subject is not None
     personal = next(m.org for m in login.memberships if m.org.personal)
     at_home = await dev(manager, "bob@example.test", personal.id)
-    key = await manager.create_api_key(at_home, "ci", Role.MEMBER)
+    key = await manager.credentials.create_api_key(at_home, "ci", Role.MEMBER)
     await storage.record_failed_sign_in(email_digest(identity.email), utcnow())
     relay.rows.clear()
 
-    deleted = await manager.delete_account(bob, "bob@example.test", SIGNED_OUT)
+    deleted = await manager.org.delete_account(bob, "bob@example.test", SIGNED_OUT)
 
     # The browser ends the provider's session too, and comes back here.
     assert deleted.provider_logout_url is not None
@@ -247,25 +250,25 @@ async def test_the_account_goes_in_one_commit_and_asks_for_the_rest(
 
 
 async def test_the_same_address_signs_up_again_as_a_new_person(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     ann = await dev(manager, "ann@example.test")
-    first = await manager.get_identity(ann)
-    await manager.delete_account(ann, "ann@example.test")
+    first = await manager.org.get_identity(ann)
+    await manager.org.delete_account(ann, "ann@example.test")
     again = await dev(manager, "ann@example.test")
-    second = await manager.get_identity(again)
+    second = await manager.org.get_identity(again)
     assert second.id != first.id
     assert again.org_id != ann.org_id, "a personal org of their own, a new one"
 
 
 async def test_the_personal_org_goes_last_and_keeps_no_retention(
-    manager: TenancyManagerImpl, storage: TenancyStorageMemoryImpl
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
     ann = await dev(manager, "ann@example.test")
     home = ann.org_id
-    await manager.delete_account(ann, "ann@example.test")
+    await manager.org.delete_account(ann, "ann@example.test")
     work = await manager.service_context(request(), home, ann.user_id)
-    deleted = await manager.delete_personal_org(work)
+    deleted = await manager.org.delete_personal_org(work)
     assert deleted is not None and deleted.deleted_at is not None
     # The record stays, and says nothing of whose it was.
     assert (deleted.name, deleted.slug) == (DELETED_PERSONAL_ORG_NAME, f"deleted-{home}")
@@ -273,15 +276,17 @@ async def test_the_personal_org_goes_last_and_keeps_no_retention(
     assert sweep.user_id == EMPTY_UUID
     assert await manager.tenant_expired(sweep), "purged at the next sweep, not after thirty days"
     # A rerun finds it deleted and writes nothing.
-    assert await manager.delete_personal_org(work) is None
+    assert await manager.org.delete_personal_org(work) is None
     assert await storage.read_org(home) == deleted
 
 
-async def test_only_a_deleted_persons_org_is_deleted_this_way(manager: TenancyManagerImpl) -> None:
+async def test_only_a_deleted_persons_org_is_deleted_this_way(
+    manager: TenancyManagerInterface,
+) -> None:
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     ann = await dev(manager, "ann@example.test")
     home = await manager.service_context(request(), ann.org_id, ann.user_id)
     team = await manager.service_context(request(), ajax.id, ann.user_id)
     for ctx in (home, team):
         with pytest.raises(PersonalOrgFixed):
-            await manager.delete_personal_org(ctx)
+            await manager.org.delete_personal_org(ctx)

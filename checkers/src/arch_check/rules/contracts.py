@@ -15,6 +15,7 @@ import ast
 import re
 from collections.abc import Iterator
 
+from arch_check.config import ConfigError
 from arch_check.model import Violation
 from arch_check.project import Function, Project, SourceFile, classes, decorator_names, dotted, is_under, last, methods
 from arch_check.registry import rule
@@ -60,22 +61,39 @@ def is_root(project: Project, cls: ast.ClassDef, names: set[str]) -> bool:
 # --- CON-01
 
 
+MAX_OPERATIONS = 20
+"""The operations one manager interface declares at most, before it delegates a duty."""
+
+
 @rule(
     "CON-01",
-    options=("sync_methods",),
+    options=("sync_methods", "max_operations"),
     coverage="partial",
-    summary="Every *Impl subclasses an interface; manager and storage interface operations are async.",
+    summary="Every *Impl subclasses an interface; manager and storage interface operations are async; "
+    "a manager interface declares no more operations than the bound.",
 )
 def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
     """Every class named `*Impl` has a base named `*Interface` or `*Impl`.
 
     Every public method of a class named `*ManagerInterface` or
     `*StorageInterface` is `async`, except on the storage root
-    `StorageInterface`, whose getters are plain. Option
-    `[tool.arch-check.options.CON-01]`: `sync_methods`, a list of
-    `Class.method` that may stay synchronous (default none).
+    `StorageInterface`, whose getters are plain.
+
+    No class named `*ManagerInterface` declares more public methods
+    than the bound: past it, the manager delegates a duty to an
+    interface of its own, which it carries as an attribute. A delegate
+    is a `*ManagerInterface` too, so the bound holds it as well.
+
+    Options `[tool.arch-check.options.CON-01]`: `sync_methods`, a list
+    of `Class.method` that may stay synchronous (default none);
+    `max_operations`, the bound, a whole number of one or more (default
+    20).
     """
-    allowed: set[str] = set(project.option("CON-01", "sync_methods", [], {"sync_methods"}))
+    keys = {"sync_methods", "max_operations"}
+    allowed: set[str] = set(project.option("CON-01", "sync_methods", [], keys))
+    most: int = project.option("CON-01", "max_operations", MAX_OPERATIONS, keys)
+    if isinstance(most, bool) or most < 1:
+        raise ConfigError("[tool.arch-check.options.CON-01] `max_operations` must be a whole number of one or more")
     for file, cls in classes_named(project, "Impl"):
         if not any(b.endswith(("Interface", "Impl")) for b in project.bases(cls)):
             yield Violation.at(file.rel, cls, f"{cls.name} subclasses no *Interface; an impl implements an interface")
@@ -86,6 +104,15 @@ def every_layer_has_an_interface(project: Project) -> Iterator[Violation]:
             for fn in interface_methods(cls):
                 if isinstance(fn, ast.FunctionDef) and f"{cls.name}.{fn.name}" not in allowed:
                     yield Violation.at(file.rel, fn, f"{cls.name}.{fn.name} is synchronous; an operation is an async method")
+    for file, cls in classes_named(project, "ManagerInterface"):
+        count = len(interface_methods(cls))
+        if count > most:
+            yield Violation.at(
+                file.rel,
+                cls,
+                f"{cls.name} declares {count} operations, over the bound of {most}; "
+                "a manager past it delegates a duty to an interface of its own",
+            )
 
 
 # --- CON-02

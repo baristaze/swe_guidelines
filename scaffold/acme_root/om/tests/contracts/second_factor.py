@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from acme.om.base import new_id, utcnow
 from acme.om.context import AppContext, AppType, OperatorContext, RequestContext
-from acme.om.tenancy.impl.manager import TenancyManagerImpl
+from acme.om.tenancy import TenancyManagerInterface
 from acme.om.tenancy.impl.operator import TenancyOperatorManagerImpl
 from acme.om.tenancy.rules import TOTP_STEP, totp_code, totp_step
 from acme.om.tenancy.types.issued import IssuedLogin
@@ -45,7 +45,7 @@ def operator_request() -> RequestContext:
 
 
 async def enrolled_operator(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
     operator: TenancyOperatorManagerImpl,
     clock: SteppingClock,
     email: str,
@@ -55,7 +55,7 @@ async def enrolled_operator(
     again with a second code, a token minted with the whole of its entry, and
     admitted on that token. Returns that stage and the secret, for a test
     that signs in again."""
-    login = await manager.dev_sign_in(operator_request(), email)
+    login = await manager.sign_in.dev_sign_in(operator_request(), email)
     enrolling = await manager.admit_operator(
         await manager.authenticate_login(operator_request(), login.token)
     )
@@ -65,7 +65,7 @@ async def enrolled_operator(
 
 
 async def minting_operator(
-    manager: TenancyManagerImpl, clock: SteppingClock, email: str, secret: bytes
+    manager: TenancyManagerInterface, clock: SteppingClock, email: str, secret: bytes
 ) -> OperatorContext:
     """An enrolled operator signing in, then verifying a fresh code: the stage
     that mints one token and does nothing else."""
@@ -76,7 +76,7 @@ async def minting_operator(
 
 
 async def signed_in_operator(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
     operator: TenancyOperatorManagerImpl,
     clock: SteppingClock,
     email: str,
@@ -93,10 +93,10 @@ async def signed_in_operator(
     )
 
 
-async def second_factor(manager: TenancyManagerImpl, email: str, code: str) -> IssuedLogin:
+async def second_factor(manager: TenancyManagerInterface, email: str, code: str) -> IssuedLogin:
     """A sign-in by address, then its second factor: the login the operator
     gate admits an enrolled operator on."""
-    login = await manager.dev_sign_in(operator_request(), email)
-    return await manager.verify_second_factor(
+    login = await manager.sign_in.dev_sign_in(operator_request(), email)
+    return await manager.sign_in.verify_second_factor(
         await manager.authenticate_login(operator_request(), login.token), code
     )

@@ -20,23 +20,37 @@ channel to `network`, and settings objects and environment reads to
 
 **Principle.** A manager, a storage, a service: each exposes a
 `*Interface` that lists the operations its scope supports. An operation
-is an async method whose signature is a contract.
+is an async method whose signature is a contract. A manager interface
+holds no more operations than one reader holds, twenty unless the
+project sets its own bound. Past it, the manager keeps its core and
+delegates a duty to an interface of its own, which the manager's
+interface carries as an attribute. A caller outside the namespace
+reaches a delegate through its manager. Inside it, the root may hand a
+delegate a sibling, typed by its interface (CON-06), or a narrow
+callable for one operation of the manager.
 
-**Source.** Interfaces.
+**Source.** Interfaces; The Business Layer.
 
 **Look for.** Every manager, storage, and service class; the module a
 consumer imports from; the type of every dependency a constructor
-accepts.
+accepts; the number of operations each manager interface declares, how
+it exposes a delegate, and what each delegate's constructor takes.
 
 **Violation.** A manager, storage, or service exists only as a concrete
 class with no `*Interface` declared; a caller imports a concrete class
 where an interface should stand; an operation is declared as a
-synchronous method on an interface that describes I/O.
+synchronous method on an interface that describes I/O; a manager
+interface past the bound; a delegate exposed as a method or a property;
+a caller outside the namespace that holds a delegate it did not reach
+through the manager.
 
 **Severity.** medium
 
-**Check.** `arch-check` decides the interface base of every impl and the
-async manager and storage operations; the rest is judged.
+**Shape.** `scaffold/acme_root/om/src/acme/om/tenancy/manager.py`
+
+**Check.** `arch-check` decides the interface base of every impl, the
+async manager and storage operations, and the bound on a manager
+interface's operations; the rest is judged.
 
 ## CON-02 Interfaces are abstract classes with empty bodies, impls subclass them
 
@@ -220,18 +234,21 @@ judged.
 **Principle.** A root class constructs the concrete impls in the right
 order and wires them together. The storage, infra, and services roots
 expose one getter per member; the business root returns one frozen
-object with a field per manager.
+object with a field per manager. A delegate has no field of its own:
+the root builds it and hands it to its manager.
 
 **Source.** The Business Layer; Interfaces, Injectability; The Storage
 Layer, Storage Root.
 
 **Look for.** The root modules of storage, infra, business, and
-services; where impls are instantiated; whether the returned object is
-frozen.
+services; where impls are instantiated, a manager's delegates among
+them; whether the returned object is frozen.
 
-**Violation.** An impl is constructed outside a root; a root exposes a
-concrete impl type instead of an interface; the business root returns a
-mutable container or a dict; wiring is spread across request handlers.
+**Violation.** An impl is constructed outside a root; a manager impl
+builds its own delegate (CON-06); a delegate has a field beside its
+manager on the root's object; a root exposes a concrete impl type
+instead of an interface; the business root returns a mutable container
+or a dict; wiring is spread across request handlers.
 
 **Severity.** medium
 

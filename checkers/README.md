@@ -87,6 +87,9 @@ name the guideline uses. A key the rule does not read exits 2:
 ```toml
 [tool.arch-check.options.CTX-26]
 sites = ["om/src/acme/om/tenancy/impl/manager.py"]
+
+[tool.arch-check.options.CON-01]
+max_operations = 24   # the operations one manager interface declares at most; 20 by default
 ```
 
 With no table at all, the checker still runs, on the one package under

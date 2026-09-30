@@ -64,9 +64,9 @@ def managers(infra: InfraLocalImpl, storage: StorageMemoryImpl) -> Managers:
 async def ctx(managers: Managers) -> TenantContext:
     tenancy = managers.tenancy
     _, org = await tenancy.bootstrap(request(APP), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await tenancy.dev_sign_in(request(APP), "ann@example.test")
+    login = await tenancy.sign_in.dev_sign_in(request(APP), "ann@example.test")
     identity = await tenancy.authenticate_login(request(APP), login.token)
-    issued = await tenancy.exchange_login(identity, org.id)
+    issued = await tenancy.sign_in.exchange_login(identity, org.id)
     return await tenancy.authenticate(request(APP), issued.token)
 
 
@@ -276,9 +276,9 @@ async def second_tenant(managers: Managers) -> TenantContext:
     """Bob's context in a second team org, Beta."""
     tenancy = managers.tenancy
     _, beta = await tenancy.bootstrap(request(APP), "Beta", "beta", "bob@example.test", "Bob")
-    login = await tenancy.dev_sign_in(request(APP), "bob@example.test")
+    login = await tenancy.sign_in.dev_sign_in(request(APP), "bob@example.test")
     identity = await tenancy.authenticate_login(request(APP), login.token)
-    issued = await tenancy.exchange_login(identity, beta.id)
+    issued = await tenancy.sign_in.exchange_login(identity, beta.id)
     return await tenancy.authenticate(request(APP), issued.token)
 
 
@@ -636,10 +636,10 @@ async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
     bob = await tenancy.authenticate(
         request(APP),
         (
-            await tenancy.exchange_login(
+            await tenancy.sign_in.exchange_login(
                 await tenancy.authenticate_login(
                     request(APP),
-                    (await tenancy.dev_sign_in(request(APP), "bob@example.test")).token,
+                    (await tenancy.sign_in.dev_sign_in(request(APP), "bob@example.test")).token,
                 ),
                 beta.id,
             )
@@ -663,7 +663,7 @@ async def test_a_claim_in_a_deleted_org_fails_the_item_and_moves_on(
     )
     # The operator's deletion, carried to its end as the worker ends it.
     await managers.tenancy_operator.delete_org(admin, ctx.org_id)
-    await tenancy.delete_closed_org(
+    await tenancy.org.delete_closed_org(
         await tenancy.service_context(request(APP), ctx.org_id, admin.identity_id)
     )
 
