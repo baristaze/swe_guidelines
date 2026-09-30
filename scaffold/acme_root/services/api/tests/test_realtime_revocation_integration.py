@@ -134,7 +134,7 @@ async def test_a_revocation_in_one_process_closes_the_socket_in_another(
         assert '"type":"hello"' in str(await ws.recv())
         # Process A revokes the session; its relay publishes on the shared bus.
         ictx = await revoker.managers.tenancy.authenticate_login(seed_request(), token)
-        await revoker.managers.tenancy.logout(ictx)
+        await revoker.managers.tenancy.sign_in.logout(ictx)
         with pytest.raises(ConnectionClosed) as closed:
             await asyncio.wait_for(ws.recv(), timeout=10)
     assert closed.value.rcvd is not None
@@ -188,7 +188,7 @@ async def test_a_revocation_the_bus_never_carried_closes_within_the_recheck(
         ticket = await ticket_for(address, headers)
         async with websockets.connect(f"ws://{address}/v1/realtime?ticket={ticket}") as ws:
             assert '"type":"hello"' in str(await ws.recv())
-            await revoker.managers.tenancy.logout(await identity_of(revoker, headers))
+            await revoker.managers.tenancy.sign_in.logout(await identity_of(revoker, headers))
             started = time.monotonic()
             closed = await closed_within(ws, RECHECK_SECONDS + 5)
             waited = time.monotonic() - started
@@ -213,7 +213,7 @@ async def test_a_change_of_role_in_one_process_closes_the_socket_in_another(
         ticket = await ticket_for(address, member)
         async with websockets.connect(f"ws://{address}/v1/realtime?ticket={ticket}") as ws:
             assert '"type":"hello"' in str(await ws.recv())
-            await revoker.managers.tenancy.update_membership_role(
+            await revoker.managers.tenancy.members.update_membership_role(
                 await context_of(revoker, owner), bob.id, Role.MEMBER
             )
             closed = await closed_within(ws, 10)

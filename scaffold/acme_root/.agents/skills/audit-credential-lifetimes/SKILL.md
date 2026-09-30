@@ -44,8 +44,9 @@ file.
    the run read (`git rev-parse HEAD`).
 2. List the credential kinds. `CredentialKind` in
    `om/src/acme/om/context.py` names the ones the platform mints; the
-   tenancy manager (`om/src/acme/om/tenancy/impl/manager.py`) mints and
-   checks them, with each lifetime in its options (`TenancyOptions`).
+   tenancy manager and its delegates (`om/src/acme/om/tenancy/impl/`)
+   mint and check them, with each lifetime in the manager's options
+   (`TenancyOptions` in `impl/manager.py`).
    The values that apply are the settings
    (`services/api/src/acme/services/api/settings.py`) as the container
    passes them in (`services/api/src/acme/services/api/container.py`),
@@ -54,7 +55,8 @@ file.
    (read at `services/api/src/acme/services/api/gateway/webhooks.py`,
    checked in `integrations/src/acme/integrations/identity/deliveries.py`),
    and the identity provider's own session behind a sign-in (ended at
-   sign-out, `_provider_logout` in the tenancy manager). Each goes in the
+   sign-out, `provider_logout_url` in
+   `om/src/acme/om/tenancy/impl/shared.py`). Each goes in the
    row of the channel that uses it. A kind the
    code has and this list misses is a finding of its own.
 3. List the channels, and which kinds reach each:

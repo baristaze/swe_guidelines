@@ -152,11 +152,11 @@ REQUEST_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
         # Take `RequestContext`, the weakest stage: nobody is known yet.
         ("TenancyManagerInterface", "bootstrap"),
         ("TenancyManagerInterface", "add_member"),
-        ("TenancyManagerInterface", "sign_in_url"),
-        ("TenancyManagerInterface", "sign_in_with_code"),
-        ("TenancyManagerInterface", "start_device_sign_in"),
-        ("TenancyManagerInterface", "finish_device_sign_in"),
-        ("TenancyManagerInterface", "dev_sign_in"),
+        ("TenancySignInManagerInterface", "sign_in_url"),
+        ("TenancySignInManagerInterface", "sign_in_with_code"),
+        ("TenancySignInManagerInterface", "start_device_sign_in"),
+        ("TenancySignInManagerInterface", "finish_device_sign_in"),
+        ("TenancySignInManagerInterface", "dev_sign_in"),
         ("TenancyManagerInterface", "authenticate_login"),
         ("TenancyManagerInterface", "authenticate"),
         ("TenancyManagerInterface", "resume"),
@@ -180,13 +180,13 @@ REQUEST_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
 IDENTITY_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
     {
         # Take `IdentityContext`: a person is verified, no tenant is chosen.
-        ("TenancyManagerInterface", "exchange_login"),
-        ("TenancyManagerInterface", "get_identity_memberships"),
+        ("TenancySignInManagerInterface", "exchange_login"),
+        ("TenancySignInManagerInterface", "get_identity_memberships"),
         ("TenancyManagerInterface", "admit_operator"),
-        ("TenancyManagerInterface", "verify_second_factor"),
+        ("TenancySignInManagerInterface", "verify_second_factor"),
         # Ending its own sign-in: the credential the stage came from, a
         # session, a sign-in, or an operator token.
-        ("TenancyManagerInterface", "logout"),
+        ("TenancySignInManagerInterface", "logout"),
     }
 )
 

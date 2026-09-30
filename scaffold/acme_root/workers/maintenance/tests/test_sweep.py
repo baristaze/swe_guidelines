@@ -303,7 +303,7 @@ async def deleted_org(container: WorkerContainer, days_ago: int) -> tuple[UUID, 
     )
     file = await upload(container, owner)
     await start_noop(container, owner, 3)
-    await container.managers.tenancy.create_api_key(owner, "ci", Role.MEMBER)
+    await container.managers.tenancy.credentials.create_api_key(owner, "ci", Role.MEMBER)
     storage = container.storage.get_tenancy_storage()
     stored = await storage.read_org(org.id)
     assert stored is not None
@@ -848,12 +848,12 @@ async def test_a_pass_purges_every_row_past_its_retention_and_keeps_what_lives(
 
     await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
     (bob,) = [u for u in await tenancy_rows.read_users(org, None, 10) if u.id != ann.user_id]
-    await tenancy.remove_member(ann, bob.id)
-    revoked = await tenancy.create_api_key(ann, "old", Role.MEMBER)
-    await tenancy.revoke_api_key(ann, revoked.api_key.id)
-    live = await tenancy.create_api_key(ann, "ci", Role.MEMBER)
-    invitation = await tenancy.invite_member(ann, "carol@example.test", Role.MEMBER)
-    await tenancy.revoke_invitation(ann, invitation.id)
+    await tenancy.members.remove_member(ann, bob.id)
+    revoked = await tenancy.credentials.create_api_key(ann, "old", Role.MEMBER)
+    await tenancy.credentials.revoke_api_key(ann, revoked.api_key.id)
+    live = await tenancy.credentials.create_api_key(ann, "ci", Role.MEMBER)
+    invitation = await tenancy.members.invite_member(ann, "carol@example.test", Role.MEMBER)
+    await tenancy.members.revoke_invitation(ann, invitation.id)
     ticket = await tenancy.issue_ticket(ann)
     await tenancy_rows.record_failed_sign_in("a-digest", utcnow())
 

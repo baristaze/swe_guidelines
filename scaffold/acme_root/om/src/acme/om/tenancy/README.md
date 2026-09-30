@@ -77,6 +77,11 @@ work item's through `service_context`, on the service role with the
 person who asked as its attribution. A manager checks what it needs
 with `ctx.require(permission)`, and never reads tenancy's tables.
 
+The tenancy manager keeps those transitions, the seeding, the grant
+job, and the sweep. Its other duties are delegates, each an interface
+of its own reached through the manager: `tenancy.sign_in`,
+`tenancy.org`, `tenancy.members`, and `tenancy.credentials`.
+
 When an org is deleted, the sweep calls each namespace's
 `purge_tenant` once the org is past its retention, and tenancy marks
 the org purged when nothing is left. A new namespace adds its purge to

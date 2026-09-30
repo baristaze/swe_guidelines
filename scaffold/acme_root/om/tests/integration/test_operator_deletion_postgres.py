@@ -48,8 +48,8 @@ async def test_an_operator_closes_a_team_org_at_once_and_its_work_deletes_it(
     tenancy = managers.tenancy
     _, org = await tenancy.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
-    login = await tenancy.dev_sign_in(request(), "bob@example.test")
-    issued = await tenancy.exchange_login(
+    login = await tenancy.sign_in.dev_sign_in(request(), "bob@example.test")
+    issued = await tenancy.sign_in.exchange_login(
         await tenancy.authenticate_login(request(), login.token), org.id
     )
     await tenancy.bootstrap(
@@ -78,7 +78,7 @@ async def test_an_operator_closes_a_team_org_at_once_and_its_work_deletes_it(
 
     # The item's last step, under the operator's name, as the worker runs it.
     ctx = await tenancy.service_context(request(), org.id, item.created_by)
-    deleted = await tenancy.delete_closed_org(ctx)
+    deleted = await tenancy.org.delete_closed_org(ctx)
     assert deleted is not None and deleted.deleted_by == admin.identity_id
     with pytest.raises(NotFound):
         await managers.tenancy_operator.delete_org(admin, org.id)

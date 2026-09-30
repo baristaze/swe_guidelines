@@ -33,7 +33,7 @@ from acme.om.tenancy.impl.creates import (
     create_org_with_owner,
     user_payload,
 )
-from acme.om.tenancy.impl.manager import ended_by, exchange_sign_in, new_operator_token
+from acme.om.tenancy.impl.shared import ended_by, exchange_sign_in, new_operator_token
 from acme.om.tenancy.impl.totp import TotpSealer, new_totp_secret
 from acme.om.tenancy.operator import TenancyOperatorManagerInterface
 from acme.om.tenancy.rules import (

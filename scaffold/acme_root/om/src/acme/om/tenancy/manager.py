@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from datetime import timedelta
 from uuid import UUID
 
-from acme.integrations.identity import DeviceAuthorization, PortalIntent
 from acme.om.context import (
     CredentialKind,
     IdentityContext,
@@ -16,32 +15,13 @@ from acme.om.context import (
     Role,
     TenantContext,
 )
-from acme.om.idempotency.types.attempt import Attempt
-from acme.om.tenancy.types.api_key import ApiKey
+from acme.om.tenancy.credentials import TenancyCredentialsManagerInterface
+from acme.om.tenancy.members import TenancyMembersManagerInterface
+from acme.om.tenancy.org import TenancyOrgManagerInterface
+from acme.om.tenancy.sign_in import TenancySignInManagerInterface
 from acme.om.tenancy.types.identity import Identity
-from acme.om.tenancy.types.invitation import Invitation
-from acme.om.tenancy.types.issued import (
-    AccountDeleted,
-    IssuedApiKey,
-    IssuedLogin,
-    IssuedOperatorToken,
-    IssuedSession,
-    IssuedTicket,
-    OrgDeleted,
-    OrgMembership,
-    SignedOut,
-    SignInStart,
-)
-from acme.om.tenancy.types.membership import Membership
+from acme.om.tenancy.types.issued import IssuedOperatorToken, IssuedTicket
 from acme.om.tenancy.types.org import Org
-from acme.om.tenancy.types.page import (
-    ApiKeyPage,
-    InvitationPage,
-    MembershipPage,
-    OrgMembershipPage,
-    UserPage,
-)
-from acme.om.tenancy.types.session import Session
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
 from acme.om.tenancy.types.user import User
 
@@ -51,11 +31,26 @@ class TenancyManagerInterface(ABC):
     on a principal takes `TenantContext`. The operator plane is
     `TenancyOperatorManagerInterface`, which takes `OperatorContext`.
 
+    The manager keeps what every process calls: the seeding, the transitions
+    with the socket tickets, the grant job, and the sweep. Its other duties
+    are delegates, each an interface of its own that the root builds and a
+    caller reaches through the manager, as
+    `tenancy.credentials.create_api_key`.
+
     The transitions come first. Each takes the weakest stage it needs and
     produces a stronger one: `RequestContext` in, `IdentityContext` or
     `TenantContext` out; `IdentityContext` in, `OperatorContext` out. They are the
     only constructors of those stages, and the exceptions test names them.
     """
+
+    sign_in: TenancySignInManagerInterface
+    """Signing in, the exchange for a session, and signing out."""
+    org: TenancyOrgManagerInterface
+    """The caller's org and account, and their deletion."""
+    members: TenancyMembersManagerInterface
+    """The org's members, its invitations, and its single sign-on."""
+    credentials: TenancyCredentialsManagerInterface
+    """The caller's sessions and the org's API keys."""
 
     @abstractmethod
     async def bootstrap(
@@ -103,94 +98,6 @@ class TenancyManagerInterface(ABC):
         ...
 
     @abstractmethod
-    async def sign_in_url(
-        self,
-        rctx: RequestContext,
-        redirect_uri: str,
-        state: str,
-        *,
-        invitation_token: str | None = None,
-        sign_up: bool = False,
-    ) -> SignInStart:
-        """Platform-internal: where a browser goes to sign in at the identity
-        provider, and the PKCE verifier the caller keeps and hands back with
-        the code. It comes back to `redirect_uri` with a code and `state` as
-        it was handed; the state is the caller's, which binds the round trip
-        to the tab that started it. A redirect this environment does not name as
-        its own is refused (ValidationFailed): a deployed environment never
-        sends a code anywhere else. Unavailable when no provider is
-        configured."""
-        ...
-
-    @abstractmethod
-    async def sign_in_with_code(
-        self,
-        rctx: RequestContext,
-        code: str,
-        invitation_token: str | None = None,
-        *,
-        code_verifier: str | None = None,
-    ) -> IssuedLogin:
-        """Platform-internal: the identity provider's sign-in, finished. The code
-        the browser brought back is exchanged with the provider, server-side,
-        with the verifier the sign-in started with, for the person it vouches
-        for: an issuer, a subject, and a verified
-        email. The identity is found by the issuer and the subject; else by
-        the email, and linked to the subject from then on (a person the
-        seeding, the operator plane, or an older release made); else made,
-        with their personal org, in one commit: a first sign-in is a sign-up.
-        A sign-in that accepted an invitation lands the membership it names,
-        and one through an org's single sign-on lands a membership when the
-        person's address is in a domain the org verified (`sso_joins`). The
-        answer is a login and the places, as every sign-in's.
-
-        SignInRefused for a code the provider will not exchange;
-        EmailNotVerified when the provider has not verified the address;
-        Unavailable when the provider cannot be reached or is not
-        configured."""
-        ...
-
-    @abstractmethod
-    async def start_device_sign_in(self, rctx: RequestContext) -> DeviceAuthorization:
-        """Platform-internal: a sign-in for a device with no browser of its own,
-        the command line. The person confirms the code the answer names at the
-        provider's address, in any browser; the device keeps the device code
-        and finishes with it."""
-        ...
-
-    @abstractmethod
-    async def finish_device_sign_in(self, rctx: RequestContext, device_code: str) -> IssuedLogin:
-        """Platform-internal: asks whether the person confirmed the device
-        sign-in. When they did, it is finished as `sign_in_with_code` finishes
-        a browser's. SignInPending (or SignInSlowDown) while they have not;
-        SignInRefused when they declined or the code expired."""
-        ...
-
-    @abstractmethod
-    async def dev_sign_in(
-        self, rctx: RequestContext, email: str, display_name: str = ""
-    ) -> IssuedLogin:
-        """Platform-internal, local and test only: a sign-in by address alone,
-        for the seed, the demo recorders, the traffic generator, and the tests,
-        which need people without a browser round trip. The identity is found
-        by the email or made with its personal org, as a first sign-in makes
-        one. NotFound unless the process was built with it on, which a deployed
-        environment refuses at boot."""
-        ...
-
-    @abstractmethod
-    async def verify_second_factor(self, ictx: IdentityContext, totp_code: str) -> IssuedLogin:
-        """Platform-internal: a sign-in's second factor. The login presented is
-        answered with a new one that records the verified code, which the
-        operator gate asks for, and ends in the write that lands it, so a
-        person holds one sign-in at a time; a wrong code ends nothing. The
-        code is checked against the identity's enrolled secret and refused
-        when it was used already. A run of wrong codes for the email makes
-        the next one wait (SignInDelayed). Only a login credential is taken
-        (InvalidCredential otherwise)."""
-        ...
-
-    @abstractmethod
     async def authenticate_login(self, rctx: RequestContext, credential: str) -> IdentityContext:
         """Platform-internal: the transition to the identity stage. Verifies the
         person's own sign-in and produces the identity behind it: the login
@@ -203,34 +110,6 @@ class TenancyManagerInterface(ABC):
         is gone, is refused; an api key is refused with InvalidCredential,
         since it is an agent's and not the person's sign-in. Every operation on
         an identity starts here."""
-        ...
-
-    @abstractmethod
-    async def exchange_login(self, ictx: IdentityContext, org_id: UUID) -> IssuedSession:
-        """Platform-internal: exchanges the verified identity for a tenant-scoped
-        session token; NotAuthorized when the identity is not a member of
-        `org_id`, and the credential presented still stands. A sign-in is
-        exchanged once: it ends in the same write that lands the session, so
-        one sign-in makes one session. A second exchange of it, a retry after
-        a lost answer among them, is refused with CredentialExpired, and the
-        person signs in again; of two exchanges at once, one lands. An
-        identity proven by a session is a switch: that session
-        ends in the same write that lands the new one, announced as any
-        revocation is, so its socket closes and a tab never holds two live
-        sessions. A session another write already ended is refused with
-        CredentialExpired and nothing lands. An operator token never enters a
-        tenant (InvalidCredential)."""
-        ...
-
-    @abstractmethod
-    async def get_identity_memberships(
-        self, ictx: IdentityContext, after: UUID | None, limit: int
-    ) -> OrgMembershipPage:
-        """Platform-internal: no tenant is chosen, so the list is the identity's.
-        The places the verified identity holds, each its org, its user, and its
-        role, the same choice a sign-in answers with; by user id, a page at a
-        time as `get_users` pages. Deleted orgs and ended memberships are not
-        listed. An operator token lists nothing (InvalidCredential)."""
         ...
 
     @abstractmethod
@@ -350,258 +229,6 @@ class TenancyManagerInterface(ABC):
         answers for them from the org rows this call read, once per tenant
         per pass."""
         ...
-
-    # The principal.
-
-    @abstractmethod
-    async def get_org(self, ctx: TenantContext) -> Org: ...
-
-    @abstractmethod
-    async def get_me(self, ctx: TenantContext) -> OrgMembership:
-        """The caller's org, their user in it, and their membership's role,
-        read together in one transaction. The context carries ids, so what
-        the caller is shown is loaded here, as fresh as the request."""
-        ...
-
-    @abstractmethod
-    async def create_org(
-        self, ctx: TenantContext, name: str, slug: str | None, attempt: Attempt | None = None
-    ) -> OrgMembership:
-        """A team org the caller makes and owns: the org, the caller's user in
-        it under the display name they carry in this one, and the owner
-        membership, in one commit. The slug is generated from the name when
-        `slug` is None; a taken one is Conflict. Only a session makes an org
-        (NotAuthorized for an api key), since a new tenant is a person's and
-        not a program's; a person already in as many orgs as they may join is
-        MembershipLimitReached. The caller's session stays in its tenant: the
-        switch into the new one is the exchange. `attempt` as on
-        `create_api_key`: the org is created on its id, and a rerun finds the
-        org written and answers with the caller's place in it."""
-        ...
-
-    @abstractmethod
-    async def get_identity(self, ctx: TenantContext) -> Identity:
-        """The identity behind the caller's user."""
-        ...
-
-    @abstractmethod
-    async def set_time_zone(self, ctx: TenantContext, time_zone: str) -> Identity:
-        """Records where the caller is, as an IANA name, on their identity,
-        so it holds in every org they are in. A name that is not one
-        (`tenancy.rules.check_time_zone`) is ValidationFailed."""
-        ...
-
-    @abstractmethod
-    async def invite_member(
-        self, ctx: TenantContext, email: str, role: Role, attempt: Attempt | None = None
-    ) -> Invitation:
-        """Asks a person to join the org, by email, with a role capped at the
-        caller's (NotAuthorized above it). The identity provider sends the
-        email with the sign-in link; the org's organization there is made the
-        first time. A person who is a member already is Conflict, and so is an
-        address with an open invitation (send that one again instead); an
-        expired one is replaced. This is the one door into an org for a person
-        of a deployed environment, so a limit on an org's members is checked
-        here, before anything is sent. `attempt` as on `create_api_key`: the
-        invitation is created on its id, and a rerun finds it."""
-        ...
-
-    @abstractmethod
-    async def get_invitations(
-        self, ctx: TenantContext, after: UUID | None, limit: int
-    ) -> InvitationPage:
-        """The org's pending invitations, newest first, a page at a time, for a
-        member manager."""
-        ...
-
-    @abstractmethod
-    async def resend_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
-        """Sends a pending invitation's email again, with a fresh expiry.
-        InvitationClosed for one accepted or revoked."""
-        ...
-
-    @abstractmethod
-    async def revoke_invitation(self, ctx: TenantContext, invitation_id: UUID) -> Invitation:
-        """Revokes a pending invitation: its link stops working.
-        InvitationClosed for one accepted or revoked."""
-        ...
-
-    @abstractmethod
-    async def sso_setup_link(
-        self, ctx: TenantContext, intent: PortalIntent, return_url: str
-    ) -> str:
-        """A short-lived link to the identity provider's admin portal, where
-        an owner or an admin of a team org sets up the org's single sign-on
-        (`sso`) or proves its domain (`domain_verification`) themselves. A
-        personal org has no single sign-on (ValidationFailed), and only a
-        member manager opens it. The org's organization at the provider is
-        made the first time."""
-        ...
-
-    @abstractmethod
-    async def rename_user(self, ctx: TenantContext, user_id: UUID, display_name: str) -> User:
-        """Sets a user's display name in this org: the caller's own, or
-        another member's with `manage_members`. Email and identity belong to
-        the identity. A blank name is ValidationFailed."""
-        ...
-
-    @abstractmethod
-    async def get_users(self, ctx: TenantContext, after: UUID | None, limit: int) -> UserPage:
-        """The tenant's members, by id, a page at a time: `after` is the id the
-        previous page ended on, and `has_more` says another follows."""
-        ...
-
-    @abstractmethod
-    async def get_user(self, ctx: TenantContext, user_id: UUID) -> User: ...
-
-    # Memberships.
-
-    @abstractmethod
-    async def get_memberships(
-        self, ctx: TenantContext, after: UUID | None, limit: int
-    ) -> MembershipPage:
-        """The tenant's memberships, by user id, a page at a time as `get_users`
-        pages: a page ending on the same user id covers the same members, so
-        the two lists pair page for page."""
-        ...
-
-    @abstractmethod
-    async def update_membership_role(
-        self, ctx: TenantContext, user_id: UUID, role: Role
-    ) -> Membership:
-        """Role-capped at the caller's role, for the target's old role and its
-        new one. The person of a personal org keeps their role in it
-        (PersonalOrgFixed)."""
-        ...
-
-    @abstractmethod
-    async def remove_member(self, ctx: TenantContext, user_id: UUID) -> User:
-        """Soft-deletes the member's user in this org, ends their membership,
-        and revokes every live session and api key of theirs, in one
-        transaction; no list shows them, no role change reaches them, and
-        each revocation is announced, so their sockets close. The person of a
-        personal org is never removed from it (PersonalOrgFixed)."""
-        ...
-
-    @abstractmethod
-    async def delete_account(
-        self, ctx: TenantContext, confirm_email: str, return_to: str | None = None
-    ) -> AccountDeleted:
-        """The caller's whole account, gone for good, from a session only
-        (NotAuthorized for an api key, which is a program's). `confirm_email`
-        is the account's email as the person typed it (ValidationFailed when
-        it is not). Refused while the person is on the operator allowlist
-        (OperatorRoleHeld), and while they are the last owner of a team org
-        (LastOwner, naming each one).
-
-        One commit erases the person (`TenancyStorageInterface.delete_person`):
-        the identity, their user and membership in every org, every
-        credential they hold, each live one announced as revoked, and the
-        sign-in delay of their address. What they made in a team org stays
-        the org's, under an id that no longer names anyone. The same commit
-        asks for the rest: in their personal org, the provider's side goes
-        and then the org itself (`DELETE_ACCOUNT`). The answer says where the browser goes to
-        end the provider's session, as `logout` does with `return_to`."""
-        ...
-
-    @abstractmethod
-    async def delete_personal_org(self, ctx: TenantContext) -> Org | None:
-        """Platform-internal, the last step of `DELETE_ACCOUNT`: deletes the
-        caller's tenant when it is a personal org whose person is gone, and
-        announces it, so its sockets close. A deleted personal org keeps no
-        retention, so the sweep purges every row of it at its next pass
-        (`tenancy.rules.past_retention`). None, and nothing written, when it
-        is deleted already; PersonalOrgFixed for any other org."""
-        ...
-
-    @abstractmethod
-    async def delete_org(self, ctx: TenantContext, confirm_name: str) -> OrgDeleted:
-        """The caller's team org, deleted by its owner, from a session only
-        (NotAuthorized for an api key, which is a program's, and for any role
-        but owner). `confirm_name` is the org's name as the owner typed it
-        (ValidationFailed when it is not). A personal org is refused
-        (PersonalOrgFixed): it goes only with its person's account.
-
-        One commit closes the org (`TenancyStorageInterface.write_closed_org`): every
-        member's user and membership end, every session and api key in it is
-        revoked, each announced, so every socket closes, every pending
-        invitation is revoked, and the org lets go of its organization at the
-        identity provider. The same commit asks for the rest (`DELETE_ORG`):
-        the provider's organization goes, then the org is deleted, and the
-        sweep purges it after the retention. An operator's deletion
-        (`TenancyOperatorManagerInterface.delete_org`) takes the same path.
-        The answer carries a session in the owner's personal org, which the
-        tab takes up, as a switch does."""
-        ...
-
-    @abstractmethod
-    async def delete_closed_org(self, ctx: TenantContext) -> Org | None:
-        """Platform-internal, the last step of `DELETE_ORG`, on the service
-        role only (NotAuthorized otherwise): soft-deletes the caller's closed
-        team org, whoever closed it, and announces it, so its sockets close.
-        The sweep purges it once the retention has passed. None, and nothing
-        written, when it is deleted already; PersonalOrgFixed for a personal
-        org."""
-        ...
-
-    @abstractmethod
-    async def count_members(self, ctx: TenantContext) -> int:
-        """How many live members the org has."""
-        ...
-
-    # Credentials.
-
-    @abstractmethod
-    async def get_sessions(self, ctx: TenantContext, limit: int) -> list[Session]:
-        """The caller's own live sessions in this org, newest first."""
-        ...
-
-    @abstractmethod
-    async def revoke_session(self, ctx: TenantContext, session_id: UUID) -> Session: ...
-
-    @abstractmethod
-    async def logout(self, ictx: IdentityContext, return_to: str | None = None) -> SignedOut:
-        """Platform-internal: ending its own sign-in is an operation of the
-        identity stage. Ends the credential the stage came from, whichever
-        it is: a session, announced so the socket it opened closes; a sign-in,
-        with or without its second factor; an operator token, which is the
-        operator's sign-out. It answers where the browser goes to end the
-        identity provider's session behind it, when the sign-in left one
-        there. `return_to` is where the provider sends the browser after: one
-        of `sign_out_return_uris`, else refused; None leaves it to the
-        provider's default. An api key has no sign-out: it is never an
-        identity stage, and its holder revokes it."""
-        ...
-
-    @abstractmethod
-    async def get_api_keys(self, ctx: TenantContext, after: UUID | None, limit: int) -> ApiKeyPage:
-        """The tenant's unrevoked keys for a member manager, the caller's own
-        otherwise; newest first, a page at a time, as `get_users` pages."""
-        ...
-
-    @abstractmethod
-    async def create_api_key(
-        self,
-        ctx: TenantContext,
-        name: str,
-        role: Role,
-        ttl: timedelta | None = None,
-        attempt: Attempt | None = None,
-    ) -> IssuedApiKey:
-        """Role-capped at the caller's role; the service role is refused by name.
-        `attempt`, when given, is the attempt a retried request runs under: the
-        id it creates on and the token of the idempotency marker holding it. A
-        key that already exists under that id is the rerun of a create that
-        issues a secret: the secret is re-minted on that row in the same write
-        and a fresh `IssuedApiKey` with the same id comes back, since the first
-        secret reached no one; the old secret stops authenticating. The re-mint
-        lands only while the marker still holds the token, so an attempt that
-        lost the marker to a retry cannot invalidate the key that retry already
-        returned. Without an attempt the id is fresh and there is no rerun."""
-        ...
-
-    @abstractmethod
-    async def revoke_api_key(self, ctx: TenantContext, api_key_id: UUID) -> ApiKey: ...
 
     @abstractmethod
     async def purge_across_tenants(self) -> int:
