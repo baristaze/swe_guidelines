@@ -11,7 +11,9 @@ raised, which names a backend, an operation, and a code."""
 import io
 import json
 import logging
+import sys
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import httpx
@@ -29,9 +31,11 @@ from sqlalchemy.exc import IntegrityError
 from acme.infra.exceptions import BackendUnreachable
 from acme.infra.observability import (
     ERROR_REPORTING_PRIVACY,
+    HTTP_CLIENT_LOGGERS,
     JsonFormatter,
     RequestIdFilter,
     configure_error_reporting,
+    configure_logging,
     outgoing_event,
     request_id_var,
 )
@@ -275,23 +279,59 @@ def test_an_exception_a_line_names_is_its_type(tracker: Captured, lines: io.Stri
     assert EMAIL not in json.dumps(event) and NAME not in json.dumps(event)
 
 
-def test_an_outbound_call_leaves_its_method_its_path_and_its_status(tracker: Captured) -> None:
-    """The SDK records each outbound request as a breadcrumb. A provider's
-    lookup names what it looks for in its query, an invitee's address among
-    them, so the breadcrumb keeps the URL without its query or fragment."""
-    answer = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": []}))
-    with httpx.Client(transport=answer) as provider:
-        provider.get(
-            "https://api.provider.example/user_management/invitations#top",
-            params={"organization_id": "org_1", "email": EMAIL},
-        )
-    log.error("the invitation could not be sent")
+@contextmanager
+def deployed() -> Iterator[io.StringIO]:
+    """Logging as boot sets it in a deployed process: JSON lines, with the
+    root at INFO, the deployed default. The HTTP clients' loggers start from
+    no level of their own, whatever ran before, and everything is put back
+    after."""
+    root = logging.getLogger()
+    handlers, level = root.handlers, root.level
+    clients = {name: logging.getLogger(name).level for name in HTTP_CLIENT_LOGGERS}
+    for name in clients:
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    root.handlers = []
+    written, stderr = io.StringIO(), sys.stderr
+    sys.stderr = written
+    try:
+        configure_logging("INFO", json_logs=True)
+    finally:
+        sys.stderr = stderr
+    try:
+        yield written
+    finally:
+        root.handlers = handlers
+        root.setLevel(level)
+        for name, was in clients.items():
+            logging.getLogger(name).setLevel(was)
 
+
+async def test_an_outbound_call_leaves_no_query_in_a_line_or_a_breadcrumb(
+    tracker: Captured,
+) -> None:
+    """A provider's lookup names what it looks for in its query, an invitee's
+    address among them. The SDK records the request as a breadcrumb, which
+    keeps its method, its status, and its URL without the query or fragment.
+    The HTTP client logs it at INFO with the whole URL, and that line is not
+    written, as a line or as the breadcrumb a line becomes."""
+    answer = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": []}))
+    with deployed() as written:
+        async with httpx.AsyncClient(transport=answer) as provider:
+            await provider.get(
+                "https://api.provider.example/user_management/invitations#top",
+                params={"organization_id": "org_1", "email": EMAIL},
+            )
+        log.error("the invitation could not be sent")
+
+    lines = [json.loads(line) for line in written.getvalue().splitlines()]
+    assert [line["message"] for line in lines] == ["the invitation could not be sent"]
     (event,) = tracker.events
-    (call,) = [crumb for crumb in event["breadcrumbs"]["values"] if crumb["type"] == "http"]
+    crumbs = event["breadcrumbs"]["values"]
+    (call,) = [crumb for crumb in crumbs if crumb["type"] == "http"]
     assert call["data"] == {
         "http.method": "GET",
         "http.response.status_code": 200,
         "url": "https://api.provider.example/user_management/invitations",
     }
-    assert "ada.lovelace" not in json.dumps(event) and "top" not in json.dumps(call)
+    assert [crumb for crumb in crumbs if crumb["type"] != "http"] == []
+    assert "ada.lovelace" not in written.getvalue() + json.dumps(event)

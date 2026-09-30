@@ -241,7 +241,18 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(line)
 
 
+HTTP_CLIENT_LOGGERS = ("httpx", "httpcore", "urllib3")
+"""The HTTP clients' own loggers. Below WARNING they write a request's URL
+with its query: `httpx` every request at INFO, `urllib3` a redirect. A
+provider's lookup names what it looks for in its query, an invitee's address
+among them, and the line and the breadcrumb it becomes would carry it. So
+they write from WARNING up, whatever the level; the request's own breadcrumb
+keeps its method, its path, and its status (`outgoing_breadcrumb`)."""
+
+
 def configure_logging(level: str, json_logs: bool) -> None:
+    for name in HTTP_CLIENT_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
     root = logging.getLogger()
     for handler in list(root.handlers):
         root.removeHandler(handler)
