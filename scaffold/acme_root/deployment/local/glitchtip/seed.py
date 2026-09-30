@@ -25,7 +25,9 @@ READ_SCOPES = ["project:read", "team:read", "event:read", "org:read", "member:re
 user = User.objects.filter(email=EMAIL).first() or User.objects.create_superuser(
     email=EMAIL, password=PASSWORD
 )
-org, _ = Organization.objects.get_or_create(slug="acme", defaults={"name": "Acme"})
+# GlitchTip makes a new organization's slug from its name, whatever slug it is
+# created with. So the name is the slug the readers ask for, spelled the same.
+org, _ = Organization.objects.get_or_create(slug="acme", defaults={"name": "acme"})
 if not OrganizationUser.objects.filter(organization=org, user=user).exists():
     org.add_user(user, role=OrganizationUserRole.OWNER)
 membership = OrganizationUser.objects.get(organization=org, user=user)

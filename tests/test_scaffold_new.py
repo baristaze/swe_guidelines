@@ -242,6 +242,33 @@ def test_a_two_word_copy_quotes_its_namespace_in_every_dashboard_search(tmp_path
     assert "SEARCH('{Free" not in template + module
 
 
+def tracker_slug(name: str) -> str:
+    """The slug GlitchTip gives a new organization: Django's `slugify` of its
+    name, whatever slug it was created with."""
+    kept = re.sub(r"[^\w\s-]", "", name.lower())
+    return re.sub(r"[-\s]+", "-", kept).strip("-_")
+
+
+ORGANIZATION = re.compile(r'Organization\.objects\.get_or_create\(slug="([^"]+)", defaults=\{"name": "([^"]+)"\}\)')
+
+
+@pytest.mark.parametrize(("name", "prefix"), [("pressroom", "PRESSROOM"), ("free_press", "FREE_PRESS")])
+def test_a_copy_reads_its_local_tracker_under_the_slug_the_tracker_gives_its_organization(tmp_path, name, prefix):
+    """The copy's env example and its ops package name the organization the
+    seed creates, and GlitchTip lists that organization under a slug of its
+    own making. A read under any other slug answers 404."""
+    assert tracker_slug("Free Press") == "free-press"
+    dest = tmp_path / name
+    assert new.main([str(dest)]) == 0
+    seed = (dest / "deployment" / "local" / "glitchtip" / "seed.py").read_text(encoding="utf-8")
+    [(slug, title)] = ORGANIZATION.findall(seed)
+    assert tracker_slug(title) == slug == name
+    env = (dest / ".env.example").read_text(encoding="utf-8")
+    assert f"\n{prefix}_ERROR_TRACKER_ORG={slug}\n" in env
+    environments = (dest / "ops" / "src" / name / "ops" / "environments.py").read_text(encoding="utf-8")
+    assert f'get("{prefix}_ERROR_TRACKER_ORG", "{slug}") or "{slug}"' in environments
+
+
 LOCK = """\
 ---
 lockfileVersion: '9.0'
