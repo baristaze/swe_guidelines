@@ -718,6 +718,17 @@ it composes, and its capabilities, all injected, and `build_managers`
 wires every manager at boot into one frozen object
 ([`root.py`](scaffold/acme_root/om/src/acme/om/root.py)).
 
+An interface is read whole by whoever touches one operation of it. When
+a manager's interface passes what one reader holds, the manager keeps
+its core and delegates its other duties. A delegate is an interface and
+an impl of the same namespace, named after the namespace and the duty:
+`TenancyCredentialsManagerInterface`. The root builds each delegate and
+hands it to the manager, and a caller reaches it through the manager, as
+`managers.tenancy.credentials`
+([`manager.py`](scaffold/acme_root/om/src/acme/om/tenancy/manager.py)).
+`arch-check` holds a manager interface to a bound on its operations,
+twenty unless the project sets its own.
+
 ### Shape of an Operation
 
 `core`

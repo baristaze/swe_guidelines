@@ -557,7 +557,7 @@ of that kind of work; a sign-in or exchange route handed a
 `TenantContext`; a stage declared as a `Protocol` or satisfied by anything
 other than its transition; `TenantContext` subclassing `IdentityContext`;
 a bundle of managers per stage (a manager as a member of a context is
-CON-18).
+CON-18; a manager's delegates are cut by duty and built once, CON-01).
 
 **Severity.** high
 

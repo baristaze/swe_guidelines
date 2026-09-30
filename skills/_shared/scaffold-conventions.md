@@ -79,6 +79,18 @@ a copy of the shape still goes wrong.
   stage above the request stage is listed under
   `[tool.arch-check.options.CTX-26] sites` and in
   `om/tests/unit/test_stage_construction.py`.
+- **A manager stays within its bound.** `arch-check` refuses a manager
+  interface of more than twenty operations (CON-01). In a namespace
+  whose manager delegates, a new operation goes to the delegate whose
+  duty it is, and to the manager itself only when no delegate's duty
+  covers it, as a transition or the sweep. A manager that would pass the
+  bound gains a delegate, as `tenancy` has `credentials`:
+  `<Ns><Duty>ManagerInterface` in `om/src/<name>/om/<ns>/<duty>.py`,
+  re-exported from the package root, and `<Ns><Duty>ManagerImpl` in
+  `impl/<duty>.py`. The root builds it in `om/src/<name>/om/root.py`
+  and hands it to the manager, whose interface carries it as an
+  attribute, never a method. A caller reaches it as
+  `managers.<ns>.<duty>`, and it has no field on `Managers`.
 - **Authorize first.** A mutating manager operation opens with
   `ctx.require(<permission>)`, or `octx.require(...)`, before any read,
   the ones a worker calls included. Only an operation on a stage with no
