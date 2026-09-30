@@ -64,7 +64,7 @@ it resumes onto it. This holds them together:
   they hold no key. So does a `.git` folder in a run folder: its objects
   are compressed, and the output's zip is the record of the output.
 
-`benchmark/runs/browser/` is the one folder that is not a harness
+`benchmark/runs/browser-judge-swe/` is the one folder that is not a harness
 scenario's. `arch-benchmark-browser` asks four chat products, and when
 it runs in a checkout it writes each run there, with its row. A row of
 its page links `<run>/results.json`, and the folder holds:
@@ -135,7 +135,7 @@ DELIMITER = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
 # What only a run folder holds: `run.py` writes `run.json` first, then `results.json` and `report.md`.
 RUN_FILES = ("run.json", "results.json", "report.md")
 COST = "Cost (USD)"
-BROWSER = RUNS / "browser"
+BROWSER = RUNS / "browser-judge-swe"
 BROWSER_SCHEMA = ROOT / "benchmark" / "schema" / "browser-session.schema.json"
 BROWSER_ROW_LINK = re.compile(r"\]\(([^()/\s]+)/results\.json\)")
 REDACTED = "[redacted]"

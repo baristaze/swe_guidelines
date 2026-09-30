@@ -1,4 +1,4 @@
-# browser
+# browser-judge-swe
 
 The subject is four chat products a reader would use: chatgpt.com,
 claude.ai, gemini.google.com, and grok.com, each signed in, in a

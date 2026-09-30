@@ -58,8 +58,8 @@ mode, or effort its size asked for answers on a smaller one. It is recorded
 
 When the skill runs in a checkout of this repository, it also checks
 the run in: `results.json` and the answers go to
-`benchmark/runs/browser/<YYYYMMDD-HHMMSS>/`, and the run's row to
-[its page](../runs/browser/README.md). That copy is text only and
+`benchmark/runs/browser-judge-swe/<YYYYMMDD-HHMMSS>/`, and the run's row to
+[its page](../runs/browser-judge-swe/README.md). That copy is text only and
 redacted: no screenshot, no conversation URL, and no device or account
 name. So the proof stays on the machine that ran it, and the page shows
 the scores.

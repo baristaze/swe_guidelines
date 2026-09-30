@@ -720,10 +720,10 @@ def a_browser_run(repo, name, started, sessions=None, answer="Score: 94/100\n", 
         "sessions": sessions,
     } | recorded
     results = {key: value for key, value in results.items() if value is not None}
-    repo.write(f"benchmark/runs/browser/{name}/results.json", json.dumps(results, indent=2) + "\n")
+    repo.write(f"benchmark/runs/browser-judge-swe/{name}/results.json", json.dumps(results, indent=2) + "\n")
     for session in sessions:
         repo.write(
-            f"benchmark/runs/browser/{name}/{session['response_path']}",
+            f"benchmark/runs/browser-judge-swe/{name}/{session['response_path']}",
             f"# {session['site']}\n\n- URL: [redacted]\n\n## Answer\n\n{answer}",
         )
 
@@ -735,8 +735,8 @@ def browser_row(name):
 def browser_page(repo, *names):
     """The browser page with a row per name, the index, and the schema the check holds each run to."""
     repo.write("benchmark/schema/browser-session.schema.json", SCHEMA.read_text(encoding="utf-8"))
-    page(repo, "browser", *(browser_row(name) for name in names), head=BROWSER_HEAD)
-    index(repo, "browser")
+    page(repo, "browser-judge-swe", *(browser_row(name) for name in names), head=BROWSER_HEAD)
+    index(repo, "browser-judge-swe")
 
 
 def two_browser_runs(repo):
@@ -756,11 +756,11 @@ def test_browser_runs_in_their_schema_text_only_and_redacted_pass(repo, runs, ca
 
 def test_a_browser_run_with_an_image_fails(repo, runs, capsys):
     two_browser_runs(repo)
-    repo.write(f"benchmark/runs/browser/{NEW}/chatgpt.com.jpg", "\xff\xd8\xff not text")
+    repo.write(f"benchmark/runs/browser-judge-swe/{NEW}/chatgpt.com.jpg", "\xff\xd8\xff not text")
     assert runs.main() == 1
     out = capsys.readouterr().out
     assert (
-        f"benchmark/runs/browser/{NEW}/chatgpt.com.jpg: is not the run's results.json or a session's answer; "
+        f"benchmark/runs/browser-judge-swe/{NEW}/chatgpt.com.jpg: is not the run's results.json or a session's answer; "
         "a published browser run is text only, with no screenshot"
     ) in out
     assert "1 run index mismatch(es)" in out
@@ -781,10 +781,10 @@ def test_a_browser_run_that_holds_a_conversation_s_address_fails(repo, runs, cap
     if file == "results.json":
         a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", [a_session("chatgpt.com", note=f"the first attempt, {said}, errored")])
     else:
-        repo.write(f"benchmark/runs/browser/{NEW}/{file}", f"# {file}\n\n- URL: {said}\n")
+        repo.write(f"benchmark/runs/browser-judge-swe/{NEW}/{file}", f"# {file}\n\n- URL: {said}\n")
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/browser/{NEW}/{file}:" in out
+    assert f"benchmark/runs/browser-judge-swe/{NEW}/{file}:" in out
     assert f"holds the address of a conversation ({found}...); a published run replaces it with [redacted]" in out
 
 
@@ -801,21 +801,21 @@ def test_a_browser_session_whose_url_is_not_redacted_fails(repo, runs, capsys):
 
 def test_a_browser_run_no_row_names_fails_and_so_does_a_row_with_no_run(repo, runs, capsys):
     two_browser_runs(repo)
-    page(repo, "browser", browser_row(NEW), browser_row("20260101-000000"), head=BROWSER_HEAD)
+    page(repo, "browser-judge-swe", browser_row(NEW), browser_row("20260101-000000"), head=BROWSER_HEAD)
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"benchmark/runs/browser/README.md: no row names the run folder {OLD}" in out
-    assert "browser/README.md:8: links 20260101-000000/results.json, and browser holds no such run" in out
-    page(repo, "browser", browser_row(NEW), browser_row(OLD), browser_row(OLD), head=BROWSER_HEAD)
+    assert f"benchmark/runs/browser-judge-swe/README.md: no row names the run folder {OLD}" in out
+    assert "browser-judge-swe/README.md:8: links 20260101-000000/results.json, and browser-judge-swe holds no such run" in out
+    page(repo, "browser-judge-swe", browser_row(NEW), browser_row(OLD), browser_row(OLD), head=BROWSER_HEAD)
     assert runs.main() == 1
     assert f"{OLD} is named by 2 rows (lines 8, 9); a run has one row" in capsys.readouterr().out
 
 
 def test_browser_rows_run_from_the_newest_start(repo, runs, capsys):
     two_browser_runs(repo)
-    page(repo, "browser", browser_row(OLD), browser_row(NEW), head=BROWSER_HEAD)
+    page(repo, "browser-judge-swe", browser_row(OLD), browser_row(NEW), head=BROWSER_HEAD)
     assert runs.main() == 1
-    assert f"browser/README.md:8: {NEW} started 2026-09-29T21:27:16Z, after {OLD} above it" in capsys.readouterr().out
+    assert f"browser-judge-swe/README.md:8: {NEW} started 2026-09-29T21:27:16Z, after {OLD} above it" in capsys.readouterr().out
 
 
 def test_a_browser_run_outside_its_schema_fails(repo, runs, capsys):
@@ -824,7 +824,7 @@ def test_a_browser_run_outside_its_schema_fails(repo, runs, capsys):
     a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", sessions, sizes={"model": "m"})
     assert runs.main() == 1
     out = capsys.readouterr().out
-    where = f"benchmark/runs/browser/{NEW}/results.json"
+    where = f"benchmark/runs/browser-judge-swe/{NEW}/results.json"
     assert f"{where}: sessions/0/score: 101 is greater than the maximum of 100" in out
     assert f"{where}: sessions/0: Additional properties are not allowed ('screenshot' was unexpected)" in out
     assert f"{where}: sessions/1: 'status' is a required property" in out
@@ -832,17 +832,17 @@ def test_a_browser_run_outside_its_schema_fails(repo, runs, capsys):
     # A key the schema required from the start is required of an older run too.
     a_browser_run(repo, OLD, "2026-09-20T22:46:02Z", [a_session("chatgpt.com", model_label=None)], repository_head=None)
     assert runs.main() == 1
-    assert f"browser/{OLD}/results.json: sessions/0: 'model_label' is a required property" in capsys.readouterr().out
+    assert f"browser-judge-swe/{OLD}/results.json: sessions/0: 'model_label' is a required property" in capsys.readouterr().out
 
 
 def test_a_browser_session_whose_answer_is_not_in_the_run_folder_fails(repo, runs, capsys):
     two_browser_runs(repo)
-    (repo.root / "benchmark" / "runs" / "browser" / NEW / "claude.ai.md").unlink()
+    (repo.root / "benchmark" / "runs" / "browser-judge-swe" / NEW / "claude.ai.md").unlink()
     a_browser_run(repo, OLD, "2026-09-20T22:46:02Z", [a_session("chatgpt.com", response_path="../chatgpt.com.md")])
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"browser/{NEW}: the claude.ai session's answer claude.ai.md is not in the run folder" in out
-    assert f"browser/{OLD}/results.json: the chatgpt.com session's response_path '../chatgpt.com.md' is not a file" in out
+    assert f"browser-judge-swe/{NEW}: the claude.ai session's answer claude.ai.md is not in the run folder" in out
+    assert f"{OLD}/results.json: the chatgpt.com session's response_path '../chatgpt.com.md' is not a file" in out
 
 
 def test_a_browser_run_that_names_the_reference_implementation_fails(repo, runs, capsys):
@@ -851,15 +851,15 @@ def test_a_browser_run_that_names_the_reference_implementation_fails(repo, runs,
     a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", answer=f"Score: 94/100\n\nCloned someone/{name.title()} too.\n")
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"browser/{NEW}/chatgpt.com.md:9: names the reference implementation; a published run replaces the name" in out
-    assert f"browser/{NEW}/claude.ai.md:9: names the reference implementation" in out
+    assert f"{NEW}/chatgpt.com.md:9: names the reference implementation; a published run replaces the name" in out
+    assert f"browser-judge-swe/{NEW}/claude.ai.md:9: names the reference implementation" in out
 
 
 def test_a_key_in_a_browser_run_fails(repo, runs, capsys):
     two_browser_runs(repo)
     a_browser_run(repo, NEW, "2026-09-29T21:27:16Z", answer=f"Score: 94/100\n\nexport KEY={ANTHROPIC}\n")
     assert runs.main() == 1
-    assert f"browser/{NEW}/chatgpt.com.md holds a string shaped like a key" in capsys.readouterr().out
+    assert f"browser-judge-swe/{NEW}/chatgpt.com.md holds a string shaped like a key" in capsys.readouterr().out
 
 
 def test_a_browser_run_without_jsonschema_fails(repo, runs, capsys, monkeypatch):
@@ -867,4 +867,4 @@ def test_a_browser_run_without_jsonschema_fails(repo, runs, capsys, monkeypatch)
     monkeypatch.setitem(sys.modules, "jsonschema", None)
     assert runs.main() == 1
     out = capsys.readouterr().out
-    assert f"browser/{NEW}: jsonschema is not installed, so no one can say the run is in its schema" in out
+    assert f"browser-judge-swe/{NEW}: jsonschema is not installed, so no one can say the run is in its schema" in out

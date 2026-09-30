@@ -9,7 +9,7 @@ directory.
 
 The working directory is a checkout when `architecture.md`,
 `.claude-plugin/plugin.json`, `benchmark/runs/README.md`,
-`benchmark/runs/browser/README.md`, and
+`benchmark/runs/browser-judge-swe/README.md`, and
 `benchmark/schema/browser-session.schema.json` are all files there,
 checked with `python3`. The working directory decides, never the
 folder this skill was read from. When it is not a checkout, write
@@ -17,12 +17,12 @@ nothing, and the output says the run was not checked in and why.
 
 Write nothing either, and say so, when no session of the run has a
 score: there is nothing to measure. When
-`benchmark/runs/browser/<run_id>/` is already there, stop and say so:
+`benchmark/runs/browser-judge-swe/<run_id>/` is already there, stop and say so:
 a checked-in run is never written over.
 
 ## The folder
 
-1. With `python3`, make `benchmark/runs/browser/<run_id>/` and copy
+1. With `python3`, make `benchmark/runs/browser-judge-swe/<run_id>/` and copy
    into it the run folder's `results.json` and each session's
    `response_path`, and nothing else: the `.jpg` files stay where they
    are.
@@ -51,7 +51,7 @@ a checked-in run is never written over.
 
 ## The row
 
-Insert the run's row into the table of `benchmark/runs/browser/README.md`
+Insert the run's row into the table of `benchmark/runs/browser-judge-swe/README.md`
 with `Edit`, directly under its delimiter row, so the newest run is on
 top. The cells, in the header's order, from the copied `results.json`:
 
