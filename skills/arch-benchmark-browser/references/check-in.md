@@ -83,13 +83,13 @@ top. The cells, in the header's order, from the copied `results.json`:
   of each run a row names, in its `results.json` in the checkout, with
   `python3`. When one has all three the same, the row takes that row's
   letter; otherwise the next letter no row uses, `A` when there is none.
-- Note: for each session that is not `ok`, its site, a colon, and the
-  remark of its `note` that says why, cut at its first `:` or `;`, such
-  as `grok.com: Expert needs a SuperGrok plan`, joined by a semicolon
-  and a space. When the letter is new and other rows exist, the note
-  first says which of the sizes, the prompt, and the contract differ
-  from every other run's.
-  `—` when there is nothing to say.
+- Note: for each session that is not `ok`, its site, a colon, and why:
+  the remark of its `note` that says so, in its own words, shortened to
+  one clause, such as `grok.com: Expert needs a SuperGrok plan`; its
+  status when it has no `note`. These are joined by a semicolon and a
+  space. When the letter is new and other rows exist, the note first
+  says which of the sizes, the prompt, and the contract differ from
+  every other run's. `—` when there is nothing to say.
 
 ## The check
 
