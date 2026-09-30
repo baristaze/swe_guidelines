@@ -103,6 +103,9 @@ cites the changed text changes with it.
   named as agents.
 - "X, never Y" names the near miss a rule rules out. It is part of the
   rule, not history.
+- The scaffold's documents say what holds, since a copy keeps them.
+  `make leaks` refuses changelog phrasing in its Markdown, and in its
+  ADRs an Alternatives section and a status that is more than one date.
 - Every skill follows the [Agent Skills
   standard](https://agentskills.io/specification), so it runs in any
   agent that reads it. Its frontmatter holds the standard's fields and
