@@ -1,7 +1,7 @@
 ---
 name: ops-simulate-traffic
 description: "Drive realistic traffic at one environment of the platform through its edge with the platform's own traffic generator, at one of four profiles (light, regular, heavy, stress) for a duration, and report the table: requests by route and status, p50, p95, p99, and the error ratio. Use to warm an environment, to reproduce a load-shaped problem, or as the thirty-second wiring check. A run against a cloud environment is the platform developer's call."
-allowed-tools: Read, Bash(aws:*), Bash(uv run:*), Bash(make traffic PROFILE=light DURATION=30)
+allowed-tools: Read, Bash(aws:*), Bash(uv run acme-ops:*), Bash(make traffic PROFILE=light DURATION=30)
 ---
 
 # ops-simulate-traffic

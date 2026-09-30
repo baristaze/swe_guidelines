@@ -190,9 +190,15 @@ class Idempotency:
 
     def _lost(self, action: str) -> None:
         """The attempt ran past the pending lease and a retry took the marker
-        over; its outcome is the retry's to record, so the refusal ends here."""
+        over; its outcome is the retry's to record, so the refusal ends here.
+        The key is the caller's own text, so the line names it by its digest:
+        a log line holds nothing a tenant wrote, and whoever reads it under
+        the request's id reads the platform's words alone."""
+        assert self._key is not None
         log.warning(
-            "idempotency key %r: %s refused, a retry holds the marker now", self._key, action
+            "idempotency key %s: %s refused, a retry holds the marker now",
+            key_digest(self._key),
+            action,
         )
         OUTCOMES.labels(subsystem="idempotency", outcome="attempt_lost").inc()
 
@@ -210,6 +216,13 @@ class Idempotency:
         except ValueError:
             return body
         return self._error_body(stored.error.code, stored.error.message)
+
+
+def key_digest(key: str) -> str:
+    """The key as a log line names it: the first twelve hex digits of its
+    SHA-256, which tell two keys apart and hold no character the caller
+    chose."""
+    return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
 def stored_body(view: BaseModel) -> str:

@@ -7,7 +7,9 @@ shipped rule is one new module and nothing else to wire.
 A project's own rules live in its tree, in the directories `local`
 names in its config. `load_local` runs each file there, and the same
 decorator registers its rules into a separate list marked `local`, so
-one project's rules never leak into another run.
+one project's rules never leak into another run. It is the one place
+arch-check runs a file of the project it checks, and `--no-local` never
+reaches it.
 """
 
 from __future__ import annotations
@@ -146,6 +148,11 @@ def rules() -> list[Rule]:
     """Every shipped rule, in catalog order."""
     load()
     return sorted(RULES.values(), key=order)
+
+
+def open_to_local(shipped: Sequence[Rule]) -> set[str]:
+    """Every lens a local rule may take: one no shipped rule decides, or one a shipped rule decides in part."""
+    return set(LENSES) - {r.id for r in shipped if r.coverage == "full"}
 
 
 def load_local(root: Path, dirs: Sequence[str]) -> list[Rule]:

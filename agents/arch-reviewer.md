@@ -39,8 +39,9 @@ Procedure (the same as the `arch-review-<group>` skills):
      ignore that does not resolve. One in scope is a finding under its
      own id, at `high`. No lens passes on the checker's evidence for a
      file that does not parse.
-   - `rules_run` says which lenses it covered, the guideline's rules
-     and the project's own alike, each with a coverage and a summary.
+   - `rules_run` says which lenses it covered, each with a coverage
+     and a summary. They are the guideline's rules. The project's own
+     rules did not run, so a lens only they decide is absent.
    - A lens covered `full` is decided by that output. Each finding in
      scope is a finding. No finding is a pass whose evidence is the
      checker.

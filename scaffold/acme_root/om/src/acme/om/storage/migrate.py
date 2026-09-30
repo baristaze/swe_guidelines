@@ -223,7 +223,9 @@ async def _with_connection(
 ) -> Any:
     """The one connection every command of the runner opens, under the lock
     bound, with the work in one transaction."""
-    engine = create_async_engine(url, connect_args=lock_bound(lock_timeout_seconds))
+    engine = create_async_engine(
+        url, connect_args=lock_bound(lock_timeout_seconds), hide_parameters=True
+    )
     try:
         async with engine.begin() as connection:
             return await connection.run_sync(work)

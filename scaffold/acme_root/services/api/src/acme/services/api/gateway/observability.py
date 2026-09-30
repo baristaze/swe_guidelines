@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from opentelemetry import trace
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 from starlette.datastructures import Headers, MutableHeaders
 
 from acme.infra.observability import HTTP_LATENCY, HTTP_REQUESTS, request_id_var
@@ -44,15 +44,18 @@ def request_id_of(scope: Scope) -> UUID:
     return scope["state"]["request_id"]
 
 
-class QueryStringRedactor(logging.Filter):
-    """uvicorn's own lines name a path with its query string, the socket's
-    single-use ticket among them; the filter keeps the path and drops the
-    rest. Installed on the logger uvicorn writes them to."""
+class TargetRedactor(logging.Filter):
+    """uvicorn's own lines name a request's target: its path, which is the
+    caller's own text, and its query string, the socket's single-use ticket
+    among them. They are written under the request's id, which a caller may
+    also choose, so the filter writes `-` in the target's place. The
+    middleware's line and the span name the route. Installed on the logger
+    uvicorn writes them to."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple):
             record.args = tuple(
-                arg.partition("?")[0] if isinstance(arg, str) else arg for arg in record.args
+                "-" if isinstance(arg, str) and arg.startswith("/") else arg for arg in record.args
             )
         return True
 
@@ -67,6 +70,11 @@ and a series per invented verb on it is a cardinality leak anyone can open."""
 
 def method_label(method: str) -> str:
     return method if method in HTTP_METHODS else "OTHER"
+
+
+UNMATCHED = "unmatched"
+"""What a log line, a span, and a series name a request by when no route took
+it: the path is the caller's own text, and none of the three carries it."""
 
 
 def route_template_of(scope: Scope) -> str | None:
@@ -105,10 +113,16 @@ class RequestIdMiddleware:
         # The server span is opened here, around everything downstream, so the
         # context the gateway builds reads a real trace id. The route template
         # is only known once routing has run, so the name is finished at the end.
+        # The span holds nothing the caller wrote: no path, no query string, no
+        # header, as a name or as an attribute, and no text of an exception
+        # that leaves it, which may quote what the caller sent. Whoever reads
+        # a trace under a request's id reads the platform's words alone.
         with tracer.start_as_current_span(
-            f"{method} {scope['path']}",
+            method,
             kind=SpanKind.SERVER,
-            attributes={REQUEST_ID_ATTRIBUTE: str(request_id), "url.path": scope["path"]},
+            attributes={REQUEST_ID_ATTRIBUTE: str(request_id)},
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             try:
                 await self.app(scope, receive, send_with_request_id)
@@ -117,14 +131,19 @@ class RequestIdMiddleware:
                 # the id has left the log context and the span has closed; a
                 # response that has not started is answered here instead,
                 # with the header, the log line, and the status all carrying
-                # the id. One that has started, or a socket, is re-raised.
+                # the id. One that has started, or a socket, is re-raised, and
+                # its span is marked failed; the log line has the traceback.
                 if scope["type"] != "http" or status["code"] != 0:
+                    span.set_status(StatusCode.ERROR)
                     raise
-                log.exception("unhandled error on %s %s", method, scope["path"])
+                # The template, never the path: a path is the caller's text.
+                log.exception(
+                    "unhandled error on %s %s", method, route_template_of(scope) or UNMATCHED
+                )
                 response = error_response(request_id, 500, *INTERNAL_ERROR)
                 await response(scope, receive, send_with_request_id)
             finally:
-                template = route_template_of(scope) or "unmatched"
+                template = route_template_of(scope) or UNMATCHED
                 span.update_name(f"{method} {template}")
                 span.set_attribute("http.route", template)
                 if scope["type"] == "http":

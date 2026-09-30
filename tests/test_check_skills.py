@@ -308,6 +308,55 @@ def test_a_bash_rule_in_neither_allowed_form_fails(repo, skills, capsys, rule):
     assert f"{rule!r} is neither the Bash(cmd:*) prefix form nor an exact Bash(make <target>)" in capsys.readouterr().out
 
 
+REVIEW = "skills/arch-review-om/SKILL.md"
+
+
+def test_a_review_skill_runs_the_checker_with_no_local_and_pre_approves_git_alone(repo, skills, capsys):
+    repo.edit(REVIEW, "Bash(git diff:*)", "Bash(git diff:*), Bash(git show:*)")
+    run = "python3 <arch_check.py> --no-local --root <root> --group om --format json"
+    repo.edit(REVIEW, "commit.\n", f"commit.\n\nRun `{run}`.\n")
+    assert skills.main() == 0
+    # `python3` alone names the interpreter, and a fenced block is a template: neither is a run
+    repo.edit(REVIEW, "commit.\n", "commit, on `python3` 3.11.\n\n```text\npython3 x.py\n```\n")
+    assert skills.main() == 0
+    assert "skills ok" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("path", [REVIEW, "skills/arch-review-full/SKILL.md"])
+@pytest.mark.parametrize("entry", ["Bash(python3:*)", "Bash(python3 -m pytest:*)", "Bash(uv run:*)", "Bash(git:*)"])
+def test_a_review_skill_that_pre_approves_more_than_a_git_command_fails(repo, skills, capsys, path, entry):
+    repo.edit(path, "allowed-tools: Read", f"allowed-tools: {entry}, Read")
+    assert skills.main() == 1
+    assert f"{path}: {entry!r} lets a review run more than a git command with nobody asked" in capsys.readouterr().out
+
+
+def test_no_rule_names_the_checker_by_the_end_of_its_path(repo, skills, capsys):
+    """The host reads a `*` as any text, so such a rule matches `python3 -c "..." x/checkers/arch_check.py` too."""
+    entry = "Bash(python3 */checkers/arch_check.py --no-local *)"
+    repo.edit(REVIEW, "Bash(git diff:*)", f"Bash(git diff:*), {entry}")
+    assert skills.main() == 1
+    out = capsys.readouterr().out
+    assert f"{REVIEW}: use the Bash(cmd:*) prefix form, not {entry!r}" in out
+    assert f"{REVIEW}: {entry!r} lets a review run more than a git command" in out
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python3 <arch_check.py> --root <root> --group om --format json",
+        "python3 <arch_check.py> --root <root> --format json --no-local",
+        "python3 <arch_check.py> --no-locals --root <root>",
+        "python3 <arch_check.py> --no-local --group om --format json",
+        "python3 <arch_check.py> --no-local --group om --root <root>",
+        "python3 tools/rules.py",
+    ],
+)
+def test_a_review_skill_that_runs_python_without_no_local_and_the_root_fails(repo, skills, capsys, command):
+    repo.edit(REVIEW, "commit.\n", f"commit.\n\nRun `{command}`.\n")
+    assert skills.main() == 1
+    assert f"{REVIEW}: `{command}` is not the checker with --no-local and its root" in capsys.readouterr().out
+
+
 def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):
     # `make che` is not run by `make check`, and `make test` is not run by `make test-e2e`
     repo.edit("skills/arch-scaffold-thing/SKILL.md", "Bash(make check)", "Bash(make check), Bash(make che), Bash(make test)")

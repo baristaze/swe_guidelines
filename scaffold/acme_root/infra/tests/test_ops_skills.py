@@ -148,6 +148,47 @@ def test_the_refusal_of_anything_but_the_administrator_stays_inline(name: str) -
     assert "Refuse any profile but the environment's administrator" in _prose(name)
 
 
+@pytest.mark.parametrize("name", TOKEN_HOLDERS)
+def test_a_skill_that_holds_a_token_pre_approves_the_ops_command_and_no_other(name: str) -> None:
+    """`uv run` takes any program, `python -c` among them: pre-approved, it
+    is code on the operator's machine beside the env file's tokens, with
+    nobody asked. The skill runs `acme-ops` and names that."""
+    tools = [tool.strip() for tool in _allowed_tools(name).split(",")]
+    assert "Bash(uv run acme-ops:*)" in tools
+    assert not [
+        tool for tool in tools if tool.startswith("Bash(uv") and tool != "Bash(uv run acme-ops:*)"
+    ]
+    runs = set(re.findall(r"\buv run ([\w-]+)", _prose(name)))
+    assert runs == {"acme-ops"}, f"{name} runs uv with {sorted(runs)}"
+
+
+# What a tenant writes and the operator plane answers with: an org's name and
+# slug, a member's display name and address. A tenant chooses those words, and
+# the session that reads them holds an operator's token.
+TENANT_TEXT = {"name", "slug", "display_name", "email"}
+TENANT_READ = re.compile(
+    r'^ *curl [^\n]*"\$ACME_API_URL/v1/admin/orgs/<org_id>(?:/members(?:\?cursor=<next_cursor>)?)?"'
+    r"(?P<piped> \\\n +\| jq '(?P<kept>[^'\n]*)'$)?",
+    re.MULTILINE,
+)
+
+
+def test_the_root_cause_reads_of_a_tenant_keep_no_text_the_tenant_wrote() -> None:
+    """The org, its members, and a next page of them are read through `jq`,
+    which keeps the ids, the kind, and the timestamps: no read is printed
+    whole."""
+    reads = list(TENANT_READ.finditer(_skill("ops-root-cause")))
+    assert len(reads) == 3, (
+        "ops-root-cause no longer reads the org and its members as this test sees them"
+    )
+    for read in reads:
+        assert read["piped"], f"a read of the tenant is printed whole: {read[0]}"
+        assert not set(re.findall(r"[a-z_]+", read["kept"])) & TENANT_TEXT, read["kept"]
+    assert "Bash(jq:*)" in _allowed_tools("ops-root-cause")
+    assert "never run either read without its `jq`" in _prose("ops-root-cause")
+    assert "**Tenant.** <kind> org" in _skill("ops-root-cause")
+
+
 def test_the_audits_are_the_skills_named_for_one() -> None:
     assert _own("audit-*") == AUDITS
 
@@ -230,6 +271,12 @@ COUNT_BOUNDS = {
         'the pass ends with "not found" for its id',
         "never more than 5 request ids, never a second pass over one, "
         "never more than 10 polls of a query",
+        "When `next_cursor` is not null, read the next page with it as `cursor`",
+        "Read at most 20 pages of members, 1,000 of them.",
+        "never more than 20 pages of members",
+        "An answer that is empty, or that `jq` cannot parse, is no answer.",
+        "Either way the run ends there, as on a refusal",
+        "The read is not made a second time.",
     ],
     "ops-investigate": [
         "Poll `get-query-results` at most 10 times for one query, each poll after `sleep 5`",

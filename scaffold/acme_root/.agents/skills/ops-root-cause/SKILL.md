@@ -1,7 +1,7 @@
 ---
 name: ops-root-cause
 description: "Find the root cause of one tenant's problem in one environment: read that tenant's rows through the operator plane's read routes with a read-only operator token, correlate them with the logs, the trace, and the error event by request id, at most five ids and one pass each, and report the cause and the fix, or that none was found. Takes the org id and optionally a user id. Never a database login, never a write, never another tenant's data."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run:*), Bash(sleep:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(jq:*), Bash(docker compose:*), Bash(uv run acme-ops:*), Bash(sleep:*)
 ---
 
 # ops-root-cause
@@ -81,13 +81,47 @@ do not use up the first pass's one read of each signal.
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
-   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>"
-   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/members"
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>" \
+     | jq '{id, kind, created_at, deleted_at, error: .error.code}'
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/members" \
+     | jq '{members: [.items[]? | {id, created_at}], next_cursor, error: .error.code}'
    ```
 
-   With `--user`, keep that member alone. A route that answers 403 or
-   404 ends the run: the token is not allowed, or the tenant does
-   not exist, and neither is guessed around.
+   Each read keeps the ids, the kind, and the timestamps, and drops
+   what the tenant wrote: the org's `name` and `slug`, a member's
+   `display_name` and `email`. Those are a tenant's own words, and
+   this session holds an operator's token, so they never reach it:
+   never run either read without its `jq`, and never print a whole
+   answer. The report names the tenant by its id.
+
+   A page holds at most 50 members. When `next_cursor` is not null,
+   read the next page with it as `cursor`, through the same `jq`:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/members?cursor=<next_cursor>" \
+     | jq '{members: [.items[]? | {id, created_at}], next_cursor, error: .error.code}'
+   ```
+
+   Without `--user`, read on until `next_cursor` is null: the member
+   count is the sum of the pages. With `--user`, stop at the page that
+   holds that member, and keep that member alone. Read at most 20 pages
+   of members, 1,000 of them. After the twentieth the read stops: the
+   report says "more than 1,000 members", and with `--user`, that the
+   member was not among the first 1,000.
+
+   `error` is null on an answer and the refusal's code otherwise. A
+   route that answers 403 or 404 ends the run: the token is not
+   allowed, or the tenant does not exist, and neither is guessed
+   around.
+
+   An answer that is empty, or that `jq` cannot parse, is no answer.
+   `curl -s` prints nothing when the API is out of reach, and `jq`
+   then prints nothing and exits 0. A parse error means the answer was
+   not JSON, such as a proxy's error page. Either way the run ends
+   there, as on a refusal: the report says the operator plane was not
+   read, and which of the two it was. The read is not made a second
+   time.
 3. Read the tenant's activity of the window, the operator's events
    feed:
 
@@ -96,7 +130,8 @@ do not use up the first pass's one read of each signal.
    curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200"
    ```
 
-   The operator's feed carries `request_id` and `app` beside the
+   The feed answers a bare list of events, never an object that wraps
+   one. The operator's feed carries `request_id` and `app` beside the
    actor, which the tenant's own feed leaves out, so it is the map from
    what the tenant did to the requests that did it. The rows themselves
    are the org and its members of step 2. Without `--request-id`, pick
@@ -230,13 +265,15 @@ do not use up the first pass's one read of each signal.
   path the cloud runs.
 - No secret value read or printed: the env file is sourced and never
   read, and no bearer is written to the report.
+- No text a tenant wrote read: an org's name or slug, a member's
+  display name or address. The reads of step 2 drop them.
 - No data outside `--org`: no list of orgs, no cross-tenant query, no
   second org id "for comparison".
 - No `terraform apply`, no console clicks.
 - No unbounded search: never more than 5 request ids, never a second
   pass over one, never more than 10 polls of a query, never a page of
   the feed read from before the window's first `seq` (the one-event
-  probes that find it aside).
+  probes that find it aside), never more than 20 pages of members.
 
 ## Output
 
@@ -244,7 +281,7 @@ do not use up the first pass's one read of each signal.
 # Root cause: <env>, org <org_id>[, user <user_id>]
 
 **Credential.** <profile and Arn, or local>; operator <email domain only>, READ
-**Tenant.** <name>, <members> members, <n> events in the last <since>, from seq <seq> (<p> probes)
+**Tenant.** <kind> org, <members> members, <n> events in the last <since>, from seq <seq> (<p> probes)
 **Requests.** <n> given or found, <m> followed (at most 5)
 
 - <request id>, <route>, <status>, <when>: <cause found | not found>

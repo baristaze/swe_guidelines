@@ -57,6 +57,22 @@ Rules:
   operator (`;`, `&`, `|`, a redirect, a substitution, a quote) that would
   chain a second command; a make entry names a target, so `Bash(make:*)`
   and `Bash(make -C dir:*)` are refused;
+- a review skill (`arch-review-*`) runs no file of the repository it
+  reviews. Every command of its body that starts with `python3` is the
+  checker with `--no-local` first, since without it the checker runs the
+  project's own rules, which are files of that repository, and then
+  `--root <root>`: the run names the repository it reads, so it needs no
+  `cd` before it, which a rule that allows the command by its path would
+  not match, and it never runs from a folder where the checker finds no
+  project and exits 2. Every Bash
+  entry of its allowed-tools is a git command: none names an interpreter
+  or a runner, and `Bash(python3:*)` least of all, which lets any Python
+  command run with nobody asked. No entry can name the checker alone.
+  The plugin sits at a path no skill knows, so the prefix form cannot
+  say it, and a rule with a `*` before the path,
+  `Bash(python3 */checkers/arch_check.py --no-local *)`, also matches
+  `python3 -c "..." x/checkers/arch_check.py --no-local`. So the host
+  asks the person before the checker runs;
 - every skill, the scaffold's included, has a non-empty allowed-tools:
   a skill without one runs with every tool the session has;
 - allowed-tools names only what the body runs; the checker holds the make
@@ -170,6 +186,9 @@ BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 # substitution, a quote) may chain a second one behind the first.
 PREFIX_RULE = re.compile(r"^[^*:;&|<>`$()'\"\\\n]+:\*$")  # `cmd:*`: a command, then the one `*`
 EXACT_MAKE = re.compile(r"^make [^*:;&|<>`$()'\"\\\n]+$")  # `make <target>`, arguments allowed, no wildcard
+CHECKER_RUN = re.compile(r"^python3 <arch_check\.py> --no-local --root <root>(?= |$)")
+"""How a review skill's body runs the checker: the script, `--no-local`, so no rule of the project is loaded, then
+the root it reads, so the run is one command from any folder."""
 MAKE_TARGET = re.compile(r"^make [^\s-]")  # a make entry names a target first, not an option
 QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
 PARENS = re.compile(r"\([^()]*\)")
@@ -389,6 +408,26 @@ def runs_command(cmd: str, spans: list[str]) -> bool:
     """Whether a span runs `cmd` as whole words: `make test` is not `make test-e2e`."""
     word = re.compile(rf"(?<![\w-]){re.escape(cmd)}(?![\w-])")
     return any(word.search(span) for span in spans)
+
+
+def check_review_runs(tools: str, spans: list[str], rel: str, errors: list[str]) -> None:
+    """A review skill runs no file of the repository it reviews: its one `python3` command is the checker with
+    `--no-local`, and its allowed-tools pre-approves git commands and no other."""
+    for tool in (t.strip() for t in tools.split(",")):
+        cmd = bash_command(tool)
+        if cmd is not None and not cmd.startswith("git "):
+            errors.append(
+                f"{rel}: {tool!r} lets a review run more than a git command with nobody asked; "
+                "a review runs no file of the repository it reviews, so it pre-approves no interpreter and no runner"
+            )
+    for span in spans:
+        # `python3` alone names the interpreter; with an argument it is a command
+        if span.startswith("python3 ") and not CHECKER_RUN.match(span):
+            errors.append(
+                f"{rel}: `{span}` is not the checker with --no-local and its root; without the first the checker "
+                "runs the local rules of the repository under review, and without the second it reads the folder "
+                "the shell is in. Run python3 <arch_check.py> --no-local --root <root>"
+            )
 
 
 def lens_groups() -> set[str]:
@@ -656,7 +695,12 @@ PERSONS_NEXT = "Next is the person's to run, never the session's"
 POLLS = "Poll `get-query-results` at most 10 times"
 LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
     "ops-watch": ("at most 30 batches", "at least 30 seconds", "at most 20 tool calls", HOPS),
-    "ops-root-cause": ("at most 5 request ids, one pass each", "the window's first `seq`", POLLS),
+    "ops-root-cause": (
+        "at most 5 request ids, one pass each",
+        "the window's first `seq`",
+        POLLS,
+        "at most 20 pages of members",
+    ),
     "ops-investigate": (POLLS, HOPS),
     "stress-test-run": (HOPS,),
     "ops-cloud-deployment-create": (PERSONS_NEXT,),
@@ -781,6 +825,8 @@ def main(argv: Sequence[str] = ()) -> int:
             found = [t for level, t in headings(body_of(text)) if level == 2 and t in SCAFFOLD_SECTIONS]
             if found != list(SCAFFOLD_SECTIONS):
                 errors.append(f"{rel}: scaffold sections are {found}, expected {list(SCAFFOLD_SECTIONS)} in that order")
+        if name.startswith("arch-review-"):
+            check_review_runs(fm.get("allowed-tools", ""), code_spans(body_of(text)), str(rel), errors)
         if name.startswith("arch-review-") and name != "arch-review-full":
             group = name.removeprefix("arch-review-")
             if group not in groups:

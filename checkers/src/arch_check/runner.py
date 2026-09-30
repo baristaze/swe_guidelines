@@ -28,7 +28,7 @@ import sys
 import threading
 import tokenize
 import traceback
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
 
 from arch_check import __version__
@@ -158,8 +158,15 @@ def budget(seconds: float) -> Iterator[None]:
         signal.signal(signal.SIGALRM, previous)
 
 
-def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequence[str] = ()) -> Result:
-    """Run `rules`; `known` is every registered id; `paths` limits what is reported, never what is read."""
+def run(
+    project: Project, rules: Sequence[Rule], known: set[str], paths: Sequence[str] = (), left_out: Collection[str] = ()
+) -> Result:
+    """Run `rules`; `known` is every id an exception may name; `paths` limits what is reported, never what is read.
+
+    `left_out` is every id a local rule that was not loaded may report
+    under. Its findings are missing, so an ignore or an exception for
+    one is never called stale.
+    """
     raw: list[Finding] = []
     errors: list[Finding] = []
     failed: set[str] = set()
@@ -190,7 +197,7 @@ def run(project: Project, rules: Sequence[Rule], known: set[str], paths: Sequenc
     for rel, (line, message) in sorted(project.parse_errors.items()):
         raw.append(framework(PARSE, rel, line, 1, f"does not parse: {message}"))
 
-    ran = {r.id for r in rules} - failed
+    ran = {r.id for r in rules} - failed - set(left_out)
     kept: list[Finding] = []
     meta: list[Finding] = []
     applied: list[Applied] = []

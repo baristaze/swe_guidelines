@@ -6,8 +6,10 @@ call. A parser decides those in a second, offline, the same way every
 time. So the checker takes the mechanical lenses, and the review skills
 keep the judgment calls.
 
-It reads the source with `ast` and never imports it. It needs Python
-3.11 or later and nothing else, so it runs in any CI.
+It reads the project's source with `ast` and never imports it. The one
+code of the project it runs is the project's own rules, the files under
+`local`, and `--no-local` leaves them out. It needs Python 3.11 or later
+and nothing else, so it runs in any CI.
 
 ## Running it
 
@@ -35,6 +37,7 @@ python3 checkers/arch_check.py --root path/to/project
 | `--rule CON-10,CON-12` | Only these rules. |
 | `--format text\|json` | `path:line:col: RULE message` lines, or one JSON document. |
 | `--list` | Print every rule: id, group, coverage, severity, origin, summary. |
+| `--no-local` | Leave the project's own rules out, so no file of the project runs. For a tree someone else wrote. |
 
 ## Exit status
 
@@ -181,3 +184,21 @@ rule decides whole. The listing marks it `local`.
 Write one when a check needs the project's own logic, not only its
 names; names are options. A rule two projects write the same way
 belongs in this package.
+
+A local rule is code, and the checker runs it. It imports every file
+under `local` before it does anything else, so `--list` and a run that
+exits 2 run them too. In the project's own gate that is right: the tree
+is the project's. On a tree someone else wrote, such as a branch checked
+out for review, pass `--no-local`. No file of the tree runs then, and the
+listing and `rules_run` hold the shipped rules alone. The review skills
+pass it, and judge the lenses a local rule decides themselves.
+
+<!-- agents-only
+With `--no-local` in a project that names `local`, a `disable`, an
+`exception`, an `options` table, or an inline ignore may name any lens a
+local rule may take: one no shipped rule decides, or one a shipped rule
+decides in part. It is accepted unread. An option key the shipped rule
+does not read is accepted under such a lens, and an exception or an
+ignore for one is never reported as matching nothing, since the findings
+it may excuse are missing. `--rule` still takes only a rule that runs.
+-->

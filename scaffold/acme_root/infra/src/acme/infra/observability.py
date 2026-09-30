@@ -181,6 +181,25 @@ ERROR_REPORTING_PRIVACY: dict[str, Any] = {
 """The privacy half of the tracker's settings, held apart so a test reads it."""
 
 
+def outgoing_event(event: Any, hint: Any) -> Any:
+    """The last word on an event before it leaves. It takes the request id as
+    a tag. Of the request it keeps the method alone: the SDK's web
+    integration fills `request` with the URL, the query string, and the
+    headers, each the caller's own text, and the tracker shows an event to
+    whoever looks into the request. The route is the event's transaction; a
+    request no route took is named by its URL there, so it is `unmatched`."""
+    request_id = request_id_var.get()
+    if request_id:
+        event.setdefault("tags", {})["request_id"] = request_id
+    request = event.get("request")
+    if isinstance(request, dict):
+        event["request"] = {key: request[key] for key in ("method",) if key in request}
+    info = event.get("transaction_info")
+    if isinstance(info, dict) and info.get("source") == "url":
+        event["transaction"] = "unmatched"
+    return event
+
+
 def configure_error_reporting(
     dsn: str | None, environment: str, service_name: str, release: str | None = None
 ) -> None:
@@ -190,19 +209,13 @@ def configure_error_reporting(
     if not dsn:
         return
 
-    def tag_request_id(event: Any, hint: Any) -> Any:
-        request_id = request_id_var.get()
-        if request_id:
-            event.setdefault("tags", {})["request_id"] = request_id
-        return event
-
     sentry_sdk.init(
         dsn=dsn,
         environment=environment,
         release=f"{service_name}@{release}" if release else None,
         server_name=service_name,
         traces_sample_rate=0.0,
-        before_send=tag_request_id,
+        before_send=outgoing_event,
         **ERROR_REPORTING_PRIVACY,
     )
     sentry_sdk.set_tag("service", service_name)

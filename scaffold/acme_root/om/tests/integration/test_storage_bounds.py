@@ -10,6 +10,7 @@ set small bounds of their own, so each answers in a fraction of a second; the
 defaults are not changed by anything here.
 """
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -148,3 +149,22 @@ async def test_a_checkout_past_its_bound_leaves_the_funnel_unavailable(
         refused.value.message
     )
     assert isinstance(refused.value.__cause__, PoolTimeoutError)
+
+
+async def test_a_failing_statement_is_logged_without_the_values_bound_to_it(
+    pg_sessions: LoginSessions, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A bound value is a tenant's word or a person's address. The engine
+    hides its parameters, so the exception of a statement that fails names
+    the statement and the database's own message, and a traceback in a log
+    line carries no value."""
+    words = "WIPZ_DOWN_ALL_RULZ"
+    statement = text("SELECT CAST(:name AS text), 1 / CAST(:zero AS integer)")
+    with pytest.raises(DBAPIError) as failed:
+        async with pg_sessions[DatabaseRole.CORE]() as session:
+            await session.execute(statement, {"name": words, "zero": 0})
+    with caplog.at_level(logging.ERROR):
+        logging.getLogger(__name__).error("a statement failed", exc_info=failed.value)
+    assert "division by zero" in caplog.text
+    assert "hide_parameters=True" in caplog.text
+    assert words not in caplog.text

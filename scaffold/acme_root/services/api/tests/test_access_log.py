@@ -1,6 +1,7 @@
 """One line per request, from the middleware, naming the route template and
-never the query string: the socket ticket travels as a query parameter, so
-uvicorn's own access log and its socket-accepted line must not print it."""
+never the path or the query string: a path is the caller's own text, and the
+socket ticket travels as a query parameter, so uvicorn's own access log and
+its socket-accepted line must print neither."""
 
 import logging
 
@@ -8,7 +9,7 @@ import httpx
 import pytest
 
 from acme.infra.observability import RequestIdFilter
-from acme.services.api.gateway.observability import QueryStringRedactor
+from acme.services.api.gateway.observability import TargetRedactor
 from acme.services.api.main import configure_server_logging, server_options
 from acme.services.api.settings import ApiSettings
 
@@ -59,7 +60,7 @@ async def test_the_access_line_carries_the_request_id(
     assert lines[0].request_id == response.headers["x-request-id"]  # type: ignore[attr-defined]
 
 
-def test_uvicorn_keeps_no_access_log_and_prints_no_query_string() -> None:
+def test_uvicorn_keeps_no_access_log_and_prints_no_path_and_no_query_string() -> None:
     assert (
         server_options(ApiSettings.model_validate({"_env_file": None, "environment": "test"}))[
             "access_log"
@@ -68,15 +69,15 @@ def test_uvicorn_keeps_no_access_log_and_prints_no_query_string() -> None:
     )
     configure_server_logging()
     uvicorn_error = logging.getLogger("uvicorn.error")
-    assert any(isinstance(f, QueryStringRedactor) for f in uvicorn_error.filters)
+    assert any(isinstance(f, TargetRedactor) for f in uvicorn_error.filters)
     record = logging.LogRecord(
         "uvicorn.error",
         logging.INFO,
         __file__,
         1,
         '%s - "WebSocket %s" [accepted]',
-        ("127.0.0.1:1", "/v1/realtime?ticket=wst_secret"),
+        ("127.0.0.1:1", "/v1/WIPZ_DOWN_ALL_RULZ?ticket=wst_secret"),
         None,
     )
     uvicorn_error.filter(record)
-    assert record.getMessage() == '127.0.0.1:1 - "WebSocket /v1/realtime" [accepted]'
+    assert record.getMessage() == '127.0.0.1:1 - "WebSocket -" [accepted]'

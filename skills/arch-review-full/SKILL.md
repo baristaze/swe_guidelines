@@ -1,7 +1,7 @@
 ---
 name: arch-review-full
 description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
-allowed-tools: Read, Grep, Glob, Agent, Bash(python3:*), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Agent, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-full
@@ -35,10 +35,18 @@ the tree.
    is `../../architecture.md`. Reviewers do not see this skill's text,
    so pass them absolute paths.
 3. When the scope reads the working tree (empty, `all`, or a path),
-   run the checker once, for every group, from the root of the
-   repository under review: `python3 <arch_check.py> --format json`,
+   run the checker once, for every group:
+   `python3 <arch_check.py> --no-local --root <root> --format json`,
    where `<arch_check.py>` is the absolute path of
-   `../../checkers/arch_check.py`.
+   `../../checkers/arch_check.py` and `<root>` the absolute path of the
+   root of the repository under review. `--root` says which repository
+   is read, whatever folder the shell is in, so no `cd` goes before the
+   command. Run it alone, with no other command chained to it. This
+   skill pre-approves no Python command, so the host may ask the
+   person first, and a person who allowed this one command is asked
+   about no other. Never leave `--no-local` out: without it the
+   checker runs the project's own rules, which are files of the
+   repository under review, and a review runs none of them.
    The checker reads the working tree only, so for a range or a commit
    it is not run: note that, and every reviewer judges every lens of
    its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to
@@ -47,8 +55,9 @@ the tree.
    again. The findings whose `group` is
    `framework` (`PARSE`, `IGNORE`) go to every reviewer, because a file
    that does not parse was read by no rule of any group; the merge
-   keeps one copy of each. When the checker cannot run,
-   note why; every reviewer then judges every lens of its group.
+   keeps one copy of each. When the checker cannot run, or its command
+   is refused, note why; every reviewer then judges every lens of its
+   group.
 4. Where the agent can start subagents, launch eight reviewers at once,
    one per group, each with the scope line, the group name, the absolute
    path of its lens file, the absolute path of the guideline, and its
@@ -97,7 +106,8 @@ the tree.
    more `high` findings, say so in one sentence after the report,
    with the count. Nothing else.
 
-Never edit, stage, or commit. This skill reads and reports.
+Never edit, stage, or commit, and never run a file of the repository
+under review. This skill reads and reports.
 
 ## Output
 

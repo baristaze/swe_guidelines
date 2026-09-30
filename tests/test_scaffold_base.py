@@ -6,6 +6,7 @@ import http.client
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -247,6 +248,54 @@ def test_a_tarball_that_would_write_outside_the_scaffold_or_holds_none_is_refuse
     assert reason in capsys.readouterr().err
     assert not (tmp_path / "evil.txt").exists() and not (tmp_path / "outside").exists()
     assert git(repo, "branch", "--list", "scaffold") == ""
+
+
+UP = "top/scaffold/acme_root/up"
+CHAINED = [(UP, "->.."), (f"{UP}/x", "->.."), (f"{UP}/x/y", "->.."), (f"{UP}/x/y/evil.txt", "x")]
+"""A link to a folder above it inside the root, a second link made through the
+first and a third through the second, then a file written through the third."""
+ONTO = [(UP, "->.."), ("top/scaffold/acme_root/far", "->up/../../evil.txt"), ("top/scaffold/acme_root/far", "x")]
+"""A link whose target passes through another link, then a file at the link's own place."""
+LATE = [("top/scaffold/acme_root/far", "->up/../.."), (UP, "->.."), ("top/scaffold/new.py", "")]
+"""A link made before the link its target passes through, so its text stays inside the root and it does not."""
+
+
+def written_outside(tmp_path: Path, into: Path) -> list[str]:
+    """Every file under `tmp_path` that is not under `into`, the tarball aside; no link is followed."""
+    found = []
+    for folder, _, names in os.walk(tmp_path):
+        if Path(folder) != into and into not in Path(folder).parents:
+            found += [name for name in names if name != "crafted.tar.gz"]
+    return found
+
+
+@pytest.mark.parametrize(
+    ("members", "reason"),
+    [
+        (CHAINED, "up/x' is written through a link"),
+        (ONTO, "far' is written through a link"),
+        (LATE, "far' points out of the scaffold"),
+    ],
+)
+def test_no_member_is_written_through_a_link_and_no_link_leaves_the_root(tmp_path, members, reason):
+    into = tmp_path / "work" / "source"
+    into.mkdir(parents=True)
+    with pytest.raises(base.Refused, match=reason):
+        base.unpack(crafted(tmp_path, members), into)
+    assert written_outside(tmp_path, into.resolve()) == []
+
+
+def test_a_link_that_stays_inside_the_root_unpacks_as_a_link(tmp_path):
+    """The scaffold's own link: Claude Code's folder of its skills."""
+    root = "top/scaffold/acme_root"
+    skill = (f"{root}/.agents/skills/acme-watch/SKILL.md", "# acme-watch\n")
+    members = [("top/scaffold/new.py", ""), skill, (f"{root}/.claude/skills", "->../.agents/skills")]
+    into = tmp_path / "source"
+    into.mkdir()
+    assert base.unpack(crafted(tmp_path, members), into) == "a" * 40
+    link = into / "scaffold/acme_root/.claude/skills"
+    assert link.is_symlink() and os.readlink(link) == "../.agents/skills"
+    assert (link / "acme-watch/SKILL.md").read_text(encoding="utf-8") == "# acme-watch\n"
 
 
 def test_a_tarball_that_names_no_commit_is_refused(tmp_path, capsys):

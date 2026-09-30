@@ -364,7 +364,7 @@ def statements(c: Counts) -> list[tuple[str, str]]:
 
 async def seed(name: str, scale: float) -> None:
     counts = Counts.at(scale)
-    engine = create_async_engine(superuser_on(check_name(name)))
+    engine = create_async_engine(superuser_on(check_name(name)), hide_parameters=True)
     try:
         async with engine.begin() as connection:
             for label, sql in statements(counts):

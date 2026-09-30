@@ -65,6 +65,14 @@ adds the marketplace from it:
 
 The clone checks it out: `git -C ../swe_guidelines checkout v0.44.0`.
 
+A review skill runs one command that is not git's: the checker, with
+`--no-local`, so that no file of the repository under review runs. No
+skill pre-approves that command. The plugin sits at a different path on
+every machine, and a rule loose enough to cover every path would cover
+any Python command. So the agent asks before the checker runs. To be
+asked once, allow the command in the agent's own settings, by the full
+path of `checkers/arch_check.py` on that machine.
+
 ## Run the checker
 
 `arch-check` decides the lenses a program can decide, and it runs in

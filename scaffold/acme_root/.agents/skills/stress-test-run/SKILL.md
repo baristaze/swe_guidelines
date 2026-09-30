@@ -1,7 +1,7 @@
 ---
 name: stress-test-run
 description: "Run one stress test scenario of the platform against one environment with the platform's own generator, read the signals back through their own APIs, and report pass or fail against a target stated before the run: the scenario's p95 and error ratio, or the one the run states instead. A real run is the platform developer's choice; the CI sanity run is thirty seconds at the light profile and is never a stress test. Needs the read-only investigate profile to read the signals back."
-allowed-tools: Read, Bash(aws:*), Bash(uv run:*)
+allowed-tools: Read, Bash(aws:*), Bash(uv run acme-ops:*)
 ---
 
 # stress-test-run

@@ -25,8 +25,8 @@ IMPL = "om/src/acme/om/tasks/impl/manager.py"
 BAD = "from acme.services.api import app\n"
 SHIPPED = [r.id for r in registry.rules()]
 PY_FILES = sum(1 for rel in BASE if rel.endswith(".py") and "/src/" in rel)
-FREE = next(id for id in sorted(LENSES) if id not in SHIPPED)
-"""A lens no shipped rule decides, for a local rule to take."""
+FREE, OTHER = [id for id in sorted(LENSES) if id not in SHIPPED][:2]
+"""Two lenses no shipped rule decides, for a local rule to take."""
 
 
 def bad_project(tmp_path, pyproject=PYPROJECT, **files):
@@ -576,6 +576,96 @@ def test_a_local_rule_and_the_shipped_rule_of_one_id_each_read_their_options(tmp
     assert code == 1
     assert [(r["id"], r["origin"]) for r in report["rules_run"]] == [("CTX-26", "guideline"), ("CTX-26", "local")]
     assert [(f["origin"], f["message"]) for f in report["findings"]] == [("local", "old is legacy")]
+
+
+# --- `--no-local`: the run of a tree someone else wrote, which loads none of its files
+
+MARKER = "tools/arch_check/ran"
+MARKING_RULE = LOCAL_RULE + '\n\nfrom pathlib import Path\n\nPath(__file__).with_name("ran").write_text("ran")\n'
+"""A local rule file that says it ran: what any line at its top level does when the checker loads it."""
+LEGACY = "om/src/acme/om/legacy.py"
+
+
+def marking_project(tmp_path, pyproject=LOCAL, id=FREE, **files):
+    rules = {"tools/arch_check/naming.py": MARKING_RULE.format(id=id, coverage="partial")}
+    return write_project(tmp_path, {**rules, **files}, pyproject=pyproject)
+
+
+@pytest.mark.parametrize("args", [(), ("--list",), ("--group", "nope")])
+def test_a_local_file_runs_on_every_run_that_loads_it(tmp_path, args):
+    """The control: a plain run, `--list`, and a run that exits 2 each run the file."""
+    marking_project(tmp_path)
+    check(tmp_path, *args)
+    assert (tmp_path / MARKER).exists()
+
+
+@pytest.mark.parametrize(
+    "args,status",
+    [(("--format", "json"), 0), (("--list",), 0), (("--group", "nope"), 2), (("--rule", FREE), 2)],
+)
+def test_no_local_runs_no_file_of_the_project(tmp_path, args, status):
+    marking_project(tmp_path, **{LEGACY: ""})
+    code, out, err = check(tmp_path, "--no-local", *args)
+    assert code == status, err
+    assert not (tmp_path / MARKER).exists()
+    assert '"origin": "local"' not in out
+
+
+def test_no_local_reports_the_shipped_rules_alone(tmp_path):
+    marking_project(tmp_path, **{LEGACY: ""})
+    code, report = check_json(tmp_path, "--no-local")
+    assert (code, report["findings"]) == (0, [])
+    assert [(r["id"], r["origin"]) for r in report["rules_run"]] == [(id, "guideline") for id in SHIPPED]
+    listed = check(tmp_path, "--no-local", "--list")[1]
+    assert [line.split()[0] for line in listed.splitlines()] == SHIPPED
+    assert {line.split()[4] for line in listed.splitlines()} == {"guideline"}
+
+
+def test_no_local_accepts_a_config_that_names_a_local_rule(tmp_path):
+    """A disable, an exception, an options table, and an inline ignore of a lens only a local rule decides."""
+    pyproject = (
+        LOCAL
+        + DISABLE.format(adr=ADR).replace("CON-12", FREE)
+        + EXCEPTION.format(path=LEGACY, adr=ADR).replace("CON-12", FREE)
+        + f"\n[tool.arch-check.options.{FREE}]\nwords = ['legacy']\n"
+    )
+    marking_project(tmp_path, pyproject=pyproject, **{IMPL: f"import os  # arch-check: ignore[{FREE}] ADR-0001\n"})
+    code, report = check_json(tmp_path, "--no-local")
+    assert (code, report["findings"]) == (0, [])
+    assert not (tmp_path / MARKER).exists()
+
+
+def test_no_local_never_calls_an_exception_for_a_shared_lens_stale(tmp_path):
+    """CON-12 is shipped in part, and a local rule may add to it: an ignore, an exception, or an option
+    that only the local rule's findings and keys answer is left alone, and the shipped rule still reports."""
+    pyproject = (
+        LOCAL
+        + EXCEPTION.format(path=LEGACY, adr=ADR)
+        + '\n[tool.arch-check.options.CTX-26]\nbuilders = ["assemble"]\nlegacy = ["old"]\n'
+    )
+    files = {LEGACY: "", "om/src/acme/om/old.py": "import os  # arch-check: ignore[CON-12] ADR-0001\n", IMPL: BAD}
+    marking_project(tmp_path, pyproject=pyproject, id="CON-12", **files)
+    code, report = check_json(tmp_path, "--no-local")
+    assert (code, rules_found(report)) == (1, [("CON-12", IMPL, 1)])
+    assert report["findings"][0]["origin"] == "guideline"
+
+
+@pytest.mark.parametrize(
+    "pyproject,message",
+    [
+        (LOCAL + DISABLE.format(adr=ADR).replace("CON-12", "CON-99"), "unknown rule CON-99"),
+        (LOCAL + f"\n[tool.arch-check.options.{FREE}]\nbogus = 1\n", "unknown key(s) bogus"),
+        (PYPROJECT + DISABLE.format(adr=ADR).replace("CON-12", OTHER), f"unknown rule {OTHER}"),
+    ],
+)
+def test_no_local_still_refuses_what_no_local_rule_could_answer(tmp_path, monkeypatch, pyproject, message):
+    """An id no lens has, a key of a lens a shipped rule decides whole, and a local lens in a project with no `local`."""
+    whole = registry.make(FREE, lambda p: [], coverage="full", summary="shipped")
+    monkeypatch.setitem(registry.RULES, FREE, whole)
+    marking_project(tmp_path, pyproject=pyproject, id=OTHER)
+    code, _, err = check(tmp_path, "--no-local")
+    assert code == 2
+    assert message in err
 
 
 def test_rule_options_are_read_and_checked(tmp_path):

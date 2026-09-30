@@ -16,7 +16,11 @@ from acme.infra.exceptions import InfraException
 from acme.infra.observability import failure_level
 from acme.om.exceptions import LastOwner, PlatformException, SignInDelayed, StreamTruncated
 from acme.services.api.gateway.envelope import INTERNAL_ERROR, error_response
-from acme.services.api.gateway.observability import request_id_of
+from acme.services.api.gateway.observability import (
+    UNMATCHED,
+    request_id_of,
+    route_template_of,
+)
 from acme.services.api.gateway.ratelimit import RateLimited
 from acme.services.api.types.common import LastOwnerDetail, OwnedOrgRef, StreamTruncatedDetail
 
@@ -56,14 +60,15 @@ def presented(
 
     These handlers are reached from a socket too, where the scope carries no
     method, so the line is written from the scope and not from a `Request`
-    attribute that only an HTTP scope has."""
+    attribute that only an HTTP scope has. It names the route's template,
+    never the path: a path is the caller's own text."""
     if exc.http_status >= 500:
         log.log(
             failure_level(exc),
             "%s on %s %s: %s",
             exc.code,
             request.scope.get("method", "WEBSOCKET"),
-            request.scope.get("path", "-"),
+            route_template_of(request.scope) or UNMATCHED,
             exc.message,
             exc_info=exc,
         )
@@ -117,5 +122,6 @@ def register_error_handlers(app: FastAPI) -> None:
         # Starlette runs this outside every middleware, after the request id
         # is gone from the log context; the middleware answers first and only
         # what is raised beyond it reaches here.
-        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        template = route_template_of(request.scope) or UNMATCHED
+        log.exception("unhandled error on %s %s", request.method, template)
         return envelope(request, 500, *INTERNAL_ERROR)

@@ -29,14 +29,18 @@ async def find_error_event(
     """The issues of the product's project in this environment: first the ones
     the id names, then the recent ones, and in each the event that carries both
     the id and the environment. The search is a convenience; the two tags are
-    the proof."""
+    the proof.
+
+    Neither query names a sort. Each tracker lists the issues last seen first
+    when none is asked for, and Sentry answers 400 to GlitchTip's key for that
+    order, `-last_seen`."""
     headers = {"Authorization": f"Bearer {token}"}
     base = base_url.rstrip("/")
     issues_url = f"{base}/api/0/projects/{org}/{project}/issues/"
     seen: set[str] = set()
     for params in (
         {"query": f"environment:{environment} request_id:{request_id}", "limit": RECENT_ISSUES},
-        {"query": f"environment:{environment}", "limit": RECENT_ISSUES, "sort": "-last_seen"},
+        {"query": f"environment:{environment}", "limit": RECENT_ISSUES},
     ):
         response = await http.get(issues_url, params=params, headers=headers)
         response.raise_for_status()
