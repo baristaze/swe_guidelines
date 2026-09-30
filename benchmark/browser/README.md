@@ -7,8 +7,8 @@ person has signed in to. It exists because that is the answer a reader
 gets when they paste the prompt themselves, and because the products
 carry tools (repository browsing, extended thinking) the raw API does
 not hand out the same way. It is slower than the API harness, but it
-runs on the subscription plans an adopter already pays for, not on API
-keys billed by the token.
+enables the subscription plans an adopter already pays for, in place of
+API keys billed by the token.
 
 It is semi-autonomous by design. The person signs in once, in the
 browser the session drives. The session does the rest: picks the model
