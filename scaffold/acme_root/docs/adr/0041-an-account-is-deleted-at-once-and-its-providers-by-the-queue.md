@@ -72,7 +72,9 @@ counts a deleted personal org as past its retention at once, since it
 is deleted only with its person. So the sweep's next pass runs the
 tenant purge every namespace already has. There is no second deletion
 mechanism. The org row stays as the record, as every deleted org's
-does.
+does, and a personal org's name and slug, made from its person's name,
+are replaced in the same write by "Deleted account" and
+`deleted-<id>`.
 
 **The browser ends the provider's session too.** The answer carries
 `provider_logout_url`, as a sign-out's does, and the portal goes there
@@ -86,15 +88,19 @@ works. The org waits for the provider, because a claim refuses an item
 of a deleted org.
 
 While the provider is down, or refuses the key, the personal org's rows
-wait, out of reach of their person. A provider that refuses the call
-fails the item for good. Once the cause is fixed, a person with a
-`write` operator entry sends the item back (`acme-ops work requeue`),
-and the org's stream names who did.
+wait, out of reach of their person; anyone else they had added to the
+org keeps it until then. A provider that refuses the call fails the
+item for good. Once the cause is fixed, a person with a `write`
+operator entry sends the item back (`acme-ops work requeue`), and the
+org's stream names who did.
 
 A person who signs in through the provider before the item deletes
 their user there is a new person in Acme. The item may then delete the
 provider's user that new person signed in as. Their next sign-in makes
 one again, and Acme links it by the verified address.
+
+The WorkOS organization a personal org gets when its owner invites
+someone to it stays at WorkOS under the org's id.
 
 The outbox rows and work items of the deletion stay for their own
 retention. They carry ids and the provider's user id, never a name or

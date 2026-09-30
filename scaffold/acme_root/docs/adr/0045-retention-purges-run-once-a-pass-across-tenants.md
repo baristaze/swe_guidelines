@@ -44,9 +44,9 @@ Namespace by namespace:
   returns, then the rows go in one statement. The batch is a hundred,
   since each row costs a request to the store.
 - **Tenancy**: in one transaction, ended users with their
-  memberships, revoked and expired keys, expired sessions (the system
-  scope's sign-ins among them), expired tickets, and closed
-  invitations, then the sign-in delays.
+  memberships, ended memberships, revoked and expired keys, expired
+  sessions (the system scope's sign-ins among them), expired tickets,
+  and closed invitations, then the sign-in delays.
 - **Idempotency** and **orchestrations**: a statement per table.
 - **Events**: the trim, in one statement. The `limit` events produced
   longest ago, read on `(produced_at)`, name the tenants and each one's
