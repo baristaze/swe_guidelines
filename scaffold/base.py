@@ -238,6 +238,7 @@ def commit_render(repo: Path, made: Render, name: str, ref: str, source: str, he
         git(made.folder, *tree_of, "add", "--all", "--force", ".", env=env)
         tree = git(made.folder, *tree_of, "write-tree", env=env)
     if head is not None and git(repo, "rev-parse", f"{head}^{{tree}}") == tree:
+        point(repo, head)
         return None
     label = made.commit[:9] if made.commit.startswith(ref) else f"{ref} ({made.commit[:9]})"
     message = (
@@ -246,14 +247,17 @@ def commit_render(repo: Path, made: Render, name: str, ref: str, source: str, he
     )
     parents = ["-p", head] if head else []
     new = git(repo, "commit-tree", tree, *parents, "-F", "-", stdin=message)
-    local = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"refs/heads/{BRANCH}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    git(repo, "update-ref", f"refs/heads/{BRANCH}", new, local or "0" * 40)
+    point(repo, new)
     return new
+
+
+def point(repo: Path, commit: str) -> None:
+    """Moves the local branch to `commit`, from where it was or from nothing,
+    so `scaffold` names the newest render even in a clone that had only
+    origin's."""
+    local = answer(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{BRANCH}")
+    if local != commit:
+        git(repo, "update-ref", f"refs/heads/{BRANCH}", commit, local or "0" * 40)
 
 
 def main(argv: list[str] | None = None) -> int:

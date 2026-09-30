@@ -1,7 +1,7 @@
 ---
 name: arch-upgrade-scaffold
 description: "Move a copy of the scaffold to a later release of the guideline by merging it. The copy's scaffold branch holds the scaffold as the copy took it, and a three-way merge brings in what changed since. The first run grafts a copy with no base at the release it pins."
-allowed-tools: Read, Grep, Glob, Edit, Write, WebFetch, Bash(python3:*), Bash(git status:*), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git merge:*), Bash(git merge-base:*), Bash(git checkout:*), Bash(git rm:*), Bash(git add:*), Bash(git commit:*), Bash(git ls-files:*), Bash(git ls-tree:*), Bash(grep:*), Bash(uv lock:*), Bash(pnpm install:*), Bash(docker info:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, WebFetch, Bash(python3:*), Bash(git status:*), Bash(git fetch:*), Bash(git ls-remote:*), Bash(git rev-parse:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), Bash(git merge:*), Bash(git merge-base:*), Bash(git checkout:*), Bash(git rm:*), Bash(git add:*), Bash(git commit:*), Bash(git ls-files:*), Bash(git ls-tree:*), Bash(grep:*), Bash(uv lock:*), Bash(pnpm install:*), Bash(docker info:*), Bash(make setup), Bash(make check), Bash(make openapi), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
 # arch-upgrade-scaffold
@@ -30,12 +30,12 @@ next move would merge against an older one.
 
 - `<ref>`: the release, branch, or commit of this guideline to move to.
   Without one, the release after the one the copy pins (`pinned at
-  release` in `specs/architecture.md`), by the headings of
-  `../../CHANGELOG.md`. A move takes one release, as the copy's pin
+  release` in `specs/architecture.md`): the lowest `vX.Y.Z` tag above
+  the pin in `git ls-remote --tags --refs https://github.com/baristaze/swe_guidelines`,
+  which lists every release. A move takes one release, as the copy's pin
   moves: when releases lie between the pin and a target named, the
   target is the first of them, and each next one is a move of its own.
-  When the copy pins this plugin's release, stop: there is nothing
-  newer to take.
+  When no tag is above the pin, stop: there is nothing newer to take.
 - `--name`: the copy's name, as `new.py` took it. Without one,
   `base.py` reads the name the base recorded, else the `package` under
   `[tool.arch-check]` in the copy's root `pyproject.toml`.
@@ -53,7 +53,7 @@ absolute path of `../../scaffold/base.py`.
    `git switch --no-track -c scaffold-<target> origin/<main>`, with the
    target's dots as hyphens (`scaffold-v0-41-0`), so that a push never
    lands on the main branch. On another branch, work there only when
-   `git rev-list --count origin/<main>..HEAD` prints 0; otherwise
+   `git log --oneline origin/<main>..HEAD` prints nothing; otherwise
    refuse, since the move's commits hold the move alone.
 2. **Find the base**: the last render the branch holds,
    `git log -1 --no-merges -E --grep='^Scaffold-Commit: [0-9a-f]{40}$' --format=%H HEAD`.
@@ -64,9 +64,10 @@ absolute path of `../../scaffold/base.py`.
    stop and say so. When a move's pull request is open, it merges
    first. Otherwise a move was squashed or dropped, and the person
    records the base the main branch holds: the render of the release it
-   pins, which `git log --format='%H %s' scaffold` names, merged with
-   `git merge -s ours <that render>`, which changes no file. Then the
-   skill runs again. When nothing answers, the copy has no base.
+   pins, which `git log --format='%H %s' <branch>` names (`scaffold`, or
+   `origin/scaffold` in a clone that has no local one), merged with
+   `git merge -s ours --allow-unrelated-histories <that render>`, which
+   changes no file. Then the skill runs again. When nothing answers, the copy has no base.
 3. **Graft, only when there is no base.** The copy was made before its
    base was recorded, so the base is the release it pins: the version in
    `pinned at release` in `specs/architecture.md`. Render it,

@@ -331,3 +331,15 @@ def test_a_tarball_cut_short_is_refused(tmp_path, capsys):
     assert run(repo, cut, "--name", "pressroom") == 2
     assert "could not be read" in capsys.readouterr().err
     assert git(repo, "branch", "--list", "scaffold") == ""
+
+
+def test_an_unchanged_render_in_a_clone_points_the_local_branch_at_the_newest(tmp_path, capsys):
+    tar, _ = tarball(guideline(tmp_path), tmp_path / "one.tar.gz")
+    upstream = copy(tmp_path)
+    assert run(upstream, tar, "--name", "pressroom") == 0
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", str(upstream), str(clone)], check=True)
+    assert git(clone, "branch", "--list", "scaffold") == ""
+    assert run(clone, tar) == 0
+    assert "unchanged" in capsys.readouterr().out
+    assert git(clone, "rev-parse", "scaffold") == git(clone, "rev-parse", "origin/scaffold")
