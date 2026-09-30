@@ -1,7 +1,7 @@
 ---
 name: ops-watch
 description: "Watch one environment of the platform live from a sub-agent: a log tail, the alarms as they fire, and the error and latency signals, batched per interval and capped, with a read-only credential. Run it in a sub-agent the invoking session spawns, because it polls for the whole window, at most 30 batches, and reports when the window ends, the 30th batch closes, or an alarm fires. It applies the first responder rule: outside production an alarm raised by the team's own traffic may be suppressed with the reason recorded; in production an alarm is never suppressed. Never writes."
-allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops:*), Bash(sleep:*)
+allowed-tools: Read, Grep, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(sleep:*)
 ---
 
 # ops-watch
@@ -111,7 +111,10 @@ in it; the first batch still makes its own check after its wait.
    uv run acme-ops size --env <env>
    ```
 
-   Keep the numbers and how long ago the worker counted them; the
+   When it refuses the env file for holding the provisioner's token,
+   stop, and give the person the line it printed: no batch runs, and
+   none sources the file. Keep the numbers and how long ago the worker
+   counted them; the
    first responder rule of step 6 reads them. The worker counts every
    five minutes, so a count older than ten minutes is itself a finding.
 

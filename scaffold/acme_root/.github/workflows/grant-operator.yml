@@ -18,7 +18,7 @@
 # the token into the secret `acme-<env>-provisioner-token` or
 # `acme-<env>-smoke-token` and never prints it; it expires within the hour.
 # `uv run acme-ops token --env <env> --identity provisioner` copies the
-# provisioner's into the env file.
+# provisioner's into its own file, `<env>.provisioner.env` beside the env file.
 #
 # The email is masked in the log before any step can print it: a public
 # repository's logs are public. The task definition's name is the root's

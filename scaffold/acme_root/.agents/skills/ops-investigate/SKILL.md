@@ -1,7 +1,7 @@
 ---
 name: ops-investigate
 description: "Investigate one environment of the platform with a read-only credential: the alarms, the error rate, the latency, the worker outcomes and the work items that failed for good, the pool, the queue and its dead letter, the identity provider (the sign-in and its webhook), the cost against the budget, and the platform's size, then report what is wrong and what to do next. Every read goes through the signals' own APIs (CloudWatch, X-Ray, the error tracker in the cloud; Prometheus, Jaeger, GlitchTip locally). Use when something looks off, when an alarm fires, or as the daily look. Never writes."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops:*), Bash(sleep:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(sleep:*)
 ---
 
 # ops-investigate
@@ -41,10 +41,10 @@ states. Refuse any profile wider than the investigate role. Every
 
 The env file `~/.config/acme/ops/<env>.env` gives the API's URL, the
 `read` operator token, and the error tracker's URL, token, org, and
-project; the file's `ACME_PROVISIONER_TOKEN`, a `write` token,
-belongs to the traffic generator alone and is not used here. Never
-read the env file; a command that needs a value sources it in the same
-command, as every block below does. Never print a token. On a `401`
+project. It holds no `write` token: the traffic generator's has a file
+of its own, which this skill never sources. Never read the env file; a
+command that needs a value sources it in the same command, as every
+block below does. Never print a token. On a `401`
 the token has expired: stop, and name the refresh the preamble gives.
 
 ## Procedure
@@ -67,7 +67,10 @@ and their handling is in `/acme/<env>/maintenance`.
    uv run acme-ops size --env <env>
    ```
 
-   It prints tenants, users, and the events produced in the last day,
+   When it refuses the env file for holding the provisioner's token,
+   stop, and give the person the line it printed: no later step runs,
+   and none sources the file. It prints tenants, users, and the events
+   produced in the last day,
    through `GET /v1/admin/size`
    with the env file's operator token (`uv run acme-ops size --env <env>`,
    which leaves the traffic generator's own tenants out). The size is

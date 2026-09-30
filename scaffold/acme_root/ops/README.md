@@ -18,7 +18,13 @@ person or an agent holds writes to the cloud; a change is a pull request.
 | Supporter | the Investigator, plus the operator plane's read | the same, plus a `read` operator token |
 | Provisioner | a traffic or stress run: makes and removes its own tenants | a `provisioner` operator token |
 
-The operator tokens live in `~/.config/acme/ops/<env>.env`, owner-only.
+The `read` operator token lives in `~/.config/acme/ops/<env>.env`,
+owner-only, which every skill that reads sources. The provisioner's
+`write` token lives in a file of its own beside it,
+`<env>.provisioner.env`, owner-only too, which only `traffic` and
+`stress` read and no skill sources: a skill that reads never holds a
+write token. `acme-ops` refuses an env file that holds the provisioner's
+token, and prints the line that moves it.
 [The operator runbook](../docs/runbooks/operator.md) says how a person
 gets onto the plane.
 
@@ -30,7 +36,7 @@ gets onto the plane.
 - `stress` runs a scenario and judges it against its target.
 - `signals check` reads one request id's log lines, metric, trace, and error event.
 - `size` prints the platform's size, the traffic run's tenants left out.
-- `token` writes an operator token into the env file, or lists and revokes your own.
+- `token` writes an operator token into its file, or lists and revokes your own.
 - `work requeue` sends one failed work item back to the queue.
 - `workos-bootstrap` reconciles the WorkOS application with `deployment/workos/environments.yaml`.
 

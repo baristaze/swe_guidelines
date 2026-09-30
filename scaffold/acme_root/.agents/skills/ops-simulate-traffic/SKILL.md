@@ -29,12 +29,13 @@ the profile's number by default; `--orgs 0` drives the seeded people
 of `.env` instead and needs no provisioner, so it is for `local` only
 and refused against a cloud environment, which has no seeded people.
 `local` drives the API at `http://127.0.0.1:8000`, started by
-`scripts/dev.sh` or `make up`, and needs no cloud; its file is
-`~/.config/acme/ops/local.env`, which `make seed` writes with the local
-provisioner's token, and without a provisioner token in it a local run
-takes `--orgs 0`. `stress` is the
-top profile; a run at it with a target is `stress-test-run`, not this
-skill.
+`scripts/dev.sh` or `make up`, and needs no cloud; its provisioner's
+file is `~/.config/acme/ops/local.provisioner.env`, which `make seed`
+writes with the local provisioner's token. Without a token in it, the
+generator refuses a run that provisions before it provisions anything,
+saying the environment `holds no provisioner token`; the run is then
+made again with `--orgs 0`. `stress` is the top profile; a run at it
+with a target is `stress-test-run`, not this skill.
 
 ## Role and credential
 
@@ -43,37 +44,40 @@ whose allowlist entry writes and that only this skill and
 `stress-test-run` use, and in the cloud the investigator's profile for
 any signal it reads back.
 
-`--env local` needs the compose stack up (`make up`) and the env file
+`--env local` needs the compose stack up (`make up`) and the two files
 below. No cloud credential.
 
 `--env staging` and `--env production` need two things. The
 investigate profile of that environment, `acme-<env>-investigate`, to
 read the signals back, checked with `sts get-caller-identity` as the
 preamble states. Refuse any profile wider than the investigate role.
-And the env file's provisioner token (`ACME_PROVISIONER_TOKEN`
-against `ACME_API_URL`), which creates the tenants the sessions run
-in: the provisioner's allowlist entry is `write`, its token is the one
-write token the file holds, and only this generator uses it. The
-tenants it creates are the generator's own, named `ops-<run id>-<n>`,
-so no real tenant is touched, and removed when the run ends. A cloud
-run always provisions its tenants, so it always needs the
-provisioner's token.
+And the provisioner's token, `ACME_PROVISIONER_TOKEN` in the
+provisioner's file `~/.config/acme/ops/<env>.provisioner.env`, against
+the env file's `ACME_API_URL`, which creates the tenants the sessions
+run in. The provisioner's allowlist entry is `write`, and its token is
+the one write token: it is kept apart from the env file every skill
+that reads sources, and only this generator uses it. The tenants it
+creates are the generator's own, named `ops-<run id>-<n>`, so no real
+tenant is touched, and removed when the run ends. A cloud run always
+provisions its tenants, so it always needs the provisioner's token.
 
-Never read the env file; a command that needs a value sources it in
-the same command, and `acme-ops` reads it itself from `--env`. Never
+Never read the env file or the provisioner's file, and never source
+the provisioner's: `acme-ops` reads both itself from `--env`. Never
 print a token. When the generator reports the provisioner's token
 refused or expired, stop, and name the refresh the preamble gives.
+When `acme-ops` refuses the env file for holding the provisioner's
+token, stop, and give the person the line it printed.
 
 In production the provisioner's allowlist entry is disabled between
 runs, so no standing writing credential waits there. A run with
 `--orgs` above `0` against production needs the person to enable it
 first, by dispatching `grant-operator.yml` on `release` with the
 provisioner's email, `write`, and `mint_token: provisioner`, then
-copying the token into the env file with `uv run acme-ops token --env
-production --identity provisioner --profile acme-prod-power` in their
-own terminal, and to disable it after, by dispatching it again with
-`disable`; this skill holds no role that does either, and says which
-dispatch is due.
+copying the token into the provisioner's file with `uv run acme-ops
+token --env production --identity provisioner --profile
+acme-prod-power` in their own terminal, and to disable it after, by
+dispatching it again with `disable`; this skill holds no role that
+does either, and says which dispatch is due.
 
 ## Procedure
 
