@@ -564,7 +564,8 @@ client constructed inside a manager.
 **Principle.** A decision that constrains future work is recorded under
 `docs/adr/` with context, decision, and consequences, dated and
 numbered. Code and comments cite the ADR by number.
-`docs/architecture.md` describes the system as built.
+`specs/architecture.md` pins the guideline and links the ADRs that
+depart from it.
 
 **Source.** Cross-Cutting Conventions, Records of Decisions.
 
@@ -577,7 +578,8 @@ checker's enumeration instead (CTX-12).
 
 **Violation.** An exception to a guideline rule introduced with no
 ADR; code that embodies an ADR's decision without citing its number;
-`docs/architecture.md` left describing a shape the change removed.
+a row of `specs/architecture.md` left naming a deviation the change
+ended. (What an ADR says once it is accepted is OPS-29.)
 
 **Severity.** medium
 
@@ -628,9 +630,10 @@ the record lists (queue claim, atomic increment, a bus that reaches
 every subscribed process).
 
 **Violation.** A substitute technology in the tree with no ADR naming
-it; an ADR that swaps a technology and silently drops a rule it cannot
-satisfy; a substitution recorded as a deviation or a deviation recorded
-as a substitution.
+it, or with an ADR of its own beside the one that lists them; an ADR
+that swaps a technology and silently drops a rule it cannot satisfy; a
+substitution recorded as a deviation or a deviation recorded as a
+substitution.
 
 **Severity.** medium
 

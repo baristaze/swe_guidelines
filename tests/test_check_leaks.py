@@ -33,12 +33,62 @@ def test_agent_vocabulary_is_allowed_everywhere(repo, leaks):
     assert leaks.main() == 0
 
 
-def test_history_phrasing_fails_in_the_guideline_only(repo, leaks, capsys):
+def test_history_phrasing_fails_in_the_guideline_and_not_in_a_lens(repo, leaks, capsys):
     repo.edit("lenses/om.md", "One table per entity.", "One table per entity, as previously.")
     assert leaks.main() == 0
     repo.edit("architecture.md", "One table per entity.", "One table per entity, as previously.")
     assert leaks.main() == 1
     assert "history term 'previously'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "scaffold/acme_root/README.md",
+        "scaffold/acme_root/docs/adr/0063-sessions-last-weeks.md",
+        "scaffold/acme_root/.agents/skills/ops-watch/SKILL.md",
+    ],
+)
+def test_history_phrasing_fails_in_the_scaffold_s_markdown(repo, leaks, capsys, rel):
+    repo.write(rel, "# Sessions\n\nA session lasts 30 days.\n")
+    assert leaks.main() == 0
+    repo.write(rel, "# Sessions\n\nA session lasts 30 days. It previously lasted a day.\n")
+    assert leaks.main() == 1
+    assert f"{rel}:3: history term 'previously'" in capsys.readouterr().out
+
+
+ADR = "# ADR 0063: Sessions last weeks\n\n**Status**: accepted (2026-09-28)\n\n## Context\n\n## Decision\n\n## Consequences\n"
+
+
+def test_a_scaffold_adr_with_an_alternatives_section_fails(repo, leaks, capsys):
+    rel = "scaffold/acme_root/docs/adr/0063-sessions-last-weeks.md"
+    repo.write(rel, ADR)
+    assert leaks.main() == 0
+    repo.write(rel, ADR + "\n## Alternatives\n\n- A day idle and a week in all.\n")
+    assert leaks.main() == 1
+    assert f"{rel}:11: record term '## Alternatives'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "accepted (2026-09-28). Amended by ADR 0070 (2026-10-02).",
+        "accepted (2026-09-28), and no longer a deviation",
+        "replaced by ADR 0070",
+    ],
+)
+def test_a_scaffold_adr_whose_status_is_more_than_one_date_fails(repo, leaks, capsys, status):
+    rel = "scaffold/acme_root/docs/adr/0063-sessions-last-weeks.md"
+    repo.write(rel, ADR.replace("accepted (2026-09-28)", status))
+    assert leaks.main() == 1
+    assert f"{rel}:3: record term '**Status**: {status}'" in capsys.readouterr().out
+
+
+def test_the_adr_shape_is_held_in_the_scaffold_s_adrs_only(repo, leaks):
+    text = ADR.replace("accepted (2026-09-28)", "accepted (2026-09-28), amended") + "\n## Alternatives\n"
+    repo.write("scaffold/acme_root/docs/runbooks/deploy.md", text)
+    repo.write("docs/adr/0001-a-record.md", text)
+    assert leaks.main() == 0
 
 
 def test_a_skill_is_scanned_once(repo, leaks, capsys):

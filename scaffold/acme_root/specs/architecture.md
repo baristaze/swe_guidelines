@@ -1,8 +1,8 @@
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.42.0/architecture.md>
-(pinned at release `v0.42.0`; the pin moves one release at a time, in a
+<https://github.com/baristaze/swe_guidelines/blob/v0.43.0/architecture.md>
+(pinned at release `v0.43.0`; the pin moves one release at a time, in a
 pull request of its own).
 
 The guideline is the source of truth for how this system is shaped, and
@@ -16,7 +16,7 @@ adopts every other technology the guideline names.
 
 | ADR | Rule | Summary |
 |-----|------|---------|
-| [0030](../docs/adr/0030-the-company-site-is-html-and-css-not-react.md) | DEL-12, Client App Architecture, Stack | The company site is HTML and CSS on Vite, with no script and no React. |
+| [0002](../docs/adr/0002-technology-choices.md) | DEL-12, Client App Architecture, Stack | The company site is HTML and CSS on Vite, with no script and no React. |
 
 ## Deviations
 

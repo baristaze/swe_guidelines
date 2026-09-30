@@ -1,7 +1,7 @@
 ---
 name: arch-scaffold-app
 description: "Create a client app: the operator console, another browser app, or another command line, in the shape of the scaffold's portal and CLI, with its build, deployment, and tests. TypeScript or Python."
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make check), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash(make openapi), Bash(make check), Bash(pnpm install:*), Bash(pnpm run:*), Bash(pnpm --filter:*), Bash(uv run:*), Bash(uv sync:*), Bash(git status:*), Bash(git rm:*)
 ---
 
 # arch-scaffold-app
@@ -43,7 +43,7 @@ portal.
 | `.env.example`, `scripts/dev.sh`, `README.md` (root) (browser app) | its dev port, its `public/config.json` written and its dev server started, its local URL |
 | `deployment/terraform/modules/environment/main.tf` (browser app) | a `static_site` instance beside `module "portal"`, on its own subdomain, `admin` for the console |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` (browser app) | its bundle built once under the commit by staging and promoted to production, never built again, beside the portal's |
-| `docs/adr/0010-operators-work-through-the-api.md`, `specs/architecture.md` (`admin`) | the decision superseded by the console, and its row gone from the deviations |
+| `docs/adr/0010-operators-work-through-the-api.md`, `specs/architecture.md` (`admin`) | the ADR removed (`git rm`), since the console ends its deviation, and its row gone from the deviations, which holds the one link to it |
 
 ## Procedure
 

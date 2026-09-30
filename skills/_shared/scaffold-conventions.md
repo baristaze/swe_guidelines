@@ -80,17 +80,30 @@ a copy of the shape still goes wrong.
   `[tool.arch-check.options.CTX-26] sites` and in
   `om/tests/unit/test_stage_construction.py`.
 - **A manager stays within its bound.** `arch-check` refuses a manager
-  interface of more than twenty operations (CON-01). In a namespace
-  whose manager delegates, a new operation goes to the delegate whose
-  duty it is, and to the manager itself only when no delegate's duty
-  covers it, as a transition or the sweep. A manager that would pass the
-  bound gains a delegate, as `tenancy` has `credentials`:
-  `<Ns><Duty>ManagerInterface` in `om/src/<name>/om/<ns>/<duty>.py`,
-  re-exported from the package root, and `<Ns><Duty>ManagerImpl` in
-  `impl/<duty>.py`. The root builds it in `om/src/<name>/om/root.py`
-  and hands it to the manager, whose interface carries it as an
-  attribute, never a method. A caller reaches it as
-  `managers.<ns>.<duty>`, and it has no field on `Managers`.
+  interface of more than twenty operations (CON-01). A project that
+  holds another bound sets `max_operations` under
+  `[tool.arch-check.options.CON-01]` in the root `pyproject.toml`. In a
+  namespace whose manager delegates, a new operation goes to the
+  delegate whose duty it is, and to the manager itself only when no
+  delegate's duty covers it, as a transition or the sweep.
+- **A delegate takes the operations that are added.** When the
+  operations a scaffold adds would take a manager past the bound, they
+  go to a new delegate, whose duty is theirs, as `tenancy` has
+  `credentials`. The operations the manager already holds stay where
+  they are. Moving those, with their callers and their tests, is a
+  change of its own, made only when a person asks for it.
+- **A delegate's shape.** It is `<Ns><Duty>ManagerInterface` in
+  `om/src/<name>/om/<ns>/<duty>.py`, re-exported from the package root,
+  and `<Ns><Duty>ManagerImpl` in `impl/<duty>.py`. The root builds it in
+  `om/src/<name>/om/root.py` and hands it to the manager, whose
+  interface carries it as an attribute, never a method. It has no field
+  on `Managers`, and a caller outside the namespace reaches it as
+  `managers.<ns>.<duty>`. A delegate that calls a sibling takes it in
+  its constructor, typed by its interface, as `members` takes `org`. One
+  that needs an operation of the manager, a transition among them, takes
+  a narrow callable for that one operation, which the root binds at call
+  time, as `org` takes `service_context`. The manager holds the
+  delegate, so the delegate never takes the manager.
 - **Authorize first.** A mutating manager operation opens with
   `ctx.require(<permission>)`, or `octx.require(...)`, before any read,
   the ones a worker calls included. Only an operation on a stage with no
@@ -151,7 +164,8 @@ a copy of the shape still goes wrong.
 
 A changed file gains an entry: a getter on a root, a field on
 `Managers`, a router in `HOSTED`, a row in a map, a member in the
-workspace. Nothing is reordered or removed.
+workspace. Nothing is reordered, and nothing is removed but what a
+skill's Changed table names as removed.
 
 ## After writing
 

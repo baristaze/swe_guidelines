@@ -7,8 +7,11 @@ That vocabulary never belongs in the guideline or the lenses.
 `REFUSED_TERMS` below holds every refused term, by group; `SCOPES` says
 which group applies to which files.
 
-It also refuses changelog phrasing in the guideline, and the one
-spelling of an update copy the guideline forbids, wherever a snippet
+It also refuses changelog phrasing in the guideline and in the scaffold,
+whose documents a copy keeps: each says what holds, and what was stays
+in git. The `record` group holds the same rule for the scaffold's ADRs:
+no Alternatives section, and a status that is one date. The one spelling
+of an update copy the guideline forbids is refused wherever a snippet
 could teach it. Those groups apply to Markdown only.
 
 The guideline stands alone: nothing in it may name or lean on the
@@ -46,8 +49,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # The refused vocabulary, one regular expression per term, matched case-insensitively.
 # "product" is the vocabulary of the one origin the guideline was extracted from and
 # must not flow back into it; a fork replaces that list with its own. "history" is
-# changelog phrasing, refused in the guideline only. "shape" is a spelling the
-# guideline forbids in code: a copy built from a dump must go through
+# changelog phrasing, refused in the guideline and in the scaffold. "record" is what
+# an ADR of the scaffold never carries: a section of the options it turned down, and
+# a status line that is anything but `**Status**: accepted (<date>)`. "shape" is a
+# spelling the guideline forbids in code: a copy built from a dump must go through
 # model_validate, so `model_copy(update={**...` cannot appear in any snippet.
 REFUSED_TERMS: dict[str, list[str]] = {
     "product": [
@@ -70,6 +75,10 @@ REFUSED_TERMS: dict[str, list[str]] = {
         r"\bdeprecated\b",
         r"\bwe changed\b",
         r"\bhas changed\b",
+    ],
+    "record": [
+        r"^#+\s*Alternatives\b.*",
+        r"^\*\*Status\*\*(?!: accepted \(\d{4}-\d{2}-\d{2}\)$).*",
     ],
     "shape": [
         r"model_copy\(update=\{\*\*",
@@ -109,7 +118,8 @@ SCOPES: list[tuple[str, list[str]]] = [
     ("benchmark/", ["product", "shape"]),
     ("checkers/", ["product", "shape"]),
     (".github/", ["product"]),
-    ("scaffold/", ["product", "shape"]),
+    ("scaffold/", ["product", "history", "shape"]),
+    ("scaffold/acme_root/docs/adr/", ["record"]),
 ]
 
 

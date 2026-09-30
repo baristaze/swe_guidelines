@@ -112,19 +112,21 @@ absolute path of `../../scaffold/base.py`.
    | A line both sides changed | The scaffold's change to the core, and the copy's product around it. When both changed it to the same effect in other words, keep the copy's line: its own tests may hold its wording. When the scaffold's change undoes a deviation the copy records (its Deviations table names the ADR), keep the copy's line. |
    | A file the copy deleted and the scaffold changed | It stays deleted (`git rm`). When the copy keeps its own file for the same thing, such as a screen its product replaced, carry into that file what the scaffold's change alters in behaviour. |
    | A file the scaffold deleted and the copy changed | Deleted, unless the copy's own code still imports or runs it. |
-   | `docs/adr/` | The copy's record of its own decisions. An ADR the copy never changed takes the scaffold's change, as any file does. Into one the copy changed, no scaffold text comes, by a conflict or by a clean merge; only a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
-   | A migration | History the copy's databases applied: never edited. A scaffold migration that is not in the copy's chain stays out. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. |
+   | `docs/adr/` | The copy's record of its own decisions. An ADR the copy never changed takes the scaffold's change, as any file does. Into one the copy changed, no scaffold text comes, by a conflict or by a clean merge; only a rule the scaffold's change alters goes into the copy's ADR of that decision, when it has one. An ADR the scaffold removed, which the copy changed, is the copy's to remove: it goes once the ADR that now holds its decision says what the copy's said, and nothing in the copy cites its number. A new scaffold ADR whose number the copy already uses takes the copy's next free number, when its decision holds in the copy, and is removed when it does not. After the merge, no two ADRs share a number. |
+   | A migration | The chain the copy's databases applied: an applied file is never edited, and a chain the copy folded stays as the copy folded it. A scaffold migration that is not in the copy's chain stays out, a fold of the scaffold's own chain included. When it changes a table the copy has, the copy writes its own migration for that change, on its chain's head. |
    | `uv.lock`, `pnpm-lock.yaml` | Never merged by hand: take the copy's (`git checkout --ours <file>`), and regenerate after the manifests merge (`uv lock`, `pnpm install --lockfile-only`). |
    | What `make openapi` writes | Take either side, then run `make openapi`. |
    | The pin | Every pin names the target: `specs/architecture.md` and the Makefile's `ARCH_CHECK`. `grep -rn "v<base release>"` finds nothing outside the ADRs and a changelog. |
 
 7. **Carry what the releases ask** (step 5). A deviation whose rule now
    holds leaves the Deviations table, and a row that deviates in part
-   keeps only that part. Where the merge brought the scaffold's own
-   change to that ADR, the ADR is done; otherwise its status says the
-   release that retired it. Record the move itself the way the copy
-   records a pin move: when its ADRs keep one for each release adopted,
-   write the next one. Commit this apart from the merge.
+   keeps only that part. Its ADR says what still holds. Where the merge
+   brought the scaffold's own change to that ADR, the ADR is done.
+   Otherwise rewrite it in place to the part that still holds, or, when
+   nothing does, remove it with every citation of its number; its
+   status stays one date, and no ADR is renumbered. The move itself gets
+   no ADR: the pin and the merge commit record it. Commit this apart
+   from the merge.
 8. **Run the gates.** `make setup`, then `make check`. When
    `docker info` exits 0, also `make infra-up`, `make migrate`,
    `make migrate-check`, and `make test-integration`; otherwise the

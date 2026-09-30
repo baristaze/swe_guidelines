@@ -14,7 +14,7 @@ It reads the source with `ast` and never imports it. It needs Python
 A project pins the guideline release it follows:
 
 ```bash
-uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.42.0#subdirectory=checkers" arch-check
+uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.43.0#subdirectory=checkers" arch-check
 ```
 
 `--python` names the Python the project pins in `.python-version`. On
@@ -87,6 +87,9 @@ name the guideline uses. A key the rule does not read exits 2:
 ```toml
 [tool.arch-check.options.CTX-26]
 sites = ["om/src/acme/om/tenancy/impl/manager.py"]
+
+[tool.arch-check.options.CON-01]
+max_operations = 24   # the operations one manager interface declares at most; 20 by default
 ```
 
 With no table at all, the checker still runs, on the one package under

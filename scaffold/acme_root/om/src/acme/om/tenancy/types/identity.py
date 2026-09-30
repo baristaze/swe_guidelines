@@ -29,9 +29,8 @@ class Identity(Identifiable, Trackable):
     email: str
     # The provider's name for this person: the issuer and the subject under
     # it, unique together. None until the person first signs in through the
-    # provider (a person the seeding or the operator plane made, or one an
-    # older release made with a password, is linked then, by the verified
-    # email).
+    # provider (a person the seeding or the operator plane made is linked
+    # then, by the verified email).
     issuer: str | None = None
     subject: str | None = None
     # The operator allowlist is this field: a person whose entry is set may be

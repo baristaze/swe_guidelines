@@ -142,8 +142,8 @@ def check_session(session: Session, kind: CredentialKind, idle_ttl: timedelta) -
     if session.expires_at <= now:
         raise CredentialExpired("session expired")
     # The idle lifetime beside the absolute one. A session no request has
-    # touched yet (one an older release wrote) starts its idle clock at
-    # its first use here, not at its creation.
+    # touched yet starts its idle clock at its first use here, not at its
+    # creation.
     seen = session.last_seen_at
     if seen is not None and seen + idle_ttl <= now:
         raise CredentialExpired("session idle")

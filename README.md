@@ -9,7 +9,7 @@ systems in Python, and the tools that hold a project to it.
 - **[`scaffold/`](scaffold/README.md)**: the domain-agnostic core of a
   system in this shape, a whole monorepo that runs. A new project
   copies it.
-- **[`lenses/`](lenses/README.md)**: 258 lenses in eight groups, the
+- **[`lenses/`](lenses/README.md)**: 259 lenses in eight groups, the
   checkable detail under each rule.
 - **[`checkers/`](checkers/README.md)**: `arch-check`, the static
   checker. It decides the lenses a program can decide, in a second.
@@ -64,7 +64,7 @@ says what to adopt first and what can wait.
 ## Run the checker
 
 ```bash
-uvx --python "$(cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.42.0#subdirectory=checkers" arch-check
+uvx --python "$(cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.43.0#subdirectory=checkers" arch-check
 ```
 
 It exits non-zero on a finding, and `--format json` prints one JSON

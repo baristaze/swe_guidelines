@@ -60,10 +60,10 @@ names, so a team that pins versions installs from a tag. The plugin
 adds the marketplace from it:
 
 ```text
-/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.42.0
+/plugin marketplace add https://github.com/baristaze/swe_guidelines.git#v0.43.0
 ```
 
-The clone checks it out: `git -C ../swe_guidelines checkout v0.42.0`.
+The clone checks it out: `git -C ../swe_guidelines checkout v0.43.0`.
 
 ## Run the checker
 
@@ -71,7 +71,7 @@ The clone checks it out: `git -C ../swe_guidelines checkout v0.42.0`.
 any CI. Pin it at the project's guideline release, in the fast gate:
 
 ```make
-ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.42.0\#subdirectory=checkers" arch-check
+ARCH_CHECK := uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.43.0\#subdirectory=checkers" arch-check
 
 arch-check: ## the guideline's static checks
 	$(ARCH_CHECK)
@@ -106,8 +106,8 @@ substitution: a disable is a deviation, and a substitution is not.
 # Architecture
 
 This project follows the Software Design and Architecture Guidelines:
-<https://github.com/baristaze/swe_guidelines/blob/v0.42.0/architecture.md>
-(pinned at `v0.42.0`).
+<https://github.com/baristaze/swe_guidelines/blob/v0.43.0/architecture.md>
+(pinned at `v0.43.0`).
 
 ## Substitutions
 
@@ -149,6 +149,11 @@ is cited next to the code is a documented exception. A review reports
 it on one line under Deviations. It is not a finding, and it never
 lowers a severity.
 
+An ADR says what holds. When its decision changes, rewrite it in place.
+When the deviation ends, remove it with its row. Its number never
+changes, and its status stays one date: git, the pull request, and the
+release notes say what it was.
+
 ## Operate with the built-in skills
 
 A copy of the scaffold carries its operational skills and audits under
@@ -162,6 +167,12 @@ row names, and refuses a wider one. A skill that takes `--env` runs
 with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
+
+`/docs-compact` keeps the tree's documents to what holds: its ADRs, its
+changelog, the rows of `specs/architecture.md`, and its comments. With
+`--migrations` it also folds each role's migration chain into one
+revision under the head's revision id, once every database that exists
+is at that head. It works on a branch and pushes nothing.
 
 An existing tree copies the scaffold's `.agents/skills/` into its own
 and renames `acme` in them to its own name, in each form
@@ -203,7 +214,7 @@ repository, the copy's first commit is the scaffold, on `scaffold` and
 the main branch. A later release takes two commands and no clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baristaze/swe_guidelines/v0.42.0/scaffold/base.py | python3 - v0.42.0
+curl -fsSL https://raw.githubusercontent.com/baristaze/swe_guidelines/v0.43.0/scaffold/base.py | python3 - v0.43.0
 git switch -c scaffold-v0-40-0 && git merge scaffold
 ```
 
@@ -212,7 +223,8 @@ only the `scaffold` branch. The merge is the project's to resolve.
 `/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it
 merges, resolves what the merge leaves, and runs the gates. Two things
 stay the project's own through every move: its ADRs, which record its
-decisions, and its migration chain, which its databases applied.
+decisions, and its migration chain, which its databases applied and
+which only the project folds.
 
 Merge the move into the main branch with a merge commit, never a
 squash. A squash drops the parent that records the base, and the next
@@ -228,7 +240,7 @@ A project that wants the text in its tree without the plugin fetches it
 at a pinned tag into a folder it never edits:
 
 ```makefile
-GUIDELINE_TAG ?= v0.42.0
+GUIDELINE_TAG ?= v0.43.0
 GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
 
 guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/

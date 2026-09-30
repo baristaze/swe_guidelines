@@ -2275,12 +2275,11 @@ async def test_a_person_has_one_personal_org_whatever_races_to_make_it(
         await storage.write_org(other.id, other)
 
 
-async def test_a_person_an_older_release_made_gets_a_personal_org_at_sign_in(
+async def test_a_person_with_no_personal_org_gets_one_at_sign_in(
     manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl
 ) -> None:
-    # An identity and a team org written the way the release before this one
-    # wrote them: no personal org.
-    org, user = await old_release_tenant(storage, "gus@example.test", "Gus", "gus-co")
+    # An identity and a team org, and no personal org.
+    org, user = await tenant_with_no_personal_org(storage, "gus@example.test", "Gus", "gus-co")
     login = await manager.sign_in.dev_sign_in(request(), "gus@example.test")
     kinds = sorted((m.org.kind, m.org.name) for m in login.memberships)
     assert kinds == [(OrgKind.PERSONAL, "Gus"), (OrgKind.TEAM, org.name)]
@@ -2292,7 +2291,7 @@ async def test_a_person_an_older_release_made_gets_a_personal_org_at_sign_in(
     )
 
 
-async def old_release_tenant(
+async def tenant_with_no_personal_org(
     storage: TenancyStorageMemoryImpl, email: str, name: str, slug: str
 ) -> tuple[Org, User]:
     now = utcnow()

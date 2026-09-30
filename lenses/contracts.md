@@ -24,21 +24,25 @@ is an async method whose signature is a contract. A manager interface
 holds no more operations than one reader holds, twenty unless the
 project sets its own bound. Past it, the manager keeps its core and
 delegates a duty to an interface of its own, which the manager's
-interface carries as an attribute.
+interface carries as an attribute. A caller outside the namespace
+reaches a delegate through its manager. Inside it, the root may hand a
+delegate a sibling, typed by its interface (CON-06), or a narrow
+callable for one operation of the manager.
 
 **Source.** Interfaces; The Business Layer.
 
 **Look for.** Every manager, storage, and service class; the module a
 consumer imports from; the type of every dependency a constructor
-accepts; the number of operations each manager interface declares, and
-how it exposes a delegate.
+accepts; the number of operations each manager interface declares, how
+it exposes a delegate, and what each delegate's constructor takes.
 
 **Violation.** A manager, storage, or service exists only as a concrete
 class with no `*Interface` declared; a caller imports a concrete class
 where an interface should stand; an operation is declared as a
 synchronous method on an interface that describes I/O; a manager
-interface past the bound; a delegate exposed as a method or a property,
-or reached any way but through its manager.
+interface past the bound; a delegate exposed as a method or a property;
+a caller outside the namespace that holds a delegate it did not reach
+through the manager.
 
 **Severity.** medium
 

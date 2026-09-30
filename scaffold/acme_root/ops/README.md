@@ -70,6 +70,11 @@ their own on the local stack and drop it; their tools are in
 `tickets-triage` reads the tracker and the repository, and holds none of
 these roles.
 
+`docs-compact` keeps the tree's documents to what holds at the head of
+the main branch, and with `--migrations` folds each migration chain into
+one revision. It edits on a branch, pushes nothing, and holds none of
+these roles.
+
 ## Stress scenarios
 
 `smoke` runs locally and `staging` against a deployed environment; see
