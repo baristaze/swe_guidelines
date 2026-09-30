@@ -1,7 +1,7 @@
 ---
 name: docs-compact
 description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold each role's migration chain into one revision under the head's revision id, shown equal by a schema dump. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(git tag:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
 ---
 
 # docs-compact
@@ -26,8 +26,10 @@ an option only the history explains: no, so it goes.
 `[--migrations]`
 
 Without the flag the skill rewrites text only, and never opens
-`om/migrations/`. With it, it also folds each role's migration chain
-into one revision, as step 7 says. It runs at the root of the checkout.
+`om/migrations/`: a search lists lines of it, as step 6's does, and no
+file there is read whole or changed. With it, it also folds each role's
+migration chain into one revision, as step 7 says. It runs at the root
+of the checkout.
 
 ## Role and credential
 
@@ -144,17 +146,26 @@ left as it is, and the report names it under Kept.
      breach.
    - A comment on code that serves the release before, in an expand and
      contract still in flight, stays, in the present tense: what the
-     code tolerates, and what ends it. The test: find the commit that
-     added the piece (`git log -S'<its name>' --format=%H -- <file>`,
-     the last line it prints), and count the release tags that hold it
-     (`git tag --contains <commit>`). With fewer than two, an
-     environment may still run, or roll back to, the release the piece
-     serves: it is in flight. With two or more, it serves a release
-     long gone. In doubt, or in a tree that tags no release, it is in
-     flight.
+     code tolerates, and what ends it. The test reads the tree alone,
+     and counts no release and no deploy. Name the piece the contract
+     keeps for the release before. While the head holds it, the step
+     that ends the contract has not landed, and it is in flight.
+     - A piece of the schema (a column, a default, a constraint, a
+       trigger, a function): the head holds it when an up file of the
+       chain makes it and no file with a later stamp drops it. `git
+       grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'` lists
+       the lines that say so.
+     - Any other piece (a field of a response, a setting, a branch of
+       the code) is the code the comment sits on: the head holds it.
+
+     In doubt, it is in flight.
+   - Code whose piece a later file dropped serves a release long gone.
+     It is listed in the report and left as it is, its comment with it:
+     the comment says why the code is there, and whoever removes the
+     code removes both. Its ADR is rewritten as any other is, and what
+     it says of the contract's steps goes, as a past.
    - Only text changes: a comment, a docstring, a document. A name in
-     code is code. Code that seems to serve a release long gone is
-     listed in the report and left as it is.
+     code is code.
    Commit.
 7. **With `--migrations`, fold each chain.** Read `references/fold.md`
    first, and follow it: the precondition and how each part of it is

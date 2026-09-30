@@ -355,6 +355,21 @@ def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
     assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
 
 
+def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:
+    """A tree that releases often holds a contract still in flight under
+    many tags, so a count of tags says nothing of it. The head does: the
+    piece kept for the release before is still there, in the schema or in
+    the code. What the verdict costs is small on purpose: code the test
+    calls long gone keeps its comment, and only the report names it."""
+    text = _prose("docs-compact")
+    assert "The test reads the tree alone, and counts no release and no deploy." in text
+    assert "While the head holds it, the step that ends the contract has not landed" in text
+    assert "`git grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'`" in text
+    assert "In doubt, it is in flight." in text
+    assert "It is listed in the report and left as it is, its comment with it" in text
+    assert "git tag" not in _skill("docs-compact")
+
+
 def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     """A fold replaces a chain every database applied, so the reference the
     fold step reads says when it may run, what shows it equal, and where a
