@@ -121,13 +121,15 @@ machine's paths, so they stay out of the project's history.
 | `arch-explain`            | Answers a question about the architecture             |
 | `arch-deviate`            | Records a deviation as an ADR in the project          |
 | `arch-upgrade-deps`       | Moves every dependency to its latest stable release   |
+| `arch-upgrade-scaffold`   | Moves a copy of the scaffold to a later release, by a merge |
 | `arch-new-aspect`         | Grows the guideline and cascades it through the tools |
 | `arch-benchmark`          | Runs a benchmark scenario                             |
 | `arch-benchmark-browser`  | Asks the chat products a reader would use             |
 
 The last three run in a checkout of this repository. A review reads and
 reports; it never edits. A scaffold writes into the working tree and
-never commits.
+never commits. `arch-upgrade-scaffold` commits its move, since the merge
+is the move.
 
 ## Develop
 

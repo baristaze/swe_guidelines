@@ -39,8 +39,29 @@ cd ~/code/pressroom && make setup && make check
 
 The last part of the path is the name: one or two snake_case words.
 `new.py` renames every path and file to it, pins the guideline release it
-ships with, and starts a git repository with nothing staged. It uses the
+ships with, and starts a git repository. From a clean checkout of this
+repository, the repository's first commit is the copy itself, on the
+branch `scaffold` and the main branch: the copy's base. It uses the
 standard library only.
+
+## Move it forward
+
+A copy takes a later release by merging it. `base.py` commits the
+scaffold at that release onto the copy's `scaffold` branch, renamed as
+the copy was, and `git merge scaffold` brings in what the scaffold
+changed since the copy's base, keeping what the copy changed:
+
+```bash
+python3 scaffold/base.py v0.41.0 --repo ~/code/pressroom
+cd ~/code/pressroom && git switch -c scaffold-v0-41-0 && git merge scaffold
+```
+
+`base.py` fetches one tarball of the release and never clones.
+`/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it grafts
+a copy made before its base was recorded, merges, resolves what the
+merge leaves, and runs the gates. The move merges into the main branch
+with a merge commit, never a squash, since the merge is what records the
+base.
 
 <!-- agents-only
 The name's forms: snake for the package, the logins, and the paths; kebab

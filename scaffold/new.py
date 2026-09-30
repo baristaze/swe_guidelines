@@ -14,8 +14,12 @@ the Title (`Free Press`). Binary files are copied as they are, and a link
 stays a link. The copy's skills sit in `.agents/skills/`, and its
 `.claude/skills` is a link to them, whatever the source holds there: the link,
 or a folder when the scaffold was copied without its links. The copy pins the
-guideline release this checkout carries, starts a git repository with nothing
-staged, and prints the next step.
+guideline release this checkout carries and starts a git repository. When the
+checkout is a clean git checkout of the guideline, the repository's first
+commit is the scaffold as copied, on the branch `scaffold` and the main
+branch, naming the guideline commit it came from: the copy's base, which
+`scaffold/base.py` moves forward. Otherwise nothing is committed, and the
+first move grafts the base. It prints the next step.
 
 Standard library only, so it runs before anything is installed.
 """
@@ -165,12 +169,65 @@ def is_text(data: bytes) -> bool:
     return True
 
 
+BRANCH = "scaffold"
+"""The copy's branch that holds its base, as `base.py` keeps it."""
+REPOSITORY = "https://github.com/baristaze/swe_guidelines"
+"""Where the guideline lives, unless the plugin manifest names another."""
+
+
 def release(plugin: Path = PLUGIN) -> str | None:
     """The guideline release this checkout carries, or None outside one."""
     try:
         return str(json.loads(plugin.read_text(encoding="utf-8"))["version"])
     except (OSError, ValueError, KeyError):
         return None
+
+
+def git(where: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True, input=stdin, check=False)
+
+
+def checkout_commit(source: Path, plugin: Path) -> str | None:
+    """The guideline commit `source` is, when it sits clean in a git checkout
+    of the guideline; None otherwise: an archive, a staged plugin, or a
+    scaffold with changes of its own."""
+    root = source.resolve().parent.parent
+    top = git(root, "rev-parse", "--show-toplevel")
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != root:
+        return None
+    changed = git(root, "status", "--porcelain", "--", str(source.resolve()), str(plugin.resolve().parent))
+    head = git(root, "rev-parse", "HEAD")
+    if changed.returncode != 0 or changed.stdout.strip() or head.returncode != 0:
+        return None
+    return head.stdout.strip()
+
+
+def repository(plugin: Path) -> str:
+    try:
+        named = json.loads(plugin.read_text(encoding="utf-8")).get("repository")
+    except (OSError, ValueError, AttributeError):
+        named = None
+    return named if isinstance(named, str) and named.startswith("https://github.com/") else REPOSITORY
+
+
+def record_base(dest: Path, names: Names, commit: str | None, plugin: Path) -> str:
+    """Commits the copy as its base when `commit` names where it came from;
+    returns the line that says what happened."""
+    if commit is None:
+        return "base: not recorded, since this is not a clean checkout of the guideline; the first move grafts it"
+    if git(dest, "var", "GIT_COMMITTER_IDENT").returncode != 0:
+        return "base: not recorded, since git has no identity here; the first move grafts it"
+    message = (
+        f"The scaffold at {commit[:9]}, as {names.snake}\n\n"
+        f"Scaffold-Source: {repository(plugin)}\nScaffold-Commit: {commit}\nScaffold-Name: {names.snake}\n"
+    )
+    for args, stdin in ((("add", "--all", "--force", "."), None), (("commit", "--quiet", "-F", "-"), message)):
+        done = git(dest, *args, stdin=stdin)
+        if done.returncode != 0:
+            git(dest, "read-tree", "--empty")
+            return f"base: not recorded, since git {args[0]} failed: {done.stderr.strip()}"
+    git(dest, "branch", BRANCH)
+    return f"base: the first commit, on {BRANCH} and the main branch, is the scaffold at {commit[:9]}"
 
 
 def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
@@ -231,8 +288,10 @@ def main(argv: list[str] | None = None, source: Path = SOURCE, plugin: Path = PL
     version = release(plugin)
     count = copy(source, dest, names, version)
     subprocess.run(["git", "init", "--quiet", str(dest)], check=True)
+    based = record_base(dest, names, checkout_commit(source, plugin), plugin)
     pinned = f", pinned at guideline v{version}" if version else ""
     print(f"{count} files in {dest} as {names.snake}{pinned}")
+    print(based)
     print(f"next: cd {dest} && make setup && make check")
     return 0
 

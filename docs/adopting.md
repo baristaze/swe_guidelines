@@ -127,7 +127,9 @@ Recorded in `docs/adr/0002-technology-choices.md`.
 A project without a `specs/` folder puts the file where its
 specifications live, and names that place in its `README.md`. Bump the
 tag when the project adopts a newer release, in a commit that also runs
-`arch-review-full all` on the main branch.
+`arch-review-full all` on the main branch. A copy that keeps the scaffold as
+its base moves the pin with the merge that takes the release: see
+[Upgrade a copy of the scaffold](#upgrade-a-copy-of-the-scaffold).
 
 ## Record technology substitutions in one ADR
 
@@ -184,6 +186,41 @@ The skills assume the roles, the profiles, the env file, the
 `<root>-ops` binary, the tools under `ops/audit/`, and the operator
 plane's read routes that the scaffold carries. A tree without them adds
 them first.
+
+## Upgrade a copy of the scaffold
+
+A copy of the scaffold can keep the scaffold as its base, and take each
+later release by a merge rather than by hand. Its `scaffold` branch
+holds the scaffold as the project took it. Each commit there is the
+scaffold at one commit of this repository, renamed to the project's
+name, and its parent is the one before. The project's main branch
+merges that branch, so the last one merged is the base of the next
+merge. Git then brings in what the scaffold changed since, and keeps
+what the project changed.
+
+`new.py` starts a copy at its base: from a clean checkout of this
+repository, the copy's first commit is the scaffold, on `scaffold` and
+the main branch. A later release takes two commands and no clone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/baristaze/swe_guidelines/v0.40.0/scaffold/base.py | python3 - v0.40.0
+git switch -c scaffold-v0-40-0 && git merge scaffold
+```
+
+`base.py` reads the scaffold at that release from one tarball, and moves
+only the `scaffold` branch. The merge is the project's to resolve.
+`/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it
+merges, resolves what the merge leaves, and runs the gates. Two things
+stay the project's own through every move: its ADRs, which record its
+decisions, and its migration chain, which its databases applied.
+
+Merge the move into the main branch with a merge commit, never a
+squash. A squash drops the parent that records the base, and the next
+move would merge against an older one.
+
+A project copied before its base was recorded, or from an archive,
+starts at the release it pins. The skill's first move grafts that
+release with a merge that changes no file, then merges the next.
 
 ## Optional: vendor the text
 
