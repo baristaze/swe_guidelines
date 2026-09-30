@@ -695,7 +695,12 @@ PERSONS_NEXT = "Next is the person's to run, never the session's"
 POLLS = "Poll `get-query-results` at most 10 times"
 LOOP_BOUNDS: dict[str, tuple[str, ...]] = {
     "ops-watch": ("at most 30 batches", "at least 30 seconds", "at most 20 tool calls", HOPS),
-    "ops-root-cause": ("at most 5 request ids, one pass each", "the window's first `seq`", POLLS),
+    "ops-root-cause": (
+        "at most 5 request ids, one pass each",
+        "the window's first `seq`",
+        POLLS,
+        "at most 20 pages of members",
+    ),
     "ops-investigate": (POLLS, HOPS),
     "stress-test-run": (HOPS,),
     "ops-cloud-deployment-create": (PERSONS_NEXT,),

@@ -165,17 +165,18 @@ def test_a_skill_that_holds_a_token_pre_approves_the_ops_command_and_no_other(na
 # the session that reads them holds an operator's token.
 TENANT_TEXT = {"name", "slug", "display_name", "email"}
 TENANT_READ = re.compile(
-    r'^ *curl [^\n]*"\$ACME_API_URL/v1/admin/orgs/<org_id>(?:/members)?"'
+    r'^ *curl [^\n]*"\$ACME_API_URL/v1/admin/orgs/<org_id>(?:/members(?:\?cursor=<next_cursor>)?)?"'
     r"(?P<piped> \\\n +\| jq '(?P<kept>[^'\n]*)'$)?",
     re.MULTILINE,
 )
 
 
 def test_the_root_cause_reads_of_a_tenant_keep_no_text_the_tenant_wrote() -> None:
-    """The org and its members are read through `jq`, which keeps the ids,
-    the kind, and the timestamps: neither read is printed whole."""
+    """The org, its members, and a next page of them are read through `jq`,
+    which keeps the ids, the kind, and the timestamps: no read is printed
+    whole."""
     reads = list(TENANT_READ.finditer(_skill("ops-root-cause")))
-    assert len(reads) == 2, "ops-root-cause no longer reads the org and its members as this test sees them"
+    assert len(reads) == 3, "ops-root-cause no longer reads the org and its members as this test sees them"
     for read in reads:
         assert read["piped"], f"a read of the tenant is printed whole: {read[0]}"
         assert not set(re.findall(r"[a-z_]+", read["kept"])) & TENANT_TEXT, read["kept"]
@@ -266,6 +267,9 @@ COUNT_BOUNDS = {
         'the pass ends with "not found" for its id',
         "never more than 5 request ids, never a second pass over one, "
         "never more than 10 polls of a query",
+        "When `next_cursor` is not null, read the next page with it as `cursor`",
+        "Read at most 20 pages of members, 1,000 of them.",
+        "never more than 20 pages of members",
         "An answer that is empty, or that `jq` cannot parse, is no answer.",
         "Either way the run ends there, as on a refusal",
         "The read is not made a second time.",

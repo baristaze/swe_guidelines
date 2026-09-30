@@ -94,10 +94,26 @@ do not use up the first pass's one read of each signal.
    never run either read without its `jq`, and never print a whole
    answer. The report names the tenant by its id.
 
-   With `--user`, keep that member alone. `error` is null on an answer
-   and the refusal's code otherwise. A route that answers 403 or 404
-   ends the run: the token is not allowed, or the tenant does not
-   exist, and neither is guessed around.
+   A page holds at most 50 members. When `next_cursor` is not null,
+   read the next page with it as `cursor`, through the same `jq`:
+
+   ```bash
+   set -a; . ~/.config/acme/ops/<env>.env; set +a
+   curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/members?cursor=<next_cursor>" \
+     | jq '{members: [.items[]? | {id, created_at}], next_cursor, error: .error.code}'
+   ```
+
+   Without `--user`, read on until `next_cursor` is null: the member
+   count is the sum of the pages. With `--user`, stop at the page that
+   holds that member, and keep that member alone. Read at most 20 pages
+   of members, 1,000 of them. After the twentieth the read stops: the
+   report says "more than 1,000 members", and with `--user`, that the
+   member was not among the first 1,000.
+
+   `error` is null on an answer and the refusal's code otherwise. A
+   route that answers 403 or 404 ends the run: the token is not
+   allowed, or the tenant does not exist, and neither is guessed
+   around.
 
    An answer that is empty, or that `jq` cannot parse, is no answer.
    `curl -s` prints nothing when the API is out of reach, and `jq`
@@ -257,7 +273,7 @@ do not use up the first pass's one read of each signal.
 - No unbounded search: never more than 5 request ids, never a second
   pass over one, never more than 10 polls of a query, never a page of
   the feed read from before the window's first `seq` (the one-event
-  probes that find it aside).
+  probes that find it aside), never more than 20 pages of members.
 
 ## Output
 
