@@ -88,6 +88,56 @@ def test_a_listed_sync_method_passes_con_01(tmp_path):
     assert code == 0
 
 
+def manager_interface(operations: int) -> str:
+    """A manager interface of that many operations, each async and abstract."""
+    body = "".join(f"    @abstractmethod\n    async def get_{n}(self, ctx): ...\n\n" for n in range(operations))
+    return f"from abc import ABC, abstractmethod\n\n\nclass TasksManagerInterface(ABC):\n{body}"
+
+
+def test_a_manager_interface_at_the_bound_passes_con_01(tmp_path):
+    code, found, _ = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": manager_interface(20)})
+    assert (code, found) == (0, [])
+
+
+def test_a_manager_interface_over_the_bound_is_con_01(tmp_path):
+    code, found, messages = run(tmp_path, "CON-01", {f"{OM}/tasks/manager.py": manager_interface(21)})
+    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/manager.py", 4)])
+    assert messages == [
+        "TasksManagerInterface declares 21 operations, over the bound of 20; "
+        "a manager past it delegates a duty to an interface of its own"
+    ]
+
+
+def test_a_delegate_is_held_to_the_bound_and_its_attribute_is_no_operation_in_con_01(tmp_path):
+    delegate = manager_interface(21).replace("TasksManagerInterface", "TasksKeysManagerInterface")
+    manager = manager_interface(20).replace(
+        "class TasksManagerInterface(ABC):\n", "class TasksManagerInterface(ABC):\n    keys: TasksKeysManagerInterface\n\n"
+    )
+    files = {f"{OM}/tasks/manager.py": manager, f"{OM}/tasks/keys.py": delegate}
+    code, found, messages = run(tmp_path, "CON-01", files)
+    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/keys.py", 4)])
+    assert messages[0].startswith("TasksKeysManagerInterface declares 21 operations")
+
+
+def test_the_bound_is_an_option_of_con_01(tmp_path):
+    options = "\n[tool.arch-check.options.CON-01]\nmax_operations = {}\n"
+    files = {f"{OM}/tasks/manager.py": manager_interface(21)}
+    code, found, _ = run(tmp_path, "CON-01", files, pyproject=PYPROJECT + options.format(21))
+    assert (code, found) == (0, [])
+    code, found, messages = run(tmp_path, "CON-01", files, pyproject=PYPROJECT + options.format(3))
+    assert (code, found) == (1, [("CON-01", f"{OM}/tasks/manager.py", 4)])
+    assert "over the bound of 3" in messages[0]
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "true", '"20"'])
+def test_a_bound_that_is_no_count_is_a_configuration_error(tmp_path, value):
+    pyproject = PYPROJECT + f"\n[tool.arch-check.options.CON-01]\nmax_operations = {value}\n"
+    write_project(tmp_path, {f"{OM}/tasks/manager.py": manager_interface(1)}, pyproject=pyproject)
+    code, _, err = check(tmp_path, "--rule", "CON-01")
+    assert code == 2
+    assert "max_operations" in err
+
+
 # --- CON-02
 
 
