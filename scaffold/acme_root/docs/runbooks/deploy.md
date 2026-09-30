@@ -33,6 +33,12 @@ Each role trusts one GitHub environment on one branch
 | `acme-plan-production` | production | `production-plan` | `release` | read production, plan it |
 | `acme-deploy-production` | production | `production` | `release` | apply production |
 
+The repository issues GitHub's immutable OIDC subject
+(`use_immutable_subject` in the repository's OIDC settings), so the
+subject carries the owner's and the repository's ids beside their names,
+and a renamed or recreated repository never matches it. A role that
+expects the name-only form refuses every job with `AccessDenied`.
+
 Each GitHub environment holds `AWS_ROLE_ARN` and `TF_STATE_BUCKET` under
 the same names. `staging` also holds `API_DOMAIN_NAME`,
 `APP_DOMAIN_NAME`, `ALARM_EMAIL`, and optionally `SITE_DOMAIN_NAME` and

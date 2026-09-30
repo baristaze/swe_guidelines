@@ -42,11 +42,14 @@ make infra-up          # Postgres, Valkey, ElasticMQ, and MinIO alone
 make migrate           # the database logins, then every role's migration chain
 make seed              # the two orgs, their people, and the local operators
 make check             # lint, format, types, arch-check, unit tests
+make migrate-check     # every role's ORM metadata against the migrated schema
 make test-integration  # the storage contracts over Postgres
 ```
 
 `scripts/dev.sh` runs the API, the worker, and the portal on the host
-with hot reload. [deployment/local/README.md](deployment/local/README.md)
+with hot reload. A variable exported in the shell wins over `.env`, so
+a second checkout points the four `ACME_DATABASE_*` URLs at a
+database of its own. [deployment/local/README.md](deployment/local/README.md)
 works on one service at a time.
 
 ## Deploy and operate
