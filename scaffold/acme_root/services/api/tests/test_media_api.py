@@ -168,6 +168,30 @@ async def test_bytes_past_the_declared_size_are_refused(
     assert huge.status_code == 422, huge.text
 
 
+async def test_a_declared_length_that_is_no_number_is_no_exception(
+    client: httpx.AsyncClient, owner: dict[str, str]
+) -> None:
+    """A length in digits of another script declares nothing, and the body is
+    bounded as it runs; one with more digits than a number is read from is
+    past the bound."""
+    started = await start(client, owner, size=4)
+    file_id = started.json()["id"]
+    await client.post(f"/v1/media/files/{file_id}/upload", headers=owner)
+    sent = [(name.encode(), value.encode()) for name, value in owner.items()]
+    endless = await client.put(
+        f"/v1/media/files/{file_id}/content",
+        headers=[*sent, (b"Content-Length", b"9" * 5000)],
+        content=b"1234",
+    )
+    assert endless.status_code == 422, endless.text
+    unread = await client.put(
+        f"/v1/media/files/{file_id}/content",
+        headers=[*sent, (b"Content-Length", b"\xb2")],
+        content=b"1234",
+    )
+    assert unread.status_code == 200, unread.text
+
+
 async def test_usage_is_counted_from_the_rows(
     client: httpx.AsyncClient, owner: dict[str, str]
 ) -> None:
