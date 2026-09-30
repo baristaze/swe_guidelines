@@ -36,10 +36,12 @@ of the manager.
 consumer imports from; the type of every dependency a constructor
 accepts; how a manager interface exposes a delegate, and what each
 delegate's constructor takes. For each manager interface past twenty
-operations, or the project's number: which callers use which of its
-operations, and so whether they are duties used apart or one duty. A
-pass on one left whole names it, its count, and the duty that holds it
-together.
+operations, or past the number the root `pyproject.toml` sets as
+`review_threshold` or `max_operations` under
+`[tool.arch-check.options.CON-01]`, found by counting its operations
+where the checker did not run: which callers use which of them, and so
+whether they are duties used apart or one duty. One left whole is
+reported with its count and the duty that holds it together.
 
 **Violation.** A manager, storage, or service exists only as a concrete
 class with no `*Interface` declared; a caller imports a concrete class

@@ -84,14 +84,22 @@ a copy of the shape still goes wrong.
   to the manager itself only when no delegate's duty covers it, as a
   transition or the sweep. `arch-check` names a manager interface past
   twenty operations, a delegate's too, for a review, and fails none by
-  its count (CON-01). A project moves that number with
-  `review_threshold` under `[tool.arch-check.options.CON-01]` in the
-  root `pyproject.toml`.
+  its count (CON-01). A project sets its own number under
+  `[tool.arch-check.options.CON-01]` in the root `pyproject.toml`, as
+  `review_threshold` or, by the key's other name, `max_operations`.
+  Read it there; with neither key, it is twenty.
 - **A delegate takes a duty that is added.** When the operations a
-  scaffold adds would take a manager past that number, they go to a new
-  delegate if they are a duty callers use apart from the manager's own,
-  as `tenancy` has `credentials`. If they belong to a duty the manager
-  holds, they go on the manager, whatever its count. The operations the
+  scaffold adds would take a manager past that number, the scaffold
+  decides where they go from two things it has: the request's own words
+  for what the operations are for, and the callers this run writes for
+  them. They go to a new delegate, as `tenancy` has `credentials`, when
+  the request names a duty of their own and the callers written for
+  them are none of those that call the manager's operations: another
+  app, another worker, another router. They go on the manager, whatever
+  its count, when the request extends an entity or a duty the manager
+  holds, or when a caller of its operations calls these too. When the
+  two disagree, or neither decides, they go on the manager, and a
+  review reads the interface the checker names. The operations the
   manager already holds stay where they are. Moving those, with their
   callers and their tests, is a change of its own, made only when a
   person asks for it.
