@@ -46,10 +46,11 @@ a checked-in run is never written over.
      `<owner>/<name>`, in any case: it is the repository the closing
      Next section of `architecture.md` links.
 
-   The prompt and the contract stay as typed, the repository URL in
-   the prompt included: two runs compare only when both are the same
-   text. Nothing else changes, so the diff against the run folder is
-   the redactions alone. Read each copy back after the replacements.
+   The prompt and the contract stay as typed: two runs compare only
+   when both are the same text. The repository's own URL, the one in
+   the prompt, stays wherever it appears, its owner's handle included.
+   Nothing else changes, so the diff against the run folder is the
+   redactions alone. Read each copy back after the replacements.
 
 ## The row
 
