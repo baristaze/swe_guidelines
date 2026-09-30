@@ -106,7 +106,8 @@ do not use up the first pass's one read of each signal.
    curl -s -H "Authorization: Bearer $ACME_OPERATOR_TOKEN" "$ACME_API_URL/v1/admin/orgs/<org_id>/events?after_seq=<seq>&limit=200"
    ```
 
-   The operator's feed carries `request_id` and `app` beside the
+   The feed answers a bare list of events, never an object that wraps
+   one. The operator's feed carries `request_id` and `app` beside the
    actor, which the tenant's own feed leaves out, so it is the map from
    what the tenant did to the requests that did it. The rows themselves
    are the org and its members of step 2. Without `--request-id`, pick
