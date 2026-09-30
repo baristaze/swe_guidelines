@@ -13,7 +13,12 @@ help. The handler also closes a socket that has sent no application frame
 for `IDLE_TIMEOUT_SECONDS`, three client pings: a background tab whose
 timers are throttled past that is closed and reconnects when it wakes. The
 interval plus the timeout stays below the load balancer's idle timeout, so
-the server, not the load balancer, is what ends a dead socket."""
+the server, not the load balancer, is what ends a dead socket.
+
+No heartbeat thread runs beside the event loop, on purpose. The process is
+one loop that must never block, and a blocked loop fails every request and
+the health check with it. A thread that kept pinging through it would only
+hide the fault."""
 
 PING_INTERVAL_SECONDS = 25
 """How often a client pings; the hello frame names it."""
