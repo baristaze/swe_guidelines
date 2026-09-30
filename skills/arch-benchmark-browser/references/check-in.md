@@ -35,11 +35,13 @@ a checked-in run is never written over.
 3. Read every copy in full. Replace with `[redacted]`, with `python3`
    and by exact string, each of these where it stands, the words alone
    and not the sentence around them (`"[redacted], Connected"`):
-   - a device's name or kind, such as the computer a page showed as
-     connected, or "this Mac";
+   - a device's name or kind, as one span with the owner's name it
+     carries and its "this": the computer a page showed as connected,
+     or "this Mac";
    - a person's name, handle, account, or email, such as a greeting
      that names the person;
-   - a conversation title from a page's sidebar;
+   - a conversation title from a page's sidebar; a progress or tool
+     line of the answer is not one;
    - the name of the guideline's reference implementation, alone or as
      `<owner>/<name>`, in any case: it is the repository the closing
      Next section of `architecture.md` links.
