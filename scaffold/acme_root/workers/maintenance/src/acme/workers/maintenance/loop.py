@@ -18,7 +18,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from opentelemetry import trace
-from opentelemetry.trace import Span, SpanKind
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 
 from acme.infra.cache import CacheInterface
 from acme.infra.observability import (
@@ -29,6 +29,7 @@ from acme.infra.observability import (
     WORK_FAILED_RECENTLY,
     WORK_OLDEST_READY_SECONDS,
     caused_by_request_id_var,
+    described,
     failure_level,
     links_to,
     request_id_var,
@@ -179,7 +180,7 @@ class WorkerLoop:
                     strict=True,
                 ):
                     if isinstance(ended, Exception):
-                        log.error("%s ended with %r", timer.get_name(), ended)
+                        log.error("%s ended with %r", timer.get_name(), ended, exc_info=ended)
                 await self._mark_offline()
             finally:
                 self._drained.set()
@@ -262,7 +263,7 @@ class WorkerLoop:
         bounds how long a queue waits for a worker, not how fast one drains it."""
         self._running.pop(task, None)
         if not task.cancelled() and (error := task.exception()) is not None:
-            log.error("work task %s ended with %r", task.get_name(), error)
+            log.error("work task %s ended with %r", task.get_name(), error, exc_info=error)
         self._wake.set()
 
     # Running one item.
@@ -277,9 +278,17 @@ class WorkerLoop:
         )
         try:
             # The run's span, started at the claim: current for the run, and
-            # ended with it.
-            with trace.use_span(span, end_on_exit=True):
-                await self._handle(ctx, item)
+            # ended with it. Like the API's server span, it holds no text of
+            # an exception that ends the run, which may quote the item's
+            # payload: the span is marked failed with what `described` says.
+            with trace.use_span(
+                span, end_on_exit=True, record_exception=False, set_status_on_exception=False
+            ):
+                try:
+                    await self._handle(ctx, item)
+                except Exception as error:
+                    span.set_status(Status(StatusCode.ERROR, described(error)))
+                    raise
         finally:
             caused_by_request_id_var.reset(cause)
             request_id_var.reset(token)
@@ -327,7 +336,7 @@ class WorkerLoop:
             await self._settle(item, self._work.fail_for_good(ctx, item, reason), "refused")
         except Exception as error:
             log.exception("handler failed on %s", item.id)
-            failure = self._work.fail(ctx, item, f"{type(error).__name__}: {error}"[:500])
+            failure = self._work.fail(ctx, item, described(error)[:500])
             await self._settle(item, failure, "failed")
         else:
             await self._settle(item, self._work.complete(ctx, item), "done")
@@ -390,7 +399,7 @@ class WorkerLoop:
                     owner.cancel()
                 return
             except Exception as error:
-                log.warning("lease renewal failed on %s: %r", item.id, error)
+                log.warning("lease renewal failed on %s: %r", item.id, error, exc_info=error)
                 pause = min(retry, max(renewed_at + fence - clock(), 0))
 
     # Liveness.
@@ -424,7 +433,7 @@ class WorkerLoop:
                 await self._liveness.put(EMPTY_UUID, key, b"online", ttl)
                 stored = await self._liveness.get(EMPTY_UUID, key) is not None
         except Exception as error:
-            log.warning("heartbeat not published: %r", error)
+            log.warning("heartbeat not published: %r", error, exc_info=error)
             stored = False
         if stored and not self.online:
             log.info("heartbeat published")
@@ -439,7 +448,11 @@ class WorkerLoop:
             async with asyncio.timeout(self._options.heartbeat_interval.total_seconds()):
                 await self._liveness.invalidate(EMPTY_UUID, key)
         except Exception as error:
-            log.warning("could not mark offline; the liveness key expires on its own: %r", error)
+            log.warning(
+                "could not mark offline; the liveness key expires on its own: %r",
+                error,
+                exc_info=error,
+            )
         self.online = False
 
     # Maintenance.

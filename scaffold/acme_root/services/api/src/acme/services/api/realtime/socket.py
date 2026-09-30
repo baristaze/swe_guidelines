@@ -87,7 +87,7 @@ async def settle(task: asyncio.Task[None]) -> None:
     except asyncio.CancelledError, WebSocketDisconnect, OSError:
         return
     except Exception as error:
-        log.log(failure_level(error), "%s ended with %r", task.get_name(), error)
+        log.log(failure_level(error), "%s ended with %r", task.get_name(), error, exc_info=error)
 
 
 async def close_quietly(websocket: WebSocket, code: int = 1000, reason: str | None = None) -> None:

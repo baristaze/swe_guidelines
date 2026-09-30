@@ -195,7 +195,8 @@ async def test_the_last_attempt_fails_the_record_as_a_defect(tmp_path: Path) -> 
     failed = await container.managers.orchestrations.get(ctx, started.id)
     assert failed.status is OrchestrationStatus.FAILED
     assert failed.fail_reason is FailReason.DEFECT
-    assert failed.fail_detail == "ConnectionResetError: the database went away"
+    # The type alone: a library's text quotes what it was handed.
+    assert failed.fail_detail == "ConnectionResetError"
     assert failed.cursor == 0, "what it achieved stays; nothing more is done"
 
 
