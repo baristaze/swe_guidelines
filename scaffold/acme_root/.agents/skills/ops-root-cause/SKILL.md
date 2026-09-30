@@ -29,16 +29,20 @@ the one signal read by tenant: the error tracker holds no tenant
 
 A run follows at most 5 request ids, one pass each: the first five
 given, in the order given, or without `--request-id`, the five newest
-failing requests tied to the symptom (the Y of "tenant X sees Y"),
-never the newest failures of any kind. Without `--request-id`, the
+requests whose events step 3 ties to the symptom (the Y of "tenant X
+sees Y"), never the newest failures of any kind. An event tied to the
+symptom is a failure the stream records or a write that landed, and
+either request is followed, so a run whose only such events are
+writes that landed still makes its passes: a request can land its
+write and fail its answer. Without `--request-id`, the
 symptom is the one the prompt or the investigation's report names;
 when neither names one, ask for it, as for `--env`. A pass that finds
 no cause reports "not found" for its id. After the fifth pass the
 skill stops and writes the report. It lists every id past the fifth
 as not followed, for a second run to take.
 
-When the window's events hold no request tied to the symptom, the run
-makes no pass and writes the report. Its Requests line says none was
+Without `--request-id`, when the window's events hold no request tied
+to the symptom, the run makes no pass and writes the report. Its Requests line says none was
 found, and its Cause says "not found", with what the feed held. The
 report then names the second run that could find one: with the
 request id the tenant saw as `--request-id`, which every error answer
@@ -65,8 +69,9 @@ URL. The credential for the plane is the env file's operator token,
 whose permission is `read`; a `write` token is refused by this skill
 even when the file holds one. Never read the env file; a command that
 needs a value sources it in the same command, as every block below
-does. Never print a token. On a `401` the token has expired: stop, and
-name the refresh the preamble gives.
+does. Never print a token. On a `401`, which a read through its `jq`
+prints as the error code `not_authenticated`, the token has expired:
+stop, and name the refresh the preamble gives.
 
 ## Procedure
 
@@ -202,30 +207,44 @@ runs once, before the passes. It is not a pass.
    own (`environment`, `release`, `server_name`), never an org id, so
    it is never read by the tenant or by a tag guessed for one. One
    project holds the product's errors for every environment, so the
-   read names it and asks for this environment:
+   read names it and asks for this environment. An issue's `title`,
+   `culprit`, and `metadata` carry the exception's text, which can
+   quote what the tenant sent, so the `jq` keeps the issue's `id`,
+   `lastSeen`, and `count` alone:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
      --data-urlencode "query=environment:<env> request_id:<id>" \
-     "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/"
+     "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/" \
+     | jq -c 'if type == "array" then {issues: [.[] | {id, lastSeen, count}]} else {error: (.detail // "not a list")} end'
    ```
 
    An issue the query returns can hold events of another environment
    too, so the event that answers is the one whose `request_id` tag is
    the id **and** whose `environment` tag is `<env>`. An event of
    another environment is never this environment's evidence. Read each
-   issue's events with `full=true`, without which Sentry answers no
-   stack, through a `jq` that keeps that event alone: its exception's
-   type and the last three frames of the product's code, never the
-   exception's text, which can quote what the tenant sent:
+   issue's events for this environment and this id, with `full=true`,
+   without which Sentry answers no stack. A tracker that ignores the
+   two filters answers a page of the issue's events, and the `jq` keeps
+   the one event alone: its exception's type and the last three frames
+   of the product's code, never the exception's text:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
-   curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" \
-     "$ACME_ERROR_TRACKER_URL/api/0/issues/<issue id>/events/?full=true" \
-     | jq -c '.[] | (.tags | map({(.key): .value}) | add) as $tag | select($tag.request_id == "<id>" and $tag.environment == "<env>") | {id: (.eventID // .event_id), at: (.dateCreated // .date_created), release: $tag.release, exception: [.entries[]? | select(.type == "exception") | .data.values[]? | {type, frames: ([.stacktrace.frames[]? | select(.inApp) | {filename, lineNo, function}] | .[-3:])}]}'
+   curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
+     --data-urlencode "environment=<env>" --data-urlencode "query=request_id:<id>" \
+     --data-urlencode "full=true" \
+     "$ACME_ERROR_TRACKER_URL/api/0/issues/<issue id>/events/" \
+     | jq -c 'if type == "array" then {events: [.[] | (.tags | if type == "array" then map({(.key): .value}) | add else . end) as $tag | select($tag.request_id == "<id>" and $tag.environment == "<env>") | {id: (.eventID // .event_id), at: (.dateCreated // .date_created), release: $tag.release, exception: [.entries[]? | select(.type == "exception") | .data.values[]? | {type, frames: ([.stacktrace.frames[]? | select(.inApp) | {filename, lineNo, function}] | .[-3:])}]}]} else {error: (.detail // "not a list")} end'
    ```
+
+   A tracker read that answers an `error`, or an answer that is empty
+   or not JSON, does not end the run, as a read of the operator plane
+   does in step 3: the tracker is one leg of the pass. The pass writes
+   its error leg as "not read", with which of the three it was, and
+   goes on to the logs; the read is not made a second time. An answer
+   with no issue, or no event of this id, is "no error event".
 
    The org's slug is what `GET /api/0/organizations/` lists (locally
    `acme`, the one the seed creates):
@@ -260,8 +279,9 @@ runs once, before the passes. It is not a pass.
    on to the trace.
 
    Local: `docker compose -f deployment/local/docker-compose.yml -f
-   deployment/local/docker-compose.full.yml logs --since <since> api
-   maintenance | grep <id>` from the repository root when the processes
+   deployment/local/docker-compose.full.yml logs --since <start_at>
+   --until <end_at> api maintenance | grep <id>`, the window's two
+   bounds of step 3, from the repository root when the processes
    run in containers. When they run on the host (`scripts/dev.sh`
    writes no file; it logs to its terminal), `grep` the file the
    process was started with, and say "not read" when there is none.
@@ -300,8 +320,11 @@ runs once, before the passes. It is not a pass.
      [--log-file <the process's log>] [--since-minutes <n>]
    ```
 
-   The local reader has no log store of its own: without `--log-file`
-   its log leg reports zero lines, which says nothing.
+   It reads back from now, so `<n>` is the minutes from the window's
+   `start` of step 3 to now, rounded up, and its read covers the
+   window: `jq -n '(now - <start>) / 60 | ceil'`. The local reader has
+   no log store of its own: without `--log-file` its log leg reports
+   zero lines, which says nothing.
 
 8. Correlate. One request id ties the event row (what the tenant
    asked), the log lines (what the process decided), the trace (where
