@@ -16,6 +16,7 @@ from acme.om.context import (
     CredentialKind,
     OperatorContext,
     OperatorRole,
+    Permission,
     RequestContext,
     Role,
     TenantContext,
@@ -33,7 +34,12 @@ from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.rules import operator_permissions_of
 from acme.om.work.impl.manager import DEAD_LETTER_KIND, WorkOptions
 from acme.om.work.impl.operator import REQUEUED_KIND
-from acme.om.work.types.work_item import WorkItem, WorkKind, WorkStatus
+from acme.om.work.types.work_item import (
+    WORK_ENQUEUE_PERMISSIONS,
+    WorkItem,
+    WorkKind,
+    WorkStatus,
+)
 
 LEASE = timedelta(seconds=30)
 APP = AppContext(type=AppType.PORTAL, version="portal@test")
@@ -439,6 +445,40 @@ async def test_enqueue_refuses_a_payload_outside_the_kinds_shape(
     item = make_item().model_copy(update={"created_by": ctx.user_id, "payload": {"extra": 1}})
     with pytest.raises(ValidationFailed):
         await managers.work.enqueue(ctx, item)
+
+
+async def test_an_enqueue_takes_the_permission_its_kind_is_asked_for_with(
+    managers: Managers, ctx: TenantContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run has the service role, so whoever asks for a kind holds the
+    permission `WORK_ENQUEUE_PERMISSIONS` names for it: a member, who may
+    write, never queues the deletion of the org."""
+    tenancy = managers.tenancy
+    await tenancy.add_member(request(APP), "ajax", "bob@example.test", "Bob", Role.MEMBER)
+    login = await tenancy.sign_in.dev_sign_in(request(APP), "bob@example.test")
+    issued = await tenancy.sign_in.exchange_login(
+        await tenancy.authenticate_login(request(APP), login.token), ctx.org_id
+    )
+    member = await tenancy.authenticate(request(APP), issued.token)
+    assert member.has(Permission.WRITE) and not member.has(Permission.MANAGE_MEMBERS)
+    assert WORK_ENQUEUE_PERMISSIONS[WorkKind.DELETE_ORG] is Permission.MANAGE_MEMBERS
+
+    def deletion() -> WorkItem:
+        return make_item().model_copy(
+            update={"kind": WorkKind.DELETE_ORG, "target_id": ctx.org_id, "payload": {}}
+        )
+
+    with pytest.raises(NotAuthorized, match="member lacks manage_members"):
+        await managers.work.enqueue(member, deletion())
+    assert await managers.work.claim(request(), "default", list(WorkKind), "w1", LEASE) is None
+    # The owner holds it, and the member still asks for a kind that takes `write`.
+    queued = await managers.work.enqueue(ctx, deletion())
+    assert (queued.kind, queued.status) == (WorkKind.DELETE_ORG, WorkStatus.QUEUED)
+    assert (await managers.work.enqueue(member, make_item())).kind is WorkKind.NOOP
+    # A kind the table does not name is asked for by nobody, the owner included.
+    monkeypatch.delitem(WORK_ENQUEUE_PERMISSIONS, WorkKind.NOOP)
+    with pytest.raises(NotAuthorized, match="no permission asks for work of kind NOOP"):
+        await managers.work.enqueue(ctx, make_item())
 
 
 async def test_a_failed_item_is_a_dead_letter_with_an_audit_event(
