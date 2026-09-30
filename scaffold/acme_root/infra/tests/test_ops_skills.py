@@ -13,6 +13,9 @@ break them, and this test holds them there.
 
 import os
 import re
+import shlex
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -353,6 +356,51 @@ COMPACTION_KEEPS = [
 @pytest.mark.parametrize("sentence", COMPACTION_KEEPS)
 def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
     assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
+
+
+# What `make openapi` writes: the API document and the two schemas made from it.
+GENERATED = [
+    "clients/typescript/openapi.json",
+    "clients/typescript/src/schema.d.ts",
+    "clients/python/src/acme/client/schema.py",
+]
+# What a compaction never edits: an applied migration, a generated file, a
+# lock file, and the skill's own folder, which holds the phrases it sweeps for.
+NEVER_SWEPT = [
+    "om/migrations/sql/core/202601010000_the_core_role.up.sql",
+    "om/migrations/versions/core/202601010000_the_core_role.py",
+    *GENERATED,
+    "uv.lock",
+    "pnpm-lock.yaml",
+    "deployment/terraform/environments/staging/.terraform.lock.hcl",
+    ".agents/skills/docs-compact/SKILL.md",
+]
+SWEPT = ["README.md", "docs/adr/0001-a-decision.md", "om/src/acme/om/tasks.py", "pyproject.toml"]
+
+
+def _sweep() -> list[str]:
+    """The sweep, as the skill writes it: one `git grep` with its pathspec."""
+    lines = [line.strip() for line in _skill("docs-compact").splitlines()]
+    (command,) = [line for line in lines if line.startswith("git grep -nIiwE -f ")]
+    return shlex.split(command)
+
+
+def test_the_sweep_lists_no_file_the_compaction_never_edits(tmp_path: Path) -> None:
+    """Step 6 rewrites what the sweep lists, so the sweep's pathspec is what
+    keeps an applied migration and a generated document as they are. It runs
+    here as the skill writes it, over a tree where every file tells a past."""
+    for name in GENERATED:
+        assert (ROOT / name).is_file(), f"{name} is not a file `make openapi` writes"
+    for name in [*NEVER_SWEPT, *SWEPT]:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("The key was renamed from another, and is no longer read.\n")
+    references = SKILLS / "docs-compact" / "references"
+    shutil.copytree(references, tmp_path / ".agents" / "skills" / "docs-compact" / "references")
+    for command in (["git", "init", "--quiet"], ["git", "add", "--all"]):
+        subprocess.run(command, cwd=tmp_path, check=True)
+    swept = subprocess.run(_sweep(), cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert sorted({line.split(":", 1)[0] for line in swept.stdout.splitlines()}) == SWEPT
 
 
 def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:

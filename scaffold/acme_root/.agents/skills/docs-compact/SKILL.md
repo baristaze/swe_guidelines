@@ -78,10 +78,12 @@ left as it is, and the report names it under Kept.
    - The sentences that tell a past, in the Markdown and in the code's
      comments and docstrings. `references/phrases.txt`, in this skill's
      folder, lists the phrases that mark one, a pattern a line, each
-     matched as whole words:
+     matched as whole words. The pathspec leaves out what the skill
+     never edits: its own folder, `om/migrations/`, the three generated
+     files, and the lock files.
 
      ```bash
-     git grep -nIiwE -f .agents/skills/docs-compact/references/phrases.txt -- . ':!.agents/skills/docs-compact'
+     git grep -nIiwE -f .agents/skills/docs-compact/references/phrases.txt -- . ':!.agents/skills/docs-compact' ':!om/migrations' ':!clients/typescript/openapi.json' ':!clients/typescript/src/schema.d.ts' ':!clients/python/src/acme/client/schema.py' ':!*.lock' ':!*.lock.hcl' ':!pnpm-lock.yaml'
      ```
 
      The list is the sweep: the skill reads each hit in its paragraph,
