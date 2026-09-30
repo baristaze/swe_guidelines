@@ -43,7 +43,7 @@ portal.
 | `.env.example`, `scripts/dev.sh`, `README.md` (root) (browser app) | its dev port, its `public/config.json` written and its dev server started, its local URL |
 | `deployment/terraform/modules/environment/main.tf` (browser app) | a `static_site` instance beside `module "portal"`, on its own subdomain, `admin` for the console |
 | `.github/workflows/deploy-staging.yml`, `deploy-production.yml` (browser app) | its bundle built once under the commit by staging and promoted to production, never built again, beside the portal's |
-| `docs/adr/0010-operators-work-through-the-api.md`, `specs/architecture.md` (`admin`) | the decision superseded by the console, and its row gone from the deviations |
+| `docs/adr/0010-operators-work-through-the-api.md`, `specs/architecture.md` (`admin`) | the ADR removed, since the console ends its deviation, with its row in the deviations and every link to it |
 
 ## Procedure
 

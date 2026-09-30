@@ -149,6 +149,11 @@ is cited next to the code is a documented exception. A review reports
 it on one line under Deviations. It is not a finding, and it never
 lowers a severity.
 
+An ADR says what holds. When its decision changes, rewrite it in place.
+When the deviation ends, remove it with its row. Its number never
+changes, and its status stays one date: git, the pull request, and the
+release notes say what it was.
+
 ## Operate with the built-in skills
 
 A copy of the scaffold carries its operational skills and audits under
@@ -212,7 +217,8 @@ only the `scaffold` branch. The merge is the project's to resolve.
 `/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it
 merges, resolves what the merge leaves, and runs the gates. Two things
 stay the project's own through every move: its ADRs, which record its
-decisions, and its migration chain, which its databases applied.
+decisions, and its migration chain, which its databases applied and
+which only the project folds.
 
 Merge the move into the main branch with a merge commit, never a
 squash. A squash drops the parent that records the base, and the next
