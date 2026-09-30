@@ -20,7 +20,38 @@ records them beside the scores. They never cap a score.
 
 | Run | Started (UTC) | Subject | Effort | Repeats | anthropic | openai | gemini | xai | Overall | Cost (USD) | Commit | Claude Code |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
+| [create-full-system-4bd30619](20260930-083846-create-full-system-4bd30619/report.md) | 2026-09-30 15:38 | `claude-opus-5-5` | high | 1 | 69.6 | — | 75.0 | 73.2 | **72.6** | $59.93 | `0b1b1cd` | 2.1.283 |
 | [create-full-system-447562f8](20260928-104821-create-full-system-447562f8/report.md) | 2026-09-28 06:33 | `claude-opus-5-5` | high | 1 | 81.2 | 73.2 | 97.0 | 79.6 | **82.8** | $200.41 | `3009fa9`, `7e03524`, `09aad2f` | 2.1.283 |
+
+## create-full-system-4bd30619
+
+A run without extras, in one folder: the scaffold, the MVP, and the
+judges. Its reference is the reference implementation at v0.14.0, which
+pins the guideline at 0.45.0.
+
+| Repeat | Stage | Folder | Status | Cost (USD) | Time |
+| --- | --- | --- | --- | --- | --- |
+| 0 | scaffold | `20260930-083846-create-full-system-4bd30619` | ok | $4.6796 | 0:16:39 |
+| 0 | mvp | `20260930-083846-create-full-system-4bd30619` | ok | $36.0808 | 1:11:06 |
+| 0 | judges (anthropic, openai, gemini, xai) | `20260930-083846-create-full-system-4bd30619` | missed: openai | $19.1726 | — |
+
+Total: $59.9331.
+
+What the run measured:
+
+- The three judges that answered each graded one gap high first: the
+  `reports` namespace, which holds the third loop's deliveries and
+  messages, is missing from the committed tree. The scaffold's
+  `.gitignore` ignores `reports/` at any depth, for test and tool
+  reports, so `om/src/free_journalism/om/reports/` never reached a
+  commit. The gates ran on the working tree, which had it, and passed.
+  The archive, the last commit, has no file under it.
+- The openai judge answered nothing: each of its models was refused
+  with 429 `insufficient_quota`, the account out of credits. Its score
+  can join the row with `run.py judge --source <folder> --judges openai`
+  once the account has credit.
+- The scaffold phase ended ok, in 89 turns and under seventeen minutes.
+  The last run's scaffold stopped at its step 9.
 
 ## create-full-system-447562f8
 

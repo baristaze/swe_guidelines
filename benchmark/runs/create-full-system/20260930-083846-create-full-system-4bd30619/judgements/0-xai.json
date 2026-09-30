@@ -1,0 +1,178 @@
+{
+  "provider": "xai",
+  "model": "grok-4.7",
+  "effort": "high",
+  "status": "ok",
+  "latency_s": 116.314,
+  "usage": {
+    "input_tokens": 2822820,
+    "output_tokens": 5301,
+    "reasoning_tokens": 76
+  },
+  "cost_usd": 5.677446,
+  "error": null,
+  "fallback": null,
+  "verdict": null,
+  "judged": {
+    "score": 73.2,
+    "references": {
+      "guideline": {
+        "weight": 0.4,
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The reports swimlane, the third MVP loop, has no object-model package. Delivery, Message, SentReport, and the reports rules are imported from free_journalism.om.reports by the managers root, both storage roots, the reports service impl, the router, and the unit, contract, and integration tests, but om/src/free_journalism/om/reports/ does not exist: no types, no manager interface, no manager impl, no storage interface, and no memory or Postgres impl. The migrations that create core.deliveries and core.messages, the role and scope maps, and the sealed-reports bucket are present, so the domain is declared everywhere except where the guideline says the source of truth lives.",
+            "in_output": "om/src/free_journalism/om",
+            "in_reference": "lenses/om.md, OM-01 and OM-14",
+            "lens": "OM-01",
+            "fix": "Restore the reports namespace in the scaffold shape: types for Delivery, Message, and SentReport, rules.py, the manager interface re-exported from the package root, impl/manager.py, and storage with memory and Postgres impls plus the table classes the migrations already describe."
+          },
+          {
+            "severity": "high",
+            "what": "Because the reports manager and storage impls are absent, the reports service impl, the reports router, and both storage roots import modules that are not in the tree, so the third loop cannot be imported, wired, or run. The loop's end-to-end test and the delivery-manager unit test import the same missing package.",
+            "in_output": "services/api/src/free_journalism/services/api/services/impl/reports.py",
+            "in_reference": "lenses/contracts.md, CON-09 and CON-10",
+            "lens": "CON-09",
+            "fix": "With the reports namespace restored, wire ReportsManagerImpl through build_managers and ReportsStorageMemoryImpl and ReportsStoragePostgresImpl through the two storage roots, which already call them."
+          },
+          {
+            "severity": "medium",
+            "what": "om/README.md and llms.txt both serve a Reports page at om/src/free_journalism/om/reports/README.md, and that file is not in the tree. Every other namespace the knowledge map names has its README.",
+            "in_output": "om/README.md",
+            "in_reference": "lenses/ops.md, OPS-24 and OPS-26",
+            "lens": "OPS-24",
+            "fix": "Add the reports namespace README in the same voice as the community and support READMEs, covering the report, the delivery, and the thread."
+          },
+          {
+            "severity": "low",
+            "what": "ADR 0084 and ADR 0086 decide Postmark and a malware scanner, each behind an interface with a twin, but neither integrations/email nor integrations/scanning exists. The handoff records both as deferred past the MVP, so this is a recorded decision not yet built rather than a broken shape.",
+            "in_output": "integrations/src/free_journalism/integrations",
+            "in_reference": "lenses/delivery.md, DEL-05",
+            "lens": "DEL-05",
+            "fix": "When the notifications namespace and the first scanned file land, add each integration with its real client, twin, and absent impl, as payments was added."
+          }
+        ],
+        "strengths": [
+          "The journalists, community, and support namespaces follow the scaffold shape exactly: interface re-exported from the package root, types, impl, storage with memory and Postgres impls, and rules modules where the namespace has pure rules.",
+          "Every write in those managers authorizes, copies from the stored row excluding provenance and manager-owned fields, writes the outbox row in the same storage call, and relays after, and the support's payment move is a compare-and-set on a version.",
+          "Tenancy is enforced in storage: every read filters by org_id, the unique follow key leads with org_id, and each new table carries a forced tenant_fence policy with the system-login clause.",
+          "The payments integration is one interface with a Stripe client, a deterministic twin, and an absent impl, and the webhook route verifies the signature before it queues a delivery.",
+          "The worker loop keeps the scaffold's shape: capacity-bounded claim, lease renewal that cancels on Conflict, park versus fail, and shutdown that drains before it goes offline.",
+          "The portal keeps views, view-model hooks, and model modules apart, and every browser call goes through one generated client facade built from the committed OpenAPI document."
+        ]
+      },
+      "reference": {
+        "weight": 0.6,
+        "score": 74,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The reference's domain namespace (tasks) is a complete package: types, rules, manager interface and impl, storage interface, memory and Postgres impls, and table classes. The output's reports namespace, the equivalent domain swimlane, is referenced by the roots, the service impl, the router, and the tests but has no package on disk, so that swimlane cannot run while every other namespace can.",
+            "in_output": "om/src/free_journalism/om",
+            "in_reference": "om/src/tadas/om/tasks",
+            "lens": "OM-14",
+            "fix": "Add om/src/free_journalism/om/reports with the same internal layout the reference gives tasks, matching the migrations already committed for deliveries and messages."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference's domain README is linked from om/README.md and llms.txt and exists; the output links om/src/free_journalism/om/reports/README.md from both and the file is missing.",
+            "in_output": "om/README.md",
+            "in_reference": "om/README.md",
+            "lens": "OPS-24",
+            "fix": "Write the reports README and keep the links."
+          }
+        ],
+        "strengths": [
+          "The tree is the same shape as the reference's: one OM distribution, infra, integrations, one API service, one maintenance worker, portal, CLI, and site, and two generated clients.",
+          "The worker loop, the service root, the gateway middleware order, and the portal's api.ts facade are the reference's structure with the product's names substituted.",
+          "Community and support realize cross-tenant reads the way the reference reads a person's memberships: by identity, in the system scope, returning the tenant beside each row.",
+          "Decisions are recorded as numbered ADRs and the deviations are listed in specs/architecture.md, as the reference does.",
+          "Stripe is reached through an interface with a twin and an absent impl, the same arrangement the reference uses for its payments provider."
+        ]
+      }
+    },
+    "rationale": "The scaffold core, the journalists, community, and support swimlanes, the payments integration, the worker, the gateway, and the apps all follow the guideline and match the reference's shape. The one structural failure is the reports swimlane: its migrations, role map, bucket, service, router, and tests are present, but the object-model package they all import does not exist, so the third loop cannot be imported or run, and its README is linked but missing. Email and scanning were decided in ADRs and explicitly deferred, so they weigh little.",
+    "tool_calls": 124,
+    "turns": 39,
+    "transcript": "judgements/0-xai.jsonl"
+  },
+  "answer": {
+    "references": {
+      "guideline": {
+        "score": 72,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The reports swimlane, the third MVP loop, has no object-model package. Delivery, Message, SentReport, and the reports rules are imported from free_journalism.om.reports by the managers root, both storage roots, the reports service impl, the router, and the unit, contract, and integration tests, but om/src/free_journalism/om/reports/ does not exist: no types, no manager interface, no manager impl, no storage interface, and no memory or Postgres impl. The migrations that create core.deliveries and core.messages, the role and scope maps, and the sealed-reports bucket are present, so the domain is declared everywhere except where the guideline says the source of truth lives.",
+            "in_output": "om/src/free_journalism/om",
+            "in_reference": "lenses/om.md, OM-01 and OM-14",
+            "lens": "OM-01",
+            "fix": "Restore the reports namespace in the scaffold shape: types for Delivery, Message, and SentReport, rules.py, the manager interface re-exported from the package root, impl/manager.py, and storage with memory and Postgres impls plus the table classes the migrations already describe."
+          },
+          {
+            "severity": "high",
+            "what": "Because the reports manager and storage impls are absent, the reports service impl, the reports router, and both storage roots import modules that are not in the tree, so the third loop cannot be imported, wired, or run. The loop's end-to-end test and the delivery-manager unit test import the same missing package.",
+            "in_output": "services/api/src/free_journalism/services/api/services/impl/reports.py",
+            "in_reference": "lenses/contracts.md, CON-09 and CON-10",
+            "lens": "CON-09",
+            "fix": "With the reports namespace restored, wire ReportsManagerImpl through build_managers and ReportsStorageMemoryImpl and ReportsStoragePostgresImpl through the two storage roots, which already call them."
+          },
+          {
+            "severity": "medium",
+            "what": "om/README.md and llms.txt both serve a Reports page at om/src/free_journalism/om/reports/README.md, and that file is not in the tree. Every other namespace the knowledge map names has its README.",
+            "in_output": "om/README.md",
+            "in_reference": "lenses/ops.md, OPS-24 and OPS-26",
+            "lens": "OPS-24",
+            "fix": "Add the reports namespace README in the same voice as the community and support READMEs, covering the report, the delivery, and the thread."
+          },
+          {
+            "severity": "low",
+            "what": "ADR 0084 and ADR 0086 decide Postmark and a malware scanner, each behind an interface with a twin, but neither integrations/email nor integrations/scanning exists. The handoff records both as deferred past the MVP, so this is a recorded decision not yet built rather than a broken shape.",
+            "in_output": "integrations/src/free_journalism/integrations",
+            "in_reference": "lenses/delivery.md, DEL-05",
+            "lens": "DEL-05",
+            "fix": "When the notifications namespace and the first scanned file land, add each integration with its real client, twin, and absent impl, as payments was added."
+          }
+        ],
+        "strengths": [
+          "The journalists, community, and support namespaces follow the scaffold shape exactly: interface re-exported from the package root, types, impl, storage with memory and Postgres impls, and rules modules where the namespace has pure rules.",
+          "Every write in those managers authorizes, copies from the stored row excluding provenance and manager-owned fields, writes the outbox row in the same storage call, and relays after, and the support's payment move is a compare-and-set on a version.",
+          "Tenancy is enforced in storage: every read filters by org_id, the unique follow key leads with org_id, and each new table carries a forced tenant_fence policy with the system-login clause.",
+          "The payments integration is one interface with a Stripe client, a deterministic twin, and an absent impl, and the webhook route verifies the signature before it queues a delivery.",
+          "The worker loop keeps the scaffold's shape: capacity-bounded claim, lease renewal that cancels on Conflict, park versus fail, and shutdown that drains before it goes offline.",
+          "The portal keeps views, view-model hooks, and model modules apart, and every browser call goes through one generated client facade built from the committed OpenAPI document."
+        ]
+      },
+      "reference": {
+        "score": 74,
+        "gaps": [
+          {
+            "severity": "high",
+            "what": "The reference's domain namespace (tasks) is a complete package: types, rules, manager interface and impl, storage interface, memory and Postgres impls, and table classes. The output's reports namespace, the equivalent domain swimlane, is referenced by the roots, the service impl, the router, and the tests but has no package on disk, so that swimlane cannot run while every other namespace can.",
+            "in_output": "om/src/free_journalism/om",
+            "in_reference": "om/src/tadas/om/tasks",
+            "lens": "OM-14",
+            "fix": "Add om/src/free_journalism/om/reports with the same internal layout the reference gives tasks, matching the migrations already committed for deliveries and messages."
+          },
+          {
+            "severity": "medium",
+            "what": "The reference's domain README is linked from om/README.md and llms.txt and exists; the output links om/src/free_journalism/om/reports/README.md from both and the file is missing.",
+            "in_output": "om/README.md",
+            "in_reference": "om/README.md",
+            "lens": "OPS-24",
+            "fix": "Write the reports README and keep the links."
+          }
+        ],
+        "strengths": [
+          "The tree is the same shape as the reference's: one OM distribution, infra, integrations, one API service, one maintenance worker, portal, CLI, and site, and two generated clients.",
+          "The worker loop, the service root, the gateway middleware order, and the portal's api.ts facade are the reference's structure with the product's names substituted.",
+          "Community and support realize cross-tenant reads the way the reference reads a person's memberships: by identity, in the system scope, returning the tenant beside each row.",
+          "Decisions are recorded as numbered ADRs and the deviations are listed in specs/architecture.md, as the reference does.",
+          "Stripe is reached through an interface with a twin and an absent impl, the same arrangement the reference uses for its payments provider."
+        ]
+      }
+    },
+    "rationale": "The scaffold core, the journalists, community, and support swimlanes, the payments integration, the worker, the gateway, and the apps all follow the guideline and match the reference's shape. The one structural failure is the reports swimlane: its migrations, role map, bucket, service, router, and tests are present, but the object-model package they all import does not exist, so the third loop cannot be imported or run, and its README is linked but missing. Email and scanning were decided in ADRs and explicitly deferred, so they weigh little."
+  }
+}
