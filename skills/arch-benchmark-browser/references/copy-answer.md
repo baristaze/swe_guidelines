@@ -23,7 +23,9 @@ wrote them. The page text holds only what the page draws.
    never saved or quoted: it may be something else the person copied.
    Click the same button once more and check again.
 4. Save the paste as the `## Answer` section exactly as it came, with
-   no line added, dropped, or rewrapped.
+   no line added, dropped, or rewrapped: right after the check, write
+   `<site>.md` with `python3`, which reads the answer from `pbpaste`
+   itself, so the answer is never retyped.
 
 The fallback: where the answer has no copy button, `pbpaste` fails, or
 the second paste fails the check, read the answer with `get_page_text`,
