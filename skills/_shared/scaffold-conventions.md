@@ -82,9 +82,9 @@ a copy of the shape still goes wrong.
 - **An operation goes where its duty is.** In a namespace whose manager
   delegates, a new operation goes to the delegate whose duty it is, and
   to the manager itself only when no delegate's duty covers it, as a
-  transition or the sweep. No count moves an operation. `arch-check`
-  names a manager interface past twenty operations for a review, and
-  fails none by its count (CON-01). A project moves that number with
+  transition or the sweep. `arch-check` names a manager interface past
+  twenty operations, a delegate's too, for a review, and fails none by
+  its count (CON-01). A project moves that number with
   `review_threshold` under `[tool.arch-check.options.CON-01]` in the
   root `pyproject.toml`.
 - **A delegate takes a duty that is added.** When the operations a
