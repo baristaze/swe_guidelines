@@ -626,21 +626,26 @@ rest is judged.
 **Principle.** A migration file is never edited once it has been
 applied anywhere. A migration is compatible with the release before
 it, since a rollout runs both: add and backfill in one release, switch
-the code, drop in a later one (expand and contract). A
-metadata-vs-schema check per role and a downgrade-then-upgrade of the
-head run in CI's integration job.
+the code, drop in a later one (expand and contract). A chain may be
+folded into one revision under the head's revision id, while every
+database that exists is at that head and a schema dump of the chain
+equals the fold's. A metadata-vs-schema check per role and a
+downgrade-then-upgrade of the head run in CI's integration job.
 
 **Source.** The Storage Layer, Migrations.
 
 **Look for.** A migration file that changed after the commit that
-added it, per `git log --follow`. A migration that drops or renames a
-column the release before it still reads, or still maps (a deferred
-column is still written by every insert). The integration job running
+added it, per `git log --follow`; for a fold, its revision id against
+the head's before it, and the two dumps. A migration that drops or
+renames a column the release before it still reads, or still maps (a
+deferred column is still written by every insert). The integration job running
 the metadata-vs-schema check per role and the downgrade-then-upgrade
 of the head.
 
 **Violation.** An applied `.up.sql` is modified rather than followed
-by a new migration. A column dropped or renamed in the same release
+by a new migration; a chain folded under a new revision id, while a
+database sits behind the head, or with no dump that shows it equal. A
+column dropped or renamed in the same release
 that stops reading it, or while the release before it still maps it,
 so a rollout that runs both versions breaks.
 The check step or the roundtrip is missing from the integration job.

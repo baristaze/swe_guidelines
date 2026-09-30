@@ -742,3 +742,33 @@ branch, or the repository by its mutable name alone. (The approval
 itself is DEL-38.)
 
 **Severity.** high
+
+## OPS-29 A document says what holds; what was stays in git
+
+**Principle.** A document an agent reads says what holds at the head of
+the main branch, in the present tense: a README, an ADR, a spec, a
+comment. What was stays in git, the pull request, and the release
+notes. A rejected option stays only as a rule's near miss, "X, never
+Y", when Y is what a reader could reach without knowing the past. An
+ADR is rewritten in place when its decision changes and removed when
+it constrains nothing; its number never changes, and its status is one
+date. A changelog holds the latest release.
+
+**Source.** Documentation as Code; Cross-Cutting Conventions, Records
+of Decisions.
+
+**Look for.** The documents of the tree and the comments in the code a
+change touches: the status line of each ADR and its sections beside
+context, decision, and consequences; a value, a release, or a decision
+a sentence names as the one before; the releases a changelog lists.
+For each rejected option, whether a reader at the head could reach it.
+
+**Violation.** An ADR whose status tells what replaced or amended it,
+or that keeps the options it turned down in a section of their own; a
+second ADR that amends the first where the first could say what holds;
+an ADR renumbered, so a citation in code names another decision. A
+comment or a README that tells what the code did before, or serves a
+release the tree never had; a changelog that lists every release. (The
+record itself is DEL-23.)
+
+**Severity.** medium

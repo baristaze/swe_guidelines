@@ -1106,7 +1106,11 @@ hand-written SQL files per change, `YYYYMMDDHHMM_<slug>.up.sql` and
 `.down.sql`, under their role, with a thin wrapper Alembic runs
 ([`om/migrations/`](scaffold/acme_root/om/migrations/)). Each role has
 one chain, and the minute stamp is the revision id. An applied file is
-never edited.
+never edited. A chain may be folded: one revision holds the head's
+schema under the head's revision id, so a reader finds the schema in one
+file and a database at the head has nothing to apply. A fold needs every
+database that exists at that head, and a schema dump of the chain equal
+to the fold's.
 
 A migration is compatible with the release before it, because a rollout
 runs both ([Deployment](#deployment)): add and backfill, switch the
@@ -2202,6 +2206,19 @@ ADR number and re-points its migration's parent.
 Documents are code, reviewed with the change they describe and read by
 people and agents alike. An agent on its first day reads them first.
 
+So a document says what holds at the head of the main branch, in the
+present tense: a README, an ADR, a spec, a comment. An agent acts on
+what it reads. With only what holds in front of it, it acts on the
+first read; text that also carries what was makes it sort the adopted
+from the rejected first. What was stays in git, the pull request, and
+the release notes: a decision since replaced, a former value, a rejected
+option, a note of what changed. A rejected option stays only as a
+rule's near miss, "X, never Y", when Y is what a reader could reach
+without knowing the past.
+
+> **Principle:** A document says what holds, in the present tense. What
+> was stays in git, the pull request, and the release notes.
+
 ### A README at Every Level
 
 Every abstraction level carries a README in its own language: `om/` in
@@ -2324,10 +2341,15 @@ managers build once for any number of requests.
 ### Records of Decisions
 
 A decision that constrains future work is an ADR under `docs/adr/`:
-context, decision, consequences, numbered and cited by number.
-`docs/architecture.md` describes the system as built and links its ADRs;
-this document describes how we build, and names each decision it makes
-for every system where it makes it, with what would end it. A rule a
+context, decision, consequences, numbered and cited by number. It [says
+what holds](#documentation-as-code): an ADR is rewritten in place when
+its decision changes and removed when it constrains nothing, its number
+never changes, and its status is one date. A substitution is one row of
+the one ADR that lists them. A changelog holds the latest release, and
+the release notes hold the rest. `specs/architecture.md` pins this
+document and links the ADRs that depart from it; this document describes
+how we build, and names each decision it makes for every system where it
+makes it, with what would end it. A rule a
 program can check is checked: `arch-check` decides what reads the
 source, and a test holds what needs the built system. A rule only
 written down drifts; a rule that fails the build holds.
