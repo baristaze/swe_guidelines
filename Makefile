@@ -14,7 +14,9 @@ PYTEST := uv run --no-project --with pytest==$(call pin,pytest) --with pyyaml==$
   --with jsonschema==$(call pin,jsonschema) python -m pytest
 # make runs reads the benchmark scenarios, and make snippets the YAML
 # blocks of the Markdown, so both run with pyyaml at the pin the tests use.
+# make runs also holds each browser run to its JSON schema, with jsonschema.
 PYTHON_YAML := uv run --no-project --with pyyaml==$(call pin,pyyaml) python
+PYTHON_RUNS := uv run --no-project --with pyyaml==$(call pin,pyyaml) --with jsonschema==$(call pin,jsonschema) python
 NPX := npx --yes
 MARKDOWNLINT := $(NPX) markdownlint-cli2@$(call npm_pin,markdownlint-cli2)
 # ruff and mypy run at pinned versions through uvx; pyproject.toml holds their configuration
@@ -50,8 +52,8 @@ links:             ## every relative link and anchor resolves
 snippets:          ## every Python and YAML block in the Markdown parses, so no line of a snippet sits at the wrong indentation
 	$(PYTHON_YAML) scripts/check_snippets.py
 
-runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, and no file holds a key or a provider account's id
-	$(PYTHON_YAML) scripts/check_runs.py
+runs:              ## every benchmark run folder sits in its scenario's folder and one row names it, each row's cost is its chain's total, each ran on a runtime its scenario lists, is no rehearsal, and has no marked repeat, no file holds a key or a provider account's id, and each browser run is in its schema, text only, and names no conversation
+	$(PYTHON_RUNS) scripts/check_runs.py
 
 toc:               ## the table of contents of architecture.md matches its headings
 	$(PYTHON) scripts/gen_toc.py --check

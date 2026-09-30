@@ -6,7 +6,9 @@ chatgpt.com, claude.ai, gemini.google.com, and grok.com, in a browser a
 person has signed in to. It exists because that is the answer a reader
 gets when they paste the prompt themselves, and because the products
 carry tools (repository browsing, extended thinking) the raw API does
-not hand out the same way.
+not hand out the same way. It is slower than the API harness, but it
+enables the use of a subscription plan an adopter might already be
+paying for, in place of API keys billed by the token.
 
 It is semi-autonomous by design. The person signs in once, in the
 browser the session drives. The session does the rest: picks the model
@@ -32,7 +34,7 @@ waits, and saves the answer with its proof.
 
 ```text
 results.json          the run, in the schema: the prompt and contract as typed, sizes, the repository's head, each session's URL, labels, times, score, the version it read
-chatgpt.com.md        the answer as the page showed it, under a header with the URL and the labels
+chatgpt.com.md        the answer as the product's copy button gave it, in Markdown, under a header with the URL and the labels
 claude.ai.md
 gemini.google.com.md
 grok.com.md
@@ -55,6 +57,14 @@ change and a run after it asked different questions, and their scores
 are not compared as one. A session whose account locks the model,
 mode, or effort its size asked for answers on a smaller one. It is recorded
 `smaller-mode`, and it stays out of any comparison of like for like.
+
+When the skill runs in a checkout of this repository, it also checks
+the run in: `results.json` and the answers go to
+`benchmark/runs/browser-judge-swe/<YYYYMMDD-HHMMSS>/`, and the run's row to
+[its page](../runs/browser-judge-swe/README.md). That copy is text only and
+redacted: no screenshot, no conversation URL, and no device or account
+name. So the proof stays on the machine that ran it, and the page shows
+the scores.
 
 ## Words
 

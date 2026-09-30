@@ -64,28 +64,58 @@ it resumes onto it. This holds them together:
   they hold no key. So does a `.git` folder in a run folder: its objects
   are compressed, and the output's zip is the record of the output.
 
+`benchmark/runs/browser-judge-swe/` is the one folder that is not a harness
+scenario's. `arch-benchmark-browser` asks four chat products, and when
+it runs in a checkout it writes each run there, with its row. A row of
+its page links `<run>/results.json`, and the folder holds:
+- every row names a run folder beside it that holds its `results.json`,
+  every run folder is named by exactly one row, and the rows run from
+  the newest start to the oldest, as a scenario's do;
+- every run's `results.json` is one
+  `benchmark/schema/browser-session.schema.json` accepts, except that
+  `repository_head`, and a session's `read_version` and `polls`, may be
+  missing: the schema came to require them after the first runs, and a
+  run recorded before has none, as a harness run recorded before its
+  versions has none to check. Each session's `response_path` is a file
+  of the run folder;
+- a published run is text only: its folder holds its `results.json` and
+  its sessions' answers, and no other file, so no screenshot;
+- a published run names no conversation: every session's `url` reads
+  `[redacted]`, and no file holds the address of a conversation, or of a
+  share of one, on chatgpt.com, claude.ai, gemini.google.com, or
+  grok.com. Nor does a file hold the reference implementation's name,
+  which `check_leaks.py` refuses everywhere but the run folders, and an
+  answer may write;
+- the scan for keys and account ids above reads its files too.
+
 A row is a body line of a table whose header's first cell is `Run`, and
 its run is the folder its first cell's `](<folder>/report.md)` link
-names. A stage table, whose first column is the stage, holds no row. A
-line of fenced code is neither a row nor a link of the index. A run
-that records no start is left out of the order. With no scenario folder
-and no index there is nothing to check.
+names, or `](<folder>/results.json)` on the browser page. A stage table,
+whose first column is the stage, holds no row. A line of fenced code is
+neither a row nor a link of the index. A run that records no start is
+left out of the order. With no scenario folder and no index there is
+nothing to check.
 
 Exit status is non-zero on any mismatch. The scenarios and the chains
 are read through the benchmark harness, which imports the standard
-library only; a YAML scenario needs pyyaml, which `make runs` brings.
+library only; a YAML scenario needs pyyaml, and a browser run
+jsonschema, which `make runs` brings. Without jsonschema a browser run
+fails, since nothing can say it is in its schema.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from _common import ROOT, parser, unfenced
+from check_leaks import REFUSED_TERMS
 
 # The harness reads a scenario as a run reads it, so the runtimes checked
 # here are the ones run.py admits, and a chain as run.py records it.
@@ -105,6 +135,22 @@ DELIMITER = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
 # What only a run folder holds: `run.py` writes `run.json` first, then `results.json` and `report.md`.
 RUN_FILES = ("run.json", "results.json", "report.md")
 COST = "Cost (USD)"
+BROWSER = RUNS / "browser-judge-swe"
+BROWSER_SCHEMA = ROOT / "benchmark" / "schema" / "browser-session.schema.json"
+BROWSER_ROW_LINK = re.compile(r"\]\(([^()/\s]+)/results\.json\)")
+REDACTED = "[redacted]"
+# The keys the browser-session schema came to require after the first runs: a run recorded before them has none.
+LATER_KEYS = frozenset({"repository_head", "read_version", "polls"})
+# The address of a conversation, or of a share of one, on the four sites: the proof a run keeps on the machine that
+# ran it, never on a published page. A site's new-chat page (`claude.ai/new`, `gemini.google.com/app`) is not one.
+CONVERSATION = re.compile(
+    rb"(?:chatgpt\.com/(?:g/[^/\s]+/)?(?:c|share)/|claude\.ai/(?:chat|share)/|gemini\.google\.com/(?:app|share)/\w"
+    rb"|g\.co/gemini/share/|grok\.com/(?:c|share)/)",
+    re.IGNORECASE,
+)
+# The reference implementation's name, as `check_leaks.py` refuses it: an answer may write it, and a run folder is a
+# record that check does not read.
+REFERENCE = [re.compile(term.encode(), re.IGNORECASE) for term in REFUSED_TERMS["reference"]]
 
 
 def shown(path: Path) -> str:
@@ -131,8 +177,8 @@ class Row:
     cost: str | None
 
 
-def rows(text: str) -> list[Row]:
-    """Every row of the tables of runs outside fenced code, in order."""
+def rows(text: str, link: re.Pattern[str] = ROW_LINK) -> list[Row]:
+    """Every row of the tables of runs outside fenced code, in order: a row's run is the folder its first cell's `link` names."""
     lines = unfenced(text).splitlines()
     out: list[Row] = []
     header: list[str] | None = None
@@ -148,7 +194,7 @@ def rows(text: str) -> list[Row]:
         if header is None or header[0] != "Run":
             continue
         row = cells(line)
-        found = ROW_LINK.search(row[0])
+        found = link.search(row[0])
         if not found:
             continue
         cost = row[header.index(COST)] if COST in header and header.index(COST) < len(row) else None
@@ -396,6 +442,135 @@ def check_scenario(folder: Path, errors: list[str]) -> list[Path]:
     return runs
 
 
+def relaxed(node: Any) -> Any:
+    """A schema with `LATER_KEYS` taken out of every `required` list it holds."""
+    if isinstance(node, dict):
+        return {
+            key: [k for k in value if k not in LATER_KEYS] if key == "required" and isinstance(value, list) else relaxed(value)
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [relaxed(value) for value in node]
+    return node
+
+
+def browser_validator() -> Any:
+    """A validator of the browser-session schema, `LATER_KEYS` not required, or why there is none."""
+    try:
+        import jsonschema
+    except ImportError:
+        return "jsonschema is not installed, so no one can say the run is in its schema; `make runs` brings it"
+    try:
+        schema = relaxed(json.loads(BROWSER_SCHEMA.read_text(encoding="utf-8")))
+        jsonschema.Draft202012Validator.check_schema(schema)
+    except (OSError, ValueError, jsonschema.SchemaError) as exc:
+        return f"{shown(BROWSER_SCHEMA)} does not load, so the run cannot be held to it ({type(exc).__name__}: {exc})"
+    return jsonschema.Draft202012Validator(schema)
+
+
+def line_of(data: bytes, at: int) -> int:
+    return data.count(b"\n", 0, at) + 1
+
+
+def check_browser_run(run: Path, validator: Any, errors: list[str]) -> None:
+    """Hold one browser run: its `results.json` in the schema, text only, and no conversation's address or reference name."""
+    where = shown(run)
+    try:
+        data = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        errors.append(f"{where}/results.json: does not read as JSON ({type(exc).__name__}: {exc})")
+        data = None
+    if isinstance(validator, str):
+        errors.append(f"{where}: {validator}")
+    elif data is not None:
+        for problem in sorted(validator.iter_errors(data), key=str):
+            at = "/".join(str(p) for p in problem.path) or "its top"
+            errors.append(f"{where}/results.json: {at}: {problem.message}; a browser run is in its schema")
+    sessions = data.get("sessions") if isinstance(data, dict) else None
+    answers: set[str] = set()
+    for session in sessions if isinstance(sessions, list) else []:
+        if not isinstance(session, dict):
+            continue
+        site = session.get("site")
+        if session.get("url") != REDACTED:
+            errors.append(
+                f"{where}/results.json: the {site} session's url is not {REDACTED}; a published run names no conversation"
+            )
+        path = session.get("response_path")
+        if not isinstance(path, str) or not path or "/" in path or "\\" in path or path in (".", ".."):
+            errors.append(f"{where}/results.json: the {site} session's response_path {path!r} is not a file of the run folder")
+        elif not (run / path).is_file():
+            errors.append(f"{where}: the {site} session's answer {path} is not in the run folder")
+        else:
+            answers.add(path)
+    for path in sorted(run.rglob("*")):
+        if path.is_dir():
+            continue
+        if path.relative_to(run).as_posix() not in {"results.json"} | answers:
+            errors.append(
+                f"{shown(path)}: is not the run's results.json or a session's answer; a published browser run is text only, "
+                "with no screenshot"
+            )
+            continue
+        try:
+            text = path.read_bytes()
+        except OSError as exc:
+            errors.append(f"{shown(path)}: could not be read, so no one can say it names no conversation ({exc})")
+            continue
+        found = CONVERSATION.search(text)
+        if found:
+            said = found.group(0).decode("utf-8", "replace")
+            errors.append(
+                f"{shown(path)}:{line_of(text, found.start())}: holds the address of a conversation ({said}...); "
+                f"a published run replaces it with {REDACTED}"
+            )
+        for term in REFERENCE:
+            named = term.search(text)
+            if named:
+                errors.append(
+                    f"{shown(path)}:{line_of(text, named.start())}: names the reference implementation; "
+                    f"a published run replaces the name with {REDACTED}"
+                )
+
+
+def check_browser(folder: Path, errors: list[str]) -> list[Path]:
+    """Hold the browser benchmark's folder: its README, one row per run folder, and each run; return its run folders."""
+    runs = sorted(p for p in folder.iterdir() if p.is_dir())
+    readme = folder / README
+    where = shown(readme)
+    if not readme.is_file():
+        held = f", so no run folder of it has a row: {', '.join(p.name for p in runs)}" if runs else ""
+        errors.append(f"{where}: missing{held}; the browser benchmark's folder has a README that says what it measures")
+    else:
+        named: dict[str, list[int]] = defaultdict(list)
+        above: tuple[str, str] | None = None
+        for row in rows(readme.read_text(encoding="utf-8"), BROWSER_ROW_LINK):
+            path = folder / row.run
+            if not (path / "results.json").is_file():
+                errors.append(f"{where}:{row.line}: links {row.run}/results.json, and {folder.name} holds no such run")
+                continue
+            named[row.run].append(row.line)
+            started = started_at(path)
+            if started and above is not None and started > above[1]:
+                errors.append(
+                    f"{where}:{row.line}: {row.run} started {started}, after {above[0]} above it; the newest run comes first"
+                )
+            if started:
+                above = (row.run, started)
+        for run in runs:
+            lines = named.get(run.name, [])
+            if not lines:
+                errors.append(f"{where}: no row names the run folder {run.name}")
+            elif len(lines) > 1:
+                errors.append(
+                    f"{where}: {run.name} is named by {len(lines)} rows (lines {', '.join(map(str, lines))}); a run has one row"
+                )
+    validator = browser_validator() if runs else None
+    for run in runs:
+        check_browser_run(run, validator, errors)
+    return runs
+
+
 def check(errors: list[str]) -> int:
     """Add every mismatch to `errors` and return the number of run folders."""
     entries = sorted(p for p in RUNS.iterdir() if p.is_dir()) if RUNS.is_dir() else []
@@ -407,7 +582,11 @@ def check(errors: list[str]) -> int:
         else:
             folders.append(entry)
     check_index(folders, errors)
-    runs = [run for folder in folders for run in check_scenario(folder, errors)]
+    runs = [
+        run
+        for folder in folders
+        for run in (check_browser(folder, errors) if folder == BROWSER else check_scenario(folder, errors))
+    ]
     scenarios = declared() if runs else {}
     for run in runs:
         if rehearsed(run):
@@ -437,7 +616,8 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     print(
         f"runs ok: {count} run folder(s), each in its scenario's folder and named by one row, each row's cost its chain's "
-        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file"
+        "total, on a runtime its scenario lists, no rehearsal, no marked repeat, no key or account id in any file, "
+        "and each browser run in its schema, text only, naming no conversation"
     )
     return 0
 

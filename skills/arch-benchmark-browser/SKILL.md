@@ -1,7 +1,7 @@
 ---
 name: arch-benchmark-browser
-description: "Run the benchmark prompt in the chatgpt.com, claude.ai, gemini.google.com, and grok.com products, signed in, and save each answer with its conversation URL as proof."
-allowed-tools: Read, Write, Bash(mkdir:*), Bash(date:*), Bash(python3:*), Bash(git ls-remote:*), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
+description: "Run the benchmark prompt in the chatgpt.com, claude.ai, gemini.google.com, and grok.com products, signed in, and save each answer with its conversation URL as proof; in a checkout of this repository, also check the run in, redacted, with its row."
+allowed-tools: Read, Write, Edit, Bash(mkdir:*), Bash(date:*), Bash(python3:*), Bash(git ls-remote:*), Bash(pbpaste:*), Bash(make runs), mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__browser_batch
 disable-model-invocation: true
 ---
 
@@ -208,7 +208,8 @@ Facts that decide how the steps below go. Read them before the browser.
    record `timed-out` with what the page shows so far.
 7. When a site is done, read the conversation URL from
    `tabs_context_mcp` and drop its query string. Read the answer with
-   `get_page_text`, or from screenshots where that is refused. Find the
+   the site's copy button and `pbpaste`, as `references/copy-answer.md`
+   says, or, where that fails, with `get_page_text`. Find the
    `Score: NN/100` line, and what the answer's Method says it read: a
    commit, a tag, or a branch and a date, for `read_version` ("not
    stated" when it names none). Save `<site>.md` in the run folder:
@@ -233,10 +234,11 @@ Facts that decide how the steps below go. Read them before the browser.
    ```
 
    Where `score` is null, the header's line is `- Score: none`; where
-   there is no note, it is `- Note: none`. The answer is bounded as
-   "What the pages are like" says, and the chrome on either side is
-   left out; tool steps, citation chips ("GitHub", "10 sources"), and
-   image captions stay as the page gave them. The statuses:
+   there is no note, it is `- Note: none`. A copied answer is saved as
+   it came. A page-text answer is bounded as "What the pages are like"
+   says, and the chrome on either side is left out; tool steps,
+   citation chips ("GitHub", "10 sources"), and image captions stay as
+   the page gave them. The statuses:
    - `ok`: a score was found.
    - `smaller-mode`: in place of `ok`, when step 4 fell back from a
      locked model, mode, or effort.
@@ -293,20 +295,12 @@ Facts that decide how the steps below go. Read them before the browser.
    (`shutil.copyfile` from the path the tool reports); the tool saves
    JPEG. These are the evidence a pull request carries.
 10. Close the tabs `tabs_create_mcp` opened in step 3, and no other.
-11. Only when the arguments have `compare=`. List the earlier runs with
-    `python3`:
-    `sorted((Path.home() / "Downloads" / "benchmark_browser").glob("*/results.json"))`,
-    since the tools have no `ls` and `glob` does not expand `~`. With
-    run ids named, read those only, and name a named run that has no
-    `results.json` as missing. Keep the runs whose `prompt` and
-    `contract` are both the same text as this run's, and name each run
-    left out and why. Runs with other `sizes` are kept apart, in a table
-    of their own. The comparison is a table in the output: a row per
-    site, a column per run headed by its `run_id` and
-    `repository_head`, and in each cell the score, the model and effort
-    labels, and `read_version`. Only `ok` sessions are compared; any
-    other shows its status. A key an earlier run lacks shows as
-    `not recorded`.
+11. Only when the arguments have `compare=`: compare this run with the
+    earlier ones as `references/compare.md` says.
+12. Only when the working directory is a checkout of this repository:
+    check the run in there, redacted, with its row, and run
+    `make runs`, as `references/check-in.md` says. It opens no pull
+    request.
 
 ## Output
 
@@ -320,4 +314,5 @@ screenshots. When the sites read different versions, say so. A
 `smaller-mode` session is named with the entry its size asked for and
 the entry that ran, and it is left out of any comparison of like for
 like, across sites or across runs. The table step 11 makes follows,
-when it was asked for.
+when it was asked for. Last, what step 12 checked in, or why it
+checked nothing in.

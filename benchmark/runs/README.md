@@ -14,6 +14,11 @@ asked to do, what it is given, how it is scored, and its runs.
   reviewing a checkout with eight planted defects.
 - [support-turn](support-turn/README.md): a model answering an on-call
   question directly, with no skill.
+- [browser-judge-swe](browser-judge-swe/README.md): four chat products a reader would use,
+  each scoring the repository from 0 to 100. It is not a harness
+  scenario: `arch-benchmark-browser` runs it, there are no judges, and
+  its page names its own columns. The skill writes each run's folder
+  and row.
 
 ## A scenario's page
 

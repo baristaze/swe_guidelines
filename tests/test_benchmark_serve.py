@@ -76,7 +76,9 @@ def test_the_runs_listing_holds_every_checked_in_run_folder(serve_module):
     listed = {(r["scenario"], r["id"]) for r in serve_module.runs_of(RUNS)}
     kept = {(p.parent.name, p.name) for p in RUNS.glob("*/*") if p.is_dir()}
     assert listed == kept and len(listed) >= 9
-    assert all(r["report"] and r["results"] for r in serve_module.runs_of(RUNS))
+    # A harness run holds its report; the browser benchmark's runs hold their results and their answers only.
+    harness = [r for r in serve_module.runs_of(RUNS) if r["scenario"] != "browser-judge-swe"]
+    assert all(r["report"] and r["results"] for r in harness) and len(harness) >= 9
 
 
 def test_the_index_and_the_json_listing_answer(client):

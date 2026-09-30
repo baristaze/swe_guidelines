@@ -361,12 +361,17 @@ def test_a_model_without_a_price_keeps_its_tokens_and_makes_the_total_a_lower_bo
 
 
 RUNS = Path(__file__).resolve().parent.parent / "benchmark" / "runs"
+# The browser benchmark's runs: the products asked in a browser, never the harness. `make runs` holds them to their
+# own schema.
+BROWSER_RUNS = "browser-judge-swe"
 
 
 def test_every_checked_in_run_still_validates_against_the_schema():
     """A later schema adds fields as optional, so a run recorded before them stays valid."""
     pytest.importorskip("jsonschema")
     for results in sorted(RUNS.glob("*/*/results.json")):
+        if results.parent.parent.name == BROWSER_RUNS:
+            continue
         data = json.loads(results.read_text(encoding="utf-8"))
         assert R.validate(data, SCHEMA) == [], results.parent.name
 

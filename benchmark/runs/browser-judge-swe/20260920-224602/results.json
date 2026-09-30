@@ -1,0 +1,61 @@
+{
+  "run_id": "20260920-224602",
+  "started_at": "2026-09-20T22:46:02Z",
+  "finished_at": "2026-09-20T23:27:00Z",
+  "prompt": "You are a software eng/architect! Evaluate the repository below.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines",
+  "contract": "Report format, so evaluations compare:\n- First line: `Score: NN/100` and nothing else on that line.\n- `## Strengths`: what holds, one line each.\n- `## Weaknesses`: what does not, most severe first, one line each.\n- `## What I would change`: concrete edits, one line each.\n- `## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "xl",
+    "effort": "xl"
+  },
+  "sessions": [
+    {
+      "site": "chatgpt.com",
+      "url": "[redacted]",
+      "model_label": "Latest",
+      "effort_label": "6 Pro",
+      "started_at": "2026-09-20T22:49:13Z",
+      "finished_at": "2026-09-20T22:56:41Z",
+      "score": 87,
+      "response_path": "chatgpt.com.md",
+      "status": "ok",
+      "note": "The composer shows no model name; the model list behind the Thinking effort popover has 'Latest' checked, and sizes.yaml's 'GPT-6 Astra' appears nowhere. The effort slider's fifth (rightmost) stop labels itself '6 Pro'. The page reads 'Worked for 7m 28s'."
+    },
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "Fable 5.1",
+      "effort_label": "Max",
+      "started_at": "2026-09-20T22:49:41Z",
+      "finished_at": "2026-09-20T23:03:30Z",
+      "score": 71,
+      "response_path": "claude.ai.md",
+      "status": "ok",
+      "note": "Picker read 'Fable 5.1 Max' when sent. The answer ends with 'Claude reached its tool-use limit for this turn.' and a Continue button; the report is complete against the contract and was not continued."
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "Flash Extended",
+      "effort_label": "none",
+      "started_at": "2026-09-20T22:50:10Z",
+      "finished_at": "2026-09-20T22:52:30Z",
+      "score": null,
+      "response_path": "gemini.google.com.md",
+      "status": "refused",
+      "note": "The whole answer was 'I seem to be encountering an error. Can I try something else for you?' - no evaluation and no score. The picker entry clicked was 'Extended thinking' but the composer chip then read 'Flash Extended'. This Chrome denies page-content reading on gemini.google.com, so the run read the answer from a screenshot; the answer here is from its copy button. First attempt, the Extended thinking toggle on Flash; superseded by the retry on 3.1 Pro below."
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "Pro (the picker entry 3.1 Pro)",
+      "effort_label": "none",
+      "started_at": "2026-09-20T23:23:30Z",
+      "finished_at": "2026-09-20T23:26:10Z",
+      "score": 85,
+      "response_path": "gemini.google.com.retry.md",
+      "status": "ok",
+      "note": "Retry after the first attempt errored; sent by the session that wrote the skill, not by the fresh agent."
+    }
+  ]
+}
