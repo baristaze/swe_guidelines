@@ -4,6 +4,11 @@ Exit status: 0 when clean, 1 when there are findings, 2 on a
 configuration or usage error or when a rule raised. A file that does
 not parse is a `PARSE` finding, never a crash; a rule that raises is an
 `ERROR` finding, and the other rules still run.
+
+The project's own rules (`local` in its config) are code, and loading
+them runs it, before anything else and under `--list` too. `--no-local`
+leaves them out, so no file of the project runs: what a review of a
+tree someone else wrote passes.
 """
 
 from __future__ import annotations
@@ -38,6 +43,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--rule", help="only these rules, comma-separated lens ids")
     p.add_argument("--format", choices=("text", "json"), default="text", help="report format (default: text)")
     p.add_argument("--list", action="store_true", help="print every rule and exit")
+    p.add_argument(
+        "--no-local",
+        action="store_true",
+        help="leave the project's own rules (`local`) out, so no file of the project runs: for a tree someone else wrote",
+    )
     p.add_argument("--version", action="version", version=f"arch-check {__version__}")
     return p
 
@@ -76,17 +86,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     root = Path(args.root) if args.root else find_root(Path.cwd())
     try:
         config = load(root, args.package, need_package=not args.list)
-        everything = sorted([*registry.rules(), *registry.load_local(config.root, config.local)], key=registry.order)
+        shipped = registry.rules()
+        local = [] if args.no_local else registry.load_local(config.root, config.local)
     except (ConfigError, registry.RegistryError) as e:
         return error(str(e))
-    known = {r.id for r in everything}
+    everything = sorted([*shipped, *local], key=registry.order)
+    runnable = {r.id for r in everything}
+    # With the local rules left out, the config may still name one: a lens a
+    # local rule may take is accepted unread, and no entry for it is judged.
+    left_out = registry.open_to_local(shipped) if args.no_local and config.local else set()
+    known = runnable | left_out
 
     groups = split(args.group)
     unknown_groups = [g for g in groups if g not in GROUPS]
     if unknown_groups:
         return error(f"unknown group(s) {', '.join(unknown_groups)}; groups are {', '.join(GROUPS)}")
     ids = split(args.rule)
-    unknown_ids = [i for i in ids if i not in known]
+    unknown_ids = [i for i in ids if i not in runnable]
     if unknown_ids:
         return error(f"unknown rule(s) {', '.join(unknown_ids)}; `arch-check --list` prints them")
     selected = [r for r in everything if (not groups or r.group in groups) and (not ids or r.id in ids)]
@@ -102,7 +118,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if name not in known:
             return error(f"[tool.arch-check.options] names unknown rule {name}")
         unknown_keys = sorted(set(table) - options_of(name, everything))
-        if unknown_keys:
+        if unknown_keys and name not in left_out:
             return error(f"[tool.arch-check.options.{name}]: unknown key(s) {', '.join(unknown_keys)}")
     disabled = {d.rule for d in config.disabled}
     selected = [r for r in selected if r.id not in disabled]
@@ -124,7 +140,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{sys.version_info[0]}.{sys.version_info[1]}, whose parser cannot read it; "
             f"run it with that Python, e.g. uvx --python {pinned[0]}.{pinned[1]} ..."
         )
-    project = Project(config, {r.id: options_of(r.id, everything) for r in everything})
+    declared = {r.id: options_of(r.id, everything) for r in everything}
+    for name in left_out & set(config.options):
+        declared[name] = declared.get(name, set()) | set(config.options[name])
+    project = Project(config, declared)
     # Source globs that match nothing read as a clean project too: every
     # Python rule runs over no file and finds nothing.
     if not project.python_files:
@@ -138,7 +157,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         found = sorted({f.module.split(".")[0] for f in project.python_files})
         return error(f"no module is under the package {config.package!r}; the source roots hold {', '.join(found)}")
     try:
-        result = run(project, selected, known, [p for p in paths if p != "."])
+        result = run(project, selected, known, [p for p in paths if p != "."], left_out)
     except ConfigError as e:
         return error(str(e))
     except Exception:
