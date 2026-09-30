@@ -69,7 +69,7 @@ us-west-2 lists these services at about the same prices:
   1 GB $18, 1 and 2 GB $36. Fargate ties memory to CPU: half a vCPU
   takes 1 GB at the least.
 - **RDS Postgres, one zone.** `db.t4g.micro` is $12, `db.t4g.small`
-  $23, `db.t4g.medium` $47, `db.m6g.large` $111, `db.m6g.xlarge` $222.
+  $23, `db.t4g.medium` $47, `db.m6g.large` $116, `db.m6g.xlarge` $232.
   A second zone doubles the instance and its storage. The default 20
   GB of gp3 is about $2.
 - **ElastiCache Valkey, per node.** `cache.t4g.micro` is $9,
