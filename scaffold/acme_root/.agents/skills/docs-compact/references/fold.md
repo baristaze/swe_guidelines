@@ -85,8 +85,9 @@ revision on the fold.
 3. **Move what named a step.** `git grep -n` each removed stamp and each
    removed file name.
    - A test that pins a removed revision id, or tests a backfill that
-     left, goes with its step. The round trip of the head and the
-     ORM-against-schema check stay.
+     left, goes with its step. Three stay: the head's downgrade and
+     upgrade, the ORM-against-schema check, and the test of `backfill`
+     over two tenants' rows, which the next data migration needs.
    - An ADR, a comment, or a document that cites a removed revision or
      file names the fold's file, or drops the citation when it named a
      step and not the schema.
