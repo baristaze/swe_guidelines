@@ -61,8 +61,11 @@ of a changed signature.
 2. Establish the scope and list the files in it.
 3. When the scope reads the working tree, run the checker that
    shipped with this lens file, `../../checkers/arch_check.py`, by its
-   absolute path, from the root of the repository under review:
-   `python3 <arch_check.py> --no-local --group context --format json`.
+   absolute path, and name the root of the repository under review,
+   an absolute path too, with `--root`:
+   `python3 <arch_check.py> --no-local --root <root> --group context --format json`.
+   `--root` says which repository is read, whatever folder the shell
+   is in, so no `cd` goes before the command.
    Run it alone, with no other command chained to it. This skill
    pre-approves no Python command, so the host may ask the person
    first, and a person who allowed this one command is asked about no

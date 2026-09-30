@@ -313,7 +313,8 @@ REVIEW = "skills/arch-review-om/SKILL.md"
 
 def test_a_review_skill_runs_the_checker_with_no_local_and_pre_approves_git_alone(repo, skills, capsys):
     repo.edit(REVIEW, "Bash(git diff:*)", "Bash(git diff:*), Bash(git show:*)")
-    repo.edit(REVIEW, "commit.\n", "commit.\n\nRun `python3 <arch_check.py> --no-local --group om --format json`.\n")
+    run = "python3 <arch_check.py> --no-local --root <root> --group om --format json"
+    repo.edit(REVIEW, "commit.\n", f"commit.\n\nRun `{run}`.\n")
     assert skills.main() == 0
     # `python3` alone names the interpreter, and a fenced block is a template: neither is a run
     repo.edit(REVIEW, "commit.\n", "commit, on `python3` 3.11.\n\n```text\npython3 x.py\n```\n")
@@ -342,16 +343,18 @@ def test_no_rule_names_the_checker_by_the_end_of_its_path(repo, skills, capsys):
 @pytest.mark.parametrize(
     "command",
     [
-        "python3 <arch_check.py> --group om --format json",
-        "python3 <arch_check.py> --format json --no-local",
-        "python3 <arch_check.py> --no-locals",
+        "python3 <arch_check.py> --root <root> --group om --format json",
+        "python3 <arch_check.py> --root <root> --format json --no-local",
+        "python3 <arch_check.py> --no-locals --root <root>",
+        "python3 <arch_check.py> --no-local --group om --format json",
+        "python3 <arch_check.py> --no-local --group om --root <root>",
         "python3 tools/rules.py",
     ],
 )
-def test_a_review_skill_that_runs_python_without_the_checkers_no_local_fails(repo, skills, capsys, command):
+def test_a_review_skill_that_runs_python_without_no_local_and_the_root_fails(repo, skills, capsys, command):
     repo.edit(REVIEW, "commit.\n", f"commit.\n\nRun `{command}`.\n")
     assert skills.main() == 1
-    assert f"{REVIEW}: `{command}` is not the checker with --no-local" in capsys.readouterr().out
+    assert f"{REVIEW}: `{command}` is not the checker with --no-local and its root" in capsys.readouterr().out
 
 
 def test_a_make_target_is_matched_as_whole_words(repo, skills, capsys):

@@ -60,7 +60,11 @@ Rules:
 - a review skill (`arch-review-*`) runs no file of the repository it
   reviews. Every command of its body that starts with `python3` is the
   checker with `--no-local` first, since without it the checker runs the
-  project's own rules, which are files of that repository. Every Bash
+  project's own rules, which are files of that repository, and then
+  `--root <root>`: the run names the repository it reads, so it needs no
+  `cd` before it, which a rule that allows the command by its path would
+  not match, and it never runs from a folder where the checker finds no
+  project and exits 2. Every Bash
   entry of its allowed-tools is a git command: none names an interpreter
   or a runner, and `Bash(python3:*)` least of all, which lets any Python
   command run with nobody asked. No entry can name the checker alone.
@@ -182,8 +186,9 @@ BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 # substitution, a quote) may chain a second one behind the first.
 PREFIX_RULE = re.compile(r"^[^*:;&|<>`$()'\"\\\n]+:\*$")  # `cmd:*`: a command, then the one `*`
 EXACT_MAKE = re.compile(r"^make [^*:;&|<>`$()'\"\\\n]+$")  # `make <target>`, arguments allowed, no wildcard
-CHECKER_RUN = re.compile(r"^python3 <arch_check\.py> --no-local(?= |$)")
-"""How a review skill's body runs the checker: the script, then `--no-local`, so no rule of the project is loaded."""
+CHECKER_RUN = re.compile(r"^python3 <arch_check\.py> --no-local --root <root>(?= |$)")
+"""How a review skill's body runs the checker: the script, `--no-local`, so no rule of the project is loaded, then
+the root it reads, so the run is one command from any folder."""
 MAKE_TARGET = re.compile(r"^make [^\s-]")  # a make entry names a target first, not an option
 QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
 PARENS = re.compile(r"\([^()]*\)")
@@ -419,8 +424,9 @@ def check_review_runs(tools: str, spans: list[str], rel: str, errors: list[str])
         # `python3` alone names the interpreter; with an argument it is a command
         if span.startswith("python3 ") and not CHECKER_RUN.match(span):
             errors.append(
-                f"{rel}: `{span}` is not the checker with --no-local; without it the checker runs "
-                "the local rules of the repository under review. Run python3 <arch_check.py> --no-local"
+                f"{rel}: `{span}` is not the checker with --no-local and its root; without the first the checker "
+                "runs the local rules of the repository under review, and without the second it reads the folder "
+                "the shell is in. Run python3 <arch_check.py> --no-local --root <root>"
             )
 
 
