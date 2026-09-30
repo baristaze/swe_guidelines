@@ -113,7 +113,10 @@ def unpack(tarball: Path, into: Path) -> str:
     """Writes `scaffold/` and `.claude-plugin/` of the tarball into `into`;
     returns the commit the tarball holds. A member outside them is skipped; one
     that would land outside `into`, or that is neither a file, a folder, nor a
-    link, is refused."""
+    link, is refused. A link is written as a link and never followed: a member
+    whose place is a link, or lies under one, is refused, and so is a link that
+    leaves `into` as the filesystem resolves it, once every member is
+    written."""
     try:
         with tarfile.open(tarball, mode="r:*") as archive:
             return unpack_archive(archive, into)
@@ -121,11 +124,18 @@ def unpack(tarball: Path, into: Path) -> str:
         raise Refused(f"the tarball could not be read: {error}") from error
 
 
+def through_link(root: Path, rel: PurePosixPath) -> bool:
+    """Whether a link stands at `rel` under `root`, or above it: a write there
+    follows the link, to wherever it points."""
+    return any(root.joinpath(*rel.parts[:depth]).is_symlink() for depth in range(1, len(rel.parts) + 1))
+
+
 def unpack_archive(archive: tarfile.TarFile, into: Path) -> str:
     commit = str(archive.pax_headers.get("comment", "")).strip()
     if not COMMIT.match(commit):
         raise Refused("the tarball names no commit; fetch one GitHub made from a ref")
     root = into.resolve()
+    links: list[tuple[str, Path]] = []
     for member in archive:
         parts = PurePosixPath(member.name).parts
         if len(parts) < 2 or parts[1] not in TAKEN:
@@ -134,6 +144,8 @@ def unpack_archive(archive: tarfile.TarFile, into: Path) -> str:
         if rel.is_absolute() or ".." in rel.parts:
             raise Refused(f"the tarball's {member.name!r} climbs out of its folder")
         out = root.joinpath(*rel.parts)
+        if through_link(root, rel):
+            raise Refused(f"the tarball's {member.name!r} is written through a link")
         if member.isdir():
             out.mkdir(parents=True, exist_ok=True)
         elif member.issym():
@@ -143,6 +155,7 @@ def unpack_archive(archive: tarfile.TarFile, into: Path) -> str:
                 raise Refused(f"the tarball's link {member.name!r} points out of the scaffold")
             out.parent.mkdir(parents=True, exist_ok=True)
             out.symlink_to(member.linkname)
+            links.append((member.name, out))
         elif member.isfile():
             source = archive.extractfile(member)
             if source is None:
@@ -152,6 +165,11 @@ def unpack_archive(archive: tarfile.TarFile, into: Path) -> str:
             out.chmod(0o755 if member.mode & 0o111 else 0o644)
         else:
             raise Refused(f"the tarball's {member.name!r} is not a file, a folder, or a link")
+    # A target is checked by its text when its link is made. What it resolves
+    # to is known only now: a link on its way may have been made after it.
+    for name, link in links:
+        if not os.path.realpath(link).startswith(str(root) + os.sep):
+            raise Refused(f"the tarball's link {name!r} points out of the scaffold")
     if not (root / "scaffold" / "new.py").is_file() or not (root / "scaffold" / "acme_root").is_dir():
         raise Refused("that commit has no scaffold/acme_root to copy; the guideline added it in v0.39.0")
     return commit
