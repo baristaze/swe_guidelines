@@ -39,9 +39,10 @@ the tree.
    repository under review:
    `python3 <arch_check.py> --no-local --format json`, where
    `<arch_check.py>` is the absolute path of
-   `../../checkers/arch_check.py`. Never leave `--no-local` out:
-   without it the checker runs the project's own rules, which are files
-   of the repository under review, and a review runs none of them.
+   `../../checkers/arch_check.py`. Run it alone, with no other command
+   chained to it. Never leave `--no-local` out: without it the checker
+   runs the project's own rules, which are files of the repository
+   under review, and a review runs none of them.
    The checker reads the working tree only, so for a range or a commit
    it is not run: note that, and every reviewer judges every lens of
    its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to

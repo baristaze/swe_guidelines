@@ -63,9 +63,10 @@ of a changed signature.
    shipped with this lens file, `../../checkers/arch_check.py`, by its
    absolute path, from the root of the repository under review:
    `python3 <arch_check.py> --no-local --group {group} --format json`.
-   Never leave `--no-local` out: without it the checker runs the
-   project's own rules, which are files of the repository under review,
-   and a review runs none of them.
+   Run it alone, with no other command chained to it. Never leave
+   `--no-local` out: without it the checker runs the project's own
+   rules, which are files of the repository under review, and a review
+   runs none of them.
    The checker reads the working tree only. For a range or a commit it
    is not run: say so in the Scope line and judge every lens in step 4.
    Otherwise read its output:
