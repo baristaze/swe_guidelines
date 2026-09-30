@@ -59,7 +59,13 @@ The commands (`ensure-logins`, then `migrate --all`) are safe to repeat.
 The next task's cold start, about a minute, is the wait between runs,
 long enough for a serving transaction to end. A third 75 fails the apply
 with the old tasks still serving, as any failed migration does, and the
-next apply runs it again.
+next apply runs it again. The command itself never retries: a retry
+inside it keeps the migrate task's connection and a place in the lock
+queue through each wait, and hides the retries from the apply log.
+
+**No migration builds an index `CONCURRENTLY`.** A role's chain runs in
+one transaction, which refuses it, and it bounds nothing for `ALTER
+TABLE` or `DROP INDEX`.
 
 **One place opens a migration connection.** The Alembic environment
 (`om/migrations/env.py`) refuses to run without the runner's connection,
@@ -70,22 +76,6 @@ With the bound, the same run on the local stack, three times: the
 migration step gives up after 5.4 seconds and exits 75, having applied
 nothing. The request sent while it waits answers 200 in 4.94 to 4.97
 seconds.
-
-## Alternatives
-
-- **A statement deadline on the migration connection.** It bounds the
-  wait and the work together. A long backfill would fail for running,
-  not for waiting.
-- **Retry inside the command.** It saves the cold start between runs.
-  It also keeps the migrate task's connection and a place in the lock
-  queue through each wait, and it hides the retries from the apply log.
-  A rerun of the task is what the pre-rollout step already knows how to
-  do, and the log says each time it happens.
-- **A longer bound.** Every second of it is a second the table stops for
-  everything behind the migration.
-- **Build indexes `CONCURRENTLY`.** A role's chain runs in one
-  transaction, where `CONCURRENTLY` is refused, and it bounds nothing
-  for `ALTER TABLE` or `DROP INDEX`.
 
 ## Consequences
 

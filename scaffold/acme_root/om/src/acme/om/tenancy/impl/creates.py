@@ -165,9 +165,8 @@ def personal_rows(
 ) -> tuple[Org, User, Membership]:
     """A person's personal org, their user in it, and the owner membership.
     The org is named after the person, the slug is generated, and the person
-    types neither. A person with no name (one an older release made and left
-    in no org) is "Personal" there, and their address's local part is the
-    name the org shows for them."""
+    types neither. A person with no name is "Personal" there, and their
+    address's local part is the name the org shows for them."""
     name = personal_org_name(display_name)
     shown = display_name.strip() or identity.email.partition("@")[0]
     org, user, membership = owner_rows(

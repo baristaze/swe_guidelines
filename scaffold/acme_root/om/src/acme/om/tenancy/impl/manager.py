@@ -560,10 +560,9 @@ class TenancyManagerImpl(TenancyManagerInterface):
                 person.display_name,
             )
         # The provider verified the address this identity holds, so it is the
-        # same person: an identity the seeding or the operator plane made, or
-        # one an older release made with a password. It is linked once; a link
-        # to another subject is replaced, since the address, verified again,
-        # decides who holds it.
+        # same person: an identity the seeding or the operator plane made. It
+        # is linked once; a link to another subject is replaced, since the
+        # address, verified again, decides who holds it.
         linked = by_email.model_copy(
             update={
                 "issuer": issuer,
@@ -746,10 +745,9 @@ class TenancyManagerImpl(TenancyManagerInterface):
         self, identity: Identity, memberships: tuple[OrgMembership, ...]
     ) -> tuple[OrgMembership, ...]:
         """The places a sign-in answers with, the personal org among them. A
-        person the release before this one made has none yet, whether the
-        backfill ran before it or not, so the sign-in makes it: every person
-        who signs in has a place to work. Two sign-ins that race to make it
-        meet the unique key, and the loser reads the winner's."""
+        person with none gets it at the sign-in: every person who signs in
+        has a place to work. Two sign-ins that race to make it meet the
+        unique key, and the loser reads the winner's."""
         if any(m.org.personal for m in memberships):
             return memberships
         if len(memberships) >= self._options.max_orgs_per_identity:
@@ -2139,8 +2137,8 @@ class TenancyManagerImpl(TenancyManagerInterface):
         if session.expires_at <= now:
             raise CredentialExpired("session expired")
         # The idle lifetime beside the absolute one. A session no request has
-        # touched yet (one an older release wrote) starts its idle clock at
-        # its first use here, not at its creation.
+        # touched yet starts its idle clock at its first use here, not at its
+        # creation.
         seen = session.last_seen_at
         if seen is not None and seen + self._options.session_idle_ttl <= now:
             raise CredentialExpired("session idle")

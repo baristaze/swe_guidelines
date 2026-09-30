@@ -41,8 +41,7 @@ class Orgs(IdentifiableMixin, NamedMixin, TrackableMixin, SoftDeletableMixin, Ba
         ),
     )
     slug: Mapped[str]
-    # The default is the release before this one's: it writes no kind, and
-    # every org it makes is a team org.
+    # A row written with no kind is a team org.
     kind: Mapped[str] = mapped_column(server_default=text("'team'"))
     personal_identity_id: Mapped[UUID | None]
     provider_org_id: Mapped[str | None]

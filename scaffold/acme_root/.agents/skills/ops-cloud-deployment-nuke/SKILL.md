@@ -73,7 +73,7 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
      ```
 
      Production applies `release`, so a change merged to `main` and
-     not yet released has changed nothing there, and neither has a
+     not yet released changes nothing there, and neither does a
      working tree. The script also reads `deletion_protection` from
      the database in the applied state and refuses while it is on.
      Stop and name the release that is still to come. The script

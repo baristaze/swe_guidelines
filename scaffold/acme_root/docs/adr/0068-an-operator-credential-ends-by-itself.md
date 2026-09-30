@@ -29,6 +29,10 @@ read and every write on the plane is a token's. The gate names the
 refusal, `403 operator_token_required`, as it names
 `second_factor_not_enrolled`.
 
+**The token keeps its hour, never minutes.** A skill runs longer than
+five minutes, and a person would mint all day. The revoke ends a token
+sooner.
+
 **The mint is an exchange.** It lands the token and ends the sign-in in
 one write, `exchange_sign_in` into the system scope, as a tenant's
 sign-in is exchanged for a session
@@ -77,26 +81,6 @@ theirs, not the operator's, and stand.
 No operator credential holds a socket. `TICKET_CREDENTIALS` is the
 session and the API key, so an operator's revocation needs no bus
 message and no recheck: every request reads the row.
-
-## Alternatives
-
-- **Let the sign-in with its code admit, and let its sign-out end it.**
-  Refused. It would carry the entry's whole grant, read and write, for
-  ten minutes. Only its holder could end it, since nothing lists it. And
-  a read or a write on the plane would name one of two credential kinds.
-  With a token, every act names one listed credential with one
-  permission.
-- **Shorten the token's life to five minutes.** Refused. A skill runs
-  longer than that, and a person would mint all day. The hour stays; the
-  revoke ends it sooner.
-- **Let a `write` operator end another operator's tokens.** Refused.
-  That is a write on the allowlist's side of the plane, which only the
-  grant job makes, under the deploy's approval.
-- **A console screen for the list and the revoke.** Not built. No
-  operator console exists
-  ([ADR 0010](0010-operators-work-through-the-api.md)), and the person
-  who mints a token does so in a terminal with `acme-ops`, which lists
-  and revokes too.
 
 ## Consequences
 

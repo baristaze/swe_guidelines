@@ -242,9 +242,14 @@ COUNT_BOUNDS = {
     "ops-cloud-deployment-create": ["Its Next is the person's to run, never the session's"],
     "stress-test-create-or-update": ["Its Next is the person's to run, never the session's"],
     "audit-database-calls": ["the first run plus at most 1 rerun"],
+    "docs-compact": [
+        "One pass: each document is rewritten once in a run.",
+        "the first run plus at most 3 reruns, then stop and say which gate fails and why",
+        "Its Next is the person's to run, never the session's",
+    ],
 }
 # The skills whose report's Next a person runs: no session follows it.
-PERSONS_NEXT = ["ops-cloud-deployment-create", "stress-test-create-or-update"]
+PERSONS_NEXT = ["ops-cloud-deployment-create", "stress-test-create-or-update", "docs-compact"]
 # The skills that wait between two reads with `sleep`.
 SLEEPERS = ["ops-investigate", "ops-root-cause", "ops-watch"]
 
@@ -284,6 +289,58 @@ ONE_READ_A_MINUTE = [
 @pytest.mark.parametrize("sentence", ONE_READ_A_MINUTE)
 def test_a_watch_reads_each_minute_of_a_metric_once(sentence: str) -> None:
     assert sentence in _prose("ops-watch"), f"ops-watch no longer says: {sentence}"
+
+
+# What a compaction never loses, written in the skill that could lose it.
+COMPACTION_KEEPS = [
+    "Never drops a deviation's end condition",
+    "Never trims an expand and contract in flight",
+    "Never renumbers an ADR, and never gives a removed ADR's number to another",
+    "Never drops a reason that stops a plausible wrong change",
+    "Never changes a statement of code.",
+    "Never opens `om/migrations/` without `--migrations`",
+    "Never pushes, never opens a pull request, never publishes or edits a release.",
+]
+
+
+@pytest.mark.parametrize("sentence", COMPACTION_KEEPS)
+def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
+    assert sentence in _prose("docs-compact"), f"docs-compact no longer says: {sentence}"
+
+
+def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
+    """A fold replaces a chain every database applied, so the reference the
+    fold step reads says when it may run, what shows it equal, and where a
+    proof that fails stops."""
+    assert "`references/fold.md`" in _prose("docs-compact")
+    fold = " ".join((SKILLS / "docs-compact" / "references" / "fold.md").read_text().split())
+    assert "Every database that exists is at its chain's head." in fold
+    assert "`diff` prints nothing, for every role." in fold
+    assert "the first run plus at most 3 reruns" in fold
+    assert "never drop a database this run did not make" in fold
+    assert "A test goes only when it pins a revision id the fold removes" in fold
+    assert "Every other test stays" in fold
+    assert "Those assertions stay, in a test that migrates to the head" in fold
+    assert "upgrades to the head again before it returns" in fold
+    assert "the schema dump of the chain equals the fold's" in fold
+
+
+def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
+    """A deploy run's head is the branch's tip when it started, and its
+    title ends with the commit it deployed. The release workflow reads the
+    title of the newest run whose apply job succeeded, and the fold reads
+    it the same way, by the job's name as the deploy workflow has it."""
+    workflows = ROOT / ".github" / "workflows"
+    deploy = yaml.safe_load((workflows / "deploy-staging.yml").read_text())
+    apply_job = deploy["jobs"]["staging"]["name"]
+    fold = (SKILLS / "docs-compact" / "references" / "fold.md").read_text()
+    for text in (fold, (workflows / "release.yml").read_text()):
+        assert f'select(.name == "{apply_job}")' in text
+        assert "--json displayTitle" in text
+    assert "--json headSha" not in fold
+    # Production's deploys are read by its own apply job, never by a branch.
+    production = yaml.safe_load((workflows / "deploy-production.yml").read_text())
+    assert f'select(.name == "{production["jobs"]["apply"]["name"]}")' in fold
 
 
 # A `SEARCH` schema names every dimension a series has, or it matches nothing
