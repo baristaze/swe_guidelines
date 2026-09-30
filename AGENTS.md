@@ -36,11 +36,16 @@ cites the changed text changes with it.
   unnumbered, and every cross-reference names a section by its title.
 - `scaffold/acme_root/` is the domain-agnostic core of a system in the
   guideline's shape: a whole monorepo named `acme`, with its own gates.
-  `scaffold/new.py` copies it under a project's name, standard library
-  only, and `tests/test_scaffold_new.py` holds it. The repository's ruff
-  and mypy read `new.py` alone; markdownlint, the links, and the leaks
-  read the whole scaffold; CI's `scaffold` job runs a fresh copy's own
-  gates, with arch-check from `checkers/`.
+  `scaffold/new.py` copies it under a project's name, and from a clean
+  checkout commits the copy as its base, on the branch `scaffold`.
+  `scaffold/base.py` commits the scaffold at a later ref onto that
+  branch, fetched as one tarball, and `arch-upgrade-scaffold` merges it.
+  Both scripts use the standard library only, and
+  `tests/test_scaffold_new.py` and `tests/test_scaffold_base.py` hold
+  them. The repository's ruff and mypy read the two scripts alone;
+  markdownlint, the links, and the leaks read the whole scaffold; CI's
+  `scaffold` job runs a fresh copy's own gates, with arch-check from
+  `checkers/`.
 - `lenses/<group>.md` holds one group of lenses in the format
   `lenses/README.md` defines. `make lenses` holds the format, the
   citations, every identifier a lens quotes to the section it cites, and

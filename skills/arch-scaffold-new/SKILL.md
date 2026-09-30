@@ -61,7 +61,7 @@ Example: `free_journalism --first journalists Journalist display_name:str`.
 
 | File | Holds |
 |------|-------|
-| `<name>/` | the scaffold, copied by `new.py` under the name in each of its forms, pinned at this plugin's release, in a new git repository with nothing staged |
+| `<name>/` | the scaffold, copied by `new.py` under the name in each of its forms, pinned at this plugin's release, in a new git repository; from a clean checkout of the plugin, its first commit is the copy, on `scaffold` and the main branch, the base `arch-upgrade-scaffold` moves |
 | `<name>/docs/adr/<n>-*.md` | the product's first decisions, numbered from one above the highest ADR there |
 | the first namespace and its entity | as `arch-scaffold-namespace` and `arch-scaffold-entity` create them |
 
@@ -129,11 +129,12 @@ states: the first run plus at most 3 reruns.
 
 As `../_shared/scaffold-conventions.md` states,
 with these differences. The name and where it came from come first.
-The copy is one line, the one `new.py` printed (its file count, the
-folder, the name, and the pin), in place of its files: nothing is
-committed, so `git status` names every copied file. After it, each file
+The copy is the two lines `new.py` printed, its file count, the
+folder, the name, and the pin, then its base, in place of its files:
+`git status` names what the copy holds beyond its first commit, or
+every copied file when the base was not recorded. After it, each file
 this skill and the skills it followed wrote or changed, one per line,
 as they wrote them; then the ADRs by number, and the database gates
-skipped when Docker did not run. Then `The tree is uncommitted, and the
-first commit is the person's.` A `Stopped:` line, when there is one,
+skipped when Docker did not run. Then `What this skill wrote is uncommitted, and
+its commit is the person's.` A `Stopped:` line, when there is one,
 still closes the output.
