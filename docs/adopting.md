@@ -127,7 +127,9 @@ Recorded in `docs/adr/0002-technology-choices.md`.
 A project without a `specs/` folder puts the file where its
 specifications live, and names that place in its `README.md`. Bump the
 tag when the project adopts a newer release, in a commit that also runs
-`arch-review-full all` on the main branch.
+`arch-review-full all` on the main branch. A copy that keeps the scaffold as
+its base moves the pin with the merge that takes the release: see
+[the last section](#advanced-keep-the-scaffold-as-the-base).
 
 ## Record technology substitutions in one ADR
 
