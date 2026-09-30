@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from opentelemetry import trace
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 from starlette.datastructures import Headers, MutableHeaders
 
 from acme.infra.observability import HTTP_LATENCY, HTTP_REQUESTS, request_id_var
@@ -70,8 +70,8 @@ def method_label(method: str) -> str:
 
 
 UNMATCHED = "unmatched"
-"""What a log line and a series name a request by when no route took it: the
-path is the caller's own text, and neither carries it."""
+"""What a log line, a span, and a series name a request by when no route took
+it: the path is the caller's own text, and none of the three carries it."""
 
 
 def route_template_of(scope: Scope) -> str | None:
@@ -110,10 +110,16 @@ class RequestIdMiddleware:
         # The server span is opened here, around everything downstream, so the
         # context the gateway builds reads a real trace id. The route template
         # is only known once routing has run, so the name is finished at the end.
+        # The span holds nothing the caller wrote: no path, no query string, no
+        # header, as a name or as an attribute, and no text of an exception
+        # that leaves it, which may quote what the caller sent. Whoever reads
+        # a trace under a request's id reads the platform's words alone.
         with tracer.start_as_current_span(
-            f"{method} {scope['path']}",
+            method,
             kind=SpanKind.SERVER,
-            attributes={REQUEST_ID_ATTRIBUTE: str(request_id), "url.path": scope["path"]},
+            attributes={REQUEST_ID_ATTRIBUTE: str(request_id)},
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             try:
                 await self.app(scope, receive, send_with_request_id)
@@ -122,8 +128,10 @@ class RequestIdMiddleware:
                 # the id has left the log context and the span has closed; a
                 # response that has not started is answered here instead,
                 # with the header, the log line, and the status all carrying
-                # the id. One that has started, or a socket, is re-raised.
+                # the id. One that has started, or a socket, is re-raised, and
+                # its span is marked failed; the log line has the traceback.
                 if scope["type"] != "http" or status["code"] != 0:
+                    span.set_status(StatusCode.ERROR)
                     raise
                 # The template, never the path: a path is the caller's text.
                 log.exception(

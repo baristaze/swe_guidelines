@@ -1,11 +1,20 @@
 """The gateway opens one server span per request and stamps the request id
 on it, so the context the tenancy manager builds carries a real trace id
-whenever a tracer provider is configured."""
+whenever a tracer provider is configured. The span holds nothing the caller
+wrote."""
+
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import httpx
 import pytest
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind, StatusCode
 
 from acme.om.context import TenantContext
 from acme.services.api.container import AppContainer
@@ -70,3 +79,85 @@ async def test_an_invented_verb_opens_no_new_metric_series(client: httpx.AsyncCl
     ]
     assert not any("PROPFIND" in line for line in counted)
     assert any('route="unmatched"' in line and 'method="OTHER"' in line for line in counted)
+
+
+WORDS = "WIPZ_DOWN_ALL_RULZ"
+"""A caller's own words. None of their characters is in a verb, in a route's
+template, in an id, or in a status, so a span that shares one with them holds
+some of what the caller wrote."""
+
+
+@contextmanager
+def finished_spans() -> Iterator[InMemorySpanExporter]:
+    """Every span that ends inside the block."""
+    ensure_tracer_provider()
+    provider = trace.get_tracer_provider()
+    assert isinstance(provider, TracerProvider)
+    exporter = InMemorySpanExporter()
+    processor = SimpleSpanProcessor(exporter)
+    provider.add_span_processor(processor)
+    try:
+        yield exporter
+    finally:
+        processor.shutdown()
+
+
+def held(span: ReadableSpan) -> str:
+    """What a reader of the trace is shown of a span: its name, the value of
+    each attribute, and whatever its events carry."""
+    values = [span.name, *(str(v) for v in (span.attributes or {}).values())]
+    for event in span.events:
+        values += [event.name, *(str(v) for v in (event.attributes or {}).values())]
+    return " ".join([*values, span.status.description or ""])
+
+
+async def test_a_span_holds_nothing_the_caller_wrote(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """A trace is read under the request's id by whoever looks into it, and a
+    caller picks that id, the path, the query, and the headers. The span is
+    named by the route, or `unmatched`, and no attribute holds the rest."""
+
+    @app.get("/held/{word}", include_in_schema=False)
+    async def route(word: str) -> dict[str, str]:
+        return {}
+
+    said = {"user-agent": WORDS, "referer": f"https://{WORDS}.example", "x-note": WORDS}
+    with finished_spans() as exporter:
+        nowhere = await client.get(f"/{WORDS}/nowhere?say={WORDS}", headers=said)
+        somewhere = await client.get(f"/held/{WORDS}?say={WORDS}", headers=said)
+        spans = exporter.get_finished_spans()
+    assert (nowhere.status_code, somewhere.status_code) == (404, 200)
+    servers = [span for span in spans if span.kind is SpanKind.SERVER]
+    assert sorted(span.name for span in servers) == ["GET /held/{word}", "GET unmatched"]
+    for span in spans:
+        assert not set(WORDS) & set(held(span)), held(span)
+    assert {key for span in servers for key in span.attributes or {}} == {
+        "acme.request_id",
+        "http.route",
+        "http.response.status_code",
+    }
+
+
+async def test_an_exception_that_leaves_a_span_marks_it_failed_and_leaves_no_text(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """An answer that has started cannot be replaced, so its exception leaves
+    the span. An exception's text may quote what the caller sent: the span
+    says it failed, and the log line holds the traceback."""
+
+    @app.get("/half/{word}", include_in_schema=False)
+    async def route(word: str) -> StreamingResponse:
+        async def body():
+            yield b"x"
+            raise RuntimeError(f"no {word}")
+
+        return StreamingResponse(body())
+
+    with finished_spans() as exporter:
+        await client.get(f"/half/{WORDS}")
+        spans = exporter.get_finished_spans()
+    (span,) = [span for span in spans if span.name == "GET /half/{word}"]
+    assert span.status.status_code is StatusCode.ERROR
+    assert span.events == ()
+    assert not set(WORDS) & set(held(span)), held(span)
