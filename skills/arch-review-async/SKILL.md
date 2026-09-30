@@ -1,7 +1,7 @@
 ---
 name: arch-review-async
 description: "Architecture review through the Async lenses: infra, queues, workers, park vs fail. For a change in this area, or as one leg of arch-review-full."
-allowed-tools: Read, Grep, Glob, Bash(python3 */checkers/arch_check.py --no-local *), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-async
@@ -63,10 +63,12 @@ of a changed signature.
    shipped with this lens file, `../../checkers/arch_check.py`, by its
    absolute path, from the root of the repository under review:
    `python3 <arch_check.py> --no-local --group async --format json`.
-   Run it alone, with no other command chained to it. Never leave
-   `--no-local` out: without it the checker runs the project's own
-   rules, which are files of the repository under review, and a review
-   runs none of them.
+   Run it alone, with no other command chained to it. This skill
+   pre-approves no Python command, so the host may ask the person
+   first, and a person who allowed this one command is asked about no
+   other. Never leave `--no-local` out: without it the checker runs
+   the project's own rules, which are files of the repository under
+   review, and a review runs none of them.
    The checker reads the working tree only. For a range or a commit it
    is not run: say so in the Scope line and judge every lens in step 4.
    Otherwise read its output:
@@ -94,11 +96,11 @@ of a changed signature.
      checker finding, the rest is judged, and the lens passes only
      when that rest passes too.
    - A lens absent from `rules_run` is judged whole in step 4.
-   - When the checker cannot run (a Python older than 3.11, exit code
-     2, a project pinned to a newer Python than `python3`), say so in
-     the report's Scope line and judge every lens in step 4, the ones
-     it would have decided included. The review is the checker's
-     fallback.
+   - When the checker cannot run (the command is refused, a Python
+     older than 3.11, exit code 2, a project pinned to a newer Python
+     than `python3`), say so in the report's Scope line and judge every
+     lens in step 4, the ones it would have decided included. The
+     review is the checker's fallback.
 4. For every lens the checker did not decide, in id order, decide one
    of: **finding** (evidence of a breach, with a file and line),
    **pass** (the lens applies and the code satisfies it), **not

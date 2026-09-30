@@ -56,18 +56,19 @@ Rules:
   exact command that is not make) is refused, as is a rule with a shell
   operator (`;`, `&`, `|`, a redirect, a substitution, a quote) that would
   chain a second command; a make entry names a target, so `Bash(make:*)`
-  and `Bash(make -C dir:*)` are refused. One rule holds a `*` inside it,
-  `Bash(python3 */checkers/arch_check.py --no-local *)`: the checker, at
-  whatever path the plugin sits, with `--no-local`. The prefix form
-  cannot say it, since the host reads a `*` before `:*` as a character.
-  A skill that holds it runs `python3 <arch_check.py> --no-local` in its
-  body;
+  and `Bash(make -C dir:*)` are refused;
 - a review skill (`arch-review-*`) runs no file of the repository it
   reviews. Every command of its body that starts with `python3` is the
   checker with `--no-local` first, since without it the checker runs the
-  project's own rules, which are files of that repository. Its
-  allowed-tools holds no other `python3` entry: `Bash(python3:*)` lets
-  any Python command run with nobody asked;
+  project's own rules, which are files of that repository. Every Bash
+  entry of its allowed-tools is a git command: none names an interpreter
+  or a runner, and `Bash(python3:*)` least of all, which lets any Python
+  command run with nobody asked. No entry can name the checker alone.
+  The plugin sits at a path no skill knows, so the prefix form cannot
+  say it, and a rule with a `*` before the path,
+  `Bash(python3 */checkers/arch_check.py --no-local *)`, also matches
+  `python3 -c "..." x/checkers/arch_check.py --no-local`. So the host
+  asks the person before the checker runs;
 - every skill, the scaffold's included, has a non-empty allowed-tools:
   a skill without one runs with every tool the session has;
 - allowed-tools names only what the body runs; the checker holds the make
@@ -180,17 +181,8 @@ BASH_RULE = re.compile(r"^Bash\((.*)\)$")
 # substitution, a quote) may chain a second one behind the first.
 PREFIX_RULE = re.compile(r"^[^*:;&|<>`$()'\"\\\n]+:\*$")  # `cmd:*`: a command, then the one `*`
 EXACT_MAKE = re.compile(r"^make [^*:;&|<>`$()'\"\\\n]+$")  # `make <target>`, arguments allowed, no wildcard
-CHECKER_TOOL = "Bash(python3 */checkers/arch_check.py --no-local *)"
-"""The checker's command, and the one Bash rule with a `*` inside it.
-
-The plugin sits at a path no skill knows, so the rule names the script
-by the end of its path, and `--no-local` right after it: a run that
-loads no rule of the project. The host reads a `*` before `:*` as a
-character, so the prefix form cannot say this.
-"""
 CHECKER_RUN = re.compile(r"^python3 <arch_check\.py> --no-local(?= |$)")
-"""How a skill's body runs the checker, so CHECKER_TOOL matches the command: the script, then `--no-local`."""
-PYTHON = re.compile(r"^python3(?= |$)")
+"""How a review skill's body runs the checker: the script, then `--no-local`, so no rule of the project is loaded."""
 MAKE_TARGET = re.compile(r"^make [^\s-]")  # a make entry names a target first, not an option
 QUOTED_DESCRIPTION = re.compile(r'^description:\s*"', re.M)
 PARENS = re.compile(r"\([^()]*\)")
@@ -414,12 +406,13 @@ def runs_command(cmd: str, spans: list[str]) -> bool:
 
 def check_review_runs(tools: str, spans: list[str], rel: str, errors: list[str]) -> None:
     """A review skill runs no file of the repository it reviews: its one `python3` command is the checker with
-    `--no-local`, in the body and in allowed-tools alike."""
+    `--no-local`, and its allowed-tools pre-approves git commands and no other."""
     for tool in (t.strip() for t in tools.split(",")):
-        if PYTHON.match(bash_command(tool) or "") and tool != CHECKER_TOOL:
+        cmd = bash_command(tool)
+        if cmd is not None and not cmd.startswith("git "):
             errors.append(
-                f"{rel}: {tool!r} lets a review run more than the checker; "
-                f"a review runs no file of the repository it reviews, so name {CHECKER_TOOL}"
+                f"{rel}: {tool!r} lets a review run more than a git command with nobody asked; "
+                "a review runs no file of the repository it reviews, so it pre-approves no interpreter and no runner"
             )
     for span in spans:
         # `python3` alone names the interpreter; with an argument it is a command
@@ -775,12 +768,6 @@ def main(argv: Sequence[str] = ()) -> int:
                     continue
                 cmd = bash_command(tool)
                 if cmd is None:
-                    continue
-                if tool == CHECKER_TOOL:
-                    if not any(CHECKER_RUN.match(span) for span in runs):
-                        errors.append(
-                            f"{rel}: allowed-tools names the checker but the body never runs python3 <arch_check.py> --no-local"
-                        )
                     continue
                 rule = tool[len("Bash(") : -1]
                 if rule != rule.strip():

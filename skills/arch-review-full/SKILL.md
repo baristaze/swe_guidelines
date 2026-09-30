@@ -1,7 +1,7 @@
 ---
 name: arch-review-full
 description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
-allowed-tools: Read, Grep, Glob, Agent, Bash(python3 */checkers/arch_check.py --no-local *), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Agent, Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-full
@@ -40,9 +40,12 @@ the tree.
    `python3 <arch_check.py> --no-local --format json`, where
    `<arch_check.py>` is the absolute path of
    `../../checkers/arch_check.py`. Run it alone, with no other command
-   chained to it. Never leave `--no-local` out: without it the checker
-   runs the project's own rules, which are files of the repository
-   under review, and a review runs none of them.
+   chained to it. This skill pre-approves no Python command, so the
+   host may ask the person first, and a person who allowed this one
+   command is asked about no other. Never leave `--no-local` out:
+   without it the checker runs the project's own rules, which are
+   files of the repository under review, and a review runs none of
+   them.
    The checker reads the working tree only, so for a range or a commit
    it is not run: note that, and every reviewer judges every lens of
    its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to
@@ -51,8 +54,9 @@ the tree.
    again. The findings whose `group` is
    `framework` (`PARSE`, `IGNORE`) go to every reviewer, because a file
    that does not parse was read by no rule of any group; the merge
-   keeps one copy of each. When the checker cannot run,
-   note why; every reviewer then judges every lens of its group.
+   keeps one copy of each. When the checker cannot run, or its command
+   is refused, note why; every reviewer then judges every lens of its
+   group.
 4. Where the agent can start subagents, launch eight reviewers at once,
    one per group, each with the scope line, the group name, the absolute
    path of its lens file, the absolute path of the guideline, and its
