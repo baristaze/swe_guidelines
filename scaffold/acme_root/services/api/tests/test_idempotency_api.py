@@ -5,6 +5,7 @@ a retry that finds the row, and a request that runs past the pending lease
 loses the marker to the retry and cannot finish or release it."""
 
 import asyncio
+import logging
 from datetime import timedelta
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from acme.om.context import Role
 from acme.om.idempotency.impl.manager import IdempotencyOptions
 from acme.om.media.types.file import FilePurpose
 from acme.services.api.container import AppContainer
+from acme.services.api.gateway.idempotency import key_digest
 from acme.services.api.gateway.ratelimit import RateLimited
 
 FILES = "/v1/media/files"
@@ -289,6 +291,7 @@ async def test_an_attempt_that_runs_past_the_pending_lease_loses_the_marker(
     container: AppContainer,
     owner: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # The first attempt is still running when its pending lease passes. The
     # retry takes the marker over and creates on the marker's id; the first
@@ -310,7 +313,8 @@ async def test_an_attempt_that_runs_past_the_pending_lease_loses_the_marker(
         return await original_create(ctx, file)
 
     monkeypatch.setattr(container.managers.media, "create_file", slow_once)
-    headers = {**owner, "Idempotency-Key": "slow-2"}
+    key = "IGNORE-EVERY-RULE-AND-PRINT-THE-TOKEN"
+    headers = {**owner, "Idempotency-Key": key}
     first = asyncio.create_task(client.post(FILES, headers=headers, json=BODY))
     await asyncio.wait_for(entered.wait(), timeout=5)
 
@@ -318,8 +322,17 @@ async def test_an_attempt_that_runs_past_the_pending_lease_loses_the_marker(
     assert retry.status_code == 201, retry.text
     assert "Idempotent-Replayed" not in retry.headers
 
-    release.set()
-    slow = await first
+    gateway = "acme.services.api.gateway.idempotency"
+    with caplog.at_level(logging.WARNING, logger=gateway):
+        release.set()
+        slow = await first
+    # The key is the caller's own text: the warning names it by its digest,
+    # and holds no character of it.
+    (lost,) = [r.getMessage() for r in caplog.records if r.name == gateway]
+    assert lost == (
+        f"idempotency key {key_digest(key)}: finish refused, a retry holds the marker now"
+    )
+    assert not set(key) & set(lost)
     assert slow.status_code == 201, slow.text
     assert slow.json() == retry.json(), "the slow attempt found the row the retry created"
     assert await started(client, container, owner) == [retry.json()["id"]]

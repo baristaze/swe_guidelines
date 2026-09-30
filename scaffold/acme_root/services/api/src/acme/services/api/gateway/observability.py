@@ -69,6 +69,11 @@ def method_label(method: str) -> str:
     return method if method in HTTP_METHODS else "OTHER"
 
 
+UNMATCHED = "unmatched"
+"""What a log line and a series name a request by when no route took it: the
+path is the caller's own text, and neither carries it."""
+
+
 def route_template_of(scope: Scope) -> str | None:
     """The matched route's full template, prefix included. FastAPI keeps the
     prefixed path on the effective route context it stores in the scope and
@@ -120,11 +125,14 @@ class RequestIdMiddleware:
                 # the id. One that has started, or a socket, is re-raised.
                 if scope["type"] != "http" or status["code"] != 0:
                     raise
-                log.exception("unhandled error on %s %s", method, scope["path"])
+                # The template, never the path: a path is the caller's text.
+                log.exception(
+                    "unhandled error on %s %s", method, route_template_of(scope) or UNMATCHED
+                )
                 response = error_response(request_id, 500, *INTERNAL_ERROR)
                 await response(scope, receive, send_with_request_id)
             finally:
-                template = route_template_of(scope) or "unmatched"
+                template = route_template_of(scope) or UNMATCHED
                 span.update_name(f"{method} {template}")
                 span.set_attribute("http.route", template)
                 if scope["type"] == "http":
