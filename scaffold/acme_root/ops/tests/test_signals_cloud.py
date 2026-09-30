@@ -117,7 +117,8 @@ class FakeSession:
 class FakeSentry:
     """One project for the product, holding an event of staging and an event
     of production under the same issue, which is what a shared project does.
-    The issue search honours `environment:<name>` the way the tracker does."""
+    The issue search honours `environment:<name>` the way the tracker does,
+    and refuses GlitchTip's sort key the way Sentry does."""
 
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
@@ -130,6 +131,8 @@ class FakeSentry:
         self.requests.append(request)
         assert request.headers["authorization"] == "Bearer stok"
         if request.url.path == "/api/0/projects/ajax/acme/issues/":
+            if request.url.params.get("sort") == "-last_seen":
+                return httpx.Response(400, json={"detail": "Sort key '-last_seen' not supported."})
             query = request.url.params["query"]
             wanted = [e for e in self.events if f"environment:{e['tags']['environment']}" in query]
             return httpx.Response(200, json=[{"id": 99, "title": "boom"}] if wanted else [])
@@ -280,6 +283,20 @@ async def test_an_event_of_another_environment_is_not_the_answer() -> None:
         {"id": "e2", "tags": {"request_id": RID, "environment": "production"}},
     ]
     assert await impl.error_event(RID) is None
+
+
+async def test_a_request_that_left_no_error_event_answers_none() -> None:
+    """The id names no issue, so the read goes on to the environment's recent
+    issues. That second query names no sort, since Sentry answers 400 to the
+    key GlitchTip takes, and a 400 there is a read that raises."""
+    impl = reader(FakeSession())
+    impl.sentry.events = []  # type: ignore[attr-defined]
+    assert await impl.error_event(RID) is None
+    assert impl.sentry.queries() == [  # type: ignore[attr-defined]
+        f"environment:staging request_id:{RID}",
+        "environment:staging",
+    ]
+    assert not [request for request in impl.sentry.requests if "sort" in request.url.params]  # type: ignore[attr-defined]
 
 
 async def test_an_environment_naming_no_tracker_reads_every_other_leg() -> None:
