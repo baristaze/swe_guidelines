@@ -17,7 +17,9 @@ wrote them. The page text holds only what the page draws.
    not the paste an earlier site gave in this run. Where the answer
    gave a score, it holds the contract's `Score: NN/100` line with the
    score the page shows. Where it gave none, it starts with the words
-   the answer starts with on the page. A paste that fails the check is
+   the answer starts with on the page. The page is read for this check
+   with `find`, or with a screenshot and a `zoom` where `find` is
+   refused. A paste that fails the check is
    never saved or quoted: it may be something else the person copied.
    Click the same button once more and check again.
 4. Save the paste as the `## Answer` section exactly as it came, with
