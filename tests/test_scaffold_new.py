@@ -284,3 +284,85 @@ def test_a_copy_under_a_long_name_keeps_every_line_within_its_lint(tmp_path, nam
     assert new.main([str(dest)]) == 0
     linted = copy_lint(dest)
     assert linted.returncode == 0, linted.stdout
+
+
+def checkout(tmp_path: Path) -> tuple[Path, Path, str]:
+    """A clean git checkout of a guideline: its scaffold, its plugin manifest, and its head."""
+    repo = tmp_path / "swe_guidelines"
+    source = repo / "scaffold" / "acme_root"
+    (source / "om/src/acme/om").mkdir(parents=True)
+    (source / "om/src/acme/om/__init__.py").write_text("from acme.om import base\n", encoding="utf-8")
+    (source / "README.md").write_text("# Acme\n", encoding="utf-8")
+    plugin = repo / ".claude-plugin" / "plugin.json"
+    plugin.parent.mkdir()
+    plugin.write_text(json.dumps({"version": "9.8.7", "repository": "https://github.com/o/guide"}), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "one"], check=True)
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+    return source, plugin, head.stdout.strip()
+
+
+@pytest.fixture
+def identity(monkeypatch):
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.invalid")
+
+
+def git_out(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_a_copy_from_a_clean_checkout_starts_at_its_base(tmp_path, capsys, identity):
+    source, plugin, head = checkout(tmp_path)
+    dest = tmp_path / "out" / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert git_out(dest, "rev-list", "--count", "HEAD") == "1"
+    assert git_out(dest, "rev-parse", "scaffold") == git_out(dest, "rev-parse", "HEAD")
+    assert git_out(dest, "status", "--porcelain") == ""
+    message = git_out(dest, "log", "-1", "--format=%B")
+    assert f"Scaffold-Commit: {head}" in message
+    assert "Scaffold-Source: https://github.com/o/guide" in message and "Scaffold-Name: pressroom" in message
+    assert f"base: the first commit, on scaffold and the main branch, is the scaffold at {head[:9]}" in capsys.readouterr().out
+
+
+def test_the_base_a_copy_starts_at_names_what_base_py_reads(tmp_path, identity):
+    spec = importlib.util.spec_from_file_location("scaffold_base_for_new", SCAFFOLD / "base.py")
+    assert spec is not None and spec.loader is not None
+    base = importlib.util.module_from_spec(spec)
+    sys.modules["scaffold_base_for_new"] = base
+    spec.loader.exec_module(base)
+    source, plugin, head = checkout(tmp_path)
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    found = base.trailers(git_out(dest, "log", "-1", "--format=%B"))
+    assert found == {base.TRAILER_SOURCE: "https://github.com/o/guide", base.TRAILER_COMMIT: head, base.TRAILER_NAME: "pressroom"}
+    assert base.base_of(dest) == git_out(dest, "rev-parse", "HEAD") and new.BRANCH == base.BRANCH
+
+
+def test_a_copy_from_a_checkout_with_changes_of_its_own_records_no_base(tmp_path, capsys, identity):
+    source, plugin, _ = checkout(tmp_path)
+    (source / "README.md").write_text("# Acme, changed\n", encoding="utf-8")
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert subprocess.run(["git", "-C", str(dest), "rev-parse", "--verify", "--quiet", "HEAD"], check=False).returncode != 0
+    assert "base: not recorded, since this is not a clean checkout" in capsys.readouterr().out
+
+
+def test_a_copy_where_git_has_no_identity_records_no_base_and_stages_nothing(tmp_path, capsys, monkeypatch):
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.invalid")
+    source, plugin, _ = checkout(tmp_path)
+    for key in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-global"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    dest = tmp_path / "pressroom"
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    assert git_out(dest, "diff", "--cached", "--name-only") == ""
+    assert "base: not recorded, since git has no identity here" in capsys.readouterr().out
