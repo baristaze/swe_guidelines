@@ -121,7 +121,11 @@ left as it is, and the report names it under Kept.
      with no "since", "no longer", or former value, and names no
      ticket, pull request, or person. A migration's revision id or file
      name that it cites stays as it is: only a fold moves one, in
-     step 7.
+     step 7. An ADR that records an expand and contract takes step 6's
+     test here, before its rewrite: in flight, it keeps every fact of
+     the contract, and with its piece dropped, what it says of the
+     contract's steps goes. That is its one rewrite, in this step's
+     commit.
    - **Remove** an ADR that constrains nothing at the head: one replaced
      whole, one that is closed, one that records what a release asked or
      that a pin moved. A decision in it that still stands moves first,
@@ -188,19 +192,20 @@ left as it is, and the report names it under Kept.
      keeps for the release before. While the head holds it, the step
      that ends the contract has not landed, and it is in flight.
      - A piece of the schema (a column, a default, a constraint, a
-       trigger, a function): the head holds it when an up file of the
-       chain makes it and no file with a later stamp drops it. `git
-       grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'` lists
-       the lines that say so.
+       trigger, a function): the last up file that names it decides,
+       by the stamp the file's name begins with. The head holds the
+       piece unless that file drops it and does not make it again.
+       `git grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'`
+       lists the lines to read.
      - Any other piece (a field of a response, a setting, a branch of
        the code) is the code the comment sits on: the head holds it.
 
      In doubt, it is in flight.
-   - Code whose piece a later file dropped serves a release long gone.
-     It is listed in the report and left as it is, its comment with it:
+   - Code whose piece that file dropped serves a release long gone. It
+     is listed in the report and left as it is, its comment with it:
      the comment says why the code is there, and whoever removes the
-     code removes both. Its ADR is rewritten as any other is, and what
-     it says of the contract's steps goes, as a past.
+     code removes both. Its ADR changed in step 3, by this test, and is
+     not edited here.
    - Only text changes: a comment, a docstring, a document, and the
      `reason` of a checker exception in `pyproject.toml`, which is prose
      the checker only repeats. A name in code is code, a test's name

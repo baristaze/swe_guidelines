@@ -485,6 +485,13 @@ def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:
     assert "While the head holds it, the step that ends the contract has not landed" in text
     assert "`git grep -nwF '<its name>' -- 'om/migrations/sql/*.up.sql'`" in text
     assert "In doubt, it is in flight." in text
+    # A later file may drop a piece and make it again, so the last one decides.
+    assert "the last up file that names it decides" in text
+    assert "unless that file drops it and does not make it again" in text
+    # An ADR is rewritten once, in step 3, so the test reaches it there.
+    assert "takes step 6's test here, before its rewrite" in text
+    assert "That is its one rewrite, in this step's commit." in text
+    assert "Its ADR changed in step 3, by this test, and is not edited here." in text
     assert "It is listed in the report and left as it is, its comment with it" in text
     assert "git tag" not in _skill("docs-compact")
 
