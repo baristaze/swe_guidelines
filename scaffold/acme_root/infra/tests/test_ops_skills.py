@@ -58,9 +58,12 @@ PROVISIONERS = ["ops-simulate-traffic", "stress-test-run"]
 READS = [name for name in TOKEN_HOLDERS if name not in PROVISIONERS]
 ENV_FILE = "~/.config/acme/ops/<env>.env"
 PROVISIONER_FILE = "~/.config/acme/ops/<env>.provisioner.env"
-# A file a shell command sources: `. <file>` or `source <file>`, first on its
-# line or after a `;`, `&&`, `|`, or `(`.
-SOURCED = re.compile(r"(?:^[ \t]*|[;&|(][ \t]*)(?:\.|source)[ \t]+([^\s;&|)]+)", re.MULTILINE)
+# A file a shell command sources: `. <path>` or `source <path>`, first on its
+# line or after a `;`, `&&`, `|`, or `(`, where the path starts with `~`, `/`,
+# `$`, or `./`; a `jq` filter's `(. - 1)` is no path.
+SOURCED = re.compile(
+    r"(?:^[ \t]*|[;&|(][ \t]*)(?:\.|source)[ \t]+((?:[~/$]|\.{1,2}/)[^\s;&|)]*)", re.MULTILINE
+)
 # The skills that read an environment under the investigate profile.
 INVESTIGATORS = [*TOKEN_HOLDERS, "ops-infra-as-code", "audit-deploy-time", "audit-retention"]
 # The skills that run under an account's administrator.
