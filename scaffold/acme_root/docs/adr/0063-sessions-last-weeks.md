@@ -42,7 +42,7 @@ tab signs in again, and the AuthKit session decides whether the person
 sees a prompt. The Acme App's Sessions tab sets it to the same two
 bounds: 30 days maximum, 14 days of inactivity. That tab has no API, so
 `acme-ops workos-bootstrap` prints both as checks, and the WorkOS
-runbook says where they are. WorkOS's settings never end an Acme
+runbook says where they are. WorkOS's settings never end Acme's
 session early or keep it alive: Acme reads the access token once, for
 its session id, and never refreshes it.
 

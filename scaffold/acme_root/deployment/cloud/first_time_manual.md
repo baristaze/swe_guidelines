@@ -142,7 +142,7 @@ A delegated administrator is not necessary for this small setup.
 
 ## Turn on Cost Explorer and Budgets for the member accounts
 
-A member account can make neither a budget nor an anomaly monitor until the management account turns cost management on for the organization. Do this before the first `scripts/cloud_create.sh`, signed in to the **management account** (not a Acme account):
+A member account can make neither a budget nor an anomaly monitor until the management account turns cost management on for the organization. Do this before the first `scripts/cloud_create.sh`, signed in to the **management account** (not one of Acme's accounts):
 
 0. Sign in to the management account as its **root user**, open **Account** (the account menu, top right), find **IAM user and role access to Billing information**, choose **Edit**, tick **Activate IAM Access**, and choose **Update**. Until the root user does this, every role in the account is refused the billing and cost pages, `AdministratorAccess` included, with `You don't have permission to perform the following operation on the AWS Cost Management console: ce:GetPreferences`. Sign out of root, and do the rest as the Identity Center administrator.
 1. Open **Billing and Cost Management** and choose **Cost Explorer**, then **Launch Cost Explorer** if it has not been launched. This turns on the cost data every member account reads.
