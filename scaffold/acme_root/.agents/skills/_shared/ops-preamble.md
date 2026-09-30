@@ -135,4 +135,6 @@ provisioner` in their own terminal, which copies the token the grant
 job wrote into the provisioner's file under their own sign-in (in
 production with `--profile acme-prod-power`), never under an
 investigate profile, which reads no secret. Locally, a run without a
-token in `local.provisioner.env` takes `--orgs 0`.
+token in `local.provisioner.env` is refused before it provisions
+anything, saying the environment `holds no provisioner token`, and is
+made again with `--orgs 0`.

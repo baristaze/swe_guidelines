@@ -31,8 +31,10 @@ and refused against a cloud environment, which has no seeded people.
 `local` drives the API at `http://127.0.0.1:8000`, started by
 `scripts/dev.sh` or `make up`, and needs no cloud; its provisioner's
 file is `~/.config/acme/ops/local.provisioner.env`, which `make seed`
-writes with the local provisioner's token, and without a token in it a
-local run takes `--orgs 0`. `stress` is the top profile; a run at it
+writes with the local provisioner's token. Without a token in it, the
+generator refuses a run that provisions before it provisions anything,
+saying the environment `holds no provisioner token`; the run is then
+made again with `--orgs 0`. `stress` is the top profile; a run at it
 with a target is `stress-test-run`, not this skill.
 
 ## Role and credential
