@@ -256,7 +256,7 @@ fi
 if [ "$environment" = "staging" ]; then
   say "- production's copies of what staging built: its images and static builds, in production's account"
 fi
-say "- $HOME/.config/acme/ops/$environment.env, and the investigate profile in $HOME/.aws/config"
+say "- $HOME/.config/acme/ops/$environment.env and $environment.provisioner.env beside it, and the investigate profile in $HOME/.aws/config"
 say "- each org's own secrets, under acme/$environment/app/org/ in Secrets Manager: the application wrote them, so Terraform does not own them; list them with aws secretsmanager list-secrets --filters Key=name,Values=acme/$environment/app/org/ and delete them by hand if $environment is not coming back"
 
 # The providers: nothing here writes to them. What the environment leaves

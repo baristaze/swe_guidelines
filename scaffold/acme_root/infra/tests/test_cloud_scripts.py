@@ -87,9 +87,11 @@ def test_create_staging_dry_run_prints_every_step_and_writes_nothing(tmp_path: P
     assert f"--env staging --body acme-artifacts-{account}" in out
     assert "production-plan" not in out
     assert f"ACME_API_URL=https://{STAGING['api_domain_name']}" in out
-    # Two operator tokens, empty until the grant; never a password.
-    assert "ACME_OPERATOR_TOKEN=" in out and "ACME_PROVISIONER_TOKEN=" in out
+    # The operator's token, empty until the grant; never a password, and
+    # never the provisioner's write token, which has a file of its own.
+    assert "ACME_OPERATOR_TOKEN=" in out and "ACME_PROVISIONER_TOKEN" not in out
     assert "PASSWORD" not in out
+    assert "/.config/acme/ops/staging.provisioner.env, never in " in out
     assert "+ gh workflow run deploy-staging.yml --ref main" in out
     grant = "gh workflow run grant-operator.yml --ref main -f environment=staging"
     assert f"{grant} -f email=<operator> -f permission=read" in out

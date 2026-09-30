@@ -1,7 +1,7 @@
 ---
 name: ops-root-cause
 description: "Find the root cause of one tenant's problem in one environment: read that tenant's rows through the operator plane's read routes with a read-only operator token, correlate them with the logs, the trace, and the error event by request id, at most five ids and one pass each, and report the cause and the fix, or that none was found. Takes the org id and optionally a user id. Never a database login, never a write, never another tenant's data."
-allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(jq:*), Bash(docker compose:*), Bash(uv run acme-ops:*), Bash(sleep:*)
+allowed-tools: Read, Grep, Glob, Bash(aws:*), Bash(curl:*), Bash(jq:*), Bash(docker compose:*), Bash(uv run acme-ops size:*), Bash(uv run acme-ops signals:*), Bash(sleep:*)
 ---
 
 # ops-root-cause
@@ -62,6 +62,10 @@ profile of that environment, `acme-<env>-investigate`, checked with
 `sts get-caller-identity` before any other command as the preamble
 states. Refuse any profile wider than the investigate role. Every
 `aws` command below carries `--profile acme-<env>-investigate`.
+
+Before step 1 sources the env file, run `uv run acme-ops size --env
+<env>`, which refuses a file that holds the provisioner's token: then
+stop, and give the person the line it printed.
 
 The tenant's rows come through the operator plane, never through a
 database login: the role denies `rds-db:connect` and holds no database

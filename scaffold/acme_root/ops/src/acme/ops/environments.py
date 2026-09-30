@@ -5,15 +5,21 @@ carries `read` and is what every read runs as; the provisioner's carries
 needs. Neither is a sign-in: an agent never signs in to the operator plane,
 it presents a token that expires within the hour (`acme-ops token` writes
 one). `staging` and `production` are read from an owner-only file outside
-the repository, `~/.config/acme/ops/<env>.env`. `local` reads the same
-file, which `make seed` writes when it is absent: the compose stack's
-addresses and the tokens of the two local operators it puts on the
-allowlist. Under the file, `local` reads the compose stack's own knobs
-(`.env.example`, then `.env`) from the repository root, so a key the file
-leaves out still names the local stack. The process environment overrides
-either, key by key. A file that anyone but its owner can read is refused."""
+the repository, `~/.config/acme/ops/<env>.env`, which every skill that
+reads sources. The provisioner's token is never in it: it has a file of its
+own beside it, `<env>.provisioner.env`, read only when a caller that drives
+traffic asks for it, so a skill that reads holds no `write` token. An
+environment file that holds the provisioner's token is refused, with the
+line that moves it. `local` reads the same two files, which `make seed`
+writes when they are absent: the compose stack's addresses and the tokens
+of the two local operators it puts on the allowlist. Under the file,
+`local` reads the compose stack's own knobs (`.env.example`, then `.env`)
+from the repository root, so a key the file leaves out still names the
+local stack. The process environment overrides either, key by key. A file
+that anyone but its owner can read is refused."""
 
 import os
+import shlex
 import stat
 import subprocess
 from collections.abc import Mapping
@@ -31,7 +37,6 @@ the way the project key is, so the local reader needs no click through the UI.""
 KEYS = (
     "ACME_API_URL",
     "ACME_OPERATOR_TOKEN",
-    "ACME_PROVISIONER_TOKEN",
     "ACME_ERROR_TRACKER_URL",
     "ACME_ERROR_TRACKER_TOKEN",
     "ACME_ERROR_TRACKER_ORG",
@@ -47,6 +52,16 @@ KEYS = (
 )
 """Every key an environment file may set; anything else in it is ignored."""
 
+PROVISIONER_KEY = "ACME_PROVISIONER_TOKEN"
+"""The provisioner's `write` token: the one key of the provisioner's file, and
+the one key the environment's file is refused for holding."""
+
+PROVISIONER_SUFFIX = ".provisioner.env"
+
+PROVISIONER_LINE = rf"^[[:space:]]*(export[[:space:]]+)?{PROVISIONER_KEY}[[:space:]]*="
+"""A line of an environment file that sets the provisioner's token, as
+`parse_env_file` reads one, for `grep -E`."""
+
 CLOUD_ENVIRONMENTS = frozenset({"staging", "production"})
 
 LOCAL_OPERATORS = {
@@ -55,9 +70,10 @@ LOCAL_OPERATORS = {
 }
 """The two operator identities `make seed` puts on the local allowlist: the
 read operator, whose `read` token is the file's `ACME_OPERATOR_TOKEN`, and
-the provisioner, whose `write` token is its `ACME_PROVISIONER_TOKEN`. They
-are the platform's own, made by their first grant, so no person signs in as
-either and nothing but the grant command mints their tokens."""
+the provisioner, whose `write` token is `ACME_PROVISIONER_TOKEN` in the
+provisioner's file. They are the platform's own, made by their first grant,
+so no person signs in as either and nothing but the grant command mints
+their tokens."""
 
 CLOUD_REGION = "us-west-2"
 """The region deployment/cloud/environments.json names; a test holds them equal."""
@@ -126,6 +142,61 @@ def ops_file(name: str, home: Path | None = None) -> Path:
     return (home or Path.home()) / ".config" / "acme" / "ops" / f"{name}.env"
 
 
+def provisioner_file_of(file: Path) -> Path:
+    """The provisioner's file beside an environment's file: `staging.env`
+    has `staging.provisioner.env`."""
+    return file.with_name(f"{file.name.removesuffix('.env')}{PROVISIONER_SUFFIX}")
+
+
+def provisioner_file(name: str, home: Path | None = None) -> Path:
+    return provisioner_file_of(ops_file(name, home))
+
+
+def keys_of(file: Path) -> tuple[str, ...]:
+    """The keys a file may hold: the provisioner's file its one token, an
+    environment's file every other key."""
+    return (PROVISIONER_KEY,) if file.name.endswith(PROVISIONER_SUFFIX) else KEYS
+
+
+def move_command(file: Path) -> str:
+    """The shell line that moves the provisioner's token out of `file` into
+    the provisioner's file beside it, both owner-only, printing neither."""
+    line = shlex.quote(PROVISIONER_LINE)
+    source = shlex.quote(str(file))
+    target = shlex.quote(str(provisioner_file_of(file)))
+    rest = shlex.quote(str(file.with_name(f"{file.name}.rest")))
+    return (
+        f"(umask 077 && grep -E {line} {source} > {target} && "
+        f"{{ grep -vE {line} {source} > {rest} || true; }} && mv {rest} {source})"
+    )
+
+
+def refuse_a_provisioner_token(file: Path, values: Mapping[str, str], name: str) -> None:
+    """Every skill that reads sources the environment's file, so the one
+    `write` token is never in it: a file that holds it is refused
+    before any value of it is used, with the line that moves it and the
+    command that writes a fresh one instead."""
+    if values.get(PROVISIONER_KEY):
+        raise ValueError(
+            f"{file} holds {PROVISIONER_KEY}, a write token, beside the read token every "
+            f"skill that reads sources. It belongs in {provisioner_file_of(file)}, which only "
+            f"traffic and stress read. Move the line, printing nothing:\n"
+            f"  {move_command(file)}\n"
+            f"or delete it and write a fresh one there: "
+            f"uv run acme-ops token --env {name} --identity provisioner"
+        )
+
+
+def provisioner_token_in(file: Path, process_env: Mapping[str, str]) -> str | None:
+    """The provisioner's token: its file's, refused when anyone but its owner
+    can read it, with the process environment over it."""
+    value: str | None = None
+    if file.is_file():
+        refuse_unless_owner_only(file)
+        value = parse_env_file(file.read_text()).get(PROVISIONER_KEY) or None
+    return process_env.get(PROVISIONER_KEY) or value
+
+
 def refuse_unless_owner_only(file: Path) -> None:
     """The file holds operator tokens: one that its group or anyone else may
     read is refused, never read, whatever it holds right now."""
@@ -153,7 +224,9 @@ def repository_root(start: Path | None = None) -> Path | None:
     return Path(top) if top and (Path(top) / ".env.example").is_file() else None
 
 
-def environment_of(name: str, values: Mapping[str, str]) -> Environment:
+def environment_of(
+    name: str, values: Mapping[str, str], provisioner_token: str | None = None
+) -> Environment:
     """An environment from resolved values. `local` fills what the file left
     out with the compose stack's addresses; a cloud environment leaves it out."""
     local = name not in CLOUD_ENVIRONMENTS
@@ -176,7 +249,7 @@ def environment_of(name: str, values: Mapping[str, str]) -> Environment:
         name=name,
         api_url=api_url.rstrip("/"),
         operator_token=get("ACME_OPERATOR_TOKEN"),
-        provisioner_token=get("ACME_PROVISIONER_TOKEN"),
+        provisioner_token=provisioner_token,
         error_tracker_url=get("ACME_ERROR_TRACKER_URL", LOCAL_ERROR_TRACKER_URL if local else None),
         error_tracker_token=get(
             "ACME_ERROR_TRACKER_TOKEN", LOCAL_ERROR_TRACKER_TOKEN if local else None
@@ -194,6 +267,7 @@ def environment_of(name: str, values: Mapping[str, str]) -> Environment:
 def load_environment(
     name: str,
     *,
+    provisioner: bool = False,
     path: Path | None = None,
     home: Path | None = None,
     root: Path | None = None,
@@ -202,7 +276,9 @@ def load_environment(
     """The file for `name` (or `path`), the repository's compose knobs under
     it for `local`, and the process environment over both. A cloud environment
     with no file is an error: its addresses and its operator are secrets that
-    live nowhere else."""
+    live nowhere else. The provisioner's token is read, from its own file and
+    the process environment, only when `provisioner` asks for it; every other
+    caller gets none."""
     if name != "local" and name not in CLOUD_ENVIRONMENTS:
         # A typo (`prod`) or an environment this tool has no reader for
         # (`dev`) would otherwise run against the local stack unannounced.
@@ -219,14 +295,17 @@ def load_environment(
     file = path or ops_file(name, home)
     if file.is_file():
         refuse_unless_owner_only(file)
-        values.update(parse_env_file(file.read_text()))
+        found = parse_env_file(file.read_text())
+        refuse_a_provisioner_token(file, found, name)
+        values.update(found)
     elif not local:
         raise FileNotFoundError(f"no environment file for {name!r} at {file}")
     env = os.environ if process_env is None else process_env
     for key in KEYS:
         if env.get(key):
             values[key] = env[key]
-    return environment_of(name, {k: v for k, v in values.items() if k in KEYS})
+    token = provisioner_token_in(provisioner_file_of(file), env) if provisioner else None
+    return environment_of(name, {k: v for k, v in values.items() if k in KEYS}, token)
 
 
 def local_addresses(env: Environment) -> dict[str, str]:
@@ -250,9 +329,11 @@ def write_value(file: Path, key: str, value: str) -> None:
     """Sets `key` in the env file, replacing its line or appending one, and
     leaves every other line as it was. The file is created owner-only when
     missing, in a folder only its owner opens when that is missing too, and
-    refused when it is not owner-only; the value is never echoed."""
-    if key not in KEYS:
-        raise ValueError(f"{key} is not a key an environment file holds")
+    refused when it is not owner-only; the value is never echoed. The
+    provisioner's token goes into the provisioner's file alone, and nothing
+    else does."""
+    if key not in keys_of(file):
+        raise ValueError(f"{key} is not a key {file.name} holds")
     if file.is_file():
         refuse_unless_owner_only(file)
         lines = file.read_text().splitlines()

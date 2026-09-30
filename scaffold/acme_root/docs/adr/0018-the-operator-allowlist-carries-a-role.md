@@ -44,8 +44,11 @@ kind `operator_token` under the system scope: one permission, an hour
 at most, stored as its digest, capped by the entry on every request. A
 person mints one from a sign-in with a code. The grant job mints the
 provisioner's and the smoke identity's into the secret store. So the
-env file under `~/.config/acme/ops/` holds `ACME_OPERATOR_TOKEN` (read)
-and `ACME_PROVISIONER_TOKEN` (write), and never a password.
+env file under `~/.config/acme/ops/` holds `ACME_OPERATOR_TOKEN` (read),
+and never a password. The provisioner's `ACME_PROVISIONER_TOKEN`
+(write) has a file of its own beside it, `<env>.provisioner.env`, which
+only the traffic generator reads: every skill that reads sources the
+env file, so none of them holds a write token.
 
 **The operator creates are idempotent.** `POST /v1/admin/orgs` and
 `POST /v1/admin/orgs/{org_id}/members` take an `Idempotency-Key` like

@@ -223,7 +223,9 @@ checking the account, or compares it with nothing written down.
 **Principle.** The cloud profiles live in the cloud tool's own
 configuration, one per role per environment. Everything else an
 operator reaches lives in one owner-only file per environment outside
-the repository. Neither an operator's credentials nor the platform's
+the repository, but a `write` token, which lives in a file of its own
+beside it, read only by the command that needs it and never by a skill
+that reads. Neither an operator's credentials nor the platform's
 secrets enter the repository, a skill's text, a log line, or a report.
 
 **Source.** Operations, Operator Credentials.

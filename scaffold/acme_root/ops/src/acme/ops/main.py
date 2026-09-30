@@ -29,10 +29,12 @@ from acme.infra.aws_clients import client_config
 from acme.ops.environments import (
     CLOUD_ENVIRONMENTS,
     LOCAL_OPERATORS,
+    PROVISIONER_KEY,
     Environment,
     load_environment,
     local_addresses,
     ops_file,
+    provisioner_file,
     repository_root,
     write_value,
 )
@@ -162,7 +164,7 @@ def traffic_exit_code(report: Report) -> int:
 
 
 async def traffic_command(args: argparse.Namespace) -> tuple[int, Report]:
-    env = load_environment(args.env)
+    env = load_environment(args.env, provisioner=True)
     profile = profile_named(args.profile)
     result = await run_traffic(
         env, profile, duration_seconds=args.duration, orgs=args.orgs, ramp_seconds=args.ramp
@@ -172,7 +174,7 @@ async def traffic_command(args: argparse.Namespace) -> tuple[int, Report]:
 
 
 async def stress_command(args: argparse.Namespace) -> tuple[int, Report]:
-    env = load_environment(args.env)
+    env = load_environment(args.env, provisioner=True)
     scenario = load_scenario(Path(args.scenario))
     if args.duration is not None:
         scenario = with_duration(scenario, args.duration)
@@ -445,7 +447,14 @@ def in_a_persons_terminal(args: argparse.Namespace, env: Environment) -> bool:
     return True
 
 
-TOKEN_KEYS = {"operator": "ACME_OPERATOR_TOKEN", "provisioner": "ACME_PROVISIONER_TOKEN"}
+TOKEN_KEYS = {"operator": "ACME_OPERATOR_TOKEN", "provisioner": PROVISIONER_KEY}
+
+
+def token_file(env_name: str, identity: str) -> Path:
+    """Where an identity's token is kept: the operator's in the environment's
+    file, which every skill that reads sources, and the provisioner's in a
+    file of its own beside it, which only traffic and stress read."""
+    return provisioner_file(env_name) if identity == "provisioner" else ops_file(env_name)
 
 
 def mint_local_token(identity: str) -> str:
@@ -484,12 +493,15 @@ def mint_local_token(identity: str) -> str:
 
 
 def write_local_token(env: Environment, identity: str, token: str) -> Path:
-    """The token into `local.env`, which is made owner-only, naming the local
-    stack's addresses, when it is missing; every other line is kept."""
-    file = ops_file(env.name)
-    if not file.exists():
+    """The token into its file, the operator's `local.env` or the
+    provisioner's `local.provisioner.env`, each made owner-only when it is
+    missing; `local.env` names the local stack's addresses when it is made.
+    Every other line is kept."""
+    addresses = ops_file(env.name)
+    if not addresses.exists():
         for key, value in local_addresses(env).items():
-            write_value(file, key, value)
+            write_value(addresses, key, value)
+    file = token_file(env.name, identity)
     write_value(file, TOKEN_KEYS[identity], token)
     return file
 
@@ -497,9 +509,10 @@ def write_local_token(env: Environment, identity: str, token: str) -> Path:
 async def token_command(
     args: argparse.Namespace, transport: httpx.AsyncBaseTransport | None = None
 ) -> int:
-    """Writes an operator token into the environment's file without printing
-    it: the operator's, minted after a sign-in with the second factor, or the
-    provisioner's, copied from the secret the grant job wrote. On the local
+    """Writes an operator token into its file without printing it: the
+    operator's, minted after a sign-in with the second factor, into the
+    environment's file, or the provisioner's, copied from the secret the grant
+    job wrote, into the provisioner's file beside it. On the local
     stack either is the local operator's that `make seed` made, minted by the
     grant command, unless `--dev-email` names a person who signs in. With
     `--list` or `--revoke`, reads or ends the operator's own tokens instead."""
@@ -526,8 +539,9 @@ async def token_command(
     if env.name not in CLOUD_ENVIRONMENTS:
         print("--dev-email signs in a person, who mints an operator's token", file=sys.stderr)
         return USAGE
-    write_value(file, "ACME_PROVISIONER_TOKEN", await read_provisioner_token(env, args.profile))
-    print(f"wrote ACME_PROVISIONER_TOKEN into {file}; it expires within the hour")
+    file = token_file(env.name, "provisioner")
+    write_value(file, PROVISIONER_KEY, await read_provisioner_token(env, args.profile))
+    print(f"wrote {PROVISIONER_KEY} into {file}; it expires within the hour")
     return OK
 
 
@@ -678,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_size.add_argument("--env", required=True)
 
     p_token = sub.add_parser(
-        "token", help="write an operator token into the env file, or list or revoke your own"
+        "token", help="write an operator token into its file, or list or revoke your own"
     )
     p_token.add_argument("--env", required=True)
     p_token_action = p_token.add_mutually_exclusive_group(required=True)

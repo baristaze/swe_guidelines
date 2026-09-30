@@ -46,9 +46,9 @@ any other profile, clears keys exported in the shell, and checks the
 account again before the apply and before the destroy.
 
 No env file is read. The script leaves the environment's
-`~/.config/acme/ops/<env>.env` and its profile in `~/.aws/config` in place
-and lists them under what remains; removing them is the person's
-call.
+`~/.config/acme/ops/<env>.env`, the provisioner's file beside it, and
+its profile in `~/.aws/config` in place and lists them under what
+remains; removing them is the person's call.
 
 ## Procedure
 
@@ -125,11 +125,10 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
    registry and its images; the roles, so the pipeline can deploy the
    environment again; the budget; and the state bucket, whose
    environment prefix stays, empty, so a recreate finds its backend.
-   The GitHub
-   environment and its variables, the local env file, and the
-   profiles stay too; the script touches none of them. A resource
-   the destroy could not remove is listed with the reason the script
-   printed.
+   The GitHub environment and its variables, the local env file and
+   the provisioner's file, and the profiles stay too; the script
+   touches none of them. A resource the destroy could not remove is
+   listed with the reason the script printed.
 6. Report what stays at the providers, from the script's last step.
    Nothing there is touched, by the script or by the skill: WorkOS's
    organizations and users, and the Acme App application with its API
@@ -183,7 +182,7 @@ cluster `acme-<env>`, as `deployment/README.md` lists them.
 - State prefix environments/<staging | prod>/ in acme-state-<id>, empty
 - Production only: the final snapshot acme-production-final and the automated backups
 - Staging only: production's copies of what staging built, in production's account
-- GitHub environment and variables; ~/.config/acme/ops/<env>.env; the acme-<env>-investigate profile
+- GitHub environment and variables; ~/.config/acme/ops/<env>.env and <env>.provisioner.env; the acme-<env>-investigate profile
 - The orgs' own secrets under acme/<env>/app/org/: <count>, for the person to delete if the environment is not coming back
 - <resource the destroy could not remove>: <reason>
 

@@ -2059,10 +2059,12 @@ a person's session.
 
 A skill names its profile, and before it reads anything it checks that
 it holds that role, in the expected account, and nothing wider. The rest
-an operator holds, the operator tokens among it, lives in one
-owner-only file per environment outside the repository. No credential
-enters the repository, a skill, a log, or a report. The local stack is
-an environment too.
+an operator holds, the `read` operator token among it, lives in one
+owner-only file per environment outside the repository, which every
+skill that reads sources. A `write` token lives in a file of its own
+beside it, read only by the command that needs it, so a skill that
+reads never holds one. No credential enters the repository, a skill, a
+log, or a report. The local stack is an environment too.
 
 ### Operational Skills
 

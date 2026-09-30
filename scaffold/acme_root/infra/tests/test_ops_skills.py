@@ -52,6 +52,18 @@ TOKEN_HOLDERS = [
     "ops-watch",
     "stress-test-run",
 ]
+# The two that drive traffic, whose `acme-ops` command reads the provisioner's
+# file; every other token holder reads, and holds the read token alone.
+PROVISIONERS = ["ops-simulate-traffic", "stress-test-run"]
+READS = [name for name in TOKEN_HOLDERS if name not in PROVISIONERS]
+ENV_FILE = "~/.config/acme/ops/<env>.env"
+PROVISIONER_FILE = "~/.config/acme/ops/<env>.provisioner.env"
+# A file a shell command sources: `. <path>` or `source <path>`, first on its
+# line or after a `;`, `&&`, `|`, or `(`, where the path starts with `~`, `/`,
+# `$`, or `./`; a `jq` filter's `(. - 1)` is no path.
+SOURCED = re.compile(
+    r"(?:^[ \t]*|[;&|(][ \t]*)(?:\.|source)[ \t]+((?:[~/$]|\.{1,2}/)[^\s;&|)]*)", re.MULTILINE
+)
 # The skills that read an environment under the investigate profile.
 INVESTIGATORS = [*TOKEN_HOLDERS, "ops-infra-as-code", "audit-deploy-time", "audit-retention"]
 # The skills that run under an account's administrator.
@@ -111,9 +123,81 @@ def test_the_shared_preamble_exists_and_holds_what_moved_into_it() -> None:
     text = PREAMBLE.read_text()
     assert "deployment/cloud/environments.json" in text
     assert "aws sts get-caller-identity" in text
-    assert "~/.config/acme/ops/<env>.env" in text
+    assert ENV_FILE in text
     assert "ACME_PROVISIONER_TOKEN" in text
+    assert PROVISIONER_FILE in text
     assert "acme-<env>-investigate" in text
+
+
+def test_no_skill_sources_the_provisioners_file() -> None:
+    """A command that sources a file puts every value in it into the shell.
+    The env file holds the read token, and the provisioner's `write` token
+    has a file of its own that `acme-ops` reads for traffic and stress: every
+    file a skill or the preamble sources is the env file, and the skills
+    that read an operator's rows source it."""
+    texts = {name: _skill(name) for name in _own()}
+    texts["_shared/ops-preamble.md"] = PREAMBLE.read_text()
+    sourced = {name: SOURCED.findall(text) for name, text in texts.items()}
+    assert {path for paths in sourced.values() for path in paths} == {ENV_FILE}
+    assert sourced["ops-investigate"] and sourced["ops-root-cause"]
+
+
+@pytest.mark.parametrize("name", READS)
+def test_a_skill_that_reads_names_no_write_token(name: str) -> None:
+    """The skills that read never name the provisioner's file or its key, so
+    none of their commands can reach the one `write` token."""
+    text = _skill(name)
+    assert ".provisioner.env" not in text
+    assert "ACME_PROVISIONER_TOKEN" not in text
+
+
+# The `acme-ops` commands a skill that reads may run: neither loads the
+# provisioner's token, which `traffic` and `stress` do.
+READ_COMMANDS = {"size", "signals"}
+
+
+@pytest.mark.parametrize("name", READS)
+def test_a_skill_that_reads_pre_approves_only_the_read_commands_it_runs(name: str) -> None:
+    """`uv run acme-ops:*` covers `traffic` and `stress`, which load the
+    provisioner's `write` token: a skill that reads pre-approves each read
+    command it runs by name, and nothing wider."""
+    tools = [tool.strip() for tool in _allowed_tools(name).split(",")]
+    approved = {
+        match[1]
+        for tool in tools
+        if (match := re.fullmatch(r"Bash\(uv run acme-ops ([a-z]+):\*\)", tool))
+    }
+    assert "Bash(uv run acme-ops:*)" not in tools
+    assert approved <= READ_COMMANDS, approved
+    assert approved == set(re.findall(r"\buv run acme-ops (\w+)", _prose(name))) & READ_COMMANDS
+
+
+@pytest.mark.parametrize("name", READS)
+def test_a_skill_that_reads_stops_at_the_refusal_before_it_sources_the_env_file(
+    name: str,
+) -> None:
+    """`acme-ops` refuses an env file that holds the provisioner's token, and
+    prints the line that moves it. A skill that reads stops there, before any
+    command of it sources that file."""
+    text = _prose(name)
+    stop = text.index("give the person the line it printed")
+    sourced = text.find(f". {ENV_FILE}")
+    assert sourced == -1 or stop < sourced
+
+
+def test_the_refusal_a_traffic_skill_waits_for_is_the_generators() -> None:
+    said = "holds no provisioner token"
+    assert said in _prose("ops-simulate-traffic")
+    assert said in " ".join(PREAMBLE.read_text().split())
+    assert said in (ROOT / "ops" / "src" / "acme" / "ops" / "traffic.py").read_text()
+
+
+@pytest.mark.parametrize("name", PROVISIONERS)
+def test_a_skill_that_drives_traffic_leaves_the_provisioners_file_to_acme_ops(name: str) -> None:
+    text = _prose(name)
+    assert PROVISIONER_FILE in text
+    assert "Never read the env file or the provisioner's file, and never source" in text
+    assert "`acme-ops` reads both itself from `--env`." in text
 
 
 @pytest.mark.parametrize("name", READERS)
@@ -161,10 +245,9 @@ def test_a_skill_that_holds_a_token_pre_approves_the_ops_command_and_no_other(na
     is code on the operator's machine beside the env file's tokens, with
     nobody asked. The skill runs `acme-ops` and names that."""
     tools = [tool.strip() for tool in _allowed_tools(name).split(",")]
-    assert "Bash(uv run acme-ops:*)" in tools
-    assert not [
-        tool for tool in tools if tool.startswith("Bash(uv") and tool != "Bash(uv run acme-ops:*)"
-    ]
+    uv = [tool for tool in tools if tool.startswith("Bash(uv")]
+    assert uv, f"{name} pre-approves no acme-ops command"
+    assert all(re.fullmatch(r"Bash\(uv run acme-ops(?: [a-z]+)?:\*\)", tool) for tool in uv), uv
     runs = set(re.findall(r"\buv run ([\w-]+)", _prose(name)))
     assert runs == {"acme-ops"}, f"{name} runs uv with {sorted(runs)}"
 
