@@ -79,19 +79,22 @@ a copy of the shape still goes wrong.
   stage above the request stage is listed under
   `[tool.arch-check.options.CTX-26] sites` and in
   `om/tests/unit/test_stage_construction.py`.
-- **A manager stays within its bound.** `arch-check` refuses a manager
-  interface of more than twenty operations (CON-01). A project that
-  holds another bound sets `max_operations` under
-  `[tool.arch-check.options.CON-01]` in the root `pyproject.toml`. In a
-  namespace whose manager delegates, a new operation goes to the
-  delegate whose duty it is, and to the manager itself only when no
-  delegate's duty covers it, as a transition or the sweep.
-- **A delegate takes the operations that are added.** When the
-  operations a scaffold adds would take a manager past the bound, they
-  go to a new delegate, whose duty is theirs, as `tenancy` has
-  `credentials`. The operations the manager already holds stay where
-  they are. Moving those, with their callers and their tests, is a
-  change of its own, made only when a person asks for it.
+- **An operation goes where its duty is.** In a namespace whose manager
+  delegates, a new operation goes to the delegate whose duty it is, and
+  to the manager itself only when no delegate's duty covers it, as a
+  transition or the sweep. No count moves an operation. `arch-check`
+  names a manager interface past twenty operations for a review, and
+  fails none by its count (CON-01). A project moves that number with
+  `review_threshold` under `[tool.arch-check.options.CON-01]` in the
+  root `pyproject.toml`.
+- **A delegate takes a duty that is added.** When the operations a
+  scaffold adds would take a manager past that number, they go to a new
+  delegate if they are a duty callers use apart from the manager's own,
+  as `tenancy` has `credentials`. If they belong to a duty the manager
+  holds, they go on the manager, whatever its count. The operations the
+  manager already holds stay where they are. Moving those, with their
+  callers and their tests, is a change of its own, made only when a
+  person asks for it.
 - **A delegate's shape.** It is `<Ns><Duty>ManagerInterface` in
   `om/src/<name>/om/<ns>/<duty>.py`, re-exported from the package root,
   and `<Ns><Duty>ManagerImpl` in `impl/<duty>.py`. The root builds it in

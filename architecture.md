@@ -728,8 +728,13 @@ through the manager, as `managers.tenancy.credentials`
 ([`manager.py`](scaffold/acme_root/om/src/acme/om/tenancy/manager.py)).
 Inside the namespace, the root may hand a delegate a sibling it calls,
 or a narrow callable for one operation of the manager.
-`arch-check` holds a manager interface to a bound on its operations,
-twenty unless the project sets its own.
+
+No count decides a split: a count cannot tell one duty from several.
+Past twenty operations, or the number the project sets, `arch-check`
+names a manager interface and fails none, and a review reads it. The
+manager delegates when its operations fall into duties its callers use
+apart. It stays whole when they are one duty a split would cut, and the
+review says so.
 
 ### Shape of an Operation
 
