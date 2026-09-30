@@ -354,22 +354,28 @@ UUID, and an optional reference defaulting to it; the rest is judged.
 **Principle.** The OM is split into namespaces that mirror the
 swimlanes of the product, and each has the same internal shape:
 `manager.py` re-exported from the package root, `types/`, `impl/`,
-`storage/`, and `rules.py` when the namespace has pure rules.
+`storage/`, and `rules.py` when the namespace has pure rules. A
+manager's delegate stays in its namespace: its interface in a module
+beside `manager.py`, re-exported too, its impl under `impl/`, and both
+named after the namespace and the duty.
 
-**Source.** Namespaces as Swimlanes.
+**Source.** Namespaces as Swimlanes; The Business Layer.
 
 **Look for.** The folder layout of each namespace; where the manager
 interface is defined and whether the package root re-exports it; where
 entity classes and manager impls live (`impl/manager.py`); the names of
 the manager and storage interfaces (the namespace in the singular,
-`OrderManagerInterface`, `OrderStorageInterface`) and of the operations
-(the entity, `write_warehouse`).
+`OrderManagerInterface`, `OrderStorageInterface`), of a delegate (the
+namespace and the duty, `TenancyCredentialsManagerInterface`), and of
+the operations (the entity, `write_warehouse`).
 
 **Violation.** A namespace whose interface can only be imported from a
 deep path; entity classes next to the manager impl; a product swimlane
 living as a sub-folder of another namespace's `types/`; a manager
-interface named after an entity rather than the namespace; a storage
-interface named after an aggregate in a namespace that has only one.
+interface named after an entity rather than the namespace; a delegate
+in a namespace or a sub-package of its own, or named without its
+namespace; a storage interface named after an aggregate in a namespace
+that has only one.
 
 **Severity.** medium
 

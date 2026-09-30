@@ -36,9 +36,9 @@ async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Pat
     bob = await add_member(container, org.id, "bob@example.test", Role.MEMBER)
 
     async def session_of(email: str) -> str:
-        login = await tenancy.dev_sign_in(seed_request(), email)
+        login = await tenancy.sign_in.dev_sign_in(seed_request(), email)
         identity = await tenancy.authenticate_login(seed_request(), login.token)
-        return (await tenancy.exchange_login(identity, org.id)).token
+        return (await tenancy.sign_in.exchange_login(identity, org.id)).token
 
     async def socket_principal(credential: str) -> SocketPrincipal:
         """The principal a socket opened on `credential` runs as."""
@@ -51,7 +51,7 @@ async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Pat
     bob_first = await socket_principal(await session_of("bob@example.test"))
     bob_second = await socket_principal(await session_of("bob@example.test"))
     owner = await tenancy.authenticate(seed_request(), await session_of(OWNER["email"]))
-    key = await tenancy.create_api_key(owner, "ci", Role.MEMBER)
+    key = await tenancy.credentials.create_api_key(owner, "ci", Role.MEMBER)
     from_key = await socket_principal(key.key)
 
     realtime = container.services.get_realtime_service()
@@ -116,9 +116,9 @@ async def test_a_revocation_ends_the_sockets_it_names_and_no_other(tmp_path: Pat
 
 async def session_of(container: AppContainer, org_id: UUID, email: str) -> str:
     tenancy = container.managers.tenancy
-    login = await tenancy.dev_sign_in(seed_request(), email)
+    login = await tenancy.sign_in.dev_sign_in(seed_request(), email)
     identity = await tenancy.authenticate_login(seed_request(), login.token)
-    return (await tenancy.exchange_login(identity, org_id)).token
+    return (await tenancy.sign_in.exchange_login(identity, org_id)).token
 
 
 async def principal_of(container: AppContainer, credential: str) -> SocketPrincipal:
@@ -143,7 +143,7 @@ async def test_a_change_of_role_ends_the_members_sockets_to_reconnect(tmp_path: 
     )
     bob_session = await session_of(container, org.id, "bob@example.test")
     bob_ctx = await tenancy.authenticate(seed_request(), bob_session)
-    bob_key = await tenancy.create_api_key(bob_ctx, "ci", Role.MEMBER)
+    bob_key = await tenancy.credentials.create_api_key(bob_ctx, "ci", Role.MEMBER)
     realtime = container.services.get_realtime_service()
     ended: dict[str, list[str]] = {"bob": [], "bob_key": [], "ann": []}
     realtime.attach(await principal_of(container, bob_session), ended["bob"].append)
@@ -153,7 +153,7 @@ async def test_a_change_of_role_ends_the_members_sockets_to_reconnect(tmp_path: 
         ended["ann"].append,
     )
 
-    await tenancy.update_membership_role(owner, bob.id, Role.MEMBER)
+    await tenancy.members.update_membership_role(owner, bob.id, Role.MEMBER)
 
     assert ended == {"bob": [RIGHTS_CHANGED], "bob_key": [RIGHTS_CHANGED], "ann": []}
 
@@ -203,10 +203,10 @@ async def test_the_recheck_answers_what_the_redemption_would(tmp_path: Path) -> 
     owner = await tenancy.authenticate(
         seed_request(), await session_of(container, org.id, OWNER["email"])
     )
-    key = await tenancy.create_api_key(owner, "ci", Role.MEMBER)
+    key = await tenancy.credentials.create_api_key(owner, "ci", Role.MEMBER)
     from_key = await principal_of(container, key.key)
     assert await realtime.recheck(from_key) is None
-    await tenancy.revoke_api_key(owner, key.api_key.id)
+    await tenancy.credentials.revoke_api_key(owner, key.api_key.id)
     assert await realtime.recheck(from_key) == "not_authenticated"
 
 

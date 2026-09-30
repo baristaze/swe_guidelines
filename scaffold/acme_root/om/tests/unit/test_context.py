@@ -35,7 +35,9 @@ from acme.om.events.storage.impl.memory import EventStorageMemoryImpl
 from acme.om.exceptions import InvalidCredential, NotAnOperator, NotAuthorized
 from acme.om.outbox.impl.relay import OutboxRelayImpl
 from acme.om.outbox.storage.impl.memory import OutboxStorageMemoryImpl
-from acme.om.tenancy.impl.manager import TenancyManagerImpl, TenancyOptions
+from acme.om.root import build_tenancy
+from acme.om.tenancy import TenancyManagerInterface
+from acme.om.tenancy.impl.manager import TenancyOptions
 from acme.om.tenancy.rules import operator_permissions_of, permissions_of
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 
@@ -52,11 +54,11 @@ def request() -> RequestContext:
 
 
 @pytest.fixture
-def manager(tmp_path: Path) -> TenancyManagerImpl:
+def manager(tmp_path: Path) -> TenancyManagerInterface:
     outbox = OutboxStorageMemoryImpl()
     infra = InfraLocalImpl(tmp_path)
     relay = OutboxRelayImpl(outbox, EventStorageMemoryImpl(), infra.get_topics())
-    return TenancyManagerImpl(
+    return build_tenancy(
         TenancyStorageMemoryImpl(outbox),
         relay,
         infra.get_cache(CacheScope.REALTIME_TICKET),
@@ -87,11 +89,11 @@ def test_a_stage_is_immutable() -> None:
 
 
 async def test_login_then_authenticate_login_produces_the_identity_stage(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     rctx = request()
-    login = await manager.dev_sign_in(rctx, "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(rctx, "ann@example.test")
     ictx = await manager.authenticate_login(rctx, login.token)
     assert type(ictx) is IdentityContext
     assert ictx.email == "ann@example.test"
@@ -107,18 +109,18 @@ async def test_login_then_authenticate_login_produces_the_identity_stage(
 
 
 async def test_authenticate_login_takes_a_session_token_and_refuses_an_api_key(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await manager.dev_sign_in(request(), "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
-    session = await manager.exchange_login(ictx, org.id)
+    session = await manager.sign_in.exchange_login(ictx, org.id)
     # A live session proves the identity of its user as well as the tenant.
     by_session = await manager.authenticate_login(request(), session.token)
     assert by_session.identity_id == ictx.identity_id
     assert by_session.credential_kind is CredentialKind.SESSION_TOKEN
     ctx = await manager.authenticate(request(), session.token)
-    key = await manager.create_api_key(ctx, "ci", Role.MEMBER)
+    key = await manager.credentials.create_api_key(ctx, "ci", Role.MEMBER)
     with pytest.raises(InvalidCredential):
         await manager.authenticate_login(request(), key.key)
     with pytest.raises(InvalidCredential):
@@ -126,25 +128,25 @@ async def test_authenticate_login_takes_a_session_token_and_refuses_an_api_key(
 
 
 async def test_exchange_login_produces_a_session_and_refuses_a_non_member(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     _, beta = await manager.bootstrap(request(), "Beta", "beta", "bob@example.test", "Bob")
-    login = await manager.dev_sign_in(request(), "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
-    issued = await manager.exchange_login(ictx, ajax.id)
+    issued = await manager.sign_in.exchange_login(ictx, ajax.id)
     assert issued.org.id == ajax.id and issued.role is Role.OWNER
     with pytest.raises(NotAuthorized):
-        await manager.exchange_login(ictx, beta.id)
+        await manager.sign_in.exchange_login(ictx, beta.id)
 
 
 async def test_authenticate_produces_the_tenant_stage_and_refuses_a_login_token(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     _, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
-    login = await manager.dev_sign_in(request(), "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
-    issued = await manager.exchange_login(ictx, org.id)
+    issued = await manager.sign_in.exchange_login(ictx, org.id)
     rctx = request()
     ctx = await manager.authenticate(rctx, issued.token)
     assert type(ctx) is TenantContext
@@ -162,7 +164,7 @@ async def test_authenticate_produces_the_tenant_stage_and_refuses_a_login_token(
 
 
 async def test_admit_operator_produces_the_operator_stage_for_operators_only(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     await manager.bootstrap(
@@ -173,7 +175,7 @@ async def test_admit_operator_produces_the_operator_stage_for_operators_only(
         "Root",
         operator_role=OperatorRole.WRITE,
     )
-    login = await manager.dev_sign_in(request(), "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     with pytest.raises(NotAnOperator):
         await manager.admit_operator(await manager.authenticate_login(request(), login.token))
 
@@ -202,7 +204,7 @@ async def test_admit_operator_produces_the_operator_stage_for_operators_only(
 
 
 async def test_a_read_operator_is_admitted_with_read_and_refused_a_write(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     """The allowlist entry says what the operator may do: `read` admits the
     person and `require(WRITE)` refuses them, in the shape a viewer's `require`
@@ -251,7 +253,7 @@ async def test_a_read_operator_is_admitted_with_read_and_refused_a_write(
 
 
 async def test_service_and_socket_contexts_refine_the_request_they_are_given(
-    manager: TenancyManagerImpl,
+    manager: TenancyManagerInterface,
 ) -> None:
     owner, org = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
     rctx = request()
@@ -259,9 +261,9 @@ async def test_service_and_socket_contexts_refine_the_request_they_are_given(
     assert service.security.role is Role.SERVICE and service.request_id == rctx.request_id
     assert {c.request_id for c in await manager.service_contexts(rctx)} == {rctx.request_id}
 
-    login = await manager.dev_sign_in(request(), "ann@example.test")
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
     ictx = await manager.authenticate_login(request(), login.token)
-    session = await manager.exchange_login(ictx, org.id)
+    session = await manager.sign_in.exchange_login(ictx, org.id)
     ctx = await manager.authenticate(request(), session.token)
     ticket = await manager.issue_ticket(ctx)
     socket_request = request()

@@ -46,15 +46,15 @@ async def bob_signs_in(
     await tenancy.add_member(request(), "ajax", "bob@example.test", "Bob", Role.MEMBER)
     through = signing(container, container.identity_provider)
     places: list[TenantContext] = []
-    login = await through.sign_in_with_code(
+    login = await through.sign_in.sign_in_with_code(
         request(), identity_of(container).issue_code("bob@example.test")
     )
     home = next(m.org.id for m in login.memberships if m.org.personal)
     for target in (org_id, home):
         code = identity_of(container).issue_code("bob@example.test")
-        login = await through.sign_in_with_code(request(), code)
+        login = await through.sign_in.sign_in_with_code(request(), code)
         identity = await tenancy.authenticate_login(request(), login.token)
-        issued = await tenancy.exchange_login(identity, target)
+        issued = await tenancy.sign_in.exchange_login(identity, target)
         places.append(await tenancy.authenticate(request(), issued.token))
     return places[0], places[1]
 
@@ -72,7 +72,7 @@ async def test_a_deleted_account_leaves_nothing_of_its_person_behind(tmp_path: P
     tenancy = container.managers.tenancy
     ann = await owner_of(container, "ajax")
     bob, home = await bob_signs_in(container, ann.org_id)
-    subject = (await tenancy.get_identity(bob)).subject
+    subject = (await tenancy.org.get_identity(bob)).subject
     assert subject is not None and subject in identity_of(container).users
 
     # In Ajax, a file Bob stored. At home, a file and a record of his.
@@ -82,7 +82,7 @@ async def test_a_deleted_account_leaves_nothing_of_its_person_behind(tmp_path: P
     buckets = container.infra.get_buckets()
     assert await buckets.exists(home.org_id, Buckets.USER_FILE_UPLOADS, note.key)
 
-    await tenancy.delete_account(bob, "bob@example.test")
+    await tenancy.org.delete_account(bob, "bob@example.test")
     ctx, item = await claim_deletion(container)
     await build_loop(container)._handlers[item.kind].handle(ctx, item)  # pyright: ignore[reportPrivateUsage]
     await container.managers.work.complete(ctx, item)
@@ -108,14 +108,14 @@ async def test_a_deleted_account_leaves_nothing_of_its_person_behind(tmp_path: P
     assert (await media.read_file(ann.org_id, shared.id)) is not None
     assert (await container.managers.media.get_file(ann, shared.id)).created_by == bob.user_id
     with pytest.raises(Exception):  # noqa: B017 (no user by that id any more)
-        await tenancy.get_user(ann, bob.user_id)
+        await tenancy.members.get_user(ann, bob.user_id)
 
 
 async def test_a_provider_that_is_down_parks_the_work_until_it_answers(tmp_path: Path) -> None:
     container = build_container(tmp_path)
     ann = await owner_of(container, "ajax")
     bob, home = await bob_signs_in(container, ann.org_id)
-    await container.managers.tenancy.delete_account(bob, "bob@example.test")
+    await container.managers.tenancy.org.delete_account(bob, "bob@example.test")
     identity_of(container).unavailable_for = 1
     handlers = build_loop(container)._handlers  # pyright: ignore[reportPrivateUsage]
     ctx, item = await claim_deletion(container)
@@ -154,7 +154,7 @@ async def test_a_refusal_of_the_call_fails_and_one_that_may_pass_parks(
     container = build_container(tmp_path)
     ann = await owner_of(container, "ajax")
     bob, home = await bob_signs_in(container, ann.org_id)
-    await container.managers.tenancy.delete_account(bob, "bob@example.test")
+    await container.managers.tenancy.org.delete_account(bob, "bob@example.test")
     ctx, item = await claim_deletion(container)
 
     async def answer(user_id: str) -> None:

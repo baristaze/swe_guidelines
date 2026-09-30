@@ -34,10 +34,10 @@ async def signed_in_owner(container: WorkerContainer) -> TenantContext:
     """Ajax's owner, signed in by address: an org is deleted from a session."""
     tenancy = container.managers.tenancy
     await tenancy.bootstrap(request(), "Ajax", "ajax", "owner@ajax.test", "Owner")
-    login = await signing(container).dev_sign_in(request(), "owner@ajax.test")
+    login = await signing(container).sign_in.dev_sign_in(request(), "owner@ajax.test")
     identity = await tenancy.authenticate_login(request(), login.token)
     ajax = next(m.org.id for m in login.memberships if not m.org.personal)
-    issued = await tenancy.exchange_login(identity, ajax)
+    issued = await tenancy.sign_in.exchange_login(identity, ajax)
     return await tenancy.authenticate(request(), issued.token)
 
 
@@ -54,11 +54,11 @@ async def test_a_deleted_org_ends_at_its_provider_and_then_itself(tmp_path: Path
     tenancy = container.managers.tenancy
     owner = await signed_in_owner(container)
     file = await upload(container, owner)
-    await tenancy.invite_member(owner, "bob@example.test", Role.MEMBER)
-    provider_org_id = (await tenancy.get_org(owner)).provider_org_id
+    await tenancy.members.invite_member(owner, "bob@example.test", Role.MEMBER)
+    provider_org_id = (await tenancy.org.get_org(owner)).provider_org_id
     assert provider_org_id is not None and provider_org_id in identity_of(container).organizations
 
-    await tenancy.delete_org(owner, "Ajax")
+    await tenancy.org.delete_org(owner, "Ajax")
     ctx, item = await claim(container)
     await handler_of(container).handle(ctx, item)
     await container.managers.work.complete(ctx, item)
@@ -81,8 +81,8 @@ async def test_a_provider_that_is_down_parks_the_org_until_it_answers(tmp_path: 
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     owner = await signed_in_owner(container)
-    await tenancy.invite_member(owner, "bob@example.test", Role.MEMBER)
-    await tenancy.delete_org(owner, "Ajax")
+    await tenancy.members.invite_member(owner, "bob@example.test", Role.MEMBER)
+    await tenancy.org.delete_org(owner, "Ajax")
     identity_of(container).unavailable_for = 1
     handler = handler_of(container)
     ctx, item = await claim(container)
@@ -116,8 +116,8 @@ async def test_a_refusal_of_the_call_fails_the_org_and_one_that_may_pass_parks(
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     owner = await signed_in_owner(container)
-    await tenancy.invite_member(owner, "bob@example.test", Role.MEMBER)
-    await tenancy.delete_org(owner, "Ajax")
+    await tenancy.members.invite_member(owner, "bob@example.test", Role.MEMBER)
+    await tenancy.org.delete_org(owner, "Ajax")
 
     async def answer(organization_id: str) -> None:
         raise error
@@ -139,8 +139,8 @@ async def test_an_org_an_operator_deleted_takes_the_same_work(tmp_path: Path) ->
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     owner = await signed_in_owner(container)
-    await tenancy.invite_member(owner, "bob@example.test", Role.MEMBER)
-    provider_org_id = (await tenancy.get_org(owner)).provider_org_id
+    await tenancy.members.invite_member(owner, "bob@example.test", Role.MEMBER)
+    provider_org_id = (await tenancy.org.get_org(owner)).provider_org_id
     await tenancy.bootstrap(
         request(), "Ops", "ops", "root@example.test", "Root", operator_role=OperatorRole.WRITE
     )

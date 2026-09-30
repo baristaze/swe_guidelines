@@ -205,9 +205,9 @@ def session_token(container: AppContainer) -> str:
     tenancy = container.managers.tenancy
 
     async def issue() -> str:
-        login = await tenancy.dev_sign_in(seed_request(), OWNER["email"])
+        login = await tenancy.sign_in.dev_sign_in(seed_request(), OWNER["email"])
         identity = await tenancy.authenticate_login(seed_request(), login.token)
-        return (await tenancy.exchange_login(identity, org.id)).token
+        return (await tenancy.sign_in.exchange_login(identity, org.id)).token
 
     return run(issue())
 
@@ -383,7 +383,7 @@ def test_a_revocation_during_the_hello_still_closes_the_socket(
         if not revoked:
             revoked.append(True)
             assert ctx.credential_id is not None
-            await container.managers.tenancy.revoke_session(ctx, ctx.credential_id)
+            await container.managers.tenancy.credentials.revoke_session(ctx, ctx.credential_id)
         return await working(ctx)
 
     monkeypatch.setattr(service, "head", head_while_revoked)
@@ -617,10 +617,10 @@ async def test_the_recheck_runs_every_interval_until_it_is_refused(tmp_path: Pat
     container = build_container(tmp_path)
     tenancy = container.managers.tenancy
     _, org = await tenancy.bootstrap(seed_request(), "Ajax", "ajax", OWNER["email"], OWNER["name"])
-    login = await tenancy.dev_sign_in(seed_request(), OWNER["email"])
+    login = await tenancy.sign_in.dev_sign_in(seed_request(), OWNER["email"])
     identity = await tenancy.authenticate_login(seed_request(), login.token)
     ctx = await tenancy.authenticate(
-        seed_request(), (await tenancy.exchange_login(identity, org.id)).token
+        seed_request(), (await tenancy.sign_in.exchange_login(identity, org.id)).token
     )
     principal = await tenancy.redeem_ticket(
         seed_request(), (await tenancy.issue_ticket(ctx)).ticket
