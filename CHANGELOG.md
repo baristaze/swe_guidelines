@@ -5,57 +5,64 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.40.0 (2026-09-29)
+## 0.41.0 (2026-09-30)
 
-The scaffold departs from no `core` section, and every loop its ops
-skills run has a count again. Five choices the scaffold recorded as
-departures from `core` sections are now the rules they departed from,
-and How to Read This says how far a tag reaches. Minor: rules are
-sharpened, and two reversals are named below.
+A copy of the scaffold keeps the scaffold as its base and takes a later
+release by merging it, and the scaffold's docs say what its code does.
+Minor: a skill is added and a lens is sharpened, and one reversal is
+named below.
+
+### Added
+
+- A copy keeps its base in git. `scaffold/new.py`, from a clean
+  checkout, commits the copy as its base, on the branch `scaffold` and
+  the main branch. `scaffold/base.py` commits the scaffold at a later
+  ref onto that branch, fetched as one tarball and renamed by that
+  commit's own `new.py`.
+- `arch-upgrade-scaffold` moves a copy one release forward: it grafts a
+  copy with no base at the release it pins, merges the target's render
+  three ways, resolves what the merge leaves, keeping the copy's ADRs
+  and migrations its own, and runs the gates. The move merges with a
+  merge commit. The adopting page gains "Upgrade a copy of the
+  scaffold".
+- The browser benchmark has a page of its runs,
+  `benchmark/runs/browser-judge-swe/`, text only and redacted, and
+  `arch-benchmark-browser` checks each run in with its row. `make runs`
+  holds a browser run.
+- The scaffold's API page lists its routes by area, what the gateway
+  guarantees, and its subcommands. Its operations page says what an
+  operator never does, and its integrations page what a provider that
+  hangs costs a call.
+- The scaffold's cloud page itemizes the fixed monthly cost, and gives
+  the unit prices behind the sizes, `max_connections` at L and XL, and
+  four savings that need a Terraform change.
+- The scaffold's tests pin each loop count its ops skills state, the
+  paths only one agent resolves, and Codex's switch beside
+  `disable-model-invocation`.
 
 ### Changed
 
-- How to Read This: a tag covers the text under its heading up to the
-  next heading of any level, so a `##` tag never reaches the `###`
-  sections under it.
-- OM-12 and STO-06: a record whose id is derived from a key that names
-  it, an outside delivery's key or an orchestration step's record and
-  row, takes `derived_id()`, so a second run makes the same id. Every
-  other id is `new_id()`.
-- Reversed: OM-16 and OM-02 no longer ask for an `audit` namespace from
-  the start. An audit entry is an `Event` with an audit kind in the
-  org's stream until audit gains a reader of its own or must be kept
-  longer than the stream.
-- NET-22 and DEL-18: the event stream keeps a retention and a floor,
-  and a read below the floor is `410 stream_truncated`, naming the
-  floor and the head. An exception that no listed shape fits sets its
-  own status and code under the root.
-- STO-34: payloads and events, an audit entry among them, carry ids and
-  never a personal value, so an erasure has nothing to redact in the
-  stream, and the trim past the retention is no breach.
-- STO-32: a person's account may be deleted at once, in one write,
-  beside the soft delete purged after its retention.
-- Reversed: CTX-27's recheck setting is `realtime_recheck_seconds`, a
-  setting of the realtime service, not `session_recheck_interval`.
-- The scaffold's tables: the company site's HTML and CSS is a
-  substitution under Stack, a `default` section, named in ADR 0002. The
-  record of the event's `produced_at` leaves the deviations, since
-  OM-06 asks for it. The five folded records stay as decisions.
+- Reversed: ASY-25 no longer holds that the manager's copy keeps an
+  enqueue's timestamps. The copy keeps the id as constructed and stamps
+  the times, as CON-17 says of every create since 0.39.0.
+- `ops-watch` step 5 says how a batch reads whole minutes in plain
+  sentences, names both places a query holds its period, and gives the
+  local p95 query. `ops-investigate` bounds its polls for each query.
+- The scaffold's workflows set up uv with `astral-sh/setup-uv` v10.2.0.
 
 ### Fixed
 
-- The scaffold's ops skills bound their loops again, as 0.38.0's
-  templates did before 0.39.0 replaced them. `ops-watch` runs at most
-  30 batches of 30 seconds to five minutes, with at most 20 tool calls
-  a batch. `ops-root-cause` follows at most 5 request ids, one pass
-  each, and reads the events feed from the window's first `seq`. A Logs
-  Insights query is polled at most 10 times. `audit-database-calls`
-  reruns a failed flow at most once. A session follows at most 2 hops
-  of Next, and two skills leave their Next to the person.
-- `ops-watch` reads each metric minute once: a batch rounds its bounds
-  down to whole minutes, with a 60-second period, where the templates
-  counted a minute in two batches.
-- `ops-root-cause` asks for the symptom when neither the prompt nor an
-  investigation's report names one and no request id is given.
-- `make skills` holds each count bound in the skill that states it,
-  beside the fix-and-rerun wording it held before.
+- A copy's `pnpm-lock.yaml` lists each importer's dependencies in
+  pnpm's order under the copy's name: `scaffold/new.py` orders them
+  after the rename.
+- The scaffold's prose puts no article before its name, which the
+  rename left wrong for most names, and its local TOTP key holds no
+  name, which the rename could not reach inside base64.
+- Three of the scaffold's ADRs name paths that exist, and ADRs 0041,
+  0045, and 0056 say what its deletion and its purges do. Its README
+  lists `make migrate-check` and says an exported variable wins over
+  `.env`; its runbooks say the repository issues GitHub's immutable
+  OIDC subject and that the database's storage grows on its own.
+- Three docstrings: `Created` is the base of a row the platform writes
+  for itself, a manager operation takes `TenantContext`, and no
+  heartbeat thread runs beside the event loop.
