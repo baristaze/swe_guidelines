@@ -155,7 +155,9 @@ def test_a_skill_that_holds_a_token_pre_approves_the_ops_command_and_no_other(na
     nobody asked. The skill runs `acme-ops` and names that."""
     tools = [tool.strip() for tool in _allowed_tools(name).split(",")]
     assert "Bash(uv run acme-ops:*)" in tools
-    assert not [tool for tool in tools if tool.startswith("Bash(uv") and tool != "Bash(uv run acme-ops:*)"]
+    assert not [
+        tool for tool in tools if tool.startswith("Bash(uv") and tool != "Bash(uv run acme-ops:*)"
+    ]
     runs = set(re.findall(r"\buv run ([\w-]+)", _prose(name)))
     assert runs == {"acme-ops"}, f"{name} runs uv with {sorted(runs)}"
 
@@ -176,7 +178,9 @@ def test_the_root_cause_reads_of_a_tenant_keep_no_text_the_tenant_wrote() -> Non
     which keeps the ids, the kind, and the timestamps: no read is printed
     whole."""
     reads = list(TENANT_READ.finditer(_skill("ops-root-cause")))
-    assert len(reads) == 3, "ops-root-cause no longer reads the org and its members as this test sees them"
+    assert len(reads) == 3, (
+        "ops-root-cause no longer reads the org and its members as this test sees them"
+    )
     for read in reads:
         assert read["piped"], f"a read of the tenant is printed whole: {read[0]}"
         assert not set(re.findall(r"[a-z_]+", read["kept"])) & TENANT_TEXT, read["kept"]
