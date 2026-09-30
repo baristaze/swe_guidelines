@@ -320,6 +320,88 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "never drop a database this run did not make" in fold
 
 
+# A `SEARCH` schema names every dimension a series has, or it matches nothing
+# and answers with no datapoint and no error: a read of nothing that looks
+# like a quiet hour. The dashboard module writes the schemas the app's series
+# carry, the exporter's own `OTelLib` among them, and its Terraform test holds
+# them there. So a skill's schema is one of the dashboard's.
+DASHBOARD = ROOT / "deployment" / "terraform" / "modules" / "dashboard"
+METRIC_READERS = ["ops-investigate", "ops-watch"]
+SEARCH_SCHEMA = re.compile(r"SEARCH\(\W*?(\{[^}]*\})")
+
+
+def _search_schemas(text: str) -> set[str]:
+    """Every `SEARCH` schema a text writes, as CloudWatch reads it: the quotes
+    of the shell that carries the expression are skipped, and the backslashes
+    of its JSON or its Terraform string are left out."""
+    return {schema.replace("\\", "") for schema in SEARCH_SCHEMA.findall(text)}
+
+
+def _dashboard_schemas() -> set[str]:
+    files = sorted(path for path in DASHBOARD.iterdir() if path.is_file())
+    return set().union(*(_search_schemas(path.read_text()) for path in files))
+
+
+@pytest.mark.parametrize("name", METRIC_READERS)
+def test_every_search_schema_a_skill_writes_is_one_the_dashboard_writes(name: str) -> None:
+    texts = sorted((SKILLS / name).rglob("*.md"))
+    written = set().union(*(_search_schemas(path.read_text()) for path in texts))
+    assert written, f"{name} writes no SEARCH, or this test no longer sees the ones it writes"
+    unknown = written - _dashboard_schemas()
+    assert not unknown, f"{name} searches {sorted(unknown)}, a schema the dashboard does not write"
+
+
+def test_a_schema_without_the_exporters_dimension_is_not_the_dashboards() -> None:
+    """The schema is read out of a command as a skill writes one, in the
+    shell's quotes, and one that leaves `OTelLib` out is refused."""
+    command = (
+        r"""SUM(SEARCH('"'"'{Acme,environment,method,route,service,status} """
+        r"""MetricName=\"acme_http_requests_total\"'"'"', '"'"'Sum'"'"', 60))"""
+    )
+    assert _search_schemas(command) == {"{Acme,environment,method,route,service,status}"}
+    assert not _search_schemas(command) & _dashboard_schemas()
+    assert '{"Acme",OTelLib,environment,method,route,service,status}' in _dashboard_schemas()
+
+
+def test_the_tracker_read_asks_for_its_window_the_trackers_way() -> None:
+    """The tracker's `statsPeriod` takes `24h` and `14d` and answers 400 to
+    any other window, so the read asks Sentry for the issues last seen in it.
+    GlitchTip reads that term as a tag and answers with no issue, deployed or
+    local, so only Sentry's own host is sent it."""
+    text = _skill("ops-investigate")
+    assert 'in *sentry.io*) window=" lastSeen:-<since>" ;; *) window="" ;; esac' in text
+    assert '"query=environment:<env>$window"' in text
+    assert "statsPeriod=" not in text
+    assert "keep the issues whose `lastSeen` field is inside the window" in _prose(
+        "ops-investigate"
+    )
+
+
+# A cloud read that returned nothing sums to zero, and a p95 no request fed is
+# `null`. Neither is a number of the batch: a zero reads as traffic stopping.
+NOTHING_READ_IS_NOT_A_ZERO = [
+    "in the cloud a batch whose `requests` is 0 read nothing",
+    'Such a batch writes "metrics not read" in place of its numbers, never a zero',
+    "no later batch reads those minutes",
+    "the batch line's p95 is that number times 1,000, in milliseconds, "
+    "and a `null` writes `p95 none`",
+    "p95 <ms, or none>, <failures> worker failures "
+    "| metrics read in the next batch | metrics not read>",
+]
+
+
+@pytest.mark.parametrize("sentence", NOTHING_READ_IS_NOT_A_ZERO)
+def test_a_watch_never_writes_a_read_of_nothing_as_a_number(sentence: str) -> None:
+    assert sentence in _prose("ops-watch"), f"ops-watch no longer says: {sentence}"
+
+
+def test_the_cloud_p95_of_an_investigation_is_one_number_in_milliseconds() -> None:
+    text = _prose("ops-investigate")
+    assert "The report's p95 is its highest minute times 1,000, in milliseconds" in text
+    assert "The cloud has no p95 by route" in text
+    assert "p95 <ms> by route (cloud: one p95 <ms, or none>, every route together)" in text
+
+
 def test_triage_closes_nothing_without_the_persons_word() -> None:
     text = _prose("tickets-triage")
     assert "Never closes a ticket without `--apply` and the person's word in this session" in text
