@@ -15,7 +15,7 @@ managed = false
 [tool.ruff]
 line-length = 130
 src = ["scripts", "tests", "benchmark", "checkers/src"]
-include = ["scripts/**/*.py", "tests/**/*.py", "benchmark/**/*.py", "checkers/**/*.py", "scaffold/new.py"]
+include = ["scripts/**/*.py", "tests/**/*.py", "benchmark/**/*.py", "checkers/**/*.py", "scaffold/new.py", "scaffold/base.py"]
 # The scaffold's own tree is a project with its own configuration and gates.
 extend-exclude = ["benchmark/runs", "benchmark/fixtures", "scaffold/acme_root"]
 
@@ -27,7 +27,7 @@ known-first-party = ["_common", "conftest", "harness"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["scripts", "tests", "benchmark", "checkers/src", "scaffold/new.py"]
+files = ["scripts", "tests", "benchmark", "checkers/src", "scaffold/new.py", "scaffold/base.py"]
 exclude = ["^benchmark/runs/", "^benchmark/fixtures/"]
 mypy_path = ["scripts", "tests", "benchmark", "checkers/src"]
 explicit_package_bases = true
