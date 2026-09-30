@@ -83,6 +83,7 @@ left as it is, and the report names it under Kept.
      ```bash
      git grep -nE 'ADR NNNN|adr/NNNN|NNNN-[a-z]' -- . ':!docs/adr/NNNN-*'
      ```
+
    - `CHANGELOG.md`: its release sections, when the tree has one.
    - The Substitutions and Deviations rows of `specs/architecture.md`.
    - The sentences that tell a past, in the Markdown and in the code's
