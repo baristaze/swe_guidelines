@@ -38,14 +38,17 @@ stays as it is, and the report says which part.
      prints `success`.
    - For each: `git merge-base --is-ancestor <newest migration's commit>
      <deployed commit>` exits 0.
-   - An environment with no successful deploy and no `release` branch
-     has no database, and passes. A `gh` call that fails does not.
+   - An environment that never deployed has no database, and passes:
+     staging when `gh run list --workflow deploy-staging.yml --limit 1
+     --json databaseId --jq length` prints `0`, production when there
+     is no `origin/release`. A `gh` call that fails does not pass.
 4. The local database: for every role, `make migrate` prints
    `<role>: upgraded to <head>`.
-5. No expand and contract is half shipped: a column, a default, or a
-   trigger the chain added for the release before is in every
-   environment of part 3. The fold keeps such a piece as the head has
-   it; its contract step comes later, as a revision on the fold.
+
+An expand and contract in flight does not stop a fold. The fold holds
+the head's schema whole, so a column, a default, or a trigger kept for
+the release before stays in it, and the contract step comes later, as a
+revision on the fold.
 
 ## The steps
 
@@ -108,8 +111,10 @@ stays as it is, and the report says which part.
 
    `diff` prints nothing, for every role. When it prints a difference,
    correct the fold's SQL, drop `audit_fold_folded_<day>`, and prove it
-   anew: the first run plus at most 3 reruns. Then stop: `git restore
-   --staged --worktree om/migrations`, and report the difference.
+   anew: the first run plus at most 3 reruns. Then stop, undo the fold,
+   and report the difference. The undo returns the tree to its last
+   commit: `git restore --staged --worktree .`, then `git clean -f
+   om/migrations` for the files the fold added.
 5. **A database at the old head has nothing to apply.** The chain's
    database is one. Run the fold's migrate and its check on it:
 
@@ -120,7 +125,8 @@ stays as it is, and the report says which part.
    It prints `<role>: upgraded to <head id>` and then `<role>: in sync`
    for every role, and exits 0. Dump each folded role once more, into
    `<evidence>/after.<role>.sql`: `diff` against `chain.<role>.sql`
-   prints nothing.
+   prints nothing. When either fails, stop and undo the fold as step 4
+   says.
 6. **Drop both databases**, whatever happened before:
 
    ```bash

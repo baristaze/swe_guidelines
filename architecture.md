@@ -2077,12 +2077,13 @@ The provisioner is the traffic generator's operator identity, with no
 cloud role, and `none` holds no credential at all. Every skill but the
 administrator's two and the deploy audit runs against `local`. An audit
 reads, reports the answer first, and proposes tickets; it never fixes.
-`docs-compact` rewrites the tree's documents to what holds, and on a
-flag folds each migration chain, on a work branch it never pushes.
 An audit of calls ranks its fixes: remove a call, fold it into another,
 defer it, cache it, and only then run calls in parallel. The first
 responder to an alarm is an agent, which reads whose traffic raised it
 before it escalates, and never suppresses one in production.
+
+`docs-compact` rewrites the tree's documents to what holds, and on a
+flag folds each migration chain. It works on a branch it never pushes.
 
 <!-- agents-only
 - An audit's report puts the answer first, then a table with a verdict
