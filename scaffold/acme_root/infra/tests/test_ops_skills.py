@@ -15,7 +15,9 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -416,6 +418,65 @@ def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:
     assert "In doubt, it is in flight." in text
     assert "It is listed in the report and left as it is, its comment with it" in text
     assert "git tag" not in _skill("docs-compact")
+
+
+def test_the_compaction_regenerates_the_api_document_before_its_gate() -> None:
+    """A docstring of an API type is in the generated document, and CI fails
+    a tree whose document is not the one its code writes. So the gates write
+    it again after the sweep and before `make check`, and commit what changed."""
+    gates = _prose("docs-compact").split("**Run the gates.**", 1)[1]
+    assert gates.index("`make setup`") < gates.index("`make openapi`") < gates.index("`make check`")
+    assert "commit what it changes, apart. Then `make check`." in gates
+    assert "Bash(make openapi)" in [
+        tool.strip() for tool in _allowed_tools("docs-compact").split(",")
+    ]
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "make openapi && git diff --exit-code" in ci
+
+
+def _database_gates() -> list[str]:
+    """The commands of the gates' database, as the skill writes them, in its order."""
+    lines = [line.strip() for line in _skill("docs-compact").splitlines()]
+    return [line for line in lines if line.startswith("uv run python ") and "audit_docs_" in line]
+
+
+def test_the_database_gates_run_on_a_database_the_run_makes_and_drops(tmp_path: Path) -> None:
+    """The integration tests empty every table of the database they run on,
+    so the gates make a database, run on it, and drop it. The command between
+    runs here as the skill writes it, with a probe in place of `make` and of
+    the audit module: the three targets get the URL of the run's database in
+    one process, and the command ends with their status."""
+    run = "audit_docs_compact_<yyyymmdd>"
+    create, gates, drop = _database_gates()
+    assert create == f"uv run python ops/audit/auditdb.py create {run}"
+    assert drop == f"uv run python ops/audit/auditdb.py drop {run}"
+    *runner, program = shlex.split(gates)
+    assert runner == ["uv", "run", "python", "-c"]
+    audit = tmp_path / "ops" / "audit"
+    audit.mkdir(parents=True)
+    (audit / "auditdb.py").write_text(
+        "def urls(name):\n    return {'ACME_DATABASE_URL': f'postgresql://127.0.0.1/{name}'}\n"
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    seen = tmp_path / "seen"
+    fake = bin_dir / "make"
+    fake.write_text(f'#!/bin/sh\necho "$* $ACME_DATABASE_URL" > "{seen}"\nexit 3\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    shell = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    done = subprocess.run([sys.executable, "-c", program], cwd=tmp_path, env=shell, check=False)
+    assert done.returncode == 3, "the command does not end with the targets' status"
+    targets = ["migrate", "migrate-check", "test-integration"]
+    assert seen.read_text().split() == [*targets, f"postgresql://127.0.0.1/{run}"]
+    # The targets run inside that one command, so none is pre-approved alone,
+    # and no step exports the URLs where `make check` would read them.
+    tools = {tool.strip() for tool in _allowed_tools("docs-compact").split(",")}
+    assert not tools & {"Bash(make migrate-check)", "Bash(make test-integration)"}
+    text = _prose("docs-compact")
+    assert "on a database the run makes and drops, never the stack's own" in text
+    assert "never export them in the shell" in text
+    assert "The drop runs whatever the targets answered." in text
+    assert "never runs a test on the local stack's own database" in text
 
 
 def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:

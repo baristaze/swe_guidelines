@@ -1,7 +1,7 @@
 ---
 name: docs-compact
 description: "Compact the tree's documents to what holds at the head of the main branch: rewrite each ADR to its present decision with a status of one date, remove the ADRs that constrain nothing, cut the changelog to the latest release, clean the rows of specs/architecture.md, and rewrite the comments that tell what the code did before. With --migrations, fold each role's migration chain into one revision under the head's revision id, shown equal by a schema dump. Works on a branch, pushes nothing, and reports what it removed, rewrote, and kept."
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make check), Bash(make infra-up), Bash(make migrate), Bash(make migrate-check), Bash(make test-integration)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git status:*), Bash(git fetch:*), Bash(git symbolic-ref:*), Bash(git switch:*), Bash(git log:*), Bash(git diff:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git ls-files:*), Bash(git rm:*), Bash(git mv:*), Bash(git add:*), Bash(git commit:*), Bash(git restore:*), Bash(git clean:*), Bash(git grep:*), Bash(diff:*), Bash(mkdir:*), Bash(gh release:*), Bash(gh run:*), Bash(gh api:*), Bash(docker info:*), Bash(docker compose:*), Bash(uv run:*), Bash(make setup), Bash(make openapi), Bash(make check), Bash(make infra-up), Bash(make migrate)
 ---
 
 # docs-compact
@@ -33,10 +33,12 @@ of the checkout.
 
 ## Role and credential
 
-None of the platform's: it reads no environment, and logs in to no
-database but the two the fold makes on the local stack and drops. It
-reads the repository host through `gh`, under the person's own sign-in:
-each release's notes, and for the fold each environment's last deploy.
+None of the platform's: it reads no environment. On the local stack it
+logs in to the databases it makes and drops, one for the gates and two
+for the fold, and to the stack's own for one thing: the fold's
+precondition brings it to its head (`make migrate`). It reads the
+repository host through `gh`, under the person's own sign-in: each
+release's notes, and for the fold each environment's last deploy.
 
 ## One-time preparations
 
@@ -176,10 +178,31 @@ left as it is, and the report names it under Kept.
    it is and the report says which part failed.
 8. **Run the gates.** `make setup` first, which installs the tree and
    formats its Python; commit what it changes, apart. Then `make
-   check`. When `docker info` exits 0, also
-   `make infra-up`, `make migrate`, `make migrate-check`, and `make
-   test-integration`; otherwise the report names each one skipped. A
-   gate that fails is fixed in a commit of its own, and the gate runs
+   openapi`, which writes the API document and its two schemas from the
+   code, a docstring step 6 rewrote included; commit what it changes,
+   apart. Then `make check`. When `docker info` exits 0, also `make
+   infra-up`, and then `make migrate`, `make migrate-check`, and `make
+   test-integration` on a database the run makes and drops, never the
+   stack's own: the integration tests empty every table of the
+   database they run on.
+
+   ```bash
+   uv run python ops/audit/auditdb.py create audit_docs_compact_<yyyymmdd>
+   uv run python -c "import os, subprocess, sys; sys.path.insert(0, 'ops/audit'); import auditdb; os.environ.update(auditdb.urls('audit_docs_compact_<yyyymmdd>')); sys.exit(subprocess.call(['make', 'migrate', 'migrate-check', 'test-integration']))"
+   uv run python ops/audit/auditdb.py drop audit_docs_compact_<yyyymmdd>
+   ```
+
+   `<yyyymmdd>` is today's date in UTC. When `uv run python
+   ops/audit/auditdb.py list` shows the name taken, another run holds
+   it: add a suffix (`_2`), and never drop a database this run did not
+   make. The second command runs the three targets with the four
+   `ACME_DATABASE_*` URLs set to that database, which the Makefile
+   takes over `.env`. The URLs live in that one command: never export
+   them in the shell, where the unit tests of `make check` would read
+   them. The drop runs whatever the targets answered. When `docker
+   info` does not exit 0, the report names each of the four skipped.
+
+   A gate that fails is fixed in a commit of its own, and the gate runs
    again from its first command: the first run plus at most 3 reruns,
    then stop and say which gate fails and why.
 9. **Write the report.**
@@ -212,8 +235,9 @@ left as it is, and the report names it under Kept.
   tests a backfill it removes, or steps down from the head.
 - Never opens `om/migrations/` without `--migrations`, and never edits
   an applied migration file: a fold replaces a chain whole.
-- Never writes to a shared database or to an environment: it logs in
-  only to the two databases it made on the local stack, and drops them.
+- Never writes to a shared database or to an environment, and never
+  runs a test on the local stack's own database: its gates and its fold
+  run on databases it made on the local stack, and drops.
 - Never pushes, never opens a pull request, never publishes or edits a
   release. It moves no pin.
 
