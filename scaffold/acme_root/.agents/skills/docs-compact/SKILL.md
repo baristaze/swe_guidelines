@@ -230,14 +230,18 @@ left as it is, and the report names it under Kept.
    uv run python ops/audit/auditdb.py drop audit_docs_compact_<yyyymmdd>
    ```
 
-   `<yyyymmdd>` is today's date in UTC. When `uv run python
-   ops/audit/auditdb.py list` shows the name taken, another run holds
-   it: add a suffix (`_2`), and never drop a database this run did not
-   make. The second command runs the three targets with the four
-   `ACME_DATABASE_*` URLs set to that database, which the Makefile
-   takes over `.env`. The URLs live in that one command: never export
-   them in the shell, where the unit tests of `make check` would read
-   them. The drop runs whatever the targets answered. When `docker
+   `<yyyymmdd>` is today's date in UTC. The name is chosen once,
+   before the run's first create: when `uv run python
+   ops/audit/auditdb.py list` shows it taken then, another run holds
+   it, so add a suffix (`_2`), and never drop a database this run did
+   not make. From its first create on, the name is this run's own. A
+   create that fails can leave the database behind: the targets do not
+   run then, and the drop still does. The second command runs the three
+   targets with the four `ACME_DATABASE_*` URLs set to that database,
+   which the Makefile takes over `.env`. The URLs live in that one
+   command: never export them in the shell, where the unit tests of
+   `make check` would read them. The drop runs whatever the create and
+   the targets answered, so a rerun finds the name free. When `docker
    info` does not exit 0, the report names each of the four skipped.
 
    A gate that fails is fixed in a commit of its own, and the gate runs

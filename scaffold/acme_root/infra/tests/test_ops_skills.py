@@ -544,7 +544,11 @@ def test_the_database_gates_run_on_a_database_the_run_makes_and_drops(tmp_path: 
     text = _prose("docs-compact")
     assert "on a database the run makes and drops, never the stack's own" in text
     assert "never export them in the shell" in text
-    assert "The drop runs whatever the targets answered." in text
+    # A create that fails can leave the database, which is the run's own to drop.
+    assert "The name is chosen once, before the run's first create" in text
+    assert "From its first create on, the name is this run's own." in text
+    assert "the targets do not run then, and the drop still does" in text
+    assert "The drop runs whatever the create and the targets answered" in text
     assert "never runs a test on the local stack's own database" in text
 
 
