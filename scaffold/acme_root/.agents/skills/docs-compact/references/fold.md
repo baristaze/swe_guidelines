@@ -98,11 +98,16 @@ revision on the fold.
      schema-qualified, each table with its columns in the dump's order
      (a column a later step added sits where the dump has it), then its
      constraints, indexes, and policies, and each function or trigger
-     the head still has. It ends as the chain's first step does, with
-     the role-wide grants and default privileges of the serving logins
-     and the revoke on the role's `alembic_version`: the dump compares
-     them. No `SET`, no `OWNER TO`, and no `CREATE` of
-     `alembic_version`: the runner makes that table.
+     the head still has. It ends with the role-wide grants and default
+     privileges of the serving logins and the revoke on the role's
+     `alembic_version`, taken from the step of the chain that sets
+     them, the first or a later one, with every grant and revoke a
+     later step makes, in the chain's order. Before a file goes, `git
+     grep -nE 'GRANT|REVOKE|DEFAULT PRIVILEGES' --
+     'om/migrations/sql/<role>/*.up.sql'` lists them. The dump compares
+     them: one the fold lacks is a line of step 4's `diff`. No `SET`,
+     no `OWNER TO`, and no `CREATE` of `alembic_version`: the runner
+     makes that table.
    - No data statement: a backfill leaves with the step it belonged to,
      since a database at the head has run it and a new one has no row to
      fill. A row every new database must hold, which the code reads and

@@ -494,6 +494,11 @@ def test_the_fold_states_its_precondition_its_proof_and_its_bound() -> None:
     assert "Those assertions stay, in a test that migrates to the head" in fold
     assert "upgrades to the head again before it returns" in fold
     assert "the schema dump of the chain equals the fold's" in fold
+    # A chain may set its grants in a later step, so the fold takes them from
+    # the step that does, and the dump says whether it has them all.
+    assert "taken from the step of the chain that sets them, the first or a later one" in fold
+    assert "`git grep -nE 'GRANT|REVOKE|DEFAULT PRIVILEGES' --" in fold
+    assert "one the fold lacks is a line of step 4's `diff`" in fold
 
 
 def test_the_fold_reads_the_commit_staging_deployed_as_the_release_does() -> None:
