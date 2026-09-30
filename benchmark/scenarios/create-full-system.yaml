@@ -196,4 +196,4 @@ judges:
       # Its latest release whose specs/architecture.md pins this
       # checkout's release. When the guideline's release moves, the tag
       # moves with it; a run notes a pin that differs.
-      tag: v0.15.0
+      tag: v0.16.0
