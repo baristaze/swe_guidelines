@@ -77,17 +77,22 @@ async def test_a_signed_delivery_is_queued_once_with_its_event(
 async def test_a_bad_or_missing_signature_is_refused_and_queues_nothing(
     client: httpx.AsyncClient, container: AppContainer, twin: IdentityProviderTwinImpl
 ) -> None:
-    """No header, a header signed with another secret, and the right header
-    over a body that is not byte for byte the one signed: each is 400 and
-    nothing reaches the queue."""
+    """No header, a header signed with another secret, a header no signer
+    writes (a byte past ASCII in the signature, a timestamp no clock reads),
+    and the right header over a body that is not byte for byte the one
+    signed: each is 400 and nothing reaches the queue."""
     body, signature = twin.signed_event("user.created", {"id": "user_01"})
     reserialized = json.dumps(json.loads(body), indent=1).encode()
-    for content, headers in (
+    stamp = signature.partition(",")[0].encode()
+    cases: tuple[tuple[bytes, dict[str, str] | dict[bytes, bytes]], ...] = (
         (body, {}),
         (body, {SIGNATURE_HEADER: sign(body, "whsec_not_ours")}),
         (body, {SIGNATURE_HEADER: "not a signature"}),
+        (body, {SIGNATURE_HEADER.encode(): stamp + b", v1=" + b"\xe9" * 64}),
+        (body, {SIGNATURE_HEADER: sign(body, "whsec_not_ours", int("9" * 400))}),
         (reserialized, {SIGNATURE_HEADER: signature}),
-    ):
+    )
+    for content, headers in cases:
         refused = await client.post(ROUTE, content=content, headers=headers)
         assert refused.status_code == 400, refused.text
         assert refused.json()["error"]["code"] == "webhook_signature_invalid"
