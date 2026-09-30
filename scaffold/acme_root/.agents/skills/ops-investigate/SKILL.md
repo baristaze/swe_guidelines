@@ -111,18 +111,52 @@ and their handling is in `/acme/<env>/maintenance`.
    stack whose worker is not running has none, which is "not read".
    With `--alarm <name>`, start here and apply the first responder
    rule of step 11 before reading anything else.
-4. Request rate, error ratio, p95, by route. Cloud, one query per
-   panel of the dashboard `acme-<env>`, namespace `Acme`:
+4. Request rate, error ratio, p95, by route. Cloud, the queries of the
+   dashboard `acme-<env>`, namespace `Acme`. The p95 is the load
+   balancer's, so read its ARN first:
+
+   ```bash
+   aws elbv2 describe-load-balancers --names acme-<env> \
+     --query 'LoadBalancers[0].LoadBalancerArn' --output text \
+     --profile acme-<env>-investigate
+   ```
+
+   `<load balancer>` below is what follows `loadbalancer/` in that
+   ARN, `app/acme-<env>/<id>`. One call then reads the three signals:
 
    ```bash
    aws cloudwatch get-metric-data --profile acme-<env>-investigate \
-     --start-time <start> --end-time <end> \
-     --metric-data-queries '[{"Id":"req","Expression":"SUM(SEARCH('"'"'{Acme,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60))","Period":60}]'
+     --start-time <start> --end-time <end> --output text \
+     --query 'MetricDataResults[?length(Values) > `0`].[Id,Label,sum(Values),max(Values)]' \
+     --metric-data-queries '[
+       {"Id":"req","Period":60,"Expression":"SUM(SEARCH('"'"'{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60))"},
+       {"Id":"by","Period":60,"Label":"${PROP('"'"'Dim.status'"'"')} ${PROP('"'"'Dim.method'"'"')} ${PROP('"'"'Dim.route'"'"')}","Expression":"SEARCH('"'"'{\"Acme\",OTelLib,environment,method,route,service,status} MetricName=\"acme_http_requests_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60)"},
+       {"Id":"p95","Label":"p95","MetricStat":{"Metric":{"Namespace":"AWS/ApplicationELB","MetricName":"TargetResponseTime","Dimensions":[{"Name":"LoadBalancer","Value":"<load balancer>"}]},"Period":60,"Stat":"p95"}}
+     ]'
    ```
 
-   Every series carries all its labels as dimensions and CloudWatch
-   matches dimensions exactly, so a `MetricStat` naming only some of
-   them finds nothing; the `SEARCH` expression is the dashboard's own.
+   It prints one line for each series with a datapoint in the window:
+   its id, its label, the sum of its minutes, and the highest of them.
+
+   - `req` is every request: its sum is the window's count, and the
+     rate is that count over the window's seconds.
+   - A `by` line is one status, method, and route. The error ratio is
+     the sum of the lines whose status starts with `5` over the sum of
+     `req`; one route's ratio is the same over that route's lines.
+   - `p95` is the load balancer's target response time over every
+     route, in seconds: report its highest minute. The app's histogram
+     reaches CloudWatch as a statistic set, which holds no percentile,
+     so by route the cloud has a p95 only for the reads with a latency
+     alarm, which step 3 read.
+
+   Every series carries all its labels as dimensions, and the exporter
+   adds `OTelLib`. CloudWatch matches dimensions exactly, so a
+   `MetricStat` naming only some of them finds nothing, and neither
+   does a `SEARCH` whose schema leaves one out: it answers with no
+   datapoint and no error. The schema is the dashboard's own
+   (`deployment/terraform/modules/dashboard/`). The load balancer's
+   health checks are requests, so a call that prints no `req` line is
+   "not read", never "no traffic".
 
    Local:
 
@@ -177,6 +211,24 @@ and their handling is in `/acme/<env>/maintenance`.
      --metric-data-queries '[{"Id":"ready","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_work_oldest_ready_seconds"},"Period":60,"Stat":"Maximum"}},{"Id":"failed","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_work_failed_recently"},"Period":60,"Stat":"Maximum"}},{"Id":"outbox","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_outbox_oldest_pending_seconds"},"Period":60,"Stat":"Maximum"}},{"Id":"dead","MetricStat":{"Metric":{"Namespace":"Acme","MetricName":"acme_outbox_failed_recently"},"Period":60,"Stat":"Maximum"}}]'
    ```
 
+   The outcomes and the pool are one more call in the cloud: the
+   counter by the dashboard's schema, the twin of the `sum by` above,
+   and the database's connection count:
+
+   ```bash
+   aws cloudwatch get-metric-data --profile acme-<env>-investigate \
+     --start-time <start> --end-time <end> --output text \
+     --query 'MetricDataResults[?length(Values) > `0`].[Id,Label,sum(Values),max(Values)]' \
+     --metric-data-queries '[
+       {"Id":"out","Period":60,"Label":"${PROP('"'"'Dim.service'"'"')} ${PROP('"'"'Dim.subsystem'"'"')} ${PROP('"'"'Dim.outcome'"'"')}","Expression":"SEARCH('"'"'{\"Acme\",OTelLib,environment,outcome,service,subsystem} MetricName=\"acme_outcomes_total\" environment=\"<env>\"'"'"', '"'"'Sum'"'"', 60)"},
+       {"Id":"pool","Label":"connections","MetricStat":{"Metric":{"Namespace":"AWS/RDS","MetricName":"DatabaseConnections","Dimensions":[{"Name":"DBInstanceIdentifier","Value":"acme-<env>"}]},"Period":60,"Stat":"Maximum"}}
+     ]'
+   ```
+
+   An `out` line is one process, subsystem, and outcome, and its sum
+   is the window's count. `pool` is read by its highest minute: the
+   most connections the database held.
+
    A backlog with the maintenance service at its desired count is a
    worker that claims nothing: read its log for `claim failed`. An
    outbox lag is a relay that keeps failing: its log names each attempt,
@@ -188,7 +240,7 @@ and their handling is in `/acme/<env>/maintenance`.
    A work item failed for good is step 7's line. The inbound queue's
    depth and oldest age, and pool checkouts, have no metric of the
    worker's; the cloud reads the pool from the database's connection
-   count, and the queue and its dead letter from SQS:
+   count, as above, and the queue and its dead letter from SQS:
 
    ```bash
    for q in webhooks webhooks-dead; do
@@ -216,15 +268,24 @@ and their handling is in `/acme/<env>/maintenance`.
    environment reports into it, so the read names that project and
    filters on the environment. Cloud: the error tracker's REST API at
    `$ACME_ERROR_TRACKER_URL` with the token as a bearer, the issues
-   of the window in this environment, newest first. Local: the same
-   shape against GlitchTip, with `local` as the environment:
+   last seen in the window in this environment, newest first:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
-     --data-urlencode "query=environment:<env>" --data "statsPeriod=<since>" \
+     --data-urlencode "query=environment:<env> lastSeen:-<since>" \
      "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/"
    ```
+
+   The window is the search term `lastSeen:-<since>`, in minutes,
+   hours, days, or weeks (`90m`, `1h`, `2d`, `1w`), never
+   `statsPeriod`: that parameter sizes each issue's graph, takes only
+   `24h` and `14d`, and answers `400` to any other value.
+
+   Local: the same call against GlitchTip with
+   `query=environment:local` alone. GlitchTip reads `lastSeen:` as a
+   tag no issue carries and would answer with no issue, so keep the
+   issues whose `lastSeen` field is inside the window.
 
    An issue in that project can hold events of more than one
    environment, so an issue the query returned is not by itself this
