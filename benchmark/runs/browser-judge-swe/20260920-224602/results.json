@@ -43,7 +43,7 @@
       "score": null,
       "response_path": "gemini.google.com.md",
       "status": "refused",
-      "note": "The whole answer was 'I seem to be encountering an error. Can I try something else for you?' - no evaluation and no score. The picker entry clicked was 'Extended thinking' but the composer chip then read 'Flash Extended'. This Chrome denies page-content reading on gemini.google.com, so the answer was transcribed from a screenshot. First attempt, the Extended thinking toggle on Flash; superseded by the retry on 3.1 Pro below."
+      "note": "The whole answer was 'I seem to be encountering an error. Can I try something else for you?' - no evaluation and no score. The picker entry clicked was 'Extended thinking' but the composer chip then read 'Flash Extended'. This Chrome denies page-content reading on gemini.google.com, so the run read the answer from a screenshot; the answer here is from its copy button. First attempt, the Extended thinking toggle on Flash; superseded by the retry on 3.1 Pro below."
     },
     {
       "site": "gemini.google.com",
