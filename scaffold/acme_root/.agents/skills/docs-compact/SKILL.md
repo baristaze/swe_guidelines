@@ -152,7 +152,9 @@ left as it is, and the report names it under Kept.
 4. **Cut the changelog** to its latest release: the lines above the
    first release, that one section, and one line that says every
    release's notes stay on the repository host. Each older section goes
-   when its preparation holds. Commit.
+   when its preparation holds. A line above the first release that the
+   cut makes false, such as one that says each release has an entry
+   here, is rewritten to what the file holds after the cut. Commit.
 5. **Clean the rows** of `specs/architecture.md`: each says what the
    substitution or the deviation is, in the present tense, with its end
    condition when it has one. A date, a release, and "ended with" go. A
