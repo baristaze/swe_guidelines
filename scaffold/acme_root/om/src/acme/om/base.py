@@ -94,9 +94,12 @@ class Named(Platform):
 
 
 class Created(Platform):
-    """When a row came to be. For a record that is written once and never
-    edited (an idempotency record, a socket ticket); an entity that changes
-    composes `Trackable` instead."""
+    """When a row came to be, for a row the platform writes for itself, such
+    as an outbox row, an idempotency record, or a socket ticket. No person
+    stands behind it, so it carries no `created_by`, and what the platform
+    stamps on it later is a field named for what happened (`done_at`,
+    `redeemed_at`). An entity a person makes and changes composes
+    `Trackable` instead."""
 
     created_at: datetime
 

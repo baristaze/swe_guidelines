@@ -69,3 +69,33 @@ maintenance worker applies it.
   ([ADR 0051](../docs/adr/0051-a-refused-key-is-unavailable-a-refused-request-is-refused.md)).
 - **A twin that says it is one**, and is refused in a deployed
   environment.
+
+## What a provider that hangs costs a call
+
+Each SDK keeps its own retries. WorkOS's SDK retries a timeout, so a
+provider that takes a call and never answers holds it for the timeout
+on every attempt, plus the waits between them. At the default timeout
+of 10 seconds:
+
+| Provider | Attempts | Waits between them, at most | A call gives up after, at most |
+|----------|----------|-----------------------------|--------------------------------|
+| WorkOS | 4 | 1.5, 3, and 6 seconds | 50.5 seconds |
+
+The timeout bounds each wait on the network (to connect, to send, and
+between bytes of the answer), not an attempt as a whole. WorkOS also
+waits as long as a `Retry-After` on a 429 or a server error asks, with
+no cap of its own.
+
+That is what a call costs a worker. A request makes its calls in turn,
+and they share its deadline, `ACME_REQUEST_DEADLINE_SECONDS` (20
+seconds) from when it was admitted, so a provider that hangs costs a
+request that and no more (ADR 0069):
+
+- a call that starts with no time left does not start;
+- a call still waiting at the deadline, on an attempt, on the wait
+  before the next, or on a wait the provider asked for, is cut there;
+- WorkOS sends each attempt with the smaller of the timeout and what is
+  left, and a `Retry-After` longer than what is left ends the call at
+  once instead of being slept;
+- the call then raises what it raises when the provider does not
+  answer: `ProviderUnavailable` (`503 unavailable`).
