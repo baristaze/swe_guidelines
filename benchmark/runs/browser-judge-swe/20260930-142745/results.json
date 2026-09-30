@@ -1,0 +1,71 @@
+{
+  "run_id": "20260930-142745",
+  "started_at": "2026-09-30T14:27:45Z",
+  "finished_at": "2026-09-30T14:52:31Z",
+  "repository_head": "d98c2184d7f68d412ff4c7093aadc3dfa87ad372",
+  "prompt": "You are a highly senior software engineer and architect.\nEvaluate the repository below from a software design and architecture perspective.\nGive it a score from 0 to 100, then defend your evaluation:\nhttps://github.com/baristaze/swe_guidelines\n\nDo not be biased by who wrote it, an agent or a human, or by how fast it was developed.\nEvaluate the material itself.",
+  "contract": "Report format, so evaluations compare:\nFirst line: `Score: NN/100` and nothing else on that line.\n`## Strengths`: what holds, one line each.\n`## Weaknesses`: what does not, most severe first, one line each.\n`## What I would change`: concrete edits, one line each.\n`## Method`: what you read (files, tag or commit, how deep), one line each.",
+  "sizes": {
+    "model": "m",
+    "effort": "m"
+  },
+  "note": "model=m effort=m resolved, before anything was sent, to: chatgpt.com Latest / High; claude.ai Opus 5.5 / High; gemini.google.com 3.1 Pro / none; grok.com Expert / none",
+  "sessions": [
+    {
+      "site": "chatgpt.com",
+      "url": "[redacted]",
+      "model_label": "Latest",
+      "effort_label": "High",
+      "started_at": "2026-09-30T14:30:43Z",
+      "finished_at": "2026-09-30T14:32:25Z",
+      "score": 94,
+      "read_version": "the current `main` material available on September 30, 2026; release `v0.37.0`, whose changelog is dated September 26, 2026",
+      "polls": 1,
+      "response_path": "chatgpt.com.md",
+      "status": "ok",
+      "note": "a \"Library is now Space\" tip was closed with its ×; done at the first poll, so the finish time is the send time plus the page's \"Worked for 1m 42s\""
+    },
+    {
+      "site": "claude.ai",
+      "url": "[redacted]",
+      "model_label": "Opus 5.5",
+      "effort_label": "High",
+      "started_at": "2026-09-30T14:31:26Z",
+      "finished_at": "2026-09-30T14:41:43Z",
+      "score": 72,
+      "read_version": "`main` at `d98c218` (tag `v0.45.0`, 2026-09-30)",
+      "polls": 6,
+      "response_path": "claude.ai.md",
+      "status": "ok",
+      "note": "a \"One Claude for your work\" tour was closed with \"Later\", not \"Next\"; step 4's check on the new-chat page (find, the page text, a screenshot, and the composer's menus) found no line saying the product can act on the machine, but after the prompt was sent the conversation page's text read \"[redacted], Connected\" and \"Computer actions available\"; the answer says it ran 11 commands and the root test suite as root on Python 3.14.0rc2, and no clone of the repository showed among the processes of [redacted] at polls 1 and 3; the person may want to turn computer actions off for benchmark runs; an \"Approaching weekly limit\" banner with \"Get more usage\" showed above the composer and was closed with its ×, not \"Get more usage\"; the copied answer opens with two lines the product wrote between its tool steps, before the score line"
+    },
+    {
+      "site": "gemini.google.com",
+      "url": "[redacted]",
+      "model_label": "3.1 Pro",
+      "effort_label": "none",
+      "started_at": "2026-09-30T14:38:57Z",
+      "finished_at": "2026-09-30T14:49:49Z",
+      "score": null,
+      "read_version": "not stated",
+      "polls": 10,
+      "response_path": "gemini.google.com.md",
+      "status": "errored",
+      "note": "the first attempt ended in the page's own error, \"I seem to be encountering an error. Can I try something else for you?\", at [redacted] after 4 polls; the second attempt showed a spinner and a stop control for nine polls, and at the tenth the page was back on a new chat with the whole message in the composer, unsent: it printed no answer and no error, and the tab never took a conversation's address, so the URL is the new-chat page's; nothing was sent a third time"
+    },
+    {
+      "site": "grok.com",
+      "url": "[redacted]",
+      "model_label": "Expert",
+      "effort_label": "none",
+      "started_at": "2026-09-30T14:32:39Z",
+      "finished_at": "2026-09-30T14:36:19Z",
+      "score": 80,
+      "read_version": "`d98c218` (Release 0.45.0 on `main`)",
+      "polls": 3,
+      "response_path": "grok.com.md",
+      "status": "ok",
+      "note": "Expert stayed checked and no plan page opened; a \"Meet Grok Bot\" banner under the composer was left alone, neither \"Dismiss\" nor \"Download\" clicked"
+    }
+  ]
+}
