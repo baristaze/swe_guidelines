@@ -48,7 +48,10 @@ Procedure (the same as the `arch-review-<group>` skills):
    - A lens covered `partial` is decided in step 4, and the rule's
      summary says which part the checker holds. A checker finding in
      scope makes the lens a finding. With no checker finding, the rest
-     is judged, and the lens passes only when that rest passes too.
+     is judged, and the lens passes only when that rest passes too. An
+     entry under the rule's `to_judge` is a place the checker names for
+     that judgment: never a finding, and dropped when its file is
+     outside the scope.
    - A lens absent from `rules_run` is judged whole in step 4.
    - When the message carries no output, or says the checker did not
      run, judge every lens in step 4 and say so in the Scope line. The

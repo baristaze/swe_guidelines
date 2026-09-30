@@ -97,7 +97,9 @@ of a changed signature.
      summary says which part the checker holds. A checker finding in
      scope makes the lens a finding whatever the rest shows. With no
      checker finding, the rest is judged, and the lens passes only
-     when that rest passes too.
+     when that rest passes too. An entry under the rule's `to_judge`
+     is a place the checker names for that judgment: never a finding,
+     and dropped when its file is outside the scope.
    - A lens absent from `rules_run` is judged whole in step 4.
    - When the checker cannot run (the command is refused, a Python
      older than 3.11, exit code 2, a project pinned to a newer Python
