@@ -16,9 +16,10 @@ next period of a record kept per period".
 
 ## Decision
 
-**One mechanism, a namespace of its own.** `om/orchestrations` holds
-the record (`Orchestration`: a kind, its input, a period, a status, a
-cursor, a total, what the steps applied and skipped, the first twenty
+**One mechanism, a namespace of its own.**
+`om/src/acme/om/orchestrations` holds the record (`Orchestration`: a
+kind, its input, a period, a status, a cursor, a total, what the steps
+applied and skipped, the first twenty
 skipped rows with a reason, a park reason, a fail reason, and a
 version), its storage in Postgres and in memory under the tenant fence,
 and its manager: `start`, `get`, `get_recent`, `resume`, `wake`,

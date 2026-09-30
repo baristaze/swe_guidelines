@@ -40,7 +40,7 @@ What the tree gives up is a screen. The security context the rule
 protects is already separate: the operator path is `OperatorContext`,
 and nothing in the portal's bundle can reach it. The routes are the
 contract the console is built against, so their wire types live in
-`services/api/types` like every other route's.
+`services/api/src/acme/services/api/types` like every other route's.
 
 A screen operators need is the trigger to build the console, never a
 reason to put the screen into the portal.
