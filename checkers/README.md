@@ -14,7 +14,7 @@ It reads the source with `ast` and never imports it. It needs Python
 A project pins the guideline release it follows:
 
 ```bash
-uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.42.0#subdirectory=checkers" arch-check
+uvx --python 3.14 --from "git+https://github.com/baristaze/swe_guidelines@v0.43.0#subdirectory=checkers" arch-check
 ```
 
 `--python` names the Python the project pins in `.python-version`. On
