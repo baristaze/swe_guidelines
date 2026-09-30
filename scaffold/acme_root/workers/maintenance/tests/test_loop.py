@@ -405,7 +405,9 @@ async def claim_all(outbox: OutboxStorageInterface) -> list[OutboxRow]:
 # On the test clock the loop runs on its own defaults: a lease of a minute,
 # renewed every twenty seconds and fenced at thirty. A minute passes there in
 # no wall time, and the lease the storage stamps from the wall clock outlives
-# any stall of the process.
+# any stall of the process. So a test that holds a claimed item until it stops
+# the loop runs there: a stall during the drain neither expires the item nor
+# moves the bound on the stop.
 DEFAULTS = LoopOptions(worker_id="maintenance-test")
 
 
@@ -960,11 +962,12 @@ async def test_liveness_fails_once_the_heartbeat_stops(tmp_path: Path) -> None:
     await ended(task)
 
 
+@on_the_test_clock
 async def test_stop_drains_first_and_goes_offline_last(tmp_path: Path) -> None:
     container = build_container(tmp_path)
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
-    loop, task = start_loop(container, handler, fast_options())
+    loop, task = start_loop(container, handler, DEFAULTS)
     liveness = container.infra.get_cache(CacheScope.WORKER_LIVENESS)
     item = make_item(ctx)
     await container.managers.work.enqueue(ctx, item)
@@ -984,6 +987,7 @@ async def test_stop_drains_first_and_goes_offline_last(tmp_path: Path) -> None:
     assert loop.sweeps >= 1
 
 
+@on_the_test_clock
 async def test_stop_goes_offline_even_when_a_release_fails(tmp_path: Path) -> None:
     # The database is down at shutdown: returning the item fails with an error
     # that says nothing about the lease. The drain still awaits every item,
@@ -993,7 +997,7 @@ async def test_stop_goes_offline_even_when_a_release_fails(tmp_path: Path) -> No
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
     work = FailingReleaseWork(container.managers.work)
-    loop, task = start_loop(container, handler, fast_options(capacity=2), work=work)
+    loop, task = start_loop(container, handler, DEFAULTS, work=work)
     liveness = container.infra.get_cache(CacheScope.WORKER_LIVENESS)
     items = [make_item(ctx), make_item(ctx)]
     for item in items:
@@ -1103,6 +1107,7 @@ def aged_event(ctx: TenantContext, produced_at: datetime) -> Event:
     )
 
 
+@on_the_test_clock
 async def test_stop_during_a_claim_still_returns_the_item(tmp_path: Path) -> None:
     """`stop()` lands while the claim is on its way back: the loop exits before
     the task it created has taken a step. Cancelling a task that never ran
@@ -1113,7 +1118,7 @@ async def test_stop_during_a_claim_still_returns_the_item(tmp_path: Path) -> Non
     ctx = await sign_in(container)
     handler = SlowHandler(hold=5.0)
     work = StopOnClaimWork(container.managers.work)
-    loop, task = start_loop(container, handler, fast_options(), work=work)
+    loop, task = start_loop(container, handler, DEFAULTS, work=work)
     work.stop = loop.stop
     item = make_item(ctx)
     await container.managers.work.enqueue(ctx, item)
