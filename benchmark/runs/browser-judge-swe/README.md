@@ -22,7 +22,10 @@ contract, as each run's `results.json` records them. The Set column
 marks them: rows of one set compare, and rows of two sets do not. A
 score marked `smaller-mode` ran on a smaller model or mode than its size
 asked for, because the account locks that one, and it compares with no
-other score.
+other score. This page is in the repository the products evaluate, so a
+product can read it. A run where an answer names this folder or an
+earlier run, or says what an earlier run scored, read the earlier
+scores: it is a set of its own, and its note says which site read them.
 
 Each run's folder holds its `results.json` and one answer per session,
 as the product wrote it, redacted. `[redacted]` marks each place a

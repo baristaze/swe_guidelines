@@ -83,13 +83,18 @@ top. The cells, in the header's order, from the copied `results.json`:
   of each run a row names, in its `results.json` in the checkout, with
   `python3`. When one has all three the same, the row takes that row's
   letter; otherwise the next letter no row uses, `A` when there is none.
+  A session whose answer names `benchmark/runs/browser-judge-swe` or an
+  earlier run, or says what an earlier run scored, read the earlier
+  scores: its run takes the next letter no row uses, whatever it shares.
 - Note: for each session that is not `ok`, its site, a colon, and why:
   the remark of its `note` that says so, in its own words, shortened to
   one clause, such as `grok.com: Expert needs a SuperGrok plan`; its
-  status when it has no `note`. These are joined by a semicolon and a
-  space. When the letter is new and other rows exist, the note first
-  says which of the sizes, the prompt, and the contract differ from
-  every other run's. `—` when there is nothing to say.
+  status when it has no `note`. For each session that read the earlier
+  scores, its site and `read earlier runs`. These are joined by a
+  semicolon and a space. When the letter is new and other rows exist,
+  the note first says why: which of the sizes, the prompt, and the
+  contract differ from every other run's, or that a session read the
+  earlier scores. `—` when there is nothing to say.
 
 ## The check
 
