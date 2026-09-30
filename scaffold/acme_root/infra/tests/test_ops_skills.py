@@ -69,6 +69,8 @@ DATABASE_AUDITS = [
 # A path from the skill's own folder: one that climbs out of it (`../`),
 # or one under its `references/`. Any other path is the tree's, from its root.
 SKILL_PATH = re.compile(r"(?<![\w./-])((?:\.\./)+[\w.-][^\s`'\")]*|references/[^\s`'\")]+)")
+# A path only one agent resolves: Claude Code's substitution, or its own folder.
+ONE_AGENTS_PATH = re.compile(r"\$\{CLAUDE_SKILL_DIR\}|\.claude/skills/")
 
 
 def _own(pattern: str = "*") -> list[str]:
@@ -90,8 +92,12 @@ def _prose(name: str) -> str:
 
 
 def _allowed_tools(name: str) -> str:
+    return str(_frontmatter(name).get("allowed-tools", ""))
+
+
+def _frontmatter(name: str) -> dict[str, object]:
     _, frontmatter, _ = _skill(name).split("---", 2)
-    return str(yaml.safe_load(frontmatter).get("allowed-tools", ""))
+    return yaml.safe_load(frontmatter)
 
 
 def test_the_shared_preamble_exists_and_holds_what_moved_into_it() -> None:
@@ -193,6 +199,93 @@ def test_a_database_audit_builds_its_own_database_and_drops_it(name: str) -> Non
     assert "it logs in only to the database it made on the local stack, and drops it" in text
 
 
+# Every loop an agent runs in a skill, stated with its count and with what the
+# skill does when the count is reached. A strong model keeps going until
+# something stops it, and a clock alone stops nothing before the session runs
+# out, so a rewrite that drops a count fails here.
+COUNT_BOUNDS = {
+    "ops-watch": [
+        "at least 30 seconds",
+        "A shorter interval is raised to 30 seconds",
+        "A watch runs at most 30 batches.",
+        "the interval is widened to `--for` divided by 30, up to five minutes",
+        "an hour asked at 10 seconds runs 30 batches of two minutes",
+        "its report names the part of the window it did not watch",
+        "A batch makes at most 20 tool calls.",
+        "A read that would be the 21st call is not made",
+        "with `k` from 0 to at most 29",
+        "The period of each `get-metric-data` query, its `Period` and the last argument "
+        "of a `SEARCH` expression, is a whole minute",
+        "The sub-agent names its Next and never runs it",
+        "A session follows at most 2 hops of Next.",
+        "never more than 30 batches, never a batch shorter than 30 seconds, "
+        "never more than 20 tool calls in a batch",
+    ],
+    "ops-root-cause": [
+        "A run follows at most 5 request ids, one pass each",
+        "It lists every id past the fifth as not followed",
+        "Poll `get-query-results` at most 10 times for one query, each poll after `sleep 5`",
+        'writes its log leg as "not read: the query did not finish in 10 polls"',
+        "Probe with `limit=1`",
+        'the pass ends with "not found" for its id',
+        "never more than 5 request ids, never a second pass over one, "
+        "never more than 10 polls of a query",
+    ],
+    "ops-investigate": [
+        "Poll `get-query-results` at most 10 times for one query, each poll after `sleep 5`",
+        'as "not read: the query did not finish in 10 polls"',
+        "Step 8's query is polled the same way.",
+        "A session follows at most 2 hops of Next.",
+        "never more than 10 polls of a query",
+    ],
+    "stress-test-run": ["A session follows at most 2 hops of Next."],
+    "ops-cloud-deployment-create": ["Its Next is the person's to run, never the session's"],
+    "stress-test-create-or-update": ["Its Next is the person's to run, never the session's"],
+    "audit-database-calls": ["the first run plus at most 1 rerun"],
+}
+# The skills whose report's Next a person runs: no session follows it.
+PERSONS_NEXT = ["ops-cloud-deployment-create", "stress-test-create-or-update"]
+# The skills that wait between two reads with `sleep`.
+SLEEPERS = ["ops-investigate", "ops-root-cause", "ops-watch"]
+
+
+@pytest.mark.parametrize(
+    ("name", "bound"), [(name, bound) for name, bounds in COUNT_BOUNDS.items() for bound in bounds]
+)
+def test_every_loop_a_skill_runs_states_its_count(name: str, bound: str) -> None:
+    assert bound in _prose(name), f"{name} no longer says: {bound}"
+
+
+@pytest.mark.parametrize("name", PERSONS_NEXT)
+def test_a_next_that_is_the_persons_is_never_counted_as_a_hop(name: str) -> None:
+    assert "hops of Next" not in _prose(name)
+
+
+@pytest.mark.parametrize("name", SLEEPERS)
+def test_a_skill_that_waits_between_polls_may_sleep(name: str) -> None:
+    assert "Bash(sleep:*)" in _allowed_tools(name)
+
+
+# A watch's batches start at its own second, and a metric's datapoint is a
+# whole minute: a batch that passed its own bounds would read the minute it
+# shares with the next batch twice, and every count would be about double.
+ONE_READ_A_MINUTE = [
+    "the two bounds a batch passes are its start and its end, each rounded down to a whole minute",
+    "no minute is read twice",
+    "makes no metric read; the next batch reads that minute",
+    "The period of each `get-metric-data` query, its `Period` and the last argument of a "
+    "`SEARCH` expression, is a whole minute, 60 seconds, whatever the batch interval",
+    "a count is `increase(<metric>[1m])`",
+    "each a range query from the rounded start plus 60 seconds to the rounded end, "
+    "at a 60-second `step`",
+]
+
+
+@pytest.mark.parametrize("sentence", ONE_READ_A_MINUTE)
+def test_a_watch_reads_each_minute_of_a_metric_once(sentence: str) -> None:
+    assert sentence in _prose("ops-watch"), f"ops-watch no longer says: {sentence}"
+
+
 def test_triage_closes_nothing_without_the_persons_word() -> None:
     text = _prose("tickets-triage")
     assert "Never closes a ticket without `--apply` and the person's word in this session" in text
@@ -215,6 +308,33 @@ def test_every_reference_resolves_and_every_reference_file_is_named_by_a_step(na
             continue
         relative = extra.relative_to(folder).as_posix()
         assert relative in SKILL_PATH.findall(procedure), f"{name}: no step names {relative}"
+
+
+@pytest.mark.parametrize("name", [*_own(), "_shared"])
+def test_no_skill_names_a_path_only_one_agent_resolves(name: str) -> None:
+    """Another agent reads `${CLAUDE_SKILL_DIR}` as it is written, and
+    `.claude/skills/` is Claude Code's folder, not the standard's."""
+    for path in sorted((SKILLS / name).rglob("*.md")):
+        found = ONE_AGENTS_PATH.findall(path.read_text())
+        assert not found, f"{path.relative_to(SKILLS)} names {found}"
+
+
+def test_the_skills_a_person_starts_by_name_are_the_administrators() -> None:
+    started_by_name = [
+        name for name in _own() if _frontmatter(name).get("disable-model-invocation") is True
+    ]
+    assert started_by_name == ADMINISTRATORS
+
+
+@pytest.mark.parametrize("name", _own())
+def test_codex_starts_a_skill_on_its_own_exactly_when_claude_code_does(name: str) -> None:
+    """Codex does not read `disable-model-invocation`; a skill that carries
+    it also carries Codex's switch, `agents/openai.yaml`, and a skill the
+    model may start carries neither."""
+    by_name = _frontmatter(name).get("disable-model-invocation") is True
+    codex = SKILLS / name / "agents" / "openai.yaml"
+    policy = yaml.safe_load(codex.read_text()).get("policy", {}) if codex.exists() else {}
+    assert (policy.get("allow_implicit_invocation") is False) == by_name, f"{name}: {policy}"
 
 
 def test_the_watch_hands_its_sub_agent_the_preamble_from_the_repository_root() -> None:

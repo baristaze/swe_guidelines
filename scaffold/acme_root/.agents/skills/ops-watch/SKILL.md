@@ -159,22 +159,28 @@ wait.
 5. Each interval, read one number per signal for that interval and
    nothing more: the request count, the 5xx count, the p95, the
    worker failures, through `get-metric-data`, or the same as a
-   Prometheus range query. The period of each `get-metric-data` query
-   (its `Period`, and the last argument of a `SEARCH` expression) is
-   60 seconds whatever the batch interval, since CloudWatch refuses a
-   shorter one, or one that is not a whole number of minutes, for a
-   regular-resolution metric. The watch rounds both bounds it passes,
-   `--start-time` and `--end-time`, down to whole minutes, so
-   consecutive batches split the minutes with no overlap and each
-   datapoint is read once, when its minute is complete. A 30-second
-   batch whose rounded bounds are equal makes no metric call, in the
-   cloud or locally, and writes its metrics as read in the next batch,
-   never as a zero. Locally the range query is
-   `increase(<metric>[1m])` from the rounded start plus 60 seconds to
-   the rounded end, at a 60-second step. A batch's count is the sum of
-   its datapoints, and its p95 the highest among them. A burst is a
-   count in the batch, never a line per event: the batch's lines over
-   `--cap` are counted by level and dropped.
+   Prometheus range query. A datapoint is a whole minute, so the two
+   bounds a batch passes are its start and its end, each rounded down
+   to a whole minute. Two batches in a row then split the minutes
+   between them, no minute is read twice, and each is read once it is
+   complete. A batch whose rounded start and end are the same minute
+   (a 30-second batch can be) makes no metric read; the next batch
+   reads that minute. Such a batch writes "metrics read in the next
+   batch" in place of its numbers, never a zero, which would read as
+   traffic stopping. The period of each `get-metric-data` query, its
+   `Period` and the last argument of a `SEARCH` expression, is a whole
+   minute, 60 seconds, whatever the batch interval: CloudWatch refuses
+   a period that is not a multiple of 60 for a regular-resolution
+   metric, and a longer one would reach past the batch's rounded end
+   into the next batch's minutes. Locally, a count is
+   `increase(<metric>[1m])` and the p95 is
+   `histogram_quantile(0.95, sum by (le) (increase(acme_http_request_seconds_bucket[1m])))`,
+   each a range query from the rounded start plus 60 seconds to the
+   rounded end, at a 60-second `step`: each point is one complete
+   minute of the batch. A batch's count is the sum of its datapoints,
+   and its p95 the highest among them. A burst is a count in the
+   batch, never a line per event: the batch's lines over `--cap` are
+   counted by level and dropped.
 6. The first responder rule. In production every alarm transition is
    an escalation. Outside production it is read against the size of
    step 2, and it is suppressed only when the traffic is the team's

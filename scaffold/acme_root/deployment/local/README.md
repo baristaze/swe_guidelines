@@ -13,6 +13,12 @@ command below runs from the repository root.
 The compose project is `acme`, so containers are named `acme-<service>-1`
 and volumes `acme_<volume>`. `COMPOSE_PROJECT_NAME` sets another.
 
+MinIO serves no public image, so the object store is `pgsty/minio`, the
+community fork of the same server. It reads the same settings and data
+directory, bundles `mc`, and keeps the web console. The compose file pins
+a dated release tag and its digest; a bump takes the newest `RELEASE.*`
+tag and its digest from `docker buildx imagetools inspect pgsty/minio:<tag>`.
+
 ## Ports
 
 Every host port is a knob in `.env.example`, on 127.0.0.1 only. Set one in

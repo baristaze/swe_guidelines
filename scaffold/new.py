@@ -11,7 +11,9 @@ and the database logins take the snake form (`free_press`), the
 distributions, the domains, and the cloud resources the kebab form
 (`free-press`), the environment the UPPER prefix (`FREE_PRESS_`), and prose
 the Title (`Free Press`). Binary files are copied as they are, and a link
-stays a link. The copy's skills sit in `.agents/skills/`, and its
+stays a link. `pnpm-lock.yaml` lists each importer's dependencies by name, as
+pnpm writes it, so the renamed workspace package moves to its name's place.
+The copy's skills sit in `.agents/skills/`, and its
 `.claude/skills` is a link to them, whatever the source holds there: the link,
 or a folder when the scaffold was copied without its links. The copy pins the
 guideline release this checkout carries and starts a git repository. When the
@@ -159,6 +161,37 @@ def rename(text: str, names: Names) -> str:
     return TOKEN.sub(form, text)
 
 
+LOCKFILE = "pnpm-lock.yaml"
+"""The lockfile pnpm writes."""
+LOCKED_GROUP = re.compile(r"    \w+:")
+"""What opens a group of an importer's dependencies in it, such as
+`dependencies:`."""
+
+
+def in_pnpm_order(text: str) -> str:
+    """The lockfile `text` with each group of each importer's dependencies in
+    the order pnpm writes it: by name, as strings compare. A renamed workspace
+    package otherwise keeps the placeholder's place, and pnpm moves it the
+    first time it writes the file."""
+    lines, out, importers, at = text.split("\n"), [], False, 0
+    while at < len(lines):
+        line = lines[at]
+        if line[:1].strip():
+            importers = line == "importers:"
+        out.append(line)
+        at += 1
+        if importers and LOCKED_GROUP.fullmatch(line):
+            entries: list[list[str]] = []
+            while at < len(lines) and lines[at].startswith("      "):
+                if not lines[at].startswith("       ") or not entries:
+                    entries.append([])
+                entries[-1].append(lines[at])
+                at += 1
+            entries.sort(key=lambda entry: entry[0].strip(" '\":"))
+            out.extend(row for entry in entries for row in entry)
+    return "\n".join(out)
+
+
 def is_text(data: bytes) -> bool:
     if b"\0" in data:
         return False
@@ -252,6 +285,8 @@ def copy(source: Path, dest: Path, names: Names, version: str | None) -> int:
         data = path.read_bytes()
         if is_text(data):
             text = rename(data.decode("utf-8"), names)
+            if rel.name == LOCKFILE:
+                text = in_pnpm_order(text)
             if version is not None:
                 text = PIN.sub(lambda m: f"{m.group(1)}{version}", text)
             out.write_text(text, encoding="utf-8", newline="")

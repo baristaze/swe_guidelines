@@ -52,6 +52,30 @@ burstable classes. XL is growth: grow only the tier the dashboard shows
 is short. The roots ship at XS for staging and S for production; each
 root's module call is where its size is set, one line per number.
 
+The fixed $75, item by item:
+
+| Item | About a month | Why it is there |
+|------|---------------|-----------------|
+| NAT gateway, and the data through it | $35 | The tasks live in private subnets and reach the registry and AWS APIs through it |
+| Load balancer | $18 | The API's public edge; the portal's CDN reaches it too, for the page's calls |
+| Three public IPv4 addresses | $11 | The NAT's address and one per zone for the load balancer |
+| Telemetry: Container Insights, the app's metrics, logs, the alarms, the dashboard | $10 | The least certain line: each series exported to CloudWatch costs $0.30 a month, and the latency histogram is labelled by route and method. Under real traffic, plan for $20 to $50 |
+| Secrets, queues, buckets, the CDNs, traces | $2 | At low traffic most of it is inside the free allowances |
+
+The unit prices behind the sizes, read in September 2026 for us-east-1;
+us-west-2 lists these services at about the same prices:
+
+- **Fargate (x86).** 0.25 vCPU and 0.5 GB is about $9 a task, 0.5 and
+  1 GB $18, 1 and 2 GB $36. Fargate ties memory to CPU: half a vCPU
+  takes 1 GB at the least.
+- **RDS Postgres, one zone.** `db.t4g.micro` is $12, `db.t4g.small`
+  $23, `db.t4g.medium` $47, `db.m6g.large` $116, `db.m6g.xlarge` $232.
+  A second zone doubles the instance and its storage. The default 20
+  GB of gp3 is about $2.
+- **ElastiCache Valkey, per node.** `cache.t4g.micro` is $9,
+  `cache.t4g.small` $19, `cache.m6g.large` $87, `cache.m6g.xlarge`
+  $174.
+
 ## The pool follows the database
 
 A serving process opens two pools, the runtime login's and the system
@@ -60,7 +84,8 @@ tasks, migrate and grant, hold at most 8 together. The rule every size
 keeps: (twice the API's ceiling, since a rollout may double it, plus the
 worker's ceiling) × 2 pools × the pool size + 8 stays under the
 instance's `max_connections` (about 80 for `db.t4g.micro`, 180 for
-`db.t4g.small`, 400 for `db.t4g.medium`). At XS that is 5 × 2 × 6 + 8 =
+`db.t4g.small`, 400 for `db.t4g.medium`, 850 for `db.m6g.large`, 1,700
+for `db.m6g.xlarge`). At XS that is 5 × 2 × 6 + 8 =
 68. Because the rule holds at the ceilings, turning autoscaling on is one
 line ([../../docs/runbooks/scale.md](../../docs/runbooks/scale.md)).
 Raise a ceiling, and the pool is the line to check in the same change.
@@ -78,3 +103,14 @@ To spend less without changing the graph: leave production unapplied
 until it is needed, tear staging down between uses
 (`scripts/cloud_nuke.sh staging`, then `scripts/cloud_create.sh
 staging`), and commit to reserved capacity once a size is settled.
+
+These need a small Terraform change, not a new setting:
+
+- **Fargate Spot for staging.** About 70 percent off staging's tasks.
+  The service module fixes `launch_type = "FARGATE"`.
+- **Graviton tasks.** About 20 percent off every task. The task
+  definitions fix `X86_64`, and the images would need an arm64 build.
+- **Container Insights off in staging.** A few dollars. The cluster
+  module fixes it on.
+- **A NAT instance in place of the NAT gateway.** The largest fixed line
+  goes from about $35 to about $4, at the price of patching an instance.
