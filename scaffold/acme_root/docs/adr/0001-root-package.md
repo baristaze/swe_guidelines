@@ -12,11 +12,11 @@ namespace reads as `<root>.om.<ns>`, `<root>.infra.<capability>`, and
 ## Decision
 
 The root package is `acme`, the product's name. It is a namespace
-package: no distribution has an `acme/__init__.py`, so `acme-om`,
+package: no distribution has `acme/__init__.py`, so `acme-om`,
 `acme-infra`, and every service and worker add subpackages to the same
 root.
 
 ## Consequences
 
 Imports read `from acme.om.base import Platform`. Every new distribution
-uses the `src/acme/...` layout and never adds an `acme/__init__.py`.
+uses the `src/acme/...` layout and never adds `acme/__init__.py`.

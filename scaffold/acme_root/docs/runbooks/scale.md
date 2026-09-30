@@ -37,6 +37,11 @@ Per service, in `deployment/terraform/modules/service`:
 With the flip off, neither exists. The plan of the flip adds two
 resources per service and changes nothing else.
 
+The database's storage grows on its own from the first apply
+(`max_allocated_storage` is five times the allocation), flip or no
+flip: that is a ceiling on how full a disk gets, not a bill that scales
+with traffic, and a full disk is an outage.
+
 ## An apply returns the count to the floor
 
 `desired_count` stays out of `ignore_changes`, so every apply sets a

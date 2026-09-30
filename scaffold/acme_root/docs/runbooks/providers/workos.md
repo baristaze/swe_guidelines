@@ -60,7 +60,7 @@ revoked without the other.
    ([ADR 0036](../../adr/0036-sign-out-ends-the-providers-session.md)).
    Leave the sign-up, invitation, and password reset URLs unset.
 5. **Set the Sessions tab by hand**: maximum session length 30 days,
-   inactivity timeout 14 days, the same bounds as an Acme session
+   inactivity timeout 14 days, the same bounds as Acme's own session
    ([ADR 0063](../../adr/0063-sessions-last-weeks.md)).
 6. **Turn on the sign-in methods**: email, Google, and GitHub, with
    passwords off. Production needs OAuth credentials of its own at Google
@@ -75,7 +75,7 @@ WorkOS delivers its events to `https://<api host>/webhooks/identity`.
 The API checks the `WorkOS-Signature` header (an HMAC over the timestamp
 and the body, inside a three-minute window) before anything is queued. A
 checked delivery goes onto the `webhooks` queue, and the maintenance
-worker records each one whose organization names an Acme org as the
+worker records each one whose organization names one of Acme's orgs as the
 audit event `identity.event.received` in that org's stream, once per
 delivery. A delivery that names no org is dropped.
 

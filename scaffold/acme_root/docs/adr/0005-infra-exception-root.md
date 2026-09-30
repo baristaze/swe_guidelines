@@ -23,7 +23,7 @@ root and presents both in the same envelope.
 ## Consequences
 
 Every boundary that translates `PlatformException` also translates
-`InfraException`. `services/api/gateway/errors.py` does, and a new
-service copies the pair. Code that catches "any platform error" catches
+`InfraException`. `services/api/src/acme/services/api/gateway/errors.py`
+does, and a new service copies the pair. Code that catches "any platform error" catches
 both roots or neither. The roots stay two while the platform root lives
 in the object model.

@@ -83,3 +83,7 @@ index, with sequential scans allowed.
 
 A new purge across tenants takes `PLAN_WITH_VALUES` as its first
 statement, or names its predicate as a literal on a partial index.
+
+The purge of sign-in delays has no index on its column at all, so every
+plan of it reads the table. That is a question of an index, not of the
+plan cache, and it is left out here.

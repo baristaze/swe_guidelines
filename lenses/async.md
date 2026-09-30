@@ -585,10 +585,10 @@ so an outage of the cache halts every worker.
 **Principle.** Enqueue is a create: the insert that reports an existing
 id, so a retried enqueue never resets a claim, and a duplicate
 `idempotency_key` is reported, never a driver error. The manager's
-copy stamps actor, status, and attempts, clears every claim field, and
-keeps the id and the timestamps. Enqueue then publishes the wake-up
-when its insert won, and a worker polls besides, so a dropped wake
-costs one poll interval; claim stamps claim and lease together.
+copy keeps the id as constructed, stamps the times, the actor, status,
+and attempts, and clears every claim field. Enqueue then publishes the
+wake-up when its insert won, and a worker polls besides, so a dropped
+wake costs one poll interval; claim stamps claim and lease together.
 
 **Source.** Worker Roles, The Work Queue.
 
@@ -603,7 +603,7 @@ what each does to `attempts`.
 **Violation.** An enqueue that upserts, so a retry resets a claim or
 announces twice; a read-back by id after a collision on the key, which
 finds nothing and answers `Conflict`; a caller-supplied status, attempt
-count, or claim field written as sent, or a timestamp the copy resets; a
+count, or claim field written as sent; a
 publish before the row exists; a worker that claims only on the
 wake-up, so a dropped wake strands an item; a manager that enqueues in
 a second statement after its own core write instead of riding the
