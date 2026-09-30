@@ -1,7 +1,7 @@
 import asyncio
 from collections import Counter
 from collections.abc import Callable, Sequence
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -74,7 +74,7 @@ from acme.om.tenancy.rules import (
 from acme.om.tenancy.storage.impl.memory import TenancyStorageMemoryImpl
 from acme.om.tenancy.types.identity import Identity
 from acme.om.tenancy.types.invitation import Invitation
-from acme.om.tenancy.types.issued import OrgMembership
+from acme.om.tenancy.types.issued import IssuedSession, OrgMembership
 from acme.om.tenancy.types.membership import Membership
 from acme.om.tenancy.types.org import Org, OrgKind
 from acme.om.tenancy.types.socket_ticket import SocketPrincipal
@@ -2574,7 +2574,7 @@ async def test_a_switch_ends_the_session_it_was_presented_with_in_the_same_write
     assert row.target_id == ictx.credential_id or row.payload.keys() == {"user_id"}, "ids only"
     # Another tab's session is its own and is not touched.
     assert (await manager.authenticate(request(), other_tab.token)).org_id == ajax.id
-    # A switch within the same org is a fresh session, and ends the old one too.
+    # A switch within the same org makes a new session too, and ends the old one.
     same = await manager.sign_in.exchange_login(
         await manager.authenticate_login(request(), switched.token), beta.id
     )
@@ -2609,6 +2609,61 @@ async def test_two_switches_on_one_session_admit_one(manager: TenancyManagerInte
     assert len(won) == 1 and len(lost) == 1
     assert isinstance(lost[0], CredentialExpired)
     assert (await manager.authenticate(request(), won[0].token)).org_id == ajax.id
+
+
+async def test_a_session_made_from_a_session_keeps_its_deadline(
+    manager: TenancyManagerInterface, storage: TenancyStorageMemoryImpl, infra: InfraLocalImpl
+) -> None:
+    """Only the exchange of a sign-in starts an absolute lifetime. A switch,
+    into another org or within the same one, and the landing after an org's
+    deletion each make a session from a session, and it ends when the first
+    one would have: no session outlives its sign-in's lifetime."""
+    _, ajax = await manager.bootstrap(request(), "Ajax", "ajax", "ann@example.test", "Ann")
+    await manager.bootstrap(request(), "Beta", "beta", "bea@example.test", "Bea")
+    await manager.add_member(request(), "beta", "ann@example.test", "Ann", Role.MEMBER)
+    beta = await storage.read_org_by_slug("beta")
+    assert beta is not None
+
+    async def exchange(token: str, org_id: UUID) -> IssuedSession:
+        return await manager.sign_in.exchange_login(
+            await manager.authenticate_login(request(), token), org_id
+        )
+
+    async def deadline(issued: IssuedSession) -> datetime:
+        """The deadline on the row every request reads, which is the one issued."""
+        ctx = await manager.authenticate(request(), issued.token)
+        row = await storage.read_session(ctx.org_id, ctx.security.credential_id)
+        assert row is not None and row.expires_at == issued.expires_at
+        return row.expires_at
+
+    login = await manager.sign_in.dev_sign_in(request(), "ann@example.test")
+    first = await exchange(login.token, ajax.id)
+    signed_in_until = await deadline(first)
+
+    elsewhere = await exchange(first.token, beta.id)
+    assert await deadline(elsewhere) == signed_in_until, "a switch into another org"
+    same = await exchange(elsewhere.token, beta.id)
+    assert await deadline(same) == signed_in_until, "a switch within the same org"
+    back = await exchange(same.token, ajax.id)
+    owner = await manager.authenticate(request(), back.token)
+    home = (await manager.org.delete_org(owner, "Ajax")).session
+    assert home is not None and home.org.personal
+    assert await deadline(home) == signed_in_until, "the landing after an org's deletion"
+
+    # A new sign-in is what starts a new lifetime.
+    again = await exchange(
+        (await manager.sign_in.dev_sign_in(request(), "ann@example.test")).token, beta.id
+    )
+    assert await deadline(again) > signed_in_until
+    # A lifetime set shorter since the sign-in binds the next session too: the
+    # earlier of the two deadlines, never the later.
+    a_day = make_manager(
+        storage, infra, TenancyOptions(dev_sign_in=True, session_ttl=timedelta(days=1))
+    )
+    capped = await a_day.sign_in.exchange_login(
+        await a_day.authenticate_login(request(), again.token), beta.id
+    )
+    assert capped.expires_at <= utcnow() + timedelta(days=1) < signed_in_until
 
 
 async def test_a_sign_in_is_exchanged_once(

@@ -42,6 +42,7 @@ from acme.om.tenancy.rules import (
     check_time_zone,
     confirms_deletion,
     confirms_org_deletion,
+    deadline_kept,
     hash_token,
     left_without_owner,
     slug_from_name,
@@ -353,8 +354,9 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
     async def _land_home(self, user: User, asking: Session) -> IssuedSession | None:
         """The session an owner lands on in their personal org once their team
         org is gone, as a switch would make it: the same person, carrying the
-        provider's session the one that asked came from. None, and the owner
-        signs in again, when they have no personal org or it cannot be made."""
+        provider's session the one that asked came from, and its deadline.
+        None, and the owner signs in again, when they have no personal org or
+        it cannot be made."""
         places = await memberships_of(
             self._storage, user.identity_id, self._options.max_orgs_per_identity
         )
@@ -373,7 +375,7 @@ class TenancyOrgManagerImpl(TenancyOrgManagerInterface):
             user_id=home.user.id,
             token_hash=hash_token(token),
             credential_kind=CredentialKind.SESSION_TOKEN,
-            expires_at=now + self._options.session_ttl,
+            expires_at=deadline_kept(asking.expires_at, now, self._options.session_ttl),
             provider_session_id=asking.provider_session_id,
         )
         try:

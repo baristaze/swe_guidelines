@@ -21,8 +21,10 @@ class WorkManagerInterface(ABC):
         them alone. An id already written returns the row as stored, so a
         retried enqueue never resets a claim, and so does a reused idempotency
         key: the insert reports which key collided and the manager reads the
-        row back by it. Raises ValidationFailed when the payload is not the
-        shape WORK_PAYLOADS fixes for the kind."""
+        row back by it. Raises NotAuthorized when the context lacks the
+        permission WORK_ENQUEUE_PERMISSIONS names for the kind, or the table
+        names none, and ValidationFailed when the payload is not the shape
+        WORK_PAYLOADS fixes for the kind."""
         ...
 
     @abstractmethod

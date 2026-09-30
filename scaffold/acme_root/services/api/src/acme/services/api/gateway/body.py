@@ -15,10 +15,18 @@ MAX_BODY_BYTES = max(bounds.max_bytes for bounds in BOUNDS.values())
 
 async def bounded_body(request: Request) -> bytes:
     """The body, refused as soon as it passes the bound: a declared length
-    past it before a byte is read, and a stream that runs past it as it runs."""
+    past it before a byte is read, and a stream that runs past it as it runs.
+    A length is ASCII digits alone: `isdigit` admits the digits of every
+    script, some of which `int` refuses, and one written otherwise declares
+    nothing. One with more digits than `int` reads is past the bound."""
     declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
-        raise ValidationFailed(f"a body is at most {MAX_BODY_BYTES} bytes")
+    if declared is not None and declared.isascii() and declared.isdigit():
+        try:
+            past = int(declared) > MAX_BODY_BYTES
+        except ValueError:
+            past = True
+        if past:
+            raise ValidationFailed(f"a body is at most {MAX_BODY_BYTES} bytes")
     chunks: list[bytes] = []
     read = 0
     async for chunk in request.stream():

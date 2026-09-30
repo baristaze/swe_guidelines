@@ -138,7 +138,9 @@ def matching_totp_step(secret: bytes, code: str, at: datetime) -> int | None:
     or None when it matches none. Every step in the window is compared, in
     constant time, so the answer's timing says nothing about which one
     matched. Whether the step was used already is storage's to say."""
-    if len(code) != TOTP_DIGITS or not code.isdigit():
+    # ASCII digits alone: a digit of another script is no code, and the
+    # compare below raises on text that is not ASCII.
+    if len(code) != TOTP_DIGITS or not (code.isascii() and code.isdigit()):
         return None
     now = totp_step(at)
     found: int | None = None
@@ -333,6 +335,15 @@ def sign_in_delay(
         return timedelta(0)
     wait = min(base * (2 ** (failures - free)), cap)
     return max(last_failed_at + wait - now, timedelta(0))
+
+
+def deadline_kept(presented: datetime, now: datetime, lifetime: timedelta) -> datetime:
+    """When a session made from another ends, by a switch or by the landing
+    after an org's deletion: when the one presented would have, or a full
+    `lifetime` from `now` where that comes first. Only the exchange of a
+    sign-in starts an absolute lifetime, so no session outlives its
+    sign-in's."""
+    return min(presented, now + lifetime)
 
 
 def confirms_deletion(email: str, typed: str) -> bool:

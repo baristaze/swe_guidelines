@@ -48,10 +48,15 @@ def verified(payload: bytes, signature: str | None, secret: str) -> ProvidedDeli
         at = int(stamp[2:])
     except ValueError:
         raise DeliveryRefused("the signature header is not t=..., v1=...") from None
-    if abs(time.time() - at / 1000) > TOLERANCE_SECONDS:
+    # In whole milliseconds, as the header carries it: a timestamp of any
+    # length is outside the window, never too large for a float.
+    if abs(int(time.time() * 1000) - at) > TOLERANCE_SECONDS * 1000:
         raise DeliveryRefused("the signature's timestamp is outside the window")
     expected = hmac.new(secret.encode(), f"{at}.".encode() + payload, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(digest[3:], expected):
+    # The compare takes ASCII text alone and raises on anything else. A
+    # signature is hex, so a value with another character is a bad signature.
+    given = digest[3:]
+    if not given.isascii() or not hmac.compare_digest(given, expected):
         raise DeliveryRefused("the signature did not check out")
     try:
         event = json.loads(payload)

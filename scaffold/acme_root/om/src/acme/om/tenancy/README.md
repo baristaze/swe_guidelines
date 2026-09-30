@@ -35,7 +35,8 @@ plane. This is one of the kinds of thing
   user, and the owner membership land together.
 - **Exchange and switch.** A sign-in becomes a session in one org. A
   session presented to the exchange is a switch, and ends in the same
-  write.
+  write. The new session keeps its deadline: only a sign-in starts the
+  30 days.
 - **Sign out.** The credential presented ends. A hosted-page session
   also ends the provider's session in that browser.
 - **Manage an org**: create a team org, invite, change a role, remove a

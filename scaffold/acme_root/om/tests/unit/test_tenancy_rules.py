@@ -62,6 +62,9 @@ def test_a_code_matches_one_step_either_side_and_nothing_else() -> None:
     assert matching_totp_step(secret, totp_code(secret, step + 2), now) is None
     assert matching_totp_step(secret, "12345", now) is None
     assert matching_totp_step(secret, "abcdef", now) is None
+    # Digits of another script are not a code, and never reach the compare.
+    fullwidth = totp_code(secret, step).translate({48 + d: 0xFF10 + d for d in range(10)})
+    assert fullwidth.isdigit() and matching_totp_step(secret, fullwidth, now) is None
 
 
 def test_the_otpauth_uri_carries_the_secret_the_account_and_the_issuer() -> None:
