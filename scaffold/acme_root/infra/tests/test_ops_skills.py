@@ -12,6 +12,7 @@ break them, and this test holds them there.
 """
 
 import itertools
+import json
 import os
 import re
 import shlex
@@ -193,6 +194,102 @@ def test_the_root_cause_reads_of_a_tenant_keep_no_text_the_tenant_wrote() -> Non
     assert "Bash(jq:*)" in _allowed_tools("ops-root-cause")
     assert "never run either read without its `jq`" in _prose("ops-root-cause")
     assert "**Tenant.** <kind> org" in _skill("ops-root-cause")
+
+
+# Every read of the operator plane a skill writes: a `curl` of a route under
+# `/v1/admin/`, and the `jq` it is piped through on the next line. A read with
+# no filter prints whatever the answer holds, and a read each run writes its
+# own way reads something else on each run.
+OPERATOR_READ = re.compile(
+    r'^ *curl [^\n]*"\$ACME_API_URL/v1/admin/(?P<route>[^"]*)"'
+    r"(?P<piped> \\\n +\| jq (?:-c )?'(?P<kept>[^'\n]*)'$)?",
+    re.MULTILINE,
+)
+ROOT_CAUSE_READS = [
+    "me",
+    "orgs/<org_id>",
+    "orgs/<org_id>/members",
+    "orgs/<org_id>/members?cursor=<next_cursor>",
+    "orgs/<org_id>/events?after_seq=<n>&limit=1",
+    "orgs/<org_id>/events?after_seq=<seq>&limit=200",
+]
+
+
+@pytest.mark.parametrize("name", _own())
+def test_every_read_of_the_operator_plane_goes_through_jq(name: str) -> None:
+    for read in OPERATOR_READ.finditer(_skill(name)):
+        assert read["piped"], f"{name} prints a read of the operator plane whole: {read[0]}"
+
+
+def test_the_root_cause_writes_each_read_it_makes() -> None:
+    """The operator, the tenant, its members and their next page, a probe of
+    the feed, and a page of it: each is a command of the skill, so no run
+    writes its own."""
+    reads = [read["route"] for read in OPERATOR_READ.finditer(_skill("ops-root-cause"))]
+    assert reads == ROOT_CAUSE_READS
+
+
+def _jq(program: str, answer: object) -> object:
+    """What a read prints for an answer: one JSON value, never nothing."""
+    done = subprocess.run(
+        ["jq", "-c", program], input=json.dumps(answer), capture_output=True, text=True, check=True
+    )
+    (printed,) = done.stdout.splitlines()
+    return json.loads(printed)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not installed")
+def test_the_root_cause_reads_print_what_the_report_needs() -> None:
+    """Each filter runs here as the skill writes it. The operator's address
+    leaves as its domain alone, a probe that finds no event says so, a page
+    says how long it is and where the next one starts, and every read prints a
+    refusal as its code."""
+    kept = {
+        read["route"]: read["kept"] for read in OPERATOR_READ.finditer(_skill("ops-root-cause"))
+    }
+    me = {"identity_id": "0" * 32, "email": "sam@example.test", "operator_role": "read"}
+    assert _jq(kept["me"], me) == {
+        "operator_role": "read",
+        "email_domain": "example.test",
+        "error": None,
+    }
+    event = {
+        "seq": 7,
+        "kind": "tenancy.org.updated",
+        "target_id": "1" * 32,
+        "produced_at": "2026-01-01T00:00:00Z",
+        "actor_id": "2" * 32,
+        "request_id": "3" * 32,
+        "app": "portal",
+    }
+    probe = kept["orgs/<org_id>/events?after_seq=<n>&limit=1"]
+    assert _jq(probe, [event]) == {"seq": 7, "produced_at": "2026-01-01T00:00:00Z"}
+    assert _jq(probe, []) == {"seq": None, "produced_at": None}
+    page = kept["orgs/<org_id>/events?after_seq=<seq>&limit=200"]
+    assert _jq(page, [event]) == {"count": 1, "last_seq": 7, "events": [event]}
+    assert _jq(page, []) == {"count": 0, "last_seq": None, "events": []}
+    refusal = {"error": {"code": "not_found", "message": "not found", "request_id": "4" * 32}}
+    for route, program in kept.items():
+        printed = _jq(program, refusal)
+        assert isinstance(printed, dict) and printed["error"] == "not_found", route
+
+
+# Where two runs of the root cause could read two things or end two ways:
+# each is a sentence of the skill.
+ROOT_CAUSE_DECIDES = [
+    "The tracker holds no tenant",
+    "never an org id, so it is never read by the tenant or by a tag guessed for one",
+    "When the window's events hold no request tied to the symptom, the run makes no pass",
+    "with the request id the tenant saw as `--request-id`",
+    "The run never widens the window itself",
+    "The next page reads from the page's `last_seq`, until a page's `count` is under 200",
+    "The run goes on only on `operator_role: read`.",
+]
+
+
+@pytest.mark.parametrize("sentence", ROOT_CAUSE_DECIDES)
+def test_the_root_cause_leaves_no_read_to_the_run(sentence: str) -> None:
+    assert sentence in _prose("ops-root-cause"), f"ops-root-cause no longer says: {sentence}"
 
 
 def test_the_audits_are_the_skills_named_for_one() -> None:
