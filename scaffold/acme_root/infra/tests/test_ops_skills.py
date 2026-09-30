@@ -266,6 +266,9 @@ COUNT_BOUNDS = {
         'the pass ends with "not found" for its id',
         "never more than 5 request ids, never a second pass over one, "
         "never more than 10 polls of a query",
+        "An answer that is empty, or that `jq` cannot parse, is no answer.",
+        "Either way the run ends there, as on a refusal",
+        "The read is not made a second time.",
     ],
     "ops-investigate": [
         "Poll `get-query-results` at most 10 times for one query, each poll after `sleep 5`",

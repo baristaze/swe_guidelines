@@ -98,6 +98,14 @@ do not use up the first pass's one read of each signal.
    and the refusal's code otherwise. A route that answers 403 or 404
    ends the run: the token is not allowed, or the tenant does not
    exist, and neither is guessed around.
+
+   An answer that is empty, or that `jq` cannot parse, is no answer.
+   `curl -s` prints nothing when the API is out of reach, and `jq`
+   then prints nothing and exits 0. A parse error means the answer was
+   not JSON, such as a proxy's error page. Either way the run ends
+   there, as on a refusal: the report says the operator plane was not
+   read, and which of the two it was. The read is not made a second
+   time.
 3. Read the tenant's activity of the window, the operator's events
    feed:
 
