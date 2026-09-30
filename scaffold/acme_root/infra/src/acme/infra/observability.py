@@ -5,6 +5,8 @@ module."""
 import json
 import logging
 import sys
+import traceback
+from collections.abc import Iterator, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -119,13 +121,102 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+PLATFORM_PACKAGE = __name__.partition(".")[0]
+"""The root package every module of this tree sits under (ADR 0001): the one
+that defines each exception the platform raises."""
+
+
+def failure_text(error: BaseException) -> str | None:
+    """The text of `error` that a log line, the tracker, and a failure record
+    carry. Only a failure (a 5xx) the platform raised under its own roots
+    keeps its text, which names a backend, an operation, a code, or an id.
+
+    Any other exception's text quotes what it was handed. Pydantic's
+    `ValidationError` quotes the input it refused. A driver's constraint
+    error quotes the row, in its `DETAIL` line. A refusal (a 4xx) quotes what
+    the caller sent, and the envelope hands that back to the caller alone.
+    So such an exception leaves the process as its type and its frames, and
+    its words stay in it, whatever type is raised next."""
+    status = getattr(error, "http_status", None)
+    ours = type(error).__module__.partition(".")[0] == PLATFORM_PACKAGE
+    if ours and isinstance(status, int) and status >= 500:
+        return str(error)
+    return None
+
+
+def described(error: BaseException) -> str:
+    """What a log line, the tracker, and a failure record say of `error`: its
+    type, and the text `failure_text` keeps."""
+    text = failure_text(error)
+    return f"{type(error).__name__}: {text}" if text else type(error).__name__
+
+
+CAUSE = "\nThe above exception was the direct cause of the following exception:\n\n"
+CONTEXT = "\nDuring handling of the above exception, another exception occurred:\n\n"
+
+
+def _chain(error: BaseException) -> Iterator[tuple[BaseException, str]]:
+    """`error`, then the exception it was raised from or while handling, and
+    so on back. Each comes with the line a traceback prints after it, before
+    the exception it led to."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    joint = ""
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current, joint
+        if current.__cause__ is not None:
+            current, joint = current.__cause__, CAUSE
+        elif not current.__suppress_context__:
+            current, joint = current.__context__, CONTEXT
+        else:
+            current = None
+
+
+def traceback_of(error: BaseException) -> str:
+    """The traceback Python prints for `error`, oldest exception first, with
+    every frame and each exception's type, and only the text `failure_text`
+    keeps. A note added to an exception is left out with the rest of its
+    text."""
+    blocks: list[str] = []
+    for exception, joint in _chain(error):
+        kind = type(exception)
+        name = kind.__qualname__
+        if kind.__module__ not in ("builtins", "__main__"):
+            name = f"{kind.__module__}.{name}"
+        text = failure_text(exception)
+        frames = traceback.format_tb(exception.__traceback__)
+        head = "Traceback (most recent call last):\n" + "".join(frames) if frames else ""
+        blocks.append(f"{head}{name}{': ' + text if text else ''}\n{joint}")
+    return "".join(reversed(blocks)).rstrip("\n")
+
+
+def message_of(record: logging.LogRecord) -> str:
+    """The record's message as `getMessage` builds it, with each exception in
+    it, the template or an argument, `described`."""
+    template = described(record.msg) if isinstance(record.msg, BaseException) else str(record.msg)
+    args = record.args
+    if not args:
+        return template
+    if isinstance(args, Mapping):
+        return template % {key: _held(value) for key, value in args.items()}
+    return template % tuple(_held(arg) for arg in args)
+
+
+def _held(arg: object) -> object:
+    return described(arg) if isinstance(arg, BaseException) else arg
+
+
 class JsonFormatter(logging.Formatter):
+    """One JSON object a line. An exception in it, logged with the line or
+    named in its message, says what `described` says and no more."""
+
     def format(self, record: logging.LogRecord) -> str:
         line = {
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": message_of(record),
             "service": getattr(record, "service", _process.service),
             "environment": getattr(record, "environment", _process.environment),
             "request_id": getattr(record, "request_id", "-"),
@@ -144,8 +235,8 @@ class JsonFormatter(logging.Formatter):
         sweep = getattr(record, "sweep", None)
         if isinstance(sweep, dict):
             line["sweep"] = sweep
-        if record.exc_info:
-            line["exception"] = self.formatException(record.exc_info)
+        if record.exc_info and record.exc_info[1] is not None:
+            line["exception"] = traceback_of(record.exc_info[1])
         return json.dumps(line)
 
 
@@ -187,7 +278,12 @@ def outgoing_event(event: Any, hint: Any) -> Any:
     integration fills `request` with the URL, the query string, and the
     headers, each the caller's own text, and the tracker shows an event to
     whoever looks into the request. The route is the event's transaction; a
-    request no route took is named by its URL there, so it is `unmatched`."""
+    request no route took is named by its URL there, so it is `unmatched`.
+
+    Of each exception it keeps the type, the frames, and only the text
+    `failure_text` keeps. Of a log line's message it keeps what `message_of`
+    writes: the SDK has turned each argument into its text by now, so the
+    message is built again from the record."""
     request_id = request_id_var.get()
     if request_id:
         event.setdefault("tags", {})["request_id"] = request_id
@@ -197,7 +293,30 @@ def outgoing_event(event: Any, hint: Any) -> Any:
     info = event.get("transaction_info")
     if isinstance(info, dict) and info.get("source") == "url":
         event["transaction"] = "unmatched"
+    hint = hint if isinstance(hint, dict) else {}
+    raised = (hint.get("exc_info") or (None, None))[1]
+    kept: set[str] = set()
+    if isinstance(raised, BaseException):
+        kept = {text for exception, _ in _chain(raised) if (text := failure_text(exception))}
+    for value in (event.get("exception") or {}).get("values") or ():
+        if isinstance(value, dict) and value.get("value") not in kept:
+            value.pop("value", None)
+    record, entry = hint.get("log_record"), event.get("logentry")
+    if isinstance(record, logging.LogRecord) and isinstance(entry, dict):
+        entry["formatted"] = message_of(record)
+        entry["params"] = []
+        if isinstance(record.msg, BaseException):
+            entry["message"] = described(record.msg)
     return event
+
+
+def outgoing_breadcrumb(crumb: Any, hint: Any) -> Any:
+    """The last word on a breadcrumb, which leaves with the next event: a log
+    line's message, as `message_of` writes it."""
+    record = hint.get("log_record") if isinstance(hint, dict) else None
+    if isinstance(record, logging.LogRecord):
+        crumb["message"] = message_of(record)
+    return crumb
 
 
 def configure_error_reporting(
@@ -216,6 +335,7 @@ def configure_error_reporting(
         server_name=service_name,
         traces_sample_rate=0.0,
         before_send=outgoing_event,
+        before_breadcrumb=outgoing_breadcrumb,
         **ERROR_REPORTING_PRIVACY,
     )
     sentry_sdk.set_tag("service", service_name)
