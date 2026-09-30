@@ -76,7 +76,8 @@ for the aspect in one message and stop.
    - Which vocabulary does it introduce? `scripts/check_leaks.py` lists
      the terms `make leaks` refuses. Its `product` group holds hardware
      vocabulary, not product names, and is refused in the guideline and
-     the lenses; its `history` group is refused in the guideline. An
+     the lenses; its `history` group is refused in the guideline and
+     the scaffold. An
      agent is an agent; say so. When the aspect needs a refused term,
      rephrase and say so in the report rather than widening the list.
    - What cascades? List each of these that applies:

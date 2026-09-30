@@ -39,7 +39,9 @@ pull request that edits it conflicts with every other open one. The
 release pull request reads the squash commits since the last tag, picks
 the highest level among them, and writes the release section of
 `CHANGELOG.md`, grouped as Fixed, Added, Changed, and Removed, with
-every reversal named as one. It moves the version in
+every reversal named as one. That section replaces the one before it:
+the changelog holds the latest release, and each release's notes stay
+on its GitHub release. It moves the version in
 `.claude-plugin/plugin.json`, and `make version` holds every copy to
 it. The tag goes on the squash of that pull request, and
 `.github/workflows/release-tag.yml` fails a tag that names another

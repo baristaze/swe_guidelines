@@ -1,0 +1,20 @@
+superseded
+amended
+deprecated
+legacy
+formerly
+previously
+originally
+used to
+no longer
+until now
+renamed from
+before this
+release before
+older releases?
+earlier (builds?|releases?)
+since v[0-9]
+as of v[0-9]
+was considered
+we changed
+has changed

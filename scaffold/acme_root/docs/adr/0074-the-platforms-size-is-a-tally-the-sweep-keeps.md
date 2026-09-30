@@ -34,7 +34,10 @@ plane's own, and it is one global row, `admin.platform_sizes`, keyed by
 `EMPTY_UUID`, the platform's reference (OM-13). It is `system`-scoped:
 no tenant, no policy. The runtime and the system logins reach it through
 the grants the admin role's migration sets. The row is a persisted read
-model: derived, and rebuilt by the next count.
+model: derived, and rebuilt by the next count. It is a row, never a
+cache entry: the cache is best effort, and a flush would lose the size
+until the next count. It is one row, never a row per count: a history
+needs a purge, and nothing reads one.
 
 **Once every five minutes, not every pass.** The counts cover a day, so
 a count five minutes old is off by at most about a three-hundredth of
@@ -61,19 +64,6 @@ carry `counted_at`, and the window is the day before it (`since`).
 count the route is `404`: the size does not exist yet. It is not `503`,
 which the gateway logs as a failure with a stack and presents as
 "internal error"; a fresh environment is not failing.
-
-## Alternatives
-
-- **Keep the live count in the handler.** The count is cheap on a small
-  platform, but STO-21 names this exact case, and a handler that scans
-  the roles the application writes to is what the rule is for.
-- **A cache entry.** The guideline allows a persisted read model to be a
-  cache entry. The cache is best effort, and a flush would lose the size
-  until the next count. The size is the operator plane's state, which the
-  `admin` role holds.
-- **A table in `core`.** A report that reads a role the application
-  writes to is STO-21's second violation.
-- **A row per count.** A history needs a purge, and nothing reads one.
 
 ## Consequences
 

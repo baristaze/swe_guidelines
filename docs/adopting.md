@@ -157,6 +157,11 @@ is cited next to the code is a documented exception. A review reports
 it on one line under Deviations. It is not a finding, and it never
 lowers a severity.
 
+An ADR says what holds. When its decision changes, rewrite it in place.
+When the deviation ends, remove it with its row. Its number never
+changes, and its status stays one date: git, the pull request, and the
+release notes say what it was.
+
 ## Operate with the built-in skills
 
 A copy of the scaffold carries its operational skills and audits under
@@ -170,6 +175,12 @@ row names, and refuses a wider one. A skill that takes `--env` runs
 with `local` against the local stack's twins, so it is tested on a
 laptop before an environment trusts it. An audit reads and reports; it
 never fixes.
+
+`/docs-compact` keeps the tree's documents to what holds: its ADRs, its
+changelog, the rows of `specs/architecture.md`, and its comments. With
+`--migrations` it also folds each role's migration chain into one
+revision under the head's revision id, once every database that exists
+is at that head. It works on a branch and pushes nothing.
 
 An existing tree copies the scaffold's `.agents/skills/` into its own
 and renames `acme` in them to its own name, in each form
@@ -220,7 +231,8 @@ only the `scaffold` branch. The merge is the project's to resolve.
 `/swe-guidelines:arch-upgrade-scaffold` makes the whole move: it
 merges, resolves what the merge leaves, and runs the gates. Two things
 stay the project's own through every move: its ADRs, which record its
-decisions, and its migration chain, which its databases applied.
+decisions, and its migration chain, which its databases applied and
+which only the project folds.
 
 Merge the move into the main branch with a merge commit, never a
 squash. A squash drops the parent that records the base, and the next

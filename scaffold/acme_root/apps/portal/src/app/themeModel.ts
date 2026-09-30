@@ -12,7 +12,7 @@ export const THEME_CHOICES: readonly { value: ThemePreference; label: string }[]
   { value: "dark", label: "Dark" },
 ];
 
-/** A stored value an older or a tampered build left is read as "system". */
+/** A stored value that is none of the three is read as "system". */
 export function parseTheme(value: unknown): ThemePreference {
   return value === "light" || value === "dark" ? value : "system";
 }

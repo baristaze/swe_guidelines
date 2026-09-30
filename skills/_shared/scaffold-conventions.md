@@ -139,7 +139,8 @@ a copy of the shape still goes wrong.
 
 A changed file gains an entry: a getter on a root, a field on
 `Managers`, a router in `HOSTED`, a row in a map, a member in the
-workspace. Nothing is reordered or removed.
+workspace. Nothing is reordered, and nothing is removed but what a
+skill's Changed table names as removed.
 
 ## After writing
 

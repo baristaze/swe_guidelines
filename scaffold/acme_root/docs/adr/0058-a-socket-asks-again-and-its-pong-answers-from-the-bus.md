@@ -32,8 +32,10 @@ every hint.
 `ACME_REALTIME_RECHECK_SECONDS` (300 by default) the handler asks the
 realtime service again, and the service calls the same `resume` the
 redemption called: the session, or the API key, and the principal
-behind it. A refusal closes the socket with 4401, as a refused ticket
-does. The first check waits a phase drawn at random within one
+behind it. It reads the rows, never a cached verdict: a cache is one
+more thing a revocation must reach, and the bus that lost the message is
+the same Valkey. A refusal closes the socket with 4401, as a refused
+ticket does. The first check waits a phase drawn at random within one
 interval, so sockets opened together (a deploy's reconnects) do not
 check together. No two checks are more than one interval apart, so a
 revocation the bus lost keeps its socket open for one interval at most.
@@ -92,22 +94,6 @@ So a lost hint hides from a quiet socket for the bound plus one ping,
 at most 85 seconds by default. Nothing a process sees can do better: a
 lost last message looks exactly like no message, and only a read tells
 them apart. A bound of zero reads on every ping.
-
-## Alternatives
-
-- **Cap a socket's life at an hour.** The client reconnects with a fresh
-  ticket, which checks everything. It bounds a lost revocation by an
-  hour, not minutes, and each reconnect costs a ticket, a handshake, and
-  a replay, about 40 round trips.
-- **Keep the verdict in a cache.** A cached "still valid" is one more
-  thing a revocation must reach, and the bus that lost the message is
-  the same Valkey. The recheck reads the rows.
-- **Count the recheck as a use.** Then an open socket keeps its session
-  alive until the absolute expiry, and the idle lifetime stops measuring
-  what a person did.
-- **Share one head read per tenant per ping.** It stays exact, but it
-  saves nothing for a tenant with one socket in a process, which is the
-  common case.
 
 ## Consequences
 

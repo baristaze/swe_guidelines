@@ -7,9 +7,9 @@ from acme.om.storage.tables.base import Base, GlobalIdentifiableMixin, Trackable
 
 EMAIL_DIGEST = "encode(sha256(decode(lower(email COLLATE pg_unicode_fast), 'escape')), 'hex')"
 """The digest a sign-in looks an identity up by (`rules.email_digest`),
-computed by the database from the stored address, folded, so every writer,
-an older release included, leaves a row the lookup finds, and two spellings
-of one address meet the unique index (ADR 0072). A generated column takes
+computed by the database from the stored address, folded, so every writer
+leaves a row the lookup finds, and two spellings of one address meet the
+unique index (ADR 0072). A generated column takes
 only immutable functions. `lower` under the builtin `pg_unicode_fast`
 collation is Unicode's full mapping whatever the database's locale, the one
 `rules.fold_email` applies. `decode(..., 'escape')` is the immutable
