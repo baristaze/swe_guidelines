@@ -329,12 +329,43 @@ def test_a_schema_without_the_exporters_dimension_is_not_the_dashboards() -> Non
     assert '{"Acme",OTelLib,environment,method,route,service,status}' in _dashboard_schemas()
 
 
-def test_the_tracker_read_narrows_its_window_by_a_search_term() -> None:
+def test_the_tracker_read_asks_for_its_window_the_trackers_way() -> None:
     """The tracker's `statsPeriod` takes `24h` and `14d` and answers 400 to
-    any other window, so the read asks for the issues last seen in it."""
+    any other window, so the read asks Sentry for the issues last seen in it.
+    GlitchTip reads that term as a tag and answers with no issue, deployed or
+    local, so only Sentry's own host is sent it."""
     text = _skill("ops-investigate")
-    assert '"query=environment:<env> lastSeen:-<since>"' in text
+    assert 'in *sentry.io*) window=" lastSeen:-<since>" ;; *) window="" ;; esac' in text
+    assert '"query=environment:<env>$window"' in text
     assert "statsPeriod=" not in text
+    assert "keep the issues whose `lastSeen` field is inside the window" in _prose(
+        "ops-investigate"
+    )
+
+
+# A cloud read that returned nothing sums to zero, and a p95 no request fed is
+# `null`. Neither is a number of the batch: a zero reads as traffic stopping.
+NOTHING_READ_IS_NOT_A_ZERO = [
+    "in the cloud a batch whose `requests` is 0 read nothing",
+    'Such a batch writes "metrics not read" in place of its numbers, never a zero',
+    "no later batch reads those minutes",
+    "the batch line's p95 is that number times 1,000, in milliseconds, "
+    "and a `null` writes `p95 none`",
+    "p95 <ms, or none>, <failures> worker failures "
+    "| metrics read in the next batch | metrics not read>",
+]
+
+
+@pytest.mark.parametrize("sentence", NOTHING_READ_IS_NOT_A_ZERO)
+def test_a_watch_never_writes_a_read_of_nothing_as_a_number(sentence: str) -> None:
+    assert sentence in _prose("ops-watch"), f"ops-watch no longer says: {sentence}"
+
+
+def test_the_cloud_p95_of_an_investigation_is_one_number_in_milliseconds() -> None:
+    text = _prose("ops-investigate")
+    assert "The report's p95 is its highest minute times 1,000, in milliseconds" in text
+    assert "The cloud has no p95 by route" in text
+    assert "p95 <ms> by route (cloud: one p95 <ms, or none>, every route together)" in text
 
 
 def test_triage_closes_nothing_without_the_persons_word() -> None:
