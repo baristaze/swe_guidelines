@@ -5,57 +5,54 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.43.0 (2026-09-30)
+## 0.44.0 (2026-09-30)
 
-A document an agent reads says what holds, and a scaffold skill keeps a
-copy to it. Minor: a rule, a lens, and a skill are added, and one rule
-loosens, named below.
+A manager that outgrows one interface delegates its duties, and the
+scaffold's tenancy manager keeps 17 of its 52 operations. Minor: a rule
+is added, with its bound in `arch-check`. Nothing is reversed.
 
-An agent acts on what it reads. Text that also carries what was, a
-superseded decision, a former value, a rejected option, makes it sort
-the adopted from the rejected before it acts. So the tree holds what is,
-and git, the pull request, and the release notes hold what was.
+An interface of 52 operations is read whole by every agent that touches
+one of them, and a caller that needs API keys depends on sign-in and
+deletion too. So a manager keeps its core, and its other duties are
+delegates reached through it.
 
 ### Added
 
-- Documentation as Code states the rule, with lens OPS-29: a README, an
-  ADR, a spec, and a comment say what holds at the head of the main
-  branch, in the present tense. A rejected option stays only as a rule's
-  near miss, "X, never Y", when Y is what a reader could reach without
-  knowing the past.
-- Records of Decisions gives an ADR its life (DEL-23, DEL-25): it is
-  rewritten in place when its decision changes and removed when it
-  constrains nothing, its number never changes, and its status is one
-  date. A substitution is one row of the one ADR that lists them. A
-  changelog holds the latest release.
-- The scaffold gains the skill `docs-compact`, optional in Operational
-  Skills. It rewrites a copy's ADRs to their present decision, removes
-  the ones that constrain nothing, cuts the changelog to its latest
-  release, cleans the rows of `specs/architecture.md`, and rewrites the
-  comments that tell what the code did before. With `--migrations` it
-  folds each role's chain. It works on a branch, pushes nothing, and
-  reports what it removed, rewrote, and kept.
-- `make leaks` reads the scaffold's documents for history, and holds its
-  ADRs to a status of one date and no Alternatives section.
+- The Business Layer says when a manager delegates and how. A delegate
+  is an interface and an impl of the same namespace, named after the
+  namespace and the duty, built by the root. A caller outside the
+  namespace reaches it through its manager
+  (`managers.tenancy.credentials.create_api_key(...)`). Inside the
+  namespace, the root may hand a delegate a sibling typed by its
+  interface, or a narrow callable for one operation of the manager.
+  CON-01, CON-09, OM-14, and CTX-21 say the same.
+- `arch-check` holds a manager interface, a delegate's included, to a
+  bound on its operations under CON-01: twenty, or the project's own
+  `max_operations` under `[tool.arch-check.options.CON-01]`.
 
 ### Changed
 
-- Loosened: STO-24 and Migrations allow a fold. An applied migration
-  file is still never edited, but a chain may become one revision that
-  holds the head's schema under the head's revision id, while every
-  database that exists is at that head. A schema dump of the chain and
-  of the fold shows them equal, and the fold's commit says so.
-- `arch-upgrade-scaffold` asks for no ADR per release and no status that
-  names the release that retired a deviation: an ADR whose rule now
-  holds is removed, or rewritten to what is left of it.
-  `arch-scaffold-app` removes the ADR its console ends.
-- The scaffold holds the rule: its ADRs carry no Alternatives section,
-  ADR 0030 is a row of ADR 0002, and its comments say what the code
-  does.
+- The scaffold's `TenancyManagerInterface` keeps seeding, the stage
+  transitions with the socket tickets, the operator grant job, and the
+  sweep. Its other 35 operations move, bodies unchanged, to four
+  delegates: `sign_in` (9), `org` (9), `members` (12), and `credentials`
+  (5), each in `tenancy/<duty>.py` with its impl in `impl/<duty>.py`.
+  Helpers two duties share are module functions in `impl/shared.py`,
+  and `build_tenancy` in `om/root.py` builds the five. No route, wire
+  type, or storage call changes.
+- The scaffold conventions and `arch-scaffold-entity` say where an
+  operation is written: a scaffold's new operations go to a new delegate
+  when the manager would pass the bound, and `purge_tenant` is always on
+  the manager itself.
 
 ### What a copy does
 
-- A copy that takes this release runs `/docs-compact` once, and
-  `/docs-compact --migrations` when every database it has is at its
-  chain's head. A snapshot older than the fold is restored at the last
-  release before the fold, which migrates it to the head.
+- A copy that takes this release merges the move into its own tenancy
+  code: `tenancy/manager.py`, `tenancy/impl/manager.py`, and the tenancy
+  tests conflict where the copy changed a moved operation. A caller of a
+  moved operation names its delegate. An operation the copy added stays
+  on the manager when the gateway, a peer, or a worker calls it, and
+  goes to the delegate of its duty otherwise.
+- A copy whose own manager interface holds more than twenty operations
+  fails `arch-check` at this release: it delegates, or sets
+  `max_operations`.
