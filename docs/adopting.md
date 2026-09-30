@@ -129,7 +129,7 @@ specifications live, and names that place in its `README.md`. Bump the
 tag when the project adopts a newer release, in a commit that also runs
 `arch-review-full all` on the main branch. A copy that keeps the scaffold as
 its base moves the pin with the merge that takes the release: see
-[the last section](#advanced-keep-the-scaffold-as-the-base).
+[Upgrade a copy of the scaffold](#upgrade-a-copy-of-the-scaffold).
 
 ## Record technology substitutions in one ADR
 
@@ -187,24 +187,7 @@ The skills assume the roles, the profiles, the env file, the
 plane's read routes that the scaffold carries. A tree without them adds
 them first.
 
-## Optional: vendor the text
-
-A project that wants the text in its tree without the plugin fetches it
-at a pinned tag into a folder it never edits:
-
-```makefile
-GUIDELINE_TAG ?= v0.40.0
-GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
-
-guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
-	mkdir -p vendor/swe_guidelines/lenses
-	curl -fsSL $(GUIDELINE_URL)/architecture.md -o vendor/swe_guidelines/architecture.md
-	for g in README om contracts context storage async network delivery ops; do \
-	  curl -fsSL $(GUIDELINE_URL)/lenses/$$g.md -o vendor/swe_guidelines/lenses/$$g.md; done
-	@echo "synced $(GUIDELINE_TAG)"
-```
-
-## Advanced: keep the scaffold as the base
+## Upgrade a copy of the scaffold
 
 A copy of the scaffold can keep the scaffold as its base, and take each
 later release by a merge rather than by hand. Its `scaffold` branch
@@ -238,3 +221,20 @@ move would merge against an older one.
 A project copied before its base was recorded, or from an archive,
 starts at the release it pins. The skill's first move grafts that
 release with a merge that changes no file, then merges the next.
+
+## Optional: vendor the text
+
+A project that wants the text in its tree without the plugin fetches it
+at a pinned tag into a folder it never edits:
+
+```makefile
+GUIDELINE_TAG ?= v0.40.0
+GUIDELINE_URL := https://raw.githubusercontent.com/baristaze/swe_guidelines/$(GUIDELINE_TAG)
+
+guidelines-sync:  ## fetch the pinned guideline and lenses into vendor/swe_guidelines/
+	mkdir -p vendor/swe_guidelines/lenses
+	curl -fsSL $(GUIDELINE_URL)/architecture.md -o vendor/swe_guidelines/architecture.md
+	for g in README om contracts context storage async network delivery ops; do \
+	  curl -fsSL $(GUIDELINE_URL)/lenses/$$g.md -o vendor/swe_guidelines/lenses/$$g.md; done
+	@echo "synced $(GUIDELINE_TAG)"
+```
