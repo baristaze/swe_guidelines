@@ -364,6 +364,7 @@ def test_the_compaction_says_what_it_never_touches(sentence: str) -> None:
 # is a sentence of the skill, so a rewrite that leaves the choice open fails.
 COMPACTION_DECIDES = [
     "When either exists, both take the next free suffix (`_2`), so a run never overwrites another's.",
+    "A migration's revision id or file name that it cites stays as it is: only a fold moves one",
 ]
 
 
@@ -415,6 +416,33 @@ def test_the_sweep_lists_no_file_the_compaction_never_edits(tmp_path: Path) -> N
         subprocess.run(command, cwd=tmp_path, check=True)
     swept = subprocess.run(_sweep(), cwd=tmp_path, capture_output=True, text=True, check=True)
     assert sorted({line.split(":", 1)[0] for line in swept.stdout.splitlines()}) == SWEPT
+
+
+def test_the_citation_search_lists_the_three_forms_and_no_bare_number(tmp_path: Path) -> None:
+    """Who cites an ADR decides whether it goes and what is re-pointed, and
+    its four digits alone match a port, a build, and a stamp. The search runs
+    here as the skill writes it, for ADR 0007, its own file left out."""
+    cited = {
+        "om/src/acme/om/bound.py": "# The bound is a lock's (ADR 0007).\n",
+        "pyproject.toml": 'adr = "docs/adr/0007-a-lock-bound.md"\n',
+        "docs/adr/0009-another.md": "See [the bound](0007-a-lock-bound.md).\n",
+    }
+    uncited = {
+        "om/src/acme/om/port.py": "PORT = 10007\n",
+        "README.md": "Build 0007 of 2026 holds 20260007 rows.\n",
+        "docs/adr/0007-a-lock-bound.md": "# ADR 0007: A lock bound\n",
+    }
+    for name, text in {**cited, **uncited}.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    for command in (["git", "init", "--quiet"], ["git", "add", "--all"]):
+        subprocess.run(command, cwd=tmp_path, check=True)
+    lines = [line.strip() for line in _skill("docs-compact").splitlines()]
+    (search,) = [line for line in lines if line.startswith("git grep -nE 'ADR NNNN")]
+    command = shlex.split(search.replace("NNNN", "0007"))
+    found = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert sorted({line.split(":", 1)[0] for line in found.stdout.splitlines()}) == sorted(cited)
 
 
 def test_the_compaction_tells_a_contract_in_flight_by_the_tree() -> None:

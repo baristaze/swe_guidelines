@@ -75,8 +75,14 @@ left as it is, and the report names it under Kept.
    (`clients/typescript/openapi.json` and the two schemas `make openapi`
    writes), or a skill folder that is a link.
    - Every `docs/adr/NNNN-*.md`: its status line, its `##` headings, and
-     who cites its number (`git grep -n "NNNN"`: the code, the config,
-     and the Markdown).
+     who cites it, in the code, the config, and the Markdown. A citation
+     takes one of three forms: `ADR NNNN` in a sentence or a comment,
+     `adr/NNNN` in a path, and `NNNN-` where the file's name begins, as
+     in a link from the ADR beside it. The digits alone are no citation.
+
+     ```bash
+     git grep -nE 'ADR NNNN|adr/NNNN|NNNN-[a-z]' -- . ':!docs/adr/NNNN-*'
+     ```
    - `CHANGELOG.md`: its release sections, when the tree has one.
    - The Substitutions and Deviations rows of `specs/architecture.md`.
    - The sentences that tell a past, in the Markdown and in the code's
@@ -94,43 +100,53 @@ left as it is, and the report names it under Kept.
      and does not read every file.
 3. **Compact the ADRs**, each once, then commit them alone.
    - **Rewrite in place** an ADR whose decision holds. Its status is
-     `**Status**: accepted (<date>)` and nothing more, with the first
-     date the old status names, the day it was accepted. Every later
-     date in it goes. It keeps Context, Decision, and Consequences, in
-     that order, and any section that states a present fact, such as a
-     measurement. A section named for a past (Amended, Closed,
-     Alternatives, History) goes: what still holds in it moves into the
-     Decision or the Consequences, and a rejected option goes through
-     the test above. The text states the decision as it stands, with no
-     "since", "no longer", or former value, and names no ticket, pull
-     request, or person.
+     `**Status**: accepted (<date>)` and nothing more, with the date
+     the old status gives for its acceptance, wherever in the line it
+     stands. When it gives none, the date is the day the file was added
+     (`git log --follow --diff-filter=A --format=%as -- <file>`). Every
+     other date in the status goes. It keeps Context, Decision, and
+     Consequences, in that order, and any section that states a present
+     fact, such as a measurement. A section named for a past (Amended,
+     Closed, Alternatives, History) goes: what still holds in it moves
+     into the Decision or the Consequences, and a rejected option goes
+     through the test above. The text states the decision as it stands,
+     with no "since", "no longer", or former value, and names no
+     ticket, pull request, or person. A migration's revision id or file
+     name that it cites stays as it is: only a fold moves one, in
+     step 7.
    - **Remove** an ADR that constrains nothing at the head: one replaced
      whole, one that is closed, one that records what a release asked or
      that a pin moved. A decision in it that still stands moves first,
-     into the ADR that records that decision. When no ADR does, the
-     decision most cited stays in this file, rewritten, under its
-     number. The file then takes that decision's name (`git mv`, to
+     into the ADR that records that decision. A decision no other ADR
+     records stays in this file, rewritten, under its number. When
+     several do, one stays: the one most citations of the number mean,
+     or the first the file states when nothing cites the number or two
+     tie. The file then takes that decision's name (`git mv`, to
      `NNNN-<the decision, as a slug>.md`), as any rewritten ADR does
      whose name says another subject: the number stays, and every link
      and every `adr =` path follows. Each other one gets a new ADR of
      its own, numbered in turn: the first one above the highest the tree
      held when the run began, the next one above that. A citation of the
      kept number that meant a moved decision names the ADR that now
-     holds it.
+     holds it. An ADR with no decision standing goes whole.
    - **Fold** a substitution that has an ADR of its own into the one ADR
      that lists the substitutions, as one row and the sentences that row
      needs, and remove the ADR.
    - **Re-point every citation** of a removed number before its file
      goes (`git rm`): a link in Markdown, an `adr =` entry in
-     `pyproject.toml`, an `ADR NNNN` in a comment. Each names the ADR
-     that now holds the decision, or goes when what it explained is
+     `pyproject.toml`, and an `ADR NNNN` in a comment, a docstring, or
+     a sentence of prose, a README's or the changelog's. Each names the
+     ADR that now holds the decision, or goes when what it explained is
      gone. `arch-check` fails on a number that code cites and no file
-     has.
+     has. A citation of a rewritten ADR for a part its text leaves out
+     follows the same rule: it names the ADR or the file that states
+     the fact now, or it goes.
    - An ADR that only restates a rule of the guideline, and decides
      nothing of the tree's own, constrains nothing. It is removed when
      no code or config cites its number, its links in Markdown going
      with it. While one does, it is kept, and listed. An ADR the test
-     leaves in doubt is kept and listed too.
+     leaves in doubt is kept and listed too. A kept ADR is rewritten in
+     place as this step's first item says, its status one date.
    - A file under `docs/adr/` that is not an ADR, such as a picture,
      goes when no ADR links it. An ADR never goes for want of a link.
 4. **Cut the changelog** to its latest release: the lines above the
