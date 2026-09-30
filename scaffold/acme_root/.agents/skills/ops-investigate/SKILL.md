@@ -144,10 +144,12 @@ and their handling is in `/acme/<env>/maintenance`.
      the sum of the lines whose status starts with `5` over the sum of
      `req`; one route's ratio is the same over that route's lines.
    - `p95` is the load balancer's target response time over every
-     route, in seconds: report its highest minute. The app's histogram
-     reaches CloudWatch as a statistic set, which holds no percentile,
-     so by route the cloud has a p95 only for the reads with a latency
-     alarm, which step 3 read.
+     route, in seconds. The report's p95 is its highest minute times
+     1,000, in milliseconds, written once, as every route together;
+     with no `p95` line, no request crossed the load balancer, and the
+     report writes `p95 none`. The cloud has no p95 by route: the
+     app's histogram reaches CloudWatch as a statistic set, which
+     holds no percentile.
 
    Every series carries all its labels as dimensions, and the exporter
    adds `OTelLib`. CloudWatch matches dimensions exactly, so a
@@ -266,26 +268,29 @@ and their handling is in `/acme/<env>/maintenance`.
 
 6. Errors. There is one tracker project for the product, and every
    environment reports into it, so the read names that project and
-   filters on the environment. Cloud: the error tracker's REST API at
+   filters on the environment. The error tracker's REST API at
    `$ACME_ERROR_TRACKER_URL` with the token as a bearer, the issues
-   last seen in the window in this environment, newest first:
+   last seen in the window in this environment, newest first, with
+   `local` as the environment locally:
 
    ```bash
    set -a; . ~/.config/acme/ops/<env>.env; set +a
+   case "$ACME_ERROR_TRACKER_URL" in *sentry.io*) window=" lastSeen:-<since>" ;; *) window="" ;; esac
    curl -s -H "Authorization: Bearer $ACME_ERROR_TRACKER_TOKEN" --get \
-     --data-urlencode "query=environment:<env> lastSeen:-<since>" \
+     --data-urlencode "query=environment:<env>$window" \
      "$ACME_ERROR_TRACKER_URL/api/0/projects/$ACME_ERROR_TRACKER_ORG/$ACME_ERROR_TRACKER_PROJECT/issues/"
    ```
 
-   The window is the search term `lastSeen:-<since>`, in minutes,
-   hours, days, or weeks (`90m`, `1h`, `2d`, `1w`), never
-   `statsPeriod`: that parameter sizes each issue's graph, takes only
-   `24h` and `14d`, and answers `400` to any other value.
-
-   Local: the same call against GlitchTip with
-   `query=environment:local` alone. GlitchTip reads `lastSeen:` as a
-   tag no issue carries and would answer with no issue, so keep the
-   issues whose `lastSeen` field is inside the window.
+   The tracker decides how the window is asked, not `--env`. Sentry
+   takes it as the search term `lastSeen:-<since>`, in minutes, hours,
+   days, or weeks (`90m`, `1h`, `2d`, `1w`). GlitchTip, the local
+   stack's tracker or a deployed one, reads `lastSeen:` as a tag no
+   issue carries and would answer with no issue. So only Sentry's own
+   host gets the term, and any other tracker gets the query without
+   it. Either way, keep the issues whose `lastSeen` field is inside
+   the window. The window is never `statsPeriod`: that parameter sizes
+   each issue's graph, takes only `24h` and `14d`, and answers `400`
+   to any other value.
 
    An issue in that project can hold events of more than one
    environment, so an issue the query returned is not by itself this
@@ -473,7 +478,7 @@ and their handling is in `/acme/<env>/maintenance`.
 
 ## Signals
 
-- Requests: <rate>, error ratio <ratio>, p95 <ms> by route
+- Requests: <rate>, error ratio <ratio>, p95 <ms> by route (cloud: one p95 <ms, or none>, every route together)
 - Workers: <outcomes per kind>, oldest ready item <age>, failed in the last fifteen minutes <n>, oldest pending outbox row <age>
 - Failed work items: <item id, kind, org id, reason; or none>
 - Orchestrations: <kind> <started, parked, succeeded, failed> per kind, defects <record and org ids, or none>
