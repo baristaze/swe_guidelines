@@ -127,9 +127,9 @@ machine's paths, so they stay out of the project's history.
 | `arch-benchmark-browser`  | Asks the chat products a reader would use             |
 
 The last three run in a checkout of this repository. A review reads and
-reports; it never edits. A scaffold writes into the working tree and
-never commits. `arch-upgrade-scaffold` commits its move, since the merge
-is the move.
+reports; it never edits, and it runs no file of the repository it
+reviews. A scaffold writes into the working tree and never commits.
+`arch-upgrade-scaffold` commits its move, since the merge is the move.
 
 ## Develop
 

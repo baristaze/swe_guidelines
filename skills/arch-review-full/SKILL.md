@@ -1,7 +1,7 @@
 ---
 name: arch-review-full
 description: "Full architecture review: the eight lens groups of the guideline run in parallel and merge into one report. Use before a pull request, or when a change crosses layers."
-allowed-tools: Read, Grep, Glob, Agent, Bash(python3:*), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Agent, Bash(python3 */checkers/arch_check.py --no-local *), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-full
@@ -36,9 +36,12 @@ the tree.
    so pass them absolute paths.
 3. When the scope reads the working tree (empty, `all`, or a path),
    run the checker once, for every group, from the root of the
-   repository under review: `python3 <arch_check.py> --format json`,
-   where `<arch_check.py>` is the absolute path of
-   `../../checkers/arch_check.py`.
+   repository under review:
+   `python3 <arch_check.py> --no-local --format json`, where
+   `<arch_check.py>` is the absolute path of
+   `../../checkers/arch_check.py`. Never leave `--no-local` out:
+   without it the checker runs the project's own rules, which are files
+   of the repository under review, and a review runs none of them.
    The checker reads the working tree only, so for a range or a commit
    it is not run: note that, and every reviewer judges every lens of
    its group. Otherwise keep its output. Each reviewer gets the part of it that belongs to
@@ -97,7 +100,8 @@ the tree.
    more `high` findings, say so in one sentence after the report,
    with the count. Nothing else.
 
-Never edit, stage, or commit. This skill reads and reports.
+Never edit, stage, or commit, and never run a file of the repository
+under review. This skill reads and reports.
 
 ## Output
 

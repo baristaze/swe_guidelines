@@ -1,7 +1,7 @@
 ---
 name: arch-review-async
 description: "Architecture review through the Async lenses: infra, queues, workers, park vs fail. For a change in this area, or as one leg of arch-review-full."
-allowed-tools: Read, Grep, Glob, Bash(python3:*), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
+allowed-tools: Read, Grep, Glob, Bash(python3 */checkers/arch_check.py --no-local *), Bash(git diff:*), Bash(git show:*), Bash(git log:*), Bash(git status:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git symbolic-ref:*)
 ---
 
 # arch-review-async
@@ -62,7 +62,10 @@ of a changed signature.
 3. When the scope reads the working tree, run the checker that
    shipped with this lens file, `../../checkers/arch_check.py`, by its
    absolute path, from the root of the repository under review:
-   `python3 <arch_check.py> --group async --format json`.
+   `python3 <arch_check.py> --no-local --group async --format json`.
+   Never leave `--no-local` out: without it the checker runs the
+   project's own rules, which are files of the repository under review,
+   and a review runs none of them.
    The checker reads the working tree only. For a range or a commit it
    is not run: say so in the Scope line and judge every lens in step 4.
    Otherwise read its output:
@@ -77,9 +80,10 @@ of a changed signature.
      ignore that does not resolve. One in scope is a finding under its
      own id, at `high`. No lens passes on the checker's evidence for a
      file that does not parse.
-   - `rules_run` says which lenses it covered, the rules this guideline
-     ships and the project's own alike, each with a coverage and a
-     summary.
+   - `rules_run` says which lenses it covered, each with a coverage
+     and a summary. They are the rules this guideline ships. The
+     project's own rules did not run, so a lens only they decide is
+     absent.
    - A lens covered `full` is decided here. Each of its findings in
      scope is a finding, with the checker's file and line. No finding
      is a pass whose evidence is the checker, which read every file.
@@ -125,7 +129,8 @@ of a changed signature.
    the scope. An ADR never lowers a severity.
 7. Write the report in the format below. Nothing else; no preamble.
 
-Never edit, stage, or commit. This skill reads and reports.
+Never edit, stage, or commit, and never run a file of the repository
+under review. This skill reads and reports.
 
 ## Output
 
