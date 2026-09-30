@@ -242,6 +242,108 @@ def test_a_two_word_copy_quotes_its_namespace_in_every_dashboard_search(tmp_path
     assert "SEARCH('{Free" not in template + module
 
 
+LOCK = """\
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.4.2
+        version: 12.4.2
+
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  apps/portal:
+    dependencies:
+      '@acme/client':
+        specifier: workspace:*
+        version: link:../../clients/typescript
+      '@fontsource-variable/inter':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@sentry/react':
+        specifier: ^10.74.0
+        version: 10.74.0(react@19.3.0)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+    devDependencies:
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0
+
+packages:
+
+  '@sentry/react@10.74.0':
+    resolution: {integrity: sha512-0}
+    peerDependencies:
+      react: ^19.0.0
+      '@acme/client': '*'
+"""
+"""A lockfile as pnpm writes it for the scaffold: two documents, and the
+workspace package first among the portal's dependencies, where `@acme` sorts."""
+
+
+def lock_groups(lock: str) -> list[list[str]]:
+    """The names of each group of dependencies under `importers:`, in the
+    order the lockfile lists them."""
+    groups = []
+    for importers in re.findall(r"^importers:\n(.*?)(?=^\S|\Z)", lock, re.MULTILINE | re.DOTALL):
+        for rows in re.findall(r"^    \w+:\n((?:      .*\n)+)", importers, re.MULTILINE):
+            groups.append(re.findall(r"^      '?([^' ][^':]*)'?:$", rows, re.MULTILINE))
+    return groups
+
+
+@pytest.mark.parametrize(
+    ("name", "portal"),
+    [
+        ("abacus", ["@abacus/client", "@fontsource-variable/inter", "@sentry/react", "react"]),
+        ("pressroom", ["@fontsource-variable/inter", "@pressroom/client", "@sentry/react", "react"]),
+        ("tidewater", ["@fontsource-variable/inter", "@sentry/react", "@tidewater/client", "react"]),
+    ],
+)
+def test_the_copys_lockfile_lists_the_workspace_package_where_the_copys_name_sorts(tmp_path, name, portal):
+    """pnpm writes each importer's dependencies by name, so a package left
+    where the placeholder sorted is moved by the first install that writes
+    the lockfile. The rows under a name move with it, and nothing outside
+    `importers:` moves."""
+    source, plugin = fixture(tmp_path)
+    (source / "pnpm-lock.yaml").write_text(LOCK, encoding="utf-8")
+    dest = tmp_path / name
+    assert new.main([str(dest)], source=source, plugin=plugin) == 0
+    lock = (dest / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    assert lock_groups(lock) == [["pnpm"], portal, ["vite"]]
+    assert f"      '@{name}/client':\n        specifier: workspace:*\n        version: link:../../clients/typescript\n" in lock
+    assert lock.endswith(f"    peerDependencies:\n      react: ^19.0.0\n      '@{name}/client': '*'\n")
+    assert sorted(lock.split("\n")) == sorted(new.rename(LOCK, new.Names(name)).split("\n"))
+
+
+@pytest.mark.parametrize("name", ["pressroom", "free_press"])
+def test_a_copy_of_the_scaffold_lists_each_importers_dependencies_by_name(tmp_path, name):
+    dest = tmp_path / name
+    assert new.main([str(dest)]) == 0
+    lock = (dest / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    groups = lock_groups(lock)
+    assert any(f"@{name}/client" in group for group in groups)
+    assert [group for group in groups if group != sorted(group)] == []
+    source = (SCAFFOLD / "acme_root" / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    assert sorted(lock.split("\n")) == sorted(new.rename(source, new.Names(name)).split("\n"))
+
+
+def test_a_lockfile_pnpm_wrote_is_left_as_it_is():
+    """The scaffold's own lockfile is pnpm's, so its order is pnpm's: the
+    copy's order and pnpm's are one rule."""
+    source = (SCAFFOLD / "acme_root" / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    assert new.in_pnpm_order(source) == source
+
+
 def test_a_name_past_the_bound_is_refused_and_the_refusal_says_the_bound():
     assert new.MAX_NAME_LENGTH == 17
     assert new.refusal("independent_press") is None  # exactly at the bound
