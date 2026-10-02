@@ -47,7 +47,12 @@ SCRAPE_PORT ?= $(ACME_COLLECTOR_SCRAPE_PORT)
 # `make arch-check ARCH_CHECK="python3 ../swe_guidelines/checkers/arch_check.py"`.
 ARCH_CHECK ?= uvx --python "$(shell cat .python-version)" --from "git+https://github.com/baristaze/swe_guidelines@v0.48.0\#subdirectory=checkers" arch-check
 
-.PHONY: help setup up down reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
+# pnpm at the version packageManager in package.json names. Node 25 and
+# later ship no corepack, so a Node installed or switched to has no pnpm
+# until npm installs it; a pnpm already on PATH runs the version named.
+PNPM_SPEC := $(or $(shell sed -n 's/^ *"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' package.json 2>/dev/null),pnpm)
+
+.PHONY: help setup pnpm up down reset urls infra-up buckets devx-up stack-up infra-down infra-reset collector-scrape migrate seed migrate-check benchmark-boot check lint format-check typecheck arch-check test-unit test-integration test-telemetry traffic openapi
 
 # This Makefile alone, never $(MAKEFILE_LIST): the includes above put
 # .env.example and .env in that list, and grep prefixes every match with the
@@ -59,11 +64,15 @@ help: ## Show this help
 # A tree copied under a longer name has longer lines and its imports in
 # another order, so setup formats the Python once; on a formatted tree it
 # changes nothing.
-setup: ## Install every Python and TypeScript dependency, and format the Python
+setup: pnpm ## Install every Python and TypeScript dependency, and format the Python
 	uv sync --all-packages
 	@if [ -f pnpm-workspace.yaml ] && [ -d apps ]; then pnpm install; fi
 	uv run ruff check --fix --quiet --select I .
 	uv run ruff format --quiet .
+
+# A tree without apps runs no pnpm, so it installs none.
+pnpm: ## Install pnpm with npm, at the version package.json names, when it is missing
+	@if [ -d apps ] && ! command -v pnpm >/dev/null; then npm install --global $(PNPM_SPEC); fi
 
 # The one-command session. `up` starts the data services first, migrates and
 # seeds them, then starts the app containers and the dashboards; it is safe
@@ -196,7 +205,7 @@ migrate-check: ## Compare every role's ORM metadata with the migrated schema
 benchmark-boot: ## Time the imports and the construction of every root
 	uv run --package acme-api python scripts/benchmark_boot.py
 
-check: lint format-check typecheck arch-check test-unit ## The fast local gate
+check: pnpm lint format-check typecheck arch-check test-unit ## The fast local gate
 	@if [ -d apps ]; then pnpm run lint && pnpm run typecheck && pnpm run test; fi
 
 lint: ## Ruff lint
@@ -234,7 +243,7 @@ traffic: ## Drive light traffic at the local API (PROFILE=light DURATION=30)
 # One committed document, clients/typescript/openapi.json; both generated type
 # sets come from it: the TypeScript client's schema.d.ts and the Python
 # client's schema.py.
-openapi: ## Emit the API document and regenerate the TypeScript and the Python client's types
+openapi: pnpm ## Emit the API document and regenerate the TypeScript and the Python client's types
 	uv run --package acme-api acme-api openapi --out clients/typescript/openapi.json
 	pnpm --filter @acme/client generate
 	uv run datamodel-codegen --input clients/typescript/openapi.json --input-file-type openapi \

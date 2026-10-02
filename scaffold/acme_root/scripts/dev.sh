@@ -36,13 +36,35 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# A tool that is missing stops the script here, before anything starts.
+# Node 25 and later ship no corepack, so a Node installed or switched to has
+# no pnpm until `make setup` installs it.
+for tool in uv pnpm; do
+  if ! command -v "$tool" >/dev/null; then
+    echo "dev.sh: $tool is not on PATH; run \`make setup\`" >&2
+    exit 1
+  fi
+done
+
+# A process stops with every process under it: uv and pnpm each start the
+# server as a child, and a signal to the parent alone leaves the child
+# running once the script exits.
 pids=()
+stop_tree() {
+  local child
+  for child in $(pgrep -P "$1" || true); do
+    stop_tree "$child"
+  done
+  kill "$1" 2>/dev/null || true
+}
 cleanup() {
-  for pid in "${pids[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  local pid
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    stop_tree "$pid"
   done
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 uv run --package acme-api acme-api serve --port "${ACME_PORT:-8000}" &
 pids+=($!)
@@ -51,4 +73,25 @@ pids+=($!)
 pnpm --filter @acme/portal dev &
 pids+=($!)
 
-wait
+# A process that fails stops the others and the script, with its status, so
+# it never leaves the rest running without it; one that exits 0 is done. A
+# poll, never `wait -n`, which the bash a macOS ships does not have.
+while [ ${#pids[@]} -gt 0 ]; do
+  running=()
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      running+=("$pid")
+      continue
+    fi
+    status=0
+    wait "$pid" || status=$?
+    if [ "$status" -ne 0 ]; then
+      echo "dev.sh: a process exited with status $status; stopping the others" >&2
+      exit "$status"
+    fi
+  done
+  pids=(${running[@]+"${running[@]}"})
+  if [ ${#pids[@]} -gt 0 ]; then
+    sleep 1
+  fi
+done

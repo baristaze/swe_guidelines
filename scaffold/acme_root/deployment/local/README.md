@@ -117,3 +117,5 @@ its `-dead` queue at start. Valkey snapshots on shutdown.
 | The portal loads but every request fails | The API is down, or the portal was built for another `VITE_API_URL`: `dc ps api`, then `dc up -d --build --wait portal` |
 | The API refuses to start, naming a setting | `.env` predates a change; compare it with `.env.example` |
 | `scripts/dev.sh` fails on the API's port | The `api` container runs: `dc stop api maintenance portal` |
+| `scripts/dev.sh` says `pnpm is not on PATH` | Node 25 and later ship no corepack, so a Node installed or switched to has no pnpm: `make setup` |
+| `scripts/dev.sh` stops, naming a status | One process exited and the script stopped the others; the lines above it say why |
