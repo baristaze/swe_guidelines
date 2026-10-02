@@ -5,56 +5,43 @@ included, stay on its GitHub release. Releases are tagged
 `vMAJOR.MINOR.PATCH`; see `CONTRIBUTING.md` for what bumps which
 number.
 
-## 0.47.0 (2026-09-30)
+## 0.48.0 (2026-10-02)
 
-A copy's write token lives apart from what a reading skill holds, and no
-tenant's words leave the process in an exception's text or an outbound
-call's query. Minor, with one reversal in part, named below.
+A repository whose own scaffold builds on this one, a layer, takes the
+scaffold unchanged and merges it, and a copy moves from the source its
+base records. Minor: a tool and a skill gain a mode, and nothing is
+reversed.
 
-The boundary of what an agent can do is the credential it holds, never
-the prompt. A read skill that sources the file holding a write token has
-only its prompt between it and a write, and a tenant's words that reach
-it by a log line or a tracker event can steer it.
+A layer keeps the scaffold in `scaffold/acme_root/`, and products are
+copied from it. One tool and one skill then move every layer and every
+product, from one tarball, a private source included.
+
+### Added
+
+- `scaffold/base.py --layer` commits the source's `scaffold/` folder
+  unchanged, at `scaffold/`, onto a layer's `scaffold` branch: one
+  commit per render, its parent the render before, with the same
+  trailers. A layer's render records the name `acme`, which no copy
+  takes, so `base.py` never moves a copy's base as a layer's, or a
+  layer's as a copy's.
+- `base.py` reads a private source. On a 404 from codeload, it asks
+  GitHub's API with the token `gh auth token` gives, in a header no
+  redirect carries. Without such a token, it refuses and names
+  `--tarball`, with the `gh api` call that writes one.
+- `arch-upgrade-scaffold` moves a layer, its first take included. It
+  passes `--layer`, reads the pin, the ADRs, and the migrations under
+  `scaffold/acme_root/`, and runs the gates there; it takes `--source`
+  and `--tarball`. The adopting page says what a layer is.
 
 ### Changed
 
-- Reversed in part: CTX-38 held the `write` token in the ops env file; a
-  `write` token there is now its violation. The provisioner's token
-  lives in `~/.config/acme/ops/<env>.provisioner.env`, read only by
-  `acme-ops traffic` and `stress`. The env file a read skill sources
-  holds the `read` token alone, the read skills pre-approve only the
-  `acme-ops` read commands they run, and OPS-09 and Operator
-  Credentials say so.
-- An exception's text leaves the process only when the platform raised
-  it as a server error: the JSON log line, the tracker's event, and a
-  work item's, outbox row's, or orchestration's failure record keep the
-  exception's type and its frames. An error logged by its text alone
-  now carries its frames.
-- An outbound call's breadcrumb keeps its method, its status, and its
-  URL's scheme, host, and path, never its query. The HTTP clients' own
-  loggers (`httpx`, `httpcore`, `urllib3`) write from WARNING up, since
-  below it they write a request's whole URL.
-- `ops-root-cause` names each read it makes, with a `jq` that keeps
-  what the step needs and never an exception's text; it reads the
-  tracker by request id for its environment, and every read by the
-  window's bounds.
+- A move without `--source` takes the source its base records, and a
+  `--source` that names another is refused: a base keeps one source.
+- `new.py`, run from a layer's checkout, records the checkout's
+  `origin` on GitHub as the source, and keeps the guideline release its
+  scaffold pins rather than the layer's own manifest version.
 
 ### Fixed
 
-- The scaffold's `.gitignore` no longer ignores a namespace named
-  `reports`, `coverage`, `build`, or `dist`: its build and coverage
-  folders are anchored where their tools write them.
-- The worker loop's tests wait on what they assert, not on a second of
-  the wall clock, so a loaded runner no longer fails them.
-- The benchmark's redactor, and `make runs` through it, replace
-  Stripe's secret, restricted, and webhook signing keys.
-
-### What a copy does
-
-- Move the provisioner's token out of the ops env file: run the line
-  the first `acme-ops` command prints, or delete
-  `ACME_PROVISIONER_TOKEN` from the env file and run
-  `uv run acme-ops token --env <env> --identity provisioner`.
-- A copy's own code that logs an exception by its text (`%r`, `%s`)
-  keeps it only in the plain format a developer reads; pass
-  `exc_info=` to keep its frames in the JSON line.
+- `arch-upgrade-scaffold` reads the release tags in version order
+  (`--sort=v:refname`), so `v0.10.0` follows `v0.9.0`.
