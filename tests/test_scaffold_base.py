@@ -72,7 +72,7 @@ def guideline(tmp_path: Path) -> Path:
     (root / ".agents/skills/acme-watch/SKILL.md").write_text("# acme-watch\n", encoding="utf-8")
     (root / ".claude/skills").symlink_to("../.agents/skills")
     (repo / ".claude-plugin").mkdir()
-    (repo / ".claude-plugin/plugin.json").write_text(json.dumps({"version": "0.1.0"}), encoding="utf-8")
+    (repo / ".claude-plugin/plugin.json").write_text(json.dumps({"name": "swe-guidelines", "version": "0.1.0"}), encoding="utf-8")
     (repo / "architecture.md").write_text("# The guideline\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     git(repo, "add", "-A")
@@ -530,3 +530,57 @@ def test_a_private_source_no_token_reads_is_refused_naming_tarball(tmp_path, cap
     assert "gh api repos/acme/layer/tarball/v1.0.0 > source.tar.gz" in err
     assert "t0ken" not in err
     assert git(repo, "branch", "--list", "scaffold") == ""
+
+
+LAYER = "https://github.com/acme/layer"
+
+
+def layer_source(tmp_path: Path, guide: Path) -> Path:
+    """A layer as its source repository: the guideline's scaffold/ folder with a file of the layer's, and a plugin
+    manifest of its own, under its own name and version."""
+    repo = tmp_path / "layer_source"
+    shutil.copytree(guide / "scaffold", repo / "scaffold", symlinks=True)
+    (repo / "scaffold/acme_root/LAYER.md").write_text("# The Acme layer\n", encoding="utf-8")
+    (repo / ".claude-plugin").mkdir()
+    (repo / ".claude-plugin/plugin.json").write_text(json.dumps({"name": "layer", "version": "3.0.0"}), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "the layer")
+    return repo
+
+
+def test_a_copy_of_a_layer_moves_from_the_source_its_base_records(tmp_path, capsys, monkeypatch):
+    layer = layer_source(tmp_path, guideline(tmp_path))
+    one, _ = tarball(layer, tmp_path / "one.tar.gz")
+    repo = copy(tmp_path)
+    assert run(repo, one, "--name", "pressroom", "--source", LAYER) == 0
+    (layer / "scaffold/acme_root/LAYER.md").write_text("# The Acme layer\n\nMore.\n", encoding="utf-8")
+    git(layer, "commit", "-q", "-am", "two")
+    two, commit = tarball(layer, tmp_path / "two.tar.gz")
+    asked: list = []
+
+    def urlopen(request, timeout):
+        asked.append(request.full_url)
+        return io.BytesIO(two.read_bytes())
+
+    monkeypatch.setattr(base.urllib.request, "urlopen", urlopen)
+    assert base.main(["v2.0.0", "--repo", str(repo)]) == 0
+    assert asked == ["https://codeload.github.com/acme/layer/tar.gz/v2.0.0"]
+    message = git(repo, "log", "-1", "--format=%B", "scaffold")
+    assert f"Scaffold-Source: {LAYER}" in message and f"Scaffold-Commit: {commit}" in message
+    assert git(repo, "show", "scaffold:LAYER.md") == "# The Pressroom layer\n\nMore."
+    head = git(repo, "rev-parse", "scaffold")
+    capsys.readouterr()
+    assert base.main(["v2.0.0", "--repo", str(repo), "--source", base.SOURCE]) == 2
+    assert f"the base came from {LAYER}; a base keeps one source" in capsys.readouterr().err
+    assert git(repo, "rev-parse", "scaffold") == head
+    assert run(repo, two, "--source", f"{LAYER}.git", ref="v2.0.0") == 0
+
+
+def test_a_copy_of_a_layer_pins_the_guideline_release_the_layer_took(tmp_path):
+    layer = layer_source(tmp_path, guideline(tmp_path))
+    one, _ = tarball(layer, tmp_path / "one.tar.gz")
+    repo = copy(tmp_path)
+    assert run(repo, one, "--name", "pressroom", "--source", LAYER) == 0
+    pinned = git(repo, "show", "scaffold:specs/architecture.md")
+    assert "pinned at release `v0.1.0`" in pinned and "3.0.0" not in pinned

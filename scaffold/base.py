@@ -27,7 +27,9 @@ The render's parent is the last render: the newest of the `scaffold` branch,
 origin's, and the last render the checkout merged, so a stale branch never
 wins, and a base whose branch was never pushed is still found.
 
-The source is this guideline, or a layer built on it (`--source`). The ref is
+The source is this guideline, or a layer built on it (`--source`). Without
+`--source`, a move takes the source its base records, and a `--source` that
+names another is refused: a base keeps one source. The ref is
 a release tag, a branch, or a commit of the source on GitHub. The script
 fetches it as one tarball, never a clone, and reads only `scaffold/` and
 `.claude-plugin/` from it. A public source comes from codeload. On a 404 the
@@ -321,11 +323,27 @@ def ancestor(repo: Path, older: str, newer: str) -> bool:
     return done.returncode == 0
 
 
-def name_of(repo: Path, given: str | None, head: str | None, layer: bool) -> str:
+def repository_of(source: str) -> tuple[str, str] | str:
+    """What tells two spellings of one source apart from another source: its
+    owner and repository, as GitHub compares them, or the text when it is not
+    a repository on GitHub."""
+    match = SOURCE_URL.match(source)
+    return (match.group(1).lower(), match.group(2).lower()) if match else source
+
+
+def source_of(given: str | None, recorded: str | None) -> str:
+    """The source the render comes from: the one given, else the one the base
+    records, else this guideline. A base keeps one source, so a copy of a layer
+    never takes this guideline's scaffold over what the layer added."""
+    if given and recorded and repository_of(given) != repository_of(recorded):
+        raise Refused(f"the base came from {recorded}; a base keeps one source: give that --source, or none")
+    return given or recorded or SOURCE
+
+
+def name_of(repo: Path, given: str | None, recorded: str | None, layer: bool) -> str:
     """The name the render takes: `acme` for a layer; else the one given, the
     one the base records, or the arch-check package. A layer's base and a
     copy's are told apart by the name the base records."""
-    recorded = trailers(git(repo, "log", "-1", "--format=%B", head)).get(TRAILER_NAME) if head else None
     if layer:
         if recorded and recorded != LAYER_NAME:
             raise Refused(f"the base is a copy's, rendered as {recorded!r}; move it without --layer")
@@ -393,22 +411,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="the repository is a layer: take the source's scaffold/ folder unchanged, at scaffold/, rather than render a copy",
     )
-    parser.add_argument("--source", default=SOURCE, help=f"the source on GitHub, public or private (default: {SOURCE})")
+    parser.add_argument(
+        "--source", help=f"the source on GitHub, public or private (default: the one the base records, else {SOURCE})"
+    )
     parser.add_argument("--tarball", help="read this tarball of the ref rather than fetch it")
     args = parser.parse_args(argv)
     repo = Path(args.repo).expanduser().resolve()
     try:
-        located(args.source, args.ref)
         git(repo, "rev-parse", "--git-dir")
         head = base_of(repo)
-        name = name_of(repo, args.name, head, args.layer)
+        recorded = trailers(git(repo, "log", "-1", "--format=%B", head)) if head else {}
+        source = source_of(args.source, recorded.get(TRAILER_SOURCE))
+        located(source, args.ref)
+        name = name_of(repo, args.name, recorded.get(TRAILER_NAME), args.layer)
         with tempfile.TemporaryDirectory() as scratch:
             work = Path(scratch)
             tarball = Path(args.tarball).expanduser() if args.tarball else work / "source.tar.gz"
             if not args.tarball:
-                tarball.write_bytes(fetch(args.source, args.ref))
+                tarball.write_bytes(fetch(source, args.ref))
             made = render(tarball, name, work, args.layer)
-            new = commit_render(repo, made, name, args.ref, args.source, head)
+            new = commit_render(repo, made, name, args.ref, source, head)
     except Refused as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
